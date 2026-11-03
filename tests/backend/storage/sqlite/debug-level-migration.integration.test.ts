@@ -9,7 +9,7 @@ describe("native debug level migration", () => {
   it("preserves retained history and restores immutability after adding levels", () => {
     const database = new DatabaseSync(":memory:");
     try {
-      for (const migration of SQLITE_MIGRATIONS.filter(migration => migration.version < 18)) {
+      for (const migration of SQLITE_MIGRATIONS.filter(migration => migration.version < 19)) {
         for (const statement of migration.statements) database.exec(statement);
       }
       const at = "2026-11-03T00:00:00.000Z";

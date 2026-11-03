@@ -2,7 +2,7 @@ import { z } from "zod";
 import { DebugEventSchema, TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
-export const DEBUG_LEVEL_MIGRATION = { version: 18, statements: [
+export const DEBUG_LEVEL_MIGRATION = { version: 19, statements: [
   "DROP TRIGGER timeline_events_immutable",
   `UPDATE timeline_events SET payload_json=json_set(payload_json,'$.payload.event.level',
     CASE json_extract(payload_json,'$.payload.event.phase')

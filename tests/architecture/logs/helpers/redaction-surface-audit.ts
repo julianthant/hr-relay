@@ -9,6 +9,9 @@ import { EditableWorkbookSchema, SavedWorkbookSchema, EditableWorkbookWireSchema
 import { CompositeStreamEnvelopeSchema } from "../../../../src/models/dashboard/run-logs-subscription.js";
 import { OperationSourceResponseSchema } from "../../../../src/models/dashboard/operation-structure.js";
 import { CalendarWireSchema } from "../../../../src/models/dashboard/calendar.js";
+import { WorkbookLibraryCatalogSchema, WorkbookLibraryVersionViewSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionStatusSchema,
+  WorkbookLibraryStateSchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionRecordSchema } from "../../../../src/models/dashboard/workbook-library.js";
+import { PlannedRunOutputSchema } from "../../../../src/models/dashboard/run-outputs.js";
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -736,6 +739,14 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/editable-workbook", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: EditableWorkbookWireSchema },
   { id: "wire/saved-workbook", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: SavedWorkbookWireSchema },
   { id: "wire/workbook-list", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookListWireSchema },
+  { id: "wire/workbook-library-catalog", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryCatalogSchema },
+  { id: "wire/workbook-library-version", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryVersionViewSchema },
+  { id: "request/workbook-library-action", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryActionSchema },
+  { id: "wire/workbook-library-action-status", egress: "operator-loopback", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryActionStatusSchema },
+  { id: "durable/workbook-library-state", egress: "durable-authority", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryStateSchema },
+  { id: "durable/workbook-library-snapshot", egress: "durable-authority", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibrarySnapshotSchema },
+  { id: "durable/workbook-library-action", egress: "durable-authority", module: "src/models/dashboard/workbook-library.ts", schema: WorkbookLibraryActionRecordSchema },
+  { id: "wire/planned-run-output", egress: "operator-loopback", module: "src/models/dashboard/run-outputs.ts", schema: PlannedRunOutputSchema },
   { id: "wire/workbook-history", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookHistoryWireSchema },
   { id: "wire/workbook-type", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookTypeSchema },
   { id: "wire/workbook-metadata", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookMetadataSchema },
@@ -826,6 +837,20 @@ const LIBRARY_CHANGE_ORIGINS = ['key', 'values', 'sheetId', 'rowId', 'selection.
 const LIBRARY_RECEIPT_ORIGINS = ['operationId', 'libraryId', 'key', 'candidates[].sheetId', 'candidates[].rowId',
   'changes[].sheetId', 'changes[].rowId', 'changes[].fieldId', 'changes[].key', 'changes[].oldValue', 'changes[].newValue',
   'source.runId', 'source.syncId'] as const;
+const LIBRARY_VERSION_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
+  ...['id', 'snapshotId'].map(path => ({ path, origin: 'repository-authored' as const })),
+  { path: 'name', origin: 'operator-authored' },
+];
+const LIBRARY_STATE_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
+  ...['libraryId', 'selectedVersionId', 'origin.workflowLabel'].map(path => ({ path, origin: 'repository-authored' as const })),
+  ...LIBRARY_VERSION_ORIGINS.map(entry => ({ ...entry, path: `versions[].${entry.path}` })),
+];
+const LIBRARY_ACTION_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
+  ...['operationId', 'change.from.versionId', 'change.versionId', 'change.sources[].libraryId'].map(path => ({ path, origin: 'repository-authored' as const })),
+  { path: 'change.name', origin: 'operator-authored' }, { path: 'change.metadata.typeId', origin: 'captured-hr-value' },
+];
+const PLANNED_OUTPUT_ORIGINS = ['name', 'sheetId', 'worksheetName', 'folderName', 'archiveName', 'people[].rowId', 'people[].label'] as const;
+const LIBRARY_NAME_RETENTION = 'Operator-approved named workbook and version management retains entered names in the local library state and its immutable action journal (docs/rebuild/reference/data-intake-and-edit-data.md, Saved workbook reference data). This permits local authority retention only, with no process or OS notification egress.';
 
 const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
   { path: "approvedSnapshots[].records[].fields.answers[].raw", origin: "captured-hr-value" },
@@ -877,6 +902,35 @@ const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }
 
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
+    { surface: 'wire/bootstrap', path: 'workflows[].start.requiredWorkbookTypeIds[]', origin: 'repository-authored' },
+    ...PLANNED_OUTPUT_ORIGINS.flatMap(path => ['wire/planned-run-output', 'wire/start-plan'].map(surface => ({ surface,
+      path: surface === 'wire/start-plan' ? `planned[].outputs[].${path}` : path, origin: 'captured-hr-value' as const }))),
+    ...([
+      ['wire/workbook-library-catalog', '[].state.', LIBRARY_STATE_ORIGINS],
+      ['wire/workbook-library-version', 'version.', LIBRARY_VERSION_ORIGINS],
+      ['request/workbook-library-action', '', LIBRARY_ACTION_ORIGINS],
+      ['wire/workbook-library-action-status', 'record.action.', LIBRARY_ACTION_ORIGINS],
+      ['wire/workbook-library-action-status', 'record.result.', LIBRARY_STATE_ORIGINS],
+      ['durable/workbook-library-state', '', LIBRARY_STATE_ORIGINS],
+      ['durable/workbook-library-action', 'action.', LIBRARY_ACTION_ORIGINS],
+      ['durable/workbook-library-action', 'result.', LIBRARY_STATE_ORIGINS],
+    ] as const).flatMap(([surface, prefix, entries]) => entries.map(entry => ({ surface, path: `${prefix}${entry.path}`, origin: entry.origin,
+      ...(surface.startsWith('durable/') && entry.origin === 'operator-authored' ? { exception: LIBRARY_NAME_RETENTION } : {}) }))),
+    ...['wire/workbook-library-version', 'durable/workbook-library-snapshot'].flatMap(surface => [
+      { surface, path: 'libraryId', origin: 'repository-authored' as const },
+      ...WORKBOOK_VALUE_ORIGINS.map(entry => ({ ...entry, surface, path: `workbook.${entry.path}`, origin: entry.path === 'libraryId' ? 'repository-authored' as const : entry.origin })),
+    ]),
+    { surface: 'durable/workbook-library-snapshot', path: 'id', origin: 'repository-authored' },
+    { surface: 'durable/workbook-library-action', path: 'libraryId', origin: 'repository-authored' },
+    { surface: 'wire/workbook-library-action-status', path: 'record.libraryId', origin: 'repository-authored' },
+    { surface: 'wire/workbook-library-catalog', path: '[].libraryId', origin: 'repository-authored' },
+    ...['name', 'worksheets[].id', 'worksheets[].name', 'metadata.typeId'].map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].${path}`, origin: 'captured-hr-value' as const })),
+    ...LIBRARY_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].type.${path}`, origin: 'captured-hr-value' as const })),
+    ...['versionId', 'versionName'].map(path => ({ surface: 'wire/workbook-reference', path, origin: path === 'versionId' ? 'repository-authored' : 'operator-authored' })),
+    { surface: 'request/workbook-reference', path: 'versionId', origin: 'repository-authored' },
+    ...['libraryId', 'versionId'].map(path => ({ surface: 'wire/start-plan', path: `planned[].workbookReferences[].${path}`, origin: 'repository-authored' as const })),
+    { surface: 'wire/start-plan', path: 'planned[].workbookReferences[].versionName', origin: 'operator-authored' },
+    ...['worksheets[].sheetId', 'worksheets[].name', ...LIBRARY_TYPE_ORIGINS.map(path => `type.${path}`)].map(path => ({ surface: 'wire/start-plan', path: `planned[].workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
   ...[
     { surface: "wire/run-logs-stream", prefix: "envelope.payload.ocr" },
     { surface: "wire/run-detail-section", prefix: "payload.ocr" },
@@ -921,7 +975,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
       'resolution.action.detail', 'resolution.action.key', 'resolution.action.label', 'resolution.action.navigate.runId',
       'resolution.target.libraryId', 'resolution.target.operationId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.operations[].${path}`, origin: 'repository-authored' as const })),
     ...['label', 'sheetId', 'rowId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.operations[].resolution.candidates[].${path}`, origin: 'captured-hr-value' as const })),
-    ...['fields[]', 'keys[]', 'libraryId', 'typeId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.value.recovery.request.workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
+    ...['versionId', 'libraryId', 'typeId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.value.recovery.request.workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
     ...['name', 'sheetId'].map(path => ({ surface: 'wire/workbook-reference', path: `worksheets[].${path}`, origin: 'captured-hr-value' as const })),
     ...['action', 'displayedName'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.ucpathFindings.findings.rows[].${path}`, origin: 'captured-hr-value' as const })),
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.attemptHistory[].endedAt.reason", "origin": "repository-authored"},
@@ -2056,8 +2110,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   // The operator query is retained only in insert-only evidence; workbook cells exclude this possible identifier.
   { surface: "durable/run-search-index", path: "metadata.actor.value", origin: "captured-hr-value" },
   { surface: "durable/run-search-index", path: "metadata.subject.value", origin: "captured-hr-value" },
-  { surface: "durable/run-search-declaration", path: "subjectProjection.nodeId", origin: "repository-authored" },
-  { surface: "durable/run-search-declaration", path: "subjectProjection.fieldPath", origin: "repository-authored" },
   { surface: "durable/run-search-gram", path: "token", origin: "captured-hr-value" },
   { surface: "durable/run-search-actor-link", path: "sourceId", origin: "repository-authored" },
   { surface: "durable/operator-xlsx-export", path: "download.contentDisposition", origin: "repository-authored" },
@@ -2118,6 +2170,8 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/rerun-warning.ts", state: "audited", reason: "Steps preview serves the same protected public Rerun plan as start-plan, without new input values or execution authority" },
     { module: "src/models/dashboard/start-plan.ts", state: "audited", reason: "the start-plan wire answers a plan with planned-row titles, match keys and refusal messages; the request and its omission facts never echo back" },
     { module: "src/models/dashboard/workbooks.ts", state: "audited", reason: "workbook values, source metadata and actual intake command receipts are served only on operator loopback and workbook revisions are retained in local authority" },
+    { module: "src/models/dashboard/workbook-library.ts", state: "audited", reason: "the operator library serves retained workbook bytes and explicit version and source identities on loopback; named versions and action receipts remain in local authority" },
+    { module: "src/models/dashboard/run-outputs.ts", state: "audited", reason: "workflow-authored output plans describe captured worksheet and person membership only to the local operator; the plan does not itself produce files" },
     { module: "src/models/intake/wire.ts", state: "audited", reason: "the mapping grid shows the operator their own uploaded file" },
     { module: "src/rules/runs/ledger.ts", state: "audited", reason: "the ledger entry is the permanent on-disk record of a filed transaction" },
     { module: "src/rules/notifications/notification-triggers.ts", state: "audited", reason: "the trigger event and its projection become OS-delivered text" },

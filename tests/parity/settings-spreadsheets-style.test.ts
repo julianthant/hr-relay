@@ -16,9 +16,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole('heading', { name: 'Spreadsheets', exact: true })).toHaveCSS('line-height', '33px');
       await expect(surface.getByRole('heading', { name: 'Spreadsheets', exact: true })).toHaveCSS('font-weight', '650');
       await expect(surface.getByRole('tablist', { name: 'Spreadsheet settings' })).toHaveCount(0);
-      await expect(surface.getByRole('heading', { level: 2 })).toHaveText(['Spreadsheet types', 'Kronos reports']);
-      await expect(surface.getByRole('table', { name: 'Registered spreadsheets', exact: true }).getByRole('columnheader')).toHaveText(['Spreadsheet', 'Type', 'Rows', 'Actions']);
-      for (const button of await surface.locator('.hub-sheets-toolbar').getByRole('button').all()) {
+      await expect(surface.getByRole('heading', { level: 2 })).toHaveText(['Your spreadsheets', 'Workflow outputs', 'Spreadsheet types']);
+      await expect(surface.getByRole('table', { name: 'Your spreadsheets', exact: true }).getByRole('columnheader')).toHaveText(['Select all visible spreadsheets', 'Spreadsheet', 'Type', 'Source', 'Rows', 'Actions']);
+      const toolbarButtons = surface.locator('.ds-table-toolbar-controls .hub-sheets-button');
+      await expect(toolbarButtons).toHaveCount(2);
+      for (const button of await toolbarButtons.all()) {
         await expect(button).toHaveCSS('font-size', '12px');
         await expect(button).toHaveCSS('line-height', '18px');
         await expect(button).toHaveCSS('font-weight', '500');

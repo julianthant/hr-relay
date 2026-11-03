@@ -133,7 +133,7 @@ describe("workflow definition public equivalence characterization", () => {
           { key: "transaction-id", label: "Transaction", source: { nodeId: "file-termination", fieldPath: "receipt.transactionId" }, display: "text" },
           { key: "approval-status", label: "Transaction status", source: { nodeId: "file-termination", fieldPath: "receipt.approvalStatus" }, display: "text" },
         ],
-        subjectProjection: { nodeId: "job-summary", fieldPath: "displayedName" },
+        subjectProjection: { nodeId: "job-summary", fieldPath: "displayedName", eidFieldPath: "emplId" },
         timelineDeclared: true,
         timeline: [
           {

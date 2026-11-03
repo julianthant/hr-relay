@@ -27,6 +27,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(
     const picker = run.getByRole("navigation", { name: "Workflow", exact: true });
     expect(await picker.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")))).toEqual(labels);
     await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeEnabled();
+    await expect(picker.getByRole("button", { name: "Onboarding", exact: true })).toBeDisabled();
+    await expect(picker.getByRole("button", { name: "Onboarding", exact: true })).toHaveAttribute("aria-description", /declares no typed-input surface/u);
     for (const label of ["SharePoint Download", "I-9 Lookup"]) {
       const choice = picker.getByRole("button", { name: label, exact: true });
       await expect(choice).toBeDisabled(); await expect(choice).toHaveAttribute("aria-description", "Started by a parent workflow.");

@@ -153,9 +153,11 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
       await expect(panel.getByText('Review this original file', { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Settings', exact: true }).click();
       await page.getByRole('link', { name: 'Spreadsheets', exact: true }).click();
-      const library = page.getByRole('table', { name: 'Registered spreadsheets', exact: true });
+      const library = page.getByRole('table', { name: 'Your spreadsheets', exact: true });
       await expect(library.locator('tbody tr')).toHaveCount(2);
-      await expect(library).toContainText('Updated'); await expect(library).toContainText('Generated');
+      await expect(library).toContainText('People.csv'); await expect(library).toContainText('Results.csv');
+      await expect(library).toContainText('Saved revision 2');
+      await expect(page.getByRole('table', { name: 'Workflow outputs', exact: true }).locator('tbody tr')).toHaveCount(0);
       await page.locator('.hub-sheets-library').screenshot({ path: resolve(evidence, `${name}-library.png`), animations: 'disabled' });
       await page.getByRole('button', { name: 'Back to dashboard', exact: true }).click();
       await expect(panel.getByText('Review this original file', { exact: true })).toBeVisible();

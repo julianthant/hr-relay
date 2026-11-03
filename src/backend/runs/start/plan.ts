@@ -29,7 +29,7 @@ import {
 } from "../../../models/run/start-plan.js";
 import type { PlannedRun, StartPlanRecord, StartRefusal } from "../../../models/run/start-plan.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { RunWorkbookReferenceSchema, WorkbookRunReferenceSelectionSchema } from "../../../models/dashboard/workbooks.js";
+import { RunWorkbookReferenceSchema, WorkbookRunReferenceSelectionSchema, type WorkbookReferenceLookup } from "../../../models/dashboard/workbooks.js";
 import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -158,10 +158,13 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
 
     let parsed: unknown;
     let canonicalInput: unknown;
+    let lookups: readonly WorkbookReferenceLookup[];
     try {
       // This is the one and only ingress parse for this raw submission.
       inputBinding?.assertSubmission(rawInput);
-      parsed = planning.parseInput(admittedSubmissions[index].admitted);
+      const admitted = planning.parseInput(admittedSubmissions[index].admitted);
+      parsed = admitted.input;
+      lookups = admitted.lookups;
     } catch (error) {
       refuse("input-invalid", admittedSubmissions[index].bindings.length > 0 ? "workflow input is invalid" : errorText(error));
       continue;
@@ -169,6 +172,10 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
 
     const references = selections.filter(selection => selection.entry === entry);
     const requiredTypes = planning.requiredWorkbookTypeIds;
+    if (lookups.length !== requiredTypes.length || new Set(lookups.map(lookup => lookup.typeId)).size !== lookups.length
+      || lookups.some(lookup => !requiredTypes.includes(lookup.typeId))) {
+      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
+    }
     if (references.length !== requiredTypes.length || new Set(references.map(reference => reference.typeId)).size !== references.length
       || references.some(reference => !requiredTypes.includes(reference.typeId))) {
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
@@ -178,10 +185,13 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       const workbooks = deps.workbooks;
       if (workbooks === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); continue; }
       try {
-        workbookReferences = references.map(({ entry: _entry, ...reference }) => ({
-          schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output"),
-          value: JsonValueSchema.parse(RunWorkbookReferenceSchema.parse({ request: reference, snapshot: workbooks.snapshot(reference) })),
-        }));
+        workbookReferences = references.map(({ entry: _entry, ...selection }) => {
+          const lookup = lookups.find(lookup => lookup.typeId === selection.typeId);
+          if (lookup === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          const reference = { ...lookup, ...selection };
+          return { schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output"),
+            value: JsonValueSchema.parse(RunWorkbookReferenceSchema.parse({ request: reference, snapshot: workbooks.snapshot(reference) })) };
+        });
       } catch (error) {
         if (!(error instanceof WorkbookLibraryError)) throw error;
         refuse("capability-unavailable", error.message); continue;
@@ -215,8 +225,10 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     }
 
     const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(canonicalInput), subtitle: planning.subtitle(canonicalInput) }));
+    const outputs = planning.plannedOutputs(canonicalInput, (workbookReferences ?? []).map(reference => RunWorkbookReferenceSchema.parse(reference.value)));
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
+      ...(outputs.length === 0 ? {} : { outputs }),
       ...(workbookReferences === undefined ? {} : { workbookReferences }),
       ...(descriptor.enqueue !== "supersede-active" ? {} : { supersedeTargets: startSupersedeTargets(
         deps.authority.authority.runs.listByItem({ workflow: descriptor.id, itemId })) }),
