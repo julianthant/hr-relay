@@ -5,6 +5,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
 import assert from 'node:assert/strict';
 import { it, vi } from 'vitest';
 import { createAssistantController, ASSISTANT_CONFIRM_HOLD } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
+import { ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
 
 
 function pending() {
@@ -240,8 +241,7 @@ it('does not refresh or publish a superseded explicit verification settlement', 
 
 it('binds selected-run workflow proposals to the current selection and confirms only through the typed action client', async () => {
   let confirms = 0;
-  const proposal = { ...actionProposal.proposal, effect: 'workflow-start' as const, subject: 'selected-run' as const,
-    workflowId: 'person-lookup', dryRun: false, label: 'Live read: Person Lookup', targetLabel: 'Synthetic selected subject' };
+  const proposal = ASSISTANT_START_PROPOSAL;
   const c = createAssistantController({ assistantRespond: async request => {
     assert.equal(request.subjectRef, 'run_selected_1'); return { state: 'action-proposal', proposal };
   }, assistantDecide: async input => { confirms++; return { state: 'applied', actionId: input.actionId }; } },
@@ -250,7 +250,16 @@ it('binds selected-run workflow proposals to the current selection and confirms 
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(confirms, 0);
   const turn = c.snapshot().turn; assert.equal(turn.state, 'proposal');
-  if (turn.state === 'proposal') { assert.equal(turn.proposal.mode, 'read-only'); assert.equal(turn.proposal.values[0].value, proposal.targetLabel); }
+  if (turn.state === 'proposal') {
+    assert.equal(turn.proposal.mode, 'read-only');
+    assert.equal(turn.proposal.values[0].value, 'EID 10101010 · Person Lookup');
+    assert.deepEqual(turn.proposal.values.slice(1, 5), [
+      { label: 'Runs', value: '1' }, { label: 'Mode', value: 'Live read' },
+      { label: 'Browser', value: 'Headed' }, { label: 'Captures', value: 'On' },
+    ]);
+    assert.ok(proposal.effect === 'workflow-start');
+    assert.deepEqual(turn.proposal.startPlan, proposal.startPlan);
+  }
   c.action({ type: 'confirm' }); await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(confirms, 1);
   c.action({ type: 'confirm' }); assert.equal(confirms, 1);

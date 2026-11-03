@@ -51,6 +51,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
         descriptorSetHash: descriptorSetHash(modules.map((module) => module.descriptor.contractFingerprint)),
         settingsSchemaHash: descriptorSetHash(["settings-schema"]),
         projection: world.projection,
+        actorLabel: () => "Fixture Operator",
         authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
         automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "current",
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
