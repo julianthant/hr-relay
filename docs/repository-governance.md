@@ -70,13 +70,21 @@ same serial/storage separation and native membership. Windows uses explicit Bash
 Windows Node/npm, the runner temp directory and Windows Chromium installation. Before checkout,
 it disables Git automatic line-ending conversion to preserve fixture bytes and shell scripts.
 
-`ci.yml` retains per-PR or per-dispatch-branch cancellation, and queues its reusable `ci-checks.yml`
-job in the shared `ci-runners` concurrency group with `queue: max`. GitHub admits one pipeline at
+`ci.yml` retains per-PR or per-dispatch-branch cancellation, and queues `ci-pipeline.yml` in the
+shared `ci-runners` concurrency group with `queue: max`. The pipeline owns one plan/balancing
+artifact and final timing publication. It calls portable-only `ci-checks.yml` for ordinary PRs,
+or `ci-release-checks.yml` for a full release. The latter reuses the same portable workflow beside
+macOS/Windows native proofs and Desktop parity, then gates the expensive release batch. Both
+callees retain their explicit test environment budgets; nested calls never reacquire admission.
+The release call is conditional: staging does not instantiate any native or Desktop parity child
+job. Its required top-level parity summary reports an intentional portable omission. The pipeline
+validates a successful selected call and an exactly skipped unselected call before publishing
+outputs, and refuses missing or unsuccessful selected outputs. GitHub admits one pipeline at
 a time without a waiting runner. Completion, failure or cancellation releases admission; no polling
 job can occupy a runner needed by an older run. GitHub orders this queue by when pipelines start
 waiting, rather than guaranteeing workflow creation-time order, and accepts at most 100 pending
 pipelines. Queue overflow cancels additional arrivals. The merge train remains outside admission.
-The seven required check names remain top-level summaries of the corresponding pipeline results;
+The seven required check names remain top-level summaries owned only by `ci.yml`;
 unit always runs, including after cancellation, and also requires a successful complete pipeline,
 including timing publication. This mandatory gate prevents skipped cancellation summaries from
 allowing an incomplete pipeline to merge. Other cancelled summaries and the merge train may stop.
@@ -93,8 +101,8 @@ Markdown-only release PRs omit coverage and perf.
 
 Every admitted run downloads the latest successful run's retained `ci-timings` artifact before
 selecting files. Its immutable `ci-balancing` artifact gives every shard identical duration inputs.
-After successful runner groups, CI merges their per-file reports into those inherited timings and
-publishes `ci-timings` for the next run. Report names include the runner OS and selection group;
+After the selected route and output validation succeed, the admitted pipeline merges all portable
+and native per-file reports into inherited timings and publishes `ci-timings` for the next run. Report names include the runner OS and selection group;
 when both platforms report one file, the slower duration wins independently of artifact order.
 Measurements for omitted suites remain intact.
 Without a retained artifact, CI explicitly uses the committed `scripts/test/ci-durations.json` seed;

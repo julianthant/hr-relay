@@ -6,13 +6,22 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
 
-const checks = readFileSync(new URL("../../../.github/workflows/ci-checks.yml", import.meta.url), "utf8");
-const ci = readFileSync(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8");
+const load = (name: string) => readFileSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url), "utf8");
+const ci = load("ci");
+const pipeline = load("ci-pipeline");
+const portable = load("ci-checks");
+const release = load("ci-release-checks");
 const suites = ["unit", "integration", "architecture", "parity"] as const;
-type Suite = typeof suites[number];
 type Result = "success" | "failure" | "skipped" | "cancelled";
 type Need = { result: Result; outputs?: Record<string, string> };
 const matrixSchema = z.object({ include: z.array(z.object({ suite: z.string(), shard: z.number(), shards: z.number() })) });
+const planSchema = z.object({
+  unit: z.boolean(), integration: z.boolean(), architecture: z.boolean(), parity: z.boolean(),
+  fullRelease: z.boolean(), releaseBatch: z.boolean(), testJobs: z.number(),
+  ubuntu: matrixSchema, macos: matrixSchema, windows: matrixSchema,
+});
+type Plan = z.infer<typeof planSchema>;
+const github = { event_name: "pull_request", base_ref: "main", head_ref: "staging" };
 
 function job(workflow: string, name: string): string {
   const body = workflow.split(`\n  ${name}:\n`)[1]?.split(/\n {2}[\w-]+:\n/u)[0];
@@ -20,15 +29,16 @@ function job(workflow: string, name: string): string {
   return body;
 }
 
-function expression(value: string, needs: Record<string, Need>, github: Record<string, string> = {}): unknown {
-  return runInNewContext(value.replace(/\$\{\{(.*?)\}\}/gu, "$1"), {
-    needs, github, cancelled: () => false, always: () => true,
+function expression(value: string, needs: Record<string, Need>, inputs: Record<string, string> = {}, context: Record<string, unknown> = github): unknown {
+  return runInNewContext(value.replace(/\$\{\{(.*?)\}\}/gu, "$1").replace(/\.([\w]+-[\w-]+)/gu, '["$1"]'), {
+    needs, inputs, github: context, fromJSON: JSON.parse, toJSON: JSON.stringify,
+    cancelled: () => false, always: () => true,
   });
 }
 
 function select(base = "staging", filters: Record<string, string> = { shared: "true" }, eventName = "pull_request", draft = false, head = "staging") {
-  const source = checks.match(/ {8}id: select[\s\S]*? {10}script: \|\n((?: {12}[^\n]*\n|\n)+)/u)?.[1];
-  assert.ok(source, "Missing workflow selection script");
+  const source = pipeline.match(/ {8}id: select[\s\S]*? {10}script: \|\n((?: {12}[^\n]*\n|\n)+)/u)?.[1];
+  assert.ok(source, "Missing pipeline selection script");
   const outputs: Record<string, string> = {};
   runInNewContext(source.replace(/^ {12}/gmu, ""), {
     context: { eventName, payload: { pull_request: { base: { ref: base }, head: { ref: head }, draft } } },
@@ -39,20 +49,19 @@ function select(base = "staging", filters: Record<string, string> = { shared: "t
   });
   return outputs;
 }
+const planOf = (outputs: Record<string, string>) => planSchema.parse(JSON.parse(outputs.plan));
 
-function summary(workflow: string, suite: Suite | "release", needs: Record<string, Need>, github: Record<string, string> = {}): Result {
+function summary(workflow: string, suite: string, needs: Record<string, Need>, inputs: Record<string, string> = {}, context: Record<string, unknown> = github): Result {
   const body = job(workflow, suite);
   const condition = body.match(/^ {4}if: (.+)$/mu)?.[1];
-  assert.ok(condition, `Missing ${suite} summary condition`);
+  assert.ok(condition);
   expect(condition).toMatch(/!cancelled\(\)|always\(\)/u);
-  if (!expression(condition, needs, github)) return "skipped";
-  const env = Object.fromEntries([...body.matchAll(/^ {10}([A-Z_]+): (.+)$/gmu)].map(([, name, value]) => {
-    const evaluated = value.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) => String(expression(code, needs, github)));
-    return [name, evaluated];
-  }));
+  if (!expression(condition, needs, inputs, context)) return "skipped";
+  const env = Object.fromEntries([...body.matchAll(/^ {10}([A-Z_]+): (.+)$/gmu)].map(([, name, value]) => [name,
+    value.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) => String(expression(code, needs, inputs, context))) ]));
   const script = body.match(/^ {8}run: \|\n((?: {10}[^\n]*\n|\n)+)/mu)?.[1]
     ?? body.match(/^ {8}run: (.+)$/mu)?.[1];
-  assert.ok(script, `Missing ${suite} summary script`);
+  assert.ok(script);
   const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", script], {
     env: { ...process.env, ...env }, encoding: "utf8",
   });
@@ -61,170 +70,127 @@ function summary(workflow: string, suite: Suite | "release", needs: Record<strin
   return result.status === 0 ? "success" : "failure";
 }
 
-function aggregate(suite: Suite, outputs: Record<string, string>, ubuntu: Result, macos: Result, changes: Result = "success", windows: Result = outputs.windows === '{"include":[]}' ? "skipped" : "success") {
-  return summary(checks, suite, { changes: { result: changes, outputs }, ubuntu: { result: ubuntu }, macos: { result: macos }, windows: { result: windows } });
+function collect(plan: unknown, portableResult: Result, releaseResult: Result, selectedOutputs: Record<string, string>, planResult: Result = "success") {
+  const body = job(pipeline, "results");
+  const source = body.match(/ {10}script: \|\n((?: {12}[^\n]*\n|\n)+)/u)?.[1];
+  assert.ok(source);
+  const full = planSchema.safeParse(plan).data?.fullRelease;
+  const outputs: Record<string, string> = {};
+  runInNewContext(source.replace(/^ {12}/gmu, ""), {
+    process: { env: { PLAN_RESULT: planResult, PLAN: JSON.stringify(plan), PORTABLE_RESULT: portableResult,
+      RELEASE_RESULT: releaseResult, PORTABLE_OUTPUTS: JSON.stringify(full ? {} : selectedOutputs),
+      RELEASE_OUTPUTS: JSON.stringify(full ? selectedOutputs : {}) } },
+    core: { setOutput: (name: string, value: string) => { outputs[name] = value; } },
+  });
+  return outputs;
 }
 
-describe("CI workflow selection and required summaries", () => {
-  it("runs portable suites with no macOS jobs on staging", () => {
-    const outputs = select();
-    expect(outputs.macos).toBe('{"include":[]}');
-    expect(outputs.parity).toBe("false");
-    const ubuntu = matrixSchema.parse(JSON.parse(outputs.ubuntu));
-    expect(ubuntu.include.filter(entry => entry.suite === "unit")).toHaveLength(2);
-    expect(ubuntu.include.filter(entry => entry.suite === "integration")).toHaveLength(14);
-    expect(ubuntu.include.filter(entry => entry.suite === "architecture")).toHaveLength(2);
-    const condition = job(checks, "macos").match(/^ {4}if: (.+)$/mu)?.[1];
-    assert.ok(condition);
-    expect(expression(condition, { changes: { result: "success", outputs } })).toBe(false);
-    for (const suite of suites) {
-      const result = aggregate(suite, outputs, "success", "skipped");
-      expect(result, suite).toBe("success");
-      expect(summary(ci, suite, { checks: { result: "success", outputs: { [suite]: result } } }), suite).toBe("success");
+const portableOutputs = { static: "success", privacy: "success", unit: "success", integration: "success", architecture: "success" };
+const releaseOutputs = (plan: Plan) => ({ ...portableOutputs, parity: "success", release: plan.releaseBatch ? "success" : "skipped" });
+
+function reachable(workflow: string, outputs: Record<string, string>, inputs: Record<string, string> = {}, prefix = ""): string[] {
+  const names = [...(workflow.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([\w-]+):$/gmu)].map(match => match[1]);
+  return names.flatMap(name => {
+    const body = job(workflow, name);
+    const call = body.match(/^ {4}uses: \.\/\.github\/workflows\/([\w-]+)\.yml$/mu)?.[1];
+    if (call) {
+      const condition = body.match(/^ {4}if: (.+)$/mu)?.[1];
+      if (condition && !expression(condition, { changes: { result: "success", outputs } }, inputs, {
+        ...github, base_ref: outputs["full-release"] === "false" ? "staging" : "main", repository: "relay",
+        event: { pull_request: { head: { repo: { full_name: "relay" } } } },
+      })) return [];
+      return reachable(load(call), outputs, { plan: outputs.plan }, `${prefix}${name} / `);
     }
+    return [`${prefix}${name}`];
+  });
+}
+
+describe("release workflow split", () => {
+  it("keeps one admitted pipeline and no OS/parity execution in portable CI", () => {
+    expect(job(ci, "checks")).toContain("uses: ./.github/workflows/ci-pipeline.yml");
+    expect(job(ci, "checks")).toContain("group: ci-runners");
+    for (const workflow of [pipeline, portable, release]) expect(workflow).not.toContain("group: ci-runners");
+    expect(portable).not.toMatch(/^ {2}(?:macos|windows|parity|release):$/mu);
+    expect(release).toContain("uses: ./.github/workflows/ci-checks.yml");
+    expect(job(pipeline, "full-release")).toContain("needs.changes.outputs.full-release == 'true'");
+    expect(job(pipeline, "portable")).toContain("needs.changes.outputs.full-release == 'false'");
+    expect(job(pipeline, "results")).toContain("!cancelled()");
+    expect(job(pipeline, "timings")).toContain("!cancelled()");
   });
 
-  it("keeps native and parity shards for staging to main release PRs", () => {
-    const outputs = select("main");
-    const macos = matrixSchema.parse(JSON.parse(outputs.macos));
-    expect(macos.include).toEqual([
+  it("staging reaches only portable jobs and intentional required summaries", () => {
+    const outputs = select();
+    const plan = planOf(outputs);
+    expect(Object.keys(outputs).sort()).toEqual(["full-release", "plan"]);
+    expect(plan.macos.include).toEqual([]);
+    expect(plan.windows.include).toEqual([]);
+    expect(plan.parity).toBe(false);
+    expect(plan.ubuntu.include.filter(entry => entry.suite === "unit")).toHaveLength(2);
+    expect(plan.ubuntu.include.filter(entry => entry.suite === "integration")).toHaveLength(14);
+    expect(plan.ubuntu.include.filter(entry => entry.suite === "architecture")).toHaveLength(2);
+    expect(reachable(ci, outputs)).toEqual([
+      "checks / changes", "checks / portable / static", "checks / portable / ubuntu",
+      "checks / portable / unit", "checks / portable / integration", "checks / portable / architecture",
+      "checks / portable / privacy", "checks / results", "checks / timings",
+      "static", "privacy", "unit", "integration", "architecture", "parity", "release", "train / train",
+    ]);
+    const results = collect(plan, "success", "skipped", portableOutputs);
+    expect(results).toEqual({ ...portableOutputs, parity: "success", release: "skipped" });
+    for (const suite of suites) expect(summary(ci, suite, { checks: { result: "success", outputs: results } })).toBe("success");
+  });
+
+  it.each(["pull_request", "workflow_dispatch"])("preserves full native/parity reachability for %s", event => {
+    const outputs = select(event === "pull_request" ? "main" : "staging", { shared: "true" }, event);
+    const plan = planOf(outputs);
+    expect(plan.fullRelease).toBe(true);
+    expect(plan.releaseBatch).toBe(event === "pull_request");
+    expect(plan.macos.include).toEqual([
       ...[1, 2, 3].map(shard => ({ suite: "parity", shard, shards: 3 })),
       ...[1, 2].map(shard => ({ suite: "native", shard, shards: 2 })),
     ]);
-    const condition = job(checks, "macos").match(/^ {4}if: (.+)$/mu)?.[1];
-    assert.ok(condition);
-    expect(expression(condition, { changes: { result: "success", outputs } })).toBe(true);
-    for (const suite of suites) expect(aggregate(suite, outputs, "success", "success"), suite).toBe("success");
-    for (const result of ["failure", "cancelled", "skipped"] as const) {
-      for (const suite of ["unit", "integration", "parity"] as const) {
-        const failed = aggregate(suite, outputs, "success", result);
-        expect(failed, `${suite}: ${result}`).toBe("failure");
-        expect(summary(ci, suite, { checks: { result: "failure", outputs: { [suite]: failed } } }), suite).toBe("failure");
-      }
-    }
+    expect(plan.windows.include).toEqual(Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })));
+    const graph = reachable(ci, outputs);
+    for (const name of ["macos", "windows", "parity", "release"]) expect(graph).toContain(`checks / full-release / ${name}`);
+    expect(graph).toContain("checks / full-release / portable / ubuntu");
+    expect(graph).not.toContain("checks / portable / ubuntu");
+    expect(collect(plan, "skipped", "success", releaseOutputs(plan))).toEqual(releaseOutputs(plan));
   });
 
   it.each([
     { filter: "integration", draft: false, shards: 5 },
     { filter: "unit", draft: false, shards: 1 },
     { filter: "shared", draft: true, shards: 1 },
-  ])("preserves the release native-only layout with $shards shards (draft=$draft)", ({ filter, draft, shards }) => {
-    const filters = { shared: "false", [filter]: "true" };
-    const outputs = select("main", filters, "pull_request", draft);
-    expect(JSON.parse(outputs.macos)).toEqual({ include: Array.from({ length: shards }, (_, i) => ({ suite: "native", shard: i + 1, shards })) });
-    expect(JSON.parse(outputs.windows)).toEqual({ include: Array.from({ length: shards }, (_, i) => ({ suite: "native", shard: i + 1, shards })) });
-    expect(select("staging", filters, "pull_request", draft).windows).toBe('{"include":[]}');
-    expect(select("staging", filters, "pull_request", draft).macos).toBe('{"include":[]}');
+  ])("preserves native-only release layout and draft limits ($filter/$draft)", ({ filter, draft, shards }) => {
+    const plan = planOf(select("main", { shared: "false", [filter]: "true" }, "pull_request", draft));
+    expect(plan.macos.include).toEqual(Array.from({ length: shards }, (_, i) => ({ suite: "native", shard: i + 1, shards })));
+    expect(plan.windows.include).toEqual(plan.macos.include);
+    expect(plan.parity).toBe(false);
+    expect(plan.releaseBatch).toBe(false);
   });
 
-  it("selects Windows native shards for full release validation", () => {
-    expect(select().windows).toBe('{"include":[]}');
-    expect(select("main", { shared: "false" }).windows).toBe('{"include":[]}');
-    expect(JSON.parse(select("main").windows)).toEqual({ include: Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })) });
-    const windows = job(checks, "windows");
-    expect(windows).toContain("runs-on: windows-latest");
-    expect(windows).toContain("shell: bash");
-    expect(windows.indexOf("git config --global core.autocrlf false")).toBeLessThan(windows.indexOf("uses: actions/checkout@v4"));
-    expect(windows).toContain("git config --global core.autocrlf false");
-    expect(windows).not.toMatch(/ram-tmp|mdutil|sysctl|memory_pressure|continue-on-error/u);
-    expect(windows).toContain("run: npx tsx scripts/test/chromium-preflight.ts");
-    expect(job(checks, "macos")).toContain("npx tsx scripts/test/chromium-preflight.ts");
-    expect(windows).toContain("npx playwright install chromium");
-    for (const command of ["integration serial", "integration storage", "unit native", "integration native"]) {
-      expect(windows).toContain(`scripts/test/ci-run.sh ${command} "$SLICE"`);
+  it("preserves legitimate Markdown omissions and rejects missing selectors", () => {
+    for (const base of ["staging", "main"]) {
+      const plan = planOf(select(base, { shared: "false" }));
+      expect(plan.testJobs).toBe(0);
+      expect(plan.releaseBatch).toBe(false);
+      expect(plan.ubuntu.include).toEqual([]);
+      expect(plan.macos.include).toEqual([]);
+      expect(plan.windows.include).toEqual([]);
+      expect(collect(plan, base === "main" ? "skipped" : "success", base === "main" ? "success" : "skipped",
+        base === "main" ? releaseOutputs(plan) : portableOutputs).release).toBe("skipped");
     }
-    const testSteps = windows.split(/\n {6}- /u).filter(step => step.includes("scripts/test/ci-run.sh"));
-    expect(testSteps).toHaveLength(4);
-    for (const step of testSteps) expect(step).toContain("!cancelled()");
-  });
-
-  it("requires every selected Windows outcome and rejects an unexpected staging run", () => {
-    for (const suite of ["unit", "integration"] as const) {
-      for (const result of ["success", "failure", "cancelled", "skipped"] as const) {
-        const needs = { changes: { result: "success" as const, outputs: select("main") },
-          ubuntu: { result: "success" as const }, macos: { result: "success" as const }, windows: { result } };
-        expect(summary(checks, suite, needs)).toBe(result === "success" ? "success" : "failure");
-      }
-      expect(summary(checks, suite, { changes: { result: "success", outputs: select() },
-        ubuntu: { result: "success" }, macos: { result: "skipped" }, windows: { result: "success" } })).toBe("failure");
+    expect(reachable(pipeline, {})).toEqual(["changes", "results", "timings"]);
+    for (const plan of [{}, { fullRelease: "false", releaseBatch: false }, { fullRelease: false }]) {
+      expect(() => collect(plan, "skipped", "skipped", {})).toThrow();
     }
+    expect(() => select("staging", { shared: "invalid" })).toThrow();
   });
 
-  it.each([
-    { event: "pull_request", base: "main", head: "feature/other" },
-    { event: "pull_request", base: "staging", head: "feature/other" },
-  ])("omits native and parity for $event $head to $base", ({ event, base, head }) => {
-    const outputs = select(base, { shared: "true" }, event, false, head);
-    expect(outputs.macos).toBe('{"include":[]}');
-    expect(outputs.windows).toBe('{"include":[]}');
-    expect(outputs.parity).toBe("false");
-    const ubuntu = matrixSchema.parse(JSON.parse(outputs.ubuntu));
-    expect(ubuntu.include).toHaveLength(18);
-    for (const platform of ["macos", "windows"]) {
-      const condition = job(checks, platform).match(/^ {4}if: (.+)$/mu)?.[1];
-      assert.ok(condition);
-      expect(expression(condition, { changes: { result: "success", outputs } })).toBe(false);
-    }
-    for (const suite of suites) expect(aggregate(suite, outputs, "success", "skipped")).toBe("success");
-    for (const result of ["success", "failure", "cancelled"] as const) {
-      for (const suite of ["unit", "integration"] as const) {
-        expect(aggregate(suite, outputs, "success", result)).toBe("failure");
-        expect(aggregate(suite, outputs, "success", "skipped", "success", result)).toBe("failure");
-      }
-    }
-  });
-
-  it("preserves the operator manual full native and parity run", () => {
-    const outputs = select("staging", { shared: "false" }, "workflow_dispatch", false, "feature/windows-support");
-    expect(outputs.parity).toBe("true");
-    expect(JSON.parse(outputs.windows)).toEqual({ include: Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })) });
-    expect(JSON.parse(outputs.macos)).toEqual({ include: [
-      ...[1, 2, 3].map(shard => ({ suite: "parity", shard, shards: 3 })),
-      ...[1, 2].map(shard => ({ suite: "native", shard, shards: 2 })),
-    ] });
-    for (const suite of suites) expect(aggregate(suite, outputs, "success", "success")).toBe("success");
-    for (const result of ["failure", "cancelled", "skipped"] as const) {
-      for (const suite of ["unit", "integration", "parity"] as const) {
-        expect(aggregate(suite, outputs, "success", result)).toBe("failure");
-      }
-      for (const suite of ["unit", "integration"] as const) {
-        expect(aggregate(suite, outputs, "success", "success", "success", result)).toBe("failure");
-      }
-    }
-  });
-
-  it.each([
-    { event: "pull_request", base: "main", head: "staging", release: "success", architecture: "true", work: true, result: "success" },
-    { event: "pull_request", base: "main", head: "feature/other", release: "skipped", architecture: "true", work: false, result: "failure" },
-    { event: "pull_request", base: "main", head: "feature/other", release: "success", architecture: "true", work: false, result: "failure" },
-    { event: "pull_request", base: "main", head: "staging", release: "skipped", architecture: "false", work: false, result: "skipped" },
-    { event: "pull_request", base: "staging", head: "feature/other", release: "skipped", architecture: "true", work: false, result: "skipped" },
-    { event: "workflow_dispatch", base: "main", head: "staging", release: "skipped", architecture: "true", work: false, result: "skipped" },
-  ])("enforces the required release summary for $event $head to $base ($release)", ({ event, base, head, release, architecture, work, result }) => {
-    const needs = { changes: { result: "success" as const, outputs: { architecture } },
-      checks: { result: "success" as const, outputs: { release } } };
-    const github = { event_name: event, base_ref: base, head_ref: head };
-    const condition = job(checks, "release").match(/^ {4}if: (.+)$/mu)?.[1];
-    assert.ok(condition);
-    expect(expression(condition, needs, github)).toBe(work);
-    expect(summary(ci, "release", needs, github)).toBe(result);
-  });
-
-  it.each(["failure", "cancelled"])("fails the valid release summary for an unsuccessful selected job (%s)", release => {
-    expect(summary(ci, "release", { checks: { result: "success", outputs: { release } } },
-      { event_name: "pull_request", base_ref: "main", head_ref: "staging" })).toBe("failure");
-  });
-
-  it("exports every required summary through the reusable workflow", () => {
-    const declarations = checks.split("\njobs:\n")[0];
-    for (const suite of suites) expect(declarations).toContain(`      ${suite}:\n        value: \${{ jobs.${suite}.result }}`);
-  });
-
-  it("keeps every native-only file on release shards and out of staging Ubuntu shards", () => {
+  it("keeps one native file authority and runs each pinned file once on both platforms", () => {
     const nativeFiles = [...new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])];
-    for (const platform of ["macos", "windows"]) {
-      const release = matrixSchema.parse(JSON.parse(select("main")[platform]));
-      const native = release.include.filter(entry => entry.suite === "native");
+    const plan = planOf(select("main"));
+    for (const platform of ["macos", "windows"] as const) {
+      const native = plan[platform].include.filter(entry => entry.suite === "native");
       for (const project of ["unit", "integration"] as const) {
         const listed = [`tests/portable${project === "integration" ? ".integration" : ""}.test.ts`,
           ...nativeFiles.filter(file => file.endsWith(".integration.test.ts") === (project === "integration"))];
@@ -234,27 +200,139 @@ describe("CI workflow selection and required summaries", () => {
         expect(selected.sort(), platform).toEqual(listed.slice(1).sort());
       }
     }
-    const macosJob = job(checks, "macos");
-    for (const command of ["integration serial", "integration storage", "unit native", "integration native"]) {
-      expect(macosJob).toContain(`scripts/test/ci-run.sh ${command} "$SLICE"`);
-    }
   });
 
-  it("requires selected Ubuntu jobs and successful selection on staging", () => {
-    const outputs = select();
-    for (const result of ["failure", "cancelled", "skipped"] as const) {
-      for (const suite of ["unit", "integration", "architecture"] as const) {
-        expect(aggregate(suite, outputs, result, "skipped"), suite).toBe("failure");
+  it("retains platform bootstrap, budgets and every post-failure native group", () => {
+    for (const workflow of [portable, release]) {
+      expect(workflow).toContain('RELAY_TEST_RAM_MB: "2048"');
+      expect(workflow).toContain('RELAY_TEST_TIME_SCALE: "2.5"');
+    }
+    const windows = job(release, "windows");
+    expect(windows).toContain("runs-on: windows-latest");
+    expect(windows).toContain("shell: bash");
+    expect(windows.indexOf("git config --global core.autocrlf false")).toBeLessThan(windows.indexOf("uses: actions/checkout@v4"));
+    expect(windows).toContain("git config --global core.autocrlf false");
+    expect(windows).not.toMatch(/ram-tmp|mdutil|sysctl|memory_pressure|continue-on-error/u);
+    expect(windows).toContain("npx playwright install chromium");
+    for (const platform of ["macos", "windows"]) {
+      const body = job(release, platform);
+      expect(body).toContain("timeout-minutes: 30");
+      expect(body).toContain("fail-fast: false");
+      expect(body).toContain("run: npx tsx scripts/test/chromium-preflight.ts");
+      const steps = body.split(/\n {6}- /u).filter(step => step.includes("scripts/test/ci-run.sh"));
+      expect(steps).toHaveLength(4);
+      for (const step of steps) expect(step).toContain("!cancelled()");
+      for (const command of ["integration serial", "integration storage", "unit native", "integration native"]) {
+        expect(body).toContain(`scripts/test/ci-run.sh ${command} "$SLICE"`);
       }
-      for (const suite of suites) expect(aggregate(suite, outputs, "success", "skipped", result), suite).toBe("failure");
     }
-    expect(summary(ci, "unit", { checks: { result: "failure", outputs: { unit: "success" } } })).toBe("failure");
+    expect(job(release, "release")).toContain("needs: [portable, unit, integration, parity]");
+    expect(job(release, "release")).toContain("npm run test:coverage\n      - run: npm run test:perf");
   });
 
-  it("keeps Markdown-only suites intentionally omitted", () => {
-    const outputs = select("staging", { shared: "false" });
-    expect(outputs.ubuntu).toBe('{"include":[]}');
-    expect(outputs.macos).toBe('{"include":[]}');
-    for (const suite of suites) expect(aggregate(suite, outputs, "skipped", "skipped"), suite).toBe("success");
+  it.each(["failure", "cancelled", "skipped"] as const)("rejects failed or missing selected outputs (%s)", outcome => {
+    for (const full of [false, true]) {
+      const plan = planOf(select(full ? "main" : "staging"));
+      const outputs = full ? releaseOutputs(plan) : portableOutputs;
+      expect(() => collect(plan, full ? "skipped" : outcome, full ? outcome : "skipped", outputs)).toThrow();
+      if (outcome !== "skipped") expect(() => collect(plan, full ? outcome : "success", full ? "success" : outcome, outputs)).toThrow();
+      expect(() => collect(plan, "success", "success", outputs)).toThrow();
+      expect(() => collect(plan, full ? "skipped" : "success", full ? "success" : "skipped", outputs, outcome)).toThrow();
+      for (const suite of Object.keys(outputs)) {
+        for (const value of [outcome, ""]) {
+          expect(() => collect(plan, full ? "skipped" : "success", full ? "success" : "skipped", { ...outputs, [suite]: value })).toThrow();
+        }
+      }
+    }
+  });
+
+  it("refuses empty native matrices for a selected release suite", () => {
+    for (const suite of ["unit", "integration"] as const) {
+      const plan = { ...planOf(select("main")), macos: { include: [] }, windows: { include: [] } };
+      expect(summary(release, suite, { portable: { result: "success", outputs: portableOutputs },
+        macos: { result: "skipped" }, windows: { result: "skipped" } }, { plan: JSON.stringify(plan) })).toBe("failure");
+    }
+  });
+
+  it("refuses missing native matrices for a selected release suite", () => {
+    for (const suite of ["unit", "integration"] as const) {
+      const plan = { ...planOf(select("main")), macos: undefined, windows: undefined };
+      expect(summary(release, suite, { portable: { result: "success", outputs: portableOutputs },
+        macos: { result: "skipped" }, windows: { result: "skipped" } }, { plan: JSON.stringify(plan) })).toBe("failure");
+    }
+  });
+
+  it.each([undefined, -1, 1.5, NaN, Infinity, 0])("refuses malformed or inconsistent timing work count %s", testJobs => {
+    const plan = { ...planOf(select()), testJobs };
+    expect(() => collect(plan, "success", "skipped", portableOutputs)).toThrow();
+  });
+
+  it.each(["unit", "integration", "architecture", "parity"])("refuses malformed suite-selection types for %s", suite => {
+    for (const value of [undefined, "false", 1, {}]) {
+      const plan = { ...planOf(select()), [suite]: value };
+      expect(() => collect(plan, "success", "skipped", portableOutputs)).toThrow();
+    }
+  });
+
+  it("requires successful selected and exactly skipped omitted native groups", () => {
+    for (const base of ["staging", "main"]) {
+      const plan = planOf(select(base));
+      const inputs = { plan: JSON.stringify(plan) };
+      for (const suite of ["unit", "integration", "architecture"] as const) {
+        expect(summary(portable, suite, { ubuntu: { result: "success" } }, inputs)).toBe("success");
+        for (const result of ["failure", "cancelled", "skipped"] as const) {
+          expect(summary(portable, suite, { ubuntu: { result } }, inputs)).toBe("failure");
+        }
+      }
+      if (plan.fullRelease) {
+        for (const suite of ["unit", "integration"] as const) {
+          const needs = { portable: { result: "success" as const, outputs: portableOutputs },
+            macos: { result: "success" as Result }, windows: { result: "success" as Result } };
+          expect(summary(release, suite, needs, inputs)).toBe("success");
+          for (const platform of ["macos", "windows"] as const) {
+            for (const result of ["failure", "cancelled", "skipped"] as const) {
+              expect(summary(release, suite, { ...needs, [platform]: { result } }, inputs)).toBe("failure");
+            }
+          }
+        }
+        expect(summary(release, "parity", { macos: { result: "success" } }, inputs)).toBe("success");
+        for (const result of ["failure", "cancelled", "skipped"] as const) {
+          expect(summary(release, "parity", { macos: { result } }, inputs)).toBe("failure");
+        }
+      }
+    }
+  });
+
+  it("keeps timing publication inside admission and mandatory for the top unit fence", () => {
+    const outputs = select();
+    expect(job(pipeline, "timings")).toContain("needs: [changes, results]");
+    expect(job(pipeline, "timings")).toContain("pattern: durations-*");
+    expect(job(pipeline, "timings")).toContain("name: ci-timings");
+    for (const result of ["failure", "cancelled", "skipped"] as const) {
+      expect(summary(ci, "unit", { checks: { result, outputs: portableOutputs } })).toBe("failure");
+    }
+    expect(planOf(outputs).testJobs).toBe(18);
+    for (const suite of suites) expect(summary(ci, suite, { checks: { result: "success", outputs: {} } })).toBe("failure");
+  });
+
+  it.each([
+    { event_name: "pull_request", base_ref: "main", head_ref: "staging", releaseResult: "success", expected: "success" },
+    { event_name: "pull_request", base_ref: "main", head_ref: "feature/other", releaseResult: "skipped", expected: "failure" },
+    { event_name: "pull_request", base_ref: "main", head_ref: "feature/other", releaseResult: "success", expected: "failure" },
+    { event_name: "pull_request", base_ref: "main", head_ref: "staging", releaseResult: "skipped", expected: "skipped" },
+    { event_name: "pull_request", base_ref: "staging", head_ref: "feature/other", releaseResult: "skipped", expected: "skipped" },
+    { event_name: "workflow_dispatch", base_ref: "main", head_ref: "staging", releaseResult: "skipped", expected: "skipped" },
+  ])("keeps the required release fence ($head_ref/$base_ref/$releaseResult)", ({ event_name, base_ref, head_ref, releaseResult, expected }) => {
+    const context = { event_name, base_ref, head_ref };
+    expect(summary(ci, "release", { checks: { result: "success", outputs: { release: releaseResult } } }, {}, context)).toBe(expected);
+    if (head_ref !== "staging" || base_ref !== "main") {
+      const plan = planOf(select(base_ref, { shared: "true" }, event_name, false, head_ref));
+      expect(plan.fullRelease).toBe(event_name === "workflow_dispatch");
+      expect(plan.releaseBatch).toBe(false);
+    }
+  });
+
+  it.each(["failure", "cancelled", ""])("fails selected release output %s", releaseResult => {
+    expect(summary(ci, "release", { checks: { result: "success", outputs: { release: releaseResult } } })).toBe("failure");
   });
 });
