@@ -19,7 +19,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
-| `scripts/test/` | Suite measurement, duration-balanced CI file selection, direct-execution detection, suite policy, and artifact policy. |
+| `scripts/test/` | Suite measurement, duration-balanced CI file selection, direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
 | `.github/workflows/ci.yml` and `ci-checks.yml` | Per-branch supersession, FIFO pipeline admission, stable required summaries, suite execution and automatic file-timing feedback. |
 | `scripts/verify/` | Repository privacy, browser-login and test-target verification. Standalone verification holds the runtime listener; abandoned reservations settle through startup recovery. |
 | `scripts/verify-parity-json.ts` | Desktop parity runner. |
