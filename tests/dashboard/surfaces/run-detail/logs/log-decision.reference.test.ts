@@ -13,6 +13,7 @@ it('keeps roster radio choices inline, refuses stale authority and resets select
   const decision = workbookReferenceLogDecision(workbookReferenceChoice().choice);
   try {
     await act(async () => root.render(createElement(LogDecisionBlock, { decision, onAction })));
+    assert.match(host.textContent ?? '', /Legal name: Example, Person/);
     const button = host.querySelector('button[type="submit"]'); assert(button instanceof HTMLButtonElement); assert(button.disabled);
     const radio = host.querySelector('input[type="radio"]'); assert(radio instanceof HTMLInputElement);
     await act(async () => radio.click()); assert.equal(button.disabled, false);

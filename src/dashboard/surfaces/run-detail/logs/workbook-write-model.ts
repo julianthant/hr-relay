@@ -6,6 +6,7 @@ import { fmtActionClock } from "../../shared/status/format.js";
 import type { CommandRequest } from "../../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
+import { SPREADSHEET_FIELDS } from "../../spreadsheets/spreadsheet-fields-model.js";
 
 export type WorkbookWrite = RunWorkbookWritesWire["operations"][number];
 export function workbookRowChoiceId(candidate: Readonly<{ sheetId: string; rowId: string }>): string {
@@ -51,7 +52,7 @@ export function workbookReferenceMatchesReplay(choice: WorkbookReferenceChoice, 
     && choice.resolution.selected.sheetId === command.payload.sheetId && choice.resolution.selected.rowId === command.payload.rowId;
 }
 function referenceValues(candidate: Extract<WorkbookReferenceChoice['resolution'], { state: 'resolved' }>['selected']): string {
-  return candidate.values.map(cell => `${cell.fieldId}: ${cell.value === null ? '(empty)' : typeof cell.value === 'object' ? cell.value.value : String(cell.value)}`).join(' · ');
+  return candidate.values.map(cell => `${SPREADSHEET_FIELDS.find(field => field.id === cell.fieldId)?.label ?? cell.fieldId}: ${cell.value === null ? '(empty)' : typeof cell.value === 'object' ? cell.value.value : String(cell.value)}`).join(' · ');
 }
 export function workbookReferenceLogActions(choice: WorkbookReferenceChoice): readonly LogDecisionAction[] {
   const resolution = choice.resolution;

@@ -1,9 +1,9 @@
 import { RunWorkbookWritesWireSchema } from '../../../src/models/dashboard/run-detail.js';
 import { HASH_A, UUID_1, UUID_2 } from './phase1c-contract-fixtures.js';
-export function workbookReferenceChoice(version = 4) {
-  const target = { runId: UUID_1, expectedVersion: version, libraryId: UUID_2, typeId: 'roster', referenceDigest: HASH_A,
+export function workbookReferenceChoice(version = 4, runId = UUID_1) {
+  const target = { runId, expectedVersion: version, libraryId: UUID_2, typeId: 'roster', referenceDigest: HASH_A,
     key: 'example@example.edu', workbookVersion: version - 1, gateId: 'choose-roster-row' };
-  const section = RunWorkbookWritesWireSchema.parse({ runId: UUID_1, operations: [], referenceChoices: [{
+  const section = RunWorkbookWritesWireSchema.parse({ runId, operations: [], referenceChoices: [{
     libraryId: target.libraryId, typeId: target.typeId, referenceDigest: target.referenceDigest, key: target.key, reason: 'row-ambiguous',
     resolution: { state: 'available', target, candidates: [
       { sheetId: 'july', rowId: 'person-1', label: 'July 6 · Row 2', values: [{ fieldId: 'email', value: target.key }, { fieldId: 'fullName', value: 'Example, Person' }] },
