@@ -48,7 +48,7 @@ export function containsDeletionArtifactReference(value: unknown, ref: ArtifactR
   if (value === null || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some(item => containsDeletionArtifactReference(item,ref));
   const record = z.record(z.string(),z.unknown()).parse(value);
-  if (record.artifactId === ref.id || record.sha256 === ref.sha256 || record.digest === ref.sha256) return true;
+  if (record.artifactId === ref.id || record.sha256 === ref.sha256 || record.digest === ref.sha256 || record.sourceSha256 === ref.sha256) return true;
   return Object.values(record).some(item => containsDeletionArtifactReference(item,ref));
 }
 
