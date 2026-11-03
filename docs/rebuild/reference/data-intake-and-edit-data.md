@@ -231,8 +231,10 @@ Member previews use the ordinary protected sequencer and stop after preparation.
 presence skips preparation; an indeterminate probe or an attempting/parked permanent key refuses.
 The permanent key is employee plus canonical desired effect, independent of run and before-set.
 Real mode returns `CONTACT_SAVE_UNAVAILABLE` before contact acquisition. The driver has no Save
-method. Emergency Contact remains on its mock source; parent dry-run admission and aggregation of
-descendant previews require the delegation runtime's support before an operation preview is usable.
+method. Emergency Contact remains on its mock source. Delegated read-only children retain
+`dryRun: true` and return ordinary read results. Root compositions without a local transaction
+still refuse dry-run admission, and transaction-child preview joins refuse; parent previews need
+authenticated descendant-preview aggregation before this operation preview is usable.
 
 ### 4.6 Artifact projections
 

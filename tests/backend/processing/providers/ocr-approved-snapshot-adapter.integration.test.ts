@@ -1,3 +1,5 @@
+import { StartPlanWireSchema } from "../../../../src/models/dashboard/start-plan.js";
+import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import type { z } from "zod";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -110,4 +112,27 @@ it("accounts for an actual unavailable real member as failed without inventing a
   const [member] = f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(run => run.envelope.workflow === "emergency-contact-member"); assert.ok(member);
   assert.equal(f.database.authority.failures.listByRun(member.envelope.runId)[0]?.code, "CONTACT_SAVE_UNAVAILABLE");
   assert.equal(f.harness.sessions.opens(), 0);
+});
+
+it("refuses a nonempty Emergency Contact parent dry run at native start planning before child admission", async () => {
+  let harness: Fixture["harness"] | undefined;
+  await assert.rejects(world.fixture({ coordinator: true, record: true, pageCount: 1, dryRun: true, onHarness: value => { harness = value; } }), error => {
+    assert.ok(error instanceof assert.AssertionError);
+    assert.equal(error.actual, 0);
+    assert.equal(error.expected, 1);
+    const refusals = StartPlanWireSchema.shape.refused.parse(JSON.parse(error.message.split("\n")[0]));
+    assert.equal(refusals.length, 1);
+    const [refusal] = refusals; assert.ok(refusal);
+    assert.deepEqual({ entry: refusal.entry, code: refusal.code }, { entry: 1, code: "dry-run-unsupported" });
+    assert.match(refusal.message, /emergency-contact has no transaction node/u);
+    return true;
+  });
+  assert.ok(harness);
+  assert.equal(harness.sessions.opens(), 0);
+  for (const workflow of ["emergency-contact", "ocr", "ocr-page", "emergency-contact-member"]) {
+    assert.deepEqual(harness.authority.database.authority.runs.listByWorkflow(workflow), []);
+  }
+  assert.ok(harness.emitter.events().every(event => event.t !== "transaction.fenced"));
+  const date = harness.authority.clock.now().toISOString().slice(0, 10);
+  assert.deepEqual(createTransactionHistory(harness.authority.database.authority).query({ from: date, to: date }).rows, []);
 });

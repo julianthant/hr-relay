@@ -115,7 +115,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
       const plan = planner.plan({ workflowId: descriptor.id, submissions: [input], dryRun: options.dryRun,
         selectedStepKeys: descriptor.timeline.map(step => step.key),
         ...(options.workbookReferences === undefined ? {} : { workbookReferences: options.workbookReferences }) });
-      assert.equal(plan.planned.length, 1);
+      assert.equal(plan.planned.length, 1, JSON.stringify(plan.refused));
       assert.equal(plan.refused.length, 0);
       const result = kernel.execute({ commandId: randomUUID(), family: "start", type: "start-run", source: "dashboard",
         requestedBy: LOCAL_OPERATOR_ACTOR_ID, requestedAt: clock.now().toISOString(), target: { workflowId: descriptor.id,

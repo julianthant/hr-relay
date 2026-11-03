@@ -34,7 +34,8 @@ export function createOcrReviewWorld() {
   const world = createRunExecutorTestWorld();
   return {
     cleanup: world.cleanup,
-    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; retainedProducer?: boolean; coordinator?: boolean }> = {}) {
+    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean;
+      onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       const rendered: { value?: z.output<typeof ExtractPdfPagesOutputSchema> } = {};
       const render = defineTask(ExtractPdfPages, { sessions: [], async run({ ctx }) {
@@ -55,6 +56,7 @@ export function createOcrReviewWorld() {
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
         tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
       const harness = await world.executorHarness({ descriptor: root.descriptor, stores });
+      options.onHarness?.(harness);
       const { database, path, clock } = harness.authority;
       const workbooks = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
       const roster = workbooks.create({ name: "OCR roster", themes: [], hasFormulas: false, sheets: [{
@@ -95,7 +97,7 @@ export function createOcrReviewWorld() {
       const request = OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
         formType: "emergency-contact", roster: null, approval: options.release === true ? "release" : "review-only",
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
-      const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading }), { dryRun: false,
+      const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading }), { dryRun: options.dryRun ?? false,
           ...(options.retainedProducer === true ? {} : { workbooks, workbookReferences: [{ entry: 1, typeId: "ocr-roster", libraryId: roster.libraryId }] }) });
       const result = await canonical.execute(parentRun, new AbortController().signal);
       const run = coordinator === undefined ? parentRun : database.authority.runs.listChildren(parentRun.envelope.runId).find(child => child.envelope.workflow === "ocr");
