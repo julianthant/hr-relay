@@ -462,7 +462,7 @@ it("confirms cascade deletion only through the exact lifecycle tombstone provena
 
 it("checks cancellation effect and rejects an unrelated acknowledged run", async () => {
   const { FIXTURE_DAY_WIRE } = await import("../../../support/fixtures/dashboard/fixture-queue.js");
-  const roots = FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.lineage.state === "root");
+  const roots = FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.parent === null);
   const root = roots.find(row => row.actions.some(action => action.kind === "command" && action.command === "cancel"));
   assert.ok(root); const other = roots.find(row => row.runId !== root.runId); assert.ok(other);
   let cancelled = true;
@@ -483,7 +483,7 @@ it("checks cancellation effect and rejects an unrelated acknowledged run", async
 
 it("verifies an explicit recovery's new item attempt without expecting the immutable source to change", async () => {
   const { FIXTURE_DAY_WIRE } = await import("../../../support/fixtures/dashboard/fixture-queue.js");
-  const source = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.lineage.state === "root"); assert.ok(source);
+  const source = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent === null); assert.ok(source);
   const nextId = "99999999-9999-4999-8999-999999999999";
   let correctItem = true;
   const next = () => ({ ...source, runId: nextId, traceId: "pl-120001-9999", attempt: source.attempt + 1, rowRevision: 1,

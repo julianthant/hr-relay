@@ -388,11 +388,11 @@ function authenticateObservationOrigins(repositories: AuthorityRepositories, des
     if (!allowed.has(origin.nodeId) || source?.kind !== "task" || source.uses.id !== origin.taskId || producer === undefined
       || producer.envelope.workflow !== checkpoint.workflowId || producer.envelope.itemId !== checkpoint.itemId
       || producer.envelope.attempt !== origin.attempt || producer.envelope.contractFingerprint !== descriptor.contractFingerprint) throw new Error("delegation-observation-producer-mismatch");
-    const producerKey = canonicalJsonStringify([origin.nodeId, origin.attempt]);
-    let candidates = checkpointsByProducer.get(producerKey);
+    const key = canonicalJsonStringify([checkpoint.workflowId, checkpoint.itemId, origin.nodeId, origin.attempt]);
+    let candidates = checkpointsByProducer.get(key);
     if (candidates === undefined) {
       candidates = repositories.runCheckpoints.listByAttempt(checkpoint.workflowId, checkpoint.itemId, origin.nodeId, origin.attempt);
-      checkpointsByProducer.set(producerKey, candidates);
+      checkpointsByProducer.set(key, candidates);
     }
     if (!candidates.some(candidate => candidate.runId === origin.runId && candidate.contractFingerprint === descriptor.contractFingerprint
       && candidate.output.schemaHash === deriveSchemaHash(source.uses.output, "output")

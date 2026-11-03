@@ -16,6 +16,7 @@ import { DependencyRecordSchema, delegationReadiness, type DelegationManifest, t
 import { DelegationAdmissionRequestSchema, DelegationInvocationRequestSchema, DelegationScopeEvidenceSchema, DelegationRetryRequestSchema, DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import type { AuthorityRepositories } from "./authority-database.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
+import type { QueueParent } from "../../../models/dashboard/queue-parent.js";
 import { CancellationSourceSchema, CanonicalCreateRunRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalRecoverRunRequestSchema, CanonicalRequeueRequestSchema, CanonicalPauseRequestSchema, CanonicalWorkerTransitionRequestSchema } from "./run-store-contracts.js";
 import { assertCanonicalRunCommandScope } from "./command-record-row.js";
 
@@ -261,7 +262,7 @@ function readReleasedDelegation(repositories: AuthorityRepositories, parent: Run
       || canonicalJsonStringify(manifest.policy) !== canonicalJsonStringify(leaf.policy)
       || manifest.inputSchemaHash !== deriveSchemaHash(leaf.target.input, "input")
       || manifest.resultSchemaHash !== deriveSchemaHash(leaf.target.result, "output"))) throw new Error("delegation-manifest-binding-mismatch");
-    authenticateDelegationGroup(repositories, manifest);
+    repositories.dependencies.authenticateGroup(manifest);
     const scope = readDelegationScopeEvidence(repositories, parent, request.scopeEvidence);
     if (sha256Hex(canonicalJsonStringify(valueFreeProtectedData(scope))) !== request.observedScopeDigest) throw new Error("delegation-approval-binding-mismatch");
     manifests.push(manifest);
@@ -346,9 +347,48 @@ export function authenticateDelegationResume(repositories: AuthorityRepositories
 export function lifecycleChildEdge(repositories: AuthorityRepositories, parentRunId: string, childRunId: string): DependencyRecord | undefined {
   if (retainedDelegationManifests(repositories, parentRunId).length > 0) return delegationEdgeForChild(repositories, parentRunId, childRunId);
   const parent = repositories.runs.get(parentRunId), child = repositories.runs.get(childRunId);
-  if (parent === undefined || child === undefined || child.envelope.parent?.runId !== parentRunId
-    || child.envelope.workflow !== parent.envelope.workflow || child.envelope.parent.tracePrefix !== parent.envelope.traceId) throw new Error("ordinary-tree-child-binding-mismatch");
+  if (parent === undefined || child === undefined) throw new Error("ordinary-tree-child-binding-mismatch");
+  assertOrdinaryChild(parent.envelope, child.envelope);
   return undefined;
+}
+
+function assertOrdinaryChild(parent: RunRecord["envelope"], child: RunRecord["envelope"]) {
+  if (child.parent?.runId !== parent.runId || child.workflow !== parent.workflow
+    || child.parent.tracePrefix !== parent.traceId) throw new Error("ordinary-tree-child-binding-mismatch");
+}
+
+/** Includes every physical sibling for each requested parent. */
+export function readQueueParents(repositories: AuthorityRepositories, envelopes: readonly RunRecord["envelope"][]) {
+  const result = new Map<string, QueueParent | null>();
+  const parents = new Set(envelopes.flatMap(envelope => envelope.parent === undefined ? [] : [envelope.parent.runId]));
+  for (const parentId of parents) {
+    const parent = repositories.runs.get(parentId);
+    if (parent === undefined) throw new Error("delegation-parent-unavailable");
+    const manifests = retainedDelegationManifests(repositories, parentId);
+    const children = repositories.runs.listChildren(parentId);
+    if (manifests.length === 0) {
+      for (const child of children) {
+        assertOrdinaryChild(parent.envelope, child.envelope);
+        result.set(child.envelope.runId, { runId: parentId, visibility: child.envelope.shape === "operation-member" ? "inline" : "linked" });
+      }
+      continue;
+    }
+    const edges = new Map<string, DependencyRecord>();
+    for (const manifest of manifests) for (const member of repositories.dependencies.authenticateGroup(manifest).children) {
+      for (const runId of member.history) edges.set(runId, member.dependency);
+    }
+    for (const child of children) {
+      const edge = edges.get(child.envelope.runId);
+      if (edge === undefined || child.envelope.parent?.runId !== parentId || child.envelope.parent.edgeId !== edge.edgeId
+        || child.envelope.parent.tracePrefix !== parent.envelope.traceId) throw new Error("delegation-child-membership-unavailable");
+      result.set(child.envelope.runId, { runId: parentId, visibility: edge.policy.visibility });
+    }
+  }
+  for (const envelope of envelopes) {
+    if (envelope.parent === undefined) result.set(envelope.runId, null);
+    else if (result.get(envelope.runId)?.runId !== envelope.parent.runId) throw new Error("queue-parent-source-unavailable");
+  }
+  return result;
 }
 
 export function readDelegationReadiness(repositories: AuthorityRepositories, runId: string, intent: "join" | "cancel", visited = new Set<string>()): DelegationReadiness {

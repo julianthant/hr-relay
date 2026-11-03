@@ -1,3 +1,4 @@
+import { isQueueMember, isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { fenceWriteFixture } from "../../../support/helpers/write-fence-fixture.js";
 import { join } from "node:path";
@@ -606,7 +607,7 @@ describe("the Activity report inherits the day's exclusions rather than re-decid
 
     for (const [day, offset] of [[D0, 0], [D1, 1], [D2, 2]] as const) {
       const dayWire = w.projection.buildDashboardDayWire(day);
-      const countable = dayWire.queueSurfaces.filter(({ surfaceKind }) => surfaceKind !== "member");
+      const countable = dayWire.queueSurfaces.filter(isQueueTopLevel);
       const oneDay = w.projection.buildActivityReportWire(day, day);
 
       assert.equal(oneDay.totalRuns, countable.length, `day ${day} (offset ${String(offset)}) row count`);
@@ -649,7 +650,7 @@ describe("the Activity report inherits the day's exclusions rather than re-decid
     // The members ride the day payload flat for layout — the report counts the
     // operation once and the members not at all.
     assert.equal(dayWire.queueSurfaces.length, 5);
-    assert.equal(dayWire.queueSurfaces.filter(({ surfaceKind }) => surfaceKind === "member").length, 2);
+    assert.equal(dayWire.queueSurfaces.filter(isQueueMember).length, 2);
     assert.equal(report.totalRuns, 3);
     assert.deepEqual(report.days, [{ day: D2, runs: 3 }]);
   });

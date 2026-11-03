@@ -40,6 +40,7 @@ async function fixture() {
     list: (input) => { listCalls += 1; return realReader.list(input); },
   };
   const world = await makeWorld({ reader, profileFixture: profiles.create });
+  world.authority.queueParents = envelopes => database.authority.dependencies.parents(envelopes);
   cleanups.push(async () => await world.dispose());
   const service = new RunRecordService({ database, clock,
     ids: { uuid: () => { throw new Error("read fixture cannot create identities"); } },

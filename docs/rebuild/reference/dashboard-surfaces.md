@@ -114,10 +114,17 @@ Waiting parents are excluded from queued-work filters and counts. Manual child r
 parent's existing Paused/Resume control after the current retry has settled.
 
 `QueuePanel` accepts `QueueSurfaceWire[]`, `QueueViewState`, `QueueHandlers`, action descriptors,
-workflow labels, parent identity, and filter scope. Its model distinguishes standalone,
-operation-group, operation-member, and linked shapes. Group counts and explanatory summaries
-share one population. A member and a parent-bound child are different facts; a linked child still
-has parent authority. Do not infer deletion eligibility from visual member shape.
+workflow labels and filter scope. Wire surfaces are single, preview or operation. Each carries one
+nullable `parent`: null for a physical root, otherwise its authenticated run, visibility and complete
+back-chip route, title and status. Inline children appear under the immediate operation presentation;
+linked children have their own rows and linked-run chips; hidden-unless-failed children appear only
+as failed member lines. Native operation/member scheduling shapes do not change. A delegating
+single or member can present an operation without changing its stored shape.
+
+Top-level Queue, calendar, notifications and Activity populations include roots and linked children.
+Visibility filtering precedes bounded pagination. An unloaded inline or hidden child never becomes a
+standalone row. Cross-workflow members stay under their parent; parent and linked chips retain exact
+workflow and day coordinates. Native parent authority still governs actions and deletion eligibility.
 
 The product's workflow preview mounts `WorkflowMockQueue` and local `MockRun` state. Retry opens
 Rerun with the exact source. Local deletion removes the selected runs and clears their Logs/Records

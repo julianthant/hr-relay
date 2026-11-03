@@ -690,6 +690,7 @@ export function seedDashboardPerfFixture(): PerfFixture {
     descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT, separationsDescriptor.contractFingerprint]),
     ledger: createTransactionHistory(database.authority),
     authority: {
+      queueParents: envelopes => database.authority.dependencies.parents(envelopes),
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
       listNotificationCheckpoints: (workflowId: string, itemId: string, nodeId: string, attempt: number) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),

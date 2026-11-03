@@ -58,6 +58,7 @@ async function serveLaunchAuthority<Source>(h: Awaited<ReturnType<typeof launchH
     reader: sqliteRunReader(database, h.clock), stateRoot, clock: h.clock, appVersion: "0.1.0", descriptorSetHash: descriptorHash,
     ledger: createTransactionHistory(database.authority), descriptors: { resolve: (id) => id === h.descriptor.id ? h.descriptor : undefined },
     authority: {
+      queueParents: envelopes => database.authority.dependencies.parents(envelopes),
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
       listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),

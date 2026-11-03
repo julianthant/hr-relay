@@ -1,6 +1,7 @@
 /** The queue's pure half: the band vocabulary and its sort, the row title folds
  * the member ordering, and the visible/attention run-id lists the keyboard */
 import { useEffect, useRef, useState } from "react";
+import { isQueueMember, isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { z } from "zod";
 import type { QueueSurfaceWireSchema } from "../../../models/dashboard/projection.js";
 import {
@@ -54,7 +55,6 @@ export const QUEUE_SORTS: readonly { key: QueueSortKey; label: string; note: str
 
 export type QueueSurfaceWire = z.infer<typeof QueueSurfaceWireSchema>;
 
-export type MemberSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "member" }>;
 
 export type OperationSurfaceWire = Extract<QueueSurfaceWire, { surfaceKind: "operation" }>;
 
@@ -123,10 +123,17 @@ export function filterQueueSurfaces(
       .filter((surface) => includedItems.has(queueItemKey(surface)) && surface.surfaceKind === "operation")
       .map((surface) => String(surface.runId)));
     for (const surface of surfaces) {
-      if (surface.lineage.state !== "child" || !includedParents.has(String(surface.lineage.parentRunId))) continue;
+      if (surface.parent === null || !includedParents.has(String(surface.parent.runId))) continue;
       const key = queueItemKey(surface);
       if (includedItems.has(key)) continue;
       includedItems.add(key);
+      changed = true;
+    }
+    for (const surface of surfaces) {
+      if (!includedItems.has(queueItemKey(surface)) || !isQueueMember(surface)) continue;
+      const parent = surfaces.find(candidate => candidate.runId === surface.parent?.runId);
+      if (parent === undefined || includedItems.has(queueItemKey(parent))) continue;
+      includedItems.add(queueItemKey(parent));
       changed = true;
     }
   }
@@ -144,7 +151,7 @@ export function toggleCheckedByYou(previous: ReadonlySet<string>, runId: string)
 
 /** Only members present in this view count toward its local tally. A saved id
  * from another operation cannot inflate a group it does not belong to. */
-export function checkedByYouCount(members: readonly MemberSurfaceWire[], checkedIds: ReadonlySet<string>): number {
+export function checkedByYouCount(members: readonly QueueSurfaceWire[], checkedIds: ReadonlySet<string>): number {
   return members.filter((member) => checkedIds.has(String(member.runId))).length;
 }
 
@@ -301,7 +308,7 @@ const MEMBER_TIER: Record<ProposedStatus, number> = {
   verifiedDone: 6,
 };
 
-export function orderMembers(members: readonly MemberSurfaceWire[]): MemberSurfaceWire[] {
+export function orderMembers(members: readonly QueueSurfaceWire[]): QueueSurfaceWire[] {
   return [...members]
     .map((surface, index) => ({ surface, index }))
     .sort((a, b) => {
@@ -313,30 +320,43 @@ export function orderMembers(members: readonly MemberSurfaceWire[]): MemberSurfa
 
 /* ── the panel ───────────────────────────────────────────────────────────── */
 
-/** Read served containment; member rows cannot also appear as top-level work. */
+/** Inline and hidden children remain within their parent even when that parent is unloaded. */
 export function partition(surfaces: readonly QueueSurfaceWire[]): {
   top: QueueSurfaceWire[];
-  membersOf: Map<string, MemberSurfaceWire[]>;
+  membersOf: Map<string, QueueSurfaceWire[]>;
 } {
-  const byRunId = new Map<string, MemberSurfaceWire>();
+  const byRunId = new Map<string, QueueSurfaceWire>();
   for (const surface of surfaces) {
-    if (surface.surfaceKind === "member") byRunId.set(surface.runId, surface);
+    if (isQueueMember(surface)) byRunId.set(surface.runId, surface);
   }
-  const claimed = new Set<string>();
-  const membersOf = new Map<string, MemberSurfaceWire[]>();
+  const membersOf = new Map<string, QueueSurfaceWire[]>();
   for (const surface of surfaces) {
     if (surface.surfaceKind !== "operation") continue;
-    const members: MemberSurfaceWire[] = [];
+    const members: QueueSurfaceWire[] = [];
     for (const runId of surface.memberRunIds) {
       const member = byRunId.get(runId);
       if (member === undefined) continue;
+      if (member.parent?.runId !== surface.runId) throw new Error("queue-member-parent-mismatch");
       members.push(member);
-      claimed.add(runId);
     }
     membersOf.set(surface.runId, members);
   }
-  const top = surfaces.filter((surface) => !claimed.has(surface.runId));
+  const top = surfaces.filter(isQueueTopLevel);
   return { top, membersOf };
+}
+
+export function queueScopeWorkflow(selected: QueueSurfaceWire, surfaces: readonly QueueSurfaceWire[]): string {
+  const rows = new Map(surfaces.map(row => [row.runId, row]));
+  const visited = new Set<string>();
+  let current = selected;
+  while (current.parent !== null && current.parent.visibility !== "linked") {
+    if (visited.has(current.runId)) throw new Error("queue-parent-cycle");
+    visited.add(current.runId);
+    const parent = rows.get(current.parent.runId);
+    if (parent === undefined) return current.parent.workflowId;
+    current = parent;
+  }
+  return current.workflowId;
 }
 
 /** Keyboard traversal follows drawn rows, including expanded members. */
@@ -348,22 +368,19 @@ export function visibleRunIds(
   const { top, membersOf } = partition(surfaces);
   const { displayTop, itemByRunId } = queueItemLayout(top);
   const ids: string[] = [];
-  const addAttempts = (surface: QueueSurfaceWire): void => {
+  const append = (surface: QueueSurfaceWire, item: QueueItemGroup): void => {
+    ids.push(...item.attempts.toReversed().map(attempt => String(attempt.runId)));
+    const groups = groupQueueAttempts(membersOf.get(surface.runId) ?? []);
+    for (const member of orderMembers(groups.map(group => group.representative))) {
+      const memberItem = groups.find(group => group.representative.runId === member.runId);
+      if (memberItem === undefined) throw new Error(`queue keyboard order lost member item ${String(member.itemId)}`);
+      append(member, memberItem);
+    }
+  };
+  for (const group of queueDisplayGroups(displayTop, sort, nowIso)) for (const surface of group.rows) {
     const item = itemByRunId.get(String(surface.runId));
     if (item === undefined) throw new Error(`queue keyboard order lost item ${String(surface.itemId)}`);
-    ids.push(...item.attempts.toReversed().map((attempt) => String(attempt.runId)));
-  };
-  for (const group of queueDisplayGroups(displayTop, sort, nowIso)) {
-    const band = group.rows;
-    for (const surface of band) {
-      addAttempts(surface);
-      const memberGroups = groupQueueAttempts(membersOf.get(surface.runId) ?? []);
-      for (const member of orderMembers(memberGroups.map((group) => group.representative) as MemberSurfaceWire[])) {
-        const item = memberGroups.find((group) => group.representative.runId === member.runId);
-        if (item === undefined) throw new Error(`queue keyboard order lost member item ${String(member.itemId)}`);
-        ids.push(...item.attempts.toReversed().map((attempt) => String(attempt.runId)));
-      }
-    }
+    append(surface, item);
   }
   return ids;
 }
@@ -398,7 +415,7 @@ export interface QueueBatch {
 export function queueBatches(rows: readonly QueueSurfaceWire[]): readonly QueueBatch[] {
   const groups = new Map<string, QueueSurfaceWire[]>();
   for (const row of rows) {
-    if (row.containment !== "root" || row.surfaceKind === "operation" || row.session.state !== "present" || row.session.presentation === undefined) continue;
+    if (row.parent !== null || row.surfaceKind === "operation" || row.session.state !== "present" || row.session.presentation === undefined) continue;
     const members = groups.get(row.session.sessionId) ?? [];
     members.push(row);
     groups.set(row.session.sessionId, members);
