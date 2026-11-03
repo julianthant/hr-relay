@@ -1,5 +1,4 @@
 import type { WorkflowModule } from "../../../src/workflow-kit/workflow-definition.js";
-import { UNREGISTERED_OCR_MODULES } from "../../support/fixtures/ocr/unregistered-workflows.js";
 import { createRetainedDashboardMockFixtures } from "../../support/helpers/retained-dashboard-mock-fixtures.js";
 
 import assert from "node:assert/strict";
@@ -50,11 +49,11 @@ const GENERIC_RUN_FILES = new Set([
   "src/backend/runs/lifecycle/run-status.ts", "src/backend/runs/lifecycle/support.ts",
 ]);
 
-const { RETAINED_MOCK_SITES, retainedLiteralSite, RETAINED_MOCK_LITERALS } = createRetainedDashboardMockFixtures();
+const { RETAINED_MOCK_SITES, RETAINED_OCR_SERVICE_SITES, retainedLiteralSite, RETAINED_MOCK_LITERALS } = createRetainedDashboardMockFixtures();
 
 
-function retainedMockLiteralsMatch(path: string, source: ts.SourceFile, ids: readonly string[]): boolean {
-  const expected = RETAINED_MOCK_SITES[path];
+function retainedLiteralsMatch(path: string, source: ts.SourceFile, ids: readonly string[]): boolean {
+  const expected = RETAINED_MOCK_SITES[path] ?? RETAINED_OCR_SERVICE_SITES[path];
   if (expected === undefined) return false;
   const values: string[] = [];
   eachNode(source, node => { if (ts.isStringLiteralLike(node) && ids.includes(node.text)) values.push(retainedLiteralSite(node, source)); });
@@ -332,9 +331,10 @@ export function auditWorkflowAuthoringBudget(
   for (const [path, text] of inputs.tree.sources) {
     if (!GENERIC_ROOTS.some((prefix) => path.startsWith(prefix)) && !GENERIC_RUN_FILES.has(path)) continue;
     if (isTestSource(path)) continue;
-    if (!ids.some((id) => text.includes(id))) continue;
+    if (!ids.some((id) => text.includes(id)) && RETAINED_OCR_SERVICE_SITES[path] === undefined) continue;
     const source = sourceOf(path, text);
-    if (retainedMockLiteralsMatch(path, source, ids)) continue;
+    if (retainedLiteralsMatch(path, source, ids)) continue;
+    if (RETAINED_OCR_SERVICE_SITES[path] !== undefined) violations.push(`${path}: retained OCR service literal sites changed`);
     eachNode(source, (node) => {
       if (!ts.isStringLiteralLike(node) || !ids.includes(node.text)) return;
       const pair = pairKey(path, node.text);
@@ -488,7 +488,7 @@ function auditedWorkflowSources(modules: readonly WorkflowModule[] = [...WORKFLO
 function repositoryInputs(tree: WorkflowAuthoringBudgetTree): WorkflowAuthoringBudgetInputs {
   return {
     workflows: auditedWorkflowSources(),
-    unregisteredWorkflows: auditedWorkflowSources(UNREGISTERED_OCR_MODULES),
+    unregisteredWorkflows: [],
     tree,
     genericIdAllowlist: GENERIC_WORKFLOW_ID_ALLOWLIST,
     preCanonicalScenarios: PRE_CANONICAL_SCENARIOS,
@@ -847,7 +847,7 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
       scannedWorkflowFiles.length >= 2,
       `arm (b) entered only ${scannedWorkflowFiles.length} workflow.ts file(s)`,
     );
-    assert.deepEqual(scannedWorkflowFiles, [...registered, ...auditedWorkflowSources(UNREGISTERED_OCR_MODULES)].map(({ sourcePath }) => sourcePath).sort());
+    assert.deepEqual(scannedWorkflowFiles, registered.map(({ sourcePath }) => sourcePath).sort());
     assert.deepEqual(auditWorkflowAuthoringBudget(repositoryInputs(tree)), []);
   });
 
@@ -872,14 +872,35 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
   });
 
   it("arm (c): retained mock literals stay exact and served or sibling additions remain forbidden", () => {
-    assert.equal(Object.values(RETAINED_MOCK_LITERALS).flat().length, 85);
+    assert.equal(Object.values(RETAINED_MOCK_LITERALS).flat().length, 135);
 
     assert.deepEqual(auditWorkflowAuthoringBudget(repositoryInputs(tree)), []);
     for (const path of ["src/dashboard/client/queries/day-queries.ts", "src/dashboard/surfaces/workflows/mocks/new-sibling.ts", "src/dashboard/surfaces/workflows/mocks/workflow-mock-run.tsx", ...Object.keys(RETAINED_MOCK_LITERALS)]) {
-      for (const workflowId of ["person-lookup", "onboarding"]) {
+      for (const workflowId of ["person-lookup", "onboarding", "ocr", "ocr-page"]) {
         const sources = new Map(tree.sources);
         sources.set(path, `${sources.get(path) ?? ""}\nconst injected = (id: string) => id === "${workflowId}";`);
         assert.ok(auditWorkflowAuthoringBudget(repositoryInputs({ ...tree, sources })).some(issue => issue.startsWith(`${path}:`)), `${path}:${workflowId}`);
+      }
+    }
+  });
+
+  it("arm (c): OCR service literal sites stay exact and refuse additions, removal or repurposing", () => {
+    assert.equal(Object.values(RETAINED_OCR_SERVICE_SITES).flat().length, 11);
+    const ids = auditedWorkflowSources().map(workflow => workflow.id);
+    for (const path of Object.keys(RETAINED_OCR_SERVICE_SITES)) {
+      const original = tree.sources.get(path);
+      assert.ok(original !== undefined, `${path}: missing retained OCR service owner`);
+      assert.equal(retainedLiteralsMatch(path, parseSource(path, original), ids), true, path);
+      for (const workflowId of ["ocr", "ocr-page"]) {
+        const sources = new Map(tree.sources);
+        sources.set(path, `${original}\nconst injected = (id: string) => id === "${workflowId}";`);
+        assert.ok(auditWorkflowAuthoringBudget(repositoryInputs({ ...tree, sources })).some(issue => issue.startsWith(`${path}:`)), `${path}:${workflowId}`);
+      }
+      for (const changed of [original.replaceAll('"ocr"', '"unregistered-ocr"').replaceAll('"ocr-page"', '"unregistered-ocr-page"'),
+        original.replace('"ocr"', '(unknownId === "ocr" ? unknownId : unknownId)')]) {
+        const sources = new Map(tree.sources);
+        sources.set(path, changed);
+        assert.ok(auditWorkflowAuthoringBudget(repositoryInputs({ ...tree, sources })).some(issue => issue.startsWith(`${path}:`)), path);
       }
     }
   });

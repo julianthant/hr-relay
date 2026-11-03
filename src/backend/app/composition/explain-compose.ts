@@ -4,7 +4,7 @@ import type { z } from "zod";
 import { TimelinePageRequestSchema, TimelineEventRecordSchema } from "../../../models/events/timeline.js";
 import { readEmergencyFaults } from "../../logs/emergency-faults.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
-import { DESCRIPTORS } from "../registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, DESCRIPTORS } from "../registries/workflow-registry.js";
 import { STEP_PROOF_DESCRIPTORS, stepProofDescriptorOf } from "../registries/step-proof-modules.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import { descriptorRuntimeNodes } from "../../../workflow-kit/workflow.js";
@@ -142,7 +142,7 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
   if (result !== undefined && result.runId !== run.envelope.runId) throw new Error("TRUST_EVIDENCE_IDENTITY_MISMATCH: Explain result");
   const settled = run.lifecycle.state === "terminal" && run.lifecycle.outcome !== "interrupted";
   const receipt = settled
-    ? createReceiptService({ database, descriptors: [...DESCRIPTORS, ...STEP_PROOF_DESCRIPTORS], runReader }).ensureReceipt(run.envelope.runId)
+    ? createReceiptService({ database, descriptors: [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_DESCRIPTORS], runReader }).ensureReceipt(run.envelope.runId)
     : undefined;
 
   const evidence: ExplainRunEvidence = {

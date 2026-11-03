@@ -6,7 +6,7 @@ import { ocrWorkflow } from "./workflow.js";
 
 export const registration = deepFreeze({
   definition: ocrWorkflow,
-  exposure: { kind: "unregistered" },
+  exposure: { kind: "child-only" },
   store: ocrWorkflowStore,
   proofs: [defineStepProof(ocrWorkflow, ocrSourcePagesDefinition)],
 } as const);

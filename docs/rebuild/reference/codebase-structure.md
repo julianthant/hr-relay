@@ -147,11 +147,11 @@ tuple imports definitions directly, keeping those backend imports out of the das
 `src/backend/runs/commands/ocr-source-service.ts` owns uploaded PDF admission, authorized source-page bytes and read-only command settlement.
 `src/backend/runs/queries/ocr-review.ts` projects the existing review section, served through the existing typed client.
 
-The unregistered `src/workflows/ocr/` and `src/workflows/ocr-page/`
-folders use the same layout; their test-only composition inventory in
-`tests/support/fixtures/ocr/unregistered-workflows.ts` supports compiler, layout, bundle and manifest
-audits without making either workflow available in production registries. Their retained proofs live
-at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in the same unregistered inventory.
+The child-only `src/workflows/ocr/` and `src/workflows/ocr-page/` folders use the same layout.
+Their indexes generate production child modules and task stores; OCR delegates page readings to
+OCR Page and identity lookups to Person Lookup. Only declared parent edges admit these children;
+neither has a public start surface. Their retained proofs live at `ocr/steps/source-pages/step.ts`
+and `ocr-page/steps/read-page/step.ts` and enter the generated step-proof inventory.
 
 `src/workflows/onboarding/` registers the read-only hire review; hire submission and I-9 profile creation remain unavailable.
 Its `index.ts` derives four retained proofs from step definitions: CRM data, UCPath duplicate search,
