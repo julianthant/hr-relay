@@ -19005,7 +19005,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-spreadsheet"
     },
     {
-      "fingerprint": "22c374cfd1029ecab2af8b75247e38a1f44e2da709f4d9f4d5974b016760353c",
+      "fingerprint": "b4d4d5c6a4049ee8e49152e27a597d2b031ff5fe37739c8b148226f656c2c42e",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -19025,7 +19025,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/backend/systems/i9/tasks/read-section2-signer.ts",
-          "sha256": "a3d4c07f4e317f12856a5431925a54605c810f52977e63f9e23e8e2c776e269c"
+          "sha256": "84d2f6675c0d717f87d96e12b4bc7894b37653b3f909c8e0af70b6e73d1a5a23"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",
