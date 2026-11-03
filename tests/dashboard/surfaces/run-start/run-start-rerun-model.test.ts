@@ -1,6 +1,7 @@
+import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { defaultRerunSteps, initialRerunValueDrafts, plainRerunInputText } from "../../../../src/dashboard/surfaces/run-start/run-start-rerun-model.js";
+import { defaultRerunSteps, initialRerunValueDrafts, plainRerunInputText, partialRerunTypedInput } from "../../../../src/dashboard/surfaces/run-start/run-start-rerun-model.js";
 import { RerunValuesSnapshotSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 
@@ -55,4 +56,14 @@ describe("Rerun current-step defaults", () => {
       sourceStepKey: "read", nodeId: "read", fieldPath: "eid", targetFieldPath: "eid", label: "Employee ID" }] });
     assert.deepEqual(initialRerunValueDrafts(rejected, workflow), {});
   });
+});
+
+it("does not invent a mode when a source partial input has no declared mode", () => {
+  const surface = WORKFLOW_DESCRIPTORS.find(workflow => workflow.id === "onboarding")?.surfaces.inputRun?.typedInput;
+  assert.ok(surface);
+  const values: readonly Record<string, string>[] = [{ email: "hire@example.test" }, { email: "hire@example.test", mode: "unknown" }];
+  for (const value of values) {
+    assert.deepEqual(partialRerunTypedInput(surface, { state: "partial", value, identityCopied: true }), { draft: {}, text: "", input: {} });
+  }
+  assert.deepEqual(partialRerunTypedInput(surface, { state: "partial", value: { email: "hire@example.test", mode: "rehire" }, identityCopied: true }).draft, { mode: "rehire" });
 });

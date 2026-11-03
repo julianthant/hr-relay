@@ -1,3 +1,10 @@
+import { useEffect, useMemo, useState } from "react";
+import type { DashboardClient } from "../../client/index.js";
+import { readWithDeadline } from "../../client/read-deadline.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../../models/failures/error-catalog.js";
+import { DashboardClientError, schemaError } from "../../client/errors.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import type { WorkbookLibraryVersion } from "../../../models/dashboard/workbook-library.js";
 import type { EditableWorkbookWire, WorkbookType } from "../../../models/dashboard/workbooks.js";
 import type { InputRunSurface, TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { previewRunInput, type RunInputPreview } from "./run-start-model.js";
@@ -13,7 +20,7 @@ export type WorkbookRowChoice = WorkbookRowCoordinate & {
     | { readonly state: "unavailable"; readonly reason: "key-field-missing" | "key-binding-missing" | "key-binding-ambiguous" | "key-missing" | "key-not-text" | "key-blank" };
 };
 
-const unavailableKeyText = {
+export const WORKBOOK_ROW_UNAVAILABLE_TEXT = {
   "key-field-missing": "The spreadsheet type has no lookup key.",
   "key-binding-missing": "The lookup key column is not mapped.",
   "key-binding-ambiguous": "The lookup key column has an ambiguous mapping.",
@@ -56,7 +63,7 @@ export function resolveWorkbookRowSelection(choices: readonly WorkbookRowChoice[
 
 export function previewWorkbookRows(surface: InputRunSurface, choices: readonly WorkbookRowChoice[], selected: readonly WorkbookRowCoordinate[], draft: TypedInputDraft = {}): RunInputPreview {
   const rows = resolveWorkbookRowSelection(choices, selected);
-  const entries = rows.map((row, index) => ({ index, sourceText: `${row.sourceLabel}: ${row.key.state === "available" ? row.key.value : unavailableKeyText[row.key.reason]}` }));
+  const entries = rows.map((row, index) => ({ index, sourceText: `${row.sourceLabel}: ${row.key.state === "available" ? row.key.value : WORKBOOK_ROW_UNAVAILABLE_TEXT[row.key.reason]}` }));
   if (rows.length === 0) return { entries, submissions: [], problem: null };
   if (surface.workbookRows === undefined) return { entries, submissions: [], problem: "Saved-row input is unavailable for this workflow." };
   const declaration = surface.typedInput;
@@ -66,7 +73,7 @@ export function previewWorkbookRows(surface: InputRunSurface, choices: readonly 
   const problems: string[] = [];
   for (const row of rows) {
     if (row.key.state === "unavailable") {
-      problems.push(`${row.sourceLabel}: ${unavailableKeyText[row.key.reason]}`);
+      problems.push(`${row.sourceLabel}: ${WORKBOOK_ROW_UNAVAILABLE_TEXT[row.key.reason]}`);
       continue;
     }
     const preview = previewRunInput(surface, row.key.value, draft);
@@ -78,4 +85,30 @@ export function previewWorkbookRows(surface: InputRunSurface, choices: readonly 
     else submissions.push(submission);
   }
   return { entries, submissions: problems.length > 0 ? [] : submissions, problem: problems.length > 0 ? problems.join("\n") : null };
+}
+
+
+export function useWorkbookRows(client: Pick<DashboardClient, "workbookLibraryVersion">, identity: string, authority: object,
+  enabled: boolean, ready: boolean, libraryId: string, version: WorkbookLibraryVersion | undefined, type: WorkbookType | undefined) {
+  const token = useMemo(() => ({ client, identity, authority, enabled, ready, libraryId, version, type }), [client, identity, authority, enabled, ready, libraryId, version, type]);
+  const [loaded, setLoaded] = useState<{ token: object; state: "loading" | "ready" | "error"; choices: readonly WorkbookRowChoice[]; error: string | null }>();
+  useEffect(() => {
+    if (!enabled || !ready || version === undefined || type === undefined) return;
+    let current = true;
+    const controller = new AbortController();
+    setLoaded(previous => ({ token, state: "loading", choices: previous?.choices ?? [], error: null }));
+    void readWithDeadline(() => client.workbookLibraryVersion(libraryId, version.id), "DASHBOARD_READ_FAILED", undefined, controller.signal).then(view => {
+      if (!current) return;
+      if (view.libraryId !== libraryId || canonicalJsonStringify(view.version) !== canonicalJsonStringify(version)) throw schemaError("Saved spreadsheet version", "named version identity mismatch");
+      setLoaded({ token, state: "ready", choices: workbookRowChoices(view.workbook, type), error: null });
+    }).catch((error: unknown) => {
+      const code = ErrorCatalogCodeSchema.safeParse(error instanceof DashboardClientError && error.kind === "http" ? error.code : undefined);
+      const publicCode = error instanceof DashboardClientError && (error.kind === "schema" || error.kind === "protocol")
+        ? "BOUNDARY_VALIDATION_FAILED" : code.success ? code.data : "DASHBOARD_READ_FAILED";
+      if (current) setLoaded(previous => ({ token, state: "error", choices: previous?.choices ?? [], error: ERROR_CATALOG[publicCode].text }));
+    });
+    return () => { current = false; controller.abort(); };
+  }, [client, token, enabled, ready, libraryId, version, type]);
+  const state = !enabled ? "idle" : !ready ? "stale" : loaded?.token !== token ? "loading" : loaded.state;
+  return { authority: token, state, choices: loaded?.choices ?? [], error: state === "error" ? loaded?.error ?? null : null };
 }

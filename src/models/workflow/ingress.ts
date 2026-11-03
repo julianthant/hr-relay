@@ -376,7 +376,7 @@ const TypedInputModeSchema = z.strictObject({
   identityFields: z.array(InputFieldNameSchema).min(1),
 });
 export const TypedInputSurfaceSchema = z.strictObject({
-  modeField: InputFieldNameSchema, modeLabel: z.string().min(1), initialMode: z.string().min(1),
+  modeField: InputFieldNameSchema, modeLabel: z.string().min(1), initialMode: z.string().min(1).nullable(),
   description: z.string().min(1),
   modes: z.array(TypedInputModeSchema).min(1), controls: z.array(TypedInputControlSchema),
 });
