@@ -7,7 +7,8 @@ import { randomUUID } from "node:crypto";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
 import { hostConfigFacts } from "../../../../models/config/host-display.js";
 import { ConfigSchema } from "../../../../models/config/schema.js";
-import { ASSISTANT_DEFAULT_EFFORT,ASSISTANT_DEFAULT_MODEL,AssistantModelPreferenceSchema,AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
+import { AssistantModelPreferenceSchema } from "../../../../models/config/assistant-model-preference.js";
+import { ASSISTANT_DEFAULT_EFFORT, ASSISTANT_DEFAULT_MODEL, AssistantModelPreferenceViewSchema } from '../../../../models/dashboard/assistant.js';
 import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
@@ -994,6 +995,12 @@ async function composeDashboardRuntimeStartup(
   const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync });
 
   const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors, runLogsHub,
+    actorLabel: () => {
+      assertCurrent();
+      const person = machineAdmission.readProfileRegistry().profiles.find(row => row.profileId === admission.profileBinding.profileId);
+      if (person === undefined) throw new Error("PROFILE_AUTHORITY_UNAVAILABLE");
+      return `${person.firstName} ${person.lastName}`;
+    },
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     notificationPublications: { subscribe: notificationInbox.onPublication, project: publication => database.withAuthorityReadSnapshot(() => ({
       sourceId: FingerprintSchema.parse(publication.sourceId), actorId: publication.notification.actorId, durable: publication.durable,

@@ -13,7 +13,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "d47e10168b41f90bc8309c8f0c4c4cb00d6589e383d63408459cabe14d90ebf2",
+    "sha256": "89f4b986654902605d713b16c745baa29d702731fba4033830de47b2ce310795",
     "reason": "Startup producer closure failures retain dependent native database and admission custody. Selected-context open failure rethrows typed custody uncertainty. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and stop promises, whose callers await failures before storage release. An unavailable authority generation remains explicitly unavailable; backup presence is assessed separately. Automatic upgrade runs before composition in storage-compose.ts and has no HTTP response handoff. Confirmed account deletion shares the exact session logout drain; deletion errors propagate with pending identity retained and never report signed-out success."
   },
   {
@@ -23,7 +23,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/accounts/chatgpt-account-service.ts",
-    "sha256": "b2348eab54084a0bf3788d10a050cd21a87e2a4753210dc5a6cbe5ebdb17b9ae",
+    "sha256": "4709910e9739eade899978696e4ca3dcaeb33d166686b458799414d24ea7b21f",
     "reason": "The empty catch drains only the rejection of an invalid Promise-valued synchronous authority check; assertAssistantCurrent immediately throws CHATGPT_ASSISTANT_REFUSED unless the result is exactly true. No account authority or availability is substituted. A reader is released only after successful cancel/release or matching typed cancellation proof; other closure failures retain the exact reader and response as resource uncertainty. Other catches publish explicit errors or unconfirmed revocation."
   },
   {
@@ -43,7 +43,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/dashboard/surfaces/settings/editor/settings-editor-model.ts",
-    "sha256": "ee66a8dd764aac3b9dee8cd6613475c2860b82e04169b581f966068884b1652c",
+    "sha256": "a74161dbce807f7d754bba758367ab4d9e85f37402496c84eeac627d28579baa",
     "reason": "Initial refresh publishes catalog failure; conflict and reload refresh rejections already publish readProblem with SETTINGS_REFRESH_UNAVAILABLE and retain the verified document and local drafts while admission stays blocked. SettingsReadSuperseded revokes obsolete observation settlement without publishing a current failure or accepting stale readback; command attempts and uncertainty are retained."
 },
   {

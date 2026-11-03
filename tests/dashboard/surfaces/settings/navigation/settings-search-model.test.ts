@@ -37,8 +37,9 @@ describe("Settings field search", () => {
     assert.deepEqual(searchSettings(index, "this setting does not exist"), []);
   });
 
-  it("finds the confirmation policy without offering retired permission modes", () => {
-    assert.equal(searchSettings(index, "ask before every action")[0]?.target, "assistant.permission");
+  it("has no search destinations for removed permission controls", () => {
+    assert.deepEqual(searchSettings(index, "assistant permission"), []);
+    assert.deepEqual(searchSettings(index, "ask before every action"), []);
     for (const query of ["ask before submits", "without asking"]) assert.deepEqual(searchSettings(index, query), []);
   });
 

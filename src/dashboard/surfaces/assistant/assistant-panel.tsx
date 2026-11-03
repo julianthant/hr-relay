@@ -69,7 +69,7 @@ export function AssistantPanel({ state, revision, accountAvailable, canCompose =
       <span className="assistant-mode">{turn.proposal.mode === 'dry-run' ? 'Dry run' : turn.proposal.mode === 'local-change' ? 'Local change' : 'Read only'}</span>
     </div>
     <dl className="assistant-facts">
-      <dt>{turn.proposal.action === undefined ? "Subjects" : "Subject"}</dt><dd>{turn.proposal.action !== undefined ? "None" : turn.proposal.subjects.map(subject => <div key={subject.id}>{subject.name} <span className="assistant-id">{subject.id}</span></div>)}</dd>
+      {!turn.proposal.startPlan && <><dt>{turn.proposal.action === undefined ? "Subjects" : "Subject"}</dt><dd>{turn.proposal.action !== undefined ? "None" : turn.proposal.subjects.map(subject => <div key={subject.id}>{subject.name} <span className="assistant-id">{subject.id}</span></div>)}</dd></>}
       {turn.proposal.values.map(value => <div className="assistant-fact" key={value.label}><dt>{value.label}</dt><dd>{value.value}</dd></div>)}
     </dl>
     <Disclosure className="assistant-run-disclosure" summary="Effects and stop points" contentClassName="assistant-run-content">

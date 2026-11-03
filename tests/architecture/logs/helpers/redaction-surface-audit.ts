@@ -1306,6 +1306,10 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/assistant", path: "action.workflowId", origin: "repository-authored" },
   { surface: "wire/assistant", path: "action.label", origin: "repository-authored" },
   { surface: "wire/assistant", path: "action.targetLabel", origin: "captured-hr-value" },
+  { surface: "wire/assistant", path: "proposal.startPlan.planned[].title", origin: "captured-hr-value" },
+  { surface: "wire/assistant", path: "proposal.startPlan.planned[].subtitle", origin: "captured-hr-value" },
+  { surface: "wire/assistant", path: "action.startPlan.planned[].title", origin: "captured-hr-value" },
+  { surface: "wire/assistant", path: "action.startPlan.planned[].subtitle", origin: "captured-hr-value" },
   { surface: "wire/assistant", path: "candidates[].displayName", origin: "captured-hr-value" },
   { surface: "wire/chatgpt-ocr-test", path: "model", origin: "external-text" },
   { surface: "wire/chatgpt-ocr-test", path: "message", origin: "repository-authored" },
@@ -1759,7 +1763,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/stream-envelope", path: "payload.replacement.memberPreview.reason", origin: "repository-authored" },
   { surface: "wire/stream-envelope", path: "payload.replacement.memberPreview.value", origin: "captured-hr-value" },
 
-  { surface: "wire/bootstrap", path: "actor.label", origin: "repository-authored" },
+  { surface: "wire/bootstrap", path: "actor.label", origin: "operator-authored" },
   { surface: "wire/bootstrap", path: "featureAvailability[].availability.reason", origin: "repository-authored" },
 
   { surface: "wire/bootstrap", path: "preflight[].blocks[]", origin: "repository-authored" },

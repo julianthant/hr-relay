@@ -190,11 +190,16 @@ describe("redaction surface scan — the declaration audit", () => {
       "wire/assistant|action.workflowId|repository-authored",
       "wire/assistant|action.label|repository-authored",
       "wire/assistant|action.targetLabel|captured-hr-value",
+      "wire/assistant|proposal.startPlan.planned[].title|captured-hr-value",
+      "wire/assistant|proposal.startPlan.planned[].subtitle|captured-hr-value",
+      "wire/assistant|action.startPlan.planned[].title|captured-hr-value",
+      "wire/assistant|action.startPlan.planned[].subtitle|captured-hr-value",
       "wire/assistant|candidates[].displayName|captured-hr-value",
       "wire/chatgpt-ocr-test|model|external-text",
       "wire/chatgpt-ocr-test|message|repository-authored",
     ];
     assert.deepEqual(origins.map(entry => `${entry.surface}|${entry.path}|${entry.origin}`).sort(), expectedOrigins.sort());
+    assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === "wire/bootstrap" && entry.path === "actor.label")?.origin, "operator-authored");
     for (const entry of origins) {
       assert.equal(auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS.filter(candidate => candidate !== entry)).length, 1);
       if (entry.origin !== "repository-authored") {
