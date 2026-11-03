@@ -5,6 +5,7 @@ import { PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { chooseSelect } from "./helpers/select-choice.js";
+import { attachShellA11y } from "./helpers/shell-proof.js";
 
 async function markerError(tabs: Locator): Promise<number> {
   return tabs.evaluate(node => {
@@ -15,7 +16,8 @@ async function markerError(tabs: Locator): Promise<number> {
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Shared tabs, spreadsheet controls and Activity dates remain uniform @ ${theme.attribute}-${width}`, async ({ page }, _info) => {
+  const evidence = `dashboard-controls-${theme.attribute}-${width}.a11y.yml`;
+  test(`Shared tabs, spreadsheet controls and Activity dates remain uniform @ ${theme.attribute}-${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidence }] }, async ({ page }, info) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -54,7 +56,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const settings = page.getByRole("region", { name: "Settings", exact: true });
       const navigation = settings.getByRole("navigation", { name: "Settings sections" });
       await navigation.getByRole("link", { name: "Spreadsheets", exact: true }).click();
-      await settings.getByRole("button", { name: "26–27 Student applicants.xlsx", exact: true }).click();
+      await settings.getByRole("button", { name: "Open 26–27 Student applicants.xlsx", exact: true }).click();
       const editor = settings.getByRole("region", { name: "Spreadsheet editor", exact: true });
       const sheet = editor.getByRole("combobox", { name: "Workbook sheet" });
       const height = (await sheet.boundingBox())!.height;
@@ -118,6 +120,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await assertThemeApplied(page, theme);
+      await attachShellA11y(page, info, evidence);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }
   });
