@@ -43,6 +43,7 @@ import {
   type RunQueueProjectionChange,
 } from "../../../../src/backend/runs/projections/run-queue-projection.js";
 import { CONFIG_SNAPSHOT, HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
+import type { QueueParent } from "../../../../src/models/dashboard/queue-parent.js";
 
 export const DAY = "2026-08-03";
 export const AT = new Date("2026-08-03T10:00:00.000-07:00");
@@ -78,6 +79,7 @@ export function traceOf(seed: number): string {
 export type NotificationRecord = z.infer<typeof NotificationRecordSchema>;
 
 export interface AuthorityFake {
+  queueParents: Parameters<typeof createRunQueueProjection>[0]["authority"]["queueParents"];
   readonly records: Map<string, RunRecord>;
   readonly checkpoints: Map<string, RunCheckpointRecord>;
   getRun(runId: string): RunRecord | undefined;
@@ -143,6 +145,17 @@ export function authorityFake(): AuthorityFake {
     `${workflowId}\u0000${itemId}\u0000${nodeId}`;
   return {
     records,
+    queueParents: envelopes => {
+      const parents = new Set(envelopes.flatMap(envelope => envelope.parent === undefined ? [] : [envelope.parent.runId]));
+      const facts = new Map<string, QueueParent | null>();
+      for (const run of records.values()) {
+        const parent = run.envelope.parent;
+        if (parent === undefined || !parents.has(parent.runId)) continue;
+        facts.set(run.envelope.runId, { runId: parent.runId, visibility: run.envelope.shape === "operation-member" ? "inline" : "linked" });
+      }
+      for (const envelope of envelopes) if (envelope.parent === undefined) facts.set(envelope.runId, null);
+      return facts;
+    },
     checkpoints,
     getRun: (runId) => records.get(runId),
     put: (record) => records.set(record.envelope.runId, record),

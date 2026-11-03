@@ -1,3 +1,4 @@
+import { isQueueMember, isQueueTopLevel, type QueueParent } from "../../../models/dashboard/queue-parent.js";
 import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import type { WorkerSlotRecord } from "../../../models/run/worker-slot.js";
 import { displayScalar } from "../queries/data.js";
@@ -119,7 +120,7 @@ interface WorkerFold {
 export interface ServedSummaryQueries {
   withSnapshot<T>(read: () => T): T;
   queue(input: { fromDay: string; toDay: string; limit: number; topLevel: boolean; after?: { localDay: string; runId: string } }): {
-    items: readonly { runId: string; localDay: string; shape: string; title: string; status: QueueSurfaceWire["status"]; children: readonly { runId: string }[] }[];
+    items: readonly { runId: string; localDay: string; shape: string; parent: QueueParent | null; title: string; status: QueueSurfaceWire["status"]; children: readonly { runId: string }[] }[];
     next: { localDay: string; runId: string } | null;
   };
   itemAttempts(day: string, items: readonly { workflowId: string; itemId: string }[]): readonly RunRecord[];
@@ -140,6 +141,7 @@ export interface RunQueueProjectionDeps {
   };
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
+    queueParents(envelopes: readonly RunRecord["envelope"][]): ReadonlyMap<string, QueueParent | null>;
     delegationWait?(runId: string): DelegationWaitState | null;
     reviewAvailable?(runId: string): boolean;
     /** Durable inbox rows served by day. */
@@ -210,11 +212,19 @@ interface CanonicalProjectionSnapshot {
   readonly children: ReadonlyMap<string, readonly RunRecord[]>;
 }
 
+interface QueueReadContext {
+  runs: Map<string, RunRecord>;
+  parents: Map<string, QueueParent | null>;
+  links: Map<string, LinkedRunView>;
+  receipts: Map<string, ReceiptView | undefined>;
+  titles: Map<string, string>;
+}
+
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 
-function surfaceKindOf(shape: RunQueuedWire["shape"]): "single" | "preview" | "operation" | "member" {
+function surfaceKindOf(shape: RunQueuedWire["shape"]): "single" | "preview" | "operation" {
   if (shape === "operation") return "operation";
-  if (shape === "operation-member") return "member";
+  if (shape === "operation-member") return "single";
   return shape;
 }
 
@@ -280,7 +290,7 @@ interface LinkedRunView {
   readonly workflowId: string;
   readonly label: string;
   readonly panelKind: "run" | "member" | "group";
-  readonly status: string;
+  readonly status: QueueSurfaceWire["status"];
 }
 
 
@@ -504,9 +514,10 @@ export class RunQueueProjection {
     });
     return this.#deps.reader.withRunTreeSnapshot(present, runs => {
       const byId = new Map<string, RunRecord>(runs.map(run => [run.envelope.runId, run])), children = canonicalRunChildren(runs);
+      const context = this.#readContext(runs);
       return runIds.flatMap(runId => {
         const run = byId.get(runId);
-        return run === undefined ? [] : [this.#surface(this.#rows.get(runId), run, children.get(runId) ?? [])];
+        return run === undefined ? [] : [this.#surface(this.#rows.get(runId), run, children.get(runId) ?? [], context)];
       });
     });
   }
@@ -714,7 +725,9 @@ export class RunQueueProjection {
     const changes: RunQueueProjectionChange[] = [];
     let snapshotNeeded = affected.workerChanged;
     let batchPresentationChanged = false;
+    let crossDayMembersChanged = false;
     const { byId, children } = snapshot;
+    const context = this.#readContext(snapshot.runs);
     const affectedIds = new Set(affected.runIds);
     for (const runId of affected.runIds) {
       const path = new Set<string>();
@@ -726,6 +739,7 @@ export class RunQueueProjection {
         current = byId.get(current.envelope.parent.runId);
       }
     }
+    for (const runId of [...affectedIds]) for (const child of children.get(runId) ?? []) affectedIds.add(child.envelope.runId);
     for (const runId of affectedIds) {
       const row = this.#rows.get(runId);
       const authority = byId.get(runId);
@@ -740,7 +754,7 @@ export class RunQueueProjection {
         continue;
       }
       const day = localDatePart(new Date(authority.envelope.enqueuedAt));
-      const replacement = this.#surface(row, authority, children.get(runId) ?? []);
+      const replacement = this.#surface(row, authority, children.get(runId) ?? [], context);
       const batch = replacement.session;
       if (batch.state === "present" && batch.presentation !== undefined
         && this.#publishedBatchVersions.get(batch.sessionId) !== batch.presentation.version) {
@@ -749,12 +763,21 @@ export class RunQueueProjection {
         batchPresentationChanged = true;
         snapshotNeeded = true;
       }
-      const countNeutral = replacement.surfaceKind === "member"
+      const countNeutral = !isQueueTopLevel(replacement)
         ? previousStatus !== undefined
         : previousStatus === replacement.status;
       const surface = JSON.stringify(replacement);
       this.#notifiedRows.set(runId, { status: replacement.status, surface });
       if (!affected.runIds.includes(runId) && previous?.surface === surface) continue;
+      let holder = authority;
+      while (holder.envelope.parent !== undefined) {
+        if (this.#parentFact(context, holder)?.visibility === "linked") break;
+        const parent = byId.get(holder.envelope.parent.runId);
+        if (parent === undefined) throw new ProjectionDegradedError("queue-parent-source-unavailable");
+        if (localDatePart(new Date(parent.envelope.enqueuedAt)) !== day) crossDayMembersChanged = true;
+        holder = parent;
+      }
+      if (crossDayMembersChanged) snapshotNeeded = true;
       if (!countNeutral) {
         snapshotNeeded = true;
         continue;
@@ -772,7 +795,7 @@ export class RunQueueProjection {
     }
     if (snapshotNeeded) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint(snapshot.runs);
     if (snapshotNeeded) changes.push({ kind: "snapshot", cursor: this.cursor() });
-    const publications: readonly RunQueueProjectionChange[] = batchPresentationChanged
+    const publications: readonly RunQueueProjectionChange[] = batchPresentationChanged || crossDayMembersChanged
       ? [{ kind: "snapshot", cursor: this.cursor() }]
       : changes;
     for (const change of publications) {
@@ -1053,34 +1076,78 @@ export class RunQueueProjection {
   }
 
 
-  #containment(queued: RunRecord["envelope"]): "root" | "member" | "linked" {
-    if (queued.parent === undefined) return "root";
-    return queued.shape === "operation-member" ? "member" : "linked";
+  #readContext(runs: readonly RunRecord[] = []): QueueReadContext {
+    const parents = new Map<string, QueueParent | null>();
+    for (const run of runs) if (run.envelope.parent === undefined) parents.set(run.envelope.runId, null);
+    return { runs: new Map(runs.map(run => [run.envelope.runId, run])), parents, links: new Map(), receipts: new Map(), titles: new Map() };
   }
 
+  #readRun(context: QueueReadContext, runId: string): RunRecord {
+    const known = context.runs.get(runId);
+    if (known !== undefined) return known;
+    const existence = this.#deps.reader.read(runId);
+    if (existence.state !== "present" || existence.disposition !== "live") throw new ProjectionDegradedError("run-summary-source-missing");
+    context.runs.set(runId, existence.run);
+    return existence.run;
+  }
 
-  #linkedRuns(children: readonly RunRecord[]): readonly LinkedRunView[] {
-    return children.filter((child) => child.envelope.shape !== "operation-member").map((child) => ({
-      runId: child.envelope.runId,
-      partitionDay: localDatePart(new Date(child.envelope.enqueuedAt)),
-      workflowId: child.envelope.workflow,
-      label: this.#deps.descriptors.resolve(child.envelope.workflow)?.label ?? child.envelope.workflow,
-      panelKind: panelKindOf(child.envelope.shape),
-      status: this.#status(child),
-    }));
+  #parentFact(context: QueueReadContext, run: RunRecord): QueueParent | null {
+    if (run.envelope.parent === undefined) return null;
+    if (!context.parents.has(run.envelope.runId)) {
+      for (const [runId, parent] of this.#deps.authority.queueParents([run.envelope])) context.parents.set(runId, parent);
+    }
+    const parent = context.parents.get(run.envelope.runId);
+    if (parent === undefined || parent === null || parent.runId !== run.envelope.parent.runId) throw new ProjectionDegradedError("queue-parent-source-unavailable");
+    return parent;
+  }
+
+  #runLink(context: QueueReadContext, run: RunRecord): LinkedRunView {
+    const known = context.links.get(run.envelope.runId);
+    if (known !== undefined) return known;
+    const link = { runId: run.envelope.runId, partitionDay: localDatePart(new Date(run.envelope.enqueuedAt)),
+      workflowId: run.envelope.workflow, label: this.#deps.descriptors.resolve(run.envelope.workflow)?.label ?? run.envelope.workflow,
+      panelKind: panelKindOf(run.envelope.shape), status: this.#status(run) };
+    context.links.set(run.envelope.runId, link);
+    return link;
+  }
+
+  #receipt(context: QueueReadContext, run: RunRecord, status: QueueSurfaceWire["status"]): ReceiptView | undefined {
+    if (context.receipts.has(run.envelope.runId)) return context.receipts.get(run.envelope.runId);
+    const stored = TERMINAL_QUEUE_STATUSES.has(status) ? this.#deps.authority.getReceipt(run.envelope.runId) : undefined;
+    const receipt = stored === undefined ? undefined : projectReceiptForOperator(stored);
+    context.receipts.set(run.envelope.runId, receipt);
+    return receipt;
+  }
+
+  #title(context: QueueReadContext, run: RunRecord, receipt: ReceiptView | undefined): string {
+    const known = context.titles.get(run.envelope.runId);
+    if (known !== undefined) return known;
+    const descriptor = this.#deps.descriptors.resolve(run.envelope.workflow);
+    const title = (descriptor === undefined ? undefined : resolveResultTitle(descriptor, run, receipt?.value))
+      ?? this.#subjectTitle(run.envelope.workflow, run) ?? this.#rows.get(run.envelope.runId)?.queued.title ?? run.envelope.runId;
+    context.titles.set(run.envelope.runId, title);
+    return title;
+  }
+
+  #parentWire(context: QueueReadContext, run: RunRecord) {
+    const fact = this.#parentFact(context, run);
+    if (fact === null) return null;
+    const parent = this.#readRun(context, fact.runId), link = this.#runLink(context, parent);
+    return { ...link, ...fact, title: this.#title(context, parent, this.#receipt(context, parent, link.status)) };
+  }
+
+  #linkedRuns(children: readonly RunRecord[], context: QueueReadContext): readonly LinkedRunView[] {
+    return children.filter(child => this.#parentFact(context, child)?.visibility === "linked").map(child => this.#runLink(context, child));
   }
 
 
   #memberPreview(
     members: readonly RunRecord[],
+    context: QueueReadContext,
   ): { state: "present"; value: string } | { state: "absent"; reason: string } {
     if (members.length === 0) return { state: "absent", reason: "this group has fanned out to no members yet" };
     const shown = members.slice(0, MEMBER_PREVIEW_LIMIT).map((member) => {
-      const descriptor = this.#deps.descriptors.resolve(member.envelope.workflow);
-      const receipt = this.#deps.authority.getReceipt(member.envelope.runId);
-      return (descriptor === undefined ? undefined : resolveResultTitle(descriptor, member, receipt))
-        ?? this.#subjectTitle(member.envelope.workflow, member)
-        ?? this.#rows.get(member.envelope.runId)?.queued.title ?? member.envelope.runId;
+      return this.#title(context, member, this.#receipt(context, member, this.#status(member)));
     });
     const remaining = members.length - shown.length;
     return { state: "present", value: remaining > 0 ? `${shown.join(", ")} +${String(remaining)} more` : shown.join(", ") };
@@ -1148,20 +1215,19 @@ export class RunQueueProjection {
     return chips.length === 0 ? { state: "absent", reason: "this run has no applicable detail values" } : { state: "present", value: chips };
   }
 
-  #surfaceFold(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[]): SurfaceFold {
+  #surfaceFold(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[], context: QueueReadContext): SurfaceFold {
     const queued = authority.envelope;
+    context.runs.set(queued.runId, authority);
+    for (const child of children) context.runs.set(child.envelope.runId, child);
     const shape = queued.shape;
     const delegationWait = this.#deps.authority.delegationWait?.(queued.runId);
     const status = this.#status(authority, delegationWait);
     // Nonterminal rows read no receipt; terminal facts and warnings share one read.
-    const storedReceipt = TERMINAL_QUEUE_STATUSES.has(status)
-      ? this.#deps.authority.getReceipt(queued.runId)
-      : undefined;
-    const receipt = storedReceipt === undefined ? undefined : projectReceiptForOperator(storedReceipt);
+    const receipt = this.#receipt(context, authority, status);
     const warningVerdict = this.#warningVerdict(status, receipt);
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
 
-    const members = children.filter((member) => member.envelope.shape === "operation-member");
+    const members = children.filter(member => isQueueMember({ parent: this.#parentFact(context, member), status: this.#status(member) }));
     const memberChildIds = members.map((member) => member.envelope.runId);
     const failedTerminalMembers = members.filter((member) => member.lifecycle.state === "terminal" && member.lifecycle.outcome === "failed");
     const terminalMembers = members.filter((member) => member.lifecycle.state === "terminal");
@@ -1180,9 +1246,7 @@ export class RunQueueProjection {
       workflowId: queued.workflow,
       traceId: queued.traceId,
       attempt: queued.attempt,
-      lineage: queued.parent?.runId === undefined
-        ? { state: "root" }
-        : { state: "child", parentRunId: queued.parent?.runId },
+      parent: this.#parentWire(context, authority),
       ...(row === undefined ? {} : { actorId: row.queued.actorId }),
       // Use the enqueued app build; the serving build cannot describe when this run began.
       appVersion: authority.appVersion === undefined
@@ -1200,15 +1264,13 @@ export class RunQueueProjection {
       priority: authority.envelope.priority,
       runNumber: this.#runNumber(authority),
       session: this.#session(authority),
-      containment: this.#containment(queued),
-      linkedRuns: this.#linkedRuns(children),
+      linkedRuns: this.#linkedRuns(children, context),
       startedAt: queued.enqueuedAt,
       updatedAt: authority.updatedAt,
       endedAt: this.#endedAt(authority, status),
       gateOpenedAt: this.#gateOpenedAt(row, authority, status),
 
-      title: (descriptor === undefined ? undefined : resolveResultTitle(descriptor, authority, receipt?.value))
-        ?? this.#subjectTitle(queued.workflow, authority) ?? row?.queued.title ?? queued.runId,
+      title: this.#title(context, authority, receipt),
       displayName,
       subtitle: descriptor?.subtitleProjection !== undefined ? this.#resultSubtitle(authority, descriptor, receipt, descriptor.subtitleProjection.fieldPath) : row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
         && authority.input.parsed.value !== null && typeof authority.input.parsed.value === "object"
@@ -1251,7 +1313,7 @@ export class RunQueueProjection {
       }),
       rowRevision: authority.version,
     };
-    if (shape === "operation") {
+    if (shape === "operation" || members.length > 0) {
       return {
         warningVerdict,
         surface: QueueSurfaceWireSchema.parse({
@@ -1263,7 +1325,7 @@ export class RunQueueProjection {
             terminal: terminalMembers.length,
             failed: failedTerminalMembers.length,
           },
-          memberPreview: this.#memberPreview(members),
+          memberPreview: this.#memberPreview(members, context),
         }),
       };
     }
@@ -1273,8 +1335,8 @@ export class RunQueueProjection {
     };
   }
 
-  #surface(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[]): QueueSurfaceWire {
-    return this.#surfaceFold(row, authority, children).surface;
+  #surface(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[], context: QueueReadContext): QueueSurfaceWire {
+    return this.#surfaceFold(row, authority, children, context).surface;
   }
 
 
@@ -1295,23 +1357,22 @@ export class RunQueueProjection {
     const monthPrefix = parsedDay.slice(0, 7);
     const monthCounts = new Map<string, number>();
     const summaries = this.#deps.reader.summaries;
+    let context: QueueReadContext;
     if (summaries !== undefined) {
+      context = this.#readContext();
       let after: { localDay: string; runId: string } | undefined;
       const readLive = (runId: string): RunRecord => {
-        const existence = this.#deps.reader.read(runId);
-        if (existence.state !== "present" || existence.disposition !== "live") {
-          throw new ProjectionDegradedError("run-summary-source-missing");
-        }
-        return existence.run;
+        return this.#readRun(context, runId);
       };
       do {
         const page = summaries.queue({ fromDay: `${monthPrefix}-01`, toDay: new Date(Date.UTC(Number(parsedDay.slice(0, 4)), Number(parsedDay.slice(5, 7)), 0)).toISOString().slice(0, 10), limit: 500,
           topLevel: false, ...(after === undefined ? {} : { after }) });
+        for (const summary of page.items) context.parents.set(summary.runId, summary.parent);
         for (const summary of page.items) {
-          if (summary.shape !== "operation-member") monthCounts.set(summary.localDay, (monthCounts.get(summary.localDay) ?? 0) + 1);
+          if (isQueueTopLevel(summary)) monthCounts.set(summary.localDay, (monthCounts.get(summary.localDay) ?? 0) + 1);
           if (summary.localDay !== parsedDay) continue;
           const authority = readLive(summary.runId);
-          const surface = this.#surface(this.#rows.get(summary.runId), authority, summary.children.map(child => readLive(child.runId)));
+          const surface = this.#surface(this.#rows.get(summary.runId), authority, summary.children.map(child => readLive(child.runId)), context);
           if (surface.status !== summary.status) throw new ProjectionDegradedError("run-summary-status-stale");
           surfaces.push(surface);
         }
@@ -1320,17 +1381,35 @@ export class RunQueueProjection {
     } else {
       // Explicit fixture-only compatibility. Production composition always supplies summaries.
       const runs = listCanonicalRuns(this.#deps.reader, "live");
+      context = this.#readContext(runs);
       fixtureRuns = runs;
       const children = canonicalRunChildren(runs);
       for (const authority of runs) {
         const row = this.#rows.get(authority.envelope.runId);
         const rowDay = localDatePart(new Date(authority.envelope.enqueuedAt));
-        if (rowDay.startsWith(monthPrefix) && authority.envelope.shape !== "operation-member") {
+        if (rowDay.startsWith(monthPrefix) && isQueueTopLevel({ parent: this.#parentFact(context, authority) })) {
           monthCounts.set(rowDay, (monthCounts.get(rowDay) ?? 0) + 1);
         }
         if (rowDay !== parsedDay) continue;
-        surfaces.push(this.#surface(row, authority, children.get(authority.envelope.runId) ?? []));
+        surfaces.push(this.#surface(row, authority, children.get(authority.envelope.runId) ?? [], context));
       }
+    }
+    const selectedDayIds = new Set(surfaces.map(surface => surface.runId));
+    const related = new Map<string, RunRecord>();
+    for (;;) {
+      const included = new Set(surfaces.map(surface => surface.runId));
+      const missing = [...new Set(surfaces.flatMap(surface => surface.surfaceKind === "operation" ? surface.memberRunIds : []))]
+        .filter(runId => !included.has(runId));
+      if (missing.length === 0) break;
+      this.#deps.reader.withRunTreeSnapshot(missing, runs => {
+        const children = canonicalRunChildren(runs);
+        for (const run of runs) context.runs.set(run.envelope.runId, run);
+        for (const runId of missing) {
+          const run = this.#readRun(context, runId);
+          related.set(runId, run);
+          surfaces.push(this.#surface(this.#rows.get(runId), run, children.get(runId) ?? [], context));
+        }
+      });
     }
     const itemKey = (workflowId: string, itemId: string) => JSON.stringify([workflowId, itemId]);
     const visibleItems = new Map(surfaces.map(surface => [itemKey(surface.workflowId, surface.itemId),
@@ -1340,10 +1419,14 @@ export class RunQueueProjection {
       : summaries.itemAttempts(parsedDay, [...visibleItems.values()]);
     if (attempts === undefined) throw new ProjectionDegradedError("queue-attempt-history-unavailable");
     const surfaceByRunId = new Map(surfaces.map(surface => [surface.runId, surface]));
-    const attemptHistory = attempts.map(candidate => {
+    const attemptHistory = [...attempts, ...related.values()].map(candidate => {
       const envelope = candidate.envelope;
       const surface = surfaceByRunId.get(envelope.runId);
-      if (surface === undefined || localDatePart(new Date(envelope.enqueuedAt)) !== parsedDay
+      const parent = surface?.parent === null || surface?.parent === undefined ? undefined : surfaceByRunId.get(surface.parent.runId);
+      const relatedMember = related.has(envelope.runId) && surface !== undefined && isQueueMember(surface)
+        && parent?.surfaceKind === "operation" && parent.memberRunIds.includes(envelope.runId);
+      if (surface === undefined || (!selectedDayIds.has(envelope.runId) && !relatedMember)
+        || (!relatedMember && localDatePart(new Date(envelope.enqueuedAt)) !== parsedDay)
         || surface.workflowId !== envelope.workflow || surface.itemId !== envelope.itemId
         || surface.attempt !== envelope.attempt || Number(surface.rowRevision) !== Number(candidate.version)) {
         throw new ProjectionDegradedError("queue-attempt-history-membership-mismatch");
@@ -1354,7 +1437,7 @@ export class RunQueueProjection {
     surfaces.sort((a, b) => priorityOrder(a.priority) - priorityOrder(b.priority) || a.startedAt.localeCompare(b.startedAt) || a.runId.localeCompare(b.runId));
 
 
-    const countable = surfaces.filter((surface) => surface.surfaceKind !== "member");
+    const countable = surfaces.filter(isQueueTopLevel);
     const workflowCounts = new Map<string, number>();
     const statusCounts = new Map<string, number>();
 
@@ -1488,6 +1571,7 @@ export class RunQueueProjection {
     const inRange: { day: string; fold: SurfaceFold; authority: RunRecord }[] = [];
     const personRows: RunRecord[] = [];
     const runs = listCanonicalRuns(this.#deps.reader, "live");
+    const context = this.#readContext(runs);
     const children = canonicalRunChildren(runs);
     for (const authority of runs) {
       const row = this.#rows.get(authority.envelope.runId);
@@ -1497,8 +1581,8 @@ export class RunQueueProjection {
       if (authority.envelope.shape !== "operation" && authority.envelope.workflow === "separations") personRows.push(authority);
       // Member containment, applied once: a member counted inside its
       // operation's rollup is not counted again at top level.
-      if (authority.envelope.shape === "operation-member") continue;
-      inRange.push({ day, fold: this.#surfaceFold(row, authority, children.get(authority.envelope.runId) ?? []), authority });
+      if (!isQueueTopLevel({ parent: this.#parentFact(context, authority) })) continue;
+      inRange.push({ day, fold: this.#surfaceFold(row, authority, children.get(authority.envelope.runId) ?? [], context), authority });
     }
 
     const people = activityPeopleOf(

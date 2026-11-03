@@ -99,6 +99,14 @@ refresh every waiting ancestor. A manual retry pauses its parent through the exi
 Resume binds its native command identity to the exact completed retry receipts before another claim. Delegated Retry uses
 the same checkpoint, transaction and uncertain-write validation as checkpoint recovery.
 
+Queue parentage derives from authenticated native manifests and their complete retry histories.
+Read-only snapshots share authenticated groups only for identical canonical manifest content and
+return isolated copies. Wait results share the same synchronous snapshot lifetime. Neither cache
+survives snapshot exit, an await or a mutation; scope-path-sensitive replay authentication stays direct.
+Queue reads batch sibling parentage and reuse run, title and receipt joins within that read. Member
+previews slice before joining authority. Calendar population uses indexed parent batches and day
+aggregates rather than materializing every run summary.
+
 Worker composition renews its own lease every `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`.
 Heartbeat age never proves death or transfers a claim. Recovery follows actual child exit or
 exclusive startup; workers do not reclaim each other's runs or leases.

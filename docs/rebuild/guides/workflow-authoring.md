@@ -271,6 +271,9 @@ A delegate declares `target: { id, input, result }`, `edgeId`, `cardinality`, `a
 `none/none`. It returns `DelegationManifestRef` without a wait or typed child outcomes after terminal
 waits. It uses child-run authority.
 
+Set `capabilities.delegationDisplay` for the workflow's default visibility. Omit an edge's
+`policy.visibility` to inherit it; an explicit edge choice wins. With neither setting, it is `inline`.
+
 Put independent delegates in the same parallel step when every fan-out must be admitted together.
 The runtime commits all of them before one claim release and waits for their awaited outcomes.
 Give each delegate its own target schemas, edge, policy and cardinality. A form needing only one

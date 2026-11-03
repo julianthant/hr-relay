@@ -132,7 +132,7 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     assert.equal(w.projection.buildDashboardDayWire(DAY).queueSurfaces[0].priority, "interactive");
   });
 
-  it("classifies containment from shape and lineage, and chips only the linked children", async () => {
+  it("projects one parent fact and chips only linked children", async () => {
 
     const w = await world({ descriptors: { resolve: () => ({ ...personLookupDescriptor, titleProjection: undefined }) } });
     queuedEventOf(w, { seed: 1, shape: "operation" });
@@ -148,9 +148,9 @@ describe("the queue row's ordinal, class, links and outcome", () => {
     const member = byRun.get(uuidOf(2));
     const linked = byRun.get(uuidOf(4));
     assert.ok(group !== undefined && member !== undefined && linked !== undefined);
-    assert.equal(group.containment, "root");
-    assert.equal(member.containment, "member");
-    assert.equal(linked.containment, "linked");
+    assert.equal(group.parent, null);
+    assert.deepEqual(member.parent, { runId: group.runId, visibility: "inline", partitionDay: DAY, workflowId: group.workflowId, label: personLookupDescriptor.label, title: group.title, panelKind: group.panelKind, status: group.status });
+    assert.deepEqual(linked.parent, { ...member.parent, visibility: "linked" });
 
     // The two partitions are disjoint: the linked child is chipped and NOT
     // counted, the members are counted and NOT chipped.

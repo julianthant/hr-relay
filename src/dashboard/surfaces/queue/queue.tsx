@@ -1,6 +1,6 @@
 import type { QueueBusinessOutcome } from "../shared/status/status-model.js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
-import { memo, useMemo, useState } from "react";
+import { Fragment, memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Pause } from "lucide-react";
 import { cn } from "../../lib/utils.js";
@@ -40,7 +40,6 @@ import type { QueueSortKey } from "./queue-model.js";
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
 import {
   type LinkedRunWire,
-  type MemberSurfaceWire,
   type OperationSurfaceWire,
   type PipelineStep,
   type QueueSurfaceWire,
@@ -96,23 +95,17 @@ export interface QueueHandlers {
   onPreviewAction?: (action: 'retry' | 'delete', ids: readonly string[]) => void;
   /** Mark a loaded member checked by you. This has no authority effect. */
   /** Jump to the run that delegated this one — the panel switch AND the selection */
-  onOpenParent?: (runId: string) => void;
+  onOpenParent?: (parent: NonNullable<QueueSurfaceWire["parent"]>) => void;
   /** Jump to a run this row DELEGATED TO . Same shape as
  * `onOpenParent` and separate from it on purpose: the wire hands the whole */
   onOpenLinked?: (link: LinkedRunWire) => void;
 }
 
-/** What a row needs to draw a route back to its parent: the parent's own
- * identity and status, resolved from the SERVED day projection. It answers */
-export type QueueParentLookup = (
-  parentRunId: string,
-) => { runId: string; title: string; workflowLabel: string; status: ProposedStatus } | undefined;
-
 /** How a surface reaches its served actions. The default is honest emptiness. */
 export type QueueActionsOf = (surface: QueueSurfaceWire) => readonly ActionDescriptorWire[];
 
 const NO_ACTIONS: QueueActionsOf = () => [];
-const NO_MEMBERS: readonly MemberSurfaceWire[] = [];
+const NO_MEMBERS: readonly QueueSurfaceWire[] = [];
 
 /** the band ordering and its sort vocabulary live in `queue-model.ts` — see the note there */
 export type { QueueSortKey };
@@ -366,7 +359,7 @@ function MemberWell({
 }
 
 function MemberLine({ surface, item, selected, onSelect }: {
-  surface: MemberSurfaceWire;
+  surface: QueueSurfaceWire;
   item: QueueItemGroup;
   selected: boolean;
   onSelect: (runId: string) => void;
@@ -416,17 +409,19 @@ function GroupMemberList({
   surface,
   itemKey,
   members,
+  membersOf,
   state,
   handlers,
 }: {
   surface: OperationSurfaceWire;
   itemKey: string;
-  members: readonly MemberSurfaceWire[];
+  members: readonly QueueSurfaceWire[];
+  membersOf?: ReadonlyMap<string, readonly QueueSurfaceWire[]>;
   state: QueueViewState;
   handlers: QueueHandlers;
 }) {
   const itemGroups = groupQueueAttempts(members);
-  const ordered = orderMembers(itemGroups.map((item) => item.representative) as MemberSurfaceWire[]);
+  const ordered = orderMembers(itemGroups.map((item) => item.representative));
   const wellOpen = state.openWells.has(itemKey);
   const canExpand = ordered.length > MEMBER_WELL_LINES;
   /** Offer roster navigation only when its destination handler exists. */
@@ -507,8 +502,17 @@ function GroupMemberList({
             if (item === undefined) throw new Error(`member list lost item ${String(member.itemId)}`);
             const visible = item.attempts.find((attempt) => String(attempt.runId) === state.selectedRunId) ?? member;
             const selected = item.attempts.some((attempt) => String(attempt.runId) === state.selectedRunId);
-            return <MemberLine key={item.key} surface={visible as MemberSurfaceWire} item={item} selected={selected}
-              onSelect={handlers.onSelect} />;
+            return <Fragment key={item.key}>
+              <MemberLine surface={visible} item={item} selected={selected} onSelect={handlers.onSelect} />
+              {(visible.linkedRuns.length > 0 || visible.surfaceKind === "operation" && visible.memberRunIds.length > 0) && <tr><td colSpan={2}>
+                {visible.linkedRuns.length > 0 && <div className="flex flex-wrap gap-2 px-3 py-2">
+                  {visible.linkedRuns.map(link => <LinkedRunChip key={link.runId} link={link} onOpen={() => handlers.onOpenLinked?.(link)} />)}
+                </div>}
+                {visible.surfaceKind === "operation" && visible.memberRunIds.length > 0 && <GroupMemberList
+                  surface={visible} itemKey={item.key} members={membersOf?.get(visible.runId) ?? NO_MEMBERS}
+                  membersOf={membersOf} state={state} handlers={handlers} />}
+              </td></tr>}
+            </Fragment>;
           })}
         </tbody>
       </table>
@@ -567,14 +571,14 @@ function ParentBackChip({
   parent,
   onOpen,
 }: {
-  parent: NonNullable<ReturnType<QueueParentLookup>>;
+  parent: NonNullable<QueueSurfaceWire["parent"]>;
   onOpen: () => void;
 }) {
   return (
     <PanelRedirectChip
-      label={parent.workflowLabel}
-      status={parent.status}
-      title={`${parent.workflowLabel} · ${parent.title} — the run that delegated this one`}
+      label={parent.label}
+      status={dsStatusOf(parent.status)}
+      title={`${parent.label} · ${parent.title} — the run that delegated this one`}
       onOpen={onOpen}
     />
   );
@@ -644,24 +648,23 @@ export function QueueRow({
   surface,
   itemGroup,
   members = NO_MEMBERS,
+  membersOf,
   state,
   handlers,
   actionsOf = NO_ACTIONS,
   workflowLabelOf,
-  parentOf,
   deferOffscreen = false,
 }: {
   outcome?: QueueBusinessOutcome;
   surface: QueueSurfaceWire;
   itemGroup?: QueueItemGroup;
   /** the joined member surfaces, for an operation row */
-  members?: readonly MemberSurfaceWire[];
+  members?: readonly QueueSurfaceWire[];
+  membersOf?: ReadonlyMap<string, readonly QueueSurfaceWire[]>;
   state: QueueViewState;
   handlers: QueueHandlers;
   actionsOf?: QueueActionsOf;
   workflowLabelOf: (workflowId: string) => string;
-  /** Resolve parents across the whole day because delegation can cross workflows. */
-  parentOf?: QueueParentLookup;
   deferOffscreen?: boolean;
 }) {
   const status = dsStatusOf(surface.status);
@@ -677,7 +680,7 @@ export function QueueRow({
   /** Hide a group’s redundant subline while its member evidence is visible. */
   const subline =
     membersVisible || surface.liveMessage.state !== "present" ? undefined : surface.liveMessage.value;
-  const parent = surface.lineage.state === "child" ? parentOf?.(surface.lineage.parentRunId) : undefined;
+  const parent = surface.parent ?? undefined;
   /** Redirects own spare width; neighboring facts retain readable natural widths. */
   const hasRedirect = parent !== undefined || surface.linkedRuns.length > 0;
   const { onToggleBulk, onAction } = handlers;
@@ -810,6 +813,7 @@ export function QueueRow({
                   surface={surface}
                   itemKey={itemGroup?.key ?? String(surface.runId)}
                   members={members}
+                  membersOf={membersOf}
                   state={state}
                   handlers={handlers}
                 />
@@ -828,7 +832,7 @@ export function QueueRow({
                   <LinkedRunChip key={link.runId} link={link} onOpen={() => handlers.onOpenLinked?.(link)} />
                 ))}
                 {parent !== undefined && (
-                  <ParentBackChip parent={parent} onOpen={() => handlers.onOpenParent?.(parent.runId)} />
+                  <ParentBackChip parent={parent} onOpen={() => handlers.onOpenParent?.(parent)} />
                 )}
                 {surface.facts.state === "present"
                   && surface.facts.value.map((fact) => (
@@ -868,11 +872,17 @@ const MemoQueueRow = memo(QueueRow, (before, after) => {
   if (!shallowEqual(beforeProps, afterProps) || !shallowEqual(beforeHandlers, afterHandlers)
     || !shallowEqual(beforeView, afterView)) return false;
   if (beforeSelected === afterSelected) return true;
-  const belongs = (id: string | undefined): boolean => id !== undefined && (
-    String(after.surface.runId) === id
-    || after.itemGroup?.attempts.some(attempt => String(attempt.runId) === id) === true
-    || after.members?.some(member => String(member.runId) === id) === true
-  );
+  const belongs = (id: string | undefined): boolean => {
+    if (id === undefined) return false;
+    if (String(after.surface.runId) === id || after.itemGroup?.attempts.some(attempt => String(attempt.runId) === id)
+      || after.members?.some(member => String(member.runId) === id)) return true;
+    const descendants = new Set([String(after.surface.runId)]);
+    for (const parentId of descendants) for (const member of after.membersOf?.get(parentId) ?? []) {
+      if (member.runId === id) return true;
+      descendants.add(member.runId);
+    }
+    return false;
+  };
   return !belongs(beforeSelected) && !belongs(afterSelected);
 });
 
@@ -884,7 +894,6 @@ export const QueuePanel = memo(function QueuePanel({
   handlers,
   actionsOf = NO_ACTIONS,
   workflowLabelOf,
-  parentOf,
   panelLabel,
   day,
   isToday = false,
@@ -900,7 +909,6 @@ export const QueuePanel = memo(function QueuePanel({
   handlers: QueueHandlers;
   actionsOf?: QueueActionsOf;
   workflowLabelOf: (workflowId: string) => string;
-  parentOf?: QueueParentLookup;
   /** the Workflow Panel entry this queue is scoped to — the header's one word */
   panelLabel: string;
   /** the day partition these rows came from, as `YYYY-MM-DD`; formatted here */
@@ -1043,12 +1051,12 @@ export const QueuePanel = memo(function QueuePanel({
                     outcome={outcomes?.get(String(visible.runId))}
                     itemGroup={item}
                     members={membersOf.get(String(visible.runId)) ?? NO_MEMBERS}
+                    membersOf={membersOf}
                     deferOffscreen={displayTop.length > 100}
                     state={state}
                     handlers={handlers}
                     actionsOf={actionsOf}
                     workflowLabelOf={workflowLabelOf}
-                    {...(parentOf === undefined ? {} : { parentOf })}
                   />;
                 };
                 return renderRow(surface);
