@@ -13,7 +13,7 @@ import { createProfileOnboardingDuoProvider } from "../../../../src/backend/runt
 import type { DraftDuoBrowserOwner } from "../../../../src/backend/profiles/onboarding-duo.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
-import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../../src/backend/app/composition/storage-compose.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { SignUpOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
@@ -232,6 +232,7 @@ for (const scenario of ["software", "abort", "timeout", "platform", "scope-refus
     password: "synthetic-enrollment-password", createdAt: systemClock.now().toISOString() });
   assert.equal(draft.state, "onboarding");
   if (draft.state !== "onboarding") throw new Error("synthetic draft missing");
+  let failure: unknown;
   try {
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
     assert.ok(context);
@@ -290,8 +291,16 @@ for (const scenario of ["software", "abort", "timeout", "platform", "scope-refus
         assert.doesNotMatch(JSON.stringify(events), /synthetic-enrollment@ucsd.edu|synthetic-enrollment-password|synthetic-handle|synthetic-enrollment-challenge|privateKey|publicKey|stack/);
       });
     } finally { debugAdmission.release(); }
-  } finally {
-    try { await profile.close(); }
-    finally { try { await context?.close(); } finally { machine.release(); } }
-  }
+  } catch (error) { failure = error; }
+  try {
+    if (profile.session.readOnboarding(draft.token, draft.operationId).methods.key.state === "unknown") {
+      await assert.rejects(profile.close(), error => error instanceof RuntimeCustodyUncertainError
+        && error.errors.some(cause => cause instanceof AggregateError && cause.message === "profile-onboarding-custody-unproved"));
+    } else await profile.close();
+  } catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "enrollment fixture and profile cleanup failed"); }
+  try { await context?.close(); }
+  catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "enrollment fixture and browser cleanup failed"); }
+  try { machine.release(); }
+  catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "enrollment fixture and admission cleanup failed"); }
+  if (failure !== undefined) throw new Error("enrollment fixture failed", { cause: failure });
 });
