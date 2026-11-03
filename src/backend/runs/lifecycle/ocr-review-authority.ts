@@ -1,48 +1,42 @@
-import { OcrReviewRevisionSchema, initialOcrReviewRecords, ocrReviewDigest, ocrSnapshotDigest, type OcrReviewRevision } from "../../../models/ocr/review.js";
-import { OcrResultSchema, OcrApprovalReferenceSchema } from "../../../models/workflows/ocr/result.js";
-import { checkpointRecordKey, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import { timelineCheckpointReference } from "../../../models/events/timeline.js";
+import { OcrReviewRevisionSchema,initialOcrReviewRecords,ocrReviewDigest,ocrSnapshotDigest,type OcrReviewRevision } from "../../../models/ocr/review.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import type { RunRecordService } from "./run-record-service.js";
-import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
-import { authenticateDescendantHome, readDelegationEvidence } from "../../storage/sqlite/delegation-authority.js";
+import { delegationEvidenceOutput } from "../../../models/run/result.js";
+import { I9SignerOutputSchema } from "../../../models/systems/i9/read-section2-signer.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { checkpointLookupKey,checkpointRecordKey,type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import type { OperatorGateResultRecord } from "../../../models/workflow/gates.js";
+import { childRunOutcomeSchema } from "../../../models/workflow/graph.js";
+import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
+import { OcrApprovalReferenceSchema,OcrResultSchema } from "../../../models/workflows/ocr/result.js";
+import { PersonLookupResultSchema } from "../../../models/workflows/person-lookup/result.js";
+import type { CommandRequest } from "../../../rules/commands/commands.js";
+import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import type { CommandRequest } from "../../../rules/commands/commands.js";
-import { delegationEvidenceOutput } from "../../../models/run/result.js";
-import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
-import { PersonLookupResultSchema } from "../../../models/workflows/person-lookup/result.js";
-import { timelineCheckpointReference } from "../../../models/events/timeline.js";
-import { readContinuationGate, validateRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
-import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
+import { BUILD_MANIFEST,resolveWorkflowFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
+import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import { authenticateDescendantHome,readDelegationEvidence } from "../../storage/sqlite/delegation-authority.js";
+import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
+import { RunContinuationRefusedError,readContinuationGate,validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
 import { CanonicalTransitionRequestSchema } from "../../storage/sqlite/run-store-contracts.js";
-import { BUILD_MANIFEST, resolveWorkflowFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
-import type { OperatorGateResultRecord } from "../../../models/workflow/gates.js";
+import type { RunRecordService } from "./run-record-service.js";
 
 function same(left: unknown, right: unknown): boolean { return canonicalJsonStringify(left) === canonicalJsonStringify(right); }
-export class OcrReviewRefusedError extends Error {
-  readonly code = "OCR_REVIEW_REFUSED";
-  constructor(options?: ErrorOptions) { super("OCR_REVIEW_REFUSED", options); this.name = "OcrReviewRefusedError"; }
-}
 export function authenticateOcrOperator(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, run: RunRecord): "local-operator" {
-  try {
-    let root = run;
-    const visited = new Set<string>();
-    while (root.envelope.parent !== undefined) {
-      if (visited.size >= 16 || visited.has(root.envelope.runId)) throw new OcrReviewRefusedError();
-      visited.add(root.envelope.runId);
-      const parent = reader.read(root.envelope.parent.runId);
-      if (parent.state !== "present" || parent.disposition !== "live") throw new OcrReviewRefusedError();
-      root = parent.run;
-    }
-    if (!authenticateDescendantHome(repositories, run, root.envelope.workflow)
-      || authenticateRootRun(repositories, root).command.requestedBy !== "local-operator") throw new OcrReviewRefusedError();
-    return "local-operator";
-  } catch (cause) {
-    if (cause instanceof OcrReviewRefusedError) throw cause;
-    throw new OcrReviewRefusedError({ cause });
+  let root = run;
+  const visited = new Set<string>();
+  while (root.envelope.parent !== undefined) {
+    if (visited.size >= 16 || visited.has(root.envelope.runId)) throw new OcrReviewRefusedError();
+    visited.add(root.envelope.runId);
+    const parent = reader.read(root.envelope.parent.runId);
+    if (parent.state !== "present" || parent.disposition !== "live") throw new OcrReviewRefusedError();
+    root = parent.run;
   }
+  if (!authenticateDescendantHome(repositories, run, root.envelope.workflow)
+    || authenticateRootRun(repositories, root).command.requestedBy !== "local-operator") throw new OcrReviewRefusedError();
+  return "local-operator";
 }
 
 export function publishOcrReview(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
@@ -52,8 +46,11 @@ export function publishOcrReview(repositories: AuthorityRepositories, reader: Pi
   if (seed.review.sourceRunId !== undefined && seed.review.sourceRunId !== run.envelope.runId) throw new OcrReviewRefusedError();
   const pages = readDelegationEvidence(repositories, run.envelope.runId, "read-pages");
   const identities = readDelegationEvidence(repositories, run.envelope.runId, "lookup-identities");
+  const signers = readDelegationEvidence(repositories, run.envelope.runId, "lookup-signers");
   if (!same(delegationEvidenceOutput(pages, OcrPageReadingSchema), seed.review.accounting.outcomes)
-    || !same(delegationEvidenceOutput(identities, PersonLookupResultSchema), seed.identities.map(entry => entry.outcome))) {
+    || !same([...childRunOutcomeSchema(PersonLookupResultSchema).array().parse(delegationEvidenceOutput(identities, PersonLookupResultSchema)),
+      ...childRunOutcomeSchema(I9SignerOutputSchema).array().parse(delegationEvidenceOutput(signers, I9SignerOutputSchema))],
+      seed.identities.map(entry => entry.outcome))) {
     throw new OcrReviewRefusedError();
   }
   for (const outcome of seed.review.accounting.outcomes) {
@@ -96,10 +93,16 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
       const checkpoint = repositories.runCheckpoints.listByAttempt(existence.run.envelope.workflow,
         existence.run.envelope.itemId, "read-result", existence.run.envelope.attempt)
         .find(row => checkpointRecordKey(row) === (record.origin.kind === "checkpoint" ? record.origin.key : ""));
+      const publication = checkpoint === undefined ? undefined : repositories.timelineEvents.get(deriveStableUuid("timeline-checkpoint-recorded",
+        checkpointLookupKey(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration)));
       if (checkpoint === undefined || checkpoint.runId !== runId || !same(checkpoint.output.value, record.seed)
         || checkpoint.contractFingerprint !== existence.run.envelope.contractFingerprint
         || checkpoint.descriptorVersion !== existence.run.envelope.descriptorVersion
-        || checkpoint.output.schemaHash !== deriveSchemaHash(OcrResultSchema, "output")
+        || publication?.payload.kind !== "checkpoint-recorded" || publication.workflow !== checkpoint.workflowId
+        || publication.scope.kind !== "run" || publication.scope.runId !== runId || publication.occurredAt !== checkpoint.writtenAt
+        || publication.payload.runId !== runId || publication.payload.workflow !== checkpoint.workflowId
+        || publication.payload.attempt !== checkpoint.attempt || publication.payload.claimGeneration !== checkpoint.claimGeneration
+        || !same(publication.payload.checkpoint, timelineCheckpointReference(checkpoint))
         || record.origin.digest !== sha256Hex(canonicalJsonStringify(checkpoint))
         || !same(record.origin.checkpoint, timelineCheckpointReference(checkpoint)) || record.createdAt !== checkpoint.writtenAt
         || !same(record.records, initialOcrReviewRecords(record.seed))) throw new OcrReviewRefusedError();

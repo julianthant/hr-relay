@@ -17,7 +17,7 @@ import { ReadWorkbookResult } from '../../src/models/processing/workbooks/read-r
 import { defineCanonicalInput } from '../../src/models/workflow/canonical-input.js';
 import { STANDARD_WORKFLOW_ACTIONS } from '../../src/models/workflow/presentation.js';
 import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from '../../src/models/dashboard/bootstrap.js';
-import { RunWorkbookReferenceSchema } from '../../src/models/dashboard/workbooks.js';
+import { RunWorkbookNamedReferenceSchema } from '../../src/models/dashboard/workbooks.js';
 import { StartPlanWireSchema, type StartPlanWire } from '../../src/models/dashboard/start-plan.js';
 import { EidSchema } from '../../src/rules/identity/ids.js';
 import { systemIdFactory } from '../../src/rules/identity/identifiers.js';
@@ -107,7 +107,7 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       expect(Object.keys(request.workbookReferences[0]).sort()).toEqual(['entry', 'libraryId', 'typeId', 'versionId']);
       if (!planned) throw new Error('reference-plan-not-retained');
       const retained = h.database.authority.startPlans.get(planned.startPlanId); if (!retained) throw new Error('reference-plan-missing');
-      const bound = RunWorkbookReferenceSchema.parse(retained.planned[0].workbookReferences?.[0].value);
+      const bound = RunWorkbookNamedReferenceSchema.parse(retained.planned[0].workbookReferences?.[0].value);
       expect(bound.snapshot.versionId).toBe(version!.id);
       expect(bound.snapshot.rows[0].matches[0].values.fullName).toBe('Earlier person');
       await capturePresentationReference(page, info, 'confirm', hash);

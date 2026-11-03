@@ -8,8 +8,9 @@ import { matchRosterSubjects, RosterRowFactsSchema, RosterSubjectMatchSchema } f
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { OcrPageAccountingSchema } from "./page-accounting.js";
+import { OcrWorkbookRosterEvidenceSchema } from "./roster.js";
 
-export const OcrRosterEvidenceSchema = z.strictObject({
+const OcrArtifactRosterEvidenceSchema = z.strictObject({
   artifact: ArtifactRefSchema,
   readAt: IsoInstantSchema,
   rows: z.array(RosterRowFactsSchema),
@@ -18,6 +19,7 @@ export const OcrRosterEvidenceSchema = z.strictObject({
     context.addIssue({ code: "custom", message: "OCR roster evidence contains duplicate source rows" });
   }
 });
+export const OcrRosterEvidenceSchema = z.union([OcrWorkbookRosterEvidenceSchema, OcrArtifactRosterEvidenceSchema]);
 
 export const OcrReviewSeedInputSchema = z.strictObject({
   sourceRunId: RunIdSchema.optional(),

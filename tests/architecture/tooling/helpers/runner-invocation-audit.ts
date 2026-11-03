@@ -472,7 +472,27 @@ export function auditSoleRunnerInvocation(
       return ts.isComputedPropertyName(name) ? staticSpecifier(name.expression) : undefined;
     };
     const activeProperties = new Map<ts.Expression, Set<string>>();
+    const completePropertyQueries = new Map<ts.Expression, Map<string, readonly ts.Expression[]>>();
     const packedPropertyValues = (
+      raw: ts.Expression,
+      property: string,
+      resolving: ReadonlySet<ts.Node>,
+    ): readonly ts.Expression[] => {
+      const expression = unwrapped(raw);
+      const complete = resolving.size === 0 && activeProperties.size === 0;
+      if (complete) {
+        const cached = completePropertyQueries.get(expression)?.get(property);
+        if (cached !== undefined) return cached;
+      }
+      const values = computePackedPropertyValues(expression, property, resolving);
+      if (complete) {
+        const queries = completePropertyQueries.get(expression) ?? new Map<string, readonly ts.Expression[]>();
+        queries.set(property, values);
+        completePropertyQueries.set(expression, queries);
+      }
+      return values;
+    };
+    const computePackedPropertyValues = (
       raw: ts.Expression,
       property: string,
       resolving: ReadonlySet<ts.Node>,

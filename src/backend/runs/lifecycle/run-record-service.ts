@@ -1,76 +1,77 @@
-import { authenticateWorkbookReferenceExecution } from "../workbooks.js";
-import { assertRunRecoveryCommandScope, planRunRecovery, planDelegatedRetry } from "../start/recovery-plan.js";
-import { protectedSubjectDisplay } from "../start/protected-input.js";
-import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
-import { captureRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
-import { assertOcrRecoverySnapshotCurrent, OcrReviewRefusedError } from "./ocr-review-authority.js";
-import { assertCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
-import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
-import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
-import { assertWorkerResetParkedWrite } from "../../storage/sqlite/worker-control.js";
-import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
-import { WorkerControlRefusal, WorkerResetBindingSchema } from "../../../models/run/worker-control.js";
-import { authenticateParkedWriteRecheck, authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
-import { RunDeletionRefusedError } from "../../storage/sqlite/native-run-deletion.js";
-import { selectRunRuntime, runSettingsAvailable, selectNewRunIdentity } from "../settings/run-settings.js";
-import { delegatedCandidateEligible, runRuntimeMatches } from "./run-claim-admission.js";
-import { localDatePart } from "../../../rules/time/clock.js";
 import { z } from "zod";
-import { workflowPlanning, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import {
-  RunExistenceSchema,
-  type RunExistence,
-  type RunRecordRefusal,
+RunExistenceSchema,
+type RunExistence,
+type RunRecordRefusal,
 } from "../../../models/config/authority.js";
-import {
-  RunLifecycleCommandAuditRecordSchema,
-  RunLifecycleCommandFenceSchema,
-  RunLifecycleCommandRecordSchema,
-  type RunLifecycleCommandOperationSchema,
-} from "../../../rules/commands/commands.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
-import type { Clock } from "../../../rules/time/clock.js";
 import type { RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
-import { deriveItemId, deriveTraceId, lifecycleCommandId, type IdFactory } from "../../../rules/identity/identifiers.js";
-import {
-  IsoInstantSchema,
-  CommandIdSchema,
-  FingerprintSchema,
-  RunIdSchema,
-  NodeIdSchema,
-} from "../../../rules/identity/ids.js";
-import { nextAttemptEnvelope } from "../../../models/run/envelope.js";
-import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } from "../../../models/run/record.js";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { DeletedRunRecord } from "../../../models/run/deleted-run.js";
-import {
-  CanonicalPauseRequestSchema,
-  CanonicalAcknowledgePauseRequestSchema,
-  CanonicalCancellationTerminalizeRequestSchema,
-  CanonicalWriteResolutionTransitionRequestSchema,
-  CanonicalClaimNextRequestSchema,
-  CanonicalCreateRunRequestSchema,
-  CanonicalDeleteRequestSchema,
-  CanonicalFailureTerminalizeRequestSchema,
-  CanonicalListRunsRequestSchema,
-  CanonicalPurgeRequestSchema,
-  CanonicalRenewClaimRequestSchema,
-  CanonicalRequeueRequestSchema,
-  CanonicalRetrySourceRequestSchema,
-  CanonicalRecoverRunRequestSchema,
-  CanonicalSuccessTerminalizeRequestSchema,
-  CanonicalTerminalizeRequestSchema,
-  CanonicalTransitionRequestSchema,
-  CanonicalWorkerTransitionRequestSchema,
-} from "../../storage/sqlite/run-store-contracts.js";
-import type { AuthorityDatabase, AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { authenticateCancellationSource, assertResetCancellationAdmission, captureDelegationResume, authenticateDelegationResume, prepareDelegationRetry } from "../../storage/sqlite/delegation-authority.js";
-import { DelegationRetryRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
-import { admitDelegation } from "./delegation-admission.js";
-import type { ChildRunBatchContext } from "../../runtime/execution/run-executor.js";
+import { nextAttemptEnvelope } from "../../../models/run/envelope.js";
+import { runClaim,RunRecordSchema,runTransitionViolation,type RunRecord } from "../../../models/run/record.js";
+import { WorkerControlRefusal,WorkerResetBindingSchema } from "../../../models/run/worker-control.js";
+import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
 import type { DelegationPlan } from "../../../models/workflow/delegation.js";
 import type { AnyWorkflowRef } from "../../../models/workflow/graph.js";
+import { retainedRunProtectedBindings,valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
+import {
+RunLifecycleCommandAuditRecordSchema,
+RunLifecycleCommandFenceSchema,
+RunLifecycleCommandRecordSchema,
+type RunLifecycleCommandOperationSchema,
+} from "../../../rules/commands/commands.js";
+import { deriveItemId,deriveTraceId,lifecycleCommandId,type IdFactory } from "../../../rules/identity/identifiers.js";
+import {
+CommandIdSchema,
+FingerprintSchema,
+IsoInstantSchema,
+NodeIdSchema,
+RunIdSchema,
+} from "../../../rules/identity/ids.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { localDatePart } from "../../../rules/time/clock.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { authenticateParkedWriteRecheck,authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
+import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
+import { descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
+import type { ChildRunBatchContext } from "../../runtime/execution/run-executor.js";
+import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
+import type { AuthorityDatabase,AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
+import { assertCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
+import { assertResetCancellationAdmission,authenticateCancellationSource,authenticateDelegationResume,captureDelegationResume,prepareDelegationRetry } from "../../storage/sqlite/delegation-authority.js";
+import { DelegationRetryRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
+import { RunDeletionRefusedError } from "../../storage/sqlite/native-run-deletion.js";
+import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
+import { captureRunContinuation,RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
+import {
+CanonicalAcknowledgePauseRequestSchema,
+CanonicalCancellationTerminalizeRequestSchema,
+CanonicalClaimNextRequestSchema,
+CanonicalCreateRunRequestSchema,
+CanonicalDeleteRequestSchema,
+CanonicalFailureTerminalizeRequestSchema,
+CanonicalListRunsRequestSchema,
+CanonicalPauseRequestSchema,
+CanonicalPurgeRequestSchema,
+CanonicalRecoverRunRequestSchema,
+CanonicalRenewClaimRequestSchema,
+CanonicalRequeueRequestSchema,
+CanonicalRetrySourceRequestSchema,
+CanonicalSuccessTerminalizeRequestSchema,
+CanonicalTerminalizeRequestSchema,
+CanonicalTransitionRequestSchema,
+CanonicalWorkerTransitionRequestSchema,
+CanonicalWriteResolutionTransitionRequestSchema,
+} from "../../storage/sqlite/run-store-contracts.js";
+import { assertWorkerResetParkedWrite } from "../../storage/sqlite/worker-control.js";
+import { runSettingsAvailable,selectNewRunIdentity,selectRunRuntime } from "../settings/run-settings.js";
+import { protectedSubjectDisplay } from "../start/protected-input.js";
+import { assertRunRecoveryCommandScope,planDelegatedRetry,planRunRecovery } from "../start/recovery-plan.js";
+import { authenticateWorkbookReferenceExecution } from "../workbooks.js";
+import { admitDelegation } from "./delegation-admission.js";
+import { assertOcrRecoverySnapshotCurrent } from "./ocr-review-authority.js";
+import { delegatedCandidateEligible,runRuntimeMatches } from "./run-claim-admission.js";
 
 const TERMINAL_SELF_EDGE_REFUSAL = "terminal has no self-edge; a settled outcome is settled";
 

@@ -88,10 +88,12 @@ it("settles approval only from exact authenticated command, audit and snapshot r
   for (const [name, altered] of variants) {
     const sources = createOcrSourceService({ database: ocrProofReadDatabase(f.database, altered), reader: f.canonical.lifecycle,
       clock: f.clock, artifacts: f.artifacts, artifactReader: f.artifactReader, assertCurrent: () => f.admission.assertProfileRuntime() });
-    let result: ReturnType<typeof sources.commandResult>;
-    try { result = sources.commandResult(f.run.envelope.runId, request.commandId); }
-    catch (error) { assert.match(String(error), /OCR_(?:REVIEW|SOURCE)_REFUSED/u, name); continue; }
-    assert.equal(result.state, "unavailable", name);
+    if (name === "missing snapshot") {
+      assert.throws(() => sources.commandResult(f.run.envelope.runId, request.commandId), OcrSourceRefusedError, name);
+    } else {
+      assert.throws(() => sources.commandResult(f.run.envelope.runId, request.commandId),
+        { name: "Error", message: "delegation-gate-resume-authority-unavailable" }, name);
+    }
   }
   assert.equal(f.database.getMeta().authorityGeneration, generation);
   assert.equal(f.sources.commandResult(f.run.envelope.runId, request.commandId).state, "recorded");

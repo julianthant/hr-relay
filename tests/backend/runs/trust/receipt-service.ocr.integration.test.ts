@@ -44,7 +44,8 @@ it("derives the existing receipt format from the exact authenticated OCR snapsho
   const gate = OperatorGateResultRecordSchema.parse(repositories.gateResults.get(`${f.run.envelope.runId}:approve-records`));
   const run = repositories.runs.get(f.run.envelope.runId); assert.ok(run);
   const result = repositories.runResults.get(f.run.envelope.runId); assert.ok(result);
-  const delegations = [readDelegationEvidence(repositories, run.envelope.runId, "read-pages"), readDelegationEvidence(repositories, run.envelope.runId, "lookup-identities")];
+  const delegations = [readDelegationEvidence(repositories, run.envelope.runId, "read-pages"), readDelegationEvidence(repositories, run.envelope.runId, "lookup-identities"),
+    readDelegationEvidence(repositories, run.envelope.runId, "lookup-signers")];
   const input: ReceiptBuildInput = { descriptor: f.root.descriptor, run, result,
     checkpoints: repositories.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId), gateResults: [gate],
     delegations,
@@ -57,9 +58,9 @@ it("derives the existing receipt format from the exact authenticated OCR snapsho
   assert.throws(() => buildRunEvidenceReceipt({ ...input, delegations: input.delegations?.slice(1) }), /terminal-dependency-set/u);
   for (const altered of [
     [delegations[0], ...delegations],
-    [{ ...delegations[0], parentRunId: randomUUID() }, delegations[1]],
-    [{ ...delegations[0], edgeId: "foreign-edge" }, delegations[1]],
-    [{ ...delegations[0], manifest: { ...delegations[0].manifest, manifestFingerprint: "f".repeat(64) } }, delegations[1]],
+    [{ ...delegations[0], parentRunId: randomUUID() }, ...delegations.slice(1)],
+    [{ ...delegations[0], edgeId: "foreign-edge" }, ...delegations.slice(1)],
+    [{ ...delegations[0], manifest: { ...delegations[0].manifest, manifestFingerprint: "f".repeat(64) } }, ...delegations.slice(1)],
   ]) assert.throws(() => buildRunEvidenceReceipt({ ...input, delegations: altered }), /evidence-graph/u);
 
   const snapshot = repositories.ocrReviews.snapshot(approval.commandId); assert.ok(snapshot);
@@ -68,21 +69,23 @@ it("derives the existing receipt format from the exact authenticated OCR snapsho
   const audit = repositories.commandAudits.findByCommand(approval.commandId); assert.ok(audit);
   const foreign = randomUUID();
   const variants = [
-    { ...repositories, ocrReviews: { ...repositories.ocrReviews, snapshots: () => [] } },
-    { ...repositories, gateResults: { ...repositories.gateResults, get: () => undefined } },
-    replaceOcrCommandRead(repositories, approval.commandId, CommandRequestSchema.parse({ ...command, requestedBy: "foreign-operator" })),
-    replaceOcrAuditRead(repositories, approval.commandId, CommandAuditRecordSchema.parse({ ...audit, completedAt: "2026-11-04T00:00:00.000Z" })),
-    { ...repositories, ocrReviews: { ...repositories.ocrReviews, snapshots: () => [OcrApprovedSnapshotSchema.parse({ ...snapshot, sourceRunId: foreign })] } },
-    { ...repositories, ocrReviews: { ...repositories.ocrReviews, snapshots: () => [OcrApprovedSnapshotSchema.parse({ ...snapshot, reviewDigest: "f".repeat(64) })] } },
-    { ...repositories, ocrReviews: { ...repositories.ocrReviews,
-      latest: () => OcrReviewRevisionSchema.parse({ ...revision, id: `${revision.sourceRunId}#${revision.revision + 1}`, revision: revision.revision + 1 }) } },
-  ];
+    ["missing snapshot", { ...repositories, ocrReviews: { ...repositories.ocrReviews, snapshots: () => [] } }, "ocr"],
+    ["missing gate", { ...repositories, gateResults: { ...repositories.gateResults, get: () => undefined } }, "ocr"],
+    ["foreign command actor", replaceOcrCommandRead(repositories, approval.commandId, CommandRequestSchema.parse({ ...command, requestedBy: "foreign-operator" })), "native"],
+    ["altered audit completion", replaceOcrAuditRead(repositories, approval.commandId, CommandAuditRecordSchema.parse({ ...audit, completedAt: "2026-11-04T00:00:00.000Z" })), "native"],
+    ["foreign snapshot source", { ...repositories, ocrReviews: { ...repositories.ocrReviews, snapshots: () => [OcrApprovedSnapshotSchema.parse({ ...snapshot, sourceRunId: foreign })] } }, "ocr"],
+    ["altered snapshot digest", { ...repositories, ocrReviews: { ...repositories.ocrReviews, snapshots: () => [OcrApprovedSnapshotSchema.parse({ ...snapshot, reviewDigest: "f".repeat(64) })] } }, "ocr"],
+    ["changed latest revision", { ...repositories, ocrReviews: { ...repositories.ocrReviews,
+      latest: () => OcrReviewRevisionSchema.parse({ ...revision, id: `${revision.sourceRunId}#${revision.revision + 1}`, revision: revision.revision + 1 }) } }, "ocr"],
+  ] as const;
   const generation = f.database.getMeta().authorityGeneration;
-  for (const altered of variants) {
+  for (const [name, altered, failure] of variants) {
+    const expected = failure === "native" ? { name: "Error", message: "delegation-gate-resume-authority-unavailable" }
+      : { name: "OcrReviewRefusedError", message: "OCR_REVIEW_REFUSED" };
     assert.throws(() => buildRunEvidenceReceipt({ ...input,
-      authenticateSnapshotApproval: row => authenticateOcrSnapshotApproval(altered, f.canonical.lifecycle, row) }), /OCR_REVIEW_REFUSED/u);
+      authenticateSnapshotApproval: row => authenticateOcrSnapshotApproval(altered, f.canonical.lifecycle, row) }), expected, name);
     const refused = createReceiptService({ database: ocrProofReadDatabase(f.database, altered), runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor] });
-    assert.throws(() => refused.ensureReceipt(run.envelope.runId), /OCR_REVIEW_REFUSED/u);
+    assert.throws(() => refused.ensureReceipt(run.envelope.runId), expected, name);
   }
   assert.equal(f.database.getMeta().authorityGeneration, generation);
   for (const altered of [

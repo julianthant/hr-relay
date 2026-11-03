@@ -65,11 +65,12 @@ function createExecutorWorld<Profile extends BoundProfileStorageFixture>(profile
     taskDeadlineMs?: number;
     stores?: RunExecutorDependencies["stores"];
     descriptor?: AnyWorkflowDescriptor;
+    screenshotCapture?: Parameters<typeof sessionManagerFor>[5];
   }> = {}): Promise<ExecutorHarness<Profile>> {
     const authority = await openAuthorityHarness(profileFixture);
     authorityHarnesses.set(authority.database, authority);
     const sessions = options.sessions ?? happySessionHarness();
-    const manager = await sessionManagerFor(sessions, authority.clock, undefined, undefined, duoCeremonyGatesOver(authority.database, authority.clock));
+    const manager = await sessionManagerFor(sessions, authority.clock, undefined, undefined, duoCeremonyGatesOver(authority.database, authority.clock), options.screenshotCapture);
     let sessionsClosed = false;
     const closeSessions = async () => { await manager.closeAll("worker-stop"); sessionsClosed = true; };
     sessionClosures.add(closeSessions);

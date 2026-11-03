@@ -414,6 +414,11 @@ coordinated edit to both a guard and its inventory row. Review and operator auth
 the boundary for deliberate loss of protection. The inventory still uses machine-owned retirement
 and activation fields; this prose does not alter their schema or statuses.
 
+The dashboard workflow-ID guards pin 151 retained mock literal names and their exact AST sites.
+The inventory includes existing Emergency Contact data sites recognized by the registered workflow
+universe; generic notification consumers retain no workflow-ID sites. Registration does not authorize
+new branches: served/sibling injections, removed sites and same-count repurposing still fail.
+
 ### 5.1 Required source scanners
 
 `tests/architecture/tooling/helpers/ratchet-arms.ts` owns the nine scanners named in

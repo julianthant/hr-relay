@@ -37,10 +37,10 @@ import { InstanceSelectionSchema } from "../../../../src/models/run/envelope.js"
 import { SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { FingerprintSchema,IsoInstantSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { RunWorkbookReferenceSchema } from "../../../../src/models/dashboard/workbooks.js";
+import { RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../../src/models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../../../src/models/run/start-plan.js";
-import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { JsonValueSchema, type JsonValue, canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { QUEUED_RUN, START_PLAN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { boundProfileCredentials,createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { update as artifactUpdate } from "../../../support/helpers/database-foundation/fixtures.js";
@@ -59,7 +59,7 @@ const workbookReferenceValue = RunWorkbookReferenceSchema.parse({
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
 async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 = 8, extractionEvidence = false,
-  workbookEvidence?: { owner: "run" | "terminal-run" | "plan" | "consumed-plan"; schemaHash: string }) {
+  workbookEvidence?: { owner: "run" | "terminal-run" | "plan" | "consumed-plan"; schemaHash: string; value?: JsonValue }) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -101,7 +101,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
         configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint,
         resolvedInstance, input: { ...QUEUED_RUN.input,
           ...(workbookEvidence?.owner === "run" || workbookEvidence?.owner === "terminal-run"
-            ? { workbookReferences: [{ schemaHash: FingerprintSchema.parse(workbookEvidence.schemaHash), value: workbookReferenceValue }] } : {}) }, priority: "bulk", shape: "single", dryRun: true,
+            ? { workbookReferences: [{ schemaHash: FingerprintSchema.parse(workbookEvidence.schemaHash), value: workbookEvidence.value ?? workbookReferenceValue }] } : {}) }, priority: "bulk", shape: "single", dryRun: true,
         runtimeConfig: selectRunRuntime(database.authority) }));
       assert.equal(run.lifecycle.state, "queued");
       if (workbookEvidence?.owner === "terminal-run") {
@@ -150,7 +150,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(sourceVersion);
     raw.exec(`PRAGMA user_version=${sourceVersion}; COMMIT`);
     if (workbookEvidence?.owner === "plan" || workbookEvidence?.owner === "consumed-plan") {
-      const planned = START_PLAN.planned.map(run => ({ ...run, workbookReferences: [{ schemaHash: FingerprintSchema.parse(workbookEvidence.schemaHash), value: workbookReferenceValue }] }));
+      const planned = START_PLAN.planned.map(run => ({ ...run, workbookReferences: [{ schemaHash: FingerprintSchema.parse(workbookEvidence.schemaHash), value: workbookEvidence.value ?? workbookReferenceValue }] }));
       const consumed = workbookEvidence.owner === "consumed-plan";
       const plan = StartPlanRecordSchema.parse({ ...START_PLAN, planned,
         inputFingerprint: derivePlannedInputFingerprint(planned, START_PLAN.ingressSchemaHash, START_PLAN.canonicalInputSchemaHash),
@@ -632,9 +632,19 @@ it.each(["artifact-id", "source-column", "payload"] as const)("refuses a stopped
   } finally { await f.close(); }
 });
 
-it.each(["run", "terminal-run", "plan", "consumed-plan"] as const)("upgrades schema 18 with compatible %s references without rewriting evidence", async owner => {
+const namedWorkbookSnapshot = { ...workbookReferenceValue.snapshot, versionId: "selected", versionName: "Selected" };
+const allWorkbookRequest = { mode: "all", typeId: "upgrade-roster", libraryId: "upgrade-workbook", expectedVersion: 1, fields: ["eid"] };
+const workbookFormats = [
+  { format: "master-keyed", schema: RunWorkbookReferenceSchema, value: workbookReferenceValue },
+  { format: "master-all", schema: RunWorkbookAllRowsReferenceSchema, value: { request: allWorkbookRequest, snapshot: workbookReferenceValue.snapshot } },
+  { format: "named-keyed", schema: RunWorkbookNamedReferenceSchema, value: { request: { ...workbookReferenceValue.request, versionId: "selected" }, snapshot: namedWorkbookSnapshot } },
+  { format: "named-all", schema: RunWorkbookNamedAllRowsReferenceSchema, value: { request: { ...allWorkbookRequest, versionId: "selected" }, snapshot: namedWorkbookSnapshot } },
+  { format: "selected-row", schema: RunWorkbookSelectedRowReferenceSchema, value: { request: { ...workbookReferenceValue.request, versionId: "selected", selectedRow: { sheetId: "people", rowId: "person" } }, snapshot: namedWorkbookSnapshot } },
+];
+it.each(workbookFormats.flatMap(format => (["run", "terminal-run", "plan", "consumed-plan"] as const).map(owner => ({ ...format, owner }))))(
+  "upgrades schema 18 with compatible $format $owner references without rewriting evidence", async ({ owner, schema, value }) => {
   const f = await readyBoundEight(owner.includes("run") ? "queued" : "idle", 18, false,
-    { owner, schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output") });
+    { owner, schemaHash: deriveSchemaHash(schema, "output"), value: JsonValueSchema.parse(schema.parse(value)) });
   try {
     const before = rawEight(f.path, 18);
     const upgraded = await (owner === "run"

@@ -1,4 +1,4 @@
-import { RunWorkbookReferenceSchema } from "../../../models/dashboard/workbooks.js";
+import { parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
 import { z } from "zod";
 import { failureCorrectionSubmission } from "../start/failure-correction.js";
 import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
@@ -206,10 +206,12 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         planned: record.planned.map((planned) => ({
           ...(planned.supersedeTargets === undefined ? {} : { supersedeTargets: planned.supersedeTargets }),
           ...(planned.workbookReferences === undefined ? {} : { workbookReferences: planned.workbookReferences.map(reference => {
-            const retained = RunWorkbookReferenceSchema.parse(reference.value);
-            const { libraryId, version, versionId, versionName, worksheets, type } = retained.snapshot;
-            return { libraryId, version, ...(versionId === undefined ? {} : { versionId }), ...(versionName === undefined ? {} : { versionName }),
-              ...(retained.request.selectedRow === undefined ? {} : { selectedRow: retained.request.selectedRow }), worksheets, type };
+            const retained = parseRunWorkbookReference(reference);
+            const snapshot = retained.snapshot;
+            const { libraryId, version, worksheets, type } = snapshot;
+            const versionId = "versionId" in snapshot ? snapshot.versionId : undefined;
+            const versionName = "versionName" in snapshot ? snapshot.versionName : undefined;
+            return { libraryId, version, ...(versionId === undefined ? {} : { versionId }), ...(versionName === undefined ? {} : { versionName }), ...("selectedRow" in retained.request && retained.request.selectedRow !== undefined ? { selectedRow: retained.request.selectedRow } : {}), worksheets, type };
           }) }),
           ...(planned.outputs === undefined ? {} : { outputs: planned.outputs }),
           logicalKey: planned.itemId,
