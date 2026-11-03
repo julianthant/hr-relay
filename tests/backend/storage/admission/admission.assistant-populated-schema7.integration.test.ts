@@ -1,3 +1,5 @@
+import { prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
+import { PRE_PREFERENCES_SETTINGS_SCHEMA_HASH } from "../../../../src/backend/storage/sqlite/person-preferences-migration.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { retainedBrowserProfiles } from "../../../../src/backend/storage/maintenance/profile-custody.js";
 import { join } from "node:path";
@@ -10,7 +12,6 @@ import { z } from "zod";
 import { storageRecoveryFixture, storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
 import { readAppSettings } from "../../../../src/backend/storage/sqlite/settings-storage.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 
 const ValueSchema = z.union([z.string(), z.number(), z.null()]);
@@ -62,12 +63,12 @@ const PRIOR_SOURCES = [
   }
 ] as const;
 const sha = (value: string) => createHash("sha256").update(value).digest("hex");
-it("upgrades actual populated prior Settings rows without rewriting their exact initialization, saved journal, audits or execution fingerprints", async () => {
+it("upgrades actual populated prior Settings rows with exact preference conversion and retained saved journal, audits and execution fingerprints", async () => {
   const bytes = readFileSync(new URL("../../../support/fixtures/assistant-populated-schema7.json", import.meta.url));
   assert.equal(createHash("sha256").update(bytes).digest("hex"), "b4ac7dd698b79fcea542139add4c584891918ee1ca66f2d04cab4fbb9d25c423");
   const prior = FixtureSchema.parse(JSON.parse(bytes.toString("utf8")));
   assert.deepEqual(prior.sources, PRIOR_SOURCES);
-  assert.equal(prior.settingsSchemaHash, SETTINGS_SCHEMA_HASH);
+  assert.equal(prior.settingsSchemaHash, PRE_PREFERENCES_SETTINGS_SCHEMA_HASH);
   assert.equal(prior.migrationStatementsSha256, sha(canonicalJsonStringify(SQLITE_MIGRATIONS.filter(migration => migration.version <= 7))));
   assert.equal(prior.tablesSha256, sha(canonicalJsonStringify(prior.tables)));
   assert.equal(prior.tables.settings.length, 1);
@@ -94,7 +95,7 @@ it("upgrades actual populated prior Settings rows without rewriting their exact 
     assert.equal(result.fromSchemaVersion, 7); assert.equal(result.toSchemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const upgraded = new DatabaseSync(f.path, { readOnly: true });
     try {
-      const retained = Object.fromEntries(Object.keys(prior.tables).map(table => [table, upgraded.prepare(`SELECT * FROM ${table} ORDER BY id`).all().map(row => ({ ...row }))]));
+      const retained = Object.fromEntries(Object.keys(prior.tables).map(table => [table, upgraded.prepare(`SELECT * FROM ${table} ORDER BY id`).all().map(row => prePreferencesSettingsRow(table, row))]));
       assert.deepEqual(retained, prior.tables); assert.equal(sha(canonicalJsonStringify(retained)), prior.tablesSha256);
       assert.equal(upgraded.prepare("SELECT COUNT(*) AS count FROM assistant_grants").get()?.count, 0);
       assert.equal(upgraded.prepare("SELECT COUNT(*) AS count FROM assistant_chats").get()?.count, 0);
@@ -104,7 +105,7 @@ it("upgrades actual populated prior Settings rows without rewriting their exact 
     try {
       const settings = readAppSettings(inspection);
       assert.ok(settings?.saved);
-      assert.deepEqual({ revision: settings.saved.revision, settingsSchemaHash: SETTINGS_SCHEMA_HASH,
+      assert.deepEqual({ revision: settings.saved.revision, settingsSchemaHash: PRE_PREFERENCES_SETTINGS_SCHEMA_HASH,
         settingsFingerprint: settings.saved.settingsFingerprint, settings: settings.saved.settings }, prior.settings);
       assert.equal(inspection.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
       assert.equal(inspection.prepare("SELECT COUNT(*) AS count FROM assistant_grants").get()?.count, 0);

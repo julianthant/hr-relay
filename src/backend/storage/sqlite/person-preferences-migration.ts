@@ -1,4 +1,3 @@
-import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { EditableSettingsOverrideSchema } from "../../../models/config/schema.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../models/config/settings.js";
@@ -53,16 +52,4 @@ export function convertPersonPreferencesRow(table: string, input: unknown): Reco
     if (value.kind === "settings-initialization") return { ...row, payload_json: canonicalJsonStringify(audit(value)) };
   }
   return row;
-}
-
-export function migratePersonPreferences(database: DatabaseSync): void {
-  for (const table of ["settings_snapshots", "settings", "commands", "command_audits"]) {
-    for (const raw of database.prepare(`SELECT * FROM ${table}`).all()) {
-      const row = convertPersonPreferencesRow(table, raw);
-      if (canonicalJsonStringify(row) === canonicalJsonStringify(raw)) continue;
-      if (table === "commands") database.prepare("UPDATE commands SET request_json=?,request_digest=?,outcome_json=? WHERE id=?")
-        .run(z.string().parse(row.request_json), z.string().parse(row.request_digest), z.string().nullable().parse(row.outcome_json), z.string().parse(row.id));
-      else database.prepare(`UPDATE ${table} SET payload_json=? WHERE id=?`).run(z.string().parse(row.payload_json), z.string().parse(row.id));
-    }
-  }
 }

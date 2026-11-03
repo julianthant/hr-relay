@@ -1,3 +1,4 @@
+import { restorePrePreferencesSettingsRows } from "./person-preferences-predecessor.js";
 import { PREFERENCES_SNAPSHOT } from "../phase1c-contract-fixtures.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -68,6 +69,7 @@ export function retainedHistoricalData(f: { databasePath: string; profileRoot: s
         .run(attempt.writeAttemptId, attempt.writeIntentId, attempt.generation, runId, canonicalJsonStringify(attempt), attempt.recordedAt);
     }
     raw.prepare("UPDATE database_states SET authority_generation=authority_generation+1,search_generation=NULL,search_state='invalid',updated_at=? WHERE id=1").run(at);
+    if (schemaVersion < 16) restorePrePreferencesSettingsRows(raw);
     raw.exec("COMMIT"); inspectNativeAuthority(raw, schemaVersion); raw.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   } finally { raw.close(); }
   const artifacts = join(f.profileRoot, "artifacts"); mkdirSync(artifacts, { recursive: true, mode: 0o700 });
