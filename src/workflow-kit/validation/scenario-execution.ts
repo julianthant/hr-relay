@@ -48,6 +48,7 @@ const I9_LOOKUP_FILE = workflowStructuralScenarioPath("i9-lookup", defineWorkflo
 
 export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
   { scenarioId: "onboarding/crm-extraction", file: "tests/workflows/onboarding/workflow.integration.test.ts" },
+  { scenarioId: "onboarding/write-transactions", file: "tests/workflows/onboarding/workflow.integration.test.ts" },
   { scenarioId: "workbooks/publish", file: "tests/backend/workbooks/workflow-workbook-service.integration.test.ts" },
   { scenarioId: "i9-check/person", file: "tests/workflows/i9-check/workflow.integration.test.ts" },
   { scenarioId: "onbase/one-page", file: "tests/backend/systems/onbase/tasks/read-source-page.test.ts" },
