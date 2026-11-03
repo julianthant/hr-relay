@@ -267,7 +267,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       const page = await context.newPage();
       session.portal = page; browserCurrent(session);
       try {
-        await page.goto("https://duo.ucpath.edu", { waitUntil: "domcontentloaded" });
+        await page.goto("https://duo.ucsd.edu", { waitUntil: "domcontentloaded" });
         browserCurrent(session);
         await submitPinnedUcsdSsoCredentials(page, () => session.owner.acquireCredentials(), () => browserCurrent(session), options.closeProofMs, "/tritON/profile/SAML2/Redirect/SSO");
         browserCurrent(session);
@@ -279,7 +279,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     const url = new URL(page.url());
     if (url.protocol !== "https:" || url.port || url.username || url.password
       || !(url.hostname === "a5.ucsd.edu" && url.pathname.startsWith("/tritON/")
-        || url.hostname === "duo.ucpath.edu"
+        || url.hostname === "duo.ucsd.edu"
         || url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com"))) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     await page.bringToFront(); browserCurrent(session);
     if (page.url() !== url.href) throw new ProfileOnboardingDuoProviderError("refused", "scope");

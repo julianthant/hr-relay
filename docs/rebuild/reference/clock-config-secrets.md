@@ -635,7 +635,7 @@ approved account surface is wired.
 ### Private onboarding custody
 
 Show setup browser opens one draft-owned full Chromium window on the Relay FastDuo extension's
-existing setup page. Open duo.ucpath.edu opens a separate tab in that same context, acquires the
+existing setup page. Open duo.ucsd.edu opens a separate tab in that same context, acquires the
 original protected Details only after verifying the exact UCSD SSO document and form controls,
 then submits that pinned POST form once. Reopening focuses the owned tab; failed initialization
 remains refused and never resubmits. Login does not prove either enrollment method or MFA completion.

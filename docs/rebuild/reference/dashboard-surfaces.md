@@ -675,7 +675,7 @@ clipboard failures, and ordinary folder controls without file effects.
 ### Two-method Duo sign-up presentation
 
 Sign-up presents Touch ID and Security key as distinct required verified enrollments at
-`duo.ucpath.edu`. Hardware-unavailable presentation identifies Chromium’s virtual platform
+`duo.ucsd.edu`. Hardware-unavailable presentation identifies Chromium’s virtual platform
 authenticator for Touch ID; it never substitutes for Security key. Finish stays unavailable until
 both enrollments are verified. Finishing and cancellation stay pending until their owners settle.
 Unknown enrollment is labelled Unknown, not failed or completed. Method chips stay on one line.
