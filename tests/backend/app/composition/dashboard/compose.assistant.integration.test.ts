@@ -1,3 +1,4 @@
+import { faultAuthoritySnapshot, assertHttpFaultOnly } from "../../../../support/helpers/backend/http-route-harness.js";
 import { AssistantModelPreferenceViewSchema } from '../../../../../src/models/dashboard/assistant.js';
 import { withAuthorityDatabaseReadOnly } from "../../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import configuredSources from "../../../../../config/dashboard-workflow-sources.json";
@@ -155,7 +156,7 @@ it.each([
       context.database.withAuthorityTransaction(({ notifications }) => { for (const [index, notificationId] of ids.entries()) notifications.create(NotificationRecordSchema.parse({ notificationId, actorId: "local-operator", dedupeFingerprint: index.toString(16).padStart(64, "0"),
         trigger: "storage", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Local title", summary: "Local summary", links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }],
         count: 1, version: 1, lastSeenAt: clock.now().toISOString(), createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() })); });
-      const noCallBaseline = context.database.getMeta().authorityGeneration;
+      const noCallBaseline = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
       const noCallRows = context.database.authority.notifications.listByActor("local-operator");
       const durableRows = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, "state.db"), database => ({
         actions: database.prepare("SELECT * FROM assistant_actions ORDER BY id").all(),
@@ -174,7 +175,7 @@ it.each([
         assert.equal(refused.state, "refused"); if (refused.state === "refused") assert.equal(refused.code, "ASSISTANT_PROPOSAL_REFUSED");
         assert.deepEqual(durableRows(), noCallDurable);
         assert.deepEqual(context.database.authority.notifications.listByActor("local-operator"), noCallRows);
-        assert.equal(context.database.getMeta().authorityGeneration, noCallBaseline);
+        assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, noCallBaseline, 1);
         const help = AssistantResultSchema.parse(await post("assistant/respond", { message: "help permissions" }));
         assert.equal(help.state, "answered");
       }
@@ -202,15 +203,15 @@ it.each([
         assert.equal(context.database.authority.notifications.get(id)?.status, "unread");
         const record = context.database.authority.assistantAuthorization.action(result.proposal.actionId); assert.ok(record);
         assert.equal(record.command.source, "assistant");
-        const before = context.database.getMeta().authorityGeneration;
+        const before = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
         const foreign = AssistantActionResultSchema.parse(await post("assistant/action", { chatId: randomUUID(), actionId: result.proposal.actionId, revision: result.proposal.revision, decision: "confirm" }));
-        assert.equal(foreign.state, "refused"); assert.equal(context.database.getMeta().authorityGeneration, before);
+        assert.equal(foreign.state, "refused"); assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, before, 1);
         const decision = { chatId: result.proposal.chatId, actionId: result.proposal.actionId, revision: result.proposal.revision, decision: "confirm" };
         if (staleAccount) {
           await context.account.signOut();
-          const stopped = context.database.getMeta().authorityGeneration;
+          const stopped = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
           assert.equal(AssistantActionResultSchema.parse(await post("assistant/action", decision)).state, "refused");
-          assert.equal(context.database.getMeta().authorityGeneration, stopped);
+          assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, stopped, 1);
           assert.equal(context.database.authority.notifications.get(id)?.status, "unread");
         } else {
         const confirmed = AssistantActionResultSchema.parse(await post("assistant/action", decision));
@@ -219,9 +220,9 @@ it.each([
         assert.equal(settled.state, "settled");
         const audit = context.database.authority.commandAudits.findByCommand(settled.command.commandId);
         assert.equal(audit?.request.source, "assistant"); assert.equal(audit?.versionChanges.length, 25);
-        const after = context.database.getMeta().authorityGeneration;
+        const after = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
         assert.equal(AssistantActionResultSchema.parse(await post("assistant/action", decision)).state, "refused");
-        assert.equal(context.database.getMeta().authorityGeneration, after);
+        assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, after, 1);
         }
       } else { assert.equal(result.state, "answered"); assert.equal(turns, 1); }
       for (const notificationId of ids) assert.equal(context.database.authority.notifications.get(notificationId)?.status, staleAccount ? "unread" : "read");
@@ -266,11 +267,11 @@ it.each(["every-action"] as const)('serves preference CAS, replay and verificati
       publicCapabilityResponses(transport);
       assert.equal(AssistantResultSchema.parse(await post('assistant/respond', { message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
       assert.equal(context.account.captureAssistantModelPolicy()?.isCurrent(), true);
-      const beforeForeign = transport.calls.length, generation = context.database.getMeta().authorityGeneration;
+      const beforeForeign = transport.calls.length, beforeForeignFault = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
       const foreign = { ...command, commandId: randomUUID(), target: { ...command.target, profileId: randomUUID(), expectedRevision: changed.revision } };
       assert.notEqual(CommandResultSchema.parse(await post('commands', foreign)).state, 'applied');
       assert.equal(transport.calls.length, beforeForeign);
-      assert.equal(context.database.getMeta().authorityGeneration, generation);
+      assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, beforeForeignFault, 1);
       assert.equal(context.database.authority.commands.get(foreign.commandId), undefined);
       assert.equal(context.database.authority.commandAudits.findByCommand(foreign.commandId), undefined);
 
@@ -435,9 +436,9 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       assert.equal(children.length, 1);
       assert.deepEqual(database.authority.workerControls.list().map(control => control.commandId), beforeControls.map(control => control.commandId));
       const finishedRuns = database.authority.runs.listByWorkflow("person-lookup"), finishedControls = database.authority.workerControls.list();
-      const generation = database.getMeta().authorityGeneration;
+      const beforeRefusal = faultAuthoritySnapshot({ database, stateRoot: context.admission.stateRoot });
       assert.equal((await client.assistantDecide(decision)).state, "refused");
-      assert.equal(database.getMeta().authorityGeneration, generation);
+      assertHttpFaultOnly({ database, stateRoot: context.admission.stateRoot }, beforeRefusal, 1);
       assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), finishedRuns);
       assert.deepEqual(database.authority.workerControls.list(), finishedControls);
       assert.equal(children.length, 1);
