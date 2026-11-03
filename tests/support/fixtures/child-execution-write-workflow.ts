@@ -174,3 +174,40 @@ export const parallelChildWriteRecoveryRoot = compileWorkflow(defineWorkflow({ .
     const children = parallel({ id: "children", join: "all", failure: "fail-fast" }, [{ id: "read", leaves: [read] }, { id: "write", leaves: [write] }]);
     return { steps: [[{ key: "children", label: "Children" }, [children]]], result: result(input, [], ({ input }) => input) };
   } }), { manifest: childExecutionBuildManifest });
+
+export const childPreviewPrerequisiteRoot = compileWorkflow(defineWorkflow({ ...crashCommon, id: "fixture-child-preview-prerequisite", code: "fcpp",
+  steps: ({ delegate, task, transaction, result }) => {
+    const child = delegate({ id: "child", target: { id: childCrashWrite.descriptor.id, input, result: output }, edgeId: "child",
+      cardinality: "one", await: "terminal", join: "one", policy: { cascadeCancel: "cascade", onChildFailed: "fail-parent",
+        afterChildRetry: "resume-parent", visibility: "inline" } }, [],
+    { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+    const observe = task({ id: "observe", contract: plan1Contract, replay: "checkpoint" }, [child],
+      ({ input }) => ({ emplId: input.eid, text: "after child commit", mode: "ok" as const }));
+    const write = transaction({ id: "write", label: "Write", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
+      dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 }, [observe], {
+      prepareBind: ({ input }) => input, commitBind: ({ input }) => input,
+    });
+    return { steps: [[{ key: "child", label: "Child" }, [child]], [{ key: "observe", label: "Observe" }, [observe]],
+      [{ key: "write", label: "Write" }, [write]]], result: result(input, [], ({ input }) => input) };
+  } }), { manifest: childExecutionBuildManifest });
+
+function previewFanoutRoot(id: string, dispatch: boolean) {
+  return compileWorkflow(defineWorkflow({ ...crashCommon, id, code: "fcpf",
+    steps: ({ delegate, result }) => {
+      const child = delegate({ id: "children", target: { id: childCrashWrite.descriptor.id, input, result: output }, edgeId: "children",
+        cardinality: "many", ...(dispatch ? { await: "none", join: "none" } as const : { await: "terminal", join: "all" } as const),
+        policy: { cascadeCancel: "cascade", onChildFailed: "fail-parent", afterChildRetry: "resume-parent", visibility: "inline" } }, [],
+      { bind: ({ input }) => dispatch ? [input] : [], deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+      return { steps: [[{ key: "children", label: "Children" }, [child]]], result: result(input, [], ({ input }) => input) };
+    } }), { manifest: childExecutionBuildManifest });
+}
+export const childPreviewDispatchRoot = previewFanoutRoot("fixture-child-preview-dispatch", true);
+export const childPreviewEmptyRoot = previewFanoutRoot("fixture-child-preview-empty", false);
+export const childPreviewNestedRoot = compileWorkflow(defineWorkflow({ ...crashCommon, id: "fixture-child-preview-nested", code: "fcpn",
+  steps: ({ delegate, result }) => {
+    const child = delegate({ id: "nested", target: { id: childPreviewPrerequisiteRoot.descriptor.id, input, result: input }, edgeId: "nested",
+      cardinality: "one", await: "terminal", join: "one", policy: { cascadeCancel: "cascade", onChildFailed: "fail-parent",
+        afterChildRetry: "resume-parent", visibility: "inline" } }, [],
+    { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+    return { steps: [[{ key: "nested", label: "Nested" }, [child]]], result: result(input, [], ({ input }) => input) };
+  } }), { manifest: childExecutionBuildManifest });

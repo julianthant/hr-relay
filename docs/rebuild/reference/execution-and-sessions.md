@@ -10,6 +10,12 @@ Related contracts own [run transitions](workflow-model.md), [task declarations](
 `src/backend/runtime/workers/worker-loop.ts` awaits one run per workflow-scoped worker.
 Separate workers provide parallelism and own separate browser resources.
 
+Delegated dry-run preparation uses the same admission, worker release, child claims and parent
+reclaim as ordinary delegation. A read-only child returns ordinary observations. A preview child
+settles with its authenticated preview result and joins into a parent preview, without furnishing
+ordinary workflow output or write authority. [Workflow model](workflow-model.md#21-preview-terminal-result)
+owns preview eligibility, accounting and receipts.
+
 ## 1. Runtime identities
 
 | Unit | Identity and owner |

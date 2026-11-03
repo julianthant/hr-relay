@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { STEP_PROOF_DESCRIPTORS } from "../../src/backend/app/registries/step-proof-modules.js";
 import { CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../src/backend/app/registries/workflow-registry.js";
+import { workflowDryRunSupport } from "../../src/workflow-kit/workflow.js";
+import { childUnsupportedPreviewRoot, childUnsupportedPreviewTarget } from "../support/fixtures/child-execution-write-workflow.js";
 import { createWorkflowDescriptorRegistry, WORKFLOW_DESCRIPTORS } from "../../src/workflows/descriptor-registry.js";
 import { plan1Child, plan1Leaf, plan1Parent } from "../support/fixtures/plan1-operation-workflows.js";
 
@@ -63,6 +65,22 @@ describe("workflow descriptor registry", () => {
       expect(registry.resolve(id)).toBeUndefined();
       expect(() => registry.resolveChild(plan1Child.descriptor.id, id)).toThrow(/is not registered/u);
     }
+  });
+
+  it("derives a parent preparation boundary from real registered descendants", () => {
+    const parent = workflowModuleOf("emergency-contact").descriptor;
+    assert.deepEqual(workflowDryRunSupport(parent), { state: "supported", firstDelegationNodeId: "members" });
+    assert.deepEqual(workflowDryRunSupport(plan1Leaf.descriptor), { state: "unsupported", reason: "no-transaction-node" });
+  });
+
+  it("refuses a descendant's unsupported write even when the parent can prepare locally", () => {
+    createWorkflowDescriptorRegistry([childUnsupportedPreviewRoot.descriptor], [childUnsupportedPreviewTarget.descriptor]);
+    assert.deepEqual(workflowDryRunSupport(childUnsupportedPreviewRoot.descriptor), { state: "unsupported",
+      reason: "descendant-declares-unsupported", workflowId: childUnsupportedPreviewTarget.descriptor.id, nodeId: "write" });
+  });
+
+  it("refuses a copied descriptor before deriving preview eligibility", () => {
+    assert.throws(() => createWorkflowDescriptorRegistry([plan1Child.descriptor], [{ ...plan1Leaf.descriptor }]), /exact object/u);
   });
 
   it("registers only operator workflows", () => {

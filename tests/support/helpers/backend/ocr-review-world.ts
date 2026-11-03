@@ -1,13 +1,10 @@
 import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
-import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
-import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
-import { emergencyContactMemberWorkflow } from "../../../../src/workflows/emergency-contact-member/workflow.js";
 import { EmergencyContactInputSchema } from "../../../../src/models/workflows/emergency-contact/input.js";
 import { createOcrApprovedSnapshotAdapter } from "../../../../src/backend/processing/providers/ocr-approved-snapshot-adapter.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { ocrModule, CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { ocrModule, CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY, workflowModuleOf, childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createOcrCheckpointPublication } from "../../../../src/backend/runs/lifecycle/ocr-checkpoint-publication.js";
 import { createOcrSourceService } from "../../../../src/backend/runs/commands/ocr-source-service.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -30,6 +27,9 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { retainedOcrModule, retainedOcrStore, retainedOcrCheckpointPublication } from "../../fixtures/ocr/retained-review-producer.js";
 import { ocrWorkflowStore } from "../../../../src/workflows/ocr/task-registry.js";
+import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
+import { testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
+import type { SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import type { WorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 
 export function createOcrReviewWorld() {
@@ -37,6 +37,7 @@ export function createOcrReviewWorld() {
   return {
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule;
+      sessions?: SessionFactoryHarness; screenshotCapture?: NonNullable<Parameters<typeof world.executorHarness>[0]>["screenshotCapture"];
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       const rendered: { value?: z.output<typeof ExtractPdfPagesOutputSchema> } = {};
@@ -49,15 +50,18 @@ export function createOcrReviewWorld() {
         return rendered.value;
       } });
       const ocrRoot = options.retainedProducer === true ? retainedOcrModule : ocrModule;
-      const coordinator = options.coordinator === true ? compileWorkflow(emergencyContactWorkflow) : undefined;
-      const member = options.coordinator === true ? compileWorkflow(emergencyContactMemberWorkflow) : undefined;
+      const coordinator = options.coordinator === true ? workflowModuleOf("emergency-contact") : undefined;
+      const member = options.coordinator === true ? childWorkflowModuleOf("emergency-contact", "emergency-contact-member") : undefined;
       const root = options.parent ?? coordinator ?? ocrRoot;
       const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction" && store.namespace !== "workflow:ocr"),
         defineServiceStore("extraction", { render }), options.retainedProducer === true ? retainedOcrStore : ocrWorkflowStore];
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
         tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
-      const harness = await world.executorHarness({ descriptor: root.descriptor, stores });
+      const harness = await world.executorHarness({ descriptor: root.descriptor, stores,
+        ...(options.sessions === undefined ? {} : { sessions: options.sessions }),
+        ...(options.screenshotCapture === undefined ? {} : { screenshotCapture: options.screenshotCapture }),
+      });
       options.onHarness?.(harness);
       const { database, path, clock } = harness.authority;
       const workbooks = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
@@ -73,7 +77,10 @@ export function createOcrReviewWorld() {
       const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
       const resolve = (id: string) => id === root.descriptor.id ? root.descriptor : id === "ocr" ? ocrRoot.descriptor : id === coordinator?.descriptor.id ? coordinator.descriptor : id === member?.descriptor.id ? member.descriptor
         : (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
-      const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve,
+      const writeSequencer = options.dryRun === true ? createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: database,
+        sessions: harness.manager, emitter: harness.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: harness.scheduler,
+        taskDeadlineMs: 60_000, operator: "local-operator", log: harness.deps.log }) : undefined;
+      const canonical = canonicalChildExecution({ ...harness.deps, artifacts, ...(writeSequencer === undefined ? {} : { writeSequencer }) }, database, path, resolve,
         options.retainedProducer === true ? retainedOcrCheckpointPublication : createOcrCheckpointPublication,
         { workbooks, resources: (reader, run) => ({ providers: { configSnapshots: database.authority.configSnapshots,
           idFactory: { next: () => randomUUID() }, adapters: { "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({clock,
