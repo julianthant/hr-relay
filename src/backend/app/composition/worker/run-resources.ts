@@ -29,6 +29,7 @@ import { createWorkbookLibraryAdapter } from "../../../processing/providers/work
 import { createOcrCheckpointPublication, admitOcrRunResources, OcrPublicationRefusedError } from "../../../runs/lifecycle/ocr-checkpoint-publication.js";
 import type { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import { createRunWorkbookService } from "../../../runs/workbooks.js";
+import { createOcrReviewAdapter } from "../../../processing/providers/ocr-review-adapter.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
@@ -80,6 +81,7 @@ export function createRunResourcesFactory(input:Readonly<{
    const baseline=previous??compose(StoredConfigSchema.parse(snapshot.config));cache.set(snapshot.fingerprint,baseline);
    const key=`${run.envelope.runId}:${run.envelope.attempt}:${run.claimGeneration}:${snapshot.fingerprint}`;
    const resources=runCache.get(key)??Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
+    ...(input.runReader===undefined?{}:{"ocr.review":createOcrReviewAdapter({database:input.database,reader:input.runReader,run,clock:input.clock})}),
     "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock,
       references:{runId:run.envelope.runId,write:command=>runWorkbooks.write(run,command)}}),
    })},...(input.runReader===undefined?{}:{publishCheckpoint:createOcrCheckpointPublication(input.runReader,run)})});

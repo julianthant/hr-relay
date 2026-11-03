@@ -495,6 +495,8 @@ function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
 }
 
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...open(taskOutput("ocr/read-approved-records"), "state", "code"),
+  ...ocrPrivateLeaves(taskOutput("ocr/read-approved-records"), "sources"),
   ...open(taskOutput("extraction/extract-pdf-pages"), "pageCount"),
   ...ocrPrivateLeaves(taskOutput("extraction/extract-pdf-pages"), "pages"),
   ...ocrManifestLeaves(taskOutput("workflow:ocr/read-source-pages"), "manifest."),

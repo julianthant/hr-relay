@@ -35,6 +35,7 @@ describe("Person Lookup task implementations", () => {
         "normalization/read-contact-advice",
 
         "ocr/extract-form-page",
+        "ocr/read-approved-records",
 
         "onbase/match-import",
         "onbase/read-source-page",
