@@ -262,8 +262,10 @@ export async function verifyShellCommandEffect(
 ): Promise<CommandReadbackVerification> {
   const mismatch = (evidence: unknown) => ({ state: "mismatch" as const, evidence });
   if (request.family === "run" && request.type === "resolve-workbook-reference-row") {
-    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1 || reply.affectedTargets[0]?.family !== "run"
-      || reply.affectedTargets[0].runId !== request.target.runId) return mismatch(reply);
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 2
+      || !reply.affectedTargets.some(target => target.family === "run" && target.runId === request.target.runId)
+      || !reply.affectedTargets.some(target => target.family === "gate" && target.runId === request.target.runId
+        && target.gateId === request.target.gateId)) return mismatch(reply);
     const detail = await client.runDetail(request.target.runId);
     if (detail.runId !== request.target.runId || detail.rowRevision <= request.target.expectedVersion || !detail.availableSections.includes("workbook-writes")) return mismatch(detail);
     const section = await client.runSection(request.target.runId, "workbook-writes");

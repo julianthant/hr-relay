@@ -4,6 +4,7 @@ import { defineTask } from "../../../../workflow-kit/task.js";
 import { i9Driver } from "../driver-declaration.js";
 
 export const readSection2SignerTask = defineTask(i9Driver, I9ReadSection2Signer, {
+  screenshots: "task",
   sessions: [{ system: "i9", access: "read", session: "reuse-worker" }],
   async run({ input, ctx }) {
     let output;

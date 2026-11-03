@@ -412,12 +412,11 @@ export function workflowDryRunSupport(descriptor: AnyWorkflowDescriptor): Workfl
   return workflowProjections(descriptor).dryRun;
 }
 
-// Re-parses through the canonical schema before handing to authored callbacks.
+// Lookups use ingress; run callbacks use bound canonical input.
 export interface WorkflowPlanning {
   readonly requiredWorkbookTypeIds: readonly string[];
-  readonly referenceLookups: (parsed: unknown) => readonly WorkbookReferenceLookup[];
   readonly plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
-  readonly parseInput: (raw: unknown) => unknown;
+  readonly parseInput: (raw: unknown) => Readonly<{ input: unknown; lookups: readonly WorkbookReferenceLookup[] }>;
   readonly parseCanonicalInput: (value: unknown) => unknown;
   readonly matchKey: (parsed: unknown) => string;
   readonly title: (parsed: unknown) => string;
@@ -1180,9 +1179,11 @@ export function defineWorkflowDescriptor<
   }));
   PLANNING.set(descriptor, Object.freeze({
     requiredWorkbookTypeIds,
-    referenceLookups: (parsed: unknown) => WorkbookReferenceLookupSchema.array().parse(spec.referenceLookups?.(spec.canonicalInput.parse(parsed)) ?? []),
     plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => PlannedRunOutputSchema.array().parse(spec.plannedOutputs?.(spec.canonicalInput.parse(parsed), references) ?? []),
-    parseInput: (raw: unknown) => spec.flow.input.parse(raw),
+    parseInput: (raw: unknown) => {
+      const input = spec.flow.input.parse(raw);
+      return { input, lookups: WorkbookReferenceLookupSchema.array().parse(spec.referenceLookups?.(input) ?? []) };
+    },
     parseCanonicalInput: (value: unknown) => spec.canonicalInput.parse(value),
     matchKey: (parsed: unknown) => spec.identity.matchKey(spec.canonicalInput.parse(parsed)),
     title: (parsed: unknown) => spec.presentation.title(spec.canonicalInput.parse(parsed)),

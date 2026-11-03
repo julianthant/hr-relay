@@ -260,6 +260,12 @@ events order its existing Logs decision rows. Row choices carry the original rec
 workbook revision; confirmations send only worksheet/row identity through `resolve-workbook-row`.
 Readback requires both the resolved original receipt and the applied command-derived operation.
 Refused live revalidation refreshes the served choices without changing the retained write values.
+The same section's optional `referenceChoices` carries Onboarding read choices separately from write
+operations. `resolve-workbook-reference-row` binds `referenceTarget` to the run, gate, exact reference
+digest, type, key and live revision. Its payload contains only sheet and row identity. The server
+rebuilds typed chosen values, records the canonical gate result and resumes once; it creates no write
+receipt. An unavailable choice has zero candidates. Successful readback uses the resolved chosen
+evidence and native run version. Dashboard dispatch remains unavailable until its Logs wiring lands.
 
 Served Run and Rerun have no worker choice in the form, request, response or retained start plan. Starting
 uses the workflow's live workers and starts exactly one when none is live. Only Sessions Add workers
@@ -399,6 +405,6 @@ before the account owner when the active profile changes or the page closes.
 
 ### Run reference and output plans
 
-`WorkflowStartWire.requiredWorkbookTypeIds` declares each required reference type. The dashboard sends `workbookReferences: [{entry, typeId, libraryId?, versionId?}]` on the existing start-plan request. The in-use version is the default; an explicit named version preserves its immutable bytes. The browser cannot supply lookup keys or fields. A workflow declares `referenceLookups(input) -> [{typeId, keys, fields}]`; planning reparses canonical input, requires exact required-type membership and combines those facts with the operator's library/version choices. Missing lookup capability refuses planning.
+`WorkflowStartWire.requiredWorkbookTypeIds` declares each required reference type. The dashboard sends `workbookReferences: [{entry, typeId, libraryId?, versionId?}]` on the existing start-plan request. The in-use version is the default; an explicit named version preserves its immutable bytes. The browser cannot supply lookup keys or fields. A workflow declares `referenceLookups(input) -> [{typeId, keys, fields}]`; the single ingress parse derives lookups before reference binding, requires exact required-type membership and combines those facts with the operator's library/version choices. Captured references then bind the canonical input before identity, display and output planning. Missing lookup capability refuses planning.
 
 A workflow declares `plannedOutputs(input, references)` to project output facts from parsed input and captured references. These become `planned[].outputs` in the retained plan and public response and are bound into its input fingerprint. `src/models/dashboard/run-outputs.ts` owns the closed vocabulary: `workbook` with a known row count or `after-review`, a concrete `worksheet-archive` with its worksheet/row membership, or `worksheet-archives` with `after-row-choice` when packaging membership is unresolved. Confirm renders those served facts; absence never creates an output placeholder. A plan describes intended output, not a produced artifact.

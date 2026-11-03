@@ -1,3 +1,5 @@
+import { continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
+import { authenticateOnboardingRosterChoice, authenticateOnboardingRosterExecution } from "../workbooks.js";
 import type { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor, workflowDryRunSupport, workflowPlanning, workflowProjections, workflowTerminalResultExecution } from "../../../workflow-kit/workflow.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
@@ -92,6 +94,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, cont
     if (canonicalJsonStringify(resolveInstances(descriptor, parent.envelope.requestedInstance)) !== canonicalJsonStringify(parent.envelope.resolvedInstance)) throw new Error("delegation-parent-instance-mismatch");
     if (repositories.writeIntents.listAttemptingByItem({ workflowId: parent.envelope.workflow, itemId: parent.envelope.itemId }).length > 0
       || repositories.writeIntents.listByRun(parent.envelope.runId).some(intent => intent.status === "parked")) throw new Error("delegation-write-recovery-required");
+    authenticateOnboardingRosterExecution(repositories, parent);
     const canonicalInput = parseCanonicalInputSnapshot(descriptor.canonicalInput, parent.input.parsed);
     if (canonicalJsonStringify(canonicalInput) !== canonicalJsonStringify(context.scope.input)
       || canonicalJsonStringify(retainedRunProtectedBindings(parent)) !== canonicalJsonStringify(context.scope.protectedInputBindings ?? [])) throw new Error("delegation-scope-input-mismatch");
@@ -128,7 +131,10 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, cont
           if (source.resolvedBy === "operator" || gate.source.attempt !== parent.envelope.attempt) throw new Error("delegation-approval-source-mismatch");
         } else {
           const command = repositories.commands.get(gate.commandId), audit = repositories.commandAudits.findByCommand(gate.commandId);
-          if (source.resolvedBy !== "operator" || command?.family !== "gate" || command.type !== "resolve-gate"
+          if (command?.family === "run" && command.type === "resolve-workbook-reference-row") {
+            if (source.resolvedBy !== "operator") throw new Error("delegation-approval-source-mismatch");
+            authenticateOnboardingRosterChoice(repositories, parent, gate);
+          } else if (source.resolvedBy !== "operator" || command?.family !== "gate" || command.type !== "resolve-gate"
             || command.target.runId !== parent.envelope.runId || String(command.target.gateId) !== String(nodeId) || command.target.expectedVersion !== gate.expectedVersion
             || command.requestedBy !== gate.resolvedBy || canonicalJsonStringify(command.payload.result) !== canonicalJsonStringify(gate.result)
             || audit?.result.state !== "applied" || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)) throw new Error("delegation-approval-source-mismatch");
@@ -142,7 +148,12 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, cont
           || value === undefined || checkpoint.runId === parent.envelope.runId && checkpoint.claimGeneration > parent.claimGeneration
           || canonicalJsonStringify(source.kind === "transaction" ? projectTransactionOutcome(source.commit.uses, checkpoint.output.value, "delegation prerequisite") : checkpoint.output.value) !== canonicalJsonStringify(value)) throw new Error("delegation-scope-checkpoint-mismatch");
         if (source.kind === "task") {
-          if (checkpoint.assertion !== undefined || checkpoint.runId !== parent.envelope.runId && source.replay !== "checkpoint") throw new Error("delegation-scope-checkpoint-mismatch");
+          const continued = parent.envelope.continuation?.checkpoints.some(reference => reference.nodeId === nodeId
+            && reference.nodeId === checkpoint.nodeId && reference.runId === checkpoint.runId
+            && reference.attempt === checkpoint.attempt && reference.claimGeneration === checkpoint.claimGeneration
+            && reference.digest === continuationEvidenceDigest(checkpoint)) === true;
+          if (checkpoint.assertion !== undefined
+            || checkpoint.runId !== parent.envelope.runId && source.replay !== "checkpoint" && !continued) throw new Error("delegation-scope-checkpoint-mismatch");
           const producer = repositories.runs.get(checkpoint.runId);
           if (producer === undefined || producer.envelope.workflow !== parent.envelope.workflow || producer.envelope.itemId !== parent.envelope.itemId
             || producer.envelope.attempt !== checkpoint.attempt || producer.envelope.contractFingerprint !== descriptor.contractFingerprint) throw new Error("delegation-scope-checkpoint-mismatch");

@@ -50,7 +50,8 @@ it("continues a reference choice inline and retains its exact uncertain command 
       const request = CommandRequestSchema.parse(raw); sent.push(request);
       if (!replay) throw new Error('reply lost');
       resolved = true;
-      return CommandResultSchema.parse({ state: 'already-applied', commandId: request.commandId, affectedTargets: [{ family: 'run', runId: RUN }] });
+      return CommandResultSchema.parse({ state: 'already-applied', commandId: request.commandId,
+        affectedTargets: [{ family: 'gate', runId: RUN, gateId: f.target.gateId }, { family: 'run', runId: RUN }] });
     },
   } as unknown as DashboardClient;
   let confirmations = 0;
