@@ -216,8 +216,8 @@ describe_m2("manual OCR and reading inputs", () => {
     expect_m2(source.selectedSteps).toEqual(["navigation", "save"]);
   });
   it_m2("lets manual I-9 review bind sections to different source pages without changing their images", () => {
-    const draft = { ...initialMockDraft_m2("i9-check"), ocrMode: "manual" as const, files: [{ name: "i9.pdf", size: 4096, digest: "fixture:document:i9.pdf" }] };
-    const runs = mockRunsForDraft_m2("i9-check", draft, 1), ocr = runs[1];
+    const draft = { ...initialMockDraft_m2("i9-check-start"), ocrMode: "manual" as const, files: [{ name: "i9.pdf", size: 4096, digest: "fixture:document:i9.pdf" }] };
+    const runs = mockRunsForDraft_m2("i9-check-start", draft, 1), ocr = runs[1];
     let record = reviewRecords_m2(ocr)[0];
     for (const [key, value] of [["employeeId", "10000022"], ["firstName", "Sam"], ["lastName", "Rivera"], ["dateOfBirth", "01/01/2000"], ["hireDate", "10/06/2026"], ["section1", "3"], ["section2", "4"]]) record = editReviewRecord_m2(record, key, value);
     expect_m2(record.page).toBe(3);
@@ -366,11 +366,11 @@ describe_m3("legacy workflow previews", () => {
     expect_m3(() => approveMockRun_m3([standalone], standalone.id)).toThrow("MOCK_APPROVAL_UNAVAILABLE");
   });
   it_m3("keeps I-9 downstream processing behind OCR approval and gives every log a unique step identity", () => {
-    const run = mockRunsForDraft_m3("i9-check", draft("i9-check"), 1)[0];
+    const run = mockRunsForDraft_m3("i9-check-start", draft("i9-check-start"), 1)[0];
     expect_m3(mockNeedsReview_m3(run)).toBe(false);
     const { steps } = mockRunLog_m3(run);
     expect_m3(new Set(steps.map(step => step.id)).size).toBe(steps.length);
-    const rerun = mockRunsForDraft_m3("i9-check", run.draft, 2, run.id);
+    const rerun = mockRunsForDraft_m3("i9-check-start", run.draft, 2, run.id);
     expect_m3(rerun).toHaveLength(2); expect_m3(rerun[0].sourceId).toBe(run.id);
     expect_m3(rerun[1].workflowId).toBe("ocr"); expect_m3(mockNeedsReview_m3(rerun[1])).toBe(true); expect_m3(rerun[1].parentId).toBe(rerun[0].id); expect_m3(rerun[1].id).not.toBe(`${run.id}:person:0`);
     expect_m3(steps.some(step => step.title === "Result")).toBe(false);
@@ -531,7 +531,7 @@ describe_m4("source-backed workflow operation detail", () => {
     const upload = completed("oath-upload").find(run => run.workflowId === "oath-upload")!;
     expect_m4(fields(upload)).toEqual(expect_m4.arrayContaining([expect_m4.objectContaining({ label: "Specifically", value: "Signing Ceremony (Oath)" }), expect_m4.objectContaining({ label: "Category", value: "Payroll" }), expect_m4.objectContaining({ label: "Description", value: "Please see attached oaths for employees hired under HDH." })]));
     expect_m4(clicks(person("oath-signature"))).toEqual(expect_m4.arrayContaining(["OK · stage oath row", "Save · commit oath"]));
-    expect_m4(fields(person("i9-check")).map(field => field.label)).toEqual(expect_m4.arrayContaining(["Section 1 page", "Section 2 page", "Hire date match", "PPS ID", "Section 1 present", "Section 2 present"]));
+    expect_m4(fields(person("i9-check-start")).map(field => field.label)).toEqual(expect_m4.arrayContaining(["Section 1 page", "Section 2 page", "Hire date match", "PPS ID", "Section 1 present", "Section 2 present"]));
     const report = completed("old-kronos-reports", { startDate: "2018-02-03", endDate: "2019-04-05" })[0];
     expect_m4(fields(report)).toEqual(expect_m4.arrayContaining([expect_m4.objectContaining({ label: "Start date", value: "02/03/2018" }), expect_m4.objectContaining({ label: "End date", value: "04/05/2019" }), expect_m4.objectContaining({ label: "Identity match", value: "Confirmed" })]));
   });

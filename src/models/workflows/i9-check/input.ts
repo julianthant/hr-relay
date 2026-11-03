@@ -20,7 +20,7 @@ const personFields = {
 function useMatch(person: { firstName?: string; lastName?: string; dob?: string; ssn?: string }): boolean {
   return person.firstName !== undefined && person.lastName !== undefined && (person.dob !== undefined || person.ssn !== undefined);
 }
-const canonicalPerson = z.strictObject({ ...personFields, useMatch: z.boolean() })
+export const I9CheckPersonSchema = z.strictObject({ ...personFields, useMatch: z.boolean() })
   .refine(person => person.useMatch === useMatch(person), "Search mode contradicts the supplied identifiers");
 const fields = {
   ocrRunId: RunIdSchema, recordId: text,
@@ -31,9 +31,12 @@ export const I9CheckInput = z.strictObject({ ...fields,
   person: z.strictObject({ ...personFields, useMatch: z.boolean().default(false) })
     .overwrite(person => ({ ...person, useMatch: useMatch(person) })),
 });
-export const I9CheckCanonicalInput = defineCanonicalInput(I9CheckInput, z.strictObject({ ...fields, person: canonicalPerson }), [{
+export const I9CheckCanonicalInput = defineCanonicalInput(I9CheckInput, z.strictObject({ ...fields, person: I9CheckPersonSchema }), [{
   ocrRunId: "00000000-0000-4000-8000-000000000001", recordId: "record-1",
   person: { name: "Example, Person", sourcePages: [1] }, roster: { rows: [] },
   asOf: "2026-11-01", reviewerName: "Example Reviewer",
 }]);
 export type I9CheckInputValue = z.output<typeof I9CheckInput>;
+export function i9CheckMatchKey(input: Pick<I9CheckInputValue, "ocrRunId" | "recordId">): string {
+  return `${input.ocrRunId}:${input.recordId}`;
+}

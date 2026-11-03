@@ -17,7 +17,7 @@ const field = (key: string, label: string, value: string, kind?: ReviewField["ki
 function extractedReviewRecords(run: Pick<MockRun, "workflowId" | "draft">, useFixture = true): readonly ReviewRecord[] {
   const fixture = mockDocumentFixture(run.draft);
   const documentType = mockOnbaseDocumentType(run.draft.documentType);
-  const type = run.workflowId === "i9-check" ? "i9" : run.workflowId === "ocr" ? run.draft.formType : run.workflowId === "onbase" ? documentType.formType : run.workflowId === "emergency-contact" ? "emergency-contact" : run.workflowId === "separations" ? "separation" : "oath";
+  const type = run.workflowId === "i9-check-start" ? "i9" : run.workflowId === "ocr" ? run.draft.formType : run.workflowId === "onbase" ? documentType.formType : run.workflowId === "emergency-contact" ? "emergency-contact" : run.workflowId === "separations" ? "separation" : "oath";
   if (!["i9", "verify", "oath", "emergency-contact", "onbase-emergency-contact", "separation"].includes(type)) throw new Error("MOCK_REVIEW_DOCUMENT_TYPE_UNKNOWN");
   const kind = type === "i9" ? "i9" : type === "verify" ? "verify" : type === "oath" ? "oath" : type === "separation" ? "separation" : "contact";
   const i9Section = kind === "i9" && "i9Section" in documentType ? documentType.i9Section : undefined;

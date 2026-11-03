@@ -191,6 +191,7 @@ function admittedClientFor(
 ): ProviderClient<ProviderCapabilityId> {
   switch (capability) {
     case "ocr.extract": return createProviderClient(capability, dependencies);
+    case "ocr.review": return createProviderClient(capability, dependencies);
     case "geocode.census": return createProviderClient(capability, dependencies);
     case "geocode.nominatim": return createProviderClient(capability, dependencies);
     case "workbooks.library": return createProviderClient(capability, dependencies);

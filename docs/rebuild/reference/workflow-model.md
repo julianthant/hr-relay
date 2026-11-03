@@ -22,6 +22,11 @@ The callback returns ordered `[WorkflowTimelineGroup, readonly AnyWorkflowEntry[
 terminal `result` declaration. Tuple order determines presentation. Typed entry references determine
 execution dependencies.
 
+Start surfaces declare typed input or an upload input. A PDF upload declaration names the document
+collection, as-of date and reviewer fields in the canonical input. Bootstrap carries this metadata
+to the existing PDF picker. Its authenticated uploads form one submission, with fresh reading IDs;
+the served operator/date facts and those IDs remain fixed while the plan is reviewed.
+
 An optional `outcomeProjection` maps a terminal-result field to declared `{ value, label, tone }`
 cases. `defineWorkflowDescriptor` requires a string, enum, or literal field and rejects case values
 outside its schema vocabulary. Person Lookup declares eight cases for `activeStatus.state`; the
@@ -48,7 +53,7 @@ requirements; production definitions declare an explicit array. It does not desc
 workbooks, spreadsheet intake, or delegated children's requirements. Retained step proofs inherit
 the parent declaration. The descriptor and its sealed planning and projections expose the same
 validated facts; workbook selection and reference snapshots belong to run planning. Onboarding
-and CRM Document Download require `onboarding-roster`.
+and CRM Document Download require `onboarding-roster`; the I-9 PDF parent requires Action History.
 
 Start planning takes explicit entry-scoped `workbookReferences` (type, optional library and named
 version), derives lookup keys and fields from the workflow's admitted ingress declaration, requires
@@ -56,6 +61,11 @@ exactly the declared types, and snapshots the selected or default workbook. Capt
 canonical input before identity and output planning. Schema-bound references retain exact cell values, revision and every worksheet's identity
 in the confirmation fingerprint and native run input. Later master edits or default changes do not
 replace them. No workflow-specific key or field mapping is inferred.
+
+The I-9 PDF parent captures Action History's named version with no keys until OCR review supplies
+the approved EIDs. Its run-bound read uses those late keys against the captured immutable version,
+retaining the original version label and worksheet/row coordinates. Confirm lists every PDF and one
+results workbook with one row per person after review.
 
 Onboarding maps the exact requested email key and seven fields: `email`, `firstName`, `lastName`,
 `middleName`, `roster.livedFirstName`, `roster.livedLastName` and `roster.livedMiddleName`.

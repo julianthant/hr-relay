@@ -505,7 +505,31 @@ function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
   return [...ocrReviewSeedLeaves(scope, "review."), ...ocrPrivateLeaves(scope, "identities")];
 }
 
+function i9ReferenceLeaves(scope: EvidenceValueScope): unknown[] {
+  return ocrPrivateLeaves(scope,
+    ...["typeId", "libraryId", "versionId", "keys", "fields"].map(path => `reference.request.${path}`),
+    ...["libraryId", "version", "versionId", "versionName", "worksheets", "rows", "type.id", "type.name", "type.keyFieldId", "type.fields", "type.defaultWorkbookId"]
+      .map(path => `reference.snapshot.${path}`));
+}
+
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-people"), "people"),
+  ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-requests"), "people", "children"),
+  ...i9ReferenceLeaves(taskOutput("workflow:i9-check-start/read-requests")),
+  ...[taskOutput("workflow:i9-check-start/read-rows"), taskOutput("workflow:i9-check-start/read-publication"),
+    workflowResult("i9-check-start"), workflowResult("i9-check-start-retention")].flatMap(scope => [
+    ...open(scope, "personCount"), ...ocrPrivateLeaves(scope, "batchKey", "tracker.rows", "people"), ...i9ReferenceLeaves(scope),
+  ]),
+  ...[taskOutput("workflow:i9-check-start/read-publication"), workflowResult("i9-check-start"), workflowResult("i9-check-start-retention")]
+    .flatMap(scope => [...ocrPrivateLeaves(scope, "workbook.libraryId", "workbook.operationId"), ...open(scope, "workbook.state", "workbook.version")]),
+  ...["i9-check-start", "i9-check-start-documents", "i9-check-start-roster-reference", "i9-check-start-retention"].flatMap(id => [
+    ...open(workflowInput(id), "asOf"), ...ocrPrivateLeaves(workflowInput(id), "documents", "reviewerName"),
+  ]),
+  ...ocrPrivateLeaves(workflowResult("i9-check-start-documents"), "people"),
+  ...ocrPrivateLeaves(workflowResult("i9-check-start-roster-reference"), "people", "children"),
+  ...i9ReferenceLeaves(workflowResult("i9-check-start-roster-reference")),
+  ...open(taskOutput("ocr/read-approved-records"), "state", "code"),
+  ...ocrPrivateLeaves(taskOutput("ocr/read-approved-records"), "sources"),
   ...open(taskOutput("workbooks/read-reference"), "state", "reference.snapshot.version", "reference.request.fields", "reference.snapshot.type.fields"),
   ...population(taskOutput("workbooks/read-reference"), "reference.snapshot.rows", "reference.snapshot.worksheets"),
   ...["referenceDigest", "reference.request.typeId", "reference.request.libraryId", "reference.request.versionId", "reference.request.keys",
