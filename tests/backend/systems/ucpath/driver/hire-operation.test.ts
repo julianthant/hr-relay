@@ -54,6 +54,11 @@ describe("UCPath hire browser operations on a fake page", () => {
     assert.equal(h.actions.includes("fill:Tracker Profile ID"), false);
     assert.equal((await h.driver.submitHire(capability())).emplId, "10800000");
   });
+  it("refuses a named confirmation for a different existing-person ID before save", async () => {
+    const h = fixture({ rehire: true });
+    await assert.rejects(h.driver.stageHire({ ...target, mode: "rehire", emplId: EidSchema.parse("10800001"), profileId: null }, h.capture), /confirmation-refused/u);
+    assert.equal(h.actions.includes("click:save"), false);
+  });
   for (const options of [{ headerName: "Wrong Person" }, { resetRate: true }, { disabled: true }, { rehire: true, wrongConfirmation: true }]) {
     it(`refuses before save for ${JSON.stringify(options)}`, async () => {
       const h = fixture(options);

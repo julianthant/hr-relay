@@ -140,7 +140,7 @@ export function createUcpathHireOperations(assertCurrent: () => void, page: Page
       await step(() => ui.continue(page).click({ timeout: BOUND_MS }), capture);
       if (target.emplId !== null) {
         const message = await visible(ui.personConfirmation(page));
-        if (!message.includes(`Person ID ${target.emplId} already exists in the system`) || !message.includes("Select OK to continue the hire process with this Person ID")) throw new Error("ucpath-hire-confirmation-refused");
+        if (/Person ID (\d{8}) already exists in the system/u.exec(message)?.[1] !== target.emplId || !message.includes("Select OK to continue the hire process with this Person ID")) throw new Error("ucpath-hire-confirmation-refused");
         await step(() => ui.confirmExistingPerson(page).click({ timeout: BOUND_MS }), capture);
       }
       const tab = async (name: Parameters<typeof ui.tab>[1]) => { await step(() => ui.tab(page, name).click({ timeout: BOUND_MS }), capture); requireApp("wizard"); };
