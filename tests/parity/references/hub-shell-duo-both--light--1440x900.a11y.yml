@@ -24,6 +24,7 @@
     - heading "Ready to finish" [level=2]
     - paragraph: Both methods are registered in Duo.
   - status: Security key and Touch ID ready
+  - button "Cancel sign-up"
   - button "Finish setup"
 - paragraph: UI mock. Browser handoff and Duo results are simulated. No details are sent or saved.
 - region "Notifications"

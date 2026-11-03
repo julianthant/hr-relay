@@ -26,7 +26,7 @@
 - main:
   - region "Queue":
     - text: ACTIVE · 2
-    - button "Pause all" [disabled]
+    - button "Pause all runs" [disabled]
     - status: Finishing current steps; pauses and shutdown are not yet confirmed.
     - strong: Alex Morgan
     - text: Pausing

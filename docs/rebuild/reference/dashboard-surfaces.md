@@ -616,11 +616,15 @@ operator interface until their canonical assistant binding is implemented.
 
 ### Run pause presentation
 
-Logs exposes per-run Pause and Resume. The queue header has only Pause all; the app quit path opens
-the explicit “Pause all and quit?” confirmation. Requested pause/resume states stay pending until the
-owner supplies recorded completion. No submit is interrupted. Unavailable authority disables
-the controls; unknown closure cannot show a completed pause or clean shutdown. The isolated
-`run-pause` parity fixture changes mock state only. Backend lifecycle wiring is separate.
+Queue footers expose Pause and Resume from served `pauseControl`, preserving their timing, attempt,
+trace and other actions. A recorded pause uses the outline Queued style with a Paused label; requests
+remain Pausing until recorded. Logs marks the corresponding timeline boundary. The queue toolbar
+pauses every run in the application lifecycle snapshot, including runs outside the selected day.
+When every target is paused it offers Resume all, retaining each command outcome. Command-Q opens
+“Pause all and quit?” with Keep working and confirmation, without a run list. A pending quit shows a
+banner until the runtime settles; no submit is interrupted. Unavailable authority disables controls,
+and unknown closure never becomes a completed pause or clean shutdown. Exact command recovery keeps
+the original targets and request identity. Crash-failed rows offer one checkpoint Rerun and Delete.
 
 ### UCPath found transactions presentation
 
@@ -643,10 +647,14 @@ and partial exercise without executing workflows. Executor and served projection
 Run and Rerun have no capture-off choice. Options show a locked “Always on” Screenshots row; browser
 summary facts say “screenshots required.” The shared capture notice distinguishes a pre-submit
 capture failure (no click) from post-submit missing evidence with either independently proved or
-unknown write outcome. The `required-captures` fixture is presentation-only. Execution enforcement
-and served per-step capture projection remain owned by the workflow capture implementation. Submit captures use
-equal cards with captions below the image; missing captures carry a short reason and independently proved
-outcomes retain their confirmation row.
+unknown write outcome. Submit captures use equal cards with captions below the image. Served task
+captures retain their verified node, attempt, browser session and boundary. A complete pair attaches
+only to the sole declared commit click for that node/session; ambiguous or incomplete associations
+remain separate. Capture log identities remain on the rendered figures. Structured capture-failure
+notes distinguish no click before submit, an unknown outcome after submit, and an independently
+proved outcome. The served dry-run result supplies exercise counts, Not clicked stages and tagged
+sample facts at the end of Logs. Missing preview authority remains explicitly unavailable. The
+`required-captures` fixture remains synthetic; static UI checks do not establish live acceptance.
 
 ### Fixed app-data and maintenance presentation
 
@@ -661,5 +669,9 @@ Sign-up presents Touch ID and Security key as distinct required verified enrollm
 `duo.ucpath.edu`. Hardware-unavailable presentation identifies Chromium’s virtual platform
 authenticator for Touch ID; it never substitutes for Security key. Finish stays unavailable until
 both enrollments are verified. Finishing and cancellation stay pending until their owners settle.
-Unknown enrollment is labelled Unknown, not failed or completed. The `duo-signup` fixture is
-synthetic; actual enrollment, owned-resource closure, and account publication are separate.
+Unknown enrollment is labelled Unknown, not failed or completed. Method chips stay on one line.
+The Duo footer confirms Cancel sign-up before calling the existing cancellation owner; returning to
+Details uses the same confirmation. Lost cancellation responses prevent another attempt for that
+draft. The virtual-platform subtitle names the built-in passkey while preserving the Touch ID chip.
+The `duo-signup` fixture remains synthetic; live enrollment, closure and account publication need
+their runtime acceptance checks.

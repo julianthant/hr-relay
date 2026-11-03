@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
+import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import { PHASE1_ACTIVE_COMMAND_ARMS } from "../../../../src/backend/runs/commands/command-kernel.js";
 import {
 queueRowActions,
@@ -45,6 +46,33 @@ function factsFor(status: Status, over: Partial<QueueRowActionFacts> = {}): Queu
 
 const keysFor = (status: Status, over: Partial<QueueRowActionFacts> = {}): string[] =>
   queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status, over)).map(({ key }) => key);
+
+it("serves footer pause/resume only from the projected control with its exact CAS version", () => {
+  assert.ok(!keysFor("running").includes("pause"));
+  for (const command of ["pause", "resume"] as const) {
+    const pauseControl = { state: command === "pause" ? "running" as const : "paused" as const, command, expectedVersion: PositiveIntSchema.parse(7) };
+    const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("running", { pauseControl }));
+    const control = actions.find(action => action.key === command);
+    assert.ok(control?.kind === "command");
+    assert.equal(control.command, command);
+    assert.equal(control.expectedVersion, 7);
+    assert.deepEqual(control.placement, ["footer"]);
+    assert.ok(actions.some(action => action.key === "cancel"));
+  }
+  for (const state of ["pause-pending", "unavailable"] as const) {
+    const actions = keysFor("running", { pauseControl: { state, expectedVersion: PositiveIntSchema.parse(7) } });
+    assert.ok(!actions.includes("pause") && !actions.includes("resume"));
+  }
+});
+
+it("offers one crash Rerun through checkpoint recovery and keeps Delete", () => {
+  const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed", { crashed: true, recoverySource: "failed" }));
+  assert.deepEqual(actions.filter(action => action.placement.includes("footer")).map(action => [action.label, action.kind]), [["Rerun", "command"], ["Delete run", "command"]]);
+  const rerun = actions.find(action => action.label === "Rerun");
+  assert.ok(rerun?.kind === "command");
+  assert.equal(rerun.command, "recover-run");
+  assert.ok(rerun.confirm);
+});
 
 /** The whole row, so the wire's own CAS/uniqueness refinement is the assertion. */
 function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): unknown {

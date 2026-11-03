@@ -107,6 +107,7 @@
 .dry-run-result .log-decision-header { min-height:0;padding:12px 14px; }
 
 .log-capture-group--submit { margin:0;max-width:none;height:100%;grid-template-columns:minmax(0,1fr); }
+.log-capture-group--submit:not(.log-capture-group--single) { grid-template-columns:repeat(2,minmax(0,1fr)); }
 .log-capture--submit { display:flex;height:100%;flex-direction:column; }
 .log-capture--submit .log-capture-open { padding:0; }
 .log-capture--submit .log-capture-viewport { height:150px;background:var(--ui-table); }

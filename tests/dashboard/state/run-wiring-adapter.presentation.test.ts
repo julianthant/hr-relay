@@ -172,3 +172,79 @@ it("collapses only explicit same-cause aliases across Run notes while retaining 
   assert.match(logPlainText(result.steps),/Synthetic run note/u);
   const captured=result.steps.flatMap(step=>step.entries).find(entry=>entry.id===`${id(105)}:captures`);assert.ok(captured?.kind==='decision');assert.deepEqual(captured.decision.screenshots?.map(shot=>[shot.src,shot.width,shot.height]),[[`/artifacts/${id(501)}`,1280,720]]);
 });
+
+it("pairs exact before/after capture events under the sole declared submit without dropping their identities", () => {
+  const base = snapshot();
+  const captureRow = base.logs.rows?.find(row => row.kind === "note" && row.note.screenshot !== undefined);
+  assert.ok(captureRow?.kind === "note" && captureRow.note.screenshot);
+  const sessionId = captureRow.note.screenshot.sessionId;
+  const after = { ...captureRow, native: native(7), logId: id(107), sequence: 7,
+    note: { ...captureRow.note, native: native(7), noteId: id(107), sequence: 7,
+      screenshot: { ...captureRow.note.screenshot, bundleId: id(600), artifactId: id(601) } } };
+  const submit = { ...captureRow, native: native(6), logId: id(106), sequence: 6,
+    note: { ...captureRow.note, native: native(6), noteId: id(106), sequence: 6, screenshot: undefined,
+      operatorAction: { kind: "click" as const, label: "Save and Submit", submit: true, sessionId } } };
+  const captureSection = base.sections[0]; assert.ok(captureSection.section === "captures");
+  const original = captureSection.payload.artifacts[0];
+  const sections = [RunDetailSectionResponseSchema.parse({ section: "captures", payload: { runId: RUN, artifacts: [
+    { ...original, origins: original.origins.map(origin => ({ ...origin, browserCapture: { ...origin.browserCapture, boundary: "before-submit" } })) },
+    { ...original, artifact: { ...original.artifact, artifactId: id(601) }, origins: original.origins.map(origin => ({ ...origin,
+      bundleId: id(600), browserCapture: { ...origin.browserCapture, boundary: "after-submit" } })) },
+  ] } })];
+  const rows = [...(base.logs.rows ?? []), submit, after];
+  const project = (input = rows, detail = base.detail) => projectRunLogs({ ...base, detail, sections, logs: NotePageSchema.parse({ ...base.logs, rows: input,
+    notes: input.flatMap(row => row.kind === "note" ? [row.note] : []) }) }, client).steps.flatMap(step => step.entries);
+  const entries = project();
+  const clicked = entries.find(entry => entry.id === submit.logId); assert.ok(clicked?.kind === "click");
+  assert.deepEqual(clicked.screenshots?.map(shot => [shot.logId, shot.label]), [[captureRow.logId, "Before submit"], [after.logId, "After submit"]]);
+  assert.equal(entries.filter(entry => entry.kind === "decision" && entry.decision.screenshots).length, 0);
+  const secondSubmit = { ...submit, native: native(8), logId: id(108), sequence: 8,
+    note: { ...submit.note, native: native(8), noteId: id(108), sequence: 8 } };
+  const ambiguous = project([...rows, secondSubmit]);
+  assert.ok(ambiguous.filter(entry => entry.kind === "click").every(entry => entry.screenshots === undefined));
+  assert.equal(ambiguous.filter(entry => entry.kind === "decision" && entry.decision.screenshots).length, 2);
+  const startedSubmit = { ...secondSubmit, note: { ...secondSubmit.note,
+    operatorAction: { ...submit.note.operatorAction, state: "started" as const } } };
+  const completedWithStart = project([...rows, startedSubmit]).find(entry => entry.id === submit.logId);
+  assert.ok(completedWithStart?.kind === "click");
+  assert.equal(completedWithStart.screenshots?.length, 2);
+  const missingAfter = project(rows.filter(row => row.logId !== after.logId));
+  assert.ok(missingAfter.filter(entry => entry.kind === "click").every(entry => entry.screenshots === undefined));
+  const laterNative = NativeRunEventWireSchema.parse({ ...submit.native, attempt: 2 });
+  const laterSubmit = { ...submit, native: laterNative, note: { ...submit.note, native: laterNative } };
+  const nextAttempt = RunDetailWireSchema.parse({ ...base.detail, header: { ...base.detail.header, attempt: 2 } });
+  const earlierCaptures = project(rows.map(row => row.logId === submit.logId ? laterSubmit : row), nextAttempt);
+  assert.ok(earlierCaptures.filter(entry => entry.kind === "click").every(entry => entry.screenshots === undefined));
+  assert.equal(earlierCaptures.filter(entry => entry.kind === "decision" && entry.decision.screenshots).length, 2);
+  assert.equal(missingAfter.filter(entry => entry.kind === "decision" && entry.decision.screenshots).length, 1);
+});
+
+it("renders capture failure from structured boundary facts and preserves independently proved write outcomes", () => {
+  const base = snapshot();
+  for (const state of ["pre-submit-failed", "post-submit-unknown", "post-submit-proved"] as const) {
+    const note = { native: native(8), noteId: id(108), runId: RUN, sequence: 8, at: AT, level: "warning", message: "Capture unavailable.",
+      fields: [{ key: "code", kind: "text", value: "BROWSER_SCREENSHOT_CAPTURE_FAILED" },
+        { key: "boundary", kind: "text", value: state === "pre-submit-failed" ? "before-submit" : "after-submit" }] };
+    const failure = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: {
+      runId: RUN, traceId: TRACE, attempt: 1, workflowId: "person-lookup", nodeId: "searching", native: native(9), failureId: id(900), fingerprint: "a".repeat(64),
+      code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: "Capture unavailable.", transient: false, writeState: "verified",
+      subject: { state: "absent", reason: "fixture has no subject" },
+      causeChain: [{ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: "Capture unavailable.", role: "primary", transient: false }],
+      remediation: [{ kind: "operator-action", message: "Review recorded evidence." }], sameFingerprintSeen: 1,
+      diagnosticBundle: { state: "absent", reason: "fixture has no bundle" }, occurredAt: AT,
+    } } });
+    const logs = NotePageSchema.parse({ ...base.logs, rows: [...(base.logs.rows ?? []), { kind: "note", logId: note.noteId, native: note.native, sequence: 8, note }], notes: [...base.logs.notes, note] });
+    const result = projectRunLogs({ ...base, logs, sections: [...base.sections, ...(state === "post-submit-proved" ? [failure] : [])] }, client);
+    const entry = result.steps.flatMap(step => step.entries).find(entry => entry.id === note.noteId);
+    assert.ok(entry?.kind === "note");
+    assert.equal(entry.captureFailure, state);
+    if (state === "post-submit-proved" && failure.section === "failure" && failure.payload.state === "available") {
+      const laterFailure = RunDetailSectionResponseSchema.parse({ ...failure, payload: { ...failure.payload, value: { ...failure.payload.value,
+        attempt: 2, native: { ...failure.payload.value.native, attempt: 2 } } } });
+      const detail = RunDetailWireSchema.parse({ ...base.detail, header: { ...base.detail.header, attempt: 2 } });
+      const earlier = projectRunLogs({ ...base, detail, logs, sections: [...base.sections, laterFailure] }, client).steps.flatMap(step => step.entries).find(entry => entry.id === note.noteId);
+      assert.ok(earlier?.kind === "note");
+      assert.equal(earlier.captureFailure, "post-submit-unknown");
+    }
+  }
+});

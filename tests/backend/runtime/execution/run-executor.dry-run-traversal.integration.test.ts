@@ -44,5 +44,6 @@ it("previews both ordered writes and accounts for a skipped gate and unavailable
     assert.ok(section.section === "logs");
     assert.ok(section.payload.dryRunPreview?.state === "available");
     assert.deepEqual(section.payload.dryRunPreview.stages.map(stage => stage.state), ["exercised", "exercised", "skipped", "unavailable"]);
+    assert.deepEqual(section.payload.dryRunPreview.stages.map(stage => stage.submitNotClicked === true), [true, true, false, false]);
   } finally { await world.dispose(); }
 });

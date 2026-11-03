@@ -26,7 +26,7 @@
 - main:
   - region "Queue":
     - text: ACTIVE · 2
-    - button "Pause all" [disabled]
+    - button "Pause all runs" [disabled]
     - status: Closure is unknown. Keep Relay open and check active runs.
     - strong: Alex Morgan
     - text: Running

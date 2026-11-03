@@ -1,6 +1,7 @@
 import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
 import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { syntheticSettingsAuthority } from "../../support/helpers/dashboard/settings-harness.js";
+import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
 import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
 import { useDashboardCommandBinding } from "../../../src/dashboard/state/client-context.js";
 import { QueueToolbar, ConfirmBulkCommandDialog, type PendingBulkCommand } from "../../../src/dashboard/surfaces/queue/queue-toolbar.js";
@@ -169,6 +170,7 @@ async function mountSurface(client: DashboardClient_m1, children: ReactNode_m1):
 function appClient(): DashboardClient_m1 {
   const served = {
     bootstrap: () => Promise.resolve(APP_BOOTSTRAP),
+    applicationLifecycle: () => Promise.resolve(ApplicationLifecycleSchema.parse({ runtimeGeneration: 1, state: "ready", targets: [], update: "installer-unavailable" })),
     chatGptAccount: () => Promise.resolve({ state: "signed-out" }),
     subscribeDay: (input: Parameters<DashboardClient_m1["subscribeDay"]>[0]) => {
       input.onDay(APP_DAY);

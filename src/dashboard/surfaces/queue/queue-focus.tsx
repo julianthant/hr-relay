@@ -9,7 +9,8 @@ import { needsYouCount, statusCount, totalCount, type StatusBucket, type StatusC
 import { PROPOSED_STATUS, dsStatusOf } from '../shared/status/status-model.js';
 import { toggleQueueFilter } from './queue-filter-model.js';
 
-export function FocusQueueToolbar({ leading, runStart, active, counts, onFilter, sort, onSort }: {
+export function FocusQueueToolbar({ leading, runStart, pauseControls, active, counts, onFilter, sort, onSort }: {
+  pauseControls?: ReactNode;
   leading: ReactNode; runStart: ReactNode; active: readonly StatusBucket[]; counts: readonly StatusCountWire[];
   onFilter: (next: readonly StatusBucket[]) => void; sort: QueueSortKey; onSort: (next: QueueSortKey) => void;
 }) {
@@ -45,6 +46,7 @@ export function FocusQueueToolbar({ leading, runStart, active, counts, onFilter,
       {QUEUE_SORTS.filter(entry => entry.key !== "attention").map(entry => <option key={entry.key} value={entry.key}>{entry.label}</option>)}
     </Select>
     <ToggleButton isIconOnly size="sm" variant="default" isSelected={sort === "attention"} onChange={selected => { if (selected && sort !== "attention") setChronological(sort); onSort(selected ? "attention" : chronological); }} className="queue-attention-toggle" aria-label="Attention first"><ListOrdered aria-hidden className="size-4" /></ToggleButton>
+    {pauseControls}
   </OperationsToolbar>;
 }
 

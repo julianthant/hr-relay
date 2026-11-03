@@ -30,7 +30,8 @@ export function createApplicationLifecycle(input: Readonly<{
     if (runtime === undefined) throw new ApplicationAdmissionRefusedError("application-runtime-unavailable");
     return ApplicationLifecycleSchema.parse({ runtimeGeneration: runtime.generation,
       state: quitting ? "quitting" : admission.state === "open" ? "ready" : "pausing",
-      targets: active.map(run => ({ runId: run.envelope.runId, expectedVersion: run.version })),
+      targets: active.map(run => ({ runId: run.envelope.runId, expectedVersion: run.version,
+        ...(run.pause === undefined ? {} : { pause: run.pause }), pauseUnavailable: run.lifecycle.state === "parked-write" || run.cancelRequested === true })),
       update: input.updateHost === undefined ? "installer-unavailable" : busy || blocked ? "deferred" : input.updateHost.pending() ? "pending" : "idle",
     });
   });

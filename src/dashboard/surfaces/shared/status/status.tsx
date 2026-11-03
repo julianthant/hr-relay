@@ -1,5 +1,6 @@
 import { cn } from "../../../lib/utils.js";
 import { DS_STATUS, StatusPill, dsText } from "../../../ds/ui.js";
+import type { QueueSurfaceWire } from "../../../../models/dashboard/projection.js";
 import type {
   QueueBusinessOutcome,
   OutcomeWire,
@@ -22,8 +23,10 @@ export function StatusBadge({
   hideIcon,
   presentation,
   outcome,
+  pauseControl,
 }: {
   status: ProposedStatus;
+  pauseControl?: QueueSurfaceWire["pauseControl"];
   outcome?: QueueBusinessOutcome;
   label?: string;
   age?: string;
@@ -32,7 +35,8 @@ export function StatusBadge({
 }) {
   const completedOutcome = (status === "verifiedDone" || status === "doneWarnings") ? outcome : undefined;
   const tone = completedOutcome ? DS_STATUS[completedOutcome.tone === "success" ? "verifiedDone" : completedOutcome.tone === "warning" ? "doneWarnings" : "cancelled"] : undefined;
-  return <StatusPill status={status} className={tone && cn(tone.chip, tone.text)} label={completedOutcome?.label ?? label} age={age} size="sm" hideIcon={hideIcon} presentation={presentation} />;
+  const pause = pauseControl?.state === "paused" ? "paused" : pauseControl?.state === "pause-pending" ? "requested" : undefined;
+  return <StatusPill status={status} pause={pause} className={tone && cn(tone.chip, tone.text)} label={completedOutcome?.label ?? label} age={age} size="sm" hideIcon={pause === "paused" ? false : hideIcon} presentation={presentation} />;
 }
 
 /** A member's OUTCOME — what its run found — as a word in a column.
