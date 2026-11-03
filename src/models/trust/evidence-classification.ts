@@ -497,6 +497,9 @@ function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
   { scope: taskOutput("crm/search-document-records"), path: "records", classification: "direct-identifier", transform: "digest" },
   { scope: taskOutput("crm/read-idocs"), path: "people", classification: "direct-identifier", transform: "digest" },
+  ...population(taskOutput("workflow:crm-doc-download/read-document-rows"), "people"),
+  ...open(taskOutput("workflow:crm-doc-download/read-document-rows"), "state"),
+  { scope: taskOutput("workflow:crm-doc-download/read-document-rows"), path: "referenceDigest", classification: "sensitive-hr", transform: "drop" },
   ...[taskOutput("workflow:crm-doc-download/read-worksheet-archives"), workflowResult("crm-doc-download")].flatMap(scope => [
     ...population(scope, "worksheets", "collection.files"),
     ...open(scope, "worksheetCount", "personCount", "documentCount", "collection.artifact.bytes", "collection.artifact.mediaType"),
