@@ -41,9 +41,7 @@
   - heading "Add Touch ID" [level=2]
   - paragraph: Open Duo, approve with an existing method, then choose Other options → Manage devices.
   - text: Device type
-  - combobox "Device type":
-    - option "Security key" [disabled]
-    - option "Touch ID" [selected]
+  - combobox "Device type": Touch ID
   - button "Open duo.ucsd.edu"
   - button "Start capture"
   - status: Capture alone does not mean the device is added.
