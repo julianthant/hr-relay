@@ -16,8 +16,47 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createFirstInstallCustodyFixture } from "../../../support/helpers/storage/first-install-custody-fixtures.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
+import { insertUnboundOcrExtraction } from "../../../support/fixtures/storage/ocr-extractions.js";
+import { OcrPageInputSchema } from "../../../../src/models/workflows/ocr/source-manifest.js";
 
 const retainedFixtureOwners: unknown[] = [];
+
+it.each(["unbound-source", "source-bound"] as const)("retains %s OCR bytes while reclaiming stopped diagnostic stages", async binding => {
+  const profile = await createBoundProfileFixture();
+  const admission = profile.admission, clock = manualClock(new Date("2026-01-01T12:00:00.000Z"));
+  try {
+    const writer = createContentAddressedArtifactWriter({ admission });
+    const bytes = Buffer.from("synthetic contact page 1");
+    const shared = await writer.stageDiagnostic(bytes, { mediaType: "image/png" }, "ordinary"); shared.publish();
+    const unrelated = await writer.stageDiagnostic(Buffer.from("unreferenced OCR stage"), { mediaType: "image/png" }, "ordinary"); unrelated.publish();
+    const input = OcrPageInputSchema.parse({ ...sourceFixture(1).inputs[0], image: shared.ref });
+    const reading = donePage(input).output;
+    const database = AuthorityDatabase.open(admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "ocr-retention-proof" }, clock,
+      undefined, undefined, undefined, boundProfileCredentials(admission));
+    let stored;
+    try {
+      if (binding === "source-bound") stored = database.authority.ocrExtractions.insert(reading).record;
+      else {
+        const raw = new DatabaseSync(profile.path);
+        try { stored = insertUnboundOcrExtraction(raw, reading.extraction); } finally { raw.close(); }
+      }
+    } finally { database.close(); }
+    const path = join(admission.artifactRoot, `${shared.ref.sha256}.artifact`), before = readFileSync(path);
+    const databaseBytes = readFileSync(profile.path);
+    const report = await withOfflineMaintenance(admission, operation => upgradeStorage(profileBrowserClosure, admission,
+      { stateRoot: admission.stateRoot, processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot), plan: false }, clock, operation));
+    assert.deepEqual(report.diagnostics, { reclaimedStages: 2, retainedStages: 0, capacityWarning: false });
+    assert.deepEqual(readFileSync(path), before);
+    assert.deepEqual(readFileSync(profile.path), databaseBytes);
+    assert.equal(existsSync(join(admission.artifactRoot, `${unrelated.ref.sha256}.artifact`)), false);
+    assert.deepEqual(pendingDiagnosticArtifacts(admission), []);
+    const reopened = AuthorityDatabase.open(admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "ocr-retention-proof" }, clock,
+      undefined, undefined, undefined, boundProfileCredentials(admission));
+    try { assert.deepEqual(reopened.authority.ocrExtractions.get(stored.extractionId), stored); }
+    finally { reopened.close(); }
+  } finally { await profile.close(); }
+});
 
 {
 
