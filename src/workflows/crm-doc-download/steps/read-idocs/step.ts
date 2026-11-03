@@ -5,7 +5,14 @@ import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { readCrmDocumentPdfs } from "../../tasks/read-idocs.js";
 import { buildSearchRecords } from "../search-records/step.js";
 
-const group = Object.freeze({ ...defineWorkflowStep({ key: "read-idocs", label: "Download CRM documents" }), system: "crm" as const });
+const group = Object.freeze({
+  ...defineWorkflowStep({ key: "read-idocs", label: "Download CRM documents" }), system: "crm",
+  operatorFields: [
+    { label: "Employee ID", sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.identity.eid" }] },
+    { label: "Available documents", sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.totalDocuments" }] },
+    { label: "Downloaded PDF", sources: [{ nodeId: "document-pdfs", kind: "output", fieldPath: "people.documents.fileName" }] },
+  ],
+} as const);
 
 export function buildReadIdocs(author: WorkflowAuthor<typeof CrmDocDownloadInput>, search: ReturnType<typeof buildSearchRecords>) {
   const call = readCrmDocumentPdfs(group);
@@ -17,7 +24,7 @@ export function buildReadIdocs(author: WorkflowAuthor<typeof CrmDocDownloadInput
 export const crmDocumentReadIdocsDefinition = defineStep({
   group, build: buildReadIdocs,
   nodePurposes: [{ nodeId: "document-pdfs", purpose: "Reopen and verify each selected CRM identity, download its selected PDFs and retain verified bytes." }],
-  proof: { id: "crm-doc-download-read-idocs", order: 20,
+  proof: { id: "crm-doc-download-read-idocs", order: 23,
     build: (parent: WorkflowDefinition<typeof CrmDocDownloadInput>) => ({
       ...inheritStepProof(parent), code: "cdd", label: group.label, summary: "Proves identity-bound iDocs downloads and retained PDF artifacts for the batch.",
       steps: (author: WorkflowAuthor<typeof CrmDocDownloadInput>) => {
