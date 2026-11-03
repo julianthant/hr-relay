@@ -10,7 +10,7 @@ import { createWorkbookLibraryAdapter } from "../../../src/backend/processing/pr
 import { createProviderClient } from "../../../src/backend/processing/providers/provider-client.js";
 import { readWorkbookResultTask } from "../../../src/backend/processing/workbooks/tasks/read-result.js";
 import { ReadWorkbookResult, WorkbookReferenceWriteSchema } from "../../../src/models/processing/workbooks/read-result.js";
-import { encodeEditableWorkbook, RunWorkbookReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
+import { encodeEditableWorkbook, parseRunWorkbookReference } from "../../../src/models/dashboard/workbooks.js";
 import { StartPlanRecordSchema } from "../../../src/models/run/start-plan.js";
 import { runClaim, RunRecordSchema, type RunRecord } from "../../../src/models/run/record.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
@@ -29,17 +29,18 @@ import { workbookWriteLogStep } from "../../../src/dashboard/surfaces/run-detail
 const input = z.strictObject({ eid: EidSchema });
 const patch = WorkbookReferenceWriteSchema.parse({ kind: "patch-reference", writeId: "result", typeId: "synthetic-roster",
   key: "10800000", values: [{ fieldId: "roster.result", value: "complete" }] });
-const descriptor = defineWorkflowDescriptor({ id: "workbook-consumer", code: "wc", version: 1, contractFingerprint: "a".repeat(64),
+function buildDescriptor(full = false) { return defineWorkflowDescriptor({ id: "workbook-consumer", code: "wc", version: 1, contractFingerprint: "a".repeat(64),
   label: "Workbook consumer", icon: "Search", category: "operations", canonicalInput: defineCanonicalInput(input, input, [{ eid: patch.key }]),
   inputSubject: "eid", surface: { shape: "single" }, enqueue: "allow-parallel", actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {}, details: [], requiredWorkbookTypeIds: [patch.typeId],
-  referenceLookups: value => [{ typeId: patch.typeId, keys: [value.eid, 'missing'], fields: ['roster.result', 'roster.date', 'roster.flag'] }], identity: { matchKey: value => value.eid },
+  referenceLookups: value => [full ? { mode: 'all', typeId: patch.typeId, fields: ['roster.result', 'roster.date', 'roster.flag'] } : { typeId: patch.typeId, keys: [value.eid, 'missing'], fields: ['roster.result', 'roster.date', 'roster.flag'] }], identity: { matchKey: value => value.eid },
   plannedOutputs: (_value, references) => [{ kind: 'workbook', name: 'Reference report.xlsx', rowSubject: 'record',
     rows: { state: 'known', count: references.flatMap(reference => reference.snapshot.rows.flatMap(row => row.matches)).length } }],
   presentation: { title: value => value.eid }, scenarios: ["workbooks/publish"],
   flow: flow(input).step("write-reference", ReadWorkbookResult, { dependsOn: [], replay: "always-rerun", bind: () => patch })
     .build({ schema: ReadWorkbookResult.output, dependsOn: ["write-reference"], derive: ({ outputs }) => outputs["write-reference"] }),
-});
+}); }
+const descriptor = buildDescriptor();
 const fixtureProfiles = createProfileFixtureSet();
 const world = createCommandKernelTestWorld(fixtureProfiles.create);
 const releaseClaims: (() => void)[] = [];
@@ -63,8 +64,9 @@ afterEach(async () => {
   }
 });
 
-async function fixture(duplicate = false) {
-  const h = await world.createHarness(undefined, { descriptors: [descriptor] });
+async function fixture(duplicate = false, full = false) {
+  const selectedDescriptor = full ? buildDescriptor(true) : descriptor;
+  const h = await world.createHarness(undefined, { descriptors: [selectedDescriptor] });
   const profile = world.profiles.at(-1); assert.ok(profile);
   const repository = h.database.authority.workbooks;
   const library = createWorkbookLibraryService({ repository, clock: h.clock, sync: unexpectedWorkbookSync });
@@ -83,7 +85,7 @@ async function fixture(duplicate = false) {
   repository.putType({ ...type, defaultWorkbookId: saved.libraryId });
   const config = h.database.authority.runtimeConfig.get(); assert.ok(config);
   const planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: h.clock, ids: h.plannerIds,
-    descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, workbooks: library, planTtlMs: 600_000,
+    descriptors: { resolve: id => id === descriptor.id ? selectedDescriptor : undefined }, workbooks: library, planTtlMs: 600_000,
     configFingerprint: config.configFingerprint, configSnapshotId: config.configSnapshotId, plannedBy: "local-operator" });
   const selection = { entry: 1, typeId: patch.typeId };
   const request = { workflowId: descriptor.id, submissions: [{ eid: patch.key }], dryRun: false, workbookReferences: [selection] };
@@ -96,7 +98,7 @@ async function fixture(duplicate = false) {
     const run = h.database.authority.runs.get(singleAppliedRunId(result)); assert.ok(run); return run;
   };
   const running = (run: RunRecord) => {
-    const ports = testWorkerPorts(h.database, h.clock, { path: profile.path, descriptor, poolIndex: 1 });
+    const ports = testWorkerPorts(h.database, h.clock, { path: profile.path, descriptor: selectedDescriptor, poolIndex: 1 });
     const worker = h.database.authority.workerSlots.list(descriptor.id).find(value => value.poolIndex === 1); assert.ok(worker);
     const claimed = ports.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: worker.workerId });
     assert.equal(claimed.state, "applied"); if (claimed.state !== "applied") throw new Error("fixture claim refused");
@@ -142,8 +144,8 @@ async function fixture(duplicate = false) {
 it("binds exact values, revision and all worksheet identities through real planning and start confirmation", async () => {
   const f = await fixture(), plan = f.plan();
   const bound = plan.planned[0].workbookReferences?.[0]; assert.ok(bound);
-  const reference = RunWorkbookReferenceSchema.parse(bound.value);
-  expect(reference.snapshot).toMatchObject({ libraryId: f.id, version: 2, worksheets: [{ sheetId: "people", name: "people" }, { sheetId: "archive", name: "archive" }],
+  const reference = parseRunWorkbookReference(bound);
+  expect(reference.snapshot).toMatchObject({ versionId: "original", versionName: "Original version", libraryId: f.id, version: 2, worksheets: [{ sheetId: "people", name: "people" }, { sheetId: "archive", name: "archive" }],
     rows: [{ key: patch.key, state: "matched", matches: [{ sheetId: "people", rowId: "people-person",
       values: { "roster.result": null, "roster.date": { type: "date", value: "2026-10-31T01:02:03.000Z" }, "roster.flag": false } }] },
       { key: "missing", state: "missing", matches: [] }] });
@@ -159,7 +161,7 @@ it("binds exact values, revision and all worksheet identities through real plann
   const explicit = f.planner.plan({ ...f.request, workbookReferences: [{ ...f.selection, libraryId: f.id }] });
   const selected = f.database.authority.startPlans.get(explicit.startPlanId); assert.ok(selected);
   const selectedRun = f.start(selected), selectedBound = selectedRun.input.workbookReferences?.[0]; assert.ok(selectedBound);
-  expect(RunWorkbookReferenceSchema.parse(selectedBound.value)).toMatchObject({ request: { libraryId: f.id }, snapshot: { libraryId: f.id, version: 3 } });
+  expect(parseRunWorkbookReference(selectedBound)).toMatchObject({ request: { libraryId: f.id }, snapshot: { libraryId: f.id, version: 3 } });
 });
 
 it("requires exactly the declared consumer types and refuses missing, duplicate or foreign planning references", async () => {
@@ -287,6 +289,17 @@ it("refuses a declared type key change and preserves its captured reference", as
   expect(f.library.read(f.id).workbook.sheets[0].rows[1].cells[1].value).toBe("complete");
 });
 
+it.each([false, true])("full roster snapshots grant no keyed workbook write authority; explicit named=%s", async named => {
+  const f = await fixture(false, true);
+  const wire = f.planner.plan({ ...f.request, workbookReferences: [{ ...f.selection, ...(named ? { versionId: "original" } : {}) }] });
+  const plan = f.database.authority.startPlans.get(wire.startPlanId); assert.ok(plan);
+  const run = f.running(f.start(plan));
+  const before = f.library.read(f.id);
+  expect(() => f.runs.write(run, patch)).toThrow(expect.objectContaining({ code: "WORKBOOK_INVALID" }));
+  expect(f.repository.runOperations(run.envelope.runId)).toEqual([]);
+  expect(f.library.read(f.id)).toEqual(before);
+});
+
 it('refuses caller-authored lookup keys and fields instead of treating them as workflow authority', async () => {
   const f = await fixture();
   expect(() => f.planner.plan({ ...f.request, workbookReferences: [{ ...f.selection, keys: ['different'], fields: ['eid'] }] })).toThrow();
@@ -297,4 +310,5 @@ it('projects workflow-authored output facts and binds them into the retained pla
   expect(wire.planned[0].outputs).toEqual([{ kind: 'workbook', name: 'Reference report.xlsx', rowSubject: 'record', rows: { state: 'known', count: 1 } }]);
   const plan = f.plan();
   expect(() => StartPlanRecordSchema.parse({ ...plan, planned: plan.planned.map(run => ({ ...run, outputs: [{ kind: 'workbook', name: 'Different.xlsx', rowSubject: 'record', rows: { state: 'known', count: 99 } }] })) })).toThrow();
+
 });

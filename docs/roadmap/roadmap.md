@@ -23,7 +23,7 @@ Complete these in order.
 - [done] Workflow logins — use fast-duo for every workflow login.
 - [done] Runs — pause and resume at completed steps, rerun failed items from saved results, confirm quitting and park interrupted submits as unknown.
 - [done] Write safety — capture browser steps and submit boundaries, retain dry-run evidence, show UCPath transaction findings for operator review and keep Kuali reload verification.
-- [now] OCR and Emergency Contact on the new core — review OCR, save corrections as revisions and feed approved snapshots into Emergency Contact.
+- [done] OCR and Emergency Contact on the new core — review OCR, save corrections as revisions and feed approved snapshots into Emergency Contact.
 - [done] Dashboard cleanups — make Explorer read-only, have the assistant always ask before acting and propose workflow starts, and save appearance preferences per person.
 - [done] Spreadsheet library — retain named versions, bind reference plans to approved snapshots, authenticate SharePoint Sync and publish worksheet archives.
 - [done] CRM Document Download — package verified PDFs by worksheet with retained reference choices.

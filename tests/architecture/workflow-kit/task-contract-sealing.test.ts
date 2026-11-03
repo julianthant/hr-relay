@@ -1,10 +1,10 @@
-import { createGuardProgram } from "../../support/helpers/caching-compiler-host.js";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync,mkdirSync,readFileSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, relative, resolve } from "node:path";
-import { describe, it } from "vitest";
+import { dirname,relative,resolve } from "node:path";
 import ts from "typescript";
+import { describe,it } from "vitest";
+import { createGuardProgram } from "../../support/helpers/caching-compiler-host.js";
 import { walkFiles } from "../support/helpers/guard-files.js";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
@@ -218,7 +218,9 @@ describe("task contract sealing architecture", () => {
       "src/models/processing/extraction/extract-spreadsheet.ts",
       "src/models/processing/normalization/normalize-contact.ts",
       "src/models/processing/ocr/extract-form-page.ts",
+      "src/models/processing/ocr/read-approved-record.ts",
       "src/models/processing/ocr/read-approved-records.ts",
+      "src/models/processing/ocr/read-approved-snapshot.ts",
       "src/models/processing/roster/match-spreadsheet.ts",
       "src/models/processing/workbooks/read-reference.ts",
       "src/models/processing/workbooks/read-result.ts",
@@ -248,23 +250,28 @@ describe("task contract sealing architecture", () => {
       "src/models/systems/new-kronos/read-separation-timecard.ts",
       "src/models/systems/new-kronos/search-employee.ts",
       "src/models/systems/onbase/import-document.ts",
-      "src/models/systems/ucpath/contact-tasks.ts",
       "src/models/systems/ucpath/create-hire.ts",
       "src/models/systems/ucpath/create-termination.ts",
       "src/models/systems/ucpath/delete-pending-terminations.ts",
+      "src/models/systems/ucpath/match-emergency-contact-plan.ts",
+      "src/models/systems/ucpath/match-emergency-contact.ts",
       "src/models/systems/ucpath/match-existing-termination.ts",
       "src/models/systems/ucpath/match-hire.ts",
       "src/models/systems/ucpath/match-pending-terminations.ts",
+      "src/models/systems/ucpath/read-emergency-contacts.ts",
       "src/models/systems/ucpath/read-hire-findings.ts",
       "src/models/systems/ucpath/read-hire-receipt.ts",
       "src/models/systems/ucpath/read-job-summary.ts",
       "src/models/systems/ucpath/read-pending-termination-set.ts",
       "src/models/systems/ucpath/read-transaction-findings.ts",
+      "src/models/systems/ucpath/save-emergency-contact.ts",
       "src/models/systems/ucpath/search-person-match.ts",
       "src/models/systems/ucpath/search-person-org.ts",
+      "src/models/systems/ucpath/stage-emergency-contact.ts",
       "src/models/systems/ucpath/stage-hire.ts",
       "src/models/systems/ucpath/stage-pending-termination-sweep.ts",
       "src/models/systems/ucpath/stage-termination.ts",
+      "src/models/systems/ucpath/verify-emergency-contact-plan.ts",
       "src/models/systems/ucpath/verify-hire.ts",
       "src/models/systems/ucpath/verify-pending-terminations-cleared.ts",
       "src/models/systems/ucpath/verify-termination-filing-present.ts",
@@ -272,13 +279,15 @@ describe("task contract sealing architecture", () => {
       "src/models/task/task-contract.ts",
       "src/models/workflows/crm-doc-download/read-document-rows.ts",
       "src/models/workflows/crm-doc-download/read-worksheet-archives.ts",
+      "src/models/workflows/emergency-contact-member/read-approved-contact.ts",
+      "src/models/workflows/emergency-contact-member/read-contact-plan.ts",
+      "src/models/workflows/emergency-contact/read-result.ts",
       "src/models/workflows/i9-check-start/read-people.ts",
       "src/models/workflows/i9-check-start/read-publication.ts",
       "src/models/workflows/i9-check-start/read-requests.ts",
       "src/models/workflows/i9-check-start/read-rows.ts",
       "src/models/workflows/i9-check/check.ts",
       "src/models/workflows/i9-lookup/read-result.ts",
-
       "src/models/workflows/ocr-page/read-manual-reading.ts",
       "src/models/workflows/ocr-page/read-page-reading.ts",
       "src/models/workflows/ocr/read-result.ts",

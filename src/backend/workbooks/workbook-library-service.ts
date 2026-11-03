@@ -1,4 +1,4 @@
-import { EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookReferenceRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookReferenceSnapshotSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
+import { EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookSnapshotSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { RunIdSchema } from "../../rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
@@ -7,7 +7,7 @@ import type { Clock } from "../../rules/time/clock.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 import type { WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
 import { FingerprintSchema } from "../../rules/identity/ids.js";
-import { RunWorkbookReferenceSchema } from "../../models/dashboard/workbooks.js";
+import { RunWorkbookNamedReferenceSchema } from "../../models/dashboard/workbooks.js";
 import { deriveSchemaHash, schemaBoundValueSchema, type SchemaBoundCanonicalValue } from "../../models/validation/schema-bound-value.js";
 import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema, encodeWorkbookReference } from "../../models/processing/workbooks/read-reference.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -39,7 +39,7 @@ export interface WorkbookLibraryRepository {
   drain(libraryId: string): void;
   operation(libraryId: string, value: unknown): WorkbookOperationReceipt;
   journal(libraryId: string): readonly WorkbookOperationReceipt[];
-  snapshot(value: unknown): z.infer<typeof WorkbookReferenceSnapshotSchema>;
+  snapshot(value: unknown): z.infer<typeof WorkbookSnapshotSchema>;
   runOperations(runId: string): readonly WorkbookOperationRecord[];
   catalog(): readonly WorkbookLibraryEntry[];
   libraryState(libraryId: string): WorkbookLibraryState;
@@ -54,9 +54,9 @@ function input<T>(schema: z.ZodType<T>, value: unknown): T {
 }
 
 export function snapshotWorkbookReference(repository: WorkbookLibraryRepository, value: unknown) {
-  const request = input(WorkbookReferenceRequestSchema, value);
+  const request = input(WorkbookSnapshotRequestSchema, value);
   const snapshot = repository.snapshot(request);
-  if (request.selectedRow !== undefined && snapshot.rows.flatMap(row => row.matches).filter(match =>
+  if ("selectedRow" in request && request.selectedRow !== undefined && snapshot.rows.flatMap(row => row.matches).filter(match =>
     match.sheetId === request.selectedRow?.sheetId && match.rowId === request.selectedRow?.rowId).length !== 1) {
     throw new WorkbookLibraryError('WORKBOOK_INVALID');
   }
@@ -66,7 +66,7 @@ export function snapshotWorkbookReference(repository: WorkbookLibraryRepository,
 export function readRetainedWorkbookReference(repository: WorkbookLibraryRepository, bound: SchemaBoundCanonicalValue,
   commandValue: z.input<typeof WorkbookReferenceReadRequestSchema>) {
   const command = input(WorkbookReferenceReadRequestSchema, commandValue);
-  const { request, snapshot } = schemaBoundValueSchema(RunWorkbookReferenceSchema, deriveSchemaHash(RunWorkbookReferenceSchema, "output")).parse(bound).value;
+  const { request, snapshot } = schemaBoundValueSchema(RunWorkbookNamedReferenceSchema, deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output")).parse(bound).value;
   if (command.typeId !== request.typeId || snapshot.versionId === undefined || snapshot.versionName === undefined
     || snapshot.type.keyFieldId === null || request.fields.some(field => !snapshot.type.fields.includes(field))) throw new WorkbookLibraryError("WORKBOOK_INVALID");
   const selected = repository.libraryVersion(snapshot.libraryId, snapshot.versionId);
@@ -75,7 +75,7 @@ export function readRetainedWorkbookReference(repository: WorkbookLibraryReposit
     throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   }
   const keyField = snapshot.type.keyFieldId;
-  const readRows = (keys: readonly string[]): z.infer<typeof WorkbookReferenceSnapshotSchema>["rows"] => keys.map(key => {
+  const readRows = (keys: readonly string[]): z.infer<typeof RunWorkbookNamedReferenceSchema>["snapshot"]["rows"] => keys.map(key => {
     const matches = workbookMatches(selected.workbook, keyField, key);
     return { key, state: matches.length === 0 ? "missing" : matches.length === 1 ? "matched" : "ambiguous",
       matches: matches.map(({ sheetId, rowId, sheet, row }) => ({ sheetId, rowId, values: Object.fromEntries(request.fields.map(field => {

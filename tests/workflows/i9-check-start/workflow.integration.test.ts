@@ -38,12 +38,13 @@ describe("one I-9 PDF Start through admitted children", () => {
     const documents = f.database.authority.runs.listChildren(f.run.envelope.runId);
     expect(documents).toHaveLength(2);
     expect(documents.every(child => child.envelope.workflow === "ocr")).toBe(true);
-    expect(documents.filter(child => child.lifecycle.state === "parked-gate")).toHaveLength(1);
+    for (const child of documents) expect(child.input.parsed.value).toMatchObject({ roster: null });
+    expect(documents.filter(child => child.lifecycle.state === "parked-gate"), JSON.stringify({ outcomes: result.outcomes, failures: result.outcomes.flatMap(outcome => outcome.state === "failed" ? [f.database.authority.failures.get(outcome.failureId)].map(failure => ({ nodeId: failure?.nodeId, taskId: failure?.taskId, code: failure?.code, summary: failure?.summary })) : []) })).toHaveLength(1);
     expect(f.database.authority.workbooks.list().filter(workbook => workbook.libraryId.startsWith("workflow:"))).toHaveLength(0);
   });
   it("resumes the same parent after the first exact OCR approval and parks the next original PDF", async () => {
     const changed = await f.changeReference();
-    expect(changed.master.versionId).not.toBe(f.selectedReference.versionId);
+    expect("versionId" in changed.master ? changed.master.versionId : undefined).not.toBe(f.selectedReference.versionId);
     expect(changed.master.rows[0].matches[0].values.ppsEid).toBe("999999999");
     expect(changed.currentDefault.libraryId).not.toBe(f.referenceId);
     expect(changed.renamed.versionName).toBe("Renamed later");
@@ -52,7 +53,7 @@ describe("one I-9 PDF Start through admitted children", () => {
     expect(result.run?.lifecycle.state).toBe("queued");
     const documents = f.database.authority.runs.listChildren(f.run.envelope.runId);
     expect(documents.find(child => child.envelope.runId === first)?.lifecycle).toMatchObject({ state: "terminal", outcome: "done" });
-    expect(documents.filter(child => child.lifecycle.state === "parked-gate")).toHaveLength(1);
+    expect(documents.filter(child => child.lifecycle.state === "parked-gate"), JSON.stringify({ outcomes: result.outcomes, failures: result.outcomes.flatMap(outcome => outcome.state === "failed" ? [f.database.authority.failures.get(outcome.failureId)].map(failure => ({ nodeId: failure?.nodeId, taskId: failure?.taskId, code: failure?.code, summary: failure?.summary })) : []) })).toHaveLength(1);
     expect(f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "i9-check")).toHaveLength(0);
   });
   it("checks both corrected people and publishes one workbook and the configured tracker before completing", async () => {
@@ -70,6 +71,15 @@ describe("one I-9 PDF Start through admitted children", () => {
     expect(output.reference.snapshot.rows.map(row => row.matches.map(match => [match.sheetId, match.rowId]))).toEqual([[["history", "person-0"]], [["history", "person-1"]]]);
     expect(f.readRefusals).toEqual(new Set(["missing run", "foreign claim", "altered input", "foreign type", "altered fields"]));
     expect(output.people.map(person => person.sources.length)).toEqual([2, 2]);
+    for (const document of f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "ocr")) {
+      const lookups = f.database.authority.runs.listChildren(document.envelope.runId).filter(child => child.envelope.workflow === "i9-lookup");
+      expect(lookups.length).toBeGreaterThan(0);
+      for (const lookup of lookups) {
+        expect(lookup.lifecycle).toMatchObject({ state: "terminal", outcome: "done" });
+        expect(f.database.authority.runResults.get(lookup.envelope.runId)?.result.value).toMatchObject({ i9Status: "not-found", signerName: "" });
+      }
+    }
+
     const workbooks = f.database.authority.workbooks.list().filter(workbook => workbook.libraryId.startsWith("workflow:"));
     expect(workbooks).toHaveLength(1);
     expect(workbooks[0].libraryId).toBe(output.workbook.libraryId);

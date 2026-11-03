@@ -196,10 +196,11 @@ describe("source-bound Rerun value read", () => {
 
   it("keeps caller roster refused and never invents a source mode", () => {
     const binding = workbookInputBinding(OnboardingCanonicalInput); assert.ok(binding);
+    const sourceToIngress = binding.sourceToIngress?.bind(undefined); assert.ok(sourceToIngress);
     assert.throws(() => binding.assertSubmission(ONBOARDING_INPUT_EXAMPLE), /caller-supplied roster/u);
     const { mode: _mode, ...missingMode } = ONBOARDING_INPUT_EXAMPLE;
     for (const value of [missingMode, { ...ONBOARDING_INPUT_EXAMPLE, mode: "unknown" }]) {
-      assert.throws(() => binding.sourceToIngress(value));
+      assert.throws(() => sourceToIngress(value));
     }
   });
 

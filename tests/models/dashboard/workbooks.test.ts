@@ -1,7 +1,28 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { EditableWorkbookSchema, EditableWorkbookWireSchema, SavedWorkbookSchema, decodeEditableWorkbook, encodeEditableWorkbook, decodeSavedWorkbook, encodeSavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
-import { WorkbookReferenceRequestSchema, WorkbookRunReferenceSelectionSchema, RunWorkbookReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
+import { RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, bindRunWorkbookReference, parseRunWorkbookReference } from "../../../src/models/dashboard/workbooks.js";
+import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../src/rules/validation/sha256.js";
+import { RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
+import { SchemaBoundCanonicalValueSchema, deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
+
+it("preserves the keyed reference schema hash and reads each active reference by its declared hash", () => {
+  assert.equal(deriveSchemaHash(RunWorkbookReferenceSchema, "output"), "bb13aafcb41e28b291bd51f4b9a803f6fabcbd71a6b92cf2a036a3d0c1cc6bac");
+  assert.equal(deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output"), "a6278c40db9223757b28b00d0e975a3bf6f58e2d4444b527a4d2b04e5680d419");
+  const snapshot = { libraryId: "library", version: 2, worksheets: [{ sheetId: "people", name: "People" }],
+    type: { id: "roster", name: "Roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: "library" }, rows: [] };
+  const keyed = bindRunWorkbookReference({ typeId: "roster", keys: [], fields: ["eid"] }, snapshot);
+  const all = bindRunWorkbookReference({ mode: "all", typeId: "roster", libraryId: "library", expectedVersion: 2, fields: ["eid"] }, snapshot);
+  assert.equal(keyed.schemaHash, deriveSchemaHash(RunWorkbookReferenceSchema, "output"));
+  assert.equal(all.schemaHash, deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output"));
+  assert.notEqual(keyed.schemaHash, all.schemaHash);
+  assert.deepEqual(parseRunWorkbookReference(keyed), { request: { typeId: "roster", keys: [], fields: ["eid"] }, snapshot });
+  assert.deepEqual(parseRunWorkbookReference(all).snapshot, snapshot);
+  assert.throws(() => parseRunWorkbookReference({ ...all, schemaHash: keyed.schemaHash }));
+  assert.throws(() => parseRunWorkbookReference({ ...keyed, schemaHash: all.schemaHash }));
+});
+import { WorkbookSelectedRowReferenceRequestSchema, WorkbookRunReferenceSelectionSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
 
 it("retains selected physical row authority only with one key, explicit library and immutable version", () => {
   const selectedRow = { sheetId: "people", rowId: "person" };
@@ -11,21 +32,36 @@ it("retains selected physical row authority only with one key, explicit library 
     worksheets: [{ sheetId: "people", name: "People" }],
     type: { id: "onboarding-roster", name: "Roster", keyFieldId: "email", fields: ["email"], defaultWorkbookId: null },
     rows: [{ key: request.keys[0], state: "matched", matches: [{ ...selectedRow, values: { email: request.keys[0] } }] }] };
-  assert.deepEqual(RunWorkbookReferenceSchema.parse({ request, snapshot }), { request, snapshot });
+  assert.deepEqual(RunWorkbookSelectedRowReferenceSchema.parse({ request, snapshot }), { request, snapshot });
+  assert.equal(bindRunWorkbookReference(request, snapshot).schemaHash, deriveSchemaHash(RunWorkbookSelectedRowReferenceSchema, "output"));
+  const { selectedRow: _selection, ...ordinary } = request;
+  assert.equal(bindRunWorkbookReference(ordinary, snapshot).schemaHash, deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output"));
   assert.deepEqual(WorkbookRunReferenceSelectionSchema.parse({ entry: 1, typeId: request.typeId,
     libraryId: request.libraryId, versionId: request.versionId, selectedRow }).selectedRow, selectedRow);
   for (const value of [{ ...request, libraryId: undefined }, { ...request, versionId: undefined },
     { ...request, keys: [] }, { ...request, keys: [...request.keys, "other@example.test"] }]) {
-    assert.equal(WorkbookReferenceRequestSchema.safeParse(value).success, false);
+    assert.equal(WorkbookSelectedRowReferenceRequestSchema.safeParse(value).success, false);
   }
   for (const value of [{ ...request, selectedRow: { ...selectedRow, sheetId: "foreign" } },
     { ...request, selectedRow: { ...selectedRow, rowId: "missing" } }]) {
-    assert.equal(RunWorkbookReferenceSchema.safeParse({ request: value, snapshot }).success, false);
+    assert.equal(RunWorkbookSelectedRowReferenceSchema.safeParse({ request: value, snapshot }).success, false);
   }
-  assert.equal(RunWorkbookReferenceSchema.safeParse({ request, snapshot: { ...snapshot, versionId: "different" } }).success, false);
-  assert.equal(RunWorkbookReferenceSchema.safeParse({ request, snapshot: { ...snapshot,
+  assert.equal(RunWorkbookSelectedRowReferenceSchema.safeParse({ request, snapshot: { ...snapshot, versionId: "different" } }).success, false);
+  assert.equal(RunWorkbookSelectedRowReferenceSchema.safeParse({ request, snapshot: { ...snapshot,
     rows: [{ ...snapshot.rows[0], state: "ambiguous", matches: [...snapshot.rows[0].matches, ...snapshot.rows[0].matches] }] } }).success, false);
   assert.equal(WorkbookRunReferenceSelectionSchema.safeParse({ entry: 1, typeId: request.typeId, selectedRow }).success, false);
+});
+
+it("retains the exact published selected-row hash even without a selector or version metadata", () => {
+  assert.equal(deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output"), "64e6bab94d4bcf27c4e5c5328eff093840ede504eac806de297b253b51f37b7f");
+  assert.equal(deriveSchemaHash(RunWorkbookNamedAllRowsReferenceSchema, "output"), "b454cb6d56b75b93c4ae28ff93560b7af4a87b018769f3a3721e39d367fea409");
+  assert.equal(deriveSchemaHash(RunWorkbookSelectedRowReferenceSchema, "output"), "037d180c6cd7962144b5ba0a48991ee6bf00318c6e3b38df0ffe4b54a1e8ea6c");
+  const bound = SchemaBoundCanonicalValueSchema.parse(JSON.parse('{"schemaHash":"037d180c6cd7962144b5ba0a48991ee6bf00318c6e3b38df0ffe4b54a1e8ea6c","value":{"request":{"typeId":"roster","keys":["key"],"fields":["eid"]},"snapshot":{"libraryId":"library","version":2,"worksheets":[{"sheetId":"people","name":"People"}],"type":{"id":"roster","name":"Roster","keyFieldId":"eid","fields":["eid"],"defaultWorkbookId":"library"},"rows":[{"key":"key","state":"missing","matches":[]}]}}}'));
+  const bytes = canonicalJsonStringify(bound), digest = sha256Hex(bytes);
+  assert.deepEqual(parseRunWorkbookReference(bound), bound.value);
+  assert.equal(canonicalJsonStringify(bound), bytes); assert.equal(sha256Hex(canonicalJsonStringify(bound)), digest);
+  assert.throws(() => parseRunWorkbookReference(SchemaBoundCanonicalValueSchema.parse({ ...bound, schemaHash: "f".repeat(64) })));
+  assert.throws(() => parseRunWorkbookReference({ ...bound, value: { ...parseRunWorkbookReference(bound), snapshot: { ...parseRunWorkbookReference(bound).snapshot, versionId: "unpaired" } } }));
 });
 
 it("roundtrips explicit Date cells while ISO-looking strings stay strings and provenance survives", () => {

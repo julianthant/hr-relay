@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
 import { containsDryRunSample } from "../../workflow/dry-run.js";
 import { ERROR_CATALOG } from "../../failures/error-catalog.js";
@@ -11,6 +12,11 @@ export const I9LookupInputSchema = z.strictObject({
   ssn: CANONICAL_FIELDS.ssn.schema.optional(),
 });
 export type I9LookupInput = z.output<typeof I9LookupInputSchema>;
+
+export function i9LookupMatchKey(input: I9LookupInput): string {
+  const identityDigest = sha256Hex(JSON.stringify([input.lastName.toLowerCase(), input.firstName.toLowerCase(), input.ssn]));
+  return `i9:${identityDigest}`;
+}
 
 export const I9RecordIdsSchema = z.strictObject({
   profileId: CANONICAL_FIELDS.i9ProfileId.schema,

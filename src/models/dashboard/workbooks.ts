@@ -1,3 +1,5 @@
+import { deriveSchemaHash, schemaBoundValueSchema, type SchemaBoundCanonicalValue } from "../validation/schema-bound-value.js";
+import { JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
 import { CANONICAL_FIELD_IDS } from "../fields/registry.js";
 import { IsoInstantSchema, WorkflowIdSchema, LOCAL_OPERATOR_ACTOR_ID, FingerprintSchema } from "../../rules/identity/ids.js";
@@ -147,24 +149,24 @@ export const WorkbookOperatorOperationRequestSchema = WorkbookOperationSchema.sh
 export const WorkbookOperationRecordSchema = z.strictObject({ libraryId: WorkbookIdSchema, operation: WorkbookOperationSchema, receipt: WorkbookOperationReceiptSchema });
 export type WorkbookOperationRecord = z.infer<typeof WorkbookOperationRecordSchema>;
 export const WorkbookNamedVersionSchema = z.strictObject({ name: NameSchema, provenance: z.enum(['operator', 'migration']), snapshot: SavedWorkbookWireSchema });
-const WorkbookReferenceRequestBaseSchema = z.strictObject({ typeId: WorkbookIdSchema, libraryId: WorkbookIdSchema.optional(),
+export const WorkbookReferenceRequestSchema = z.strictObject({ typeId: WorkbookIdSchema, libraryId: WorkbookIdSchema.optional(),
+  keys: z.array(z.string().min(1)), fields: z.array(FieldSchema) });
+export const WorkbookAllRowsRequestSchema = z.strictObject({ mode: z.literal("all"), typeId: WorkbookIdSchema,
+  libraryId: WorkbookIdSchema, expectedVersion: WorkbookRevisionSchema, fields: z.array(FieldSchema) });
+export const WorkbookNamedReferenceRequestSchema = WorkbookReferenceRequestSchema.extend({ versionId: WorkbookIdSchema.optional() });
+export const WorkbookNamedAllRowsRequestSchema = WorkbookAllRowsRequestSchema.extend({ versionId: WorkbookIdSchema.optional() });
+const WorkbookSelectedRowReferenceRequestBaseSchema = z.strictObject({ typeId: WorkbookIdSchema, libraryId: WorkbookIdSchema.optional(),
   versionId: WorkbookIdSchema.optional(), selectedRow: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema }).optional(),
   keys: z.array(z.string().min(1)), fields: z.array(FieldSchema) });
-export const WorkbookReferenceRequestSchema = WorkbookReferenceRequestBaseSchema.refine(request => request.selectedRow === undefined
+export const WorkbookSelectedRowReferenceRequestSchema = WorkbookSelectedRowReferenceRequestBaseSchema.refine(request => request.selectedRow === undefined
   || (request.libraryId !== undefined && request.versionId !== undefined && request.keys.length === 1),
 { message: 'selected workbook rows require an explicit library, version and one lookup key' });
-export const WorkbookReferenceSnapshotSchema = z.strictObject({ libraryId: WorkbookIdSchema, version: z.number().int().positive(),
+export const WorkbookSelectedRowReferenceSnapshotSchema = z.strictObject({ libraryId: WorkbookIdSchema, version: z.number().int().positive(),
   versionId: WorkbookIdSchema.optional(), versionName: NameSchema.optional(),
   worksheets: z.array(z.strictObject({ sheetId: WorkbookIdSchema, name: NameSchema })).min(1),
   type: WorkbookTypeSchema, rows: z.array(z.strictObject({ key: z.string(), state: z.enum(['matched', 'missing', 'ambiguous']),
     matches: z.array(z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema, values: z.record(FieldSchema, WorkbookCellValueWireSchema) })) })) });
-export const WorkbookReferenceLookupSchema = WorkbookReferenceRequestBaseSchema.pick({ typeId: true, keys: true, fields: true });
-export const WorkbookRunReferenceSelectionSchema = WorkbookReferenceRequestBaseSchema.pick({ typeId: true, libraryId: true, versionId: true, selectedRow: true })
-  .extend({ entry: z.number().int().positive() }).refine(selection => selection.selectedRow === undefined
-    || (selection.libraryId !== undefined && selection.versionId !== undefined),
-  { message: 'selected workbook rows require an explicit library and version' });
-export type WorkbookReferenceLookup = z.infer<typeof WorkbookReferenceLookupSchema>;
-export const RunWorkbookReferenceSchema = z.strictObject({ request: WorkbookReferenceRequestSchema, snapshot: WorkbookReferenceSnapshotSchema }).superRefine((reference, ctx) => {
+export const RunWorkbookSelectedRowReferenceSchema = z.strictObject({ request: WorkbookSelectedRowReferenceRequestSchema, snapshot: WorkbookSelectedRowReferenceSnapshotSchema }).superRefine((reference, ctx) => {
   const { request, snapshot } = reference;
   const sheets = new Set(snapshot.worksheets.map(sheet => sheet.sheetId));
   if (request.typeId !== snapshot.type.id || request.libraryId !== undefined && request.libraryId !== snapshot.libraryId
@@ -181,9 +183,89 @@ export const RunWorkbookReferenceSchema = z.strictObject({ request: WorkbookRefe
     ctx.addIssue({ code: 'custom', message: 'run workbook reference must retain its exact requested values and membership' });
   }
 });
+export const WorkbookSnapshotRequestSchema = z.union([WorkbookReferenceRequestSchema, WorkbookAllRowsRequestSchema,
+  WorkbookNamedReferenceRequestSchema, WorkbookNamedAllRowsRequestSchema, WorkbookSelectedRowReferenceRequestSchema]);
+export const WorkbookReferenceSnapshotSchema = z.strictObject({ libraryId: WorkbookIdSchema, version: z.number().int().positive(),
+  worksheets: z.array(z.strictObject({ sheetId: WorkbookIdSchema, name: NameSchema })).min(1),
+  type: WorkbookTypeSchema, rows: z.array(z.strictObject({ key: z.string(), state: z.enum(['matched', 'missing', 'ambiguous']),
+    matches: z.array(z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema, values: z.record(FieldSchema, WorkbookCellValueWireSchema) })) })) });
+export const WorkbookReferenceLookupSchema = z.union([WorkbookReferenceRequestSchema.pick({ typeId: true, keys: true, fields: true }),
+  WorkbookAllRowsRequestSchema.pick({ mode: true, typeId: true, fields: true })]);
+export type WorkbookReferenceLookup = z.infer<typeof WorkbookReferenceLookupSchema>;
+export const WorkbookRunReferenceSelectionSchema = WorkbookSelectedRowReferenceRequestBaseSchema.pick({ typeId: true, libraryId: true, versionId: true, selectedRow: true })
+  .extend({ entry: z.number().int().positive() }).refine(selection => selection.selectedRow === undefined
+    || (selection.libraryId !== undefined && selection.versionId !== undefined),
+  { message: 'selected workbook rows require an explicit library and version' });
+export const RunWorkbookReferenceSchema = z.strictObject({ request: WorkbookReferenceRequestSchema, snapshot: WorkbookReferenceSnapshotSchema }).superRefine((reference, ctx) => {
+  const { request, snapshot } = reference;
+  const sheets = new Set(snapshot.worksheets.map(sheet => sheet.sheetId));
+  if (request.typeId !== snapshot.type.id || request.libraryId !== undefined && request.libraryId !== snapshot.libraryId
+    || new Set(request.keys).size !== request.keys.length || new Set(request.fields).size !== request.fields.length
+    || sheets.size !== snapshot.worksheets.length || request.keys.length !== snapshot.rows.length
+    || snapshot.rows.some((row, index) => row.key !== request.keys[index]
+      || row.state !== (row.matches.length === 0 ? 'missing' : row.matches.length === 1 ? 'matched' : 'ambiguous')
+      || row.matches.some(match => !sheets.has(match.sheetId)
+        || Object.keys(match.values).length !== request.fields.length || request.fields.some(field => !Object.hasOwn(match.values, field))))) {
+    ctx.addIssue({ code: 'custom', message: 'run workbook reference must retain its exact requested values and membership' });
+  }
+});
+export const RunWorkbookAllRowsReferenceSchema = z.strictObject({ request: WorkbookAllRowsRequestSchema, snapshot: WorkbookReferenceSnapshotSchema }).superRefine(({ request, snapshot }, ctx) => {
+  const sheets = new Set(snapshot.worksheets.map(sheet => sheet.sheetId)), rows = new Set<string>();
+  if (request.typeId !== snapshot.type.id || request.libraryId !== snapshot.libraryId || request.expectedVersion !== snapshot.version
+    || new Set(request.fields).size !== request.fields.length || sheets.size !== snapshot.worksheets.length
+    || snapshot.rows.some(row => row.state !== "matched" || row.matches.length !== 1 || row.matches.some(match => {
+      const identity = JSON.stringify([match.sheetId, match.rowId]);
+      if (rows.has(identity)) return true;
+      rows.add(identity);
+      return !sheets.has(match.sheetId) || Object.keys(match.values).length !== request.fields.length
+        || request.fields.some(field => !Object.hasOwn(match.values, field));
+    }))) ctx.addIssue({ code: "custom", message: "Full workbook reference must retain its exact version, fields and row identities" });
+});
+export const WorkbookNamedReferenceSnapshotSchema = WorkbookReferenceSnapshotSchema.extend({ versionId: WorkbookIdSchema, versionName: NameSchema });
+export const WorkbookSnapshotSchema = z.union([WorkbookReferenceSnapshotSchema, WorkbookNamedReferenceSnapshotSchema]);
+export const WorkbookSelectedReferenceSnapshotSchema = WorkbookReferenceSnapshotSchema.extend({ versionId: WorkbookIdSchema.optional(), versionName: NameSchema.optional() });
+export const RunWorkbookNamedReferenceSchema = z.strictObject({ request: WorkbookNamedReferenceRequestSchema, snapshot: WorkbookSelectedReferenceSnapshotSchema }).superRefine((reference, ctx) => {
+  const { request, snapshot } = reference;
+  const sheets = new Set(snapshot.worksheets.map(sheet => sheet.sheetId));
+  if (request.typeId !== snapshot.type.id || request.libraryId !== undefined && request.libraryId !== snapshot.libraryId
+    || request.versionId !== undefined && request.versionId !== snapshot.versionId
+    || (snapshot.versionId === undefined) !== (snapshot.versionName === undefined)
+    || new Set(request.keys).size !== request.keys.length || new Set(request.fields).size !== request.fields.length
+    || sheets.size !== snapshot.worksheets.length || request.keys.length !== snapshot.rows.length
+    || snapshot.rows.some((row, index) => row.key !== request.keys[index]
+      || row.state !== (row.matches.length === 0 ? 'missing' : row.matches.length === 1 ? 'matched' : 'ambiguous')
+      || row.matches.some(match => !sheets.has(match.sheetId)
+        || Object.keys(match.values).length !== request.fields.length || request.fields.some(field => !Object.hasOwn(match.values, field))))) {
+    ctx.addIssue({ code: 'custom', message: 'run workbook reference must retain its exact requested values and membership' });
+  }
+});
+export const RunWorkbookNamedAllRowsReferenceSchema = z.strictObject({ request: WorkbookNamedAllRowsRequestSchema, snapshot: WorkbookNamedReferenceSnapshotSchema })
+  .superRefine(({ request, snapshot }, ctx) => {
+    const { versionId: requested, ...masterRequest } = request;
+    const { versionId, versionName: _name, ...masterSnapshot } = snapshot;
+    if (requested !== undefined && requested !== versionId || !RunWorkbookAllRowsReferenceSchema.safeParse({ request: masterRequest, snapshot: masterSnapshot }).success)
+      ctx.addIssue({ code: "custom", message: "Named full workbook reference must retain its exact selected version and membership" });
+  });
+export const RunWorkbookSnapshotReferenceSchema = z.union([RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema,
+  RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema]);
+export function parseRunWorkbookReference(bound: SchemaBoundCanonicalValue): z.output<typeof RunWorkbookSnapshotReferenceSchema> {
+  for (const schema of [RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema]) {
+    const hash = deriveSchemaHash(schema, "output");
+    if (bound.schemaHash === hash) return schemaBoundValueSchema(schema, hash).parse(bound).value;
+  }
+  throw new Error("workbook-reference-schema-invalid");
+}
+export function bindRunWorkbookReference(requestValue: unknown, snapshot: unknown) {
+  const request = WorkbookSnapshotRequestSchema.parse(requestValue);
+  const source = WorkbookSnapshotSchema.parse(snapshot);
+  const schema = "selectedRow" in request && request.selectedRow !== undefined ? RunWorkbookSelectedRowReferenceSchema : "mode" in request
+    ? "versionId" in source ? RunWorkbookNamedAllRowsReferenceSchema : RunWorkbookAllRowsReferenceSchema
+    : "versionId" in source ? RunWorkbookNamedReferenceSchema : RunWorkbookReferenceSchema;
+  return { schemaHash: deriveSchemaHash(schema, "output"), value: JsonValueSchema.parse(schema.parse({ request, snapshot })) };
+}
 export type WorkbookType = z.infer<typeof WorkbookTypeSchema>;
 export type WorkbookMetadata = z.infer<typeof WorkbookMetadataSchema>;
 export type WorkbookOperation = z.infer<typeof WorkbookOperationSchema>;
 export type WorkbookOperationReceipt = z.infer<typeof WorkbookOperationReceiptSchema>;
 
-export type RunWorkbookReference = z.infer<typeof RunWorkbookReferenceSchema>;
+export type RunWorkbookReference = z.infer<typeof RunWorkbookSnapshotReferenceSchema>;

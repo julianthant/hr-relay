@@ -1,14 +1,23 @@
+import { ReadApprovedOcrRecord } from "../../../src/models/processing/ocr/read-approved-record.js";
+import { ReadApprovedOcrSnapshot } from "../../../src/models/processing/ocr/read-approved-snapshot.js";
+import { UcpathProbeEmergencyContact } from "../../../src/models/systems/ucpath/match-emergency-contact-plan.js";
+import { UcpathReadEmergencyContacts } from "../../../src/models/systems/ucpath/read-emergency-contacts.js";
+import { UcpathSaveEmergencyContact } from "../../../src/models/systems/ucpath/save-emergency-contact.js";
+import { UcpathStageEmergencyContact } from "../../../src/models/systems/ucpath/stage-emergency-contact.js";
+import { UcpathVerifyEmergencyContact } from "../../../src/models/systems/ucpath/verify-emergency-contact-plan.js";
+import { MapApprovedEmergencyContact } from "../../../src/models/workflows/emergency-contact-member/read-approved-contact.js";
+import { PlanApprovedEmergencyContact } from "../../../src/models/workflows/emergency-contact-member/read-contact-plan.js";
 
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
-import type { AnyTaskContract } from "../../../src/models/task/task-contract.js";
 import { admitOcrExtraction } from "../../../src/models/ocr/extraction.js";
-import { OCR_FORM_TYPES, fieldOnPageKind, ocrForm } from "../../../src/models/ocr/form-registry.js";
+import { OCR_FORM_TYPES,fieldOnPageKind,ocrForm } from "../../../src/models/ocr/form-registry.js";
 import { ExtractFormPage } from "../../../src/models/processing/ocr/extract-form-page.js";
+import type { AnyTaskContract } from "../../../src/models/task/task-contract.js";
 import {
+EvidenceFieldClassificationSchema,
 classifyEvidenceLeaf,
 evidenceLeaves,
-EvidenceFieldClassificationSchema,
 } from "../../../src/models/trust/evidence-classification.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
@@ -131,5 +140,29 @@ describe("OCR task evidence declarations", () => {
       assert.equal(EvidenceFieldClassificationSchema.safeParse({ ...declaration, transform: "allow" }).success, false);
     }
     assert.equal(classifyEvidenceLeaf(scope, "record.blockingPaths").transform, "count");
+  });
+});
+
+describe("approved snapshot and contact plan evidence", () => {
+  it("classifies each current example and refuses foreign or invented leaves", () => {
+    for (const contract of [ReadApprovedOcrSnapshot, ReadApprovedOcrRecord, MapApprovedEmergencyContact, PlanApprovedEmergencyContact,
+      UcpathReadEmergencyContacts, UcpathStageEmergencyContact, UcpathProbeEmergencyContact, UcpathVerifyEmergencyContact, UcpathSaveEmergencyContact]) {
+      const scope = { kind: "task-output" as const, taskId: contract.id };
+      for (const leaf of evidenceLeaves(contract.output.parse(contract.example))) classifyEvidenceLeaf(scope, leaf.path);
+      assert.throws(() => classifyEvidenceLeaf(scope, "unexpected"), /no declared evidence classification/u);
+    }
+    const scope = { kind: "task-output" as const, taskId: ReadApprovedOcrSnapshot.id };
+    for (const path of ["snapshot.records", "snapshot.selectedRecordIds", "snapshot.reviewDigest"]) {
+      assert.equal(classifyEvidenceLeaf(scope, path).transform, "drop");
+    }
+    const planScope = { kind: "task-output" as const, taskId: PlanApprovedEmergencyContact.id };
+    for (const path of ["changes", "demotionLine", "contactLine"]) {
+      const declaration = classifyEvidenceLeaf(planScope, path);
+      assert.equal(declaration.classification, "sensitive-hr");
+      assert.equal(declaration.transform, "drop");
+      assert.equal(EvidenceFieldClassificationSchema.safeParse({ ...declaration, transform: "allow" }).success, false);
+    }
+    assert.throws(() => classifyEvidenceLeaf(scope, "snapshot.records.raw"), /no declared evidence classification/u);
+    assert.throws(() => classifyEvidenceLeaf({ kind: "task-output", taskId: UcpathReadEmergencyContacts.id }, "snapshot.records"), /no declared evidence classification/u);
   });
 });

@@ -1,4 +1,4 @@
-import { RunWorkbookReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
+import { RunWorkbookSelectedRowReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
 import { I9SignerOutputSchema } from "../../../src/models/systems/i9/read-section2-signer.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
@@ -21,7 +21,7 @@ function terminal(result: Awaited<ReturnType<Awaited<ReturnType<typeof world.exe
 describe("public onboarding write execution", () => {
   it("starts from the selected saved row, parks before all writes, then files three fenced receipts and patches only the captured live master", async () => {
     const h = await world.executionFixture(false, { match: "unique", selectedRow: true }), root = h.start();
-    assert.deepEqual(RunWorkbookReferenceSchema.parse(root.input.workbookReferences?.[0].value).request.selectedRow, { sheetId: "people", rowId: "people-person" });
+    assert.deepEqual(RunWorkbookSelectedRowReferenceSchema.parse(root.input.workbookReferences?.[0].value).request.selectedRow, { sheetId: "people", rowId: "people-person" });
     const review = await h.rawExecution.execute(root, signal());
     assert.equal(review.run?.lifecycle.state, "parked-gate", JSON.stringify(h.database.authority.failures.listByRun(root.envelope.runId)));
     assert.equal(review.run.lifecycle.state === "parked-gate" && review.run.lifecycle.gateId, ONBOARDING_WRITE_REVIEW_GATE);

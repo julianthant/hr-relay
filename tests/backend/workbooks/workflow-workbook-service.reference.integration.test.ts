@@ -8,7 +8,7 @@ import { createWorkbookLibraryAdapter } from "../../../src/backend/processing/pr
 import { createProviderClient } from "../../../src/backend/processing/providers/provider-client.js";
 import { readWorkbookReferenceTask } from "../../../src/backend/processing/workbooks/tasks/read-reference.js";
 import { ReadWorkbookReference, WorkbookReferenceReadRequestSchema, decodeWorkbookReference } from "../../../src/models/processing/workbooks/read-reference.js";
-import { RunWorkbookReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
+import { RunWorkbookNamedReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { ONBOARDING_ROSTER_NAME_FIELDS, ONBOARDING_ROSTER_TYPE_ID } from "../../../src/models/workflows/onboarding/roster.js";
 import { crmDocumentReferenceKeys, resolveCrmDocumentRows } from "../../../src/rules/crm-doc-download/reference.js";
@@ -42,7 +42,7 @@ async function fixture(duplicate = false) {
   await service.libraryAction(workbook.libraryId, { operationId: "older", expectedRevision: repository.libraryState(workbook.libraryId).revision,
     expectedVersion: service.read(workbook.libraryId).version, change: { kind: "create-version", name: "Earlier named roster", from: { kind: "version", versionId: "original" }, useNow: false } }, signal);
   const request = { typeId: ONBOARDING_ROSTER_TYPE_ID, libraryId: workbook.libraryId, versionId: "older", keys: ["two@example.test"], fields: [...ONBOARDING_ROSTER_NAME_FIELDS] };
-  const bound = { schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output"), value: RunWorkbookReferenceSchema.parse({ request, snapshot: service.snapshot(request) }) };
+  const bound = { schemaHash: deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output"), value: RunWorkbookNamedReferenceSchema.parse({ request, snapshot: service.snapshot(request) }) };
   const command = { typeId: ONBOARDING_ROSTER_TYPE_ID, keys: crmDocumentReferenceKeys(CRM_DOCUMENT_RECORDS_FIXTURE) };
   return { database, repository, clock, service, workbook, bound, command };
 }

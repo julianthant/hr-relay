@@ -33,7 +33,7 @@ it("retains a proved UCPath identity in the initial review without requiring a c
 });
 it("holds a resolved lookup whose name conflicts with or cannot corroborate the document", () => {
   const seed = result();
-  const identity = seed.identities[0]; assert.ok(identity && identity.outcome.state === "done");
+  const identity = seed.identities[0]; assert.ok(identity && identity.outcome.state === "done" && "activeStatus" in identity.outcome.output);
   identity.outcome.output.activeStatus.details.name = "Example, Morgan";
   assert.equal(initialOcrReviewRecords(seed)[0]?.assertedEid, null);
   identity.outcome.output.activeStatus.details.name = null;
@@ -42,7 +42,7 @@ it("holds a resolved lookup whose name conflicts with or cannot corroborate the 
 it("holds a conflicting document identity and an unresolved lookup for explicit operator review", () => {
   assert.equal(initialOcrReviewRecords(result("10800001"))[0]?.assertedEid, null);
   const seed = result();
-  const identity = seed.identities[0]; assert.ok(identity && identity.outcome.state === "done");
+  const identity = seed.identities[0]; assert.ok(identity && identity.outcome.state === "done" && "activeStatus" in identity.outcome.output);
   identity.outcome.output.activeStatus.ucpathSelection = "ambiguous";
   assert.equal(initialOcrReviewRecords(seed)[0]?.assertedEid, null);
 });
