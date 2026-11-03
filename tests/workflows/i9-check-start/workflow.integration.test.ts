@@ -4,6 +4,7 @@ import readXlsxFile from "read-excel-file/node";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createI9CheckStartWorld } from "../../support/helpers/backend/i9-check-start-world.js";
 import { I9CheckStartResultSchema } from "../../../src/models/workflows/i9-check/batch.js";
+import { I9CheckCanonicalInput } from "../../../src/models/workflows/i9-check/input.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 
 describe("one I-9 PDF Start through admitted children", () => {
@@ -49,7 +50,7 @@ describe("one I-9 PDF Start through admitted children", () => {
     expect(documents.filter(child => child.lifecycle.state === "parked-gate")).toHaveLength(1);
     expect(f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "i9-check")).toHaveLength(0);
   });
-  it("checks both approved people and publishes one workbook and the configured tracker before completing", async () => {
+  it("checks both corrected people and publishes one workbook and the configured tracker before completing", async () => {
     f.approveNext();
     const result = await f.canonical.execute(f.run, new AbortController().signal);
     const failures = result.outcomes.filter(outcome => outcome.state === "failed").map(outcome => f.database.authority.failures.get(outcome.failureId)?.summary);
@@ -68,7 +69,9 @@ describe("one I-9 PDF Start through admitted children", () => {
     expect(sheets.find(sheet => sheet.sheet === "I-9 Check")?.data).toHaveLength(3);
     expect(f.database.authority.artifactOutbox.listPending()).toHaveLength(0);
     expect(f.database.readProfileResourceCustody().writeIntents).toHaveLength(0);
-    expect(f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "i9-check")).toHaveLength(2);
+    const people = f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "i9-check");
+    expect(people).toHaveLength(2);
+    expect(people.map(child => I9CheckCanonicalInput.parse(child.input.parsed.value).person.dob)).toEqual(["2001-02-03", "2001-02-03"]);
     expect(f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId)).toHaveLength(2);
   });
   it("derives the unchanged receipt format from the completed native parent and replays it exactly", () => {

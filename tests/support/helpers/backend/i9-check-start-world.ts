@@ -15,6 +15,7 @@ import { ExtractPdfPages, type ExtractPdfPagesOutputSchema } from "../../../../s
 import { WorkbookReferenceFactsSchema } from "../../../../src/models/processing/workbooks/read-reference.js";
 import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../src/models/workflows/i9-check/start.js";
 import { OcrApprovedSnapshotSchema, ocrReviewDigest, ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
+import { answersFingerprint } from "../../../../src/models/ocr/extraction.js";
 import { OcrApprovalReferenceSchema } from "../../../../src/models/workflows/ocr/result.js";
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/page-accounting.js";
@@ -121,8 +122,11 @@ export function createI9CheckStartWorld() {
       let review = database.authority.ocrReviews.latest(child.envelope.runId); assert.ok(review);
       const eid = expected.get(review.seed.review.accounting.manifest.document.sha256); assert.ok(eid);
       for (const record of review.records) {
+        const answers = record.fields.answers.map(answer => answer.path === "dateOfBirth" && answer.state === "read"
+          ? { ...answer, raw: "02/03/2001", value: "2001-02-03" } : answer);
+        const fields = { ...record.fields, answers, answersFingerprint: answersFingerprint(answers) };
         const command: z.input<typeof CommandRequestSchema> = { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard", family: "ocr-review",
-          type: "correct-ocr-record", target: { runId: child.envelope.runId, expectedRevision: review.revision }, payload: { recordId: record.recordId, fields: record.fields, assertedEid: eid } };
+          type: "correct-ocr-record", target: { runId: child.envelope.runId, expectedRevision: review.revision }, payload: { recordId: record.recordId, fields, assertedEid: eid } };
         assert.equal(canonical.kernel.execute(command).state, "applied");
         const next = database.authority.ocrReviews.latest(child.envelope.runId); assert.ok(next); review = next;
       }
