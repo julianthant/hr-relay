@@ -1,3 +1,4 @@
+import { readDelegationEvidence } from "../../../src/backend/storage/sqlite/delegation-authority.js";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { TimelineEventRecordSchema, type TimelineEventRecord } from "../../../src/models/events/timeline.js";
 import { createNoteTimelineWriter } from "../../../src/backend/storage/events/note-timeline-writer.js";
@@ -596,7 +597,8 @@ describe("Onboarding captured roster admission and row choice", () => {
         && decision.reason.includes(root.envelope.runId) && decision.reason.includes(original.commandId)));
       const input = { descriptor, run: completed.run, result,
         checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, root.envelope.itemId),
-        gateResults: [], continuedGateResults: [original] };
+        gateResults: [], continuedGateResults: [original],
+        delegations: f.database.withAuthorityTransaction(repositories => [readDelegationEvidence(repositories, recoveredId, "i9-lookup-child")]) };
       assert.deepEqual(buildRunEvidenceReceipt(input), receipt);
       assert.throws(() => buildRunEvidenceReceipt({ ...input, gateResults: [original], continuedGateResults: [] }), /belongs to run/u);
       assert.throws(() => buildRunEvidenceReceipt({ ...input, continuedGateResults: [original, original] }), /duplicate/u);

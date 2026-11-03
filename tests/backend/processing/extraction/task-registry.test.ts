@@ -15,7 +15,7 @@ import type { ContentAddressedArtifactWriter } from "../../../../src/workflow-ki
 import { createTaskProvenanceCollector } from "../../../../src/backend/runs/provenance/task-provenance.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { UNREGISTERED_OCR_MODULES } from "../../../support/fixtures/ocr/unregistered-workflows.js";
+import { ocrModule } from "../../../../src/backend/app/registries/workflow-registry.js";
 
 const CSV = "text/csv";
 type ArtifactReference = ReturnType<typeof ArtifactRefSchema.parse>;
@@ -106,8 +106,7 @@ async function runPdf(
   document: ArtifactReference;
 }>>> {
   const document = artifactFor(bytes, "application/pdf");
-  const descriptor = UNREGISTERED_OCR_MODULES.find(module => module.descriptor.id === "ocr")?.descriptor;
-  assert.ok(descriptor);
+  const descriptor = ocrModule.descriptor;
   const node = descriptorRuntimeNodes(descriptor).find(node => node.kind === "task" && node.uses.id === extractPdfPagesTask.contract.id);
   assert.ok(node?.kind === "task");
   const provenance = createTaskProvenanceCollector({ descriptor,

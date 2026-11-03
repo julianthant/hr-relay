@@ -8,11 +8,14 @@ import {
   type EvidenceReceiptStore,
   type ReceiptWriteEvidence,
 } from "../provenance/evidence-receipt.js";
-import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import type { FailureRecord } from "../../../models/trust/failure.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/index.js";
 import { requireTrustRun, assertTrustEvidenceIdentity } from "./run-reader.js";
+import { authenticateOcrSnapshotApproval, OcrReviewRefusedError } from "../lifecycle/ocr-review-authority.js";
+import { readDelegationEvidence, retainedDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { DelegationInvocationRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
 
 export interface ReceiptServiceDeps {
   readonly runReader?: Pick<RunRecordService, "read">;
@@ -67,6 +70,27 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
       })),
     // Gate decisions come from durable gate rows, not task checkpoints.
     listGateResultsByRun: (runId: string) => authority.gateResults.listByRun(runId),
+    listDelegationsByRun: (runId: string) => {
+      const run = requireTrustRun(deps.runReader, runId);
+      if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done" || run.envelope.dryRun) return [];
+      const descriptor = byId.get(run.envelope.workflow);
+      if (descriptor === undefined) throw new Error("receipt-delegation-descriptor-unavailable");
+      const nodes = descriptorRuntimeNodes(descriptor).filter(node => node.kind === "child-run");
+      const manifests = retainedDelegationManifests(authority, runId);
+      if (manifests.some(manifest => nodes.filter(node => node.edgeId === manifest.edgeId).length !== 1)) throw new Error("receipt-delegation-edge-unavailable");
+      return nodes.filter(node => manifests.some(manifest => manifest.edgeId === node.edgeId))
+        .map(node => {
+          const evidence = readDelegationEvidence(authority, runId, node.id);
+          const command = authority.lifecycleJournal.getCommand(evidence.invocationCommandId);
+          if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "delegation-invocation"
+            || DelegationInvocationRequestSchema.parse(command.request).target.workflowId !== node.target.id) throw new Error("receipt-delegation-target-mismatch");
+          return evidence;
+        });
+    },
+    authenticateSnapshotApproval: (gate: Parameters<typeof authenticateOcrSnapshotApproval>[2]) => {
+      if (deps.runReader === undefined) throw new OcrReviewRefusedError();
+      return authenticateOcrSnapshotApproval(authority, deps.runReader, gate);
+    },
     findReceiptByRun: (runId: string) => authority.evidenceReceipts.findByRun(runId),
     insertReceipt: (receipt: unknown) => authority.evidenceReceipts.insert(receipt),
   });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { SERVER_REGISTRY } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { ocrModule, CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createOcrCheckpointPublication } from "../../../../src/backend/runs/lifecycle/ocr-checkpoint-publication.js";
 import { createOcrSourceService } from "../../../../src/backend/runs/commands/ocr-source-service.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -15,7 +15,6 @@ import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/wo
 import { ExtractPdfPages, type ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { defineServiceStore, defineTaskStoreRegistry, type RegisteredTaskStore } from "../../../../src/workflow-kit/task-registry.js";
-import { UNREGISTERED_OCR_MODULES, UNREGISTERED_OCR_STORES } from "../../fixtures/ocr/unregistered-workflows.js";
 import { submittedPage, READING_ID } from "../../fixtures/ocr/source-pages.js";
 import { canonicalChildExecution } from "./canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "./run-executor-world.js";
@@ -38,17 +37,17 @@ export function createOcrReviewWorld() {
         return rendered.value;
       } });
       const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction"),
-        defineServiceStore("extraction", { render }), ...UNREGISTERED_OCR_STORES];
+        defineServiceStore("extraction", { render })];
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
         tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
-      const root = UNREGISTERED_OCR_MODULES.find(module => module.descriptor.id === "ocr"); assert.ok(root);
+      const root = ocrModule;
       const harness = await world.executorHarness({ descriptor: root.descriptor, stores });
       const { database, path, clock } = harness.authority;
       const admission = boundProfileAdmission(path);
       const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
       const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
-      const resolve = (id: string) => (UNREGISTERED_OCR_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
+      const resolve = (id: string) => (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
       const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve, createOcrCheckpointPublication);
       const sources = createOcrSourceService({ database, reader: canonical.lifecycle, clock, artifacts, artifactReader,
         assertCurrent: () => admission.assertProfileRuntime() });

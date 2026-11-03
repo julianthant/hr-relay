@@ -25,7 +25,7 @@ const bind = descriptorRuntimeNodes(descriptor).find(node => node.id === "read-p
 assert.ok(extract?.kind === "task" && bind?.kind === "task" && extract.when !== undefined);
 const extractionCondition = extract.when;
 
-describe("unregistered OCR page graph", () => {
+describe("child-only OCR page graph", () => {
   it.each(["emergency-contact", "oath", "i9"] as const)("calls the existing subscription task for %s and retains canonical child identity", async formType => {
     const { inputs } = sourceFixture(1, formType);
     const input = OcrPageWorkflowInputSchema.parse({ page: inputs[0], reading: { kind: "subscription" } });
