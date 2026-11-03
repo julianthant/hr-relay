@@ -271,7 +271,11 @@ The first four paths and extension path are ordinary settings. State, evidence, 
 absolute path, cancellation, or explicit unavailable result. The native picker owns dialog bounds
 and field typing. A selection does not save settings or move app data. The route returns
 `NATIVE_PATH_HINT_INVALID` for an invalid hint. Missing picker composition reports `dialog-failed`;
-an occupied picker reports `busy`.
+an occupied picker reports `busy`. macOS uses `/usr/bin/osascript`; Windows uses the absolute
+`SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe` with one STA WinForms dialog.
+Windows dialog kind and canonical initial directory travel as UTF-8 JSON on stdin to fixed
+script code. Both helpers have bounded output and a 120-second limit; abort and timeout close
+the helper before releasing the dialog gate. Other platforms report `unsupported-platform`.
 
 ## 6. Credential access and storage
 
