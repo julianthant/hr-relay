@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { OnboardingReadHirePlan } from "../../../src/models/workflows/onboarding/read-hire-plan.js";
-import { OnboardingReadI9Lookup, OnboardingReadI9ProfilePlan, OnboardingI9OutcomeSchema, OnboardingI9LookupSchema } from "../../../src/models/workflows/onboarding/i9-profile.js";
+import { OnboardingReadI9Lookup, OnboardingI9OutcomeSchema, OnboardingI9LookupSchema } from "../../../src/models/workflows/onboarding/read-i9-lookup.js";
+import { OnboardingReadI9ProfilePlan } from "../../../src/models/workflows/onboarding/read-i9-profile-plan.js";
 import { readOnboardingI9Lookup, readI9ProfilePlan } from "../../../src/rules/onboarding/i9-profile.js";
 import { i9LookupInput, i9LookupItemId } from "../../../src/workflows/onboarding/steps/i9-search/step.js";
 

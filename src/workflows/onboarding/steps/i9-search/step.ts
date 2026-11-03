@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { I9LookupInputSchema, I9SignerOutputSchema } from "../../../../models/systems/i9/read-section2-signer.js";
 import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
-import { OnboardingReadI9Lookup } from "../../../../models/workflows/onboarding/i9-profile.js";
+import { OnboardingReadI9Lookup } from "../../../../models/workflows/onboarding/read-i9-lookup.js";
 import type { HirePlanSchema } from "../../../../models/workflows/onboarding/read-hire-plan.js";
 import { ItemIdSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import { deriveItemId } from "../../../../rules/identity/logical-item.js";

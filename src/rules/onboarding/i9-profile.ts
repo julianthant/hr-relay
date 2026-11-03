@@ -1,5 +1,6 @@
 import type { z } from "zod";
-import { OnboardingReadI9Lookup, OnboardingI9LookupSchema, OnboardingReadI9ProfilePlan, OnboardingI9ProfileSchema } from "../../models/workflows/onboarding/i9-profile.js";
+import { OnboardingReadI9Lookup, OnboardingI9LookupSchema } from "../../models/workflows/onboarding/read-i9-lookup.js";
+import { OnboardingReadI9ProfilePlan, OnboardingI9ProfileSchema } from "../../models/workflows/onboarding/read-i9-profile-plan.js";
 
 export function readOnboardingI9Lookup(raw: z.input<typeof OnboardingReadI9Lookup.input>): z.output<typeof OnboardingI9LookupSchema> {
   const input = OnboardingReadI9Lookup.input.parse(raw);

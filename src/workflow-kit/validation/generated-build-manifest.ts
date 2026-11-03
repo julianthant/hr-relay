@@ -5603,7 +5603,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onbase-source-page"
     },
     {
-      "fingerprint": "1d9b6d29c5ded33947d48d2e095625763172f2ff8f690d07096304d0836ddc45",
+      "fingerprint": "c9b1001daece8b02f8c7c1ef84539d356e77cadee36e6d31f4f5e44f2b5a247e",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -5874,10 +5874,6 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a1940a72aa7a83491c639adbee489788ef6e26209ea0511cc621b87794bfefe7"
         },
         {
-          "path": "src/models/workflows/onboarding/i9-profile.ts",
-          "sha256": "350ad42adaa1a3c8950515b26b6525d4e620836e0a0853c155f76cc757366bd4"
-        },
-        {
           "path": "src/models/workflows/onboarding/input.ts",
           "sha256": "b6a013e649aefd46f18ff57828261a1f1701403414b9e06147e9380b26b6b9ef"
         },
@@ -5890,8 +5886,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "cdbfe06e8cb9427b92b3879e176781d9cd15ca47c6e6940eb223fb197ab92138"
         },
         {
+          "path": "src/models/workflows/onboarding/read-i9-lookup.ts",
+          "sha256": "055c2f41f717994d59417c0250011cd0771e0c8fcc75dbc3bfb79a9a52c6760f"
+        },
+        {
+          "path": "src/models/workflows/onboarding/read-i9-profile-plan.ts",
+          "sha256": "0bfd5e4d474e1a169ad21b824fba698bdf7fc476145eef02fff7bb48a60a06bd"
+        },
+        {
           "path": "src/models/workflows/onboarding/result.ts",
-          "sha256": "3a4cad1315bda5f0466dea95f0076d6743d606f41a865c82ea1f74a7ebc9572d"
+          "sha256": "fac204cf63698d86b9e431d6894f153b73faf3cfb9203749ca6c426ba9c567c3"
         },
         {
           "path": "src/models/workflows/onboarding/roster.ts",
@@ -6043,11 +6047,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/onboarding/steps/i9-profile-creation/step.ts",
-          "sha256": "b556152fb8e4886019673fbbd74ff12b8bc2ab9e97c2791a2759e6103728ade7"
+          "sha256": "644fb14fc8830c1b76c3ee782b94cee43501bc160fa894b10e0521f6fc7081eb"
         },
         {
           "path": "src/workflows/onboarding/steps/i9-search/step.ts",
-          "sha256": "ebf7dfcd7593611bd39243b906f030ebf7783d94ba53c4d1c6148853d5abc3cc"
+          "sha256": "11fc8b526e0b622e86115c78076fb71be1d5b6ab8ecfef77f034f17d44125042"
         },
         {
           "path": "src/workflows/onboarding/steps/ucpath-search/step.ts",
@@ -6061,7 +6065,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding"
     },
     {
-      "fingerprint": "e5c8714e9f3840f4dd59721b6687302c9d1d58217aa6f939c2215716e0f59217",
+      "fingerprint": "0d432c4bc7a3f82465ddd81fbbf3616bbdaf8c9c94b65192aaa135db2271756e",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -6332,10 +6336,6 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a1940a72aa7a83491c639adbee489788ef6e26209ea0511cc621b87794bfefe7"
         },
         {
-          "path": "src/models/workflows/onboarding/i9-profile.ts",
-          "sha256": "350ad42adaa1a3c8950515b26b6525d4e620836e0a0853c155f76cc757366bd4"
-        },
-        {
           "path": "src/models/workflows/onboarding/input.ts",
           "sha256": "b6a013e649aefd46f18ff57828261a1f1701403414b9e06147e9380b26b6b9ef"
         },
@@ -6348,8 +6348,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "cdbfe06e8cb9427b92b3879e176781d9cd15ca47c6e6940eb223fb197ab92138"
         },
         {
+          "path": "src/models/workflows/onboarding/read-i9-lookup.ts",
+          "sha256": "055c2f41f717994d59417c0250011cd0771e0c8fcc75dbc3bfb79a9a52c6760f"
+        },
+        {
+          "path": "src/models/workflows/onboarding/read-i9-profile-plan.ts",
+          "sha256": "0bfd5e4d474e1a169ad21b824fba698bdf7fc476145eef02fff7bb48a60a06bd"
+        },
+        {
           "path": "src/models/workflows/onboarding/result.ts",
-          "sha256": "3a4cad1315bda5f0466dea95f0076d6743d606f41a865c82ea1f74a7ebc9572d"
+          "sha256": "fac204cf63698d86b9e431d6894f153b73faf3cfb9203749ca6c426ba9c567c3"
         },
         {
           "path": "src/models/workflows/onboarding/roster.ts",
@@ -6501,11 +6509,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/onboarding/steps/i9-profile-creation/step.ts",
-          "sha256": "b556152fb8e4886019673fbbd74ff12b8bc2ab9e97c2791a2759e6103728ade7"
+          "sha256": "644fb14fc8830c1b76c3ee782b94cee43501bc160fa894b10e0521f6fc7081eb"
         },
         {
           "path": "src/workflows/onboarding/steps/i9-search/step.ts",
-          "sha256": "ebf7dfcd7593611bd39243b906f030ebf7783d94ba53c4d1c6148853d5abc3cc"
+          "sha256": "11fc8b526e0b622e86115c78076fb71be1d5b6ab8ecfef77f034f17d44125042"
         },
         {
           "path": "src/workflows/onboarding/steps/ucpath-search/step.ts",
@@ -6519,7 +6527,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding-crm-data"
     },
     {
-      "fingerprint": "29f40087a609bf2362d2ba25b00d19046e7c33c2a9a76110fb0dc3236c88d570",
+      "fingerprint": "450726239477c15a2e4e4f916d237d9895a9b64819f85250d29e876332671ab5",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -6790,10 +6798,6 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a1940a72aa7a83491c639adbee489788ef6e26209ea0511cc621b87794bfefe7"
         },
         {
-          "path": "src/models/workflows/onboarding/i9-profile.ts",
-          "sha256": "350ad42adaa1a3c8950515b26b6525d4e620836e0a0853c155f76cc757366bd4"
-        },
-        {
           "path": "src/models/workflows/onboarding/input.ts",
           "sha256": "b6a013e649aefd46f18ff57828261a1f1701403414b9e06147e9380b26b6b9ef"
         },
@@ -6806,8 +6810,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "cdbfe06e8cb9427b92b3879e176781d9cd15ca47c6e6940eb223fb197ab92138"
         },
         {
+          "path": "src/models/workflows/onboarding/read-i9-lookup.ts",
+          "sha256": "055c2f41f717994d59417c0250011cd0771e0c8fcc75dbc3bfb79a9a52c6760f"
+        },
+        {
+          "path": "src/models/workflows/onboarding/read-i9-profile-plan.ts",
+          "sha256": "0bfd5e4d474e1a169ad21b824fba698bdf7fc476145eef02fff7bb48a60a06bd"
+        },
+        {
           "path": "src/models/workflows/onboarding/result.ts",
-          "sha256": "3a4cad1315bda5f0466dea95f0076d6743d606f41a865c82ea1f74a7ebc9572d"
+          "sha256": "fac204cf63698d86b9e431d6894f153b73faf3cfb9203749ca6c426ba9c567c3"
         },
         {
           "path": "src/models/workflows/onboarding/roster.ts",
@@ -6959,11 +6971,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/onboarding/steps/i9-profile-creation/step.ts",
-          "sha256": "b556152fb8e4886019673fbbd74ff12b8bc2ab9e97c2791a2759e6103728ade7"
+          "sha256": "644fb14fc8830c1b76c3ee782b94cee43501bc160fa894b10e0521f6fc7081eb"
         },
         {
           "path": "src/workflows/onboarding/steps/i9-search/step.ts",
-          "sha256": "ebf7dfcd7593611bd39243b906f030ebf7783d94ba53c4d1c6148853d5abc3cc"
+          "sha256": "11fc8b526e0b622e86115c78076fb71be1d5b6ab8ecfef77f034f17d44125042"
         },
         {
           "path": "src/workflows/onboarding/steps/ucpath-search/step.ts",
@@ -6977,7 +6989,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding-i9-profile-creation"
     },
     {
-      "fingerprint": "f8de24d8de79f3582b11be0eb7e7a6c5e7d0d461e47023ba357f5e6417665328",
+      "fingerprint": "c298efc72502f1a0a7555c5057d4b03f5015b0b89fea6296cd4c6088e16a03a6",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -7248,10 +7260,6 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a1940a72aa7a83491c639adbee489788ef6e26209ea0511cc621b87794bfefe7"
         },
         {
-          "path": "src/models/workflows/onboarding/i9-profile.ts",
-          "sha256": "350ad42adaa1a3c8950515b26b6525d4e620836e0a0853c155f76cc757366bd4"
-        },
-        {
           "path": "src/models/workflows/onboarding/input.ts",
           "sha256": "b6a013e649aefd46f18ff57828261a1f1701403414b9e06147e9380b26b6b9ef"
         },
@@ -7264,8 +7272,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "cdbfe06e8cb9427b92b3879e176781d9cd15ca47c6e6940eb223fb197ab92138"
         },
         {
+          "path": "src/models/workflows/onboarding/read-i9-lookup.ts",
+          "sha256": "055c2f41f717994d59417c0250011cd0771e0c8fcc75dbc3bfb79a9a52c6760f"
+        },
+        {
+          "path": "src/models/workflows/onboarding/read-i9-profile-plan.ts",
+          "sha256": "0bfd5e4d474e1a169ad21b824fba698bdf7fc476145eef02fff7bb48a60a06bd"
+        },
+        {
           "path": "src/models/workflows/onboarding/result.ts",
-          "sha256": "3a4cad1315bda5f0466dea95f0076d6743d606f41a865c82ea1f74a7ebc9572d"
+          "sha256": "fac204cf63698d86b9e431d6894f153b73faf3cfb9203749ca6c426ba9c567c3"
         },
         {
           "path": "src/models/workflows/onboarding/roster.ts",
@@ -7417,11 +7433,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/onboarding/steps/i9-profile-creation/step.ts",
-          "sha256": "b556152fb8e4886019673fbbd74ff12b8bc2ab9e97c2791a2759e6103728ade7"
+          "sha256": "644fb14fc8830c1b76c3ee782b94cee43501bc160fa894b10e0521f6fc7081eb"
         },
         {
           "path": "src/workflows/onboarding/steps/i9-search/step.ts",
-          "sha256": "ebf7dfcd7593611bd39243b906f030ebf7783d94ba53c4d1c6148853d5abc3cc"
+          "sha256": "11fc8b526e0b622e86115c78076fb71be1d5b6ab8ecfef77f034f17d44125042"
         },
         {
           "path": "src/workflows/onboarding/steps/ucpath-search/step.ts",
@@ -7435,7 +7451,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding-i9-search"
     },
     {
-      "fingerprint": "ea1be15dac6f9284cfa033a0f9985ad1b1721af6c1a39fc1ff4eed72732fb0cf",
+      "fingerprint": "9972a0865dce784fd2a13753e8a6f6963a745b8ddd9f09be61bbbe1c88d6e24f",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -7706,10 +7722,6 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a1940a72aa7a83491c639adbee489788ef6e26209ea0511cc621b87794bfefe7"
         },
         {
-          "path": "src/models/workflows/onboarding/i9-profile.ts",
-          "sha256": "350ad42adaa1a3c8950515b26b6525d4e620836e0a0853c155f76cc757366bd4"
-        },
-        {
           "path": "src/models/workflows/onboarding/input.ts",
           "sha256": "b6a013e649aefd46f18ff57828261a1f1701403414b9e06147e9380b26b6b9ef"
         },
@@ -7722,8 +7734,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "cdbfe06e8cb9427b92b3879e176781d9cd15ca47c6e6940eb223fb197ab92138"
         },
         {
+          "path": "src/models/workflows/onboarding/read-i9-lookup.ts",
+          "sha256": "055c2f41f717994d59417c0250011cd0771e0c8fcc75dbc3bfb79a9a52c6760f"
+        },
+        {
+          "path": "src/models/workflows/onboarding/read-i9-profile-plan.ts",
+          "sha256": "0bfd5e4d474e1a169ad21b824fba698bdf7fc476145eef02fff7bb48a60a06bd"
+        },
+        {
           "path": "src/models/workflows/onboarding/result.ts",
-          "sha256": "3a4cad1315bda5f0466dea95f0076d6743d606f41a865c82ea1f74a7ebc9572d"
+          "sha256": "fac204cf63698d86b9e431d6894f153b73faf3cfb9203749ca6c426ba9c567c3"
         },
         {
           "path": "src/models/workflows/onboarding/roster.ts",
@@ -7875,11 +7895,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/onboarding/steps/i9-profile-creation/step.ts",
-          "sha256": "b556152fb8e4886019673fbbd74ff12b8bc2ab9e97c2791a2759e6103728ade7"
+          "sha256": "644fb14fc8830c1b76c3ee782b94cee43501bc160fa894b10e0521f6fc7081eb"
         },
         {
           "path": "src/workflows/onboarding/steps/i9-search/step.ts",
-          "sha256": "ebf7dfcd7593611bd39243b906f030ebf7783d94ba53c4d1c6148853d5abc3cc"
+          "sha256": "11fc8b526e0b622e86115c78076fb71be1d5b6ab8ecfef77f034f17d44125042"
         },
         {
           "path": "src/workflows/onboarding/steps/ucpath-search/step.ts",
@@ -29477,7 +29497,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:onboarding/read-hire-plan"
     },
     {
-      "fingerprint": "0284b49acfcb7501d5589ffb5752c30f3b18e61dfe2f9bb4c911f824e1ae9d8a",
+      "fingerprint": "648d3bd4390f45822db48ce38d6621799b3be3d6b07203facfb216c827be2649",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -29712,16 +29732,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fa795a459311ffd41a1f3b52e853937eea25057e584aa23d09535b3086353912"
         },
         {
-          "path": "src/models/workflows/onboarding/i9-profile.ts",
-          "sha256": "350ad42adaa1a3c8950515b26b6525d4e620836e0a0853c155f76cc757366bd4"
-        },
-        {
           "path": "src/models/workflows/onboarding/match-hire-subject.ts",
           "sha256": "834a0731cc7c5ae81abd6c5053b0cfc829f708158350ea8098a1d4d4b346b2ca"
         },
         {
           "path": "src/models/workflows/onboarding/read-hire-plan.ts",
           "sha256": "cdbfe06e8cb9427b92b3879e176781d9cd15ca47c6e6940eb223fb197ab92138"
+        },
+        {
+          "path": "src/models/workflows/onboarding/read-i9-lookup.ts",
+          "sha256": "055c2f41f717994d59417c0250011cd0771e0c8fcc75dbc3bfb79a9a52c6760f"
+        },
+        {
+          "path": "src/models/workflows/onboarding/read-i9-profile-plan.ts",
+          "sha256": "0bfd5e4d474e1a169ad21b824fba698bdf7fc476145eef02fff7bb48a60a06bd"
         },
         {
           "path": "src/models/workflows/onboarding/roster.ts",
@@ -29749,7 +29773,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/onboarding/i9-profile.ts",
-          "sha256": "0b413319802036197cdbb9a98061d18aed08fc8a38b783ec9ead62900ea5de0e"
+          "sha256": "90497cd3357352a6f47f20ede86ebda53d6c5cb7cc562b18da7cf3807ab2d665"
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
@@ -29817,13 +29841,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/onboarding/tasks/read-i9-lookup.ts",
-          "sha256": "b1d2d8c1df98a59bc7398e3f31e79c2137faa3149c1597d3a37315eca1d6dff5"
+          "sha256": "16a9703b37df68fd7581fbd7de5ec915629a84a0e9e66e4dfe3a2b425e3559b1"
         }
       ],
       "id": "workflow:onboarding/read-i9-lookup"
     },
     {
-      "fingerprint": "8e02f45e5deaed98a422c1613ab48b447c0a4e11ad852712986269f7673f6300",
+      "fingerprint": "40d63bb06ca2fe54eeca4f869e2042b4f048c60ce0330ac8156ead2a63151b86",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -30058,16 +30082,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fa795a459311ffd41a1f3b52e853937eea25057e584aa23d09535b3086353912"
         },
         {
-          "path": "src/models/workflows/onboarding/i9-profile.ts",
-          "sha256": "350ad42adaa1a3c8950515b26b6525d4e620836e0a0853c155f76cc757366bd4"
-        },
-        {
           "path": "src/models/workflows/onboarding/match-hire-subject.ts",
           "sha256": "834a0731cc7c5ae81abd6c5053b0cfc829f708158350ea8098a1d4d4b346b2ca"
         },
         {
           "path": "src/models/workflows/onboarding/read-hire-plan.ts",
           "sha256": "cdbfe06e8cb9427b92b3879e176781d9cd15ca47c6e6940eb223fb197ab92138"
+        },
+        {
+          "path": "src/models/workflows/onboarding/read-i9-lookup.ts",
+          "sha256": "055c2f41f717994d59417c0250011cd0771e0c8fcc75dbc3bfb79a9a52c6760f"
+        },
+        {
+          "path": "src/models/workflows/onboarding/read-i9-profile-plan.ts",
+          "sha256": "0bfd5e4d474e1a169ad21b824fba698bdf7fc476145eef02fff7bb48a60a06bd"
         },
         {
           "path": "src/models/workflows/onboarding/roster.ts",
@@ -30095,7 +30123,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/onboarding/i9-profile.ts",
-          "sha256": "0b413319802036197cdbb9a98061d18aed08fc8a38b783ec9ead62900ea5de0e"
+          "sha256": "90497cd3357352a6f47f20ede86ebda53d6c5cb7cc562b18da7cf3807ab2d665"
         },
         {
           "path": "src/rules/redaction/redaction-policy.ts",
@@ -30163,7 +30191,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/onboarding/tasks/read-i9-profile-plan.ts",
-          "sha256": "49b0ca239c6d9ed422fa5d68241816316f169b24d95b51e5796fdfb8e86bb903"
+          "sha256": "728377ad3878b7d88e4bc9793bc4681cb18e82c6fcd06b83708570d057a4ebe3"
         }
       ],
       "id": "workflow:onboarding/read-i9-profile-plan"

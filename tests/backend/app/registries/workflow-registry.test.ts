@@ -1,5 +1,5 @@
 import { describe,expect,it } from "vitest";
-import { childWorkflowModuleOf, createWorkflowRegistry, DESCRIPTORS, onboardingModule, personLookupModule, separationsModule, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, childWorkflowModuleOf, createWorkflowRegistry, DESCRIPTORS, onboardingModule, personLookupModule, separationsModule, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { composeWorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
@@ -75,7 +75,10 @@ describe("workflow descriptor registry", () => {
     const second = syntheticModule("registry-second", ["registry-third"]);
     const third = syntheticModule("registry-third", ["registry-first"]);
     expect(() => createWorkflowRegistry([first], [second, third])).toThrow(/delegation cycle/u);
-    expect(() => createWorkflowRegistry(WORKFLOW_MODULES, [first, second, third])).toThrow(/delegation cycle/u);
+    const production = createWorkflowRegistry(WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES);
+    expect(production.publicModules).toEqual(WORKFLOW_MODULES);
+    expect(() => createWorkflowRegistry(WORKFLOW_MODULES, [...CHILD_ONLY_WORKFLOW_MODULES, first, second, third]))
+      .toThrow(/delegation cycle at registry-first/u);
   });
 
   it("refuses a missing descendant and duplicate IDs across either admission list", () => {

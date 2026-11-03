@@ -1,5 +1,5 @@
 import { defineTask } from "../../../workflow-kit/task.js";
-import { OnboardingReadI9Lookup } from "../../../models/workflows/onboarding/i9-profile.js";
+import { OnboardingReadI9Lookup } from "../../../models/workflows/onboarding/read-i9-lookup.js";
 import { readOnboardingI9Lookup } from "../../../rules/onboarding/i9-profile.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 

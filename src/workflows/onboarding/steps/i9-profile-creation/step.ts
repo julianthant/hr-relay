@@ -1,5 +1,5 @@
 import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
-import { OnboardingReadI9ProfilePlan } from "../../../../models/workflows/onboarding/i9-profile.js";
+import { OnboardingReadI9ProfilePlan } from "../../../../models/workflows/onboarding/read-i9-profile-plan.js";
 import { OnboardingResultSchema } from "../../../../models/workflows/onboarding/result.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";

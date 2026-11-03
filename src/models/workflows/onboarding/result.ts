@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { HirePlanSchema } from "./read-hire-plan.js";
 import { HireSubjectSchema } from "./match-hire-subject.js";
-import { OnboardingI9ProfileSchema } from "./i9-profile.js";
+import { OnboardingI9ProfileSchema } from "./read-i9-profile-plan.js";
 
 export const OnboardingResultSchema = z.strictObject({
   state: z.literal("implementation-incomplete"), plan: HirePlanSchema, subject: HireSubjectSchema,

@@ -18,8 +18,8 @@ import { childWorkflowModuleOf, workflowModuleOf } from "../../../src/backend/ap
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { ONBOARDING_INPUT_EXAMPLE } from "../../../src/models/workflows/onboarding/input.js";
 import { OnboardingReadHirePlan } from "../../../src/models/workflows/onboarding/read-hire-plan.js";
-import { OnboardingReadI9ProfilePlan, OnboardingI9OutcomeSchema } from "../../../src/models/workflows/onboarding/i9-profile.js";
-import { OnboardingReadI9Lookup } from "../../../src/models/workflows/onboarding/i9-profile.js";
+import { OnboardingReadI9ProfilePlan } from "../../../src/models/workflows/onboarding/read-i9-profile-plan.js";
+import { OnboardingReadI9Lookup, OnboardingI9OutcomeSchema } from "../../../src/models/workflows/onboarding/read-i9-lookup.js";
 import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding/result.js";
 import { I9LookupInputSchema, I9SignerOutputSchema } from "../../../src/models/systems/i9/read-section2-signer.js";
 import { readI9LookupTask } from "../../../src/workflows/onboarding/tasks/read-i9-lookup.js";

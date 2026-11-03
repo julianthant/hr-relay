@@ -143,7 +143,8 @@ at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in th
 Its `index.ts` derives four retained proofs from step definitions: CRM data, UCPath duplicate search,
 delegated I-9 search, and the I-9 profile-creation plan. Each step owns its group, typed wiring,
 result and proof recipe; `workflow.ts` composes their build results. Thin system calls use `reuseTask` in the step modules; `tasks/` holds one implementation per pure task ID. The I-9 search step owns child input and item-ID bindings;
-pure validation and profile decisions live in `src/rules/onboarding/`. Tests compose the definition
+pure validation and profile decisions live in `src/rules/onboarding/`. The I-9 contracts live in
+`src/models/workflows/onboarding/read-i9-lookup.ts` and `read-i9-profile-plan.ts`, matching their task IDs for exact Explorer source links. Tests compose the definition
 and proofs through the production registries. Legal/lived names
 arrive through the declared run-start roster snapshot input. I-9 profile creation and UCPath hire
 submission remain unimplemented writes; roster access remains a shared Spreadsheets dependency.
