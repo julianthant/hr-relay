@@ -398,7 +398,9 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.ok(executed.run?.lifecycle.state === "terminal" && executed.run.lifecycle.outcome === "done",
       JSON.stringify({ lifecycle: executed.run?.lifecycle.state, outcomes: executed.outcomes.map(value => value.state),
         failures: [root, ...f.database.authority.runs.listChildren(root.envelope.runId)].flatMap(run =>
-          f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId }) => ({ code, nodeId }))) }));
+          f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId, debug }) => ({ code, nodeId,
+            internalCodes: debug?.stack.match(/\b(?:delegation|run-continuation|checkpoint|worker)[a-z0-9-]+\b/gu),
+            sourceFrames: debug?.stack.match(/src\/[a-zA-Z0-9/_.-]+:\d+:\d+/gu) }))) }));
     const result = f.database.authority.runResults.get(root.envelope.runId); assert.ok(result);
     const output = OnboardingResultSchema.parse(result.result.value);
     assert.equal(output.plan.employee.firstName, "Chosen"); assert.equal(output.plan.employee.preferredFirstName, "Lived");
@@ -474,7 +476,9 @@ describe("Onboarding captured roster admission and row choice", () => {
       assert.ok(completed.run?.lifecycle.state === "terminal" && completed.run.lifecycle.outcome === "done",
         JSON.stringify({ lifecycle: completed.run?.lifecycle.state, outcomes: completed.outcomes.map(value => value.state),
           failures: [recovered, ...f.database.authority.runs.listChildren(recoveredId)].flatMap(run =>
-            f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId }) => ({ code, nodeId }))) }));
+            f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId, debug }) => ({ code, nodeId,
+            internalCodes: debug?.stack.match(/\b(?:delegation|run-continuation|checkpoint|worker)[a-z0-9-]+\b/gu),
+            sourceFrames: debug?.stack.match(/src\/[a-zA-Z0-9/_.-]+:\d+:\d+/gu) }))) }));
       const result = f.database.authority.runResults.get(recoveredId); assert.ok(result);
       assert.equal(OnboardingResultSchema.parse(result.result.value).plan.employee.firstName, "Fixture");
       assert.equal(f.calls.filter(call => call.system === "i9").length, 1);

@@ -1,5 +1,4 @@
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
-import { ONBOARDING_ROSTER_GATE_ID } from "../../../models/workflows/onboarding/roster.js";
 import { planRunRecovery } from "../start/recovery-plan.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
@@ -1570,7 +1569,7 @@ function executeResolveGate(
   repositories: AuthorityRepositories,
   request: Extract<CommandRequest, { family: "gate" }>,
   now: string,
-  source: "operator" | "workbook-reference" = "operator",
+  source: "operator" | "workbook-reference",
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
   if (current.version !== request.target.expectedVersion) {
@@ -1580,9 +1579,6 @@ function executeResolveGate(
       `run ${request.target.runId} is at version ${String(current.version)}, not `
       + `${String(request.target.expectedVersion)}; refresh before resolving the gate`,
     );
-  }
-  if (current.envelope.workflow === "onboarding" && request.target.gateId === ONBOARDING_ROSTER_GATE_ID && source !== "workbook-reference") {
-    reject(request, "policy-refused", "Roster row choices require live workbook validation through their served reference target.");
   }
   if (current.lifecycle.state !== "parked-gate") {
     reject(
@@ -1607,6 +1603,11 @@ function executeResolveGate(
       `run ${request.target.runId} is parked on gate ${request.target.gateId}, which ${descriptor.id} does not declare; `
       + "the stored park is inconsistent with the descriptor",
     );
+  }
+  const declaration = findGateDecision(descriptor.id, request.target.gateId);
+  if ((declaration !== undefined && declaration.resolution.source !== source)
+    || (declaration === undefined && source !== "operator")) {
+    reject(request, "policy-refused", "This gate must be resolved through its declared evidence source.");
   }
   if (node.resolvedBy !== "operator") {
     reject(
@@ -1642,7 +1643,7 @@ function executeResolveGate(
       + "no gate result was recorded",
     );
   }
-  verifyGateEvidenceCurrent(request, descriptor, node, evidenceScope, now, source);
+  verifyGateEvidenceCurrent(request, descriptor, node, evidenceScope, now);
   const result = { schemaHash: expectedSchemaHash, value: parsedValue.data };
   const stored = repositories.gateResults.insert({
     nodeId: node.id,
@@ -1810,14 +1811,16 @@ function verifyGateEvidenceCurrent(
   gate: Extract<ReturnType<typeof descriptorRuntimeNodes>[number], { kind: "gate" }>,
   scope: ReturnType<typeof gateEvidenceScope>,
   now: string,
-  source: "operator" | "workbook-reference",
 ): void {
   const declaration = findGateDecision(descriptor.id, request.target.gateId);
   if (declaration?.boundEvidencePath !== undefined) {
     const submitted = valueAtPath(request.payload.result.value, declaration.boundEvidencePath);
-    const currentEvidence = source === "workbook-reference" && descriptor.id === "onboarding" && gate.id === ONBOARDING_ROSTER_GATE_ID
-      && declaration.boundEvidencePath === "row.binding.referenceDigest" && valueAtPath(scope.input, "roster.state") === "resolve-required"
-      ? [{ nodeId: gate.id, value: valueAtPath(scope.input, "roster.binding.referenceDigest") }]
+    const policy = declaration.resolution;
+    const boundInput = policy.source === "workbook-reference"
+      && valueAtPath(scope.input, policy.inputCondition.path) === policy.inputCondition.equals
+      ? valueAtPath(scope.input, policy.boundInputPath) : undefined;
+    const currentEvidence = policy.source === "workbook-reference"
+      ? (boundInput === undefined ? [] : [{ nodeId: gate.id, value: boundInput }])
       : gate.dependsOn.flatMap((nodeId) => {
       const checkpoint = scope.checkpoints.get(String(nodeId))?.record;
       const value = checkpoint === undefined ? undefined : valueAtPath(checkpoint.output.value, declaration.boundEvidencePath!);
@@ -2460,7 +2463,7 @@ function dispatchActive(
       }
       return reject(request, "capability-unavailable", "Worker commands require the current asynchronous process owner.");
     case "gate":
-      return executeResolveGate(dependencies, repositories, request, now);
+      return executeResolveGate(dependencies, repositories, request, now, "operator");
     case "run": {
       switch (request.type) {
         case "pause":

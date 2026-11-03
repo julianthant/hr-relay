@@ -17,15 +17,25 @@ export const GateDecisionArmSchema = z.strictObject({
   summary: z.string().min(1),
 });
 
+export const GateResolutionPolicySchema = z.discriminatedUnion("source", [
+  z.strictObject({ source: z.literal("operator") }),
+  z.strictObject({ source: z.literal("workbook-reference"), boundInputPath: EvidenceLeafPathSchema,
+    inputCondition: z.strictObject({ path: EvidenceLeafPathSchema, equals: z.string().min(1) }) }),
+]);
+
 export const GateDecisionDeclarationSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   gateId: GateIdSchema,
+  resolution: GateResolutionPolicySchema,
     /* The leaf whose value names the arm the operator took, in the same vocabulary the redaction table and the provenance rows use, so a declaration naming an absent path fails at parse. */
   decisionPath: EvidenceLeafPathSchema,
   arms: z.array(GateDecisionArmSchema).min(1),
     /* The leaf carrying the evidence the decision was bound to, when the gate declares one; the identity gate does, and the digest is the load-bearing half. */
   boundEvidencePath: EvidenceLeafPathSchema.optional(),
 }).superRefine((declaration, context) => {
+  if (declaration.resolution.source === "workbook-reference" && declaration.boundEvidencePath === undefined) {
+    context.addIssue({ code: "custom", path: ["boundEvidencePath"], message: "workbook reference resolution requires a bound result digest" });
+  }
   const values = declaration.arms.map((arm) => arm.value);
   if (new Set(values).size !== values.length) {
     context.addIssue({
@@ -40,12 +50,15 @@ export type GateDecisionDeclaration = z.infer<typeof GateDecisionDeclarationSche
 export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze([
   ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-i9-profile-creation"].map(workflowId => ({
     workflowId, gateId: "roster-choice", decisionPath: "decision", boundEvidencePath: "row.binding.referenceDigest",
+    resolution: { source: "workbook-reference", boundInputPath: "roster.binding.referenceDigest",
+      inputCondition: { path: "roster.state", equals: "resolve-required" } },
     arms: [{ value: "selected", outcome: "taken", summary: "an operator selected this roster row for the hire review" }],
   })),
     /* The name-resolved identity approval: a supplied EID creates no gate row, and when this gate does open, `rejected` terminalizes the run, so both arms are real outcomes. */
   {
     workflowId: "separations-identity-check",
     gateId: "identity-approval",
+    resolution: { source: "operator" },
     decisionPath: "decision",
     arms: [
       {
@@ -65,6 +78,7 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
       /* This gate needs its own declaration rather than inheriting another's, because a gate decision is scoped by `(workflow, gate)` on purpose. */
     workflowId: "separations-ucpath-termination",
     gateId: "identity-approval",
+    resolution: { source: "operator" },
     decisionPath: "decision",
     arms: [
       {
@@ -84,6 +98,7 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
       /* This gate declares its own answer for its workflow; what `rejected` means here is different again, because no separation is recorded on the source document when it fires. */
     workflowId: "separations-kuali-finalization",
     gateId: "identity-approval",
+    resolution: { source: "operator" },
     decisionPath: "decision",
     arms: [
       {
@@ -103,6 +118,7 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
       /* The composition declares its own answer, and the repetition earns the most here because this gate dominates THREE real writes across two systems. */
     workflowId: "separations",
     gateId: "identity-approval",
+    resolution: { source: "operator" },
     decisionPath: "decision",
     arms: [
       {

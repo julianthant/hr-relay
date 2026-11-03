@@ -71,7 +71,10 @@ current exact-key matches only in the original worksheet set. `resolve-workbook-
 accepts sheet and row identity, rechecks the live revision, type, key and worksheet membership, and
 rebuilds typed values into a durable `{ decision: "selected", row }` gate result before the canonical
 gate transition resumes the run. Every Onboarding descriptor and retained proof declares this
-selection as a `taken` receipt decision bound to `row.binding.referenceDigest`. Direct `resolve-gate` cannot settle this gate. The original reference stays unchanged; subsequent
+selection as a `taken` receipt decision bound to `row.binding.referenceDigest`. Its gate decision
+declaration requires the workbook-reference resolution source and binds the pending canonical input
+digest; ordinary operator gates declare their operator source and retain checkpoint evidence checks.
+Direct `resolve-gate` cannot settle this gate. The original reference stays unchanged; subsequent
 execution and delegation authenticate retained chosen evidence, the applied command audit and the
 native gate-result hash without rereading the workbook. Runs checks this proof at the worker
 validating/running transition before executor replay or task admission and again at actual child
