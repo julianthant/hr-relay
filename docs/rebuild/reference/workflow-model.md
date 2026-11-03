@@ -182,8 +182,9 @@ Scenario-path helpers derive potential addresses; they do not prove scenario fil
 The workflow-ID boundary audits public, child-only and proof inventories. Retained dashboard mock
 literals and OCR service literals have exact AST references in
 `tests/support/helpers/retained-dashboard-mock-fixtures.ts`. The OCR service references cover review
-admission, source-bound resources, approval publication, the OCR CLI command, deferred-feature text
-and task-namespace source links. Added, removed or repurposed occurrences fail the boundary checks.
+admission, source-bound resources, approval publication, the OCR CLI command and deferred-feature text.
+Added, removed or repurposed occurrences fail the boundary checks. Explorer derives contract and
+implementation directories from the bound store's kind and namespace.
 These references admit no new workflow dispatch or public start.
 
 Success receipts authenticate the complete native delegation inventory and compare each child
