@@ -36,6 +36,9 @@ the PR's eligibility and expected head; a moved head is left to its owner. Succe
 secret (fine-grained, this repository, Contents and Pull requests read/write), because pushes made
 with the default token do not start CI.
 
+Use a blob-filtered full-history checkout for the merge train. Keep all commit ancestry and fetch
+historical file contents on demand within the existing five-minute job budget.
+
 Cursor Bugbot reviews every push and only comments. The orchestrator session is the only fixer: it
 watches its open PRs and, on the PR branch, fixes failed CI, real Bugbot findings and PRs labeled
 `merge-conflict` (merging `staging` in, never rebasing). A failure unrelated to the PR's diff is a
