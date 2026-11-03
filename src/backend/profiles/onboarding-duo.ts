@@ -43,6 +43,7 @@ export interface DraftDuoPendingCredential {
   readonly transport: "internal" | "usb";
   readonly isResidentCredential: boolean;
   readonly createdAt: string;
+  readonly initialSignCount?: number;
 }
 
 export interface DraftDuoCeremonyReceipt {

@@ -146,13 +146,6 @@ export function createRelayWorker(api, reportEvent) {
   }
   return Object.freeze({
     intercept,
-    async platformAvailable() {
-      await assertScope();
-      const probe = await api.tabs.sendMessage(pending.sender.tab.id, { type: 'RELAY_PLATFORM_PROBE' }, { documentId: pending.sender.documentId });
-      await assertScope();
-      if (typeof probe?.available !== 'boolean') throw new Error('ONBOARDING_DUO_NATIVE_UNAVAILABLE');
-      return probe.available;
-    },
     async fail(data, sender) {
       requireSender(sender);
       if (!enrollment || data.origin !== sender.origin || data.rpId !== 'duosecurity.com' || data.requestId !== enrollment.requestId
@@ -243,10 +236,10 @@ if (typeof chrome !== 'undefined') {
       || sender.frameId !== undefined && sender.frameId !== 0
       || sender.documentLifecycle !== 'active' || typeof sender.documentId !== 'string' || sender.documentId.length !== 32 || !/^[0-9a-f]{32}$/i.test(sender.documentId)
       || sender.origin !== chrome.runtime.getURL('').slice(0, -1)) throw new Error('ONBOARDING_DUO_SCOPE');
-    const kinds = { STATE: 'state', RELAY_OPEN_PORTAL: 'portal', RELAY_START: 'start', RELAY_CANCEL: 'cancel', RELAY_CONFIRM: 'confirm' };
+    const kinds = { STATE: 'state', RELAY_OPEN_PORTAL: 'portal', RELAY_RETURN: 'return', RELAY_START: 'start', RELAY_CANCEL: 'cancel', RELAY_CONFIRM: 'confirm' };
     if (!Object.hasOwn(kinds, message.type) || Object.keys(message).some(key => !['type', 'method', 'attemptId'].includes(key))) throw new Error('ONBOARDING_DUO_REQUEST');
     const kind = kinds[message.type];
-    if (['state', 'portal'].includes(kind) && (message.method !== undefined || message.attemptId !== undefined)
+    if (['state', 'portal', 'return'].includes(kind) && (message.method !== undefined || message.attemptId !== undefined)
       || ['start', 'cancel', 'confirm'].includes(kind) && !['key', 'touch'].includes(message.method)
       || kind === 'start' && message.attemptId !== undefined
       || ['cancel', 'confirm'].includes(kind) && (typeof message.attemptId !== 'string' || !/^[0-9a-f-]{36}$/i.test(message.attemptId))) throw new Error('ONBOARDING_DUO_REQUEST');
@@ -295,7 +288,6 @@ if (typeof chrome !== 'undefined') {
     next() { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); return relay.next(); },
     reply(...args) { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); return relay.reply(...args); },
     assertContext() { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); return relay.assertContext(); },
-    platformAvailable() { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); return relay.platformAvailable(); },
     async stop() { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); const arm = relay; await arm.stop(); relay = undefined; },
   });
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -318,9 +310,7 @@ if (typeof chrome !== 'undefined') {
       if (message?.type === 'RELAY_CAPABILITIES') {
         if (message.request?.origin !== sender.origin || message.request?.rpId !== 'duosecurity.com') throw new Error('ONBOARDING_DUO_SCOPE');
         await observeDuo(sender);
-        const probe = await chrome.tabs.sendMessage(sender.tab.id, { type: 'RELAY_PLATFORM_PROBE' }, { documentId: sender.documentId });
-        if (typeof probe?.available !== 'boolean') throw new Error('ONBOARDING_DUO_NATIVE_UNAVAILABLE');
-        const platformAvailable = await browserCall({ kind: 'platform', url: sender.url, available: probe.available });
+        const platformAvailable = await browserCall({ kind: 'platform', url: sender.url });
         await observeDuo(sender);
         const support = relay ? await relay.receive(message, sender) : { softwareKey: false };
         return { ...support, platformAvailable };
