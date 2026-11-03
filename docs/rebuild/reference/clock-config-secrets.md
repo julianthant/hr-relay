@@ -333,6 +333,10 @@ migrated names without reading their values. It reports retired canary names wit
 `COMSPEC`, `PATHEXT`, `LANG`, `LC_ALL`, and `TZ`. `NODE_OPTIONS` and arbitrary parent bindings are
 excluded. Workers read operational credentials from the store themselves.
 The `secrets-single-source` architecture guard owns registered credential and environment access.
+`src/models/runtime/runtime-environment.ts` pins the exact `SystemRoot` read to the native path picker
+under the non-secret `process-mechanics` channel. That channel accepts only this key and owner;
+exact reader ownership names the same picker path. The worker's closed mechanics pass-through
+remains separately audited.
 
 `config/test-data.json` owns public subject declarations and safe fixtures.
 Ignored `config/test-data.local.json` owns private canary values and private document paths.
