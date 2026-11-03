@@ -3,10 +3,11 @@ import { OcrCanonicalInput, OcrInputSchema } from "../../models/workflows/ocr/in
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { ocrSourcePagesDefinition } from "./steps/source-pages/step.js";
-import { OCR_ROSTER_TYPE_ID } from "../../models/workflows/ocr/roster.js";
+import { OCR_ROSTER_TYPE_ID, OCR_ROSTER_FIELDS } from "../../models/workflows/ocr/roster.js";
 export const ocrWorkflow = defineWorkflow({
   id: "ocr",
   requiredWorkbookTypeIds: [OCR_ROSTER_TYPE_ID],
+  referenceLookups: () => [{ mode: "all", typeId: OCR_ROSTER_TYPE_ID, fields: [...OCR_ROSTER_FIELDS] }],
   version: 1,
   code: "oc",
   label: "OCR",

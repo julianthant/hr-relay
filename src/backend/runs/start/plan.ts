@@ -29,7 +29,7 @@ import {
 } from "../../../models/run/start-plan.js";
 import type { PlannedRun, StartPlanRecord, StartRefusal } from "../../../models/run/start-plan.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { bindRunWorkbookReference, WorkbookRunReferenceSelectionSchema } from "../../../models/dashboard/workbooks.js";
+import { bindRunWorkbookReference, parseRunWorkbookReference, WorkbookRunReferenceSelectionSchema, type WorkbookReferenceLookup } from "../../../models/dashboard/workbooks.js";
 import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -38,7 +38,7 @@ import { workbookInputBinding } from "../workbooks.js";
 
 
 export interface StartPlannerDeps {
-  readonly workbooks?: Pick<WorkbookLibraryService, "snapshot">;
+  readonly workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion">;
   readonly protectedSecrets?: ProtectedSecretSource;
 
   readonly authority: Readonly<{
@@ -158,10 +158,13 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
 
     let parsed: unknown;
     let canonicalInput: unknown;
+    let lookups: readonly WorkbookReferenceLookup[];
     try {
       // This is the one and only ingress parse for this raw submission.
       inputBinding?.assertSubmission(rawInput);
-      parsed = planning.parseInput(admittedSubmissions[index].admitted);
+      const admitted = planning.parseInput(admittedSubmissions[index].admitted);
+      parsed = admitted.input;
+      lookups = admitted.lookups;
     } catch (error) {
       refuse("input-invalid", admittedSubmissions[index].bindings.length > 0 ? "workflow input is invalid" : errorText(error));
       continue;
@@ -169,6 +172,10 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
 
     const references = selections.filter(selection => selection.entry === entry);
     const requiredTypes = planning.requiredWorkbookTypeIds;
+    if (lookups.length !== requiredTypes.length || new Set(lookups.map(lookup => lookup.typeId)).size !== lookups.length
+      || lookups.some(lookup => !requiredTypes.includes(lookup.typeId))) {
+      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
+    }
     if (references.length !== requiredTypes.length || new Set(references.map(reference => reference.typeId)).size !== references.length
       || references.some(reference => !requiredTypes.includes(reference.typeId))) {
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
@@ -178,8 +185,18 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       const workbooks = deps.workbooks;
       if (workbooks === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); continue; }
       try {
-        workbookReferences = references.map(({ entry: _entry, ...reference }) =>
-          bindRunWorkbookReference(reference, workbooks.snapshot(reference)));
+        workbookReferences = references.map(({ entry: _entry, ...selection }) => {
+          const lookup = lookups.find(lookup => lookup.typeId === selection.typeId);
+          if (lookup === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          const libraryId = selection.libraryId ?? workbooks.catalog().find(entry => entry.type.id === selection.typeId)?.type.defaultWorkbookId;
+          if (!libraryId) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
+          const selected = workbooks.libraryVersion(libraryId, selection.versionId);
+          const current = workbooks.catalog().find(entry => entry.libraryId === libraryId);
+          if (current === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
+          const reference = { ...lookup, libraryId, ...(selection.versionId === undefined ? {} : { versionId: selection.versionId }),
+            ...("mode" in lookup ? { expectedVersion: current.version } : {}) };
+          return bindRunWorkbookReference(reference, workbooks.snapshot({ ...reference, versionId: selected.version.id }));
+        });
       } catch (error) {
         if (!(error instanceof WorkbookLibraryError)) throw error;
         refuse("capability-unavailable", error.message); continue;
@@ -213,8 +230,10 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     }
 
     const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(canonicalInput), subtitle: planning.subtitle(canonicalInput) }));
+    const outputs = planning.plannedOutputs(canonicalInput, (workbookReferences ?? []).map(reference => parseRunWorkbookReference(reference)));
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
+      ...(outputs.length === 0 ? {} : { outputs }),
       ...(workbookReferences === undefined ? {} : { workbookReferences }),
       ...(descriptor.enqueue !== "supersede-active" ? {} : { supersedeTargets: startSupersedeTargets(
         deps.authority.authority.runs.listByItem({ workflow: descriptor.id, itemId })) }),

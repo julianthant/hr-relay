@@ -24,11 +24,50 @@ import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../su
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
 import { UcpathReadTransactionFindings } from "../../../src/models/systems/ucpath/read-transaction-findings.js";
+import { workbookReferenceChoice, workbookReferenceDetail } from "../../support/fixtures/workbook-reference-choice.js";
+import { workbookReferenceChoiceId, workbookReferenceLogActions, workbookRowChoiceId } from "../../../src/dashboard/surfaces/run-detail/logs/workbook-write-model.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const NOTE = "00000000-0000-4000-8000-000000000003";
 const AT = "2026-08-03T12:00:00.000Z";
 const CONFIRM = { title: "Approve this identity", body: "Approving binds the rest of this separation to this person.", confirmLabel: "Approve", tone: "neutral" } as const;
+
+it("continues a reference choice inline and retains its exact uncertain command across remount", async () => {
+  const selected = selectionAt(3), f = workbookReferenceChoice(3, RUN, selected.row.traceId), sent: CommandRequest[] = [];
+  let replay = false, resolved = false;
+  const choice = () => ({ ...f.choice, native: NativeRunEventWireSchema.parse({ ...f.choice.native, order: resolved ? 11 : 10,
+    eventId: resolved ? '10000000-0000-4000-8000-000000000011' : f.choice.native.eventId }),
+    ...(resolved ? { resolution: { state: 'resolved' as const, workbookVersion: f.target.workbookVersion, selected: f.candidates[1] } } : {}) });
+  const section = () => RunDetailSectionResponseSchema.parse({ section: 'workbook-writes', payload: { runId: RUN, operations: [], referenceChoices: [choice()] } });
+  const client = { artifactUrl: (id: string) => `/artifacts/${id}`,
+    runDetail: async () => detailAt(selected, resolved ? 4 : 3, { availableSections: ['logs', 'workbook-writes'],
+      timeline: { steps: [...detailAt(selected, 3).timeline.steps!, ...workbookReferenceDetail(choice()).timeline.steps!],
+        events: workbookReferenceDetail(choice()).timeline.events.map(event => ({ ...event, at: AT })) },
+      gate: { state: resolved ? 'resolved' : 'open', gateId: NOTE, nodeId: f.target.gateId, label: 'Choose roster row',
+        ...(resolved ? { resolution: 'approved', resolvedBy: 'local-operator', resolvedAt: AT, revision: 2 } : { openedAt: AT, revision: 1 }) } }),
+    runSection: async (_run: string, name: string) => name === 'logs' ? logs() : section(),
+    executeCommand: async (raw: unknown) => {
+      const request = CommandRequestSchema.parse(raw); sent.push(request);
+      if (!replay) throw new Error('reply lost');
+      resolved = true;
+      return CommandResultSchema.parse({ state: 'already-applied', commandId: request.commandId,
+        affectedTargets: [{ family: 'gate', runId: RUN, gateId: f.target.gateId }, { family: 'run', runId: RUN }] });
+    },
+  } as unknown as DashboardClient;
+  let confirmations = 0;
+  const h = await harness(client, () => { confirmations++; }); await h.render(selected);
+  const id = workbookReferenceChoiceId(f.choice), action = workbookReferenceLogActions(f.choice)[0];
+  await act(async () => h.state?.onDecision?.(id, action, { candidate: 'foreign' })); assert.equal(sent.length, 0);
+  await act(async () => h.state?.onDecision?.(id, action, { candidate: workbookRowChoiceId(f.candidates[1]) }));
+  assert.equal(confirmations, 0); assert.equal(sent.length, 1);
+  assert.equal(sent[0].type, 'resolve-workbook-reference-row');
+  assert.deepEqual(sent[0].payload, { sheetId: f.candidates[1].sheetId, rowId: f.candidates[1].rowId });
+  assert.equal(h.state?.command?.state, 'uncertain'); assert.equal(h.state?.onDecision, undefined);
+  await h.render(selected, 1); assert.equal(h.state?.command?.state, 'uncertain'); assert.ok(h.state?.replay);
+  replay = true; await act(async () => h.state?.replay?.());
+  assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
+  assert.equal(h.state?.command?.state, 'settled'); assert.equal(h.refreshed, 1);
+});
 
 function selectionAt(revision: number): LogSelection {
   const row = mockQueueSurface({ id: RUN, workflowId: "separations", title: "Separation 4502", subject: "Separation 4502", draft: initialMockDraft("separations"), approved: true, seeded: true }, "2026-08-03T16:10:00.000Z");

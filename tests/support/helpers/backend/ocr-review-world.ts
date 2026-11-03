@@ -83,7 +83,7 @@ export function createOcrReviewWorld() {
       const run = canonical.start(root.descriptor, OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
         formType: "emergency-contact", roster: null, approval: options.release === true ? "release" : "review-only",
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } }), { dryRun: false,
-          ...(options.retainedProducer === true ? {} : { workbooks, workbookReferences: [{ entry: 1, mode: "all", typeId: "ocr-roster", libraryId: roster.libraryId, expectedVersion: 2, fields: ["eid", "fullName"] }] }) });
+          ...(options.retainedProducer === true ? {} : { workbooks, workbookReferences: [{ entry: 1, typeId: "ocr-roster", libraryId: roster.libraryId }] }) });
       const result = await canonical.execute(run, new AbortController().signal);
       if (actorId === "local-operator") {
         const failures = result.outcomes.filter(outcome => outcome.state === "failed").map(outcome => {

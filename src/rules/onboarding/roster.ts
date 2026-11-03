@@ -1,6 +1,6 @@
 import type { z } from "zod";
-import { RunWorkbookReferenceSchema } from "../../models/dashboard/workbooks.js";
-import { deriveSchemaHash, schemaBoundValueSchema, type SchemaBoundCanonicalValue } from "../../models/validation/schema-bound-value.js";
+import { RunWorkbookReferenceSchema, parseRunWorkbookReference } from "../../models/dashboard/workbooks.js";
+import { type SchemaBoundCanonicalValue } from "../../models/validation/schema-bound-value.js";
 import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterReadOutputSchema,
   OnboardingRosterReferenceBindingSchema, OnboardingRosterSnapshotRowSchema } from "../../models/workflows/onboarding/roster.js";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
@@ -24,7 +24,8 @@ export function onboardingRosterRow(binding: z.input<typeof OnboardingRosterRefe
 }
 
 export function bindOnboardingRoster(bound: SchemaBoundCanonicalValue, email: string, capturedAt: string) {
-  const reference = schemaBoundValueSchema(RunWorkbookReferenceSchema, deriveSchemaHash(RunWorkbookReferenceSchema, "output")).parse(bound).value;
+  const reference = parseRunWorkbookReference(bound);
+  if ("mode" in reference.request) throw new Error("onboarding-roster-reference-invalid");
   const { request, snapshot } = reference;
   if (request.typeId !== ONBOARDING_ROSTER_TYPE_ID || snapshot.type.keyFieldId !== "email"
     || request.keys.length !== 1 || request.keys[0] !== email

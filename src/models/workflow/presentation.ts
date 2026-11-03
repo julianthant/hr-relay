@@ -136,6 +136,7 @@ export type DetailProjectionSpecRuntime = z.infer<typeof DetailProjectionSpecRun
 export const SubjectProjectionSpecRuntimeSchema = z.strictObject({
   nodeId: NodeIdSchema,
   fieldPath: ContractFieldPathSchema,
+  eidFieldPath: ContractFieldPathSchema.optional(),
 });
 export type SubjectProjectionSpecRuntime = z.infer<typeof SubjectProjectionSpecRuntimeSchema>;
 

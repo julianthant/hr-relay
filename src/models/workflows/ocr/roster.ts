@@ -1,16 +1,16 @@
 import { z } from "zod";
-import { RunWorkbookAllRowsReferenceSchema, WorkbookIdSchema, WorkbookRevisionSchema } from "../../dashboard/workbooks.js";
+import { parseRunWorkbookReference, WorkbookIdSchema, WorkbookRevisionSchema } from "../../dashboard/workbooks.js";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
 import { FingerprintSchema, IsoInstantSchema, WorkflowIdSchema, IntakeTargetFieldIdSchema } from "../../../rules/identity/ids.js";
 import { RosterRowFactsSchema } from "../../../rules/matching/roster-match.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { deriveSchemaHash, schemaBoundValueSchema, type SchemaBoundCanonicalValue } from "../../validation/schema-bound-value.js";
+import { type SchemaBoundCanonicalValue } from "../../validation/schema-bound-value.js";
 
 export const OCR_ROSTER_TYPE_ID = "ocr-roster";
 export const OCR_ROSTER_FIELDS = ["eid", "fullName"] as const;
 
-function rosterRows(reference: z.output<typeof RunWorkbookAllRowsReferenceSchema>, readAt: string) {
+function rosterRows(reference: ReturnType<typeof parseRunWorkbookReference>, readAt: string) {
   const { request, snapshot } = reference;
   if (request.typeId !== OCR_ROSTER_TYPE_ID || snapshot.type.keyFieldId !== "eid"
     || request.fields.length !== OCR_ROSTER_FIELDS.length
@@ -48,7 +48,8 @@ export const OcrWorkbookRosterEvidenceSchema = z.strictObject({
 });
 
 export function bindOcrRoster(bound: SchemaBoundCanonicalValue, readAt: string) {
-  const reference = schemaBoundValueSchema(RunWorkbookAllRowsReferenceSchema, deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output")).parse(bound).value;
+  const reference = parseRunWorkbookReference(bound);
+  if (!("mode" in reference.request)) throw new Error("ocr-roster-reference-invalid");
   return OcrWorkbookRosterEvidenceSchema.parse({ workbookType: reference.snapshot.type.id, workbookId: reference.snapshot.libraryId,
     workbookVersion: reference.snapshot.version, referenceDigest: sha256Hex(canonicalJsonStringify(bound)),
     readAt, rows: rosterRows(reference, readAt) });

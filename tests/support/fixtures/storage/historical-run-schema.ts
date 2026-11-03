@@ -5,6 +5,15 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { runRecordColumns, runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 
+export function removeEmptySchema18WorkbookCatalog(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 18);
+  for (const table of ["workbook_library_actions", "workbook_library_snapshots", "workbook_library_state"]) {
+    assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
+  }
+  for (const table of ["workbook_library_actions", "workbook_library_snapshots", "workbook_library_state"]) database.exec(`DROP TABLE ${table}`);
+  database.exec("UPDATE database_states SET schema_version=17; PRAGMA user_version=17");
+}
+
 export function removeEmptySchema17OcrReview(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 17);
   for (const table of ["ocr_approved_snapshots", "ocr_review_revisions", "ocr_source_uploads"]) {

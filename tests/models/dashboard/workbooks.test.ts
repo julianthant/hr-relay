@@ -6,6 +6,7 @@ import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-va
 
 it("preserves the keyed reference schema hash and reads each active reference by its declared hash", () => {
   assert.equal(deriveSchemaHash(RunWorkbookReferenceSchema, "output"), "bb13aafcb41e28b291bd51f4b9a803f6fabcbd71a6b92cf2a036a3d0c1cc6bac");
+  assert.equal(deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output"), "a6278c40db9223757b28b00d0e975a3bf6f58e2d4444b527a4d2b04e5680d419");
   const snapshot = { libraryId: "library", version: 2, worksheets: [{ sheetId: "people", name: "People" }],
     type: { id: "roster", name: "Roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: "library" }, rows: [] };
   const keyed = bindRunWorkbookReference({ typeId: "roster", keys: [], fields: ["eid"] }, snapshot);

@@ -63,6 +63,7 @@ export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[]
     role: entry.role, code: entry.code, ...(entry.start.summary === undefined ? {} : { summary: entry.start.summary }),
     enqueue: entry.start.enqueue, version: entry.start.version, steps: entry.start.steps,
     spreadsheetIntake: entry.start.spreadsheetIntake,
+    requiredWorkbookTypeIds: entry.start.requiredWorkbookTypeIds,
     inputRun: entry.start.inputRun === undefined ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
       : { state: "present", surface: entry.start.inputRun } }));
 }
@@ -125,6 +126,15 @@ export function createRunLaunchService(client: Pick<DashboardClient, "rerunValue
       || (request.warningAcknowledgment !== undefined && plan.rerun?.acknowledgment !== request.warningAcknowledgment)) {
       throw launchPlanIdentityMismatch();
     }
+    const selections = request.workbookReferences ?? [];
+    if (plan.planned.some(planned => {
+      const references = planned.workbookReferences ?? [];
+      return new Set(references.map(reference => reference.type.id)).size !== references.length
+        || references.length !== new Set(selections.map(selection => selection.typeId)).size
+        || references.some(reference => !selections.some(selection => selection.typeId === reference.type.id
+          && (selection.libraryId === undefined || selection.libraryId === reference.libraryId)
+          && (selection.versionId === undefined || selection.versionId === reference.versionId)));
+    })) throw launchPlanIdentityMismatch();
     return plan;
   };
   return Object.freeze({

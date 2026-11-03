@@ -117,6 +117,29 @@ it("authenticates a genuine delegated child at claim and execution boundaries an
   assert.equal(completed.outcome.state, "done");
 });
 
+it("authenticates each sibling issuance once during native child eligibility without mutating authority", async () => {
+  const f = await fixture("cascade", false, true);
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+  const children = f.database.authority.runs.listChildren(f.root.envelope.runId);
+  assert.equal(children.length, 2);
+  const [invocation] = f.database.authority.lifecycleJournal.listDelegationInvocations(f.root.envelope.runId);
+  assert.ok(invocation && children[0]);
+  const reads = new Map<string, number>(children.map((_, index) => [lifecycleCommandId("delegation-child-create", {
+    invocationCommandId: invocation.commandId, index,
+  }), 0]));
+  const generation = f.database.getMeta().authorityGeneration;
+  f.database.withAuthorityTransaction(repositories => {
+    assert.equal(delegatedCandidateEligible({ ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal,
+      getCommand: commandId => {
+        if (reads.has(commandId)) reads.set(commandId, (reads.get(commandId) ?? 0) + 1);
+        return repositories.lifecycleJournal.getCommand(commandId);
+      },
+    } }, children[0], f.root.envelope.workflow, id => f.modules.find(module => module.descriptor.id === id)?.descriptor), true);
+  });
+  assert.deepEqual([...reads.values()], [1, 1]);
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
+});
+
 it("retries only the failed member of a mixed group after equivalent runtime reactivation", async () => {
   const f = await fixture("cascade", false, true);
   assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");

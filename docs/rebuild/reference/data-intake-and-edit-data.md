@@ -345,9 +345,15 @@ version and requested fields. They capture every data row in worksheet order, re
 worksheet/row identities, duplicates and original typed values. Header rows are excluded. A changed
 version refuses rather than selecting the new master. Full-row references have their own schema
 hash and are permanently read-only: they cannot authorize keyed patches or Onboarding row choices.
-Keyed requests retain their existing schema/hash and semantics, including an empty snapshot for
-`keys: []`. Planning and retained-reference readers select between these two active schemas by
-request mode and declared schema hash. The SQL layout and existing keyed payloads are unchanged;
+Master keyed and all-row requests retain their existing schemas, hashes and semantics, including an empty keyed snapshot for
+`keys: []`. Selected keyed and named all-row references have separate current schemas and hashes. Selected keyed
+references permit paired source-metadata absence; when metadata is present, version ID and name must both be present
+and an explicit requested ID must match. New captures from named sources require the exact ID and name.
+Named all-row references always require both. Retained readers accept only those four declared hashes. Workflow declarations own keyed lookup keys
+and all-row fields; browser selections carry only entry, type, library and optional version IDs. Planning captures the exact in-use or explicitly selected named version,
+with its current library CAS revision captured server-side. An omitted requested version ID remains omitted
+in retained requests, preserving current default row-choice revalidation; explicit IDs remain pinned. Named row data comes
+from that immutable version, never from a master fallback. The SQL layout and existing keyed payloads are unchanged;
 no migration or immutable evidence rewrite is required.
 
 The live `version` is a CAS revision. Named versions are explicit operator snapshots; saves, run

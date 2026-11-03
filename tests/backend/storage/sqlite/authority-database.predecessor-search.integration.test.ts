@@ -1,6 +1,6 @@
 import { removeSchema16PersonPreferences } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { restoreEmptyPreMasterWorkbookFixture } from "../../../support/helpers/workbooks/pre-master-schema.js";
-import { removeEmptySchema17OcrReview, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -49,6 +49,7 @@ it.each([[12, "published"], [12, "building"], [13, "published"], [13, "building"
     assert.equal(index.publication().state, "published");
     assert.equal(database.prepare("SELECT count(*) AS count FROM run_search").get()?.count, 1);
     database.exec(`PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}`);
+    removeEmptySchema18WorkbookCatalog(database);
     removeEmptySchema17OcrReview(database);
     removeSchema16PersonPreferences(database);
     database.exec("DROP TRIGGER run_pause_insert; DROP TRIGGER run_pause_update; ALTER TABLE runs DROP COLUMN pause_state");
