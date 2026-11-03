@@ -1,3 +1,5 @@
+import { deriveEvidenceReceiptId } from "../../../models/trust/evidence-identity.js";
+import { CURRENT_RUN_SETTLEMENT_SQL, readRunSettlementRow, runSettlementContext, runSettlementColumns } from "./run-settlement-row.js";
 import { convertPersonPreferencesRow } from "./person-preferences-migration.js";
 import { readContinuationGate, validateRunContinuation } from "./run-continuation.js";
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
@@ -452,6 +454,8 @@ type NotificationRepository = Readonly<{
 
 
 type RunResultRepository = Readonly<{
+  refreshedSettlementVersion(runId: string): number | undefined;
+  getSettlement(runId: string, appliedVersion: number): Readonly<{ run: RunRecord; result: RunResultRecord }> | undefined;
   get(runId: string): RunResultRecord | undefined;
 }>;
 
@@ -676,7 +680,7 @@ function readMetaRow(database: DatabaseSync): z.infer<typeof MetaRowSchema> {
     : "SELECT schema_version,authority_generation,updated_at FROM database_states WHERE id=1").get());
 }
 
-const INVARIANT_QUERIES = Object.freeze([
+function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { return Object.freeze([
   { name: "run-owner-exclusivity", sql: "SELECT count(*) AS count FROM runs JOIN deleted_runs ON deleted_runs.run_id=runs.id" },
 {
     name: "run-completion-revisions",
@@ -696,7 +700,7 @@ const INVARIANT_QUERIES = Object.freeze([
 {
     name: "run-completion-consequences",
     sql: `SELECT count(*) AS count FROM runs AS run
-      LEFT JOIN run_results AS result ON result.run_id = run.id
+      LEFT JOIN run_results AS result ON result.run_id = run.id AND ${schemaVersion >= 20 ? CURRENT_RUN_SETTLEMENT_SQL.replaceAll("settlement.","result.") : "1"}
       LEFT JOIN run_failures AS failure ON failure.run_id = run.id
       WHERE COALESCE(json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') IN ('done','failed'), 0)
         IS NOT (json_type(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion') IS 'object')
@@ -712,7 +716,7 @@ const INVARIANT_QUERIES = Object.freeze([
 {
     name: "final-runs-bind-result-owner",
     sql: `SELECT count(*) AS count FROM runs AS run
-      LEFT JOIN run_results AS result ON result.run_id=run.id
+      LEFT JOIN run_results AS result ON result.run_id=run.id AND ${schemaVersion >= 20 ? CURRENT_RUN_SETTLEMENT_SQL.replaceAll("settlement.","result.") : "1"}
       WHERE run.state='terminal' AND run.outcome<>'interrupted' AND result.run_id IS NULL`,
   },
 {
@@ -764,10 +768,10 @@ const INVARIANT_QUERIES = Object.freeze([
     sql: `
       SELECT count(*) AS count FROM run_results AS result
       JOIN runs AS run ON run.id = result.run_id
-      WHERE run.state IS NOT 'terminal' OR run.outcome IS 'interrupted'
-        OR (run.outcome = 'done' AND json_extract(result.payload_json,'$.result.value.kind') IN ('failed-evidence','lifecycle-evidence'))
-        OR (run.outcome = 'failed' AND json_extract(result.payload_json,'$.result.value.kind') IS NOT 'failed-evidence')
-        OR (run.outcome IN ('cancelled','discarded','superseded') AND json_extract(result.payload_json,'$.result.value.kind') IS NOT 'lifecycle-evidence')
+      WHERE ${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.state')" : "run.state"} IS NOT 'terminal' OR ${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} IS 'interrupted'
+        OR (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} = 'done' AND json_extract(result.payload_json,'$.result.value.kind') IN ('failed-evidence','lifecycle-evidence'))
+        OR (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} = 'failed' AND json_extract(result.payload_json,'$.result.value.kind') IS NOT 'failed-evidence')
+        OR (${schemaVersion >= 20 ? "json_extract(result.terminal_run_json,'$.lifecycle.outcome')" : "run.outcome"} IN ('cancelled','discarded','superseded') AND json_extract(result.payload_json,'$.result.value.kind') IS NOT 'lifecycle-evidence')
     `,
   },
 {
@@ -828,10 +832,10 @@ const INVARIANT_QUERIES = Object.freeze([
       )
     `,
   }
-] as const);
+] as const); }
 
 function invariantViolations(database: DatabaseSync): readonly string[] {
-  const violations = INVARIANT_QUERIES.flatMap(({ name, sql }) => {
+  const violations = invariantQueries(readIntPragma(database,"user_version")).flatMap(({ name, sql }) => {
     const { count } = CountRowSchema.parse(database.prepare(sql).get());
     return count === 0 ? [] : [`${name} failed for ${String(count)} row(s)`];
   });
@@ -1074,7 +1078,8 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
 
 
 function nativeTableKey(table: AuthorityTableName | "explorer_overrides", database: DatabaseSync): string {
-  if (table === "run_results" || table === "deleted_runs" || table === "run_search") return "run_id";
+  if (table === "run_results") return readIntPragma(database,"user_version") >= 20 ? "id" : "run_id";
+  if (table === "deleted_runs" || table === "run_search") return "run_id";
   if (table === "worker_pools") return "workflow";
   if (table === "workbook_library_history") return readIntPragma(database, "user_version") >= 13
     ? "workbook_id,version,name" : "workbook_id,version,payload_json";
@@ -1108,11 +1113,44 @@ function authenticateStoredResolutionAudit(database: DatabaseSync,input:unknown)
   authenticateAuditedParkedWriteResolution(nativeOrdinaryRecordFromRow("write_attempts",attempt),commandFromRow(command),audit);
 }
 
-function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRecord, readRun = runRecordFromRow): void {
+function assertRefreshedReceiptSettlement(database: DatabaseSync, record: RunEvidenceReceipt, row: unknown): void {
+  const { settlement_version: version } = z.object({ settlement_version: PositiveIntSchema }).parse(row);
+  if (database.prepare("SELECT 1 FROM run_results WHERE run_id=? AND settlement_version<? LIMIT 1").get(record.runId,version) === undefined) return;
+  const raw = readRunSettlementRow(database,record.runId,version);
+  if (raw === undefined) throw new Error("receipt-settlement-unavailable");
+  const run = runSettlementContext(raw);
+  if (record.receiptId !== deriveEvidenceReceiptId(record.runId,record.attempt,version)
+    || record.workflowId !== run.envelope.workflow || record.traceId !== run.envelope.traceId || record.attempt !== run.envelope.attempt
+    || record.descriptorFingerprint !== run.envelope.contractFingerprint || record.configFingerprint !== run.envelope.configFingerprint
+    || run.lifecycle.state !== "terminal" || record.generatedAt !== run.lifecycle.endedAt) throw new Error("receipt-settlement-binding-mismatch");
+}
+
+function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRecord, readRun = runRecordFromRow, retainedRun?: RunRecord): void {
   const evidence = terminalEvidenceResult(record);
   const rawRun = database.prepare("SELECT * FROM runs WHERE id=?").get(record.runId);
   if (rawRun === undefined) throw new Error("terminal-evidence-run-missing");
-  const run = readRun(rawRun);
+  const current = readRun(rawRun), run = retainedRun ?? current;
+  if (run.version > current.version || canonicalJsonStringify(run.input) !== canonicalJsonStringify(current.input)
+    || canonicalJsonStringify(run.envelope) !== canonicalJsonStringify({ ...current.envelope, priority: run.envelope.priority })) throw new Error("run-settlement-owner-mismatch");
+  if (retainedRun !== undefined && run.completion !== undefined) {
+    if (current.completion?.expectedVersion === run.completion.expectedVersion) {
+      if (canonicalJsonStringify(current.completion) !== canonicalJsonStringify(run.completion)) throw new Error("run-settlement-completion-mismatch");
+    } else {
+      const rows = database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+        AND json_extract(request_json,'$.operation')='terminalize'
+        AND json_extract(request_json,'$.request.terminal.result.runId')=?
+        AND json_extract(outcome_json,'$.result.appliedVersion')=?`).all(record.runId,run.version);
+      if (rows.length !== 1 || rows[0] === undefined) throw new Error("run-settlement-native-owner-unavailable");
+      const command = RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
+      const request = z.object({ terminal: SuccessTerminalizationRequestSchema }).parse(command.request);
+      const rawAudit = database.prepare("SELECT * FROM command_audits WHERE command_id=?").get(command.commandId);
+      const audit = RunLifecycleCommandAuditRecordSchema.parse(nativeOrdinaryRecordFromRow("command_audits",rawAudit));
+      if (run.completion.kind !== "done" || canonicalJsonStringify(request.terminal.result) !== canonicalJsonStringify(record)
+        || canonicalJsonStringify(completionFromAuthorization(request.terminal.authorization)) !== canonicalJsonStringify(run.completion)
+        || audit.result.kind !== "run" || audit.result.runId !== record.runId || audit.result.appliedVersion !== run.version
+        || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)) throw new Error("run-settlement-native-owner-mismatch");
+    }
+  }
   if (evidence === undefined) {
     if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done") throw new Error("terminal-evidence-payload-required");
     if (run.completion?.kind !== "done" || run.completion.resultDigest !== record.resultDigest) throw new Error("terminal-result-completion-mismatch");
@@ -1211,7 +1249,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             const { workers: _removed, ...plan } = payload;
             inspected = { ...raw, payload_json: canonicalJsonStringify(plan) };
           }
-          const record = nativeOrdinaryRecordFromRow(table,inspected);
+          const record = nativeOrdinaryRecordFromRow(table,inspected,expectedSchemaVersion);
           if (table === "assistant_grants") {
             const grant = AssistantGrantRecordSchema.parse(record), owner = readMetaRow(database);
             if (grant.profileId !== owner.profile_id) throw new Error("assistant-grant-profile-mismatch");
@@ -1229,7 +1267,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             const chat = AssistantChatRecordSchema.parse(nativeOrdinaryRecordFromRow("assistant_chats", rawChat));
             if (chat.profileId !== action.binding.profileId || chat.epoch !== action.binding.accountSessionEpoch) throw new Error("assistant-action-chat-mismatch");
           }
-          if (table === "run_results") assertTerminalEvidenceOwner(database,RunResultRecordSchema.parse(record),readRun);
+          if (table === "run_results") assertTerminalEvidenceOwner(database,RunResultRecordSchema.parse(record),readRun,expectedSchemaVersion >= 20 ? runSettlementContext(raw) : undefined);
+          if (table === "run_receipts" && expectedSchemaVersion >= 20) assertRefreshedReceiptSettlement(database,RunEvidenceReceiptSchema.parse(record),raw);
           if (table === "write_intents") { authenticateStoredWriteResolution(database,record); assertConfirmationPublication(database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId,readRun); }
           if (table === "command_audits") {
             const audit = NativeCommandAuditSchema.parse(record);
@@ -1434,7 +1473,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = expectedSchemaVersion < 10 ? z.array(z.union([currentTables.element,
     z.strictObject({ name: z.literal("explorer_overrides"), classification: z.literal("authority") }),
   ])) : currentTables;
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -3390,7 +3429,7 @@ export class AuthorityDatabase implements Disposable {
       this.#insertFailure(failure);
       this.#terminalizationHooks?.afterFailureStorageStep?.("failure");
       this.#insertRunResult(createRunTerminalEvidenceResult(terminal, { kind: "failed-evidence", authorization,
-        failureDigest: deriveTerminalFailureDigest(failure) }));
+        failureDigest: deriveTerminalFailureDigest(failure) }), terminal);
       this.#terminalizationHooks?.afterFailureStorageStep?.("result");
       this.#writeRunRow(terminal, "update");
       this.#terminalizationHooks?.afterFailureStorageStep?.("run");
@@ -3477,7 +3516,7 @@ export class AuthorityDatabase implements Disposable {
         kind: "failed-evidence", authorization: request.authorization,
         failureDigest: deriveTerminalFailureDigest(request.failure),
       });
-      this.#insertRunResult(result);
+      this.#insertRunResult(result, terminal);
       this.#terminalizationHooks?.afterFailureStorageStep?.("result");
       this.#writeRunRow(terminal, "update");
       this.#terminalizationHooks?.afterFailureStorageStep?.("run");
@@ -3508,7 +3547,7 @@ export class AuthorityDatabase implements Disposable {
         requestFingerprint: command.requestFingerprint, appliedVersion: audit.result.appliedVersion,
       });
       const existing = this.#readRecord("run_results", result.runId, RunResultRecordSchema);
-      if (existing === undefined) this.#insertRunResult(result);
+      if (existing === undefined) this.#insertRunResult(result, RunRecordSchema.parse({ ...run, version: audit.result.appliedVersion, updatedAt: result.createdAt }));
       else if (canonicalJsonStringify(existing) !== canonicalJsonStringify(result)) throw new Error("terminal-evidence-result-mismatch");
       assertTerminalEvidenceOwner(this.#database,result);
     });
@@ -3572,7 +3611,7 @@ export class AuthorityDatabase implements Disposable {
       if (violation !== undefined) throw new Error(`run ${request.result.runId}: ${violation}`);
       this.#assertTerminalAuthorizationConsequence(request.authorization, terminal);
 
-      this.#insertRunResult(request.result);
+      this.#insertRunResult(request.result, terminal);
       this.#terminalizationHooks?.afterSuccessStorageStep?.("result");
       this.#writeRunRow(terminal, "update");
       this.#terminalizationHooks?.afterSuccessStorageStep?.("run");
@@ -3916,7 +3955,7 @@ export class AuthorityDatabase implements Disposable {
         && run.lifecycle.outcome === "failed"
         && run.lifecycle.failureId === authorization.failureId);
     if (run.version > authorization.expectedVersion + 1) {
-      const query = INVARIANT_QUERIES.find(({ name }) => name === "run-completion-revisions");
+      const query = invariantQueries().find(({ name }) => name === "run-completion-revisions");
       if (query === undefined) throw new Error("missing completion revision invariant");
       if (CountRowSchema.parse(this.#database.prepare(query.sql).get()).count !== 0) {
         throw new Error("run completion has an unaccounted later revision");
@@ -4065,17 +4104,11 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  #insertRunResult(record: RunResultRecord): void {
-    const json = canonicalJsonStringify(record);
+  #insertRunResult(record: RunResultRecord, terminal: RunRecord): void {
+    const columns = runSettlementColumns(terminal,record);
     this.#authorityWrite("run_results", () => {
-      const result = this.#database.prepare(`
-        INSERT INTO run_results
-          (run_id, workflow, attempt, result_digest, payload_json, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(
-        record.runId, record.workflowId, record.attempt,
-        record.resultDigest, json, record.createdAt,
-      );
+      const result = this.#database.prepare(`INSERT INTO run_results (${Object.keys(columns).join(",")})
+        VALUES (${Object.keys(columns).map(() => "?").join(",")})`).run(...Object.values(columns));
       return { result: undefined, changes: sqliteChanges(result.changes) };
     });
   }
@@ -4335,7 +4368,11 @@ export class AuthorityDatabase implements Disposable {
       const row = this.#database.prepare("SELECT * FROM runs WHERE id = ?").get(recordKey);
       return row === undefined ? undefined : schema.parse(runRecordFromRow(row));
     }
-    const key = table === "run_results" || table === "deleted_runs" ? "run_id"
+    if (table === "run_results") {
+      const row = readRunSettlementRow(this.#database,recordKey);
+      return row === undefined ? undefined : schema.parse(nativeOrdinaryRecordFromRow("run_results",row));
+    }
+    const key = table === "deleted_runs" ? "run_id"
       : table === "worker_pools" ? "workflow" : table === "worker_controls" ? "command_id"
         : table === "auth_leases" ? "credential_key" : "id";
     const row = this.#database.prepare(`SELECT * FROM ${table} WHERE ${key} = ?`).get(recordKey);
@@ -4347,6 +4384,7 @@ export class AuthorityDatabase implements Disposable {
     }
     if (isNativeOrdinaryTable(table)) {
       const record = nativeOrdinaryRecordFromRow(table,row);
+      if (table === "run_receipts") assertRefreshedReceiptSettlement(this.#database,RunEvidenceReceiptSchema.parse(record),row);
       if (table === "write_intents") { authenticateStoredWriteResolution(this.#database,record); assertConfirmationPublication(this.#database,recordKey); }
       if (table === "command_audits") authenticateStoredResolutionAudit(this.#database,record);
       return schema.parse(record);
@@ -4356,6 +4394,7 @@ export class AuthorityDatabase implements Disposable {
 
   #parseNativeRow<Schema extends z.ZodType>(table: NativeOrdinaryTable,row:unknown,schema:Schema):z.infer<Schema> {
     const record=nativeOrdinaryRecordFromRow(table,row);
+    if(table === "run_receipts") assertRefreshedReceiptSettlement(this.#database,RunEvidenceReceiptSchema.parse(record),row);
     if(table === "write_intents") { authenticateStoredWriteResolution(this.#database,record); assertConfirmationPublication(this.#database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId); }
     if(table === "command_audits")authenticateStoredResolutionAudit(this.#database,record);
     return schema.parse(record);
@@ -4762,6 +4801,10 @@ export class AuthorityDatabase implements Disposable {
         insert: (input: unknown) => {
           const record = RunEvidenceReceiptSchema.parse(input);
           const json = canonicalJsonStringify(record);
+          const settlement = readRunSettlementRow(this.#database,record.runId);
+          if (settlement === undefined) throw new Error("receipt-current-settlement-unavailable");
+          const terminal = runSettlementContext(settlement);
+          assertRefreshedReceiptSettlement(this.#database,record,settlement);
           return this.#authorityWrite("run_receipts", () => {
             const existing = this.#readRecord("run_receipts", record.receiptId, RunEvidenceReceiptSchema);
             if (existing !== undefined) {
@@ -4772,10 +4815,10 @@ export class AuthorityDatabase implements Disposable {
             }
             const result = this.#database.prepare(`
               INSERT INTO run_receipts
-                (id, run_id, workflow, attempt, result, confidence, failure_id, payload_json, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, run_id, settlement_version, workflow, attempt, result, confidence, failure_id, payload_json, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).run(
-              record.receiptId, record.runId, record.workflowId, record.attempt,
+              record.receiptId, record.runId, terminal.version, record.workflowId, record.attempt,
               record.result, record.confidence,
               record.failure.state === "present" ? record.failure.value : null,
               json, record.generatedAt,
@@ -4790,7 +4833,9 @@ export class AuthorityDatabase implements Disposable {
           this.#parseNativeRow("run_receipts",row,RunEvidenceReceiptSchema)),
         findByRun: (runId: string) => {
           const row = this.#database.prepare(`
-            SELECT * FROM run_receipts WHERE run_id = ?
+            SELECT receipt.* FROM run_receipts receipt JOIN run_results settlement ON settlement.run_id=receipt.run_id
+              AND settlement.settlement_version=receipt.settlement_version JOIN runs run ON run.id=settlement.run_id
+            WHERE receipt.run_id=? AND ${CURRENT_RUN_SETTLEMENT_SQL}
           `).get(RunIdSchema.parse(runId));
           if (row === undefined) return undefined;
           return this.#parseNativeRow("run_receipts",row,RunEvidenceReceiptSchema);
@@ -4871,11 +4916,27 @@ export class AuthorityDatabase implements Disposable {
         return { events,eventIds:selected.map(record => record.eventId) };
       }) },
       runResults: Object.freeze({
+        refreshedSettlementVersion: (runId: string) => {
+          const row = readRunSettlementRow(this.#database,RunIdSchema.parse(runId));
+          if (row === undefined) throw new Error("receipt-current-settlement-unavailable");
+          const run = runSettlementContext(row);
+          const prior = this.#database.prepare("SELECT 1 FROM run_results WHERE run_id=? AND settlement_version<? LIMIT 1").get(runId,run.version);
+          return prior === undefined ? undefined : run.version;
+        },
         get: (runId: string) => {
-          const record = this.#readRecord("run_results", RunIdSchema.parse(runId), RunResultRecordSchema);
-          if (record === undefined) return undefined;
-          assertTerminalEvidenceOwner(this.#database,record);
+          const row = readRunSettlementRow(this.#database,RunIdSchema.parse(runId));
+          if (row === undefined) return undefined;
+          const record = RunResultRecordSchema.parse(nativeOrdinaryRecordFromRow("run_results",row));
+          assertTerminalEvidenceOwner(this.#database,record,runRecordFromRow,runSettlementContext(row));
           return record;
+        },
+        getSettlement: (runId: string, appliedVersion: number) => {
+          const row = readRunSettlementRow(this.#database,RunIdSchema.parse(runId),PositiveIntSchema.parse(appliedVersion));
+          if (row === undefined) return undefined;
+          const result = RunResultRecordSchema.parse(nativeOrdinaryRecordFromRow("run_results",row));
+          const run = runSettlementContext(row);
+          assertTerminalEvidenceOwner(this.#database,result,runRecordFromRow,run);
+          return { run, result };
         },
       }),
       failureResolution: createFailureResolutionRepository({ database: this.#database, mutate: (work) => this.#authorityWrite("run_failures", work) }),

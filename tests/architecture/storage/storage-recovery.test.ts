@@ -1,3 +1,4 @@
+import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import ts from "typescript";
 import { cpSync, mkdtempSync, realpathSync, appendFileSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, truncateSync, utimesSync, writeFileSync } from "node:fs";
@@ -1571,19 +1572,15 @@ describe("fail-closed degraded boot and read-only doctor", () => {
       },
       {
         name: "result",
-        insert: (raw: DatabaseSync) => raw.prepare(`
-          INSERT INTO run_results
-            (run_id, workflow, attempt, result_digest, payload_json, created_at)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          partialResult.runId,
-          partialResult.workflowId,
-          partialResult.attempt,
-          partialResult.resultDigest,
-          JSON.stringify(partialResult),
-          NOW,
-        ),
-        violation: /terminal-evidence-payload-required/,
+        insert: (raw: DatabaseSync) => {
+          const owner = RunRecordSchema.parse({ ...QUEUED_RUN, claimGeneration: 1, version: QUEUED_RUN.version + 1, updatedAt: NOW,
+            lifecycle: { state: "terminal", outcome: "done", endedAt: NOW }, completion: { schemaVersion: 1, kind: "done",
+              expectedVersion: QUEUED_RUN.version, claim: partialAuthorization.claim, authorizedAt: NOW, resultDigest: partialResult.resultDigest } });
+          return raw.prepare(`INSERT INTO run_results (id,run_id,settlement_version,terminal_run_json,workflow,attempt,result_digest,payload_json,created_at)
+            VALUES(?,?,?,?,?,?,?,?,?)`).run(`${partialResult.runId}:${owner.version}`,partialResult.runId,owner.version,
+              canonicalJsonStringify(owner),partialResult.workflowId,partialResult.attempt,partialResult.resultDigest,JSON.stringify(partialResult),NOW);
+        },
+        violation: /run-settlement-owner-mismatch/,
       },
     ] as const;
 

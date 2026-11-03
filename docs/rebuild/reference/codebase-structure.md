@@ -299,3 +299,5 @@ Workflow execution uses the signed-in dashboard Run and its canonical start-plan
 `transports/http/routes/debug-responses.ts` observes terminal HTTP failure responses through the existing debug writer.
 
 Task contract modules follow each task ID suffix: Emergency Contact uses `models/workflows/emergency-contact/read-result.ts`; its member uses `read-approved-contact.ts` and `read-contact-plan.ts`, with shared plan data in `contact-plan.ts`. OCR snapshot and record tasks use separate `models/processing/ocr/read-approved-snapshot.ts` and `read-approved-record.ts` modules; `approved-snapshot.ts` owns their shared transport protocol. UCPath contact tasks each use their task suffix module, while `models/systems/ucpath/contact-contract.ts` owns shared contact schemas, policy and idempotency.
+
+`src/backend/storage/sqlite/run-settlement-row.ts` owns the physical result settlement columns, retained terminal context and current settlement selection shared by native reads, summaries and search. Results and receipts retain immutable applied-version identities; active runs expose no earlier settlement as their current output.

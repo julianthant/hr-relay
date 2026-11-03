@@ -1496,18 +1496,16 @@ export class RunRecordService {
     const existence = this.read(journal.result.runId);
     if (existence.state !== "present") return this.replayRun(journal.result);
     const { run } = existence;
-    const authorization = run.completion;
-    const failureCount = repositories.failures.listByRun(journal.result.runId).length;
-    const result = repositories.runResults.get(journal.result.runId);
+    const settlement = repositories.runResults.getSettlement(journal.result.runId,journal.result.appliedVersion);
+    const authorization = settlement?.run.completion;
     if (journal.result.appliedVersion !== journal.command.fence.expectedVersion + 1
-      || run.version < journal.result.appliedVersion
-      || run.lifecycle.state !== "terminal"
-      || authorization === undefined
+      || run.version < journal.result.appliedVersion || settlement === undefined
+      || settlement.run.lifecycle.state !== "terminal" || authorization === undefined
       || authorization.kind !== expectedKind
       || authorization.expectedVersion !== journal.command.fence.expectedVersion
       || authorization.claim.workerId !== journal.command.fence.workerId
       || authorization.claim.claimGeneration !== journal.command.fence.claimGeneration
-      || (expectedKind === "failed" ? failureCount !== 1 || result === undefined : failureCount !== 0 || result === undefined)) {
+      || expectedKind === "failed" && (authorization.kind !== "failed" || repositories.failures.get(authorization.failureId) === undefined)) {
       throw new Error(`terminalize replay for ${journal.result.runId} does not match its composite authority`);
     }
     return { state: "applied-already", run };

@@ -805,3 +805,5 @@ continue to retain custody.
 - OnBase's concrete driver and login binding require live operator acceptance; fixture retrieval semantics do not establish live selector validity.
 - Unbound browser systems need their driver and verified login binding before a workflow can use them.
 - A workflow that declares `session:"fresh"` needs its node-ordering proof in addition to the manager's close-before-open tests.
+
+Native results retain the exact terminal run context under `(runId, appliedVersion)`. Receipts bind that same settlement. Current reads select the completion’s native applied version, or the exact terminal lifecycle evidence; an active run has no current settled output. Initial result and receipt payload bytes and initial receipt identities remain unchanged. Refreshed settlements receive distinct receipt identities; exact historical result reads authenticate the retained terminal authorization and its native command.

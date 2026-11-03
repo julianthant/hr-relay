@@ -10,9 +10,9 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 19;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 20;
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] as const;
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -835,11 +835,50 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
         AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookSelectedRowReferenceSchema, "output")}' LIMIT 1`,
     `DROP TABLE workbook_reference_upgrade_guard`,
   ] },
+  { version: 20, statements: [
+    "DROP TRIGGER run_receipts_no_replace", "DROP TRIGGER run_receipts_immutable", "DROP TRIGGER run_receipts_owner_delete",
+    "DROP TRIGGER run_results_no_replace", "DROP TRIGGER run_results_immutable", "DROP TRIGGER run_results_owner_delete",
+    "ALTER TABLE run_receipts RENAME TO previous_run_receipts",
+    "ALTER TABLE run_results RENAME TO previous_run_results",
+    `CREATE TABLE run_results (
+      id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), settlement_version INTEGER NOT NULL CHECK(settlement_version>0),
+      terminal_run_json TEXT NOT NULL CHECK(json_valid(terminal_run_json)),
+      workflow TEXT NOT NULL, attempt INTEGER NOT NULL CHECK(attempt>0), result_digest TEXT NOT NULL,
+      payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), created_at TEXT NOT NULL, UNIQUE(run_id,settlement_version)
+    ) STRICT`,
+    `INSERT INTO run_results SELECT result.run_id || ':' || COALESCE(json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1,json_extract(result.payload_json,'$.result.value.appliedVersion')),
+      result.run_id, COALESCE(json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1,json_extract(result.payload_json,'$.result.value.appliedVersion')),
+      json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json),'$.version',COALESCE(json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1,json_extract(result.payload_json,'$.result.value.appliedVersion')),'$.updatedAt',result.created_at),
+      result.workflow,result.attempt,result.result_digest,result.payload_json,result.created_at
+      FROM previous_run_results result JOIN runs run ON run.id=result.run_id`,
+    `CREATE TABLE run_receipts (
+      id TEXT PRIMARY KEY, run_id TEXT NOT NULL, settlement_version INTEGER NOT NULL CHECK(settlement_version>0), workflow TEXT NOT NULL,
+      attempt INTEGER NOT NULL CHECK(attempt>0), result TEXT NOT NULL, confidence TEXT NOT NULL,
+      failure_id TEXT REFERENCES run_failures(id), payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), created_at TEXT NOT NULL,
+      UNIQUE(run_id,settlement_version), FOREIGN KEY(run_id,settlement_version) REFERENCES run_results(run_id,settlement_version)
+    ) STRICT`,
+    `INSERT INTO run_receipts SELECT receipt.id,receipt.run_id,result.settlement_version,receipt.workflow,receipt.attempt,
+      receipt.result,receipt.confidence,receipt.failure_id,receipt.payload_json,receipt.created_at
+      FROM previous_run_receipts receipt JOIN run_results result ON result.run_id=receipt.run_id`,
+    "DROP TABLE previous_run_receipts", "DROP TABLE previous_run_results",
+    `CREATE TRIGGER run_results_no_replace BEFORE INSERT ON run_results
+      WHEN EXISTS(SELECT 1 FROM run_results WHERE id=NEW.id OR (run_id=NEW.run_id AND settlement_version=NEW.settlement_version))
+      BEGIN SELECT RAISE(ABORT,'retained-identity-conflict'); END`,
+    `CREATE TRIGGER run_results_immutable BEFORE UPDATE ON run_results BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+    `CREATE TRIGGER run_results_owner_delete BEFORE DELETE ON run_results
+      WHEN NOT EXISTS(SELECT 1 FROM deleted_runs WHERE run_id=OLD.run_id) BEGIN SELECT RAISE(ABORT,'owner-deletion-required'); END`,
+    `CREATE TRIGGER run_receipts_no_replace BEFORE INSERT ON run_receipts
+      WHEN EXISTS(SELECT 1 FROM run_receipts WHERE id=NEW.id OR (run_id=NEW.run_id AND settlement_version=NEW.settlement_version))
+      BEGIN SELECT RAISE(ABORT,'retained-identity-conflict'); END`,
+    `CREATE TRIGGER run_receipts_immutable BEFORE UPDATE ON run_receipts BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
+    `CREATE TRIGGER run_receipts_owner_delete BEFORE DELETE ON run_receipts
+      WHEN NOT EXISTS(SELECT 1 FROM deleted_runs WHERE run_id=OLD.run_id) BEGIN SELECT RAISE(ABORT,'owner-deletion-required'); END`,
+  ] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
-  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
-  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18)
+  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19)
     || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
   const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,
