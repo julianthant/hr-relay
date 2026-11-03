@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeAll, describe, it } from "vitest";
-import { privatePathRejects } from "../../../src/backend/storage/private-path.js";
+import { proveProfileRootsUnused } from "../../../src/backend/storage/maintenance/process-closure.js";
 import { requirePrototypePrivateFile, windowsNativePrototype } from "../../support/helpers/windows-native-prototype.js";
 
 const peer = fileURLToPath(new URL("../../support/fixtures/windows-native/peer.mjs", import.meta.url));
@@ -140,9 +140,66 @@ describe.skipIf(process.platform !== "win32")("Windows NTFS prototype — no sto
     } finally { custody.close(); }
   });
 
-  it("keeps current production privacy refusal and distinguishes owner mismatch", () => {
+  it("reports both owned live holders with independent OS birth times, then observes their closure", async () => {
+    const path = fixture();
+    const peers = Array.from({ length: 2 }, () => {
+      const child = spawn(process.execPath, [peer, "hold", path], { stdio: ["ignore", "pipe", "pipe", "ipc"] });
+      const closed = once(child, "close");
+      const ready = Promise.race([once(child, "message"), closed.then(() => { throw new Error("native-rm-peer-closed-before-ready"); })]);
+      return { child, closed, ready };
+    });
+    try {
+      for (const owned of peers) {
+        const received: unknown = await owned.ready;
+        assert.ok(Array.isArray(received));
+        const message: unknown = received[0];
+        assert.deepEqual(message, { kind: "held" });
+        assert.equal(owned.child.exitCode, null);
+      }
+      const ids = peers.map(owned => {
+        assert.ok(typeof owned.child.pid === "number" && owned.child.pid > 0);
+        return owned.child.pid;
+      });
+      const birthScript = fileURLToPath(new URL("../../support/fixtures/windows-native/process-birth.ps1", import.meta.url));
+      const raw: unknown = JSON.parse(execFileSync(win32.join("C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+        ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", birthScript,
+          "-OwnedPidsJson", JSON.stringify(ids)], { encoding: "utf8", timeout: 5000 }));
+      assert.ok(Array.isArray(raw) && raw.length === ids.length);
+      const expected = raw.map((entry: unknown, index: number) => {
+        assert.ok(typeof entry === "object" && entry !== null && "pid" in entry && entry.pid === ids[index]
+          && "birthFileTime" in entry && typeof entry.birthFileTime === "string" && /^[1-9]\d*$/u.test(entry.birthFileTime));
+        return { pid: ids[index], birthFileTime: BigInt(entry.birthFileTime) };
+      });
+      for (const owned of peers) assert.equal(owned.child.exitCode, null);
+      const live = native.diagnoseHolders([path]);
+      assert.equal(live.completeness, "complete");
+      assert.equal(live.authority, "diagnostic-only");
+      for (const identity of expected) {
+        const holder = live.holders.find(entry => entry.pid === identity.pid && entry.birthFileTime === identity.birthFileTime);
+        assert.ok(holder !== undefined, "native-rm-owned-holder-missing");
+        assert.ok(holder.name.length > 0 && holder.name.length <= 255, "native-rm-owned-holder-name-unproved");
+      }
+      assert.equal(native.retainedResourceCount, 0);
+      assert.throws(() => native.acquire(path), /native-open-unproved/u);
+      for (const owned of peers) owned.child.send({ kind: "close" });
+      for (const owned of peers) assert.deepEqual(await owned.closed, [0, null]);
+      const after = native.diagnoseHolders([path]);
+      assert.equal(after.completeness, "complete");
+      assert.equal(after.authority, "diagnostic-only");
+      for (const identity of expected) assert.equal(after.holders.some(entry => entry.pid === identity.pid
+        && entry.birthFileTime === identity.birthFileTime), false, "native-rm-closed-owned-holder-still-reported");
+      assert.equal(readFileSync(path, "utf8"), "retained-source");
+    } finally {
+      for (const owned of peers) {
+        if (owned.child.connected) owned.child.send({ kind: "close" });
+        await owned.closed;
+      }
+    }
+  });
+
+  it("keeps Windows maintenance process closure refused and distinguishes owner mismatch", () => {
     const path = fixture(), facts = native.observe(path);
-    assert.equal(privatePathRejects(path, lstatSync(path), "file-0600"), true);
+    assert.throws(() => proveProfileRootsUnused([join(path, "..")]), /profile-process-closure-unproved/u);
     assert.throws(() => requirePrototypePrivateFile(facts, "S-1-5-21-0-0-0-999"), /native-owner-refused/u);
     assert.equal(readFileSync(path, "utf8"), "retained-source");
   });
