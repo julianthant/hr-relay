@@ -145,6 +145,7 @@ of `[group, entries[]]`. Tuple order controls presentation. References control e
 | `task(identity, references, bind)` | Read contract, stable `id`, `replay`, optional label and `when`. |
 | `gate(identity, references)` | Stable `id`, label, result schema, optional `statusKey` and `when`. |
 | `transaction(identity, references, { prepareBind, commitBind })` | Prepare/commit contracts, dry-run and probe policy, positive integer probe-to-fence budget, optional retry policy. |
+| `branch({ id, cases }, references, choose)` | Select one named case through the existing graph branch; each case lists nonempty downstream targets. Unselected targets are skipped, including transactions. Branch selections are control flow, not terminal evidence. |
 | `parallel(identity, branches)` | Explicit branches and task leaves; see §8. |
 | `delegate(identity, references, { bind, deriveChildItemId })` | Typed child-run target and policy; see §8. |
 | `result(schema, references, derive, sources?)` | Terminal result schema, references and pure derivation; optional operation-display source bindings. |
