@@ -28,7 +28,7 @@ exit "$CI_EXIT"
         for (const group of ["native", "serial", "storage"]) {
           const args = join(root, "args");
           const result = spawnSync("bash", [script, "integration", group, "1/5", "--maxWorkers=1"], {
-            env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: temp.replaceAll("/", "\\"),
+            env: { ...process.env, PATH: `${bin}:/usr/bin:/bin`, RUNNER_TEMP: temp.replaceAll("/", "\\"),
               RUNNER_OS: platform, CI_ARGS: args, CI_EXIT: "7" }, encoding: "utf8",
           });
           expect(result.error).toBeUndefined();
