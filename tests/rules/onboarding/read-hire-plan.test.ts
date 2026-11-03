@@ -1,3 +1,4 @@
+import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { CrmReadHireData } from "../../../src/models/systems/crm/read-hire-data.js";
@@ -64,9 +65,9 @@ describe("hire plan validation", () => {
     assert.equal(result.employee.preferredMiddleName, "");
     assert.equal(input.crm.fields.firstName, "Fixture");
     startSnapshot.references.legalName.firstName = "Later edit";
-    startSnapshot.binding.snapshotId = "later-snapshot";
+    startSnapshot.binding.referenceDigest = FingerprintSchema.parse("b".repeat(64));
     assert.equal(result.employee.firstName, "Legal");
-    assert.equal(result.roster.snapshotId, roster.binding.snapshotId);
+    assert.equal(result.roster.referenceDigest, roster.binding.referenceDigest);
   });
 
   it("uses legal names when lived names are explicitly absent and refuses missing or foreign snapshot identity", () => {

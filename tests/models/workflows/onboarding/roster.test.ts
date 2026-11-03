@@ -11,6 +11,7 @@ import {
 import { auditContractBoundarySchema } from "../../../../src/models/validation/contract-boundary.js";
 
 const binding = OnboardingReadHirePlan.example.roster;
+const { sheetId: _sheetId, rowId: _rowId, ...referenceBinding } = binding;
 const row = {
   binding,
   references: { legalName: { firstName: "Fixture", lastName: "Hire", middleName: "" }, livedName: null },
@@ -20,12 +21,12 @@ const write = { target: "master", source: binding, cells: { i9ProfileId: "fixtur
 describe("onboarding roster task boundaries", () => {
   it("declares strict run-start reference inputs and resolved or unresolved snapshot outputs", () => {
     assert.deepEqual(OnboardingRosterReadInputSchema.parse({
-      runId: binding.runId, workbookType: binding.workbookType, workbookId: binding.workbookId, rowKey: binding.rowKey,
+      runId: "aaaaaaaa-0001-4000-8000-000100000000", workbookType: binding.workbookType, workbookId: binding.workbookId, rowKey: binding.rowKey,
     }).rowKey, binding.rowKey);
     assert.deepEqual(OnboardingRosterReadOutputSchema.parse({ state: "resolved", row }), { state: "resolved", row });
     for (const reason of ["row-missing", "row-ambiguous"]) {
-      assert.deepEqual(OnboardingRosterReadOutputSchema.parse({ state: "resolve-required", binding, reason }),
-        { state: "resolve-required", binding, reason });
+      assert.deepEqual(OnboardingRosterReadOutputSchema.parse({ state: "resolve-required", binding: referenceBinding, reason }),
+        { state: "resolve-required", binding: referenceBinding, reason });
     }
     assert.equal(OnboardingRosterSnapshotRowSchema.safeParse({ ...row, references: { legalName: null, livedName: null } }).success, false);
   });

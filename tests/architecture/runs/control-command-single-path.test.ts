@@ -1,3 +1,4 @@
+import { createRunWorkbookService } from "../../../src/backend/runs/workbooks.js";
 import { sourceBoundHarness } from "../../support/fixtures/integration/source-bound-fixtures.js";
 import { failedSourceReadDescriptor, sourceBoundReadStores } from "../../support/fixtures/source-bound-read-fixtures.js";
 import { randomUUID } from "node:crypto";
@@ -186,7 +187,7 @@ function withoutWorkerControlAdmissions(content: string, kernelContent: string):
   return content;
 }
 
-type DelegationAuditRead = Readonly<{ owner: string; id: string; guards: readonly string[]; calls?: readonly string[] }>;
+type DelegationAuditRead = Readonly<{ owner: string; id: string; guards: readonly string[]; calls?: readonly string[]; bindings?: Readonly<Record<string, string>> }>;
 const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRead[]>> = {
   "src/backend/storage/sqlite/command-record-row.ts": [
     { owner: "withCanonicalRunCommandScope", id: "request.commandId", guards: [
@@ -200,79 +201,36 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
       "owner": "authenticateRunGateResume",
       "id": "gate.commandId",
       "guards": [
-        "gate===undefined",
-        "!(\"commandId\"ingate)",
-        "\"commandId\"ingate",
-        "gate.runId!==run.envelope.runId",
-        "gates[1]?.expectedVersion===gate.expectedVersion",
-        "String(gate.nodeId)!==String(gate.gateId)",
-        "gate.resolvedBy!==actorId",
-        "gate.checkpointFingerprint!==deriveGateResultCheckpointFingerprint(gate.result)",
-        "command?.family!==\"gate\"",
-        "command.type!==\"resolve-gate\"",
-        "command.commandId!==gate.commandId",
-        "command.source!==\"dashboard\"",
-        "command.requestedBy!==actorId",
-        "command.requestedBy!==gate.resolvedBy",
-        "command.target.runId!==run.envelope.runId",
-        "command.target.gateId!==gate.gateId",
-        "command.target.expectedVersion!==gate.expectedVersion",
-        "!same(command.payload.result,gate.result)",
-        "audit?.result.state!==\"applied\"",
-        "audit.result.commandId!==command.commandId",
-        "!same(audit.request,command)",
-        "audit.completedAt!==gate.resolvedAt",
-        "!audit.versionChanges.some(change=>change.target.family===\"gate\"&&change.target.runId===run.envelope.runId&&change.target.gateId===gate.gateId&&Number(change.before)===Number(gate.expectedVersion)&&change.after===gate.expectedVersion+1)",
-        "change.target.family===\"gate\"",
-        "change.target.runId===run.envelope.runId",
-        "change.target.gateId===gate.gateId",
-        "Number(change.before)===Number(gate.expectedVersion)",
-        "change.after===gate.expectedVersion+1",
-        "gate.expectedVersion+1",
-        "!audit.result.affectedTargets.some(target=>target.family===\"run\"&&target.runId===run.envelope.runId)",
-        "target.family===\"run\"",
-        "target.runId===run.envelope.runId",
-        "resumed===undefined",
-        "!(\"kind\"inresumed)",
-        "\"kind\"inresumed",
-        "resumed.kind!==\"run-lifecycle\"",
-        "resumed.operation!==\"transition\"",
-        "settled===undefined",
-        "!(\"kind\"insettled)",
-        "\"kind\"insettled",
-        "settled.kind!==\"run-lifecycle\"",
-        "!same(settled.request,resumed)",
-        "settled.result.kind!==\"run\"",
-        "settled.result.runId!==run.envelope.runId",
-        "settled.result.appliedVersion!==gate.expectedVersion+1",
-        "settled.completedAt<gate.resolvedAt",
+        "rows.some(gate=>gate.runId!==run.envelope.runId||gate.expectedVersion>=run.version)||newSet(rows.map(gate=>gate.nodeId)).size!==rows.length",
+        "gate===undefined||!(\"commandId\"ingate)||gate.runId!==run.envelope.runId||gates[1]?.expectedVersion===gate.expectedVersion||String(gate.nodeId)!==String(gate.gateId)||gate.resolvedBy!==actorId||gate.checkpointFingerprint!==deriveGateResultCheckpointFingerprint(gate.result)",
+        "command===undefined||!(command.family===\"gate\"&&command.type===\"resolve-gate\"||command.family===\"run\"&&command.type===\"resolve-workbook-reference-row\")||command.commandId!==gate.commandId||command.type===\"resolve-gate\"&&command.source!==\"dashboard\"||command.requestedBy!==actorId||command.requestedBy!==gate.resolvedBy||command.target.runId!==run.envelope.runId||command.target.gateId!==gate.gateId||command.target.expectedVersion!==gate.expectedVersion||command.type===\"resolve-gate\"&&!same(command.payload.result,gate.result)||audit?.result.state!==\"applied\"||audit.result.commandId!==command.commandId||!same(audit.request,command)||audit.completedAt!==gate.resolvedAt||audit.versionChanges.length!==1||!audit.versionChanges.some(change=>change.target.family===\"gate\"&&change.target.runId===run.envelope.runId&&change.target.gateId===gate.gateId&&Number(change.before)===Number(gate.expectedVersion)&&change.after===gate.expectedVersion+1)||audit.result.affectedTargets.length!==2||!audit.result.affectedTargets.some(target=>target.family===\"gate\"&&target.runId===run.envelope.runId&&target.gateId===gate.gateId)||!audit.result.affectedTargets.some(target=>target.family===\"run\"&&target.runId===run.envelope.runId)",
+        "resumed===undefined||!(\"kind\"inresumed)||resumed.kind!==\"run-lifecycle\"||resumed.operation!==\"transition\"||settled===undefined||!(\"kind\"insettled)||settled.kind!==\"run-lifecycle\"||!same(settled.request,resumed)||settled.result.kind!==\"run\"||settled.result.runId!==run.envelope.runId||settled.result.appliedVersion!==gate.expectedVersion+1||settled.completedAt<gate.resolvedAt",
         "!same(CanonicalTransitionRequestSchema.parse(resumed.request),{commandId:resumeId,runId:run.envelope.runId,expectedVersion:gate.expectedVersion,lifecycle:{state:\"queued\"}})",
+        "resolved?.source.kind!==\"native\"||resolved.eventId!==lifecycleCommandId(\"timeline-gate-resolved\",command.commandId)||resolved.scope.kind!==\"run\"||resolved.scope.runId!==run.envelope.runId||resolved.workflow!==run.envelope.workflow||resolved.occurredAt!==gate.resolvedAt||resolved.recordedAt!==gate.resolvedAt||event===undefined||event.runId!==run.envelope.runId||event.workflow!==run.envelope.workflow||event.traceId!==run.envelope.traceId||event.spanPath!==run.envelope.traceId||event.attempt>run.envelope.attempt||event.gate!==gate.gateId||event.ts!==gate.resolvedAt||event.resultHash!==sha256Hex(`hrauto:gate-resolved-span:v1\\0${canonicalJsonStringify(gate.result)}`)",
         "parked===undefined",
-        "parked.operation!==\"worker-transition\"",
-        "parkedAudit===undefined",
-        "!(\"kind\"inparkedAudit)",
-        "\"kind\"inparkedAudit",
-        "parkedAudit.kind!==\"run-lifecycle\"",
-        "!same(parkedAudit.request,parked)",
-        "parkedAudit.result.kind!==\"run\"",
-        "parkedAudit.result.runId!==run.envelope.runId",
-        "parkedAudit.result.appliedVersion>gate.expectedVersion",
-        "parkedAudit.completedAt>gate.resolvedAt",
-        "park.runId!==run.envelope.runId",
-        "park.lifecycle.state!==\"parked-gate\"",
-        "park.lifecycle.gateId!==gate.gateId",
-        "park.lifecycle.resumeAt!==run.envelope.startAt",
-        "park.claim.claimGeneration>run.claimGeneration",
-        "park.commandId!==lifecycleCommandId(\"executor-transition\",{runId:run.envelope.runId,generation:park.claim.claimGeneration,version:parkedAudit.result.appliedVersion-1})",
-        "parkedAudit.result.appliedVersion-1"
+        "parked.operation!==\"worker-transition\"||parkedAudit===undefined||!(\"kind\"inparkedAudit)||parkedAudit.kind!==\"run-lifecycle\"||!same(parkedAudit.request,parked)||parkedAudit.result.kind!==\"run\"||parkedAudit.result.runId!==run.envelope.runId||parkedAudit.result.appliedVersion>gate.expectedVersion||parkedAudit.completedAt>gate.resolvedAt",
+        "park.runId!==run.envelope.runId||park.lifecycle.state!==\"parked-gate\"||park.lifecycle.gateId!==gate.gateId||park.lifecycle.resumeAt!==run.envelope.startAt||park.claim.claimGeneration>run.claimGeneration||park.commandId!==lifecycleCommandId(\"executor-transition\",{runId:run.envelope.runId,generation:park.claim.claimGeneration,version:parkedAudit.result.appliedVersion-1})"
       ],
       "calls": [
         "validateNativeLifecycleRequest(resumed)",
         "validateNativeLifecycleRequest(parked)",
-        "CanonicalTransitionRequestSchema.parse(resumed.request)",
-        "CanonicalWorkerTransitionRequestSchema.parse(parked.request)",
         "repositories.lifecycleJournal.findGatePark(run.envelope.runId,gate.gateId,gate.expectedVersion)"
-      ]
+      ],
+      "bindings": {
+        "rows": "repositories.gateResults.listByRun(run.envelope.runId)",
+        "gates": "rows.toSorted((left,right)=>right.expectedVersion-left.expectedVersion)",
+        "gate": "gates[0]",
+        "command": "repositories.commands.get(gate.commandId)",
+        "audit": "repositories.commandAudits.findByCommand(gate.commandId)",
+        "resumeId": "lifecycleCommandId(\"operator-gate\",command.commandId)",
+        "resumed": "repositories.lifecycleJournal.getCommand(resumeId)",
+        "settled": "repositories.lifecycleJournal.findAuditByCommand(resumeId)",
+        "resolved": "repositories.timelineEvents.get(lifecycleCommandId(\"timeline-gate-resolved\",command.commandId))",
+        "event": "resolved?.payload.kind===\"span\"&&resolved.payload.event.t===\"gate.resolved\"?resolved.payload.event:undefined",
+        "parked": "repositories.lifecycleJournal.findGatePark(run.envelope.runId,gate.gateId,gate.expectedVersion)",
+        "parkedAudit": "repositories.lifecycleJournal.findAuditByCommand(parked.commandId)",
+        "park": "CanonicalWorkerTransitionRequestSchema.parse(parked.request)"
+      }
     },
     { owner: "authenticateRunPriority", id: "source.commandId", guards: ['audit?.result.state!=="applied"', "!same(audit.request,source)", "Number(changes[0].before)!==Number(source.target.expectedVersion)"], calls: ["validateNativeLifecycleRequest(command)"] },
     { owner: "authenticateStartPlanRun", id: "plan.consumedBy.commandId", guards: ["audit===undefined", "!same(audit.request,command)", "command.target.expectedVersion!==plan.version-1"], calls: ["validateNativeLifecycleRequest(created)", "authenticateRunGateResume(repositories,run,command.requestedBy)"] },
@@ -283,6 +241,37 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
     { owner: "resolveDelegationRetry", id: "retry.sourceCommandId", guards: ['sourceAudit===undefined?continued===undefined:sourceAudit.result.state!=="applied"||canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source)', "canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source)", "lifecycleRequest.sourceCommandId!==source.commandId"], calls: ["assertDelegationReplacement(repositories,original,child,next)", "authenticateContinuationRetryOwner(repositories,child,retry.continuationOwner,retry.sourceCommandId)"] },
     { owner: "delegationCancellationAvailability", id: "source.commandId", guards: ['run?.lifecycle.state!=="terminal"', "repositories.commandAudits.findByCommand(source.commandId)===undefined"], calls: ["readDelegationCancellation(repositories,runId)"] },
     { owner: "readDelegationCancellation", id: "source.commandId", guards: ['authored?.result.state!=="applied"', "canonicalJsonStringify(authored.request)!==canonicalJsonStringify(source)", "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(retained)"], calls: ["authenticateCancellationSource(repositories,run,request.cancellationSource)"] },
+  ],
+  "src/backend/runs/workbooks.ts": [
+    { owner: "authenticateOnboardingRosterChoice", id: "gate.commandId", guards: [
+      'recorded?.source.kind!=="native"', 'recorded.eventId!==eventId', 'recorded.scope.kind!=="run"',
+      'recorded.scope.runId!==run.envelope.runId', 'recorded.workflow!==run.envelope.workflow', 'native===undefined',
+      'native.runId!==gate.runId', 'native.workflow!==run.envelope.workflow', 'native.traceId!==run.envelope.traceId',
+      'native.gate!==gate.gateId', 'native.attempt>run.envelope.attempt', 'native.ts!==gate.resolvedAt',
+      'recorded.occurredAt!==gate.resolvedAt',
+      'native.resultHash!==sha256Hex(`hrauto:gate-resolved-span:v1\\0${canonicalJsonStringify(gate.result)}`)',
+      'roster.state!=="resolve-required"', 'gate.runId!==run.envelope.runId', 'gate.gateId!==ONBOARDING_ROSTER_GATE_ID',
+      'gate.nodeId!==ONBOARDING_ROSTER_GATE_ID', '!("resolvedBy"ingate)',
+      'gate.checkpointFingerprint!==deriveGateResultCheckpointFingerprint(gate.result)',
+      'command?.family!=="run"', 'command.type!=="resolve-workbook-reference-row"',
+      'command.target.runId!==gate.runId', 'command.target.gateId!==gate.gateId',
+      'command.target.expectedVersion!==gate.expectedVersion', 'command.requestedBy!==gate.resolvedBy',
+      'command.target.referenceDigest!==reference.digest', 'command.target.libraryId!==binding.workbookId',
+      'command.target.typeId!==binding.workbookType', 'command.target.key!==binding.rowKey.email',
+      'row.binding.referenceDigest!==reference.digest', 'row.binding.workbookId!==binding.workbookId',
+      'row.binding.workbookType!==binding.workbookType', 'row.binding.rowKey.email!==binding.rowKey.email',
+      'row.binding.workbookVersion!==command.target.workbookVersion', 'row.binding.capturedAt!==gate.resolvedAt',
+      'row.binding.sheetId!==command.payload.sheetId', 'row.binding.rowId!==command.payload.rowId',
+      '!reference.value.snapshot.worksheets.some(sheet=>sheet.sheetId===row.binding.sheetId)',
+      'audit?.result.state!=="applied"', 'canonicalJsonStringify(audit.request)!==canonicalJsonStringify(command)',
+    ], calls: ['onboardingReference(run)'], bindings: {
+      row: 'schemaBoundValueSchema(OnboardingRosterChoiceSchema,deriveSchemaHash(OnboardingRosterChoiceSchema,"output")).parse(gate.result).value.row',
+      command: '"commandId"ingate?repositories.commands.get(gate.commandId):undefined',
+      audit: '"commandId"ingate?repositories.commandAudits.findByCommand(gate.commandId):undefined',
+      eventId: '"commandId"ingate?lifecycleCommandId("timeline-gate-resolved",gate.commandId):undefined',
+      recorded: 'eventId===undefined?undefined:repositories.timelineEvents.get(eventId)',
+      native: 'recorded?.payload.kind==="span"&&recorded.payload.event.t==="gate.resolved"?recorded.payload.event:undefined',
+    } },
   ],
   "src/backend/runs/lifecycle/delegation-admission.ts": [
     { owner: "admitDelegation", id: "gate.commandId", guards: ['audit?.result.state!=="applied"', "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(command)", "command.target.expectedVersion!==gate.expectedVersion", "command.requestedBy!==gate.resolvedBy"] },
@@ -340,8 +329,9 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
   const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true);
   const compact = (node: ts.Node): string => node.getText(source).replace(/\s+/gu, "");
   const importsRepository = source.statements.some(node => ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
-    && node.moduleSpecifier.text === (["src/backend/runs/lifecycle/delegation-admission.ts", "src/backend/runs/lifecycle/ocr-review-authority.ts",
-      "src/backend/runs/commands/ocr-source-service.ts"].includes(path) ? "../../storage/sqlite/authority-database.js" : "./authority-database.js")
+    && node.moduleSpecifier.text === (path === "src/backend/runs/workbooks.ts" ? "../storage/sqlite/authority-database.js"
+      : ["src/backend/runs/lifecycle/delegation-admission.ts", "src/backend/runs/lifecycle/ocr-review-authority.ts",
+        "src/backend/runs/commands/ocr-source-service.ts"].includes(path) ? "../../storage/sqlite/authority-database.js" : "./authority-database.js")
     && node.importClause?.namedBindings !== undefined && ts.isNamedImports(node.importClause.namedBindings)
     && node.importClause.namedBindings.elements.some(binding => binding.name.text === "AuthorityRepositories" && binding.propertyName === undefined));
   if (!importsRepository) return content;
@@ -366,8 +356,9 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     const use = candidates[0], method = use.parent, call = method.parent;
     if (compact(use.expression) !== "repositories" || !ts.isPropertyAccessExpression(method) || method.name.text !== "findByCommand"
       || !ts.isCallExpression(call) || call.expression !== method || call.arguments.length !== 1 || compact(call.arguments[0]) !== spec.id) return content;
-    const guards = new Set<string>(), calls = new Set<string>();
+    const guards = new Set<string>(), calls = new Set<string>(), bindings = new Map<string, string>();
     function facts(node: ts.Node): void {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined) bindings.set(node.name.text, compact(node.initializer));
       if (ts.isCallExpression(node)) calls.add(compact(node));
       if (ts.isIfStatement(node)) {
         let refuses = false;
@@ -395,7 +386,8 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
       ts.forEachChild(node, facts);
     }
     facts(owner.body);
-    if (spec.guards.some(proof => !guards.has(proof)) || spec.calls?.some(proof => !calls.has(proof))) return content;
+    if (spec.guards.some(proof => !guards.has(proof)) || spec.calls?.some(proof => !calls.has(proof))
+      || Object.entries(spec.bindings ?? {}).some(([name, value]) => bindings.get(name) !== value)) return content;
     if (spec.owner === "withCanonicalRunCommandScope") {
       const installed = owner.body.statements.some(statement => ts.isExpressionStatement(statement)
         && compact(statement) === "activeRunCommand={repositories,request:canonicalJsonStringify(request)};");
@@ -512,6 +504,56 @@ describe("finite native delegation audit read ownership", () => {
           assert.ok(proof, `missing refusal guard ${guard}`);
           mutants.push(mutate(proof, "true"));
         }
+      }
+      for (const spec of specs.filter(value => value.owner === "authenticateRunGateResume")) {
+        const owner = parsed.statements.filter(ts.isFunctionDeclaration).find(fn => fn.name?.text === spec.owner); assert.ok(owner?.body);
+        const proofNodes: ts.Node[] = [];
+        function proofTree(node: ts.Node): void { proofNodes.push(node); ts.forEachChild(node, proofTree); }
+        proofTree(owner.body);
+        for (const guard of spec.guards) {
+          const condition = proofNodes.find(node => node.getText(parsed).replace(/\s+/gu, "") === guard); assert.ok(condition);
+          const parts: ts.Node[] = [];
+          function operands(node: ts.Node): void {
+            if (ts.isBinaryExpression(node) || ts.isPrefixUnaryExpression(node) || ts.isConditionalExpression(node)) parts.push(node);
+            ts.forEachChild(node, operands);
+          }
+          operands(condition);
+          for (const part of parts) mutants.push(mutate(part, "true"));
+        }
+        for (const name of Object.keys(spec.bindings ?? {})) {
+          const binding = proofNodes.filter(ts.isVariableDeclaration).find(node => ts.isIdentifier(node.name) && node.name.text === name);
+          assert.ok(binding?.initializer); mutants.push(mutate(binding.initializer, "undefined"));
+        }
+        for (const proof of spec.calls ?? []) {
+          const call = proofNodes.filter(ts.isCallExpression).find(node => node.getText(parsed).replace(/\s+/gu, "") === proof); assert.ok(call);
+          mutants.push(mutate(call, "undefined"));
+        }
+      }
+      if (path === "src/backend/runs/workbooks.ts") {
+        const owner = parsed.statements.filter(ts.isFunctionDeclaration).find(fn => fn.name?.text === "authenticateOnboardingRosterChoice");
+        assert.ok(owner?.body);
+        mutants.push(mutate(owner.parameters[0], "repositories: ForeignRepositories"));
+        const repositoryImport = parsed.statements.filter(ts.isImportDeclaration).flatMap(node =>
+          node.importClause?.namedBindings !== undefined && ts.isNamedImports(node.importClause.namedBindings)
+            ? node.importClause.namedBindings.elements : []).find(binding => binding.name.text === "AuthorityRepositories");
+        assert.ok(repositoryImport);
+        mutants.push(mutate(repositoryImport, "AuthorityRepositories as ForeignRepositories"));
+        const declarations: ts.VariableDeclaration[] = [];
+        function variables(node: ts.Node): void { if (ts.isVariableDeclaration(node)) declarations.push(node); ts.forEachChild(node, variables); }
+        variables(owner.body);
+        for (const spec of specs) for (const name of Object.keys(spec.bindings ?? {})) {
+          const binding = declarations.find(node => ts.isIdentifier(node.name) && node.name.text === name);
+          assert.ok(binding?.initializer);
+          mutants.push(mutate(binding.initializer, "undefined"));
+        }
+        const bindingCall = calls.length === 1 ? owner.body.statements.flatMap(statement => {
+          if (!ts.isVariableStatement(statement)) return [];
+          return statement.declarationList.declarations.flatMap(declaration => declaration.initializer !== undefined
+            && declaration.initializer.getText(parsed).replace(/\s+/gu, "") === "onboardingReference(run)" ? [declaration.initializer] : []);
+        })[0] : undefined;
+        assert.ok(bindingCall);
+        mutants.push(mutate(bindingCall, "foreignReference(run)"));
+        mutants.push(source.replace("repositories.commandAudits.findByCommand(gate.commandId)", "aliasedAudits.findByCommand(gate.commandId)"));
       }
       for (const [index, mutant] of mutants.entries()) {
         assert.notEqual(mutant, source);
@@ -647,7 +689,7 @@ const EXPECTED_ACTIVE = {
     "cancel", "bump", "rename",
 
     "delete",
-    "recheck-write", "resolve-write-absent", "resolve-workbook-row",
+    "recheck-write", "resolve-write-absent", "resolve-workbook-row", "resolve-workbook-reference-row",
 
   ],
   gate: ["resolve-gate"],
@@ -716,6 +758,7 @@ async function createHarness(wrap?: RepositoryWrap): Promise<GuardHarness> {
     configIdentity: database.authority.runtimeConfig.get()!,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
+    workbookRows: createRunWorkbookService({ database, clock }),
     authority: {
       withAuthorityTransaction: (work) => database.withAuthorityTransaction(
         (repositories) => work(wrap === undefined ? repositories : wrap(repositories)),
