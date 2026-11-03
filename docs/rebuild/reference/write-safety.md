@@ -159,6 +159,11 @@ still reaches saved-effect verification, then refuses settlement and parks the o
 even when proof is valid. Missing required capture cannot create a transaction checkpoint or
 confirmed-operation history; resolution stays on the typed parked-write path.
 
+Prepare tasks can await `ctx.captureScreenshot()` between browser steps. This uses the retained
+session's required capture with the same run, node, attempt, configuration and sample labels.
+The capability expires with the lease. Intermediate capture failure aborts prepare before the fence
+on both the real and dry-run paths; it does not replace the sequencer's boundary captures.
+
 Standalone recovery and held-only diagnostic checks open a durable recovery activity before their
 read probe. It binds the exact run, attempt, trace, node, intent generation and original write attempt,
 with actual start and end instants. Only that operation's live scope admits its action notes outside
