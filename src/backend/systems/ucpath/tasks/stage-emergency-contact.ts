@@ -1,7 +1,7 @@
-import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
+import { UcpathStageEmergencyContact } from "../../../../models/systems/ucpath/stage-emergency-contact.js";
 import { preparedContactPlanMatches } from "../../../../rules/ucpath/emergency-contact.js";
+import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { defineTask } from "../../../../workflow-kit/task.js";
-import { UcpathStageEmergencyContact } from "../../../../models/systems/ucpath/contact-tasks.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
 import { refuseContact } from "../contact-verdict.js";

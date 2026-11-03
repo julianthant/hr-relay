@@ -1,7 +1,7 @@
-import { defineTask } from "../../../workflow-kit/task.js";
-import { PlanApprovedEmergencyContact } from "../../../models/workflows/emergency-contact-member/contact.js";
 import { UcpathContactRefusedError } from "../../../models/systems/ucpath/emergency-contacts.js";
-import { contactEffect, contactPlanChanges, planEmergencyContact } from "../../../rules/ucpath/emergency-contact.js";
+import { PlanApprovedEmergencyContact } from "../../../models/workflows/emergency-contact-member/read-contact-plan.js";
+import { contactEffect,contactPlanChanges,planEmergencyContact } from "../../../rules/ucpath/emergency-contact.js";
+import { defineTask } from "../../../workflow-kit/task.js";
 
 export const planApprovedEmergencyContactTask = defineTask(PlanApprovedEmergencyContact, {
   sessions: [], async run({ input, ctx }) {

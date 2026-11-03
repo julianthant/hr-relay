@@ -1,6 +1,6 @@
-import { defineTask } from "../../../../workflow-kit/task.js";
-import { UcpathSaveEmergencyContact } from "../../../../models/systems/ucpath/contact-tasks.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+import { UcpathSaveEmergencyContact } from "../../../../models/systems/ucpath/save-emergency-contact.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
 export const saveEmergencyContactTask = defineTask(ucpathDriver, UcpathSaveEmergencyContact, {

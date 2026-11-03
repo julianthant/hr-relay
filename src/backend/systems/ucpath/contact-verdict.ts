@@ -1,11 +1,11 @@
-import { UcpathContactVerdictSchema, emergencyContactIdempotencyKey } from "../../../models/systems/ucpath/contact-tasks.js";
-import { UcpathContactEffectProofSchema, UcpathContactRefusedError } from "../../../models/systems/ucpath/emergency-contacts.js";
-import type { UcpathContactSet, UcpathContactWriteTarget, UcpathContactRefusalCode } from "../../../models/systems/ucpath/emergency-contacts.js";
+import { UcpathContactVerdictSchema,emergencyContactIdempotencyKey } from "../../../models/systems/ucpath/contact-contract.js";
+import type { UcpathContactRefusalCode,UcpathContactSet,UcpathContactWriteTarget } from "../../../models/systems/ucpath/emergency-contacts.js";
+import { UcpathContactEffectProofSchema,UcpathContactRefusedError } from "../../../models/systems/ucpath/emergency-contacts.js";
+import { UCPATH_CONTACT_DISPLAYED_NAME } from "../../../models/ui/ucpath-emergency-contact.js";
+import { redactedEvidenceId } from "../../../rules/redaction/redaction.js";
+import { assertContactSubject,contactEffect,contactPlanMatches,contactPlanPresent,contactSetFingerprint } from "../../../rules/ucpath/emergency-contact.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { deriveIdempotencyKeyDigest } from "../../../rules/write-safety/write-safety.js";
-import { redactedEvidenceId } from "../../../rules/redaction/redaction.js";
-import { UCPATH_CONTACT_DISPLAYED_NAME } from "../../../models/ui/ucpath-emergency-contact.js";
-import { contactEffect, contactPlanPresent, contactSetFingerprint, contactPlanMatches, assertContactSubject } from "../../../rules/ucpath/emergency-contact.js";
 
 export function refuseContact(error: unknown, fail: (code: UcpathContactRefusalCode, message: string, options?: { cause?: unknown }) => never): never {
   if (error instanceof UcpathContactRefusedError) return fail(error.code, "UCPath contact inspection or preparation was refused.", { cause: error });

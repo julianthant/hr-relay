@@ -1,8 +1,8 @@
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { MapApprovedEmergencyContact } from "../../../models/workflows/emergency-contact-member/read-approved-contact.js";
+import { approvedEmergencyContact } from "../../../rules/ucpath/emergency-contact.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { defineTask } from "../../../workflow-kit/task.js";
-import { MapApprovedEmergencyContact } from "../../../models/workflows/emergency-contact-member/contact.js";
-import { approvedEmergencyContact } from "../../../rules/ucpath/emergency-contact.js";
-import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
 export const mapApprovedEmergencyContactTask = defineTask(MapApprovedEmergencyContact, {
   sessions: [], async run({ input, ctx }) {

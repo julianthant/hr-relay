@@ -1,22 +1,24 @@
-import { emergencyContactIdempotencyKey } from "../../../../../src/models/systems/ucpath/contact-tasks.js";
-import { manualClock } from "../../../../../src/rules/time/clock.js";
-import { contactEffect, contactSetFingerprint, compareSavedContactAddition, decideContactAddition, planEmergencyContact, contactPlanChanges, contactPlanPresent } from "../../../../../src/rules/ucpath/emergency-contact.js";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
-import fixture from "../../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
-import {
-  interpretContactPage, readContactSetWithPort, stageContactAdditionWithPort,
-  stageContactPlanWithPort,
-} from "../../../../../src/backend/systems/ucpath/driver/contact-operation.js";
+import { describe,it } from "vitest";
 import { createDeterministicUcpathContactPage } from "../../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import {
-  UcpathContactDecisionSchema, UcpathContactRefusedError, UcpathContactRefusalCodeSchema,
-  UcpathEmergencyContactInputSchema,
-} from "../../../../../src/models/systems/ucpath/emergency-contacts.js";
+interpretContactPage,readContactSetWithPort,stageContactAdditionWithPort,
+stageContactPlanWithPort,
+} from "../../../../../src/backend/systems/ucpath/driver/contact-operation.js";
+import { emergencyContactIdempotencyKey } from "../../../../../src/models/systems/ucpath/contact-contract.js";
 import type { UcpathContactRefusalCode } from "../../../../../src/models/systems/ucpath/emergency-contacts.js";
-import { UcpathContactPageRowSchema, UcpathContactPageSnapshotSchema } from "../../../../../src/models/ui/ucpath-emergency-contact.js";
+import {
+UcpathContactDecisionSchema,
+UcpathContactRefusalCodeSchema,
+UcpathContactRefusedError,
+UcpathEmergencyContactInputSchema,
+} from "../../../../../src/models/systems/ucpath/emergency-contacts.js";
 import type { UcpathContactPageSnapshot } from "../../../../../src/models/ui/ucpath-emergency-contact.js";
-import { EidSchema, IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
+import { UcpathContactPageRowSchema,UcpathContactPageSnapshotSchema } from "../../../../../src/models/ui/ucpath-emergency-contact.js";
+import { EidSchema,IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { compareSavedContactAddition,contactEffect,contactPlanChanges,contactPlanPresent,contactSetFingerprint,decideContactAddition,planEmergencyContact } from "../../../../../src/rules/ucpath/emergency-contact.js";
+import fixture from "../../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 
 const input = UcpathEmergencyContactInputSchema.parse(fixture.input);
 const effect = contactEffect(input);

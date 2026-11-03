@@ -1,8 +1,9 @@
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+import { OcrApprovalReadRequestSchema,OcrApprovalReadResultSchema } from "../../../../models/processing/ocr/approved-snapshot.js";
+import { ReadApprovedOcrRecord } from "../../../../models/processing/ocr/read-approved-record.js";
+import { deriveSchemaHash,schemaBoundValueSchema } from "../../../../models/validation/schema-bound-value.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { defineTask } from "../../../../workflow-kit/task.js";
-import { OcrApprovalReadRequestSchema, OcrApprovalReadResultSchema, ReadApprovedOcrRecord } from "../../../../models/processing/ocr/read-approved-snapshot.js";
-import { deriveSchemaHash, schemaBoundValueSchema } from "../../../../models/validation/schema-bound-value.js";
-import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 
 export const readApprovedOcrRecordTask = defineTask(ReadApprovedOcrRecord, {
   sessions: [], async run({ input, ctx }) {

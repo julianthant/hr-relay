@@ -1,12 +1,11 @@
 
 import assert from "node:assert/strict";
-import { describe, expect, it } from "vitest";
+import { describe,expect,it } from "vitest";
 import { z } from "zod";
-import { descriptorSetHash as descriptorSetHash_m0 } from "../../../../src/backend/app/registries/workflow-registry.js";
-import { INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
-import { buildBootstrap, type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
+import { descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { buildBootstrap,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
-import { FrontendBootstrapWireSchema, WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { FrontendBootstrapWireSchema,WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
@@ -17,8 +16,8 @@ import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.
 import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
 import { FixtureReadReceipt } from "../../../support/fixtures/descriptor-fixtures.js";
 import { healthyDashboardPreflightReport } from "../../../support/fixtures/preflight-seams.js";
-import { AUDITING_FORM, FOLDING_FORM, omissionCascadingDescriptor, READING_FORM } from "../../../support/fixtures/start-step-omission-fixtures.js";
-import { AT, makeWorld, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
+import { AUDITING_FORM,FOLDING_FORM,omissionCascadingDescriptor,READING_FORM } from "../../../support/fixtures/start-step-omission-fixtures.js";
+import { AT,makeWorld,type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
 
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/protected-settings.js";
 import { StorageHealthSummaryWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
@@ -105,6 +104,8 @@ describe("bootstrap start-surface block", () => {
         "crm-doc-download": { "search-records": ["crm"], reference: [], "read-idocs": ["crm"], "package-worksheets": [] },
         onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "hire-review": ["ucpath"],
           "i9-creation": ["i9"], "ucpath-hire": ["ucpath"], "master-results": [] },
+        "emergency-contact": { "read-document": [], members: [] },
+        "emergency-contact-member": { "contact-plan": ["ucpath"], "contact-preview": ["ucpath"] },
         "i9-check-start": { documents: [], "roster-reference": [], retention: [] },
       };
       for (const descriptor of WORKFLOW_DESCRIPTORS) {

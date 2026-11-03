@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { WriteIntentRecordSchema, WriteAttemptRecordSchema, deriveWriteBindingProofDigest, deriveIdempotencyKeyDigest } from "../../../../src/rules/write-safety/write-safety.js";
-import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
 import { runClaim } from "../../../../src/models/run/record.js";
-import { UcpathSaveEmergencyContact, emergencyContactIdempotencyKey } from "../../../../src/models/systems/ucpath/contact-tasks.js";
+import { emergencyContactIdempotencyKey } from "../../../../src/models/systems/ucpath/contact-contract.js";
 import type { UcpathContactWriteTarget } from "../../../../src/models/systems/ucpath/emergency-contacts.js";
+import { UcpathSaveEmergencyContact } from "../../../../src/models/systems/ucpath/save-emergency-contact.js";
 import { UCPATH_CONTACT_DISPLAYED_NAME } from "../../../../src/models/ui/ucpath-emergency-contact.js";
+import { deriveWriteAuthorityReason } from "../../../../src/rules/write-safety/write-authority-reason.js";
+import { WriteAttemptRecordSchema,WriteIntentRecordSchema,deriveIdempotencyKeyDigest,deriveWriteBindingProofDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { fenceWriteFixture } from "../write-fence-fixture.js";
 
 export function seedUnknownContactWrite(database: AuthorityDatabase, target: UcpathContactWriteTarget, now: string, parked: boolean) {

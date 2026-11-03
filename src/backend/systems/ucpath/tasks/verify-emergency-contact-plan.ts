@@ -1,11 +1,10 @@
-import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
+import { UcpathVerifyEmergencyContact } from "../../../../models/systems/ucpath/verify-emergency-contact-plan.js";
 import type { JsonValue } from "../../../../rules/validation/canonical-json.js";
+import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { defineTask } from "../../../../workflow-kit/task.js";
-import {
-  UcpathVerifyEmergencyContact } from "../../../../models/systems/ucpath/contact-tasks.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
-import { refuseContact, validatePlan, emergencyContactVerdict } from "../contact-verdict.js";
+import { emergencyContactVerdict,refuseContact,validatePlan } from "../contact-verdict.js";
 export const verifyEmergencyContactTask = defineTask(ucpathDriver, UcpathVerifyEmergencyContact, {
   sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }], async run({ input, ctx }) {
     try { validatePlan(input); } catch (error) { return refuseContact(error, ctx.fail); }

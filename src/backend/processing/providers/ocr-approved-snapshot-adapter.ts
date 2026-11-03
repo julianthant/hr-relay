@@ -1,10 +1,9 @@
-import { OcrApprovalReadRequestSchema, OcrApprovalReadResultSchema } from "../../../models/processing/ocr/read-approved-snapshot.js";
-import { deriveSchemaHash, schemaBoundValueSchema } from "../../../models/validation/schema-bound-value.js";
+import { OcrApprovalReadRequestSchema,OcrApprovalReadResultSchema } from "../../../models/processing/ocr/approved-snapshot.js";
+import { deriveSchemaHash,schemaBoundValueSchema } from "../../../models/validation/schema-bound-value.js";
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { ProviderAdapter } from "../../../workflow-kit/providers.js";
-import type { ApprovedOcrRecordReader } from "../../runs/lifecycle/approved-ocr-records.js";
-import { OcrReviewRefusedError } from "../../runs/lifecycle/ocr-review-authority.js";
+import { OcrReviewRefusedError,type ApprovedOcrRecordReader } from "../ocr/review-authority.js";
 
 export function createOcrApprovedSnapshotAdapter(input: Readonly<{
   clock: Clock; reader?: Pick<ApprovedOcrRecordReader, "readSnapshot" | "readRecord">;

@@ -92,7 +92,7 @@ Natural keys remain private authority data. Public projections use digest refere
 | `i9/create-profile` | `i9:profile\|<email-lower>\|<first-name-lower>\|<last-name-lower>\|<dob>` | `i9/match-profile` | `i9/verify-profile` | `operator-only` |
 | `i9/create-remote-record` | `i9:remote\|<profile-id>\|<start-date>` | `i9/match-remote-record` | `i9/verify-remote-record` | `operator-only` |
 
-These declarations live in `src/models/systems/ucpath/{create-termination,delete-pending-terminations,contact-tasks}.ts` and `src/models/systems/kuali/save-separation-finalization.ts`.
+These declarations live in `src/models/systems/ucpath/{create-termination,delete-pending-terminations,save-emergency-contact}.ts` and `src/models/systems/kuali/save-separation-finalization.ts`.
 
 Emergency Contact declares the full ordered demotion/addition plan under the OCR release. Its
 probe checks the complete persisted protected set, and its key validates the raw desired contact

@@ -164,7 +164,7 @@ tuple imports definitions directly, keeping those backend imports out of the das
 `src/backend/runs/lifecycle/ocr-checkpoint-publication.ts` admits OCR resource ownership and publishes readings with checkpoints;
 `ocr-review-authority.ts` authenticates review journals, snapshots and OCR recovery references.
 `src/backend/runs/commands/ocr-source-service.ts` owns uploaded PDF admission, authorized source-page bytes and read-only command settlement.
-`src/backend/runs/lifecycle/approved-ocr-records.ts` owns approved snapshot, native member-record and bulk source reads. It authenticates current worker/task custody, operator ancestry and exact native OCR outcomes through the snapshot authority. Worker composition injects its operations into the thin `ocr-approved-snapshot-adapter.ts` and `ocr-review-adapter.ts` provider codecs. Bulk sources retain original terminal review metadata separately from corrected selected records.
+`src/backend/runs/lifecycle/approved-ocr-records.ts` owns approved snapshot, native member-record and bulk source reads. It authenticates current worker/task custody, operator ancestry and exact native OCR outcomes through the snapshot authority. `src/backend/processing/ocr/review-authority.ts` owns the transport-facing reader port and refusal error; it depends only on model types. Worker composition injects its operations into the thin `ocr-approved-snapshot-adapter.ts` and `ocr-review-adapter.ts` provider codecs. Bulk sources retain original terminal review metadata separately from corrected selected records.
 `src/backend/runs/queries/ocr-review.ts` projects the existing review section, served through the existing typed client.
 
 The child-only `src/workflows/ocr/` and `src/workflows/ocr-page/` folders use the same layout.
@@ -259,7 +259,7 @@ shared contact-set interpreter and the single UCPath driver. Pure mapping, compl
 primary-plan decisions and exact presence rules live in `src/rules/ucpath/emergency-contact.ts`. Candidate recipes live in
 `UCPATH_PENDING_CONTACT_RECIPES` outside the verified UI registry; the synthetic contact HTML
 fixture proves adapter behavior, not live selector validity. Contact read, prepare and comparison
-contracts live in `src/models/systems/ucpath/contact-tasks.ts`; their implementations live under
+contracts use their task-ID suffix modules under `src/models/systems/ucpath/`, with shared schemas and idempotency in `contact-contract.ts`; their implementations live under
 `src/backend/systems/ucpath/tasks/`, one file per task ID. `contact-verdict.ts` owns the shared protected
 probe fold. Preparation can demote one uniquely bound primary and add the declared primary contact.
 The driver exposes no contact Save capability, and real-mode members refuse before acquisition.
@@ -296,3 +296,5 @@ Workflow execution uses the signed-in dashboard Run and its canonical start-plan
 `src/rules/spreadsheets/workbook-io.ts` owns shared library XLSX/CSV IO, structural admission, retained cell metadata and deterministic intake export through `@shbernal/ts-xlsx`. Imported formulas or metadata outside the editable model mark the workbook for named master-edit refusal. The dashboard editor owns editing/rendering behavior and consumes this browser-safe boundary.
 
 `transports/http/routes/debug-responses.ts` observes terminal HTTP failure responses through the existing debug writer.
+
+Task contract modules follow each task ID suffix: Emergency Contact uses `models/workflows/emergency-contact/read-result.ts`; its member uses `read-approved-contact.ts` and `read-contact-plan.ts`, with shared plan data in `contact-plan.ts`. OCR snapshot and record tasks use separate `models/processing/ocr/read-approved-snapshot.ts` and `read-approved-record.ts` modules; `approved-snapshot.ts` owns their shared transport protocol. UCPath contact tasks each use their task suffix module, while `models/systems/ucpath/contact-contract.ts` owns shared contact schemas, policy and idempotency.

@@ -1,6 +1,7 @@
-import { UcpathProbeEmergencyContact, UcpathVerifyEmergencyContact } from "../../models/systems/ucpath/contact-tasks.js";
-import { EmergencyContactMemberInputSchema, EmergencyContactMemberCanonicalInput } from "../../models/workflows/emergency-contact-member/input.js";
+import { UcpathProbeEmergencyContact } from "../../models/systems/ucpath/match-emergency-contact-plan.js";
+import { UcpathVerifyEmergencyContact } from "../../models/systems/ucpath/verify-emergency-contact-plan.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
+import { EmergencyContactMemberCanonicalInput,EmergencyContactMemberInputSchema } from "../../models/workflows/emergency-contact-member/input.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { contactPlanDefinition } from "./steps/contact-plan/step.js";

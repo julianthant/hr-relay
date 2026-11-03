@@ -1,25 +1,28 @@
+import type { z } from "zod";
+import { OcrApprovalReadRequestSchema } from "../../../models/processing/ocr/approved-snapshot.js";
+import { ReadApprovedOcrRecord } from "../../../models/processing/ocr/read-approved-record.js";
 import { ReadApprovedOcrRecords } from "../../../models/processing/ocr/read-approved-records.js";
-import { OcrApprovalReadRequestSchema, ReadApprovedOcrRecord, ReadApprovedOcrSnapshot } from "../../../models/processing/ocr/read-approved-snapshot.js";
-import { ApprovedOcrRecordInputSchema } from "../../../models/workflows/ocr/approved-record.js";
-import { OcrWorkflowResultSchema } from "../../../models/workflows/ocr/result.js";
-import { childRunOutcomeSchema } from "../../../models/workflow/graph.js";
-import { runClaim, type RunRecord } from "../../../models/run/record.js";
+import { ReadApprovedOcrSnapshot } from "../../../models/processing/ocr/read-approved-snapshot.js";
+import { runClaim,type RunRecord } from "../../../models/run/record.js";
 import { delegationEvidenceOutput } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { childRunOutcomeSchema } from "../../../models/workflow/graph.js";
+import { ApprovedOcrRecordInputSchema } from "../../../models/workflows/ocr/approved-record.js";
+import { OcrWorkflowResultSchema } from "../../../models/workflows/ocr/result.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { OcrReviewRefusedError,type ApprovedOcrRecordReader } from "../../processing/ocr/review-authority.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { readDelegationEvidence } from "../../storage/sqlite/delegation-authority.js";
+import { authenticateOcrOperator,requireCurrentOcrSnapshot } from "./ocr-review-authority.js";
 import type { RunRecordService } from "./run-record-service.js";
-import { authenticateOcrOperator, OcrReviewRefusedError, requireCurrentOcrSnapshot } from "./ocr-review-authority.js";
-import type { z } from "zod";
 
 const same = (left: unknown, right: unknown) => canonicalJsonStringify(left) === canonicalJsonStringify(right);
 
 export function createApprovedOcrRecordReader(deps: Readonly<{
   database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot">; reader: Pick<RunRecordService, "read">; run: RunRecord;
   assertCurrent(): void; resolveDescriptor(workflowId: string): AnyWorkflowDescriptor | undefined;
-}>) {
+}>): ApprovedOcrRecordReader {
   const reader = deps.reader;
   function consumer(task: typeof ReadApprovedOcrSnapshot | typeof ReadApprovedOcrRecord | typeof ReadApprovedOcrRecords) {
     const found = reader.read(deps.run.envelope.runId), capturedClaim = runClaim(deps.run);
@@ -115,4 +118,3 @@ export function createApprovedOcrRecordReader(deps: Readonly<{
     }),
   });
 }
-export type ApprovedOcrRecordReader = ReturnType<typeof createApprovedOcrRecordReader>;

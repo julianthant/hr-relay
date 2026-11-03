@@ -1,16 +1,16 @@
-import { EmergencyContactInputSchema } from "../../../../models/workflows/emergency-contact/input.js";
-import { EmergencyContactMemberInputSchema } from "../../../../models/workflows/emergency-contact-member/input.js";
-import { EmergencyContactMemberResultSchema } from "../../../../models/workflows/emergency-contact/result.js";
-import { ReadEmergencyContactResult } from "../../../../models/workflows/emergency-contact/result.js";
-import { TaskError } from "../../../../workflow-kit/errors.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
-import { approvedEmergencyContact, contactEffect } from "../../../../rules/ucpath/emergency-contact.js";
 import { contactEffectIdentity } from "../../../../models/systems/ucpath/emergency-contacts.js";
+import { EmergencyContactMemberInputSchema } from "../../../../models/workflows/emergency-contact-member/input.js";
+import { EmergencyContactInputSchema } from "../../../../models/workflows/emergency-contact/input.js";
+import { ReadEmergencyContactResult } from "../../../../models/workflows/emergency-contact/read-result.js";
+import { EmergencyContactMemberResultSchema } from "../../../../models/workflows/emergency-contact/result.js";
 import { WorkflowIdSchema } from "../../../../rules/identity/ids.js";
-import { buildApprovedOcrRecords, approvedRecordHasEid } from "../../../ocr/steps/source-pages/step.js";
+import { approvedEmergencyContact,contactEffect } from "../../../../rules/ucpath/emergency-contact.js";
+import { TaskError } from "../../../../workflow-kit/errors.js";
+import { approvedRecordHasEid,buildApprovedOcrRecords } from "../../../ocr/steps/source-pages/step.js";
 
 import { ReadApprovedOcrSnapshot } from "../../../../models/processing/ocr/read-approved-snapshot.js";
-import { defineStep, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep,inheritStepProof,type WorkflowAuthor,type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 export const READ_DOCUMENT_STEP = Object.freeze({ key: "read-document", label: "Read and approve PDF", system: "local" as const });
 export function buildEmergencyContactRecords(author: WorkflowAuthor<typeof EmergencyContactInputSchema>) {
   const graph = buildApprovedOcrRecords(author, { ocrInput: input => ({ ...input, formType: "emergency-contact" }),
