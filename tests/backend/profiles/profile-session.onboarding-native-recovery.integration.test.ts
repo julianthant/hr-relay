@@ -632,7 +632,7 @@ it("keeps a pending signup key unsigned until exact scoped proof confirms it, th
     await assert.rejects(capability.signAssertion(failed), /duo-challenge-invalid/u);
     assert.equal(CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(headPath, "utf8"))).counters.find(row => row.credentialId === credentialId)?.count, signed.signCount + 1);
     await assert.rejects(capability.signAssertion({ ...failed, challenge: "AQID" }), (error: unknown) => error instanceof Error && "code" in error && error.code === "DUO_CREDENTIAL_CONFLICT");
-    await capability.retainUnknown();
+    await capability.retainUnknown({ kind: "unknown", causeTag: "browser-lifetime" });
     assert.equal(f.profile.session.readOnboarding(f.draft.token, f.draft.operationId).methods.key.state, "complete");
     assert.equal(store.readForScope(capability.scope)[0]?.state, "ready");
   } finally { admission.release(); await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true }); }

@@ -37,7 +37,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "statements": [
       {
         "kind": "try",
-        "sha256": "23cbeacac54184924d97ae953e0db3402da6564d298277d03793de3e57c97dc1",
+        "sha256": "4d3ee7e31620333f8251128364095f699b8edeef272ee9d9fb531c24b8667a10",
         "occurrences": 1
       },
       {
