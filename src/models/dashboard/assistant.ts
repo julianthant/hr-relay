@@ -3,6 +3,8 @@ import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { z } from "zod";
 import { FingerprintSchema } from "../../rules/identity/ids.js";
 import { AssistantPermissionModeSchema } from "../profiles/assistant-permission-mode.js";
+import { StartPlanWireSchema } from "./start-plan.js";
+import { AssistantModelPreferenceSchema, AssistantModelSlugSchema } from "../config/assistant-model-preference.js";
 
 const ReferenceSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/u);
 export const AssistantSubjectSchema = z.strictObject({
@@ -15,9 +17,6 @@ export const AssistantCitationSchema = z.strictObject({
 });
 export const ASSISTANT_DEFAULT_MODEL = "gpt-6.1-sol";
 export const ASSISTANT_DEFAULT_EFFORT = "medium";
-const ModelSlugSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u);
-export const AssistantModelPreferenceSchema = z.strictObject({ slug: ModelSlugSchema, effort: z.enum(["low", "medium", "high"]) });
-export type AssistantModelPreference = z.infer<typeof AssistantModelPreferenceSchema>;
 export const ASSISTANT_VERIFY_COMMAND = '/verify-assistant';
 export const ASSISTANT_MODEL_COMMAND = '/assistant-model';
 export const AssistantModelPreferenceViewSchema = z.strictObject({
@@ -41,7 +40,7 @@ export const AssistantModelPreferenceRecordSchema = z.strictObject({
 export type AssistantModelPreferenceRecord = z.infer<typeof AssistantModelPreferenceRecordSchema>;
 const FunctionNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/u);
 export const AssistantModelCatalogSchema = z.strictObject({
-  models: z.array(z.strictObject({ slug: ModelSlugSchema, displayName: z.string().min(1).max(256) })).max(256),
+  models: z.array(z.strictObject({ slug: AssistantModelSlugSchema, displayName: z.string().min(1).max(256) })).max(256),
 }).refine(value => new Set(value.models.map(model => model.slug)).size === value.models.length);
 export type AssistantModelCatalog = z.infer<typeof AssistantModelCatalogSchema>;
 export const AssistantFunctionCallSchema = z.strictObject({ type: z.literal("function_call"), id: z.string().min(1).max(256).optional(),
@@ -65,7 +64,7 @@ export const AssistantInputItemSchema = z.union([
   AssistantResponseItemSchema, AssistantFunctionOutputSchema,
 ]);
 export type AssistantInputItem = z.infer<typeof AssistantInputItemSchema>;
-export const AssistantInferenceResultSchema = z.strictObject({ responseId: z.string().min(1).max(256), model: ModelSlugSchema,
+export const AssistantInferenceResultSchema = z.strictObject({ responseId: z.string().min(1).max(256), model: AssistantModelSlugSchema,
   output: z.array(AssistantResponseItemSchema).min(1).max(32),
 });
 export type AssistantInferenceResult = z.infer<typeof AssistantInferenceResultSchema>;
@@ -90,7 +89,7 @@ export const AssistantFunctionNamespaceSchema = z.strictObject({ type: z.literal
   description: z.string().min(1).max(4000), tools: z.array(AssistantFunctionDefinitionSchema).min(1).max(16),
 });
 export type AssistantFunctionNamespace = z.infer<typeof AssistantFunctionNamespaceSchema>;
-export const AssistantInferenceRequestSchema = z.strictObject({ model: ModelSlugSchema,
+export const AssistantInferenceRequestSchema = z.strictObject({ model: AssistantModelSlugSchema,
   reasoning: z.strictObject({ effort: AssistantModelPreferenceSchema.shape.effort }),
   input: z.array(AssistantInputItemSchema).min(1).max(128), tools: z.array(AssistantFunctionNamespaceSchema).max(8),
 }).superRefine((value, context) => {
@@ -154,7 +153,13 @@ const AssistantActionProposalFields = {
 export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
   z.strictObject({ ...AssistantActionProposalFields, subject: z.literal("none"), effect: z.literal("local-write") }),
   z.strictObject({ ...AssistantActionProposalFields, subject: z.literal("selected-run"), effect: z.literal("workflow-start"),
-    workflowId: z.string().min(1), dryRun: z.boolean() }),
+    workflowId: z.string().min(1), dryRun: z.boolean(), startPlan: StartPlanWireSchema.extend({
+      browserMode: StartPlanWireSchema.shape.browserMode.unwrap(), captureBrowserScreenshots: z.literal(true),
+      planned: StartPlanWireSchema.shape.planned.length(1), refused: StartPlanWireSchema.shape.refused.length(0),
+    }),
+  }).refine(value => value.startPlan.workflowId === value.workflowId && value.startPlan.dryRun === value.dryRun
+    && value.targetLabel === value.startPlan.planned[0]?.title
+    && Date.parse(value.expiresAt) <= Date.parse(value.startPlan.expiresAt), "assistant start must bind one accepted current plan"),
 ]);
 export type AssistantActionProposal = z.infer<typeof AssistantActionProposalSchema>;
 export const AssistantActionDecisionSchema = AssistantActionIdentitySchema.extend({ decision: z.enum(["confirm", "cancel"]) });

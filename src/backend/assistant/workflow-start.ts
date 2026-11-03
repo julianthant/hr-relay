@@ -89,10 +89,11 @@ export function createAssistantWorkflowStarts(input: Readonly<{
             if (current.configSnapshotId !== plan.configSnapshotId || current.fingerprint !== plan.configFingerprint) throw new AssistantLocalIntentError("assistant-workflow-settings-stale");
           };
           assertCurrent();
+          const expiresAt = new Date(Math.min(Date.parse(record.expiresAt), Date.parse(plan.expiresAt))).toISOString();
           const action = AssistantActionProposalSchema.parse({ chatId: chat.chatId, actionId: proposal.id, revision: proposal.revision,
-            expiresAt: record.expiresAt, label: `${dryRun ? "Dry run" : "Live read"}: ${descriptor.label}`, targetLabel: plan.planned[0].title,
-            subject: "selected-run", effect: "workflow-start", workflowId: descriptor.id, dryRun });
-          pending.set(proposal.id, { chat, revision: proposal.revision, expiresAt: record.expiresAt, record, assertCurrent });
+            expiresAt, label: `Start ${descriptor.label}`, targetLabel: plan.planned[0].title,
+            subject: "selected-run", effect: "workflow-start", workflowId: descriptor.id, dryRun, startPlan: planned });
+          pending.set(proposal.id, { chat, revision: proposal.revision, expiresAt, record, assertCurrent });
           return { kind: "complete", result: { state: "action-proposal", proposal: action } };
         },
       }] }];

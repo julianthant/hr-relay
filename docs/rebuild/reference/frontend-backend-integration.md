@@ -50,7 +50,7 @@ Its strict view binds the person, session epoch, policy revision, and current Se
 It distinguishes `grant-required` from `granted` and exposes only `every-action`. The read creates
 no grant or action, uses `no-store`, and refuses revoked, changed or invalid authority. Permission
 grants still require the existing explicit operator Settings command; workflow proposals still
-require their separate confirmation. The served Settings permission control is not yet bound to this read.
+require their separate confirmation. General has no permission control; removing that row does not create a grant or relax the confirmation policy.
 
 The composer recognizes the canonical setup command constants from `models/dashboard/assistant.ts`.
 A model read uses that served view. A model set goes through the existing `CommandExecutor` and
@@ -76,7 +76,9 @@ The assistant's selected subject reference is the visible served run and its exa
 resolved locally through the canonical run reader; the Responses request receives only a fresh opaque
 reference and workflow/mode metadata. Workflow confirmation uses the existing assistant action endpoint,
 then the same command service as dashboard Run. It preserves the ordinary start planner, preflight,
-worker capacity and once-only command/audit authority.
+worker capacity and once-only command/audit authority. The workflow-start action carries its canonical public start plan, restricted to one accepted run, with browser mode and captures explicit. Its displayed expiry cannot exceed the retained plan expiry.
+
+Bootstrap projects the admitted person registry name as the actor label. Appearance uses that label with the existing person/epoch preference owner and claims saved state only after confirmed settings readback. Preference commands use `source: person-preferences`; the ordinary editor recovers only its own `settings-surface` attempts, so simultaneous preference saves cannot become ordinary editor retries.
 
 ## Static workflow source policy
 

@@ -8,5 +8,5 @@ export function ControlPreview() {
   const { theme, toggleTheme } = useDemoTheme();
   const [deleting, setDeleting] = useState(false);
   const state = new URLSearchParams(location.search).get("state");
-  return <SettingsSurface section="General"><AppearanceSettings theme={theme} onToggleTheme={toggleTheme} /><DeleteAccountControl presentation={deleting || state === "deleting" ? { state: "deleting", personName: "Alex Morgan" } : state === "unavailable" ? { state: "unavailable" } : { state: "ready", personName: "Alex Morgan", onConfirm: () => setDeleting(true) }} /></SettingsSurface>;
+  return <SettingsSurface section="General"><AppearanceSettings personName="Alex Morgan" theme={theme} onToggleTheme={toggleTheme} /><DeleteAccountControl presentation={deleting || state === "deleting" ? { state: "deleting", personName: "Alex Morgan" } : state === "unavailable" ? { state: "unavailable" } : { state: "ready", personName: "Alex Morgan", onConfirm: () => setDeleting(true) }} /></SettingsSurface>;
 }

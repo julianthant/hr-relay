@@ -220,7 +220,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     assert.equal(JSON.stringify(active).includes(cookie.slice(cookie.indexOf("=") + 1)), false);
     const bootstrap = await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie, origin: base } });
     assert.equal(bootstrap.status, 200);
-    FrontendBootstrapWireSchema.parse(await bootstrap.json());
+    assert.equal(FrontendBootstrapWireSchema.parse(await bootstrap.json()).actor.label, "Fixture Operator");
     assert.equal((await fetch(`${base}/api/v1/bootstrap`)).status, 401);
     for (const path of ["/api/v1/bootstrap", "/events", "/artifacts/foreign"]) {
       assert.equal((await fetch(`${base}${path}`, { headers: { cookie: "relay-profile-session=foreign" } })).status, 401);

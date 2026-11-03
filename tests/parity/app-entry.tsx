@@ -15,6 +15,7 @@ const container = document.getElementById("root");
 if (container === null) throw new Error("parity dashboard root missing");
 const client = createDashboardClient({ baseUrl: window.location.origin });
 const fixture = new URLSearchParams(location.search).get("fixture");
+const personAppearance = Reflect.get(window, "relayParityPersonPreferences") === true;
 const controlPreviews = import.meta.glob<{ ControlPreview: ComponentType }>("../support/helpers/dashboard/controls/*-preview.tsx");
 const previewLoader = new Map(Object.entries(controlPreviews)).get(`../support/helpers/dashboard/controls/${fixture}-preview.tsx`);
 const ControlPreview = previewLoader ? lazy(() => previewLoader().then(module => ({ default: module.ControlPreview }))) : undefined;
@@ -29,5 +30,5 @@ const theme: unknown = Reflect.get(window, "relayParityTheme");
 const preferences = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: theme === "light" ? "light" : "dark", animations: Reflect.get(window, "relayParityMotion") !== false });
 const accountPort = createServedChatGptAccountPort(client, { open: () => ({ navigate: () => undefined, close: () => undefined }) });
 createRoot(container).render(<PersonPreferencesContext.Provider value={preferences}>{ControlPreview ? <Suspense fallback={<p role="status">Loading control preview…</p>}><ControlPreview /></Suspense> : <StrictMode><DashboardClientProvider client={client}>
-  <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} profileSource={fixture === "picked-onboarding" ? "served" : "mock"} previewPreferences={preferences} /></ChatGptAccountContext.Provider>
+  <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} profileSource={fixture === "picked-onboarding" || personAppearance ? "served" : "mock"} previewPreferences={personAppearance ? undefined : preferences} /></ChatGptAccountContext.Provider>
 </DashboardClientProvider></StrictMode>}</PersonPreferencesContext.Provider>);

@@ -14,7 +14,7 @@ import { SettingsSectionSkeleton } from "../settings-loading.js";
 import { settingNote,settingPlaceholderCopy,settingTitle } from "../settings-presentation.js";
 import { ChatGptAccountSettings } from "./chatgpt-account.js";
 import type { DeleteAccountPresentation } from "./delete-account-model.js";
-import { HubBrowserWindowSettings,HubPermissionSettings } from "./hub-preferences.js";
+import { HubBrowserWindowSettings } from "./hub-preferences.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
 import { AppDataPaths } from "./settings-storage.js";
 
@@ -109,7 +109,6 @@ export function CompactSettingsSection({ editor, sectionId, appearance }: { edit
     <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and account controls." : "Where Relay saves files on this Mac."} />
     {sectionId === "general" && <ChatGptAccountSettings />}
     {sectionId === "general" && appearance}
-    {sectionId === "general" && <HubPermissionSettings />}
     {sectionId === "general" && <DeleteAccountControl presentation={{ state: "unavailable" }} />}
     {editor.editor.state === "failed" && sectionId !== "paths" && <Banner tone="danger" title="Editable settings could not be read">{editor.editor.message} <Button size="sm" onClick={editor.reload}>Try again</Button></Banner>}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} sectionId={sectionId} />

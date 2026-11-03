@@ -7,11 +7,10 @@ it("shares session-only mock preferences between controls and removes subscripti
   let notices = 0;
   const unsubscribe = port.subscribe(() => { notices++; });
   port.change({ ...port.read(), width: "1920" });
-  port.change({ ...port.read(), permission: "Ask before every action" });
-  assert.deepEqual(port.read(), { permission: "Ask before every action", width: "1920", height: "1000" });
+  assert.deepEqual(port.read(), { width: "1920", height: "1000" });
   assert.equal(port.source, "mock");
-  assert.equal(notices, 2);
+  assert.equal(notices, 1);
   unsubscribe(); port.change({ ...port.read(), height: "1080" });
-  assert.equal(notices, 2);
+  assert.equal(notices, 1);
   assert.equal(createMockHubPreferencesPort().read().width, "1440");
 });
