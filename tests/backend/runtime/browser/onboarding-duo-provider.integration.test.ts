@@ -104,13 +104,13 @@ for (const pendingClose of [false, true]) it(pendingClose
     await portal.goto("https://duo.ucsd.edu/devices");
     await profile.session.openOnboardingPortal(draft.token, draft.operationId); assert.equal(context.pages().length, 2); assert.equal(acquisitions, 1);
     assert.equal(portal.url(), "https://duo.ucsd.edu/devices"); assert.equal(submissions, 1);
-    for (const [method, value] of [["key", "usb"], ["touch", "internal"]] as const) {
-      await setup.locator("#transport").selectOption(value);
+    for (const method of ["key", "touch"] as const) {
+      await setup.getByRole("group", { name: "Sign-in method", exact: true }).getByRole("button", { name: method === "key" ? "Security key" : "Touch ID", exact: true }).click();
       await setup.getByRole("button", { name: "Set up selected method", exact: true }).click();
       await expect(setup.locator("#cancelCapture")).toBeEnabled();
       assert.equal(read().methods[method].state, "pending");
       await setup.getByRole("button", { name: "Cancel capture", exact: true }).click();
-      await expect(setup.locator("#transport")).toBeEnabled();
+      await expect(setup.locator("#transport button").first()).toBeEnabled();
       assert.equal(read().methods[method].state, "idle");
     }
     assert.equal(launches, 1); assert.equal(submissions, 1);
@@ -140,7 +140,7 @@ for (const pendingClose of [false, true]) it(pendingClose
     await expect(context.pages()[0].getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
     if (pendingClose) {
       setup = context.pages()[0];
-      await setup.locator("#transport").selectOption("usb");
+      await setup.getByRole("group", { name: "Sign-in method", exact: true }).getByRole("button", { name: "Security key", exact: true }).click();
       await setup.getByRole("button", { name: "Set up selected method", exact: true }).click();
       await expect(setup.locator("#cancelCapture")).toBeEnabled();
       assert.equal(read().methods.key.state, "pending");
