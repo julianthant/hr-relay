@@ -1,6 +1,6 @@
 import { OcrReviewRevisionSchema, initialOcrReviewRecords, ocrReviewDigest, ocrSnapshotDigest, type OcrReviewRevision } from "../../../models/ocr/review.js";
 import { OcrResultSchema, OcrApprovalReferenceSchema } from "../../../models/workflows/ocr/result.js";
-import { checkpointRecordKey, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import { checkpointLookupKey, checkpointRecordKey, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { RunRecordService } from "./run-record-service.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
@@ -17,7 +17,7 @@ import { childRunOutcomeSchema } from "../../../models/workflow/graph.js";
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { readContinuationGate, validateRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
+import { deriveStableUuid, lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { CanonicalTransitionRequestSchema } from "../../storage/sqlite/run-store-contracts.js";
 import { BUILD_MANIFEST, resolveWorkflowFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
 import type { OperatorGateResultRecord } from "../../../models/workflow/gates.js";
@@ -101,10 +101,16 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
       const checkpoint = repositories.runCheckpoints.listByAttempt(existence.run.envelope.workflow,
         existence.run.envelope.itemId, "read-result", existence.run.envelope.attempt)
         .find(row => checkpointRecordKey(row) === (record.origin.kind === "checkpoint" ? record.origin.key : ""));
+      const publication = checkpoint === undefined ? undefined : repositories.timelineEvents.get(deriveStableUuid("timeline-checkpoint-recorded",
+        checkpointLookupKey(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration)));
       if (checkpoint === undefined || checkpoint.runId !== runId || !same(checkpoint.output.value, record.seed)
         || checkpoint.contractFingerprint !== existence.run.envelope.contractFingerprint
         || checkpoint.descriptorVersion !== existence.run.envelope.descriptorVersion
-        || checkpoint.output.schemaHash !== deriveSchemaHash(OcrResultSchema, "output")
+        || publication?.payload.kind !== "checkpoint-recorded" || publication.workflow !== checkpoint.workflowId
+        || publication.scope.kind !== "run" || publication.scope.runId !== runId || publication.occurredAt !== checkpoint.writtenAt
+        || publication.payload.runId !== runId || publication.payload.workflow !== checkpoint.workflowId
+        || publication.payload.attempt !== checkpoint.attempt || publication.payload.claimGeneration !== checkpoint.claimGeneration
+        || !same(publication.payload.checkpoint, timelineCheckpointReference(checkpoint))
         || record.origin.digest !== sha256Hex(canonicalJsonStringify(checkpoint))
         || !same(record.origin.checkpoint, timelineCheckpointReference(checkpoint)) || record.createdAt !== checkpoint.writtenAt
         || !same(record.records, initialOcrReviewRecords(record.seed))) throw new OcrReviewRefusedError();

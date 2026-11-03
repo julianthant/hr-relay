@@ -170,6 +170,12 @@ Queue and selected-detail subscriptions replace their reads. The `review` sectio
 pages, fields, provenance, issues, current revision and immutable snapshots; `people` remains unavailable.
 Read-only command-result queries reconcile an uncertain correction without replaying it.
 
+Records authenticates the original review checkpoint through its protected native publication and
+the revision's full-checkpoint digest. The publication binds the original schema hash and value
+together; later schema additions do not rewrite that evidence or substitute today's schema hash.
+The retained value must still parse through the current review schema. Workflow replay and snapshot
+release keep their separate current-build and freshness checks.
+
 OCR defaults to review-only completion. Explicit release mode parks on its registered operator
 gate. `resolve-gate` verifies the exact current revision, digest and selected record IDs, freezes
 the snapshot and settles the gate in one authority transaction. Parent completion returns that
@@ -188,6 +194,8 @@ refuse admission. Matching uses that captured snapshot, without SharePoint deleg
 library read. Artifact roster provenance remains valid only inside retained review evidence; new
 canonical OCR inputs accept workbook provenance only. No retained correction, snapshot or digest
 is rewritten.
+Finite nonnegative integer EID cells use the canonical EID coercer; the retained workbook reference
+keeps their original numeric type. Boolean, date, fractional and invalid EID values refuse.
 
 `roster/match-spreadsheet` re-parses the roster through the shared grid edge. It verifies the mapping layout fingerprint and requires EID and full-name bindings. Its errors are `roster-unreadable`, `mapping-mismatch`, `no-eid-column`, and `no-name-column`.
 

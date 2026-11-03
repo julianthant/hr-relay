@@ -21,6 +21,15 @@ function reference() {
 function bound(value = reference()) { return { schemaHash: deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output"), value }; }
 
 describe("OCR captured workbook roster", () => {
+  it("coerces finite numeric Excel EIDs and refuses booleans, dates, negative or malformed identities", () => {
+    const numeric = reference(); numeric.snapshot.rows[0].matches[0].values.eid = 10000001;
+    assert.equal(bindOcrRoster(bound(numeric), readAt).rows[0].eid, "10000001");
+    assert.equal(numeric.snapshot.rows[0].matches[0].values.eid, 10000001);
+    for (const eid of [true, -10000001, 10000001.5, "invalid", { type: "date", value: readAt }]) {
+      const invalid = reference(); Reflect.set(invalid.snapshot.rows[0].matches[0].values, "eid", eid);
+      assert.throws(() => bindOcrRoster(bound(invalid), readAt));
+    }
+  });
   it("retains the exact version, duplicate identities and missing values without rereading the library", () => {
     const captured = reference(), roster = bindOcrRoster(bound(captured), readAt);
     assert.equal(roster.workbookVersion, 4);

@@ -22,12 +22,14 @@ import { boundProfileAdmission } from "../synthetic-database-admission.js";
 import type { z } from "zod";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
+import { retainedOcrModule, retainedOcrStore, retainedOcrCheckpointPublication } from "../../fixtures/ocr/retained-review-producer.js";
+import { ocrWorkflowStore } from "../../../../src/workflows/ocr/task-registry.js";
 
 export function createOcrReviewWorld() {
   const world = createRunExecutorTestWorld();
   return {
     cleanup: world.cleanup,
-    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number }> = {}) {
+    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; retainedProducer?: boolean }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       const rendered: { value?: z.output<typeof ExtractPdfPagesOutputSchema> } = {};
       const render = defineTask(ExtractPdfPages, { sessions: [], async run({ ctx }) {
@@ -38,12 +40,12 @@ export function createOcrReviewWorld() {
         ]);
         return rendered.value;
       } });
-      const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction"),
-        defineServiceStore("extraction", { render })];
+      const root = options.retainedProducer === true ? retainedOcrModule : ocrModule;
+      const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction" && store.namespace !== "workflow:ocr"),
+        defineServiceStore("extraction", { render }), options.retainedProducer === true ? retainedOcrStore : ocrWorkflowStore];
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
         tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
-      const root = ocrModule;
       const harness = await world.executorHarness({ descriptor: root.descriptor, stores });
       const { database, path, clock } = harness.authority;
       const workbooks = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
@@ -57,8 +59,10 @@ export function createOcrReviewWorld() {
       const admission = boundProfileAdmission(path);
       const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
       const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
-      const resolve = (id: string) => (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
-      const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve, createOcrCheckpointPublication);
+      const resolve = (id: string) => id === "ocr" ? root.descriptor
+        : (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
+      const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve,
+        options.retainedProducer === true ? retainedOcrCheckpointPublication : createOcrCheckpointPublication);
       const sources = createOcrSourceService({ database, reader: canonical.lifecycle, clock, artifacts, artifactReader,
         assertCurrent: () => admission.assertProfileRuntime() });
       const upload = await sources.upload({ actorId: "local-operator", fileName: "source.pdf", mediaType: "application/pdf",
@@ -79,7 +83,7 @@ export function createOcrReviewWorld() {
       const run = canonical.start(root.descriptor, OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
         formType: "emergency-contact", roster: null, approval: options.release === true ? "release" : "review-only",
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } }), { dryRun: false,
-          workbooks, workbookReferences: [{ entry: 1, mode: "all", typeId: "ocr-roster", libraryId: roster.libraryId, expectedVersion: 2, fields: ["eid", "fullName"] }] });
+          ...(options.retainedProducer === true ? {} : { workbooks, workbookReferences: [{ entry: 1, mode: "all", typeId: "ocr-roster", libraryId: roster.libraryId, expectedVersion: 2, fields: ["eid", "fullName"] }] }) });
       const result = await canonical.execute(run, new AbortController().signal);
       if (actorId === "local-operator") {
         const failures = result.outcomes.filter(outcome => outcome.state === "failed").map(outcome => {

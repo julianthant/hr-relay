@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { RunWorkbookAllRowsReferenceSchema, WorkbookIdSchema, WorkbookRevisionSchema } from "../../dashboard/workbooks.js";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
-import { FingerprintSchema, IsoInstantSchema } from "../../../rules/identity/ids.js";
+import { FingerprintSchema, IsoInstantSchema, WorkflowIdSchema, IntakeTargetFieldIdSchema } from "../../../rules/identity/ids.js";
 import { RosterRowFactsSchema } from "../../../rules/matching/roster-match.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -10,7 +10,7 @@ import { deriveSchemaHash, schemaBoundValueSchema, type SchemaBoundCanonicalValu
 export const OCR_ROSTER_TYPE_ID = "ocr-roster";
 export const OCR_ROSTER_FIELDS = ["eid", "fullName"] as const;
 
-function rosterRows(reference: z.output<typeof RunWorkbookAllRowsReferenceSchema>) {
+function rosterRows(reference: z.output<typeof RunWorkbookAllRowsReferenceSchema>, readAt: string) {
   const { request, snapshot } = reference;
   if (request.typeId !== OCR_ROSTER_TYPE_ID || snapshot.type.keyFieldId !== "eid"
     || request.fields.length !== OCR_ROSTER_FIELDS.length
@@ -25,8 +25,13 @@ function rosterRows(reference: z.output<typeof RunWorkbookAllRowsReferenceSchema
     if (seen.has(identity)) throw new Error("ocr-roster-membership-invalid");
     seen.add(identity);
     const eid = match.values.eid, name = match.values.fullName;
+    if (eid !== null && typeof eid !== "string" && !(typeof eid === "number" && Number.isSafeInteger(eid) && eid >= 0)) {
+      throw new Error("ocr-roster-identity-invalid");
+    }
     return OcrRosterRowSchema.parse({ sourceRow: index + 1, sheetId: match.sheetId, rowId: match.rowId,
-      eid: eid === null || eid === "" ? null : CANONICAL_FIELDS.eid.schema.parse(eid),
+      eid: eid === null || eid === "" ? null : CANONICAL_FIELDS.eid.coerce(String(eid), {
+        workflow: WorkflowIdSchema.parse("ocr"), readAt, sourceRow: index + 1, header: "eid", targetFieldId: IntakeTargetFieldIdSchema.parse("employee.employeeId"),
+      }),
       name: name === null || name === "" ? null : CANONICAL_FIELDS.fullName.schema.parse(name) });
   });
 }
@@ -46,5 +51,5 @@ export function bindOcrRoster(bound: SchemaBoundCanonicalValue, readAt: string) 
   const reference = schemaBoundValueSchema(RunWorkbookAllRowsReferenceSchema, deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output")).parse(bound).value;
   return OcrWorkbookRosterEvidenceSchema.parse({ workbookType: reference.snapshot.type.id, workbookId: reference.snapshot.libraryId,
     workbookVersion: reference.snapshot.version, referenceDigest: sha256Hex(canonicalJsonStringify(bound)),
-    readAt, rows: rosterRows(reference) });
+    readAt, rows: rosterRows(reference, readAt) });
 }
