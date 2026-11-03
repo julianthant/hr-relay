@@ -114,6 +114,7 @@ export interface WorkerSessionManagerOptions {
   // Require the per-credential ceremony gate for every acquired login context.
   readonly duoCeremony: DuoCeremonyGateFactory;
   readonly onEvent?: (event: WorkerSessionEvent) => void;
+  readonly onFailure?: (failure: { system: BrowserSystemId; reason: "abandoned-acquisition-failed" | "abandoned-session-close-failed"; sessionId?: string }) => void;
   readonly onActivity?: (activity: "acquiring" | "authenticating" | "closing") => () => void;
   readonly onObservation?: (observation: Omit<WorkerBrowserObservation, "leaseGeneration">) => void;
   /** Production persistence seam for explicit per-run browser screenshots. */
@@ -364,6 +365,7 @@ export class WorkerSessionManager {
   readonly #browserScreenshotCapture: RunBrowserScreenshotCapture | undefined;
   readonly #onActivity: WorkerSessionManagerOptions["onActivity"];
   readonly #onObservation: WorkerSessionManagerOptions["onObservation"];
+  readonly #onFailure: WorkerSessionManagerOptions["onFailure"];
   readonly #resetOwner: Pick<WorkerResetBinding, "member" | "lifetime"> | undefined;
   #resetEpoch = 0;
   readonly #observedSessions = new Set<string>();
@@ -388,6 +390,7 @@ export class WorkerSessionManager {
     this.#executionWorkflowId = WorkflowIdSchema.parse(options.workflowId);
     this.#stores = options.stores;
     this.#onObservation = options.onObservation;
+    this.#onFailure = options.onFailure;
     this.#onActivity = options.onActivity;
     this.#factory = options.factory;
     this.#defaultBrowserMode = BrowserPresentationModeSchema.parse(options.defaultBrowserMode ?? "headless");
@@ -869,6 +872,7 @@ export class WorkerSessionManager {
     } catch (error) {
       // A failed abandoned acquisition already owns cleanup; preserve poison state when that cleanup cannot prove closure.
       observeAbandonedAcquisition(error);
+      this.#onFailure?.({ system, reason: "abandoned-acquisition-failed" });
       return;
     }
     if (this.#resources.get(system) !== resource) return;
@@ -881,6 +885,7 @@ export class WorkerSessionManager {
     } catch (error) {
       // Mark poison before closing and clear it only after proven closure; later leases must refuse uncertain ownership.
       observeAbandonedAcquisition(error);
+      this.#onFailure?.({ system, reason: "abandoned-session-close-failed", sessionId: resource.sessionId });
     }
   }
 

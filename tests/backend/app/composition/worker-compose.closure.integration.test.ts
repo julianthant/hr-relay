@@ -15,6 +15,7 @@ import { composeSelectedProfileStorage, RuntimeCustodyUncertainError } from "../
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import * as accounts from "../../../../src/backend/accounts/chatgpt-account-service.js";
 import * as workerLoop from "../../../../src/backend/runtime/workers/worker-loop.js";
+import * as debugEvents from "../../../../src/backend/logs/debug-events.js";
 import { WorkerSessionClosureUnprovedError, WorkerSessionManager } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 
 import * as credentialStores from "../../../../src/backend/storage/configuration/credential-store.js";
@@ -31,9 +32,12 @@ import { happySessionHarness, ManualScheduler, personLookupQueuedRun } from "../
 
 const retainedLaunchCustody: object[] = [];
 
-for (const failure of ["close", "launch"] as const) it(failure === "close"
-  ? "retains an unproved closure report while settling the worker lease as crashed"
-  : "reports launch-uncertain with custody held and leaves the worker lease unchanged", async () => {
+for (const { mode: failure, name } of [
+  { mode: "close", name: "retains an unproved closure report while settling the worker lease as crashed" },
+  { mode: "close-log", name: "retains unproved closure when its diagnostic fails and the next diagnostic succeeds" },
+  { mode: "runtime-log", name: "retains the original session closure failure when runtime diagnostics fail" },
+  { mode: "launch", name: "reports launch-uncertain with custody held and leaves the worker lease unchanged" },
+] as const) it(name, async () => {
   const f = await createBoundProfileFixture(), clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
   copyFileSync("package.json", join(f.workspace, "package.json"));
   const context = composeSelectedProfileStorage({ machineAdmission: f.machine, admission: f.admission,
@@ -49,14 +53,33 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
   const registryPath = join(machineRoot, "machine", "browser-roots.json");
   let custodyOraclesProved = false, primary: unknown;
   const run = workerLoop.runWorkerLoop;
+  const loggingFailure = new Error("injected-diagnostic-failure");
+  const runtimeFailure = new WorkerSessionClosureUnprovedError("closure-worker", [new Error("injected-session-failure")]);
+  let failedWorkerId: string | undefined, injectedLoggingFailures = 0;
+  const createWriter = debugEvents.createDebugEventWriter;
+  if (failure === "close-log" || failure === "runtime-log") vi.spyOn(debugEvents, "createDebugEventWriter").mockImplementation(options => {
+    const writer = createWriter(options);
+    return { emit(...args: Parameters<typeof writer.emit>) {
+      const input = args[0];
+      const code = failure === "close-log" ? "WORKER_SESSION_CLOSURE_UNPROVED" : "WORKER_RUNTIME_FAILED";
+      if (typeof input === "object" && input !== null && "code" in input && input.code === code && injectedLoggingFailures === 0) {
+        injectedLoggingFailures++;
+        throw loggingFailure;
+      }
+      return writer.emit(...args);
+    } };
+  });
   const store = credentialStores.createCredentialStore;
-  vi.spyOn(workerLoop, "runWorkerLoop").mockImplementation(async input => { report = await run(input); return report; });
+  vi.spyOn(workerLoop, "runWorkerLoop").mockImplementation(async input => {
+    if (failure === "runtime-log") { failedWorkerId = input.workerId; throw runtimeFailure; }
+    report = await run(input); return report;
+  });
   vi.spyOn(credentialStores, "createCredentialStore").mockImplementation(input => { issued = input.admission; return store(input); });
-  if (failure === "close") vi.spyOn(WorkerSessionManager.prototype, "closeAll").mockImplementation(async function (this: WorkerSessionManager) {
+  if (failure === "close" || failure === "close-log") vi.spyOn(WorkerSessionManager.prototype, "closeAll").mockImplementation(async function (this: WorkerSessionManager) {
     managers.push(this);
     throw new WorkerSessionClosureUnprovedError("closure-worker", [new Error("fixture cleanup failed")]);
   });
-  else {
+  else if (failure === "launch") {
     const patch = { "features.duoWebAuthn": { set: false } };
     const applied = executeSettingsCommand({ authority: context.database, clock, ids: { uuid: randomUUID },
       settings: createSettingsApplicationExecutor(context.resolveSettings, context.credentials) }, {
@@ -87,16 +110,27 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
       args: ["person-lookup", "--pool-index", "1", "--drain"], clock, env: {},
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       duoCeremony: duoCeremonyGatesOver(context.database, clock, new ManualScheduler(clock)),
-      ...(failure === "close" ? { sessionFactory: happySessionHarness().factory } : {}),
+      ...(failure !== "launch" ? { sessionFactory: happySessionHarness().factory } : {}),
       stopSignal: new AbortController().signal, write: () => undefined,
       closeDatabase: database => { database.close(); closedWorkerDatabase = database; } }), error => {
       assert.ok(error instanceof RuntimeCustodyUncertainError);
+      if (failure === "runtime-log") {
+        const contains = (value: unknown, target: unknown): boolean => value === target
+          || value instanceof AggregateError && value.errors.some(member => contains(member, target));
+        assert.equal(contains(error, runtimeFailure), true);
+        assert.equal(contains(error, loggingFailure), true);
+      }
       if (failure === "launch") { assert.ok(error instanceof WorkerLaunchUncertainError); launchReport = error; }
       return true;
     });
-    if (failure === "close") {
+    if (failure === "close" || failure === "close-log") {
       assert.ok(report); assert.equal(report.closure, "unproved"); assert.deepEqual(report.outcomes, []);
       const lease = context.database.authority.workerLeases.get(report.workerId);
+      assert.ok(lease?.lifecycle.state === "stopped"); assert.equal(lease.lifecycle.reason, "crashed");
+    }
+    else if (failure === "runtime-log") {
+      assert.equal(report, undefined); assert.ok(failedWorkerId);
+      const lease = context.database.authority.workerLeases.get(failedWorkerId);
       assert.ok(lease?.lifecycle.state === "stopped"); assert.equal(lease.lifecycle.reason, "crashed");
     }
     else {
@@ -124,6 +158,7 @@ for (const failure of ["close", "launch"] as const) it(failure === "close"
       assert.ok(contained.length > 0 && !contained.startsWith("..") && !isAbsolute(contained));
       assert.ok(launchFailure); await assert.rejects(launchFailure);
     }
+    if (failure === "close-log" || failure === "runtime-log") assert.equal(injectedLoggingFailures, 1);
     assert.ok(issued); issued.assertLive(); lifetimeLock.assertHeld();
     assert.ok(closedWorkerDatabase);
     const closed = closedWorkerDatabase;
