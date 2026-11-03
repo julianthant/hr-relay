@@ -17,7 +17,7 @@
     "build:registries": "tsx scripts/build/generate-workflow-registries.ts",
     "build:registries:check": "tsx scripts/build/generate-workflow-registries.ts --check",
     "build:manifest": "npm run build:registries && tsx scripts/build/generate-workflow-manifest.ts",
-    "build:manifest:check": "tsx scripts/build/generate-workflow-manifest.ts --check",
+    "build:manifest:check": "npm run build:registries:check && tsx scripts/build/generate-workflow-manifest.ts --check",
     "stores:catalog": "tsx scripts/docs/generate-store-catalog.ts",
     "stores:catalog:check": "tsx scripts/docs/generate-store-catalog.ts --check",
     "roadmap": "tsx scripts/docs/roadmap.ts",

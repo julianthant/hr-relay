@@ -28,8 +28,9 @@ dependency installation.
 
 Automatic preparation runs only `build:manifest:prepare`; it never regenerates the four tracked
 workflow registries. Explicit `build:manifest` retains registry generation before manifest
-preparation. `build:registries:check` and `build:manifest:check` are separate read-only checks with
-no preparation hooks. Missing, stale, corrupt or reformatted check inputs fail without repair.
+preparation. `build:registries:check` is read-only; `build:manifest:check` runs that registry check
+before checking manifest bytes. Neither has a preparation hook. Missing, stale, corrupt or
+reformatted check inputs fail without repair.
 Raw source commands that bypass these entry points require explicit `build:manifest:prepare`
 first; `stores:catalog:check` also imports the runtime graph and needs that prepared prerequisite.
 Checks never supply it themselves. The merge train regenerates tracked registries, the store catalog

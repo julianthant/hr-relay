@@ -147,7 +147,7 @@ it("pins package prehooks and consuming CI checkout preparation without autoheal
     assert.equal(pkg.scripts[`pre${name}`], "npm run build:manifest:prepare");
   }
   assert.equal(pkg.scripts["build:manifest:prepare"], "tsx scripts/build/generate-workflow-manifest.ts");
-  assert.equal(pkg.scripts["build:manifest:check"], "tsx scripts/build/generate-workflow-manifest.ts --check");
+  assert.equal(pkg.scripts["build:manifest:check"], "npm run build:registries:check && tsx scripts/build/generate-workflow-manifest.ts --check");
   for (const name of ["build:manifest:check", "build:registries:check", "stores:catalog:check"]) assert.equal(pkg.scripts[`pre${name}`], undefined);
   const ci = readFileSync(join(REPO_ROOT, ".github/workflows/ci-checks.yml"), "utf8");
   for (const name of ["static", "ubuntu", "macos", "release"]) {
@@ -155,7 +155,7 @@ it("pins package prehooks and consuming CI checkout preparation without autoheal
     assert.ok(job, name);
     assert.match(job, /- run: npm ci\n {6}- run: npm run build:manifest:prepare/u);
   }
-  assert.match(ci, /npm run build:registries:check/u);
+  assert.match(ci, /npm run build:manifest:check/u);
 });
 
 it("prepares the cold train catalog consumer after registry generation while its check stays read-only", () => {

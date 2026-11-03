@@ -30,8 +30,8 @@ This map names the current source, test, and documentation owners. Relay runs lo
 and `src/backend/app/registries/generated-{workflow-modules,workflow-stores,step-proof-modules}.ts`.
 `npm run build:manifest` runs that generator, then prepares the ignored
 `src/workflow-kit/validation/generated-build-manifest.ts`. `build:manifest:prepare` prepares only
-the manifest; source-tool configs and package prehooks call it before graph loading. Registry and
-manifest checks are independent and read-only. [Guards and tests](guards-and-tests.md#build-manifest-preparation)
+the manifest; source-tool configs and package prehooks call it before graph loading. Read-only
+`build:manifest:check` checks registry freshness before manifest bytes. [Guards and tests](guards-and-tests.md#build-manifest-preparation)
 owns preparation boundaries, watcher restart requirements and the future packaging contract.
 `npm run stores:catalog` generates the catalog section in `docs/rebuild/reference/stores.md`.
 `npm run roadmap` generates the roadmap site. Each command has a corresponding `:check` command.

@@ -65,7 +65,7 @@ npm run web:build         # production bundle into dist/dashboard
 npm run build:manifest     # regenerate tracked registries and prepare the ignored manifest
 npm run build:manifest:prepare # prepare only the ignored manifest
 npm run build:registries:check # read-only tracked registry freshness
-npm run build:manifest:check # read-only manifest byte freshness
+npm run build:manifest:check # read-only registry freshness, then manifest byte freshness
 npm run stores:catalog     # regenerate the generated §2 task catalog in docs/rebuild/reference/stores.md
 npm run stores:catalog:check # fail if the committed catalog is stale
 ```
