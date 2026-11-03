@@ -854,7 +854,7 @@ const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }
   { path: "revision.seed.identities[].outcome.output.activeStatus.details.startDate", origin: "captured-hr-value" },
   { path: "revision.seed.identities[].outcome.output.activeStatus.details.terminationReason", origin: "captured-hr-value" },
   { path: "revision.seed.identities[].outcome.output.activeStatus.reason", origin: "captured-hr-value" },
-  { path: "revision.seed.identities[].outcome.output.crmDates.dates.reason", origin: "repository-authored" },
+  { path: "revision.seed.identities[].outcome.output.crmDates.dates.reason", origin: "captured-hr-value" },
   { path: "revision.seed.identities[].outcome.reason", origin: "external-text" },
   { path: "revision.seed.review.accounting.outcomes[].output.extraction.record.answers[].raw", origin: "captured-hr-value" },
   { path: "revision.seed.review.accounting.outcomes[].output.extraction.record.answers[].reason", origin: "captured-hr-value" },
