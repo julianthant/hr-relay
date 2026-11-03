@@ -159,7 +159,22 @@ use `/dev/shm`, and each run uses at most two Vitest workers.
 
 Output streams and is saved with a final `result.json` under the main checkout's ignored
 `.work/test-pc/<run-id>/`. The printed result path records selected files, slot, exit code and
-elapsed time. The command exits with the remote test result and also works in the background:
+elapsed time. The command exits with the remote test result.
+
+The receipt also contains its `runId`, `timings` and `timingErrors`. Each timing records `phase`,
+`startedAt` (UTC), `durationMs` and `outcome` (`completed`, `failed` or `skipped`). Local phases are
+`listing`, `admission` (waiting for the slot marker), `source-sync` and `request-sync`. Remote phases
+are `install` (npm plus Chromium installation, or a cache hit), `build`, `test`, `cleanup` (tmpfs)
+and `lease-release`. Skipped builds and cached installs are explicit; phases never reached after a
+failure are absent. All durations use Node's monotonic clock, including the shell's install/release
+timers. Compare durations rather than subtracting clocks across machines.
+
+Remote timing lines carry the invocation UUID and are validated before collection. Malformed or
+foreign timing events are reported on stderr and retained in `timingErrors`; they do not replace
+the command's exit code. A receipt with timing errors cannot establish complete phase measurements.
+Source membership, private exclusions, index binding, lease/completion rules and deadlines are unchanged.
+
+To run in the background:
 
 ```sh
 npm run test:pc -- tests/scripts/test/pc.test.ts > /tmp/relay-test-pc.log 2>&1 &
