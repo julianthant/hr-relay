@@ -3,6 +3,8 @@ import { compileWorkflow, composeWorkflowModule } from "../../../workflow-kit/wo
 import { taskStoreRegistry } from "./task-registry.js";
 import { registration as i9CheckModuleRegistration } from "../../../workflows/i9-check/index.js";
 import { registration as i9LookupModuleRegistration } from "../../../workflows/i9-lookup/index.js";
+import { registration as ocrModuleRegistration } from "../../../workflows/ocr/index.js";
+import { registration as ocrPageModuleRegistration } from "../../../workflows/ocr-page/index.js";
 import { registration as onbaseModuleRegistration } from "../../../workflows/onbase/index.js";
 import { registration as onboardingModuleRegistration } from "../../../workflows/onboarding/index.js";
 import { registration as personLookupModuleRegistration } from "../../../workflows/person-lookup/index.js";
@@ -27,6 +29,8 @@ export const onboardingCrmDataModule = composeWorkflowModule(compileWorkflow(onb
 export const onboardingUcpathSearchModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[1].definition), taskStoreRegistry.stores);
 export const onboardingI9SearchModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[2].definition), taskStoreRegistry.stores);
 export const onboardingI9ProfileCreationModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[3].definition), taskStoreRegistry.stores);
+export const ocrSourcePagesModule = composeWorkflowModule(compileWorkflow(ocrModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
+export const ocrPageReadingModule = composeWorkflowModule(compileWorkflow(ocrPageModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
 
 export const STEP_PROOF_MODULES = Object.freeze([
   separationsKronosTimecardModule,
@@ -48,4 +52,6 @@ export const STEP_PROOF_MODULES = Object.freeze([
   onboardingUcpathSearchModule,
   onboardingI9SearchModule,
   onboardingI9ProfileCreationModule,
+  ocrSourcePagesModule,
+  ocrPageReadingModule,
 ] as const);

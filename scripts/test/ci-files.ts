@@ -52,8 +52,9 @@ export const SERIAL_FILES: readonly string[] = [
   "tests/backend/runtime/workers/worker-supervisor.integration.test.ts",
 ];
 
-// The padded-receipt upgrade exceeds its budget beside other storage fixtures.
+// Upgrade backup and native-closure proofs run without competing storage files.
 export const SERIAL_STORAGE_FILES: readonly string[] = [
+  "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",
   "tests/backend/storage/maintenance/upgrade.machine-control-disposition.integration.test.ts",
 ];
 

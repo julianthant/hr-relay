@@ -14,6 +14,7 @@ export function ocrProofReadDatabase(database: AuthorityDatabase, repositories: 
   return new Proxy(database, { get(target, key) {
     if (key === "authority") return repositories;
     if (key === "withAuthorityReadSnapshot") return target.withAuthorityReadSnapshot.bind(target);
+    if (key === "withAuthorityTransaction") return target.withAuthorityTransaction.bind(target);
     const value: unknown = Reflect.get(target, key, target);
     return value;
   } });
