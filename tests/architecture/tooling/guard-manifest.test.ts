@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync,globSync,mkdirSync,readFileSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname,join,relative } from "node:path";
+import ts from "typescript";
 import { describe,it } from "vitest";
 import inventory from "../../../docs/rebuild/guard-inventory.json" with { type: "json" };
 import { projectOwnershipViolations } from "../../../scripts/test/project-policy.js";
@@ -26,11 +27,12 @@ REBUILD_UNIT_TEST_INCLUDE,
 import { REPO_ROOT,walkFiles } from "../support/helpers/guard-files.js";
 import {
 auditFailLoudCatchDefaults,
+auditReviewedCatchDefaults,
 auditRebuildRatchetArm,
 rebuildRatchetFixture,
 REQUIRED_REBUILD_RATCHET_NAMES,
 } from "./helpers/ratchet-arms.js";
-import { REVIEWED_CATCH_DEFAULTS } from "./helpers/reviewed-catch-defaults.js";
+import { REVIEWED_CATCH_DEFAULTS, type ReviewedCatchDefault } from "./helpers/reviewed-catch-defaults.js";
 
 const ARCHITECTURE_ROOT = join(REPO_ROOT, inventory.architectureRoot);
 const packageJson = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf8")) as {
@@ -508,29 +510,109 @@ describe("reviewed architecture guard manifest", () => {
     assert.throws(() => spreadsheetValueMatches("unregistered-field", "value"), /SPREADSHEET_FIELD_NOT_FOUND/u);
   });
 
-  it("pins reviewed catch behavior and rejects any changed source with the original scanner",()=>{
-    const root=join(tmpdir(),`hrauto-reviewed-catches-${process.pid}-${Date.now()}`);
+  it("pins reviewed catch statements while permitting edits outside them", () => {
+    const root = join(tmpdir(), `hrauto-reviewed-catches-${process.pid}-${Date.now()}`);
+    const pinnedStatements = (entry: ReviewedCatchDefault, source: string): readonly ts.Node[] => {
+      const ast = ts.createSourceFile(entry.path, source, ts.ScriptTarget.Latest, true);
+      const statements: ts.Node[] = [];
+      const visit = (node: ts.Node): void => {
+        if (ts.isTryStatement(node) || ts.isCallExpression(node)) {
+          const sha256 = createHash("sha256").update(source.slice(node.getStart(ast), node.end)).digest("hex");
+          if (entry.statements.some(pin => pin.sha256 === sha256)) statements.push(node);
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(ast);
+      return statements;
+    };
     try {
-      for(const entry of REVIEWED_CATCH_DEFAULTS) {
-        const source=readFileSync(join(REPO_ROOT,entry.path),"utf8");
-        assert.equal(createHash("sha256").update(source).digest("hex"),entry.sha256);
-        assert.ok(auditFailLoudCatchDefaults(entry.path,source).length>0);
-        const target=join(root,entry.path);mkdirSync(dirname(target),{recursive:true});writeFileSync(target,source);
+      for (const entry of REVIEWED_CATCH_DEFAULTS) {
+        const source = readFileSync(join(REPO_ROOT, entry.path), "utf8");
+        assert.ok(auditFailLoudCatchDefaults(entry.path, source).length > 0);
+        const statements = pinnedStatements(entry, source);
+        assert.equal(statements.length, entry.statements.reduce((sum, pin) => sum + pin.occurrences, 0));
+        assert.ok(statements.length > 0);
+        writeFixture(root, entry.path, source);
       }
-      assert.deepEqual(auditRebuildRatchetArm("fail-loud-catch-default",root).violations,[]);
-      for(const entry of REVIEWED_CATCH_DEFAULTS) {
-        const target=join(root,entry.path),source=readFileSync(target,"utf8");
-        writeFileSync(target,source+"\ntry { broken(); } catch { return []; }\n");
-        const violations=auditRebuildRatchetArm("fail-loud-catch-default",root).violations;
-        assert.ok(violations.some(value=>value.includes("catch returns a bare default")));
-        assert.ok(violations.some(value=>value.includes("re-review required")));
-        writeFileSync(target,source + "\n// source-byte control\n");
-        const changedBytes = auditRebuildRatchetArm("fail-loud-catch-default",root).violations;
-        assert.ok(changedBytes.some(value=>value.includes(entry.path) && value.includes("re-review required")));
-        assert.ok(changedBytes.some(value=>value.includes(entry.path) && value.includes("bare default")));
-        writeFileSync(target,source);
+      assert.deepEqual(auditRebuildRatchetArm("fail-loud-catch-default", root).violations, []);
+      for (const entry of REVIEWED_CATCH_DEFAULTS) {
+        const target = join(root, entry.path), source = readFileSync(target, "utf8");
+        writeFileSync(target, source + "\ntry { broken(); } catch { return []; }\n");
+        const violations = auditRebuildRatchetArm("fail-loud-catch-default", root).violations;
+        assert.ok(violations.some(value => value.includes("catch returns a bare default")));
+        assert.ok(violations.some(value => value.includes("re-review required")));
+        writeFileSync(target, source + "\n// outside source-byte control\nconst outsideReviewedStatement = 1;\n");
+        assert.deepEqual(auditRebuildRatchetArm("fail-loud-catch-default", root).violations, []);
+        const statement = pinnedStatements(entry, source)[0];
+        assert.ok(statement);
+        const inside = statement.end - 1;
+        writeFileSync(target, source.slice(0, inside) + "/* inside source-byte control */" + source.slice(inside));
+        const changedBytes = auditRebuildRatchetArm("fail-loud-catch-default", root).violations;
+        assert.ok(changedBytes.some(value => value.includes(entry.path) && value.includes("re-review required")));
+        assert.ok(changedBytes.some(value => value.includes(entry.path) && value.includes("bare default")));
+        writeFileSync(target, source);
+        assert.deepEqual(auditRebuildRatchetArm("fail-loud-catch-default", root).violations, []);
       }
-    } finally {rmSync(root,{recursive:true,force:true});}
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("requires exact finding-bearing statement multisets and retains each finding", () => {
+    const path = "fixture.ts";
+    const guarded = "try { work(); } catch { return []; } finally { cleanup(); }";
+    const promise = "request().catch(() => { audit(); return {}; })";
+    const pin = (source: string, kind: "try" | "promise", occurrences = 1) => ({
+      kind, sha256: createHash("sha256").update(source).digest("hex"), occurrences,
+    });
+    const reviewed = (statements: ReviewedCatchDefault["statements"]): ReviewedCatchDefault => ({
+      path, reason: "Fixture review", statements,
+    });
+    const assertRejected = (source: string, entry: ReviewedCatchDefault): void => {
+      const violations = auditReviewedCatchDefaults(path, source, entry);
+      assert.ok(violations.some(value => value.includes("re-review required")), source);
+      for (const finding of auditFailLoudCatchDefaults(path, source)) assert.ok(violations.includes(finding));
+    };
+    const tryReview = reviewed([pin(guarded, "try")]);
+    assert.deepEqual(auditReviewedCatchDefaults(path, guarded, tryReview), []);
+    for (const changed of [
+      guarded.replace("work()", "differentWork()"),
+      guarded.replace("return []", "audit(); return []"),
+      guarded.replace("cleanup()", "differentCleanup()"),
+      guarded.replace("work();", "work(); /* byte control */"),
+    ]) assertRejected(changed, tryReview);
+    const promiseReview = reviewed([pin(promise, "promise")]);
+    assert.deepEqual(auditReviewedCatchDefaults(path, promise, promiseReview), []);
+    for (const changed of [promise.replace("request()", "otherRequest()"), promise.replace("audit()", "otherAudit()")]) {
+      assertRejected(changed, promiseReview);
+    }
+    assert.deepEqual(auditReviewedCatchDefaults(path, `// outside\nconst extra = 1;\n${guarded}`, tryReview), []);
+    assertRejected(`${guarded}\ntry { other(); } catch { return false; }`, tryReview);
+    assertRejected("", tryReview);
+    assertRejected(guarded, reviewed([]));
+    assertRejected(guarded, reviewed([pin(guarded, "try", 0)]));
+    assertRejected(guarded, reviewed([pin(guarded, "try", -1)]));
+    assertRejected(guarded, reviewed([pin(guarded, "try", 1.5)]));
+    assertRejected(guarded, reviewed([pin(guarded, "promise")]));
+    assertRejected(guarded, reviewed([pin(guarded, "try"), pin(guarded, "try")]));
+    assertRejected(`${guarded}\n${guarded}`, tryReview);
+    assertRejected(guarded, reviewed([pin(guarded, "try", 2)]));
+    assert.deepEqual(auditReviewedCatchDefaults(path, `${promise};\n${promise};`, reviewed([pin(promise, "promise", 2)])), []);
+    assertRejected(`${promise};\n${promise};\n${promise};`, reviewed([pin(promise, "promise", 2)]));
+    const safe = "try { work(); } catch (error) { throw error; }";
+    assertRejected(`${guarded}\n${safe}`, reviewed([pin(guarded, "try"), pin(safe, "try")]));
+    assertRejected(safe, reviewed([pin(safe, "try")]));
+    const multiple = "try { work(); } catch { const fallback = null; recovered = false; return []; }";
+    const multipleFindings = auditFailLoudCatchDefaults(path, multiple);
+    assert.deepEqual(multipleFindings, [
+      `${path}: catch initializes a bare default`, `${path}: catch assigns a bare default`, `${path}: catch returns a bare default`,
+    ]);
+    assert.deepEqual(auditReviewedCatchDefaults(path, multiple, reviewed([pin(multiple, "try")])), []);
+    assertRejected(multiple, reviewed([pin(multiple, "try", 3)]));
+    const inner = "try { nested(); } catch { return []; }";
+    const outer = `try { work(); } catch { ${inner} return false; }`;
+    assert.equal(auditFailLoudCatchDefaults(path, outer).length, 2);
+    assert.deepEqual(auditReviewedCatchDefaults(path, outer, reviewed([pin(outer, "try"), pin(inner, "try")])), []);
+    assertRejected(outer, reviewed([pin(outer, "try")]));
+    assertRejected(outer, reviewed([pin(inner, "try")]));
   });
 
   it("distinguishes erased type dependencies from runtime cycles without relaxing layering",()=>{
