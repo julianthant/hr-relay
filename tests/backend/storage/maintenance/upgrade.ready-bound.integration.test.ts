@@ -1,6 +1,6 @@
 import { removeSchema16PersonPreferences, prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
 import { donePage, sourceFixture } from "../../../support/fixtures/ocr/source-pages.js";
@@ -37,7 +37,11 @@ import { InstanceSelectionSchema } from "../../../../src/models/run/envelope.js"
 import { SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { FingerprintSchema,IsoInstantSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { RunWorkbookReferenceSchema } from "../../../../src/models/dashboard/workbooks.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../../../src/models/run/start-plan.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { QUEUED_RUN, START_PLAN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { boundProfileCredentials,createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { update as artifactUpdate } from "../../../support/helpers/database-foundation/fixtures.js";
 import { storageTree } from "../../../support/helpers/integration/storage-recovery-fixture.js";
@@ -46,9 +50,16 @@ import { runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-rec
 import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/sqlite/recovery-contracts.js";
 
 const hostFacts = { primaryDisplay: null };
+const workbookReferenceValue = RunWorkbookReferenceSchema.parse({
+  request: { typeId: "upgrade-roster", libraryId: "upgrade-workbook", keys: ["retained-key"], fields: ["eid"] },
+  snapshot: { libraryId: "upgrade-workbook", version: 1, worksheets: [{ sheetId: "people", name: "People" }],
+    type: { id: "upgrade-roster", name: "Roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: null },
+    rows: [{ key: "retained-key", state: "matched", matches: [{ sheetId: "people", rowId: "person", values: { eid: "retained-key" } }] }] },
+});
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 = 8, extractionEvidence = false) {
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 = 8, extractionEvidence = false,
+  workbookEvidence?: { owner: "run" | "terminal-run" | "plan" | "consumed-plan"; schemaHash: string }) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -88,9 +99,13 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
       const run = requireLifecycleApplied(service.create({ commandId: randomUUID(), code: "pl", matchKey: "ready-upgrade-custody",
         workflow: "person-lookup", descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
         configSnapshotId: snapshot.configSnapshotId, configFingerprint: snapshot.fingerprint,
-        resolvedInstance, input: QUEUED_RUN.input, priority: "bulk", shape: "single", dryRun: true,
+        resolvedInstance, input: { ...QUEUED_RUN.input,
+          ...(workbookEvidence?.owner === "run" || workbookEvidence?.owner === "terminal-run"
+            ? { workbookReferences: [{ schemaHash: FingerprintSchema.parse(workbookEvidence.schemaHash), value: workbookReferenceValue }] } : {}) }, priority: "bulk", shape: "single", dryRun: true,
         runtimeConfig: selectRunRuntime(database.authority) }));
       assert.equal(run.lifecycle.state, "queued");
+      if (workbookEvidence?.owner === "terminal-run") requireLifecycleApplied(service.transition({ commandId: randomUUID(),
+        runId: run.envelope.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: systemClock.now().toISOString() } }));
       const ref = await createContentAddressedArtifactWriter({ admission: profile.admission }).put(Buffer.from("retained upgrade artifact"), { mediaType: "application/octet-stream" });
       database.authority.artifactOutbox.insert({ ...artifactUpdate(), sourceRunId: run.envelope.runId,
         payload: { schemaHash: "a".repeat(64), value: { artifact: ref } } });
@@ -110,8 +125,9 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
-    removeEmptySchema18WorkbookCatalog(raw);
-    removeEmptySchema17OcrReview(raw);
+    restoreSchema18WorkbookReferenceFixture(raw);
+    if (sourceVersion < 18) removeEmptySchema18WorkbookCatalog(raw);
+    if (sourceVersion < 17) removeEmptySchema17OcrReview(raw);
     if (sourceVersion < 16) removeSchema16PersonPreferences(raw);
     if (sourceVersion < 15) removeSchema15RunPause(raw);
     if (sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(raw);
@@ -128,6 +144,15 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     if (sourceVersion < 12) restorePreReadingArtifactRetention(raw);
     raw.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(sourceVersion);
     raw.exec(`PRAGMA user_version=${sourceVersion}; COMMIT`);
+    if (workbookEvidence?.owner === "plan" || workbookEvidence?.owner === "consumed-plan") {
+      const planned = START_PLAN.planned.map(run => ({ ...run, workbookReferences: [{ schemaHash: FingerprintSchema.parse(workbookEvidence.schemaHash), value: workbookReferenceValue }] }));
+      const consumed = workbookEvidence.owner === "consumed-plan";
+      const plan = StartPlanRecordSchema.parse({ ...START_PLAN, planned,
+        inputFingerprint: derivePlannedInputFingerprint(planned, START_PLAN.ingressSchemaHash, START_PLAN.canonicalInputSchemaHash),
+        ...(consumed ? { consumedBy: { commandId: command.commandId, consumedAt: START_PLAN.plannedAt }, version: 2 } : {}) });
+      raw.prepare('INSERT INTO run_requests(id,workflow,actor_id,consumed_by,expires_at,version,payload_json,created_at) VALUES(?,?,?,?,?,?,?,?)')
+        .run(plan.startPlanId, plan.workflowId, plan.plannedBy, plan.consumedBy?.commandId ?? null, plan.expiresAt, plan.version, canonicalJsonStringify(plan), plan.createdAt);
+    }
     const prior = inspectNativeAuthority(raw, sourceVersion);
     assert.equal(prior.schemaVersion, sourceVersion);
     assert.equal(prior.installationId, binding.installationId);
@@ -139,10 +164,10 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     acquireRestore: () => profile.machine.acquireOfflineMaintenance() };
 }
 
-function rawEight(path: string) {
+function rawEight(path: string, version = 8) {
   const raw = new DatabaseSync(path, { readOnly: true });
   try {
-    return Object.fromEntries(migrationTableNames(8).filter(table => table !== "explorer_overrides").map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
+    return Object.fromEntries(migrationTableNames(version).filter(table => table !== "explorer_overrides").map(table => [table, raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()]));
   } finally { raw.close(); }
 }
 
@@ -478,7 +503,7 @@ it("revokes READY custody on exact artifact-root ancestry substitution", async (
   }
 });
 
-it.each([9, 10, 11, 12, 13, 14, 15, 16] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
+it.each([9, 10, 11, 12, 13, 14, 15, 16, 17, 18] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
   const f = await readyBoundEight("idle", sourceVersion);
   try {
     const before = rawEight(f.path);
@@ -600,4 +625,44 @@ it.each(["artifact-id", "source-column", "payload"] as const)("refuses a stopped
       assert.equal(unchanged.prepare("SELECT schema_version FROM database_states").get()?.schema_version, 11);
     } finally { unchanged.close(); }
   } finally { await f.close(); }
+});
+
+it.each(["run", "terminal-run", "plan", "consumed-plan"] as const)("upgrades schema 18 with compatible %s references without rewriting evidence", async owner => {
+  const f = await readyBoundEight(owner.includes("run") ? "queued" : "idle", 18, false,
+    { owner, schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output") });
+  try {
+    const before = rawEight(f.path, 18);
+    assert.equal((await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock)).state, "upgraded");
+    const manifests = readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
+    assert.equal(manifests.length, 1);
+    const manifestName = manifests[0];
+    assert.ok(manifestName);
+    const manifest = AuthorityBackupManifestSchema.parse(JSON.parse(readFileSync(join(f.stateRoot, "backups", "authority", manifestName), "utf8")));
+    assert.equal(manifest.schemaVersion, 18);
+    assert.equal(manifest.sha256, digest(join(f.stateRoot, "backups", "authority", manifest.backupFileName)));
+    assert.deepEqual(rawEight(join(f.stateRoot, "backups", "authority", manifest.backupFileName), 18), before);
+    const after = rawEight(f.path, 18);
+    for (const [table, rows] of Object.entries(before)) {
+      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else assert.deepEqual(after[table], rows);
+    }
+  } finally { await f.close(); }
+});
+
+it.each(([17, 18] as const).flatMap(version => (["run", "terminal-run", "plan", "consumed-plan"] as const).map(owner => ({ version, owner }))))(
+  "refuses schema $version incompatible $owner references without changing authority", async ({ version, owner }) => {
+    const f = await readyBoundEight(owner.includes("run") ? "queued" : "idle", version, false, { owner, schemaHash: "a".repeat(64) });
+    try {
+      const bytes = readFileSync(f.path), before = rawEight(f.path, version);
+      await assert.rejects(upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock), /workbook_reference_schema_upgrade_unproved/u);
+      assert.deepEqual(readFileSync(f.path), bytes);
+      assert.deepEqual(rawEight(f.path, version), before);
+      const raw = new DatabaseSync(f.path, { readOnly: true });
+      try {
+        assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, version);
+        assert.equal(inspectNativeAuthority(raw, version).schemaVersion, version);
+        assert.equal(raw.prepare("SELECT count(*) AS count FROM sqlite_schema WHERE name='workbook_reference_upgrade_guard'").get()?.count, 0);
+      } finally { raw.close(); }
+    } finally { await f.close(); }
 });
