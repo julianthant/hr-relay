@@ -497,6 +497,13 @@ function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
   { scope: taskOutput("crm/search-document-records"), path: "records", classification: "direct-identifier", transform: "digest" },
   { scope: taskOutput("crm/read-idocs"), path: "people", classification: "direct-identifier", transform: "digest" },
+  ...[taskOutput("workflow:crm-doc-download/read-worksheet-archives"), workflowResult("crm-doc-download")].flatMap(scope => [
+    ...population(scope, "worksheets", "collection.files"),
+    ...open(scope, "worksheetCount", "personCount", "documentCount", "collection.artifact.bytes", "collection.artifact.mediaType"),
+    ...["collection.artifact.id", "collection.artifact.sha256"].map(path => ({ scope, path, classification: "sensitive-hr", transform: "drop" })),
+  ]),
+  ...open(workflowResult("crm-doc-download"), "state"),
+  { scope: workflowInput("crm-doc-download"), path: "people", classification: "direct-identifier", transform: "digest" },
   ...open(taskOutput("extraction/extract-pdf-pages"), "pageCount"),
   ...ocrPrivateLeaves(taskOutput("extraction/extract-pdf-pages"), "pages"),
   ...ocrManifestLeaves(taskOutput("workflow:ocr/read-source-pages"), "manifest."),
