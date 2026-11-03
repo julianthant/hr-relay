@@ -1,5 +1,6 @@
 import { CrmWorksheetPersonSchema, type CrmWorksheetPerson } from "../../models/workflows/crm-doc-download/documents.js";
 import { crmDocumentFolderName } from "./documents.js";
+import { NamedArtifactFileNameSchema } from "../../models/artifacts/artifacts.js";
 
 export function groupCrmWorksheetDocuments(raw: readonly CrmWorksheetPerson[]) {
   if (raw.length === 0) throw new Error("CRM document collection has no people");
@@ -8,7 +9,8 @@ export function groupCrmWorksheetDocuments(raw: readonly CrmWorksheetPerson[]) {
   const destinations = new Set<string>(), members = new Set<string>(), rows = new Set<string>(), folders = new Set<string>();
   for (const value of raw) {
     const person = CrmWorksheetPersonSchema.parse(value), { worksheetId, worksheetName, rowId } = person.reference;
-    const relativePath = `${worksheetName}/${worksheetName}.zip`, destination = relativePath.normalize("NFC").toLowerCase();
+    const archiveName = NamedArtifactFileNameSchema.parse(`${worksheetName}.zip`);
+    const relativePath = `${worksheetName}/${archiveName}`, destination = relativePath.normalize("NFC").toLowerCase();
     const existing = worksheets.get(worksheetId);
     if (existing !== undefined && existing.worksheetName !== worksheetName) throw new Error("CRM worksheet identity has conflicting names");
     if (existing === undefined && destinations.has(destination)) throw new Error("CRM worksheet archive destinations collide");

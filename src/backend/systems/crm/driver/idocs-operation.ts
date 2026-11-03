@@ -1,7 +1,8 @@
 import type { Page, Frame } from "playwright";
 import { z } from "zod";
-import { CrmDocumentIdentitySchema, CrmIdocsBytesSchema, CrmIdocsReadInputSchema } from "../../../../models/systems/crm/read-idocs.js";
-import { crmDocumentFileName, crmDocumentIndices } from "../../../../rules/crm-doc-download/documents.js";
+import { CrmDocumentIdentitySchema, CrmDocumentSubjectSchema, CrmIdocsBytesSchema, CrmIdocsReadInputSchema } from "../../../../models/systems/crm/read-idocs.js";
+import { chooseLatestHireRecord, searchCrmOnboardingOfferRows } from "./hire-operation.js";
+import { crmDocumentFileName, crmDocumentIndices, matchesCrmDocumentSubject } from "../../../../rules/crm-doc-download/documents.js";
 
 const VIEWER_ORIGIN = "https://crickportal-ext.bfs.ucsd.edu";
 const VIEWER_PATH = "/iDocsForSalesforce/Content/pdfjs/web/PDFjsViewer.aspx";
@@ -14,31 +15,58 @@ function viewer(frame: Frame): boolean {
   return url.origin === VIEWER_ORIGIN && url.pathname === VIEWER_PATH && url.username === "" && url.password === "";
 }
 
-export async function readCrmIdocsOnPage(assertCurrent: () => void, page: Page,
-  raw: z.input<typeof CrmIdocsReadInputSchema>): Promise<z.infer<typeof CrmIdocsBytesSchema>> {
-  const input = CrmIdocsReadInputSchema.parse(raw);
-  const assertRecord = () => {
-    assertCurrent();
-    const location = new URL(page.url());
-    if (location.origin !== "https://act-crm.my.site.com" || location.pathname !== "/hr/ONB_ViewOnboarding"
-      || location.username !== "" || location.password !== "" || location.searchParams.get("id") !== input.recordId) throw new Error("CRM document record location changed");
-  };
+function assertDocumentRecord(assertCurrent: () => void, page: Page, recordId: string): void {
+  assertCurrent();
+  const location = new URL(page.url());
+  if (location.origin !== "https://act-crm.my.site.com" || location.pathname !== "/hr/ONB_ViewOnboarding"
+    || location.username !== "" || location.password !== "" || location.searchParams.get("id") !== recordId) throw new Error("CRM document record location changed");
+}
+
+async function readIdentity(assertCurrent: () => void, page: Page, recordId: string) {
   const field = async (label: string) => {
-    assertRecord();
+    assertDocumentRecord(assertCurrent, page, recordId);
     const escaped = label.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
     const locator = page.locator("th, td").filter({ hasText: new RegExp(`^\\s*${escaped}\\s*:?\\s*$`, "iu") }).locator("xpath=following-sibling::*[1][self::td]");
-    await locator.first().waitFor({ state: "visible", timeout: BOUND_MS }); assertRecord();
+    await locator.first().waitFor({ state: "visible", timeout: BOUND_MS }); assertDocumentRecord(assertCurrent, page, recordId);
     if (await locator.count() !== 1) throw new Error("CRM document identity field is not unique");
-    const text = await locator.textContent(); assertRecord();
+    const text = await locator.textContent(); assertDocumentRecord(assertCurrent, page, recordId);
     if (text === null) throw new Error("CRM document identity field is unavailable");
     return text.trim() === "" ? null : text.trim();
   };
-  const identity = CrmDocumentIdentitySchema.parse({ recordId: input.recordId,
+  return CrmDocumentIdentitySchema.parse({ recordId,
     eid: await field("UCPath Employee ID"), workEmail: await field("UCSD Email Address"), personalEmail: await field("Personal Email Address") });
-  if (input.subject.kind === "eid" ? identity.eid !== input.subject.value
-    : ![identity.workEmail, identity.personalEmail].some(email => email !== null && email.toLowerCase() === input.subject.value.toLowerCase())) {
-    throw new Error("CRM document identity mismatch");
+}
+
+export async function findCrmDocumentRecordOnPage(assertCurrent: () => void, page: Page,
+  raw: z.input<typeof CrmDocumentSubjectSchema>): Promise<z.infer<typeof CrmDocumentIdentitySchema>> {
+  const subject = CrmDocumentSubjectSchema.parse(raw);
+  const rows = await searchCrmOnboardingOfferRows(assertCurrent, page, subject.value);
+  const exact = [];
+  for (const row of rows) {
+    if (/rescinded|cancelled|canceled|withdrawn/iu.test(row.processStage)) continue;
+    assertCurrent(); await page.goto(row.recordUrl, { waitUntil: "domcontentloaded", timeout: BOUND_MS });
+    const identity = await readIdentity(assertCurrent, page, row.recordId);
+    if (matchesCrmDocumentSubject(subject, identity)) exact.push({ row, identity });
   }
+  if (exact.length === 0) throw new Error("CRM has no active exact-identity document record");
+  const selected = chooseLatestHireRecord(exact.map(value => value.row));
+  const prior = exact.find(value => value.row.recordId === selected.recordId);
+  if (prior === undefined) throw new Error("CRM selected document record has no identity evidence");
+  assertCurrent(); await page.goto(selected.recordUrl, { waitUntil: "domcontentloaded", timeout: BOUND_MS });
+  const current = await readIdentity(assertCurrent, page, selected.recordId);
+  if (JSON.stringify(current) !== JSON.stringify(prior.identity)) throw new Error("CRM document record changed during selection");
+  return current;
+}
+
+export async function readCrmIdocsOnPage(assertCurrent: () => void, page: Page,
+  raw: z.input<typeof CrmIdocsReadInputSchema>): Promise<z.infer<typeof CrmIdocsBytesSchema>> {
+  const input = CrmIdocsReadInputSchema.parse(raw);
+  const recordUrl = new URL("/hr/ONB_ViewOnboarding", "https://act-crm.my.site.com");
+  recordUrl.searchParams.set("id", input.recordId);
+  assertCurrent(); await page.goto(recordUrl.href, { waitUntil: "domcontentloaded", timeout: BOUND_MS });
+  const assertRecord = () => assertDocumentRecord(assertCurrent, page, input.recordId);
+  const identity = await readIdentity(assertCurrent, page, input.recordId);
+  if (!matchesCrmDocumentSubject(input.subject, identity)) throw new Error("CRM document identity mismatch");
   assertRecord();
   let frames = page.frames().filter(viewer);
   if (frames.length === 0) {

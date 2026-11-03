@@ -220,6 +220,7 @@ describe("task contract sealing architecture", () => {
       "src/models/processing/ocr/extract-form-page.ts",
       "src/models/processing/roster/match-spreadsheet.ts",
       "src/models/processing/workbooks/read-result.ts",
+      "src/models/systems/crm/document-tasks.ts",
       "src/models/systems/crm/read-hire-data.ts",
       "src/models/systems/crm/read-onboarding-dates.ts",
       "src/models/systems/crm/read-onboarding-record.ts",

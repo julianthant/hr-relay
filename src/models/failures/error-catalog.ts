@@ -13,6 +13,8 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  CRM_DOCUMENT_SOURCE_UNAVAILABLE: catalogEntry("CRM document records could not be verified. Review the requested people and their latest onboarding records.", EmptyParametersSchema),
+  CRM_DOCUMENT_DOWNLOAD_FAILED: catalogEntry("CRM documents could not be downloaded and verified. No document collection was published.", EmptyParametersSchema),
   ONBOARDING_CRM_READ_FAILED: catalogEntry("CRM hire data could not be verified. Review the record before starting a new run.", EmptyParametersSchema),
   ONBOARDING_DATA_INVALID: catalogEntry("CRM hire data failed validation. Review the source fields and run overrides.", EmptyParametersSchema),
   ONBOARDING_MATCH_INVALID: catalogEntry("UCPath duplicate search returned inconsistent identity evidence.", EmptyParametersSchema),

@@ -5,7 +5,7 @@ export async function createCrmIdocsFixturePage(options: {
   eid?: string; email?: string; frameUrls?: readonly string[]; body?: string; status?: number; redirect?: string; missingField?: string; countText?: string;
 } = {}) {
   const eid = options.eid === undefined ? "10000001" : options.eid, email = options.email === undefined ? "fixture@example.test" : options.email;
-  const { page } = createCrmHireFixturePage(() => ({ html: `<table><tbody>${[
+  const { page, navigations } = createCrmHireFixturePage(() => ({ html: `<table><tbody>${[
     ["UCPath Employee ID", eid], ["UCSD Email Address", email], ["Personal Email Address", ""],
   ].filter(([label]) => label !== options.missingField).map(([label, value]) => `<tr><th>${label}</th><td>${value}</td></tr>`).join("")}</tbody></table>` }));
   await page.goto("https://act-crm.my.site.com/hr/ONB_ViewOnboarding?id=fixture-record");
@@ -23,5 +23,5 @@ export async function createCrmIdocsFixturePage(options: {
         headers: () => ({ "content-type": "application/pdf" }), async dispose() { record.disposed = true; } };
     } } }),
   });
-  return { page, requests };
+  return { page, requests, navigations };
 }

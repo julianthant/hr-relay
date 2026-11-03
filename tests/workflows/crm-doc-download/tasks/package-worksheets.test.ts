@@ -51,6 +51,7 @@ it("refuses duplicate rows, colliding person folders and worksheet destinations 
   const f = await fixture(), one = f.people[0], two = f.people[1]; assert.ok(one); assert.ok(two);
   for (const invalid of [[], [one, one],
     [one, { ...one, reference: { ...one.reference, rowId: "different-row" } }],
+    [{ ...one, reference: { ...one.reference, worksheetName: "x".repeat(199) } }],
     [one, { ...two, reference: { ...two.reference, worksheetName: one.reference.worksheetName } }]]) {
     await assert.rejects(packageCrmWorksheetArchives(f.artifacts, invalid));
     assert.equal([...f.stored.values()].filter(file => file.ref.mediaType === "application/zip").length, 0);

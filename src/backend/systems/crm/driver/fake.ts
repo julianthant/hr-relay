@@ -1,4 +1,5 @@
 import type { CrmDiscoveredRecord } from "../../../../models/systems/crm/search-onboarding-records.js";
+import { CrmDocumentIdentitySchema, CrmIdocsBytesSchema, type CrmDocumentIdentity, type CrmIdocsBytes } from "../../../../models/systems/crm/read-idocs.js";
 import { CrmHireDataSchema, type CrmHireData } from "../../../../models/systems/crm/read-hire-data.js";
 import {
   ReadOnboardingDatesOutputSchema,
@@ -18,6 +19,8 @@ import type { CrmOnboardingDriver } from "../../../../models/ui/crm-onboarding.j
 export function createDeterministicCrmOnboardingDriver(input: Readonly<{
   record: ReadOnboardingRecordOutput;
   hireData?: CrmHireData;
+  documentRecord?: CrmDocumentIdentity;
+  idocs?: CrmIdocsBytes;
   discovery?: readonly CrmDiscoveredRecord[];
   dates: ReadOnboardingDatesOutput;
   recordObservedEid?: string;
@@ -34,6 +37,14 @@ export function createDeterministicCrmOnboardingDriver(input: Readonly<{
     : EidSchema.parse(input.datesObservedEid);
   const driver: CrmOnboardingDriver = {
     system: "crm" as const,
+    async findDocumentRecord() {
+      if (input.documentRecord === undefined) throw new Error("CRM fixture requires explicit document identity");
+      return CrmDocumentIdentitySchema.parse(input.documentRecord);
+    },
+    async readIdocs() {
+      if (input.idocs === undefined) throw new Error("CRM fixture requires explicit iDocs data");
+      return CrmIdocsBytesSchema.parse(input.idocs);
+    },
     async readHireData() {
       if (input.hireData === undefined) throw new Error("CRM fixture requires explicit hire data");
       return CrmHireDataSchema.parse(input.hireData);

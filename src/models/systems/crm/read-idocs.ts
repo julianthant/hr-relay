@@ -18,3 +18,7 @@ export const CrmIdocsBytesSchema = z.strictObject({
   totalDocuments: z.number().int().positive(),
   documents: z.array(z.strictObject({ index: z.number().int().nonnegative(), fileName: NamedArtifactFileNameSchema, bytes: z.instanceof(Uint8Array) })).min(1),
 });
+export type CrmDocumentSubject = z.infer<typeof CrmDocumentSubjectSchema>;
+export type CrmDocumentIdentity = z.infer<typeof CrmDocumentIdentitySchema>;
+export type CrmIdocsReadInput = z.infer<typeof CrmIdocsReadInputSchema>;
+export type CrmIdocsBytes = z.infer<typeof CrmIdocsBytesSchema>;

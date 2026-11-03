@@ -427,6 +427,8 @@ function onboardingProfileLeaves(scope: EvidenceValueScope, prefix = ""): unknow
 }
 
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  { scope: taskOutput("crm/search-document-records"), path: "records", classification: "direct-identifier", transform: "digest" },
+  { scope: taskOutput("crm/read-idocs"), path: "people", classification: "direct-identifier", transform: "digest" },
   ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-i9-profile-creation"].flatMap(id => [
     ...open(workflowInput(id), "mode", "configuredJobEndDate"),
     ...onboardingPrivateLeaves(workflowInput(id), "email", "postalCodeOverride", "roster.references.livedName",
