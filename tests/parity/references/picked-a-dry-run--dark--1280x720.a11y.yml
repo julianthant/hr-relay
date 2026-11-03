@@ -1,7 +1,7 @@
 # picked-a-dry-run--dark--1280x720
 # adapter: fixture
 # fixture: picked-dashboard-a
-# descriptorHash: 6a85af706245b422f0d5d485bac3fc1104e773c7bd3f859a407602f3ab16ef13
+# descriptorHash: be79f8e74a439f3ea6c4fa87d7d185dd80ba9fa6b71e9dcb5b01cad06ae6025c
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: dark  variant: default
 # capturedAt: 2026-08-03
@@ -28,7 +28,7 @@
     - heading "Onboarding" [level=3]
     - list:
       - listitem:
-        - button "Onboarding": Onboarding 0 · 1
+        - button "Onboarding": Onboarding 0 · 0
       - listitem:
         - button "Oath Signature": Oath Signature 1 · 1
       - listitem:
