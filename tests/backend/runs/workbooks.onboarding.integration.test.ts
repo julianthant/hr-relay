@@ -400,7 +400,7 @@ describe("Onboarding captured roster admission and row choice", () => {
       f.setFault(fault);
       try {
         assert.throws(() => receipts.ensureReceipt(root.envelope.runId), fault);
-        assert.equal(f.database.authority.evidenceReceipts.findByRun(root.envelope.runId), fault);
+        assert.equal(f.database.authority.evidenceReceipts.findByRun(root.envelope.runId), undefined, fault);
       } finally { f.setFault(undefined); }
     }
     const ensured = receipts.ensure(root.envelope.runId); assert.equal(ensured.state, "derived");
@@ -467,7 +467,7 @@ describe("Onboarding captured roster admission and row choice", () => {
         f.setFault(fault);
         try {
           assert.throws(() => receipts.ensureReceipt(recoveredId), fault);
-          assert.equal(f.database.authority.evidenceReceipts.findByRun(recoveredId), fault);
+          assert.equal(f.database.authority.evidenceReceipts.findByRun(recoveredId), undefined, fault);
         } finally { f.setFault(undefined); }
       }
       const receipt = receipts.ensureReceipt(recoveredId);
