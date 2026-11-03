@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import type { DashboardDayWire, QueueBusinessOutcome } from "../../models/dashboard/projection.js";
+import type { DashboardDayWire, QueueBusinessOutcome, QueueMemberSelection } from "../../models/dashboard/projection.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import { filterQueueSurfaces, type QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
 import type { QueueHandlers, QueueViewState } from "../surfaces/queue/queue.js";
@@ -12,6 +12,8 @@ export function useQueueWiring(input: Readonly<{
   activeWorkflowId: string;
   filter: readonly StatusBucket[];
   selectedRunId: string | undefined;
+  selectedMember?: QueueMemberSelection;
+  openMember?: QueueHandlers["onOpenMember"];
   openWells: ReadonlySet<string>;
   selectMode: boolean;
   bulkIds: ReadonlySet<string>;
@@ -25,7 +27,7 @@ export function useQueueWiring(input: Readonly<{
   runQueueAction: NonNullable<QueueHandlers["onAction"]>;
 }>) {
   const { allRows, attemptHistory, rows, activeWorkflowId, filter, selectedRunId, openWells, selectMode, bulkIds, nowIso,
-    selectRun, setActiveWorkflowId, onWells, onBulkIds, setBatchGrouping, exitQueueSelection,
+    selectRun, setActiveWorkflowId, selectedMember, openMember, onWells, onBulkIds, setBatchGrouping, exitQueueSelection,
     runQueueAction } = input;
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (allRows === undefined) return [];
@@ -68,19 +70,21 @@ export function useQueueWiring(input: Readonly<{
   const viewState = useMemo(
     (): QueueViewState => ({
       ...(selectedRunId === undefined ? {} : { selectedRunId }),
+      ...(selectedMember === undefined ? {} : { selectedMember }),
       openWells,
       selectMode,
       bulkIds,
       panelWorkflowId: activeWorkflowId,
       nowIso,
     }),
-    [selectedRunId, openWells, selectMode, bulkIds, activeWorkflowId, nowIso],
+    [selectedRunId, selectedMember, openWells, selectMode, bulkIds, activeWorkflowId, nowIso],
   );
 
   const queueHandlers = useMemo(
     (): QueueHandlers => ({
       onSetBatchGrouping: setBatchGrouping,
       onSelect: runId => selectRun(runId),
+      ...(openMember === undefined ? {} : { onOpenMember: openMember }),
       onExitSelection: exitQueueSelection,
       onAction: runQueueAction,
       onToggleWell: (runId) => {
@@ -106,7 +110,7 @@ export function useQueueWiring(input: Readonly<{
         selectRun(String(link.runId), link.partitionDay);
       },
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, setActiveWorkflowId, exitQueueSelection],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, setActiveWorkflowId, exitQueueSelection, openMember],
   );
 
   const actionsOf = useCallback((surface: QueueSurfaceWire): readonly ActionDescriptorWire[] => surface.actions, []);

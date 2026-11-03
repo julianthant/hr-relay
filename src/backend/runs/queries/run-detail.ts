@@ -348,10 +348,13 @@ export function buildRunDetail(
       }
     : { state: "absent", reason: `run is ${status}` };
 
+  const sections = availableSections(row, authority, deps.trust, captures, authority.envelope.workflow === "ocr"
+    && deps.canonical !== undefined && deps.canonical.database.withAuthorityReadSnapshot(() =>
+      readOcrReviewAuthority(deps.canonical!.database.authority, deps.canonical!.reader, runId) !== undefined));
   return RunDetailWireSchema.parse({
     runId,
     rowRevision: authority.version,
-    panelKind: panelKindOf(authority.envelope.shape),
+    panelKind: sections.includes("review") ? "review" : panelKindOf(authority.envelope.shape),
     header: {
       runId,
       traceId: authority.envelope.traceId,
@@ -396,9 +399,7 @@ export function buildRunDetail(
     ...(captures === undefined ? {} : { captures }),
 
     ...(omittedSteps.length === 0 ? {} : { omittedSteps }),
-    availableSections: availableSections(row, authority, deps.trust, captures, authority.envelope.workflow === "ocr"
-      && deps.canonical !== undefined && deps.canonical.database.withAuthorityReadSnapshot(() =>
-        readOcrReviewAuthority(deps.canonical!.database.authority, deps.canonical!.reader, runId) !== undefined)),
+    availableSections: sections,
   });
 }
 

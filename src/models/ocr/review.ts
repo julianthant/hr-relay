@@ -19,6 +19,12 @@ export const OcrReviewRecordSchema = z.strictObject({
   assertedEid: EidSchema.nullable(),
   discarded: z.boolean(),
 });
+export function ocrRecordName(fields: z.infer<typeof AdmittedRecordSchema>): string | null {
+  const name = fields.answers.find(answer => ["employee.name", "printedName"].includes(answer.path));
+  if (name?.state === "read") return String(name.value);
+  const first = fields.answers.find(answer => answer.path === "firstName"), last = fields.answers.find(answer => answer.path === "lastName");
+  return first?.state === "read" && last?.state === "read" ? `${last.value}, ${first.value}` : null;
+}
 export function initialOcrReviewRecords(seed: z.output<typeof OcrResultSchema>) {
   return seed.review.records.map(record => {
     const identities = seed.identities.filter(identity => identity.recordIds.includes(record.recordId));

@@ -3,6 +3,7 @@ import { readOcrReviewAuthority, readOcrSnapshotsAuthority } from "../lifecycle/
 import type { RunDetailQueryDeps } from "./run-detail-types.js";
 import { SectionUnavailableError } from "../commands/refusals.js";
 import { deterministicUuid } from "../lifecycle/support.js";
+import { ocrRecordName } from "../../../models/ocr/review.js";
 
 export function buildOcrReviewSection(deps: RunDetailQueryDeps, runId: string): RunDetailSectionResponse {
   const canonical = deps.canonical;
@@ -16,11 +17,8 @@ export function buildOcrReviewSection(deps: RunDetailQueryDeps, runId: string): 
         const source = review.revision.seed.review.records.find(seed => seed.recordId === record.recordId);
         const page = review.revision.seed.review.accounting.manifest.pages.find(page => page.sourcePage === source?.sourcePage);
         if (source === undefined || page === undefined) throw new SectionUnavailableError("OCR record source page is unavailable");
-        const name = record.fields.answers.find(answer => ["employee.name", "printedName"].includes(answer.path));
-        const first = record.fields.answers.find(answer => answer.path === "firstName"), last = record.fields.answers.find(answer => answer.path === "lastName");
         return { recordId: deterministicUuid(`ocr-review:${runId}:${record.recordId}`), runId, recordRevision: review.revision.revision,
-          label: name?.state === "read" ? String(name.value) : first?.state === "read" && last?.state === "read"
-            ? `${last.value}, ${first.value}` : `Page ${source.sourcePage}`,
+          label: ocrRecordName(record.fields) ?? `Page ${source.sourcePage}`,
           state: record.discarded ? "rejected" : snapshots.some(snapshot => snapshot.revision === review.revision.revision
             && snapshot.selectedRecordIds.includes(record.recordId)) ? "accepted" : "pending",
           evidence: [`artifact:${page.image.id}`] };

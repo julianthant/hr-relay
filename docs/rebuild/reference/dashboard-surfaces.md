@@ -121,6 +121,16 @@ linked children have their own rows and linked-run chips; hidden-unless-failed c
 as failed member lines. Native operation/member scheduling shapes do not change. A delegating
 single or member can present an operation without changing its stored shape.
 
+An operation can carry record-member presentation separately from native member counts. Each record
+is identified by its review-owner run and stable record ID; child histories can serve several records.
+Covered native children do not draw duplicate lines. OCR uses the existing Name/Status well for
+Reading, Looking up, Verified, Needs lookup and failed-page lines. Linked OCR sources expose the
+same records on their immediate parent's row. Line clicks and the name button select the exact
+record; keyboard traversal follows the same order. Person Lookup members use their served outcome
+words. A line has no Retry control: the failed child's own Logs header uses its served action and
+revision, preserving pending and uncertain command recovery. The canonical OCR Review opens at
+the selected stable record through a lazy read; its source and fields use the existing read-only cards.
+
 Top-level Queue, calendar, notifications and Activity populations include roots and linked children.
 Visibility filtering precedes bounded pagination. An unloaded inline or hidden child never becomes a
 standalone row. Cross-workflow members stay under their parent; parent and linked chips retain exact

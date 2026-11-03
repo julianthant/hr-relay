@@ -19,6 +19,7 @@ import {
   dsText,
 } from "../../ds/ui.js";
 import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js";
+import type { QueueMemberSelection, QueueRecordMember } from "../../../models/dashboard/projection.js";
 import { isTerminalQueueStatus } from "../../../models/dashboard/projection.js";
 import {
   FooterActions,
@@ -32,7 +33,6 @@ import { StatusBadge } from "../shared/status/status.js";
 import {
   PROPOSED_STATUS,
   dsStatusOf,
-  statusAccessibleName,
   statusText,
   type ProposedStatus,
 } from "../shared/status/status-model.js";
@@ -45,11 +45,14 @@ import {
   type QueueSurfaceWire,
   bandOf,
   canViewAllMembers,
-  orderMembers,
+  queueMemberLines,
+  queueMemberPresentation,
+  type QueueMemberLine,
+  queueMemberKey,
+  queueMemberRollup,
   partition,
   queueGateAge,
   queueRowAccessibleName,
-  queuePauseLabel,
   queueRowTitle,
   queueRowTitleTooltip,
   groupQueueAttempts,
@@ -65,6 +68,7 @@ import {
 export interface QueueViewState {
   /** the row the detail panel is showing */
   selectedRunId?: string;
+  selectedMember?: QueueMemberSelection;
   /** Which member WELLS are open to their tall shape. */
   openWells: ReadonlySet<string>;
   /** bulk-selection mode: checkboxes on top-level rows */
@@ -81,6 +85,7 @@ export interface QueueViewState {
 export interface QueueHandlers {
   onSetBatchGrouping?: (batch: QueueBatch, grouped: boolean) => Promise<void>;
   onSelect: (runId: string) => void;
+  onOpenMember?: (member: QueueRecordMember) => void;
   /** every command control on a row goes through here — see `./actions.js` */
   onAction?: DashboardActionHandler;
   /** grow this row's member well from 5 lines to 20, or back */
@@ -178,7 +183,9 @@ function HeaderChips({
   surface,
   status,
   nowIso,
+  rollup,
 }: {
+  rollup?: OperationSurfaceWire["memberRollup"];
   outcome?: QueueBusinessOutcome;
   surface: QueueSurfaceWire;
   status: ProposedStatus;
@@ -230,12 +237,12 @@ function HeaderChips({
       {surface.surfaceKind === "operation" && (
         <span
           data-queue-member-count
-          title={`${surface.memberRollup.terminal} of ${surface.memberRollup.total} finished; ${surface.memberRollup.failed} failed`}
-          aria-label={`${surface.memberRollup.terminal} of ${surface.memberRollup.total} finished; ${surface.memberRollup.failed} failed`}
+          title={`${(rollup ?? surface.memberRollup).terminal} of ${(rollup ?? surface.memberRollup).total} finished; ${(rollup ?? surface.memberRollup).failed} failed`}
+          aria-label={`${(rollup ?? surface.memberRollup).terminal} of ${(rollup ?? surface.memberRollup).total} finished; ${(rollup ?? surface.memberRollup).failed} failed`}
           className={cn(dsText.meta, dsText.nums, dsRadius.sm, dsBorder.base,
             "inline-flex h-[var(--ds-h-xs)] min-w-[var(--ds-w-queue-counter)] items-center justify-center whitespace-nowrap border bg-[var(--ds-surface-2)] px-[var(--ds-space-tight)] text-[color:var(--ds-fg-secondary)]")}
         >
-          {surface.memberRollup.terminal}/{surface.memberRollup.total}
+          {(rollup ?? surface.memberRollup).terminal}/{(rollup ?? surface.memberRollup).total}
         </span>
       )}
     </>
@@ -358,42 +365,38 @@ function MemberWell({
   );
 }
 
-function MemberLine({ surface, item, selected, onSelect }: {
-  surface: QueueSurfaceWire;
-  item: QueueItemGroup;
+function MemberLine({ line, selectedRunId, selected, onSelect, onSelectRun }: {
+  line: QueueMemberLine;
+  selectedRunId?: string;
   selected: boolean;
-  onSelect: (runId: string) => void;
+  onSelect?: () => void;
+  onSelectRun: (runId: string) => void;
 }) {
-  const status = dsStatusOf(surface.status);
-  const pause = queuePauseLabel(surface);
-  const spec = PROPOSED_STATUS[pause === "Paused" ? "queued" : status];
-  const Icon = pause === "Paused" ? Pause : spec.icon;
-  const selectionLabel = `${queueRowTitle(surface)} ${
-    surface.subtitle.state === "present" ? surface.subtitle.value : (pause ?? statusAccessibleName(status)).toLowerCase()
-  }`;
-  return (
-    <tr data-demo-row-id={surface.runId}
-      title={`${queueRowTitle(surface)} — ${(pause ?? statusAccessibleName(status)).toLowerCase()}`}
-      onClick={(event) => { event.stopPropagation(); onSelect(String(surface.runId)); }}
-      className={cn(dsText.body, dsMotion.fast, "h-[var(--ds-h-queue-member-line)] cursor-pointer hover:bg-[var(--ds-surface-3)]", selected && "bg-[var(--ds-surface-selected)]")}
-    >
-      <td className="max-w-0 border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]">
-        <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
-          <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass, status === "running" && pause !== "Paused" && "animate-spin motion-reduce:animate-none")} />
-          <BareButton type="button" title={surface.subtitle.state === "present" ? surface.subtitle.value : surface.subtitle.reason}
-            aria-label={selectionLabel} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); onSelect(String(surface.runId)); }}
-            className={cn("min-w-0 truncate text-left text-[color:var(--ds-fg)]", dsFocus)}
-          >{queueRowTitle(surface)}</BareButton>
-          {item.attempts.length > 1 && <QueueAttemptSelector title={queueRowTitle(surface)} surface={surface} item={item}
-            selectedRunId={String(surface.runId)} onSelect={onSelect} />}
-
-        </div>
-      </td>
-      <td className={cn(dsText.meta, "w-px whitespace-nowrap border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-right", pause === "Paused" ? spec.soloTone : status === "waiting" || status === "running" ? "text-ui-info" : status === "failed" ? "text-ui-danger" : spec.soloTone)}>
-        <span aria-label={pause ?? statusAccessibleName(status)}>{pause ?? statusText(status)}</span>
-      </td>
-    </tr>
-  );
+  const view = queueMemberPresentation(line, selectedRunId);
+  const status = dsStatusOf(view.status);
+  const spec = PROPOSED_STATUS[view.paused ? "queued" : status];
+  const Icon = view.paused ? Pause : spec.icon;
+  return <tr data-demo-row-id={view.key}
+    data-queue-record-id={line.kind === "record" && line.member.kind === "record" ? line.member.record.recordId : undefined}
+    title={`${view.title} — ${view.statusAccessibleLabel.toLowerCase()}`}
+    onClick={onSelect === undefined ? undefined : event => { event.stopPropagation(); onSelect(); }}
+    className={cn(dsText.body, dsMotion.fast, "h-[var(--ds-h-queue-member-line)] cursor-pointer hover:bg-[var(--ds-surface-3)]", selected && "bg-[var(--ds-surface-selected)]")}
+  >
+    <td className="max-w-0 border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]">
+      <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
+        <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass, status === "running" && !view.paused && "animate-spin motion-reduce:animate-none")} />
+        <BareButton type="button" title={view.buttonTitle} disabled={onSelect === undefined}
+          aria-label={view.accessibleName} aria-pressed={selected} onClick={event => { event.stopPropagation(); onSelect?.(); }}
+          className={cn("min-w-0 truncate text-left text-[color:var(--ds-fg)]", dsFocus)}
+        >{view.title}</BareButton>
+        {view.native !== undefined && view.native.item.attempts.length > 1 && <QueueAttemptSelector title={view.title}
+          surface={view.native.surface} item={view.native.item} selectedRunId={String(view.native.surface.runId)} onSelect={onSelectRun} />}
+      </div>
+    </td>
+    <td className={cn(dsText.meta, "w-px whitespace-nowrap border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-right", view.paused ? spec.soloTone : status === "waiting" || status === "running" ? "text-ui-info" : status === "failed" ? "text-ui-danger" : spec.soloTone)}>
+      <span aria-label={view.statusAccessibleLabel}>{view.statusLabel}</span>
+    </td>
+  </tr>;
 }
 
 
@@ -420,12 +423,12 @@ function GroupMemberList({
   state: QueueViewState;
   handlers: QueueHandlers;
 }) {
-  const itemGroups = groupQueueAttempts(members);
-  const ordered = orderMembers(itemGroups.map((item) => item.representative));
+  const ordered = queueMemberLines(surface, members);
+  const rollup = queueMemberRollup(surface, members);
   const wellOpen = state.openWells.has(itemKey);
   const canExpand = ordered.length > MEMBER_WELL_LINES;
   /** Offer roster navigation only when its destination handler exists. */
-  const canOpenRoster = canViewAllMembers(surface.memberRollup.total) && handlers.onOpenRoster !== undefined;
+  const canOpenRoster = canViewAllMembers(rollup.total) && handlers.onOpenRoster !== undefined;
   const { onToggleWell, onOpenRoster } = handlers;
 
   const disclosures = (
@@ -466,10 +469,10 @@ function GroupMemberList({
   return (
     <MemberWell
       open={wellOpen && canExpand}
-      header={ordered.length > 0 && ordered.length < surface.memberRollup.total && (
+      header={ordered.length > 0 && ordered.length < rollup.total && (
         <div className={cn(dsText.meta, "flex flex-wrap items-center gap-[var(--ds-space-base)] border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
-          {ordered.length > 0 && ordered.length < surface.memberRollup.total && <span>
-            {ordered.length} of {plural(surface.memberRollup.total, "member")} loaded
+          {ordered.length > 0 && ordered.length < rollup.total && <span>
+            {ordered.length} of {plural(rollup.total, "member")} loaded
           </span>}
         </div>
       )}
@@ -497,18 +500,23 @@ function GroupMemberList({
         </thead>
         <tbody>
           {ordered.length === 0 && <tr><td colSpan={2} className={cn(dsText.body, "px-[var(--ds-space-base)] py-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>Members not loaded</td></tr>}
-          {ordered.map((member) => {
-            const item = itemGroups.find((candidate) => candidate.representative.runId === member.runId);
-            if (item === undefined) throw new Error(`member list lost item ${String(member.itemId)}`);
-            const visible = item.attempts.find((attempt) => String(attempt.runId) === state.selectedRunId) ?? member;
-            const selected = item.attempts.some((attempt) => String(attempt.runId) === state.selectedRunId);
-            return <Fragment key={item.key}>
-              <MemberLine surface={visible} item={item} selected={selected} onSelect={handlers.onSelect} />
-              {(visible.linkedRuns.length > 0 || visible.surfaceKind === "operation" && visible.memberRunIds.length > 0) && <tr><td colSpan={2}>
+          {ordered.map(line => {
+            if (line.kind === "record") {
+              const selected = state.selectedMember !== undefined && queueMemberKey(state.selectedMember) === line.key;
+              return <MemberLine key={line.key} line={line} selected={selected} onSelectRun={handlers.onSelect}
+                onSelect={handlers.onOpenMember === undefined ? undefined : () => handlers.onOpenMember?.(line.member)} />;
+            }
+            const item = line.item;
+            const visible = item.attempts.find(attempt => String(attempt.runId) === state.selectedRunId) ?? item.representative;
+            const selected = item.attempts.some(attempt => String(attempt.runId) === state.selectedRunId);
+            return <Fragment key={line.key}>
+              <MemberLine line={line} selectedRunId={state.selectedRunId} selected={selected}
+                onSelect={() => handlers.onSelect(String(visible.runId))} onSelectRun={handlers.onSelect} />
+              {(visible.linkedRuns.length > 0 || visible.surfaceKind === "operation" && (visible.memberRunIds.length > 0 || (visible.recordMembers?.members.length ?? 0) > 0)) && <tr><td colSpan={2}>
                 {visible.linkedRuns.length > 0 && <div className="flex flex-wrap gap-2 px-3 py-2">
                   {visible.linkedRuns.map(link => <LinkedRunChip key={link.runId} link={link} onOpen={() => handlers.onOpenLinked?.(link)} />)}
                 </div>}
-                {visible.surfaceKind === "operation" && visible.memberRunIds.length > 0 && <GroupMemberList
+                {visible.surfaceKind === "operation" && (visible.memberRunIds.length > 0 || (visible.recordMembers?.members.length ?? 0) > 0) && <GroupMemberList
                   surface={visible} itemKey={item.key} members={membersOf?.get(visible.runId) ?? NO_MEMBERS}
                   membersOf={membersOf} state={state} handlers={handlers} />}
               </td></tr>}
@@ -616,6 +624,7 @@ function QueueAttemptSelector({ title, surface, item, selectedRunId, onSelect }:
   surface: QueueSurfaceWire;
   item?: QueueItemGroup;
   selectedRunId?: string;
+  selectedMember?: QueueMemberSelection;
   onSelect: (runId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -676,7 +685,7 @@ export function QueueRow({
   const workflowLabel = workflowLabelOf(surface.workflowId);
   /** Operation identity and visible member lists are distinct; unloaded members do not erase group chrome. */
   const isOperation = surface.surfaceKind === "operation";
-  const membersVisible = isOperation && members.length > 0;
+  const membersVisible = surface.surfaceKind === "operation" && queueMemberLines(surface, members).length > 0;
   /** Hide a group’s redundant subline while its member evidence is visible. */
   const subline =
     membersVisible || surface.liveMessage.state !== "present" ? undefined : surface.liveMessage.value;
@@ -759,7 +768,8 @@ export function QueueRow({
               <div className="ml-auto flex shrink-0 flex-nowrap items-center justify-end gap-[var(--ds-space-snug)]">
                 {/* Status ALWAYS sits on the title row's right — never on the
                     subline. */}
-                <HeaderChips outcome={outcome} surface={surface} status={status} nowIso={state.nowIso} />
+                <HeaderChips outcome={outcome} surface={surface} status={status} nowIso={state.nowIso}
+                  rollup={surface.surfaceKind === "operation" ? queueMemberRollup(surface, members) : undefined} />
               </div>
             </div>
 
@@ -767,6 +777,7 @@ export function QueueRow({
             {isOperation
               && surface.surfaceKind === "operation"
               && !membersVisible
+              && surface.recordMembers === undefined
               && surface.memberPreview.state === "present" && (
               <div
                 className={cn(dsText.meta, "truncate text-[color:var(--ds-fg-muted)]")}

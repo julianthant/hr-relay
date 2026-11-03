@@ -122,7 +122,7 @@ import { createTransactionHistory } from "../../../storage/sqlite/transaction-hi
 import { RunLogsStreamHub } from "../../../transports/http/subscriptions/run-logs-stream.js";
 import { probePrimaryDisplay } from "../../host/primary-display.js";
 import { stepProofDescriptorOf } from "../../registries/step-proof-modules.js";
-import { DESCRIPTORS,INTAKE_PROJECTIONS,SERVER_REGISTRY,descriptorSetHash } from "../../registries/workflow-registry.js";
+import { DESCRIPTORS,INTAKE_PROJECTIONS,READABLE_WORKFLOW_MODULES,SERVER_REGISTRY,descriptorSetHash } from "../../registries/workflow-registry.js";
 import { RuntimeCustodyUncertainError,composeProfileAssistantAuthorization,composeProfileRuntime } from "../storage-compose.js";
 
 import { createIntakeParser } from "../../../processing/spreadsheet/intake-parser.js";
@@ -742,7 +742,7 @@ async function composeDashboardRuntimeStartup(
   const summaries: ServedSummaryQueries = { ...composeQueueSummaries(database), activity: (from, to) => activity.read(from, to) };
   const servedReader = { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), withRunTreeSnapshot: lifecycle.withRunTreeSnapshot.bind(lifecycle), summaries };
   let ownsWorker: (lease: import("../../../../models/run/worker.js").WorkerLeaseRecord) => boolean = () => false;
-  const projection = createOperatorProjection({ ownsWorker: lease => ownsWorker(lease), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors, reader: servedReader });
+  const projection = createOperatorProjection({ ownsWorker: lease => ownsWorker(lease), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader });
 
   const noteWriter = createNoteTimelineWriter({ repository: loggingRepository, clock });
 
@@ -846,7 +846,7 @@ async function composeDashboardRuntimeStartup(
   };
 
   const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
-  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, ownsWorker, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? stepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
+  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, ownsWorker, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor ?? stepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
 

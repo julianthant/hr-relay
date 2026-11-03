@@ -22,6 +22,7 @@ import {
   TERMINAL_QUEUE_STATUSES,
   type DashboardDayWire,
   type QueueSurfaceWire,
+  type QueueRecordMembers,
 } from "../../../models/dashboard/projection.js";
 import {
   ACTIVITY_SAMPLE_LIMIT,
@@ -33,6 +34,7 @@ import {
 import { DashboardDayPatchSchema } from "../../../models/dashboard/subscription.js";
 import {
   PositiveIntSchema,
+  LocalDateSchema,
   EidSchema,
   LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
@@ -144,6 +146,7 @@ export interface RunQueueProjectionDeps {
     queueParents(envelopes: readonly RunRecord["envelope"][]): ReadonlyMap<string, QueueParent | null>;
     delegationWait?(runId: string): DelegationWaitState | null;
     reviewAvailable?(runId: string): boolean;
+    recordMembers?(run: RunRecord, children: readonly RunRecord[]): QueueRecordMembers | undefined;
     /** Durable inbox rows served by day. */
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
     latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
@@ -284,14 +287,7 @@ function activityPeopleOf(personRows: readonly RunRecord[], read: ((runId:string
 const MEMBER_PREVIEW_LIMIT = 3;
 
 
-interface LinkedRunView {
-  readonly runId: string;
-  readonly partitionDay: string;
-  readonly workflowId: string;
-  readonly label: string;
-  readonly panelKind: "run" | "member" | "group";
-  readonly status: QueueSurfaceWire["status"];
-}
+type LinkedRunView = QueueSurfaceWire["linkedRuns"][number];
 
 
 // Exclude heartbeat timestamps and versions to avoid republishing each beat; served versions are not the CAS basis.
@@ -1114,9 +1110,9 @@ export class RunQueueProjection {
   #runLink(context: QueueReadContext, run: RunRecord): LinkedRunView {
     const known = context.links.get(run.envelope.runId);
     if (known !== undefined) return known;
-    const link = { runId: run.envelope.runId, partitionDay: localDatePart(new Date(run.envelope.enqueuedAt)),
+    const link: LinkedRunView = { runId: run.envelope.runId, partitionDay: LocalDateSchema.parse(localDatePart(new Date(run.envelope.enqueuedAt))),
       workflowId: run.envelope.workflow, label: this.#deps.descriptors.resolve(run.envelope.workflow)?.label ?? run.envelope.workflow,
-      panelKind: panelKindOf(run.envelope.shape), status: this.#status(run) };
+      panelKind: this.#deps.authority.reviewAvailable?.(run.envelope.runId) === true ? "review" : panelKindOf(run.envelope.shape), status: this.#status(run) };
     context.links.set(run.envelope.runId, link);
     return link;
   }
@@ -1236,6 +1232,8 @@ export class RunQueueProjection {
     const receipt = this.#receipt(context, authority, status);
     const warningVerdict = this.#warningVerdict(status, receipt);
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
+    const hasReview = this.#deps.authority.reviewAvailable?.(queued.runId) === true;
+    const recordMembers = this.#deps.authority.recordMembers?.(authority, children);
 
     const members = children.filter(member => isQueueMember({ parent: this.#parentFact(context, member), status: this.#status(member) }));
     const memberChildIds = members.map((member) => member.envelope.runId);
@@ -1294,10 +1292,10 @@ export class RunQueueProjection {
         : pauseControl.state === "paused" ? { state: "present", value: "Pause recorded. Resume to continue." } : this.#liveMessage(authority, status),
       warnings: this.#warnings(warningVerdict),
       pipeline: this.#pipeline(row, queued.workflow, authority.lifecycle.state === "terminal", delegationWait),
-      panelKind: panelKindOf(shape),
+      panelKind: hasReview ? "review" : panelKindOf(shape),
       availableSections: [
         "logs",
-        ...(this.#deps.authority.reviewAvailable?.(queued.runId) === true ? ["review"] : []),
+        ...(hasReview ? ["review"] : []),
         "context-data",
         "context-attempts",
         ...(authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "failed" ? ["failure"] : []),
@@ -1323,13 +1321,14 @@ export class RunQueueProjection {
       }),
       rowRevision: authority.version,
     };
-    if (shape === "operation" || members.length > 0) {
+    if (shape === "operation" || members.length > 0 || recordMembers !== undefined) {
       return {
         warningVerdict,
         surface: QueueSurfaceWireSchema.parse({
           ...base,
           surfaceKind: "operation",
           memberRunIds: memberChildIds,
+          ...(recordMembers === undefined ? {} : { recordMembers }),
           memberRollup: {
             total: memberChildIds.length,
             terminal: terminalMembers.length,

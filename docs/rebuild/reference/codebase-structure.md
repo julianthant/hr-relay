@@ -165,6 +165,10 @@ tuple imports definitions directly, keeping those backend imports out of the das
 `src/backend/runs/commands/ocr-source-service.ts` owns uploaded PDF admission, authorized source-page bytes and read-only command settlement.
 `src/backend/runs/lifecycle/approved-ocr-records.ts` authenticates current selections from exact native OCR child outcomes through the existing snapshot authority. The required read port is bound by worker composition into `src/backend/processing/providers/ocr-review-adapter.ts`; no unauthenticated selection path is exposed.
 `src/backend/runs/queries/ocr-review.ts` projects the existing review section, served through the existing typed client.
+`src/models/workflow/delegated-record.ts` owns stable review-owner/record references and their child histories.
+`src/backend/runs/queries/ocr-record-members.ts` binds OCR records to authenticated original delegation scope and projects Queue lines.
+`src/dashboard/surfaces/run-detail/review/` owns the shared record cards and canonical OCR review presentation;
+`state/review-wiring-adapter.ts` owns its lazy exact-run reads. Workflow mocks supply their own data and editing rules to the same cards.
 
 The child-only `src/workflows/ocr/` and `src/workflows/ocr-page/` folders use the same layout.
 Their indexes generate production child modules and task stores; OCR delegates page readings to

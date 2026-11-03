@@ -26,7 +26,7 @@ export function createOcrReviewWorld() {
   const world = createRunExecutorTestWorld();
   return {
     cleanup: world.cleanup,
-    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; parent?: WorkflowModule }> = {}) {
+    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; parent?: WorkflowModule; ocr?: WorkflowModule; lookupNames?: readonly string[]; pauseAtLookup?: boolean }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       const rendered: { value?: z.output<typeof ExtractPdfPagesOutputSchema> } = {};
       const render = defineTask(ExtractPdfPages, { sessions: [], async run({ ctx }) {
@@ -42,7 +42,7 @@ export function createOcrReviewWorld() {
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
         tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
-      const root = options.parent ?? ocrModule;
+      const root = options.parent ?? options.ocr ?? ocrModule;
       const harness = await world.executorHarness({ descriptor: root.descriptor, stores });
       const { database, path, clock } = harness.authority;
       const admission = boundProfileAdmission(path);
@@ -59,11 +59,12 @@ export function createOcrReviewWorld() {
       const image = await artifacts.put(pageBytes, { mediaType: "image/png" });
       rendered.value = { pageCount: options.pageCount ?? 1, pages: Array.from({ length: options.pageCount ?? 1 }, (_, index) => ({ sourcePage: index + 1, image })) };
       const manifest = buildOcrSourceManifest(upload.artifact, rendered.value);
-      const readings = ocrPageInputs(manifest, READING_ID).map(page => {
-        const original = submittedPage(page, "Example, Avery", options.record === true ? "emergency-contact" : "blank");
+      if (options.lookupNames !== undefined) { assert.equal(options.lookupNames.length, manifest.pageCount); assert.equal(options.record, true); }
+      const readings = ocrPageInputs(manifest, READING_ID).map((page, index) => {
+        const original = submittedPage(page, options.lookupNames?.[index] ?? "Example, Avery", options.record === true ? "emergency-contact" : "blank");
         const valid = { ...original, source: { kind: "operator" as const, actorId } };
         return { reading: bindManualOcrPageReading(page, actorId, { ...valid,
-          record: valid.record === null ? null : { answers: { ...valid.record.answers, "employee.name": { state: "absent", reason: "blank" } } } }),
+          record: valid.record === null ? null : options.lookupNames === undefined ? { answers: { ...valid.record.answers, "employee.name": { state: "absent", reason: "blank" } } } : valid.record }),
           corrected: bindManualOcrPageReading(page, actorId, valid).extraction.record };
       });
       const first = readings[0]; assert.ok(first);
@@ -71,7 +72,21 @@ export function createOcrReviewWorld() {
       const parentRun = canonical.start(root.descriptor, OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
         formType: "emergency-contact", roster: null, approval: options.release === true ? "release" : "review-only",
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } }), { dryRun: false });
-      const result = await canonical.execute(parentRun, new AbortController().signal);
+      const signal = new AbortController().signal;
+      const lookupAdmitted = () => database.authority.dependencies.groups(parentRun.envelope.runId)
+        .some(({ group }) => group.invocation.nodeId === "lookup-identities");
+      const executeToLookup = async () => {
+        assert.equal(options.parent, undefined);
+        const outcomes: Awaited<ReturnType<typeof canonical.execute>>["outcomes"] = [];
+        while (!lookupAdmitted()) {
+          const next = await canonical.step(parentRun, signal);
+          outcomes.push(next.outcome);
+          if (!lookupAdmitted()) assert.ok(next.outcome.state === "done" || next.outcome.state === "yielded-delegation",
+            `OCR stopped before native lookup admission: ${next.outcome.state}`);
+        }
+        return { run: database.authority.runs.get(parentRun.envelope.runId), outcomes };
+      };
+      const result = options.pauseAtLookup === true ? await executeToLookup() : await canonical.execute(parentRun, signal);
       const run = options.parent === undefined ? parentRun
         : database.authority.runs.listChildren(parentRun.envelope.runId).find(child => child.envelope.workflow === "ocr");
       assert.ok(run);
@@ -85,7 +100,8 @@ export function createOcrReviewWorld() {
         });
         assert.deepEqual(failures, [], `OCR fixture execution failed: ${JSON.stringify(failures)}`);
         const lifecycle = options.parent === undefined ? result.run?.lifecycle : database.authority.runs.get(run.envelope.runId)?.lifecycle;
-        assert.ok(options.release === true ? lifecycle?.state === "parked-gate"
+        assert.ok(options.pauseAtLookup === true ? lookupAdmitted() && (lifecycle?.state === "queued" || lifecycle?.state === "parked-gate")
+          : options.release === true ? lifecycle?.state === "parked-gate"
           : lifecycle?.state === "terminal" && lifecycle.outcome === "done",
         `OCR fixture stopped before review: ${JSON.stringify(result.outcomes.map(outcome => ({ state: outcome.state })))}`);
       }
