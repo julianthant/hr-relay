@@ -2268,7 +2268,7 @@ export async function executeClaimedRun(
       if (first !== undefined) return settleSuccess(getRun(), buildRunPreviewResult(descriptor, getRun(),
         nodes.map(node => dryRunSteps.get(String(node.id))),
         dependencyEvidenceFor([...new Set([...first.dependsOn,
-          ...nodes.filter(node => node.kind === "task" && dryRunSteps.get(String(node.id))?.state === "exercised").map(node => node.id)])], "dry-run preview"), clock));
+          ...nodes.filter(node => (node.kind === "task" || node.kind === "child-run") && dryRunSteps.get(String(node.id))?.state === "exercised").map(node => node.id)])], "dry-run preview"), clock));
       if (envelope.parent === undefined) throw new Error("dry-run preview has no transaction boundary");
     }
     const terminal = workflowTerminalResultExecution(descriptor);
