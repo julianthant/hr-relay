@@ -5,6 +5,9 @@ import { ARTIFACT_COLLECTION_MEDIA_TYPE, ArtifactCollectionFilesSchema, Artifact
 import { deriveArtifactProjectionRows } from "../../../src/models/workflow/artifact-projection.js";
 import { collectionArtifactOutput, namedArtifactOutput } from "../../../src/workflow-kit/artifacts.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
+import { classifyEvidenceLeaf, evidenceLeaves } from "../../../src/models/trust/evidence-classification.js";
+import { redactValue } from "../../../src/rules/redaction/redaction.js";
+import { namedFileOutputContract } from "../../support/fixtures/named-file-output-workflow.js";
 const artifact = ArtifactRefSchema.parse({ id: randomUUID(), sha256: "a".repeat(64), bytes: 12, mediaType: "application/zip" });
 const specs = [{ id: "batch-archive", source: { nodeId: "archive", fieldPath: "archive" }, keyFields: ["archive.fileName"], sink: "documents-file", blocking: true }];
 
@@ -42,4 +45,17 @@ it("derives a deterministic output for exactly its original run", () => {
   assert.deepEqual(deriveArtifactProjectionRows({ specs, nodeId: "archive", outputValue, runId }), row);
   assert.notEqual(deriveArtifactProjectionRows({ specs, nodeId: "archive", outputValue, runId: randomUUID() })[0]?.sinkId, row[0]?.sinkId);
   assert.throws(() => deriveArtifactProjectionRows({ specs, nodeId: "archive", outputValue }));
+});
+
+it("classifies every recorded collection leaf and withholds its private destination population", () => {
+  const archive = NamedArtifactOutputSchema.parse({ files: [{ relativePath: "Private worksheet/Private archive.zip", artifact }],
+    artifact: { ...artifact, mediaType: ARTIFACT_COLLECTION_MEDIA_TYPE } });
+  const scope = { kind: "task-output", taskId: namedFileOutputContract.id } as const;
+  for (const leaf of evidenceLeaves({ archive })) {
+    const declared = classifyEvidenceLeaf(scope, leaf.path);
+    if (leaf.path === "archive.files") {
+      assert.equal(declared.classification, "direct-identifier"); assert.equal(declared.transform, "drop");
+      assert.equal(JSON.stringify(redactValue(declared.classification, declared.transform, leaf.value)).includes("Private"), false);
+    }
+  }
 });
