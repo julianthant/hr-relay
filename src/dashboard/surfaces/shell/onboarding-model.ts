@@ -1,3 +1,4 @@
+import { PROFILE_ONBOARDING_STATE } from "../../../models/profiles/public-profile.js";
 import type { DashboardClient } from "../../client/index.js";
 import type { ConfirmProfileOnboardingDuoRequest, ProfileOnboardingState, ProfileOnboardingMethod, PublicProfileState } from "../../../models/profiles/public-profile.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -60,7 +61,7 @@ export const mockOnboardingPort: MockOnboardingPort = Object.freeze<MockOnboardi
 export function createServedOnboardingPort(client: DashboardClient, settled: (state: PublicProfileState) => void, onboarding?: ProfileOnboardingState): ServedOnboardingPort {
   const accept = (result: PublicProfileState, allowActive = false) => {
     if (result.state === "active" && !allowActive) throw new Error("ONBOARDING_DRAFT_REQUIRED");
-    if (onboarding && (result.state === "onboarding" && (result.operationId !== onboarding.operationId || result.profileId !== onboarding.profileId)
+    if (onboarding && (result.state === PROFILE_ONBOARDING_STATE && (result.operationId !== onboarding.operationId || result.profileId !== onboarding.profileId)
       || result.state === "active" && (result.profileId !== onboarding.profileId || result.duoState !== "ready"))) throw new Error("ONBOARDING_SCOPE_REPLACED");
     settled(result); return result;
   };
@@ -78,7 +79,7 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
     },
     async submit(step, details) {
       const result = step === "signup" ? await client.signUpProfile(details) : await client.signInProfile({ email: details.email, password: details.password });
-      if (step === "signup" && result.state !== "onboarding" && result.state !== "refused" && result.state !== "error") throw new Error("ONBOARDING_DRAFT_REQUIRED");
+      if (step === "signup" && result.state !== PROFILE_ONBOARDING_STATE && result.state !== "refused" && result.state !== "error") throw new Error("ONBOARDING_DRAFT_REQUIRED");
       return accept(result, step === "login");
     },
   });
@@ -142,7 +143,7 @@ export function useDuoBrowser(methods: DuoMethods, onMethods: (methods: DuoMetho
     if (source === "served") {
       if (!served || !operationId) { setStatus("error"); return; }
       setStatus("launching");
-      try { const result = await served.showBrowser(); setStatus(result.state === "onboarding" ? "waiting" : "error"); }
+      try { const result = await served.showBrowser(); setStatus(result.state === PROFILE_ONBOARDING_STATE ? "waiting" : "error"); }
       catch { setStatus("error"); }
       return;
     }
@@ -214,7 +215,7 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
   const busy = useRef(false);
   const settle = useCallback((value: PublicProfileState) => {
     setSettlement(current => {
-      const retained = current?.client === client && current.state?.state === "onboarding" && (value.state === "refused" || value.state === "error");
+      const retained = current?.client === client && current.state?.state === PROFILE_ONBOARDING_STATE && (value.state === "refused" || value.state === "error");
       return { client, state: retained ? current.state : value, failure: retained };
     });
   }, [client]);
@@ -228,9 +229,9 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
     }, () => { if (live.current && generation.current === request) setSettlement({ client, failure: true }); });
     return () => { live.current = false; lifetime.current++; };
   }, [client, enabled, settle]);
-  const onboarding = state?.state === "onboarding" ? state : undefined;
+  const onboarding = state?.state === PROFILE_ONBOARDING_STATE ? state : undefined;
   const settleRead = useCallback((value: PublicProfileState, expected: ProfileOnboardingState) => {
-    if (value.state !== "onboarding" || value.operationId !== expected.operationId || value.profileId !== expected.profileId) {
+    if (value.state !== PROFILE_ONBOARDING_STATE || value.operationId !== expected.operationId || value.profileId !== expected.profileId) {
       if (value.state === "signed-out" || value.state === "refused" && value.code === "PROFILE_SESSION_STALE") settle({ state: "signed-out" });
       else setSettlement(current => current?.client === client ? { ...current, failure: true } : current);
       return;
@@ -265,7 +266,7 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
         if (recover === "view" && failure && onboarding) {
           const value = await client.readProfileSession();
           if (!live.current || generation.current !== request || currentScope.current !== scope) throw new Error("ONBOARDING_SCOPE_REPLACED");
-          if (value.state !== "onboarding" || value.operationId !== onboarding.operationId || value.profileId !== onboarding.profileId) {
+          if (value.state !== PROFILE_ONBOARDING_STATE || value.operationId !== onboarding.operationId || value.profileId !== onboarding.profileId) {
             settleRead(value, onboarding); throw new Error("ONBOARDING_SCOPE_REPLACED");
           }
           draft = value;
@@ -315,7 +316,7 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
     const request = ++generation.current; setPending(true); setUnavailable(false);
     try {
       const result = await action();
-      if (request === generation.current) { setUnavailable(result.state !== "onboarding"); return result; }
+      if (request === generation.current) { setUnavailable(result.state !== PROFILE_ONBOARDING_STATE); return result; }
     }
     catch { if (request === generation.current) setUnavailable(true); }
     finally { if (request === generation.current) setPending(false); }
@@ -334,7 +335,7 @@ export function useServedDuoSetup(port?: ServedOnboardingPort) {
       const latest = current.current.port, active = latest?.onboarding;
       if (!latest || !active || latest.unavailable) return;
       const result = active.methods[selected].state === "idle" ? await run(() => latest.start(selected)) : active;
-      if (result?.state !== "onboarding" || result.operationId !== active.operationId || result.profileId !== active.profileId) return;
+      if (result?.state !== PROFILE_ONBOARDING_STATE || result.operationId !== active.operationId || result.profileId !== active.profileId) return;
       const attempt = result.methods[selected];
       if (attempt.state !== "pending" || !attempt.attemptId) return;
       return { operationId: result.operationId, profileId: result.profileId, method: selected, attemptId: attempt.attemptId, generation: ++generation.current, authorityScope: latest.authorityScope };

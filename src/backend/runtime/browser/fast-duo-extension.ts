@@ -1,3 +1,4 @@
+import { PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../models/config/duo-credential-store.js";
 import { privatePathRejects } from "../../storage/private-path.js";
 import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, openSync, readFileSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
@@ -14,10 +15,10 @@ const RELAY_EXTENSION_FILES = ["relay-manifest.json", "LICENSE", "THIRD_PARTY_NO
   "src/service.js", "src/crypto.js", "src/accounts.js", "src/duo-origin.js", "src/username.js",
   "src/options.html", "src/options.js", "src/relay-options.js", "src/styles.css", "src/icons/autopilot.svg", "src/icons/shield-check.svg"] as const;
 
-export function stageFastDuoExtension(sourceRoot: string, destination: string, mode: "onboarding" | "workflow"): void {
+export function stageFastDuoExtension(sourceRoot: string, destination: string, mode: typeof PROFILE_ENROLLMENT_EXTENSION_MODE | "workflow"): void {
   if (realpathSync(sourceRoot) !== sourceRoot) throw new FastDuoExtensionError();
   mkdirSync(join(destination, "src", "icons"), { recursive: true, mode: 0o700 });
-  for (const name of mode === "onboarding" ? RELAY_EXTENSION_FILES : WORKFLOW_EXTENSION_FILES) {
+  for (const name of mode === PROFILE_ENROLLMENT_EXTENSION_MODE ? RELAY_EXTENSION_FILES : WORKFLOW_EXTENSION_FILES) {
     const path = join(sourceRoot, name);
     if (realpathSync(path) !== path) throw new FastDuoExtensionError();
     const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);

@@ -5,6 +5,8 @@ import { deepFreeze } from "../../rules/validation/immutability.js";
 import { PersonPreferencesOverrideSchema } from "./person-preferences.js";
 import { ordinarySettingsObject } from "./catalog.js";
 
+export const ONBOARDING_DOCUMENTS_DIRECTORY_NAME = "onboarding";
+
 const UrlSchema = z.url();
 
 /** Fully qualified path. Browser-safe: the dashboard imports this model. Drive-relative (`C:foo`) and a current-drive root (`\foo`) stay rejected. */

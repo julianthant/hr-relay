@@ -1,3 +1,4 @@
+import { PROFILE_ONBOARDING_ROUTE_KEY } from "../../../models/profiles/public-profile.js";
 import { parseViewRoute, ViewRouteSchema, type ViewRoute } from "./view-route-model.js";
 import { parseArchiveFolderRoute, parseArchiveBrowse, type ArchiveBrowseState } from "./archive-route-model.js";
 /** The app's visible state lives in the query string. */
@@ -50,7 +51,7 @@ export interface AppRouteState {
 /** Preserve the raw date identity so the date boundary can explain and recover invalid links. */
 export function parseRoute(search: string): AppRouteState {
   const params = new URLSearchParams(search);
-  const onboarding = params.get("onboarding");
+  const onboarding = params.get(PROFILE_ONBOARDING_ROUTE_KEY);
   const setup = params.get("onboardingSetup");
   const day = params.get("day");
   const run = params.get("run");
@@ -126,7 +127,7 @@ export function parseRoute(search: string): AppRouteState {
 export function routeToSearch(route: AppRouteState): string {
   const params = new URLSearchParams();
   if (route.onboardingSetup !== undefined) params.set("onboardingSetup", route.onboardingSetup);
-  if (route.onboarding !== undefined) params.set("onboarding", route.onboarding);
+  if (route.onboarding !== undefined) params.set(PROFILE_ONBOARDING_ROUTE_KEY, route.onboarding);
   if (route.day !== undefined) params.set("day", route.day);
   if (route.run !== undefined) params.set("run", route.run);
   if (route.section !== undefined) params.set("section", route.section);

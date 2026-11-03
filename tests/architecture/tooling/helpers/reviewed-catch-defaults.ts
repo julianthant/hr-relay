@@ -8,12 +8,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
-    "sha256": "19f84ecd02ab97738aa4ee6c4f595ed36d2b3cc78b328e80937e8f3dd9ef780b",
+    "sha256": "9260da6bd4c5fd75618167cf6586e449797f02381e22a42ded744d6b75f914cc",
     "reason": "Failed UNKNOWN retention or failure-report callbacks retain both causes and leave attempt/browser closure unproved. Context or broker termination revokes the owner and settles the attempt; physical profile deletion waits for owner cleanup and keeps all private-path and native closure checks. Worker stop failure remains uncertain until pump/report settlement and enclosing browser closure are proved; replacement or relaunch remains refused after unproved cleanup. Platform-probe, emulation and virtual-key custody failures enter the same scoped UNKNOWN retention and closure path; no native failure triggers a second ceremony."
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "5989ddfbfeca286483bff6d4ee25219c2b8b43248b901abde639d10ebb14022c",
+    "sha256": "7f73e16c28a3470dc984631864234478b6d352f90cdf3766d2d86a4e196498ac",
     "reason": "Startup producer closure failures retain dependent native database and admission custody. Selected-context open failure rethrows typed custody uncertainty. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and stop promises, whose callers await failures before storage release. An unavailable authority generation remains explicitly unavailable; backup presence is assessed separately. Automatic upgrade runs before composition in storage-compose.ts and has no HTTP response handoff. Confirmed account deletion shares the exact session logout drain; deletion errors propagate with pending identity retained and never report signed-out success."
   },
   {
