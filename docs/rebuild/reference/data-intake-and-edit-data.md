@@ -374,3 +374,7 @@ Clearing an incoming flag cannot bypass the stored master's refusal. The default
 document creation/modification timestamps are admitted; edits use the library's saved timestamps.
 Other document properties, table structures, non-cell styles and opaque package parts are refused
 for master mutation. Export creates an explicit value copy and never overwrites the source file.
+
+The `ocr/read-approved-records` service task reads a run's exact native OCR delegation outcomes through the local `ocr.review` adapter. It authenticates each current approved snapshot through the OCR authority reader; missing, foreign, altered and stale selections refuse. Corrected selected records stay separate from the original review seed.
+
+The worker composes `xlsx-retention` at the source run's retained `paths.i9CheckTrackerPath`, including verified physical-path relocation. Its four-column publication journal retains the existing receipt and recovery protocol; a derived I-9 Check worksheet presents the nine retention columns and the latest observed row per person. Unowned or changed destination bytes refuse.

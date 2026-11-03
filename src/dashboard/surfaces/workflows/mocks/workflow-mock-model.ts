@@ -43,7 +43,7 @@ const prep: readonly MockStep[] = [
 export function initialMockDraft(id: string): MockDraft {
   const flow = mockWorkflow(id);
   return { method: flow.methods[0], text: "", files: [], lookupMode: "search", crmCheck: true,
-    hireType: "new-hire", uploadMode: "full", roster: "existing", formType: id === "i9-check" ? "i9" : id === "onbase" ? "onbase-emergency-contact" : id === "emergency-contact" ? "emergency-contact" : "oath",
+    hireType: "new-hire", uploadMode: "full", roster: "existing", formType: id === "i9-check-start" ? "i9" : id === "onbase" ? "onbase-emergency-contact" : id === "emergency-contact" ? "emergency-contact" : "oath",
     documentType: "Emergency Contact", effectiveDate: "2026-08-03", startDate: "2017-01-01", endDate: "2026-01-31",
     // Dry run is an explicit operator choice; every launch starts with it off.
     dryRun: false, priority: "interactive", browser: "headed",
@@ -108,7 +108,7 @@ export function mockDraftError(id: string, draft: MockDraft): string | undefined
 
 export function mockOcrReadSteps(id: string, draft: MockDraft): readonly MockStep[] {
   if (draft.method !== "pdf" && !mockDocumentFixture(draft) || id === "oath-upload" && draft.uploadMode === "upload-only") return [];
-  const type = id === "emergency-contact" ? "emergency-contact" : id === "i9-check" ? "i9" : id === "onbase" ? mockOnbaseDocumentType(draft.documentType).formType : draft.formType;
+  const type = id === "emergency-contact" ? "emergency-contact" : id === "i9-check-start" ? "i9" : id === "onbase" ? mockOnbaseDocumentType(draft.documentType).formType : draft.formType;
   const label = type === "emergency-contact" || type === "onbase-emergency-contact" ? "Read emergency contact" : type === "i9" ? draft.documentType.startsWith("I-9 Section ") ? `Read ${draft.documentType}` : "Read I-9 forms" : type === "verify" ? "Read onboarding forms" : type === "separation" ? "Read separation form" : "Read oath";
   return [{ key: "read-document", label, system: "OCR", message: draft.ocrMode === "manual" ? "Enter the predefined document fields manually in OCR Records." : "Read the predefined document fields into OCR Records; downstream work waits for approval." }];
 }
@@ -184,7 +184,7 @@ function delegateMockOcr(run: MockRun): readonly MockRun[] {
 export function mockRunsForDraft(id: MockWorkflowId, draft: MockDraft, sequence: number, sourceId?: string): readonly MockRun[] {
   const error = mockDraftError(id, draft);
   if (error) throw new Error(error);
-  if (id === "onbase" || id === "emergency-contact" || id === "i9-check") draft = { ...draft, formType: id === "onbase" ? mockOnbaseDocumentType(draft.documentType).formType : id === "i9-check" ? "i9" : "emergency-contact" };
+  if (id === "onbase" || id === "emergency-contact" || id === "i9-check-start") draft = { ...draft, formType: id === "onbase" ? mockOnbaseDocumentType(draft.documentType).formType : id === "i9-check-start" ? "i9" : "emergency-contact" };
   const subjects = draft.method === "typed" ? mockInputEntries(id, draft) : draft.method === "roster" ? ["Onboarding Roster"] : id === "onbase" ? [draft.files.map(file => file.name).join(" + ")] : draft.files.map(file => file.name);
   const created: readonly MockRun[] = subjects.map((subject, index) => ({ id: `mock:${id}:${sequence}:${index}`, workflowId: id, subject,
     title: subject, draft: structuredClone({ ...draft, ...(draft.method === "typed" ? { text: subject } : id === "onbase" ? {} : { files: [draft.files[index]] }) }),
@@ -275,7 +275,7 @@ function resultFields(run: MockRun): readonly (readonly [string, string])[] {
   const record = mockInputRecord(run);
   const edited: Readonly<Record<string, string>> = run.role === "person" ? { "Employee": reviewName(record), "Employee ID": reviewValue(record, "employeeId"), "UCPath ID": reviewValue(record, "employeeId"), "Contact": reviewValue(record, "contactName"), "Relationship": reviewValue(record, "relationship"), "Contact phone": reviewValue(record, "cellPhone"), "Source page": String(record.page) } : {};
   const fields = mockWorkflow(run.workflowId).result.map(([label, value]) => [label, manualFact(run.workflowId, run.draft, label) ?? (edited[label] || (label === "Document type" && run.workflowId === "onbase" ? run.draft.documentType : label === "Employee ID" ? mockOperationValue(run, "$employeeId") : label === "Kuali ID" || label === "Email" ? run.subject : label === "PDF" ? run.draft.files.map(file => file.name).join(", ") : label === "Signers" ? String(run.approvedCount ?? 0) : label === "Effective date" && run.workflowId === "work-study" ? displayExtractedDate(run.draft.effectiveDate) : value))] as const);
-  if (run.workflowId === "i9-check" && run.role === "person") fields.push(["Hire date", "08/03/2026"], ["Separation date", "Not separated"], ["Retention tracker", "Appended"]);
+  if (run.workflowId === "i9-check-start" && run.role === "person") fields.push(["Hire date", "08/03/2026"], ["Separation date", "Not separated"], ["Retention tracker", "Appended"]);
   if (run.workflowId === "old-kronos-reports") fields.push(["Report start", displayExtractedDate(run.draft.startDate)], ["Report end", displayExtractedDate(run.draft.endDate)]);
   if (run.workflowId === "onbase") fields.push(["Combined PDFs", String(run.draft.files.length)]);
   return fields.filter(([label]) => !(run.draft.dryRun && ["HR ticket", "Signature date"].includes(label)) && !(label === "HR ticket" && !run.draft.selectedSteps.includes("submit")) && !(label === "Signature date" && !run.draft.selectedSteps.includes("transaction")) && !(run.workflowId === "oath-upload" && run.draft.uploadMode === "upload-only" && label === "Signers"));

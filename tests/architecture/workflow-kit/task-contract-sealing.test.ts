@@ -218,6 +218,7 @@ describe("task contract sealing architecture", () => {
       "src/models/processing/extraction/extract-spreadsheet.ts",
       "src/models/processing/normalization/normalize-contact.ts",
       "src/models/processing/ocr/extract-form-page.ts",
+      "src/models/processing/ocr/read-approved-records.ts",
       "src/models/processing/roster/match-spreadsheet.ts",
       "src/models/processing/workbooks/read-reference.ts",
       "src/models/processing/workbooks/read-result.ts",
@@ -257,6 +258,10 @@ describe("task contract sealing architecture", () => {
       "src/models/task/task-contract.ts",
       "src/models/workflows/crm-doc-download/read-document-rows.ts",
       "src/models/workflows/crm-doc-download/read-worksheet-archives.ts",
+      "src/models/workflows/i9-check-start/read-people.ts",
+      "src/models/workflows/i9-check-start/read-publication.ts",
+      "src/models/workflows/i9-check-start/read-requests.ts",
+      "src/models/workflows/i9-check-start/read-rows.ts",
       "src/models/workflows/i9-check/check.ts",
       "src/models/workflows/i9-lookup/read-result.ts",
 

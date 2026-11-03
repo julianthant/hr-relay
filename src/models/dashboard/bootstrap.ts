@@ -10,7 +10,7 @@ import {
   PositiveIntSchema,
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
-import { InputRunSurfaceSchema } from "../workflow/ingress.js";
+import { InputRunSurfaceSchema, UploadRunSurfaceSchema } from "../workflow/ingress.js";
 import { WorkflowModuleRoleSchema } from "../../workflow-kit/validation/module-role.js";
 import { PreflightCheckIdSchema } from "../preflight/preflight-contract.js";
 import { EnqueuePolicySchema, WorkflowCodeSchema } from "../workflow/presentation.js";
@@ -45,6 +45,7 @@ export const WorkflowStartWireSchema = z.strictObject({
   enqueue: EnqueuePolicySchema,
   version: PositiveIntSchema,
   inputRun: InputRunSurfaceSchema.optional(),
+  uploadRun: UploadRunSurfaceSchema.optional(),
   spreadsheetIntake: z.boolean(),
   requiredWorkbookTypeIds: z.array(z.string().min(1)).refine(ids => new Set(ids).size === ids.length),
   steps: z.array(z.strictObject({

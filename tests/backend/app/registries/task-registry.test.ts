@@ -37,6 +37,7 @@ describe("Person Lookup task implementations", () => {
         "normalization/read-contact-advice",
 
         "ocr/extract-form-page",
+        "ocr/read-approved-records",
 
         "onbase/match-import",
         "onbase/read-source-page",
@@ -64,6 +65,10 @@ describe("Person Lookup task implementations", () => {
         "workbooks/read-result",
         "workflow:crm-doc-download/read-document-rows",
         "workflow:crm-doc-download/read-worksheet-archives",
+        "workflow:i9-check-start/read-people",
+        "workflow:i9-check-start/read-publication",
+        "workflow:i9-check-start/read-requests",
+        "workflow:i9-check-start/read-rows",
         "workflow:i9-check/read-match-outcome",
         "workflow:i9-check/read-retention-row",
         "workflow:i9-lookup/read-result",

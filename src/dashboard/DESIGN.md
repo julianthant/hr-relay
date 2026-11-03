@@ -33,6 +33,10 @@ Use the scoped primitives rather than copying shell measurements into a body pag
 
 ## Primitives
 
+PDF starts use the existing PDF picker and selected-file list. All attachments belong to one run;
+confirmation names each original file. I-9's public parent and preview share `i9-check-start`, while
+the `i9-check` person workflow remains a child. Its production source stays mock until activation.
+
 | Family | Public components |
 | --- | --- |
 | Commands and short facts | `Button`, `BareButton`, `ButtonLink`, `IconButton`, `Badge`, `CountBadge`, `Chip`, `Kbd`, `Spinner`, `Skeleton`, `Separator`, `VisuallyHidden` |
