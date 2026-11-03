@@ -290,8 +290,9 @@ Keep required top-level summaries (`unit`, `integration`, `architecture`, `parit
 The pipeline collector requires the selected reusable route to succeed and the other route to be
 exactly skipped before copying its outputs. Deliberate portable parity/release omissions are
 assigned only in that validated ordinary-PR context. Missing selectors or outputs fail. Require successful change detection and either an explicit suite
-omission or successful selected runners. For portable unit and integration, require selected Ubuntu success. In full releases, additionally
-require each native platform to succeed when its matrix is nonempty or be skipped when empty.
+omission or successful selected runners. For portable unit and integration, require selected Ubuntu
+success. Selected release unit and integration suites require success from both native platforms;
+native omission is valid only when that suite is omitted.
 For architecture, require Ubuntu success. For selected parity, require macOS success.
 Fail the summary when a required runner fails, is cancelled, or is unexpectedly skipped.
 
