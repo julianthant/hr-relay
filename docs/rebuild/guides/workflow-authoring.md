@@ -283,6 +283,10 @@ control after the retry settles. That acknowledgement binds the exact child atte
 another retry requires another Resume. `block-parent` holds the same parent row and propagates its
 block through waiting ancestors. Approval gates remain visible only on their owning run.
 
+During a parent dry run, a delegated child with no transactions keeps the dry-run flag and returns
+its normal typed read-only observations. A child with an unsupported transaction refuses admission.
+Standalone read-only workflows still have no transaction-preview option.
+
 ## 9 · Add a task only when needed
 
 Follow Person Lookup's `ReadActiveStatus` fold:

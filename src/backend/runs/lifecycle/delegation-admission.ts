@@ -96,7 +96,8 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
         || target.id !== context.node.target.id
         || deriveSchemaHash(target.input, "input") !== deriveSchemaHash(context.node.target.input, "input")
         || workflowTerminalResultExecution(target).schemaHash !== deriveSchemaHash(context.node.target.result, "output")) throw new Error("delegation-node-binding-mismatch");
-      if (parent.envelope.dryRun && workflowDryRunSupport(target).state === "unsupported") throw new Error("delegation-target-dry-run-unsupported");
+      const dryRunSupport = workflowDryRunSupport(target);
+      if (parent.envelope.dryRun && dryRunSupport.state === "unsupported" && dryRunSupport.reason !== "no-transaction-node") throw new Error("delegation-target-dry-run-unsupported");
       const snapshot = repositories.configSnapshots.get(parent.envelope.configSnapshotId);
       const active = repositories.runtimeConfig.get();
       if (snapshot === undefined || snapshot.fingerprint !== parent.envelope.configFingerprint || active === undefined

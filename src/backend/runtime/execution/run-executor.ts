@@ -2261,11 +2261,11 @@ export async function executeClaimedRun(
     }
     if (envelope.dryRun) {
       const first = nodes.find(node => node.kind === "transaction");
-      if (first === undefined) throw new Error("dry-run preview has no transaction boundary");
-      return settleSuccess(getRun(), buildRunPreviewResult(descriptor, getRun(),
+      if (first !== undefined) return settleSuccess(getRun(), buildRunPreviewResult(descriptor, getRun(),
         nodes.map(node => dryRunSteps.get(String(node.id))),
         dependencyEvidenceFor([...new Set([...first.dependsOn,
           ...nodes.filter(node => node.kind === "task" && dryRunSteps.get(String(node.id))?.state === "exercised").map(node => node.id)])], "dry-run preview"), clock));
+      if (envelope.parent === undefined) throw new Error("dry-run preview has no transaction boundary");
     }
     const terminal = workflowTerminalResultExecution(descriptor);
     const current = getRun();

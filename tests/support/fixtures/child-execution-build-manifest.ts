@@ -24,7 +24,7 @@ export const childExecutionBuildManifest = parseBuildManifest({ kind: "hrauto-re
       "fixture-child-mixed-policy", "fixture-child-continuation", "fixture-child-unawaited-independent", "fixture-child-unawaited-cascade"]
       .concat(["fixture-child-wait-gate-leaf", ...["gate", "blocked", "manual", "manual-recovery"].flatMap(mode => [`fixture-child-wait-${mode}-middle`, `fixture-child-wait-${mode}-root`])])
       .map(id => entry(id, "tests/support/fixtures/child-execution-workflows.ts")),
-    ...["fixture-child-crash-write", "fixture-child-crash-write-root", "fixture-child-prerequisites-root", "fixture-parallel-child-write-recovery"]
+    ...["fixture-child-crash-write", "fixture-child-crash-write-root", "fixture-child-prerequisites-root", "fixture-parallel-child-write-recovery", "fixture-child-read-preview-root", "fixture-child-unsupported-preview-target", "fixture-child-unsupported-preview-root"]
       .map(id => entry(id, "tests/support/fixtures/child-execution-write-workflow.ts")),
   ],
   tasks: [entry("ocr/extract-form-page", "tests/support/fixtures/plan1-operation-workflows.ts"),

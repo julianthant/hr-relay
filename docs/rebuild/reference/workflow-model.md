@@ -343,13 +343,18 @@ wrong-attempt freshness overrides, duplicate patches, and a patch aimed at the e
 authority-supplied attempt greater than the current attempt.
 
 `dryRun` is envelope state, not workflow input. `workflowDryRunSupport` derives support from all
-transaction nodes. A graph with no transaction refuses preview as `no-transaction-node`; a graph
+transaction nodes. A standalone graph with no transaction refuses preview as `no-transaction-node`; a graph
 with an unsupported transaction refuses as `node-declares-unsupported`. Otherwise `firstTransactionNodeId` names
 the first preparation boundary. `supportsDryRun` on an input-run surface is derived and cannot be authored.
 
+A delegated child with no transaction inherits `dryRun: true` and executes its normal read-only
+graph, including its gates and nested delegation. It returns the normal typed observational result
+and receipt for its parent to consume. A child with an unsupported transaction still refuses; child
+and parent dry-run flags must match. This exception does not offer standalone read-only previews.
+
 ### 2.1 Preview terminal result
 
-`executeClaimedRun` traverses the declared graph and stores `RunDryRunPreviewResult`, independently
+For a transaction preview, `executeClaimedRun` traverses the declared graph and stores `RunDryRunPreviewResult`, independently
 of the authored terminal derive. Every node has exercised, transaction-preview, unavailable or
 not-run accounting. Each transaction prepares, verifies and captures without invoking commit.
 Existing completion may be observed at the durable lookup or read probe without restaging a form.

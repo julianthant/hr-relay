@@ -1,7 +1,7 @@
 import { afterAll } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
-import { childWriteRecoveryRoot as root, childPrerequisiteRoot, childPrerequisiteModules, childCrashWrite, parallelChildWriteRecoveryRoot } from "../../../support/fixtures/child-execution-write-workflow.js";
+import { childWriteRecoveryRoot as root, childPrerequisiteRoot, childPrerequisiteModules, childCrashWrite, parallelChildWriteRecoveryRoot, childReadPreviewRoot, childUnsupportedPreviewRoot, childUnsupportedPreviewTarget } from "../../../support/fixtures/child-execution-write-workflow.js";
 import assert from "node:assert/strict";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -9,7 +9,7 @@ import { taskId } from "../../../../src/rules/identity/ids.js";
 import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
 import { resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
-import { workflowProjections } from "../../../../src/workflow-kit/workflow.js";
+import { workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
@@ -27,15 +27,21 @@ import { canonicalChildExecution } from "../../../support/helpers/backend/canoni
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
+import { RunDryRunPreviewResultSchema, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../../src/models/run/result.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { Plan1Output, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
+
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
 const world = createRunExecutorTestWorld(profiles.create);
 afterEach(world.cleanup);
 
-async function fixture(mode: "single" | "prerequisites" | "parallel" = "single") {
-  const prerequisites = mode === "prerequisites", parallel = mode === "parallel";
-  const driver = createWriteFixtureWorld(), graph = prerequisites || parallel ? childPrerequisiteModules(driver) : undefined;
-  const selectedRoot = parallel ? parallelChildWriteRecoveryRoot : prerequisites ? childPrerequisiteRoot : root;
+async function fixture(mode: "single" | "prerequisites" | "parallel" | "read-preview" | "unsupported-preview" = "single", dryRun = false) {
+  const prerequisites = mode === "prerequisites", parallel = mode === "parallel", readPreview = mode === "read-preview", unsupportedPreview = mode === "unsupported-preview";
+  const withReads = prerequisites || readPreview || unsupportedPreview;
+  const driver = createWriteFixtureWorld(), graph = withReads || parallel ? childPrerequisiteModules(driver) : undefined;
+  const selectedRoot = readPreview ? childReadPreviewRoot : unsupportedPreview ? childUnsupportedPreviewRoot
+    : parallel ? parallelChildWriteRecoveryRoot : prerequisites ? childPrerequisiteRoot : root;
   const stores = graph?.stores ?? buildWriteFixtureRegistry(driver);
   const h = await world.executorHarness({ descriptor: selectedRoot.descriptor, stores, sessions: writeFixtureSessions(driver) });
   const { database, clock, stateRoot, path } = h.authority;
@@ -47,13 +53,13 @@ async function fixture(mode: "single" | "prerequisites" | "parallel" = "single")
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }).state, "applied");
   const sequencer = createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: database,
     sessions: h.manager, emitter: h.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: h.scheduler, taskDeadlineMs: 60_000,
-    operator: "local-operator", log: h.deps.log, resolveImplFingerprint: id => prerequisites || parallel ? resolveTaskImplFingerprint(childExecutionBuildManifest, id) : WRITE_FIXTURE_IMPL_FINGERPRINT });
+    operator: "local-operator", log: h.deps.log, resolveImplFingerprint: id => withReads || parallel ? resolveTaskImplFingerprint(childExecutionBuildManifest, id) : WRITE_FIXTURE_IMPL_FINGERPRINT });
   const execution = canonicalChildExecution({ ...h.deps, writeSequencer: sequencer,
-    ...(prerequisites || parallel ? { buildManifest: childExecutionBuildManifest } : {}) }, database, path,
+    ...(withReads || parallel ? { buildManifest: childExecutionBuildManifest } : {}) }, database, path,
     workflow => graph === undefined ? workflow === root.descriptor.id ? root.descriptor : workflow === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined
       : workflow === selectedRoot.descriptor.id ? selectedRoot.descriptor : parallel && workflow === childCrashWrite.descriptor.id ? childCrashWrite.descriptor
       : graph.modules.find(module => module.descriptor.id === workflow)?.descriptor);
-  const run = execution.start(selectedRoot.descriptor, prerequisites ? { emplId: WRITE_FIXTURE_EID, text: "same", mode: "ok" } : { eid: WRITE_FIXTURE_EID }, { dryRun: false });
+  const run = execution.start(selectedRoot.descriptor, withReads ? { emplId: WRITE_FIXTURE_EID, text: "same", mode: "ok" } : { eid: WRITE_FIXTURE_EID }, { dryRun });
   return { ...h.authority, driver, execution, run };
 }
 
@@ -225,3 +231,57 @@ it(`authenticates task and transaction prerequisites through child resume with u
   }
 });
 }
+it("runs nested read-only delegated children with dryRun true and consumes their normal typed observations in a parent preview", async () => {
+  const f = await fixture("read-preview", true);
+  f.driver.probeResults.push(absentProbeEvidence(f.clock.now().toISOString()));
+  assert.deepEqual(workflowDryRunSupport(plan1Leaf.descriptor), { state: "unsupported", reason: "no-transaction-node" });
+  assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "yielded-delegation");
+  const done = await f.execution.execute(f.run, world.SIGNAL);
+  assert.ok(done.run?.lifecycle.state === "terminal" && done.run.lifecycle.outcome === "done");
+  const child = f.database.authority.runs.listChildren(f.run.envelope.runId)[0]; assert.ok(child);
+  const nested = f.database.authority.runs.listChildren(child.envelope.runId)[0]; assert.ok(nested);
+  for (const run of [child, nested]) {
+    assert.equal(run.envelope.dryRun, true);
+    assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
+    const result = f.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
+    assert.equal(result.resultSchemaHash, deriveSchemaHash(Plan1Output, "output"));
+    assert.deepEqual(Plan1Output.parse(result.result.value), { eid: WRITE_FIXTURE_EID, disposition: "same/same", providerState: "same" });
+    assert.equal(RunDryRunPreviewResultSchema.safeParse(result.result.value).success, false);
+    assert.ok(run.completion?.kind === "done");
+    assert.equal(run.completion.resultDigest, result.resultDigest);
+    const reads = result.dependencies.filter(dependency => dependency.state === "resolved");
+    if (run.envelope.runId === nested.envelope.runId) assert.equal(reads.length, 2);
+    for (const read of reads) {
+      const address = read.checkpoint;
+      const checkpoint = f.database.authority.runCheckpoints.get(address.workflowId, address.itemId, read.nodeId, address.attempt, address.claimGeneration);
+      assert.ok(checkpoint);
+      assert.equal(checkpoint.runId, run.envelope.runId);
+      assert.equal(deriveCheckpointOutputDigest(checkpoint.output), read.outputDigest);
+      assert.equal(deriveCheckpointProvenanceDigest(checkpoint.provenance), read.provenanceDigest);
+    }
+    assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+  }
+  const parentResult = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(parentResult);
+  const preview = RunDryRunPreviewResultSchema.parse(parentResult.result.value);
+  assert.equal(preview.externalCommit, "none");
+  assert.ok(preview.steps.some(step => step.nodeId === "write" && step.state === "transaction-preview"));
+  assert.equal(f.driver.events.filter(event => event === "prepare").length, 1);
+  assert.equal(f.driver.events.some(event => event.startsWith("commit-click:")), false);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
+});
+
+it("still refuses a delegated child whose transaction explicitly does not support a dry run", async () => {
+  const f = await fixture("unsupported-preview", true);
+  assert.deepEqual(workflowDryRunSupport(childUnsupportedPreviewTarget.descriptor), { state: "unsupported", reason: "node-declares-unsupported", nodeId: "write" });
+  const admit = f.execution.lifecycle.admitDelegation.bind(f.execution.lifecycle);
+  let refused = false;
+  f.execution.lifecycle.admitDelegation = (context, plans) => {
+    try { return admit(context, plans); }
+    catch (error) { assert.ok(error instanceof Error); assert.equal(error.message, "delegation-target-dry-run-unsupported"); refused = true; throw error; }
+  };
+  assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "failed");
+  assert.equal(refused, true);
+  assert.deepEqual(f.database.authority.runs.listChildren(f.run.envelope.runId), []);
+  assert.equal(f.driver.events.includes("prepare"), false);
+  assert.equal(f.driver.events.some(event => event.startsWith("commit-click:")), false);
+});
