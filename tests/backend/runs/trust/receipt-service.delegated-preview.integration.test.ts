@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
-import { workflowModuleOf, childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { workflowModuleOf, childWorkflowModuleOf, READABLE_WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";
-import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
 import { createDeterministicUcpathContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
@@ -39,20 +38,18 @@ it("serves parent and child preview receipts and Logs while preserving ordinary 
     assert.deepEqual(receipts.ensureReceipt(run.envelope.runId), receipt);
   }
   assert.equal(receipts.ensureReceipt(f.run.envelope.runId).warnings.some(warning => warning.code === "DRY_RUN_PREVIEW"), false);
-  const descriptors = { resolve: f.resolve };
+  const descriptors = { resolve: (id: string) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor };
   const projection = createOperatorProjection({ database: f.database, reader: f.canonical.lifecycle, descriptors,
     stateRoot: f.harness.authority.stateRoot, clock: f.clock, appVersion: "0.1.0", descriptorSetHash: f.parentRun.envelope.contractFingerprint,
     ledger: { foldActivityRange: () => { throw new Error("unrequested activity"); } } });
   projection.rebuildFromTimeline();
   const detail = createOperatorRunDetail({ database: f.database, runReader: f.canonical.lifecycle, projection,
     stateRoot: f.harness.authority.stateRoot, canonical: { database: f.database, reader: f.canonical.lifecycle, descriptors } });
-  const deps = { ...detail, descriptors: { resolve: (id: string) => {
-    const module = modules.find(module => module.descriptor.id === id);
-    return module === undefined ? undefined : { ...module.descriptor, dataOrigins: dataOriginViewsOf(module) };
-  } } };
+  assert.ok(detail.descriptors.resolve("ocr")?.dataOrigins?.length);
+  assert.ok(detail.descriptors.resolve("emergency-contact-member")?.dataOrigins?.length);
   for (const run of [completed.run, member, f.database.authority.runs.get(f.run.envelope.runId)]) {
     assert.ok(run);
-    const logs = buildRunLogsSection(deps, run.envelope.runId, projection.runFold(run.envelope.runId), run);
+    const logs = buildRunLogsSection(detail, run.envelope.runId, projection.runFold(run.envelope.runId), run);
     assert.equal(logs.section, "logs"); if (logs.section !== "logs") throw new Error("logs required");
     if (run.envelope.workflow === "ocr") assert.equal(logs.payload.dryRunPreview, undefined);
     else {
