@@ -1,4 +1,4 @@
-import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
+import { readDelegationEvidence, readDelegationInvocationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { buildRunPreviewResult, buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { afterAll } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
@@ -324,6 +324,14 @@ it("joins ordinary read and prepared write branches into a preview without deriv
   assert.equal(parentResult.operationLineage, undefined);
   assert.equal(writeResult.operationLineage, undefined);
   const evidence = ["read", "write"].map(nodeId => readDelegationEvidence(f.database.authority, f.run.envelope.runId, nodeId));
+  for (const entry of evidence) assert.deepEqual(readDelegationInvocationEvidence(f.database.authority, entry.invocationCommandId), entry);
+  assert.throws(() => readDelegationInvocationEvidence(f.database.authority, randomUUID()), /delegation-invocation-authority-unavailable/);
+  const first = evidence[0], other = evidence[1]; assert.ok(first && other);
+  const otherCommand = f.database.authority.lifecycleJournal.getCommand(other.invocationCommandId); assert.ok(otherCommand);
+  assert.throws(() => readDelegationInvocationEvidence({ ...f.database.authority,
+    lifecycleJournal: { ...f.database.authority.lifecycleJournal,
+      getCommand: id => id === first.invocationCommandId ? otherCommand : f.database.authority.lifecycleJournal.getCommand(id) },
+  }, first.invocationCommandId), /delegation-invocation-binding-mismatch/);
   const { completion, ...retained } = done.run; assert.ok(completion?.kind === "done");
   const running = { ...retained, lifecycle: { state: "running", workerId: WRITE_FIXTURE_WORKER_ID,
     claimedAt: f.clock.now().toISOString(), heartbeatAt: f.clock.now().toISOString() } };

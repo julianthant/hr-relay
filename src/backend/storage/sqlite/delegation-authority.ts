@@ -145,9 +145,17 @@ export function readDelegationEvidence(repositories: AuthorityRepositories, pare
   const parent = repositories.runs.get(parentRunId);
   if (parent === undefined) throw new Error("delegation-parent-unavailable");
   const commandId = lifecycleCommandId("delegation-invocation", { runId: parentRunId, attempt: parent.envelope.attempt, nodeId });
+  const evidence = readDelegationInvocationEvidence(repositories, commandId, scopePath);
+  if (evidence.parentRunId !== parentRunId || evidence.nodeId !== nodeId) throw new Error("delegation-invocation-binding-mismatch");
+  return evidence;
+}
+
+export function readDelegationInvocationEvidence(repositories: AuthorityRepositories, commandId: string, scopePath = new Set<string>()) {
   const command = repositories.lifecycleJournal.getCommand(commandId);
   if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "delegation-invocation") throw new Error("delegation-invocation-authority-unavailable");
   const invocation = DelegationInvocationRequestSchema.parse(command.request);
+  if (command.commandId !== commandId || invocation.commandId !== commandId) throw new Error("delegation-invocation-binding-mismatch");
+  const parentRunId = invocation.runId, nodeId = invocation.nodeId;
   const manifest = repositories.delegationManifests.get(invocation.manifestId);
   if (manifest === undefined) throw new Error("delegation-group-incomplete");
   if (manifest.join === "none") {
