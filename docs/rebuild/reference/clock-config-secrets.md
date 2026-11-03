@@ -327,7 +327,8 @@ migrated names without reading their values. It reports retired canary names wit
 `workerBootstrapEnvironment` copies only `HRAUTO_HOST_PRIMARY_DISPLAY` and
 `WORKER_PROCESS_MECHANIC_KEYS`: `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`, `WINDIR`,
 `COMSPEC`, `PATHEXT`, `LANG`, `LC_ALL`, and `TZ`. `NODE_OPTIONS` and arbitrary parent bindings are
-excluded. Workers read operational credentials from the store themselves.
+excluded. Development worker launches add `RELAY_DEV_DEBUG_MIRROR=1` explicitly after filtering;
+production worker launches omit it even when the parent has it. Workers read operational credentials from the store themselves.
 The `secrets-single-source` architecture guard owns registered credential and environment access.
 
 `config/test-data.json` owns public subject declarations and safe fixtures.

@@ -96,7 +96,7 @@ import { lstatSync,readFileSync,realpathSync,rmdirSync } from "node:fs";
 import { join,resolve } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../../../models/config/define-runtime-isolation.js";
-import { assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment,workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
+import { assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment,workerBootstrapEnvironment,DEVELOPMENT_DEBUG_MIRROR_ENV } from "../../../../models/config/secrets.js";
 import { BackupServiceStateWireSchema,type BackupServiceStateWire } from "../../../../models/dashboard/storage.js";
 import { createPreflightAuthority } from "../../../../models/preflight/preflight.js";
 import { isLiveWorker } from "../../../../models/run/worker.js";
@@ -212,7 +212,7 @@ export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.Pr
 }> {
   return Object.freeze({
     command: process.execPath,
-    environment: workerBootstrapEnvironment(environment),
+    environment: Object.freeze({ ...workerBootstrapEnvironment(environment), ...(development ? { [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1" } : {}) }),
     prefixArgs: Object.freeze([...(development ? ["--conditions=development"] : []), "--import", "tsx", join(repoRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli"]),
     cwd: repoRoot,
   });
