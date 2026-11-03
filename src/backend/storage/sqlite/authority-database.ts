@@ -2934,7 +2934,7 @@ export class AuthorityDatabase implements Disposable {
     return withAuthorityDatabaseReadOnly(admission, path, database => {
       const inspection = inspectNormalAuthority(database), binding = admission.profileBinding;
       if (inspection.installationId !== binding.installationId || inspection.profileId !== binding.profileId) throw new Error("profile-maintenance-binding-mismatch");
-      return reclaimDiagnosticStages(admission, ref => readManagedArtifactReferencesFromDatabase(database, ref).length > 0, operation);
+      return reclaimDiagnosticStages(admission, ref => readManagedArtifactReferencesFromDatabase(database, ref).some(reference => reference.id === ref.id || reference.sha256 === ref.sha256), operation);
     });
   }
 
