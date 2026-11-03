@@ -454,6 +454,7 @@ type NotificationRepository = Readonly<{
 
 
 type RunResultRepository = Readonly<{
+  getInitialSettlement(runId: string): Readonly<{ run: RunRecord; result: RunResultRecord }> | undefined;
   refreshedSettlementVersion(runId: string): number | undefined;
   getSettlement(runId: string, appliedVersion: number): Readonly<{ run: RunRecord; result: RunResultRecord }> | undefined;
   get(runId: string): RunResultRecord | undefined;
@@ -4916,6 +4917,10 @@ export class AuthorityDatabase implements Disposable {
         return { events,eventIds:selected.map(record => record.eventId) };
       }) },
       runResults: Object.freeze({
+        getInitialSettlement: (runId: string) => {
+          const row = this.#database.prepare("SELECT settlement_version FROM run_results WHERE run_id=? ORDER BY settlement_version LIMIT 1").get(RunIdSchema.parse(runId));
+          return row === undefined ? undefined : this.authority.runResults.getSettlement(runId,z.object({ settlement_version: PositiveIntSchema }).parse(row).settlement_version);
+        },
         refreshedSettlementVersion: (runId: string) => {
           const row = readRunSettlementRow(this.#database,RunIdSchema.parse(runId));
           if (row === undefined) throw new Error("receipt-current-settlement-unavailable");

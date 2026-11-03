@@ -157,3 +157,15 @@ export function childWaitModules(mode: "gate" | "blocked" | "manual" | "manual-r
     modules: [composeWorkflowModule(plan1Leaf, plan1Stores.stores), composeWorkflowModule(childWaitGateLeaf, plan1Stores.stores),
       composeWorkflowModule(middle, plan1Stores.stores), composeWorkflowModule(root, plan1Stores.stores)] };
 }
+
+export const childSettledReviewRoot = compileWorkflow(defineWorkflow({ ...common, id: "fixture-child-settled-review", code: "fsr",
+  steps: ({ delegate, gate, result }) => {
+    const members = delegate({ id: "members", target: leaf, edgeId: "members", cardinality: "many", await: "terminal", join: "all-settled",
+      policy: { ...policy, onChildFailed: "allow-partial" } }, [],
+    { bind: ({ input }) => [input], deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+    const review = gate({ id: "review", label: "Review", result: z.strictObject({ approved: z.boolean() }) }, [members]);
+    return { steps: [[{ key: "members", label: "Members" }, [members]], [{ key: "review", label: "Review" }, [review]]],
+      result: result(Plan1Input,[review],({ input }) => input) };
+  } }), { manifest });
+export const childSettledReviewModules = { root: childSettledReviewRoot,
+  modules: [composeWorkflowModule(plan1Leaf,plan1Stores.stores),composeWorkflowModule(childSettledReviewRoot,plan1Stores.stores)] };

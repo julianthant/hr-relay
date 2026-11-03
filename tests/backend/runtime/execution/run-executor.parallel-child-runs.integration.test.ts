@@ -1,15 +1,15 @@
+import { DelegationTerminalDependencySchema, delegationDependencyRecord } from "../../../../src/models/run/result.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
-import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { queryQueueSummaries } from "../../../../src/backend/runs/queries/queue-summaries.js";
-import { childExecutionParallelRoot as root, childExecutionParallelModules as modules, childExecutionStores, childWaitModules, childPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
+import { childExecutionParallelRoot as root, childExecutionParallelModules as modules, childExecutionStores, childWaitModules, childPolicyModules, childSettledReviewModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
@@ -25,7 +25,7 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { DelegationAdmissionRequestSchema } from "../../../../src/backend/storage/sqlite/delegation-contracts.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
-import { readDelegationWait } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
+import { readDelegationEvidence, readDelegationScopeEvidence, readDelegationWait } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { partition } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
@@ -335,6 +335,30 @@ it("propagates a block-parent failure through both waiting ancestors and refresh
     assert.equal(queryQueueSummaries(f.database, { workflow: run.envelope.workflow, status: "blocked", limit: 1, topLevel: false }).items[0]?.runId, run.envelope.runId);
     assert.equal(queryQueueSummaries(f.database, { workflow: run.envelope.workflow, status: "queued", limit: 1, topLevel: false }).items.length, 0);
   }
+});
+
+it("authenticates a retained all-settled scope before and after its failed member is replaced", async () => {
+  const f = await fixture(plan1TransientFailureStores(() => {}), "fail", childSettledReviewModules);
+  await f.execution.execute(f.run, world.SIGNAL);
+  await f.execution.step(f.run, world.SIGNAL);
+  const parent = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(parent?.lifecycle.state === "parked-gate");
+  const failed = f.database.authority.runs.listChildren(parent.envelope.runId)[0];
+  assert.ok(failed?.lifecycle.state === "terminal" && failed.lifecycle.outcome === "failed");
+  const retained = readDelegationEvidence(f.database.authority,parent.envelope.runId,"members");
+  const citation = delegationDependencyRecord(retained);
+  const readRetainedScope = () => {
+    const owner = f.database.authority.runs.get(parent.envelope.runId); assert.ok(owner);
+    return readDelegationScopeEvidence(f.database.authority,owner,[{ kind: "delegation", nodeId: retained.nodeId, receipt: citation }]);
+  };
+  const originalScope = readRetainedScope();
+  assert.equal(f.execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "retry", source: "dashboard", requestedBy: "local-operator",
+    requestedAt: f.clock.now().toISOString(), target: { runId: failed.envelope.runId, expectedVersion: failed.version } }).state, "applied");
+  assert.deepEqual(readRetainedScope(), originalScope);
+  assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "done");
+  assert.deepEqual(readRetainedScope(), originalScope);
+  assert.notEqual(readDelegationEvidence(f.database.authority,parent.envelope.runId,retained.nodeId).children[0]?.run.envelope.runId, citation.members[0]?.runId);
+  const foreign = DelegationTerminalDependencySchema.parse({ ...citation, members: citation.members.map(member => ({ ...member, runId: randomUUID() })) });
+  assert.throws(() => readDelegationScopeEvidence(f.database.authority,parent,[{ kind: "delegation", nodeId: retained.nodeId, receipt: foreign }]), /delegation-cited-member-unavailable/);
 });
 
 it("holds a retried child at existing Paused/Resume until the exact completed attempt is acknowledged", async () => {

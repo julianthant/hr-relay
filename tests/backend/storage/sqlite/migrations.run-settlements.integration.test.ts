@@ -1,3 +1,4 @@
+import { restoreSchema19RunSettlementFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
@@ -24,6 +25,7 @@ it("migrates an authenticated terminal result and receipt without changing their
   const version = run.completion.expectedVersion + 1;
   assert.deepEqual(f.database.authority.runResults.getSettlement(run.envelope.runId,version), { run, result });
   assert.equal(f.database.authority.runResults.getSettlement(run.envelope.runId,version + 1), undefined);
+  assert.deepEqual(f.database.authority.runResults.getInitialSettlement(run.envelope.runId), { run, result });
   const previous = new DatabaseSync(":memory:", { enableForeignKeyConstraints: false });
   try {
     for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= 19)) for (const sql of migration.statements) previous.exec(sql);
@@ -34,6 +36,16 @@ it("migrates an authenticated terminal result and receipt without changing their
     previous.prepare("INSERT INTO run_receipts VALUES(?,?,?,?,?,?,?,?,?)").run(receipt.receiptId,receipt.runId,receipt.workflowId,receipt.attempt,receipt.result,receipt.confidence,null,receiptJson,receipt.generatedAt);
     const migration = SQLITE_MIGRATIONS.find(value => value.version === 20); assert.ok(migration);
     for (const sql of migration.statements) previous.exec(sql);
+    previous.prepare("INSERT INTO database_states(id,schema_version,authority_generation,updated_at,search_generation,search_state,installation_id,profile_id) VALUES(1,20,0,?,0,'ready',?,?)")
+      .run(run.updatedAt,f.admission.profileBinding.installationId,f.admission.profileBinding.profileId);
+    previous.exec("PRAGMA user_version=20");
+    restoreSchema19RunSettlementFixture(previous);
+    const priorResult = previous.prepare("SELECT * FROM run_results WHERE run_id=?").get(run.envelope.runId); assert.ok(priorResult);
+    assert.deepEqual(Object.keys(priorResult).sort(),["attempt","created_at","payload_json","result_digest","run_id","workflow"]);
+    assert.equal(priorResult.payload_json,resultJson);
+    assert.deepEqual(nativeOrdinaryRecordFromRow("run_results",priorResult,19),result);
+    for (const sql of migration.statements) previous.exec(sql);
+    previous.exec("UPDATE database_states SET schema_version=20; PRAGMA user_version=20");
     const row = readRunSettlementRow(previous,run.envelope.runId); assert.ok(row);
     assert.equal(row.id, `${run.envelope.runId}:${version}`);
     assert.equal(row.settlement_version, version);
