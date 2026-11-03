@@ -89,9 +89,11 @@ that browser-safe tuple; `src/backend/app/registries/workflow-registry.ts` admit
 modules against the shared task-store inventory. The manifest build and check include registry generation
 and freshness respectively.
 
-`WORKFLOW_MODULES` contains `person-lookup` and `separations`. It derives `DESCRIPTORS`,
+`WORKFLOW_MODULES` contains public workflows. It derives `DESCRIPTORS`,
 `SERVER_REGISTRY`, `WORKFLOW_DEFINITIONS`, `INTAKE_PROJECTIONS`, and `WORKFLOW_ROLES`.
-`workflowModuleOf` refuses an unregistered workflow.
+`workflowModuleOf` refuses child-only and unregistered workflows. `CHILD_ONLY_WORKFLOW_MODULES`
+admits children through declared parent edges using `childWorkflowModuleOf`; the worker uses that
+resolver to qualify every descendant before runtime admission.
 
 #### 1.2.1 Module roles
 
@@ -119,9 +121,10 @@ They remain outside the operator registry. Separations retains
 harnesses for `identity-check`, `kronos-timecard`, `kuali-extraction`, `kuali-finalization`, and
 `ucpath-transaction`. Its `job-summary` group has no harness folder.
 The `workflow-layout` guard in `tests/architecture/workflow-kit/workflow-layout.test.ts` checks
-registered and retained modules against their role, owning composition, and declared groups. The
-test-only OCR inventory includes its unregistered definitions and retained harnesses in these source
-audits without admitting them to production.
+registered and retained modules against their role, owning composition, and declared groups.
+The generated child-only inventory includes OCR and OCR Page; the generated step-proof inventory
+includes their retained harnesses. These source audits cover both inventories without exposing
+children or proofs as public starts.
 Scenario-path helpers derive potential addresses; they do not prove scenario files or execution.
 
 ### 1.3 Projections
