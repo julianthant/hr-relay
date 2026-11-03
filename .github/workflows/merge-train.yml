@@ -55,7 +55,7 @@ jobs:
       - name: Merge staging into every open PR that lacks it
         run: |
           # A new staging can change how a PR must be fixed, so every open PR re-runs on it,
-          # whatever its labels or auto-merge state. Each update queues CI; older runs finish.
+          # whatever its labels or auto-merge state. CI's per-PR supersession cancels the older run.
           gh pr list --base staging --state open --limit 100 \
             --json number,isDraft,headRefOid,headRepositoryOwner,isCrossRepository,author \
             --jq '.[] | select(.isDraft == false and .isCrossRepository == false and .author.login == "julianthant" and .headRepositoryOwner.login == "${{ github.repository_owner }}") | "\(.number) \(.headRefOid)"' |

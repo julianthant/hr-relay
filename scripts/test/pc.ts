@@ -93,7 +93,7 @@ async function remote(slot: string): Promise<number> {
   if (!required || Number(process.versions.node.split(".")[0]) < Number(required[1])) {
     throw new Error(`PC Node ${process.versions.node} does not satisfy ${manifest.engines.node}`);
   }
-  const ci = readFileSync(".github/workflows/ci.yml", "utf8");
+  const ci = readFileSync(".github/workflows/ci-checks.yml", "utf8");
   for (const key of ["RELAY_TEST_RAM_MB", "RELAY_TEST_TIME_SCALE"]) {
     const value = new RegExp(`^  ${key}: "([0-9.]+)"$`, "mu").exec(ci)?.[1];
     if (!value || !Number.isFinite(Number(value)) || Number(value) <= 0) throw new Error(`Missing CI test environment: ${key}`);

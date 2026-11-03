@@ -10,6 +10,8 @@ import type { CiPlan } from "../../../scripts/test/ci-plan.js";
 const load = (name: string) => readFileSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url), "utf8");
 const ci = load("ci");
 const release = load("release");
+const portable = load("ci-checks");
+const full = load("release-checks");
 const filters = { shared: "true", unit: "false", integration: "false", architecture: "false", parity: "false" };
 const planFor = (workflow: "portable" | "release", extra: Record<string, unknown> = {}) => createCiPlan({
   workflow, event: "pull_request", base: workflow === "portable" ? "staging" : "main",
@@ -34,7 +36,7 @@ function expression(value: string, needs: unknown, context: Record<string, strin
   });
 }
 
-function summary(workflow: string, name: string, plan: CiPlan, outcomes: Record<string, { result: string }>,
+function summary(workflow: string, name: string, plan: CiPlan, outcomes: Record<string, { result: string; outputs?: Record<string, string> }>,
   context = { event_name: "pull_request", head_ref: "staging" }): string {
   const needs = { ...outcomes, changes: { ...outcomes.changes, outputs: { plan: JSON.stringify(plan) } } };
   const body = job(workflow, name);
@@ -81,7 +83,7 @@ async function discoverTimings(workflows: { id: number; path: string }[], emptyH
   const policies: Record<string, (input: unknown) => unknown> = {
     workflows: registeredTimingWorkflows, history: timingRunIds, artifact: hasTimingArtifact,
   };
-  await runInNewContext(`(async () => {${timingScript(ci)}\n})()`, {
+  await runInNewContext(`(async () => {${timingScript(portable)}\n})()`, {
     require: () => ({ execFileSync: (_node: string, args: string[]) => {
       const policy = policies[args[3] ?? ""];
       assert.ok(policy);
@@ -114,7 +116,7 @@ async function discoverTimings(workflows: { id: number; path: string }[], emptyH
   return { queried, artifacts, output };
 }
 
-describe("two flat event workflows", () => {
+describe("separate event and admitted proof workflows", () => {
   it("owns disjoint actual triggers and never loads release from staging CI", () => {
     const ciTrigger = ci.split("\npermissions:\n")[0];
     const releaseTrigger = release.split("\npermissions:\n")[0];
@@ -123,34 +125,35 @@ describe("two flat event workflows", () => {
     expect(releaseTrigger).toContain("branches: [main]");
     expect(releaseTrigger).toContain("workflow_dispatch:");
     expect(ci).not.toContain("release.yml");
-    expect(ci).not.toMatch(/uses: \.\/\.github\/workflows\/(?:ci|release)/u);
-    expect(release).not.toMatch(/uses: \.\/\.github\/workflows\//u);
-    for (const name of ["ci-pipeline", "ci-checks", "ci-release-checks"]) {
+    expect(job(ci, "checks")).toContain("uses: ./.github/workflows/ci-checks.yml");
+    expect(job(release, "checks")).toContain("uses: ./.github/workflows/release-checks.yml");
+    expect(portable).not.toMatch(/uses: \.\/\.github\/workflows\//u);
+    expect(portable).not.toMatch(/runs-on: (?:macos|windows)/u);
+    for (const name of ["ci-pipeline", "ci-release-checks"]) {
       expect(existsSync(new URL(`../../../.github/workflows/${name}.yml`, import.meta.url))).toBe(false);
     }
-    expect(jobNames(ci)).toEqual(["changes", "static", "privacy", "ubuntu", "integration", "architecture", "parity", "timings", "unit", "train"]);
-    expect(jobNames(release)).toEqual(["changes", "static", "privacy", "ubuntu", "macos", "windows", "unit-proofs", "integration", "architecture", "parity", "release-batch", "timings", "unit", "release"]);
-    for (const name of jobNames(ci).filter(name => name !== "train")) expect(job(ci, name)).toContain("runs-on: ubuntu-latest");
-    expect(summary(ci, "parity", planFor("portable"), portableResults)).toBe("success");
+    expect(jobNames(ci)).toEqual(["checks", "static", "privacy", "unit", "integration", "architecture", "parity", "train"]);
+    expect(jobNames(release)).toEqual(["checks", "static", "privacy", "unit", "integration", "architecture", "parity", "release"]);
+    expect(jobNames(portable)).toEqual(["changes", "static", "privacy", "ubuntu", "integration", "architecture", "parity", "timings", "unit"]);
+    expect(jobNames(full)).toEqual(["changes", "static", "privacy", "ubuntu", "macos", "windows", "unit-proofs", "integration", "architecture", "parity", "release-batch", "timings", "unit"]);
+    for (const name of jobNames(portable)) expect(job(portable, name)).toContain("runs-on: ubuntu-latest");
+    expect(summary(ci, "parity", planFor("portable"), { checks: { result: "success" } })).toBe("success");
+    expect(job(ci, "parity")).not.toContain("RESULT:");
   });
 
   it("executes each entry's actual shared selection adapter", () => {
-    expect(selectUsingAdapter(ci, "pull_request", "staging", "feature/test", filters)).toEqual(planFor("portable"));
-    expect(selectUsingAdapter(release, "pull_request", "main", "staging", filters)).toEqual(planFor("release"));
-    expect(selectUsingAdapter(release, "pull_request", "main", "feature/other", filters).fullRelease).toBe(false);
-    expect(selectUsingAdapter(release, "workflow_dispatch", "", "", {}).releaseBatch).toBe(false);
-    expect(selectUsingAdapter(release, "workflow_dispatch", "", "", {}).testJobs).toBe(28);
-    expect(selectUsingAdapter(release, "pull_request", "main", "staging", { ...filters, shared: "false" }).testJobs).toBe(0);
-    expect(() => selectUsingAdapter(ci, "pull_request", "staging", "feature/test", {})).toThrow();
+    expect(selectUsingAdapter(portable, "pull_request", "staging", "feature/test", filters)).toEqual(planFor("portable"));
+    expect(selectUsingAdapter(full, "pull_request", "main", "staging", filters)).toEqual(planFor("release"));
+    expect(selectUsingAdapter(full, "pull_request", "main", "feature/other", filters).fullRelease).toBe(false);
+    expect(selectUsingAdapter(full, "workflow_dispatch", "", "", {}).releaseBatch).toBe(false);
+    expect(selectUsingAdapter(full, "workflow_dispatch", "", "", {}).testJobs).toBe(28);
+    expect(selectUsingAdapter(full, "pull_request", "main", "staging", { ...filters, shared: "false" }).testJobs).toBe(0);
+    expect(() => selectUsingAdapter(portable, "pull_request", "staging", "feature/test", {})).toThrow();
   });
 
-  it("holds one global workflow queue and retains only the existing train call", () => {
-    for (const workflow of [ci, release]) {
-      const header = workflow.split("\njobs:\n")[0];
-      expect(header).toContain("group: ci-runners\n  queue: max\n  cancel-in-progress: false");
-      expect(workflow).not.toContain("cancel-in-progress: true");
-      expect(workflow.split("group: ci-runners")).toHaveLength(2);
-      expect(workflow).not.toContain("ci-${{");
+  it("retains explicit budgets and complete inner/outer fences without nested admission", () => {
+    for (const workflow of [portable, full]) {
+      expect(workflow).not.toContain("group: ci-runners");
       expect(workflow).toContain('RELAY_TEST_RAM_MB: "2048"');
       expect(workflow).toContain('RELAY_TEST_TIME_SCALE: "2.5"');
       expect(job(workflow, "changes")).toContain("scripts/test/ci-plan.ts', 'plan'");
@@ -159,22 +162,27 @@ describe("two flat event workflows", () => {
       expect(job(workflow, "timings")).toContain("!cancelled()");
       expect(job(workflow, "timings")).toContain('scripts/test/ci-plan.ts proofs "$PLAN" "$RESULTS"');
     }
+    for (const workflow of [ci, release]) {
+      expect(job(workflow, "unit")).toContain('test "$PIPELINE" = success');
+      expect(job(workflow, "unit")).toContain('test "$RESULT" = success');
+      expect(job(workflow, "unit")).toContain("always()");
+    }
     expect(job(ci, "train")).toContain("needs: [static, unit, integration, architecture, parity, privacy]");
     expect(job(ci, "train")).toContain("uses: ./.github/workflows/merge-train.yml");
-    expect(job(release, "release-batch")).toContain("needs: [changes, static, privacy, unit-proofs, integration, architecture, parity]");
-    expect(job(release, "unit")).toContain("release-batch, timings]");
-    expect(job(release, "release")).toContain("needs: unit");
+    expect(job(full, "release-batch")).toContain("needs: [changes, static, privacy, unit-proofs, integration, architecture, parity]");
+    expect(job(full, "unit")).toContain("release-batch, timings]");
+    expect(job(release, "release")).toContain("needs: checks");
   });
 
   it("retains native/bootstrap budgets, post-failure groups and exact file membership", () => {
-    const windows = job(release, "windows");
+    const windows = job(full, "windows");
     expect(windows.indexOf("git config --global core.autocrlf false")).toBeLessThan(windows.indexOf("uses: actions/checkout@v4"));
     expect(windows).toContain("git config --global core.autocrlf false");
     expect(windows).toContain("shell: bash");
     expect(windows).not.toMatch(/ram-tmp|mdutil|sysctl|memory_pressure|continue-on-error/u);
     expect(windows).toContain("npx playwright install chromium");
     for (const platform of ["macos", "windows"] as const) {
-      const body = job(release, platform);
+      const body = job(full, platform);
       expect(body).toContain("timeout-minutes: 30");
       expect(body).toContain("fail-fast: false");
       expect(body).toContain("scripts/test/chromium-preflight.ts");
@@ -195,11 +203,11 @@ describe("two flat event workflows", () => {
         expect(selected.sort()).toEqual(pinned.sort());
       }
     }
-    expect(job(release, "release-batch")).toContain("npm run test:coverage\n      - run: npm run test:perf");
+    expect(job(full, "release-batch")).toContain("npm run test:coverage\n      - run: npm run test:perf");
   });
 
   it.each(["portable", "release"] as const)("executes the actual final unit shell and rejects incomplete %s pipelines", workflow => {
-    const source = workflow === "portable" ? ci : release;
+    const source = workflow === "portable" ? portable : full;
     const plan = planFor(workflow);
     const positive = workflow === "portable" ? portableResults : releaseResults;
     expect(summary(source, "unit", plan, positive)).toBe("success");
@@ -210,20 +218,39 @@ describe("two flat event workflows", () => {
     expect(summary(source, "unit", plan, { ...positive, changes: { result: "failure" } })).toBe("failure");
   });
 
+  it.each([ci, release])("rejects incomplete calls or missing inner-unit outcomes at the actual outer fence", source => {
+    const plan = planFor(source === ci ? "portable" : "release");
+    expect(summary(source, "unit", plan, { checks: { result: "success", outputs: { unit: "success" } } })).toBe("success");
+    for (const result of ["failure", "cancelled", "skipped", ""]) {
+      expect(summary(source, "unit", plan, { checks: { result, outputs: { unit: "success" } } })).toBe("failure");
+      expect(summary(source, "unit", plan, { checks: { result: "success", outputs: { unit: result } } })).toBe("failure");
+    }
+    expect(summary(source, "unit", plan, { checks: { result: "success", outputs: {} } })).toBe("failure");
+  });
+
+  it("requires real release parity output but keeps staging parity a plain passing omission", () => {
+    const plan = planFor("release");
+    for (const result of ["failure", "cancelled", "skipped", ""]) {
+      expect(summary(release, "parity", plan, { checks: { result: "success", outputs: { parity: result } } })).toBe("failure");
+    }
+    expect(summary(release, "parity", plan, { checks: { result: "success", outputs: { parity: "success" } } })).toBe("success");
+    expect(summary(ci, "parity", planFor("portable"), { checks: { result: "failure" } })).toBe("success");
+  });
+
   it("requires both selected native groups and preserves legitimate work omissions", () => {
     const plan = planFor("release");
-    expect(summary(release, "integration", plan, releaseResults)).toBe("success");
+    expect(summary(full, "integration", plan, releaseResults)).toBe("success");
     for (const platform of ["macos", "windows"]) {
       for (const result of ["failure", "cancelled", "skipped"]) {
-        expect(summary(release, "integration", plan, { ...releaseResults, [platform]: { result } })).toBe("failure");
+        expect(summary(full, "integration", plan, { ...releaseResults, [platform]: { result } })).toBe("failure");
       }
     }
     const omitted = planFor("release", { filters: { ...filters, shared: "false" } });
     const outcomes = { ...releaseResults, ubuntu: { result: "skipped" }, macos: { result: "skipped" }, windows: { result: "skipped" },
       "release-batch": { result: "skipped" }, timings: { result: "skipped" } };
-    expect(summary(release, "unit", omitted, outcomes)).toBe("success");
-    expect(summary(release, "release", omitted, { unit: { result: "success" } })).toBe("success");
-    expect(summary(release, "parity", plan, { ...releaseResults, macos: { result: "cancelled" } })).toBe("failure");
+    expect(summary(full, "unit", omitted, outcomes)).toBe("success");
+    expect(summary(release, "release", omitted, { checks: { result: "success", outputs: { unit: "success" } } })).toBe("success");
+    expect(summary(full, "parity", plan, { ...releaseResults, macos: { result: "cancelled" } })).toBe("failure");
   });
 
   it.each([
@@ -235,13 +262,21 @@ describe("two flat event workflows", () => {
     { event_name: "pull_request", head_ref: "staging", unit: "cancelled", expected: "failure" },
     { event_name: "pull_request", head_ref: "staging", unit: "skipped", expected: "failure" },
   ])("runs the required release fence ($event_name/$head_ref/$unit)", ({ event_name, head_ref, unit, expected }) => {
-    expect(summary(release, "release", planFor("release"), { unit: { result: unit } }, { event_name, head_ref })).toBe(expected);
+    expect(summary(release, "release", planFor("release"), { checks: { result: "success", outputs: { unit } } }, { event_name, head_ref })).toBe(expected);
   });
+  it("rejects an incomplete release call even when its inner unit output claims success", () => {
+    const plan = planFor("release");
+    for (const result of ["failure", "cancelled", "skipped", ""]) {
+      expect(summary(release, "release", plan, { checks: { result, outputs: { unit: "success" } } })).toBe("failure");
+    }
+    expect(summary(release, "release", plan, { checks: { result: "success", outputs: {} } })).toBe("failure");
+  });
+
 });
 
 describe("shared timing discovery adapters", () => {
   it("uses one policy and handles an unregistered new release workflow without a 404 query", async () => {
-    expect(timingScript(ci)).toBe(timingScript(release));
+    expect(timingScript(portable)).toBe(timingScript(full));
     expect(await discoverTimings([{ id: 1, path: ".github/workflows/ci.yml" }])).toEqual({ queried: [1], artifacts: [10], output: { run: "10" } });
     expect(await discoverTimings([{ id: 1, path: ".github/workflows/ci.yml" }, { id: 2, path: ".github/workflows/release.yml" }]))
       .toEqual({ queried: [1, 2], artifacts: [30, 20], output: { run: "20" } });
@@ -254,5 +289,50 @@ describe("shared timing discovery adapters", () => {
 
   it.each(["workflows", "runs", "artifacts"])("does not swallow unexpected API failures at %s", async failAt => {
     await expect(discoverTimings([{ id: 1, path: ".github/workflows/ci.yml" }], false, failAt)).rejects.toThrow(/API/u);
+  });
+});
+
+describe("per-PR cancellation with complete FIFO pipelines", () => {
+  it.each([ci, release])("supersedes the same PR/manual branch while separating other keys", source => {
+    const header = source.split("\njobs:\n")[0];
+    const group = header.match(/^ {2}group: (.+)$/mu)?.[1];
+    assert.ok(group);
+    const key = (number: number | undefined, ref: string) => group.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) => String(runInNewContext(code, {
+      github: { workflow: source === ci ? "CI" : "Release", event: { pull_request: { number } }, ref },
+    })));
+    expect(key(90, "refs/pull/90/merge")).toBe(key(90, "refs/heads/updated-source"));
+    expect(key(undefined, "refs/heads/staging")).toBe(`ci-${source === ci ? "CI" : "Release"}-refs/heads/staging`);
+    expect(key(90, "refs/pull/90/merge")).not.toBe(key(91, "refs/pull/91/merge"));
+    expect(key(undefined, "refs/heads/staging")).not.toBe(key(undefined, "refs/heads/other"));
+    expect(header).toContain("cancel-in-progress: true");
+  });
+
+  it.each([ci, release])("queues the transitive whole proof pipeline while keeping train outside", source => {
+    const admitted = job(source, "checks");
+    expect(admitted).toContain("group: ci-runners");
+    expect(admitted).toContain("queue: max");
+    expect(admitted).toContain("cancel-in-progress: false");
+    const calleeName = admitted.match(/uses: \.\/\.github\/workflows\/([\w-]+)\.yml/u)?.[1];
+    assert.ok(calleeName);
+    const callee = load(calleeName);
+    const covered = jobNames(callee);
+    for (const name of ["changes", "static", "privacy", "ubuntu", "integration", "architecture", "parity", "timings", "unit"]) expect(covered).toContain(name);
+    expect(covered).not.toContain("train");
+    const closure = (name: string, ancestors: string[] = []): string[] => {
+      expect(ancestors).not.toContain(name);
+      const dependencies = job(callee, name).match(/^ {4}needs: \[(.+)\]$/mu)?.[1]?.split(", ") ?? [];
+      return [name, ...dependencies.flatMap(dependency => closure(dependency, [...ancestors, name]))];
+    };
+    expect([...new Set(closure("unit"))].sort()).toEqual([...covered].sort());
+    expect(job(callee, "unit")).toContain("timings]");
+    expect(callee).not.toContain("group: ci-runners");
+    if (source === ci) {
+      for (const name of covered) expect(job(callee, name)).toContain("runs-on: ubuntu-latest");
+      expect(callee).not.toMatch(/uses: \.\/\.github\/workflows\//u);
+      expect(job(source, "train")).toContain("needs: [static, unit, integration, architecture, parity, privacy]");
+    } else {
+      for (const name of ["macos", "windows", "unit-proofs", "release-batch"]) expect(covered).toContain(name);
+      expect(job(callee, "unit")).toContain("release-batch, timings]");
+    }
   });
 });

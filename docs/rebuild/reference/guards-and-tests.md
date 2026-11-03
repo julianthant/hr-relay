@@ -136,11 +136,12 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-`ci.yml` triggers only for staging pull requests and defines only portable Ubuntu jobs, the plain
-passing required parity job and the existing merge-train call. `release.yml` triggers only for main
-pull requests or operator manual releases, with portable/native/parity jobs defined directly.
-Staging never loads that release workflow. Both entrypoints share typed selection/result/timing
-policy from `scripts/test/ci-plan.ts`; there are no reusable CI pipeline wrappers.
+`ci.yml` triggers only for staging pull requests and admits the portable-only `ci-checks.yml` call.
+Its top parity job is a plain passing omission, with merge train after the six top summaries and
+outside admission. `release.yml` triggers only for main pull requests or operator manual releases
+and alone admits `release-checks.yml`, which owns the native/parity and complete release pipeline.
+Staging never references or loads a release/native workflow call. Both callees use shared typed
+selection/result/timing policy from `scripts/test/ci-plan.ts` and explicitly retain test budgets.
 Run platform-native proofs and
 parity in CI only for full releases started by the operator:
 `staging` → `main` pull requests or manual full-release dispatches. Only the operator may start
@@ -169,7 +170,7 @@ Other native files count half because two workers share them.
 | native | Windows, operator-started full releases only | 5 (1 for unit only) | The same native membership and isolated serial/storage groups |
 | parity | macOS, operator-started full releases only | 3 shards | Desktop parity |
 
-With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The workflow-level FIFO
+With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The job-level whole-pipeline FIFO
 admission and draft policy are described in [repository governance](../../repository-governance.md).
 Each shard downloads the same `ci-balancing` input and uploads Vitest JSON reports as `durations-*`.
 Report basenames include the runner OS and selection group, so merged artifacts preserve both platforms.
@@ -219,7 +220,7 @@ Three independent slots under `~/.cache/relay-test-pc/` retain separate `node_mo
 lockfile hash is unchanged. A kernel lock holds the slot through sync and execution; a run takes
 a free slot or waits. After measuring integration load,
 capacity can be set in `~/.config/relay-test-pc/slots` (1..16; change only while idle). Integration
-runs build the dashboard as CI does. Test environment values come from `ci.yml`, temp files
+runs build the dashboard as CI does. Test environment values come from `ci-checks.yml`, temp files
 use `/dev/shm`, and each run uses at most two Vitest workers.
 
 Output streams and is saved with a final `result.json` under the main checkout's ignored
@@ -287,19 +288,23 @@ coverage/performance batch remains PR-only. Treat machine-readable docs as confi
 the operator may start a manual release; agents must never dispatch or rerun CI workflows. Protected
 branch pushes do not repeat CI.
 
-Both workflow files use one workflow-level `ci-runners` FIFO with `queue: max` and
-`cancel-in-progress: false`. Each new push queues another run; earlier heads run to completion.
-CI-invoked merge train is inside admission, while the standalone staging-push train is separate.
-There is no per-PR automatic cancellation, nested reservation or cancellation workflow.
+Both event entries use per-PR/manual-branch workflow concurrency with cancellation enabled. New
+pushes supersede older runs for the same workflow/PR-or-ref key. Each entry admits one complete
+reusable check call through the shared job-level `ci-runners` FIFO, `queue: max` and
+`cancel-in-progress: false`. Every mandatory proof, selected batch and timing publisher remains
+inside that callee; no callee reacquires admission. Merge train follows the six top summaries
+outside the admitted call; the standalone staging-push train is unchanged.
 
-The required `unit` job always checks every mandatory proof and timing publication, including
-failure/cancellation/missing outcomes, but excludes downstream train to avoid a cycle. The release
-`unit-proofs` job validates selected unit groups before the batch; final `unit` also checks the
-completed selected batch and timings. Portable selected suites require Ubuntu success. Selected
-full-release unit/integration require both native platforms to succeed, regardless of matrix
-absence or emptiness; native omission is valid only outside a selected eligible full-release suite.
+Each callee's final `unit` checks all mandatory proofs and timing publication, including
+failure/cancellation/missing outcomes. In releases it also checks the selected batch, after
+`unit-proofs` allows batch execution without a cycle. The required outer `unit` always validates
+both the complete call result and inner unit output as success. Train is excluded from the inner
+fence because it runs downstream. Staging's required parity is plain successful omission; release
+parity validates actual proof output. Portable selected suites require Ubuntu success. Selected
+eligible full-release unit/integration require both native platforms to succeed, regardless of
+matrix absence or emptiness; native omission is valid only outside such a selected suite.
 Selected parity requires macOS success. An expected omission must be exactly skipped. Invalid
-selectors, matrix counts or missing outputs never become successful defaults.
+selectors, matrix counts and missing outputs never become successful defaults.
 
 Timing discovery first enumerates registered IDs for exactly the CI and release workflow paths.
 It can therefore use CI history before a new release workflow is registered, without ignoring a
@@ -310,7 +315,7 @@ Membership verification compares an unsharded `vitest list --filesOnly --json` f
 integration and architecture with the union of the exact CI selections. `tests/scripts/test/ci-files.test.ts`
 proves the selections give each file to exactly one job, so selected paths need no Vitest sharding.
 `tests/scripts/test/ci-plan.test.ts` tests the shared typed plan, proof and timing policy.
-`tests/scripts/test/ci-files.workflow.test.ts` tests actual event entry filters, flat job ownership,
+`tests/scripts/test/ci-files.workflow.test.ts` tests actual event entry filters, supersession and transitive admission coverage,
 selection/history adapters and actual summary-shell failures for staging, source/head, Markdown
 and manual cases. Source/API-list checks are not the Actions graph proof: the operator reviews
 the actual published staging graph to confirm no release workflow is loaded.

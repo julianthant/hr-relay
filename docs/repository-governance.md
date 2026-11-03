@@ -29,7 +29,7 @@ performance. The operator authorizes release PRs from
 `.github/workflows/merge-train.yml` runs on every push to `staging`, and CI calls it as its final job.
 It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then merges
 `staging` into every open, non-draft, same-repository PR by `julianthant` into `staging` that lacks it, whatever its
-labels or auto-merge state, so every update queues CI on the latest `staging`; older heads run to completion. Auto-merge then lands whichever PR passes first. A PR it cannot update gets
+labels or auto-merge state, so every update starts CI on the latest `staging`; per-PR supersession cancels the older run. Auto-merge then lands whichever PR passes first. A PR it cannot update gets
 `merge-conflict`. If GitHub's update reports a conflict, the train attempts a merge in a temporary
 worktree. Conflicts exclusively in `scripts/build/generated-outputs.ts`'s registered outputs are
 resolved by running the generators against the combined sources. Catalog conflicts must be wholly
@@ -71,26 +71,31 @@ same serial/storage separation and native membership. Windows uses explicit Bash
 Windows Node/npm, the runner temp directory and Windows Chromium installation. Before checkout,
 it disables Git automatic line-ending conversion to preserve fixture bytes and shell scripts.
 
-`ci.yml` runs only for staging pull requests and defines portable Ubuntu jobs plus a plain passing
-required parity summary and the existing merge-train call. `release.yml` runs only for main pull
-requests or operator manual releases and defines the portable, macOS/Windows native, Desktop parity
-and release-batch jobs directly. Staging never calls or loads the release workflow.
+`ci.yml` runs only for staging pull requests and calls portable-only `ci-checks.yml`. Its required
+top parity job is a plain passing omission, and its existing merge-train call follows the six
+required summaries. `release.yml` runs only for main pull requests or operator manual releases and
+alone calls `release-checks.yml`, which owns portable, macOS/Windows native, Desktop parity and
+release-batch jobs. Staging never references or loads a release/native workflow call.
 
-Both event workflows hold the shared `ci-runners` group at workflow scope with `queue: max` and
-`cancel-in-progress: false`. Admission covers the complete flat graph. Each push queues another
-run; obsolete queued or running heads finish rather than being superseded. CI-invoked merge train
-is inside that workflow admission lifetime; the standalone staging-push train remains separate.
-GitHub orders the queue by arrival at admission, accepts at most 100 pending runs, and cancels
-additional arrivals on overflow. There is no initial-job reservation, nested admission or API
-canceller. Batch repair pushes to avoid redundant queued work.
+Both event entries use per-PR/manual-branch supersession with a workflow/PR-or-ref concurrency
+group and `cancel-in-progress: true`. New pushes cancel older runs for that same key. Each entry
+queues one complete reusable check call in the shared `ci-runners` job-level FIFO with `queue: max`
+and `cancel-in-progress: false`. That admitted call holds all proofs, selected batch and timing
+publication until its callee finishes; the callees never reacquire admission. GitHub orders waiting
+calls by arrival, accepts at most 100 pending calls, and cancels extra arrivals on overflow.
 
-`scripts/test/ci-plan.ts` owns typed selection, proof/result validation and timing-history policy.
-The two workflows duplicate only the necessary job/setup/API adapters. The final required `unit`
-job always validates all mandatory proofs and timing publication, including after cancellation;
-it excludes downstream merge train to avoid a dependency cycle. In releases, `unit-proofs` lets
-the isolated batch wait for unit proofs before final `unit` validates the completed batch and
-published timings. Required names stay `static`, `privacy`, `unit`, `integration`, `architecture`
-and `parity` on staging, plus `release` on main. Other cancelled summaries and the train may stop.
+CI-invoked merge train is outside the admitted call, after the six top summaries, while remaining
+inside parent per-PR supersession. The standalone staging-push train remains separate. Batch
+repair pushes to avoid redundant CI work.
+
+`scripts/test/ci-plan.ts` owns typed selection/proof/timing-history policy. Both timed callees
+retain explicit test budgets. Their final `unit` validates every mandatory proof, selected batch
+and timing publication, excluding downstream train to avoid a cycle. The always-running outer
+required `unit` additionally requires the called pipeline and its inner unit output to succeed,
+so cancelled, skipped, failed or missing results cannot merge. Required names stay `static`,
+`privacy`, `unit`, `integration`, `architecture` and `parity` on staging, plus `release` on main.
+Release parity validates its real callee output; staging parity remains a plain successful omission.
+Other cancelled summaries and the train may stop.
 
 Run static, privacy and affected portable unit, integration and architecture suites for ready PRs
 into `staging`. For PRs from `staging` into `main`, add selected native proofs, parity and release.
