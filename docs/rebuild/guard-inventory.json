@@ -604,7 +604,7 @@
       "file": "tests/architecture/tooling/test-artifact-ownership.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Generated test-results, coverage and parity scratch remain ignored and untracked; Vitest scratch stays outside the checkout and accepted evidence has an external owner. The pure injected-listing policy test supplies tracked-output, missing-ignore and in-checkout negative controls.",
+      "invariant": "Generated test-results, coverage and parity scratch remain ignored and untracked; the exact BUILD_MANIFEST_PATH must be untracked and ignored regardless of byte freshness. The real Git census includes the manifest and checks ignore rules independently of index membership. Vitest scratch stays outside the checkout and accepted evidence has an external owner. The pure injected-listing policy test supplies tracked-output, tracked-manifest, missing-ignore and in-checkout negative controls.",
       "replacementRequired": true
     },
     {

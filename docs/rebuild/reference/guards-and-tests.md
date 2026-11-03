@@ -313,7 +313,10 @@ its descendants, and only then releases the command lock. It does not take a sui
 command lock remains the private file under `.tracker/data/locks`.
 
 `scripts/test/artifact-policy.ts` and its architecture owner keep generated coverage/test output
-untracked and ignored. Accepted task evidence belongs in the main checkout's ignored `.work/`
+and the exact `BUILD_MANIFEST_PATH` untracked and ignored. The Git census includes that manifest
+path and checks ignore rules independently of index membership. A tracked manifest fails even
+when its complete bytes are current. Preparation never changes Git ownership; correcting the
+index is an explicit repository operation. Accepted task evidence belongs in the main checkout's ignored `.work/`
 folder; the artifact policy's external-evidence-root check covers its injected listing, not that
 brief receipt convention.
 
