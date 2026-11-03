@@ -79,6 +79,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
     descriptorSetHash: descriptorSetHash_m0(WORKFLOW_DESCRIPTORS.map((d) => d.contractFingerprint)),
     settingsSchemaHash: descriptorSetHash_m0(["settings-schema"]),
     projection: world.projection,
+    actorLabel: () => "Fixture Operator",
     authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
     automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "current",
     preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
@@ -230,6 +231,7 @@ function depsOf(
     descriptorSetHash: descriptorSetHash_m0([fixtureDescriptor.contractFingerprint]),
     settingsSchemaHash: descriptorSetHash_m0(["settings-schema"]),
     projection: world.projection,
+    actorLabel: () => "Fixture Operator",
     authorityMeta: () => {
 
       if (!storage.authorityReachable) throw new Error("authority database is unreadable");

@@ -344,9 +344,9 @@ For a currently selected served Queue run, send `start selected workflow` to pro
 workflow for that run's canonical subject input. The model receives a request-scoped opaque reference,
 workflow ID and execution mode; subject values remain local. Read-only graphs use Live read, and
 transaction graphs require supported dry-run traversal. Protected inputs and stale definitions refuse.
-The existing proposal card shows the selected subject and mode. Confirm checks the selected run/version,
+The existing proposal card shows Start, the canonical input, one run, mode, browser, captures and expiry, with plan identity/fingerprints in its disclosure. Start run checks the selected run/version,
 person/session, current Settings, canonical plan, grant, revision and expiry, then submits through the
-same command service as Run, including worker capacity. Cancel starts nothing. Lost dispatch remains
+same command service as Run, including worker capacity. Not now starts nothing. Confirmed starts and cancellations collapse to a resolved line. Lost dispatch remains
 unknown and cannot be automatically retried. Changing the selection invalidates the pending card.
 
 ## Settings
@@ -376,7 +376,7 @@ Every assistant mutation requires an explicit Confirm. Settings grants enable pr
 account capability. Browser dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
 draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
 
-General composes appearance, ordinary General fields, annual dates, ChatGPT account, and Delete account.
+General composes appearance, ordinary General fields, annual dates, ChatGPT account, and Delete account. The assistant permission row and its search destination are absent; Relay always requires explicit confirmation for its actions. Appearance names the current person after confirmed preference readback and retains loading, saving, failure and uncertain states.
 Delete account presents ready, explicit confirmation, deleting, and unavailable states. Deletion has
 no blocked presentation. Until the person deletion owner supplies authority and a callback, the served
 control is unavailable.

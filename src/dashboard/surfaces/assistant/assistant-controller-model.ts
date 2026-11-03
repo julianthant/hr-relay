@@ -6,7 +6,8 @@ import { ChatGptAccountContext, useChatGptAccount } from '../settings/general/ch
 import { useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { AssistantQueries } from '../../client/index.js';
 import type { AssistantResult, AssistantSubject } from '../../../models/dashboard/assistant.js';
-import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceSchema, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
+import { AssistantModelPreferenceSchema } from "../../../models/config/assistant-model-preference.js";
+import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 import { assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
 
 export const ASSISTANT_CONFIRM_HOLD = 'Confirmation is unavailable until the server can verify this proposal before preparation. No run has started.';
@@ -30,7 +31,15 @@ function presentResult(result: AssistantResult, requestId: number, prompt: strin
       return { ...(unknown ? { disposition: 'unknown' as const } : {}), message: { id, role: 'assistant', text: unknown ? 'Action outcome is unknown. Do not retry this action.' : 'Review this proposal. No action has been applied.' }, proposal: {
         id: p.actionId, revision: String(p.revision), prompt, action: { chatId: p.chatId, actionId: p.actionId, revision: p.revision }, expiresAt: p.expiresAt,
         workflow: { id: p.effect === 'workflow-start' ? p.workflowId : 'notification', label: p.label, version: String(p.revision) }, subjects: [], mode: p.effect === 'workflow-start' ? p.dryRun ? 'dry-run' : 'read-only' : 'local-change',
-        values: [{ label: p.effect === 'workflow-start' ? 'Selected subject' : 'Notification', value: p.targetLabel }, { label: 'Expires', value: p.expiresAt }],
+        ...(p.effect === 'workflow-start' ? { startPlan: p.startPlan } : {}),
+        values: p.effect === 'workflow-start' ? [
+          { label: 'Input', value: p.startPlan.planned.map(run => [run.title, run.subtitle].filter(Boolean).join(' · ')).join(', ') },
+          { label: 'Runs', value: String(p.startPlan.planned.length) },
+          { label: 'Mode', value: p.startPlan.dryRun ? 'Dry run' : 'Live read' },
+          { label: 'Browser', value: p.startPlan.browserMode === 'headed' ? 'Headed' : 'Headless' },
+          { label: 'Captures', value: p.startPlan.captureBrowserScreenshots ? 'On' : 'Off' },
+          { label: 'Expires', value: p.expiresAt },
+        ] : [{ label: 'Notification', value: p.targetLabel }, { label: 'Expires', value: p.expiresAt }],
         effects: [p.effect === 'workflow-start' ? 'Starts the canonical plan for this selected subject after confirmation. No HR transaction is submitted.' : 'Changes only the bound current local notifications. No HR transaction is submitted.'], stopBefore: [],
       } };
     }

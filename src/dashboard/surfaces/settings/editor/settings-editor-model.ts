@@ -49,7 +49,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const busy = useRef(false);
   const attemptScope = useRef<CommandExecutionScope | undefined>(undefined);
   const retained = binding?.executor.retainedAttempts().find(attempt => (attempt.state === "pending" || attempt.outcome?.kind === "uncertain") && attempt.scope.actorId === binding.scope.actorId
-    && attempt.request.family === "settings" && attempt.request.type === "apply-settings");
+    && attempt.request.source === "settings-surface" && attempt.request.family === "settings" && attempt.request.type === "apply-settings");
   if (pending.current === undefined && retained?.request.family === "settings" && retained.request.type === "apply-settings") pending.current = retained.request;
   if (attemptScope.current === undefined && retained !== undefined) attemptScope.current = retained.scope;
   const readReady = acceptedRequest.current === request && observation.state === "loaded";
