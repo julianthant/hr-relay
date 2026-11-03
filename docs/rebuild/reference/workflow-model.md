@@ -127,6 +127,21 @@ includes their retained harnesses. These source audits cover both inventories wi
 children or proofs as public starts.
 Scenario-path helpers derive potential addresses; they do not prove scenario files or execution.
 
+The workflow-ID boundary audits public, child-only and proof inventories. Retained dashboard mock
+literals and OCR service literals have exact AST references in
+`tests/support/helpers/retained-dashboard-mock-fixtures.ts`. The OCR service references cover review
+admission, source-bound resources, approval publication, the OCR CLI command, deferred-feature text
+and task-namespace source links. Added, removed or repurposed occurrences fail the boundary checks.
+These references admit no new workflow dispatch or public start.
+
+Success receipts authenticate the complete native delegation inventory and compare each child
+proof and the full terminal-dependency set exactly. Many-child fan-outs remain outside terminal
+value dependencies. OCR's snapshot-approval receipt declaration is separate from fixed-choice gate
+decisions. Receipt derivation authenticates the retained operator command, gate row, current review
+and approved snapshot digest through the OCR authority reader. Missing, foreign, altered or stale
+approval evidence refuses derivation. Snapshot references and HR content declare sensitive-HR/drop classifications; local receipts
+retain complete classified values under the existing local-evidence policy. Receipts keep composition 5 and the existing stored schema.
+
 ### 1.3 Projections
 
 `workflowProjections` returns the factory-owned projection for the exact descriptor object.

@@ -42,6 +42,8 @@ import {
 } from "../../support/fixtures/receipt-run-fixtures.js";
 import {
   GATE_DECISIONS,
+  SNAPSHOT_APPROVAL_DECISIONS,
+  findSnapshotApprovalDecision,
   findGateDecision,
   gateDecisionFor,
 } from "../../../src/models/trust/gate-decisions.js";
@@ -504,12 +506,19 @@ describe("evidence receipt — declared classification coverage", () => {
       for (const node of descriptor.nodes) {
         if (node.kind !== "gate") continue;
         gateNodes++;
-        const declaration = gateDecisionFor(String(descriptor.id), String(node.id));
         const scope: EvidenceValueScope = EvidenceValueScopeSchema.parse({
           kind: "gate-result",
           workflowId: descriptor.id,
           gateId: node.id,
         });
+        const snapshot = findSnapshotApprovalDecision(String(descriptor.id), String(node.id));
+        if (snapshot !== undefined) {
+          assert.equal(node.result, snapshot.result);
+          for (const path of Object.keys(snapshot.result.shape)) classifyEvidenceLeaf(scope, path);
+          assert.equal(findGateDecision(String(descriptor.id), String(node.id)), undefined);
+          continue;
+        }
+        const declaration = gateDecisionFor(String(descriptor.id), String(node.id));
         // The declared paths must classify, or the very leaves the decision is
         // read from could not be shown beside it.
         classifyEvidenceLeaf(scope, declaration.decisionPath);
@@ -531,6 +540,10 @@ describe("evidence receipt — declared classification coverage", () => {
         gateNodeKeys.has(`${String(declaration.workflowId)} ${String(declaration.gateId)}`),
         `orphan gate decision ${declaration.workflowId}/${declaration.gateId}`,
       );
+    }
+    for (const declaration of SNAPSHOT_APPROVAL_DECISIONS) {
+      assert.ok(gateNodeKeys.has(`${declaration.workflowId} ${declaration.gateId}`),
+        `orphan snapshot approval ${declaration.workflowId}/${declaration.gateId}`);
     }
     const workflowIds = new Set(RECEIPT_DESCRIPTORS.map(({ id }) => String(id)));
 
