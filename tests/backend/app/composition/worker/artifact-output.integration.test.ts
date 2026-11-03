@@ -21,7 +21,7 @@ import { executeClaimedRun } from "../../../../../src/backend/runtime/execution/
 import { createContentAddressedArtifactWriter } from "../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { deriveSchemaHash } from "../../../../../src/models/validation/schema-bound-value.js";
 import { TraceIdSchema } from "../../../../../src/rules/identity/ids.js";
-import { namedArtifactOutput } from "../../../../../src/workflow-kit/artifacts.js";
+import { collectionArtifactOutput, namedArtifactOutput } from "../../../../../src/workflow-kit/artifacts.js";
 import { defineTaskStoreRegistry, defineWorkflowStore } from "../../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../../src/workflow-kit/task.js";
 import { namedFileOutputContract as contract,namedFileOutputDescriptor as descriptor,namedFileOutputScenario as scenario } from "../../../../support/fixtures/named-file-output-workflow.js";
@@ -31,14 +31,22 @@ import { foundationFixture } from "../../../../support/helpers/database-foundati
 import { createRunRecordServiceTestWorld } from "../../../../support/helpers/backend/run-record-service-world.js";
 import { happySessionHarness, ManualScheduler, recordingEmitter, recordingLogger, sessionManagerFor } from "../../../../support/helpers/phase1f-executor-harness.js";
 
-it("publishes a task's one batch zip through the real checkpoint, outbox, worker sink and retained documents path", async () => {
+it.each(["single", "collection"] as const)("publishes a task's %s output through its checkpoint, outbox, worker sink and retained documents path", async kind => {
   const f = await foundationFixture(), fileName = `Onboarding Docs ${randomUUID()}.zip`;
   const zip = new JSZip(); zip.file("Worksheet A/Synthetic One/document.pdf", "synthetic one"); zip.file("Worksheet B/Synthetic Two/document.pdf", "synthetic two");
   const bytes = await zip.generateAsync({ type: "nodebuffer" });
   const task = defineTask(contract, { sessions: [], async run({ ctx }) {
-    const archive = namedArtifactOutput(await ctx.artifacts.put(bytes, { mediaType: "application/zip" }), fileName);
+    const archive = kind === "single" ? namedArtifactOutput(await ctx.artifacts.put(bytes, { mediaType: "application/zip" }), fileName)
+      : await collectionArtifactOutput(ctx.artifacts, await Promise.all([
+        { relativePath: "July 6/July 6.zip", person: "Synthetic One", document: "synthetic one" },
+        { relativePath: "August 2/August 2.zip", person: "Synthetic Two", document: "synthetic two" },
+      ].map(async file => {
+        const worksheet = new JSZip(); worksheet.file(`${file.person}/document.pdf`, file.document);
+        return { relativePath: file.relativePath, artifact: await ctx.artifacts.put(await worksheet.generateAsync({ type: "nodebuffer" }), { mediaType: "application/zip" }) };
+      })));
     for (const [field, value] of Object.entries(archive.artifact)) ctx.recordData({ direction: "read", field: `archive.artifact.${field}`, value });
-    ctx.recordData({ direction: "read", field: "archive.fileName", value: archive.fileName });
+    if ("fileName" in archive) ctx.recordData({ direction: "read", field: "archive.fileName", value: archive.fileName });
+    else ctx.recordData({ direction: "read", field: "archive.files", value: archive.files });
     return { archive };
   } });
   const sources = collectSourceClosure(process.cwd(), fileURLToPath(import.meta.url));
@@ -63,16 +71,24 @@ it("publishes a task's one batch zip through the real checkpoint, outbox, worker
       { run: claimed.run, claim: { workerId: slot.workerId, claimGeneration: claimed.run.claimGeneration }, signal: new AbortController().signal });
     assert.equal(result.state, "done", JSON.stringify(result.state === "failed" ? f.db.authority.failures.get(result.failureId) : result));
     const file = f.db.authority.generatedArtifacts.get(`sink:documents-file-${runId}`); assert.ok(file);
-    assert.equal(file.mediaType, "application/zip"); assert.equal(file.state, "ready"); assert.equal(file.head?.generation, 1); assert.equal(file.updates.length, 1);
+    assert.equal(file.mediaType, kind === "single" ? "application/zip" : "application/vnd.relay.artifact-collection+json"); assert.equal(file.state, "ready"); assert.equal(file.head?.generation, 1); assert.equal(file.updates.length, 1);
     assert.equal(file.updates[0]?.record.state, "projected"); assert.equal(file.versions.length, 1); assert.equal(f.db.authority.artifactOutbox.listPending().length, 0);
-    const path = join(f.snapshot.config.paths.onboardingDocsDir, fileName), before = statSync(path);
-    assert.deepEqual(readFileSync(path), bytes);
-    const published = await JSZip.loadAsync(readFileSync(path));
-    assert.equal(await published.file("Worksheet A/Synthetic One/document.pdf")?.async("string"), "synthetic one");
-    assert.equal(await published.file("Worksheet B/Synthetic Two/document.pdf")?.async("string"), "synthetic two");
+    const destinations = kind === "single" ? [{ path: fileName, person: "Worksheet A/Synthetic One", document: "synthetic one" }]
+      : [{ path: "July 6/July 6.zip", person: "Synthetic One", document: "synthetic one" }, { path: "August 2/August 2.zip", person: "Synthetic Two", document: "synthetic two" }];
+    const observed = [];
+    for (const destination of destinations) {
+      const path = join(f.snapshot.config.paths.onboardingDocsDir, destination.path), retained = readFileSync(path);
+      const published = await JSZip.loadAsync(retained);
+      assert.equal(await published.file(`${destination.person}/document.pdf`)?.async("string"), destination.document);
+      if (kind === "single") {
+        assert.deepEqual(retained, bytes);
+        assert.equal(await published.file("Worksheet B/Synthetic Two/document.pdf")?.async("string"), "synthetic two");
+      } else assert.deepEqual(Object.keys(published.files).filter(name => !published.files[name]?.dir), [`${destination.person}/document.pdf`]);
+      observed.push({ path, bytes: retained, inode: statSync(path).ino });
+    }
     const update = file.updates[0]; assert.ok(update);
     assert.deepEqual(await artifactProjector.projectOutbox([update.record.outboxId]), { projected: 0 });
-    assert.equal(statSync(path).ino, before.ino); assert.deepEqual(readFileSync(path), bytes);
+    for (const output of observed) { assert.equal(statSync(output.path).ino, output.inode); assert.deepEqual(readFileSync(output.path), output.bytes); }
     assert.throws(() => f.db.authority.artifactOutbox.insert({ ...update.record, outboxId: randomUUID(), projectedAt: undefined, state: "pending" }), /already-registered/u);
   } finally { await f.dispose(); }
 });
@@ -114,7 +130,10 @@ it("publishes retained run output at its moved physical destination without rewr
   } finally { database?.close(); admission?.release(); machine?.release(); await lifetime?.close(); await world.cleanup(); rmSync(target, { recursive: true, force: true }); }
 });
 
-it("keeps an interrupted named publication pending and refuses to duplicate its external effect", async () => {
+it.each([
+  ["single", "published"], ["collection", "prepared"], ["collection", "published"],
+  ["collection", "directory-synced"], ["collection", "before-settlement"], ["collection", "after-head"], ["collection", "after-ack"],
+] as const)("keeps an interrupted %s publication pending across %s and a new database connection", async (kind, window) => {
   const f = await foundationFixture();
   const { createNamedFileOutputSink } = await import("../../../../../src/backend/storage/artifacts/named-file-output-sink.js");
   const { createArtifactSinkProjector } = await import("../../../../../src/backend/storage/artifacts/artifact-sink-projector.js");
@@ -123,21 +142,34 @@ it("keeps an interrupted named publication pending and refuses to duplicate its 
     const artifacts = createContentAddressedArtifactWriter({ admission: f.profile.admission }); await artifacts.ready;
     const bytes = Buffer.from("synthetic retained publication"), artifact = await artifacts.put(bytes, { mediaType: "application/zip" });
     const fileName = `Interrupted ${randomUUID()}.zip`, sinkId = `documents-file-${f.run.envelope.runId}`;
+    const output = kind === "single" ? namedArtifactOutput(artifact, fileName) : await collectionArtifactOutput(artifacts,
+      [{ relativePath: "July 6/July 6.zip", artifact }, { relativePath: "August 2/August 2.zip", artifact }]);
     const row = ArtifactOutboxStorageRecordSchema.parse({ outboxId: randomUUID(), artifactId: randomUUID(), projectionId: "batch-archive", stableKeyFingerprint: "a".repeat(64),
       keyValues: [{ field: "archive.fileName", value: fileName }], sinkId, sourceRunId: f.run.envelope.runId, sourceNodeId: "searching", state: "pending",
-      payload: { schemaHash: "b".repeat(64), value: namedArtifactOutput(artifact, fileName) }, createdAt: f.clock.now().toISOString() });
+      payload: { schemaHash: "b".repeat(64), value: output }, createdAt: f.clock.now().toISOString() });
     f.db.authority.artifactOutbox.insert(row);
-    const make = (interrupt: boolean) => createArtifactSinkProjector({ authority: f.db.authority, withAuthorityTransaction: work => f.db.withAuthorityTransaction(work),
-      assertCurrent: () => f.profile.admission.assertProfileRuntime(), lockDir: join(f.root, "scratch"), clock: f.clock,
-      sinks: { "documents-file": createNamedFileOutputSink({ artifacts, documentsDirectory: () => f.snapshot.config.paths.onboardingDocsDir,
-        fault(point) { if (interrupt && point === "published") throw new Error("interrupt-after-atomic-publication"); } }) } });
-    await assert.rejects(make(true).projectOutbox([row.outboxId]), /interrupt-after-atomic-publication/u);
-    const path = join(f.snapshot.config.paths.onboardingDocsDir, fileName), before = statSync(path);
-    assert.deepEqual(readFileSync(path), bytes);
+    const make = (interrupt: boolean, database = f.db) => {
+      const fault = (point: string) => { if (interrupt && point === window) throw new Error(`interrupt:${window}`); };
+      return createArtifactSinkProjector({ authority: database.authority, withAuthorityTransaction: work => database.withAuthorityTransaction(work),
+        assertCurrent: () => f.profile.admission.assertProfileRuntime(), lockDir: join(f.root, "scratch"), clock: f.clock, fault,
+        sinks: { "documents-file": createNamedFileOutputSink({ artifacts, documentsDirectory: () => f.snapshot.config.paths.onboardingDocsDir, fault }) } });
+    };
+    await assert.rejects(make(true).projectOutbox([row.outboxId]), new RegExp(`interrupt:${window}`, "u"));
+    const path = join(f.snapshot.config.paths.onboardingDocsDir, kind === "single" ? fileName : "July 6/July 6.zip");
+    const before = existsSync(path) ? statSync(path).ino : undefined;
+    assert.equal(existsSync(path), window !== "prepared");
+    if (before !== undefined) assert.deepEqual(readFileSync(path), bytes);
     const pending = f.db.authority.generatedArtifacts.get(`sink:${sinkId}`); assert.ok(pending);
     assert.equal(pending.prepared?.updateId, row.outboxId); assert.equal(pending.head, null); assert.equal(pending.updates[0]?.record.state, "pending");
-    await assert.rejects(make(false).projectOutbox([row.outboxId]), /prepared-conflict/u);
-    assert.equal(statSync(path).ino, before.ino); assert.deepEqual(readFileSync(path), bytes);
+    assert.deepEqual(pending.prepared?.artifact, output.artifact);
+    if (kind === "collection") assert.equal(existsSync(join(f.snapshot.config.paths.onboardingDocsDir, "August 2/August 2.zip")), window !== "prepared" && window !== "published");
+    const restarted = AuthorityDatabase.open(f.profile.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "collection-restart" }, f.clock);
+    try {
+      assert.deepEqual(restarted.authority.generatedArtifacts.get(`sink:${sinkId}`)?.prepared, pending.prepared);
+      await assert.rejects(make(false, restarted).projectOutbox([row.outboxId]), /prepared-conflict/u);
+      if (before !== undefined) { assert.equal(statSync(path).ino, before); assert.deepEqual(readFileSync(path), bytes); }
+      else assert.equal(existsSync(path), false);
+    } finally { restarted.close(); }
     assert.equal(f.db.authority.artifactOutbox.get(row.outboxId)?.state, "pending");
   } finally { await f.dispose(); }
 });
