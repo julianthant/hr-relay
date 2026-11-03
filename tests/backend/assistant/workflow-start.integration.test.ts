@@ -85,6 +85,17 @@ it("keeps subject inputs private and starts only after exact confirmation throug
   assert.equal(outbound.includes(f.request.subjectRef), false);
   assert.equal(outbound.includes("10873698"), false);
   assert.equal(f.dispatches(), 0);
+  assert.equal(p.proposal.effect, "workflow-start");
+  if (p.proposal.effect !== "workflow-start") throw new Error("workflow proposal required");
+  const plan = f.database.authority.startPlans.get(p.proposal.startPlan.startPlanId); assert.ok(plan);
+  assert.equal(p.proposal.label, "Start Person Lookup");
+  assert.equal(p.proposal.startPlan.planned.length, 1);
+  assert.equal(p.proposal.startPlan.planned[0].title, plan.planned[0].title);
+  assert.equal(p.proposal.startPlan.expectedVersion, plan.version);
+  assert.equal(p.proposal.startPlan.fingerprints.inputFingerprint, plan.inputFingerprint);
+  assert.equal(p.proposal.startPlan.browserMode, plan.browserMode);
+  assert.equal(p.proposal.startPlan.captureBrowserScreenshots, true);
+  assert.equal(Date.parse(p.proposal.expiresAt), Date.parse(plan.expiresAt));
   const result = await f.starts.decideAction(p.decision, new AbortController().signal);
   assert.deepEqual(f.dispatchErrors, []);
   assert.equal(result.state, "applied");
