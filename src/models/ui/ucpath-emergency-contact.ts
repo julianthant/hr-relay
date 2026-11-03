@@ -1,13 +1,13 @@
 import { z } from "zod";
 import { UcpathContactAddressFieldsSchema } from "../systems/ucpath/emergency-contacts.js";
-import type { UcpathContactSet, UcpathEmergencyContactInput } from "../systems/ucpath/emergency-contacts.js";
+import type { UcpathContactSet, UcpathEmergencyContactInput, UcpathContactPlan } from "../systems/ucpath/emergency-contacts.js";
 
 export const UcpathContactDisplayedNameSchema = z.literal("ucpath.emergency-contact.displayed-name").brand<"ObservationId">();
 export const UCPATH_CONTACT_DISPLAYED_NAME = UcpathContactDisplayedNameSchema.parse("ucpath.emergency-contact.displayed-name");
 
 export interface UcpathEmergencyContactDriver {
   readEmergencyContacts(input: Pick<UcpathEmergencyContactInput, "emplId" | "expectedName">): Promise<UcpathContactSet>;
-  stageEmergencyContact(input: UcpathEmergencyContactInput, before: UcpathContactSet): Promise<UcpathContactSet>;
+  stageEmergencyContact(input: UcpathEmergencyContactInput, plan: UcpathContactPlan): Promise<UcpathContactSet>;
 }
 
 export type UcpathContactObservations = Readonly<Record<typeof UCPATH_CONTACT_DISPLAYED_NAME, string>>;

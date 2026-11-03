@@ -29,7 +29,7 @@ import {
 } from "../../../models/run/start-plan.js";
 import type { PlannedRun, StartPlanRecord, StartRefusal } from "../../../models/run/start-plan.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { RunWorkbookReferenceSchema, WorkbookRunReferenceSelectionSchema, type WorkbookReferenceLookup } from "../../../models/dashboard/workbooks.js";
+import { bindRunWorkbookReference, parseRunWorkbookReference, WorkbookRunReferenceSelectionSchema, type WorkbookReferenceLookup } from "../../../models/dashboard/workbooks.js";
 import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -38,7 +38,7 @@ import { workbookInputBinding } from "../workbooks.js";
 
 
 export interface StartPlannerDeps {
-  readonly workbooks?: Pick<WorkbookLibraryService, "snapshot">;
+  readonly workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion">;
   readonly protectedSecrets?: ProtectedSecretSource;
 
   readonly authority: Readonly<{
@@ -190,13 +190,19 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
           if (lookup === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           if (selection.selectedRow !== undefined) {
             const capability = descriptor.surfaces.inputRun?.workbookRows;
-            if (capability?.typeId !== selection.typeId || lookup.keys.length !== 1
+            if (capability?.typeId !== selection.typeId || "mode" in lookup || lookup.keys.length !== 1
               || parsed === null || typeof parsed !== "object"
               || Reflect.get(parsed, capability.inputField) !== lookup.keys[0]) throw new WorkbookLibraryError("WORKBOOK_INVALID");
           }
-          const reference = { ...lookup, ...selection };
-          return { schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output"),
-            value: JsonValueSchema.parse(RunWorkbookReferenceSchema.parse({ request: reference, snapshot: workbooks.snapshot(reference) })) };
+          const libraryId = selection.libraryId ?? workbooks.catalog().find(entry => entry.type.id === selection.typeId)?.type.defaultWorkbookId;
+          if (!libraryId) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
+          const selected = workbooks.libraryVersion(libraryId, selection.versionId);
+          const current = workbooks.catalog().find(entry => entry.libraryId === libraryId);
+          if (current === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
+          const reference = { ...lookup, libraryId, ...(selection.versionId === undefined ? {} : { versionId: selection.versionId }),
+            ...(selection.selectedRow === undefined ? {} : { selectedRow: selection.selectedRow }),
+            ...("mode" in lookup ? { expectedVersion: current.version } : {}) };
+          return bindRunWorkbookReference(reference, workbooks.snapshot({ ...reference, versionId: selected.version.id }));
         });
       } catch (error) {
         if (!(error instanceof WorkbookLibraryError)) throw error;
@@ -231,7 +237,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     }
 
     const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(canonicalInput), subtitle: planning.subtitle(canonicalInput) }));
-    const outputs = planning.plannedOutputs(canonicalInput, (workbookReferences ?? []).map(reference => RunWorkbookReferenceSchema.parse(reference.value)));
+    const outputs = planning.plannedOutputs(canonicalInput, (workbookReferences ?? []).map(reference => parseRunWorkbookReference(reference)));
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
       ...(outputs.length === 0 ? {} : { outputs }),

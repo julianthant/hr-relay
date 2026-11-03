@@ -1,19 +1,27 @@
+import { contactEffect, planEmergencyContact } from "../../../../../src/rules/ucpath/emergency-contact.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import fixture from "../../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
-import { createDeterministicUcpathContactPage } from "../../../../../src/backend/systems/ucpath/driver/contact-fake.js";
+import { createDeterministicUcpathContactPage, deterministicContactOperations } from "../../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../../src/backend/systems/ucpath/driver/fake.js";
-import { contactEffect, interpretContactPage } from "../../../../../src/backend/systems/ucpath/driver/contact-operation.js";
+import { interpretContactPage } from "../../../../../src/backend/systems/ucpath/driver/contact-operation.js";
 import { UcpathEmergencyContactInputSchema } from "../../../../../src/models/systems/ucpath/emergency-contacts.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../../src/models/ui/ucpath-emergency-contact.js";
 
 describe("deterministic UCPath contact editor", () => {
+  it("never relabels a prior staged preview as persisted on a reused port", async () => {
+    const input = UcpathEmergencyContactInputSchema.parse(fixture.input);
+    const port = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse(fixture.page) });
+    const driver = deterministicContactOperations(port), before = await driver.readEmergencyContacts(input);
+    await driver.stageEmergencyContact(input, planEmergencyContact(before, contactEffect(input)));
+    await assert.rejects(driver.readEmergencyContacts(input), /contact-plan-refused/u);
+  });
   it("refuses contact calls on unrelated UCPath fixtures instead of inventing contacts", async () => {
     const input = UcpathEmergencyContactInputSchema.parse(fixture.input);
     const before = interpretContactPage(UcpathContactPageSnapshotSchema.parse(fixture.page), input);
     const driver = createDeterministicUcpathPersonOrgDriver();
     await assert.rejects(driver.readEmergencyContacts(input), /explicit contact page observations/u);
-    await assert.rejects(driver.stageEmergencyContact(input, before), /explicit contact page observations/u);
+    await assert.rejects(driver.stageEmergencyContact(input, planEmergencyContact(before, contactEffect(input))), /explicit contact page observations/u);
   });
 
   it("requires explicit paged observations and refuses to overwrite a populated row", async () => {

@@ -18,3 +18,7 @@ export function notificationsSample(scenario: string): NotificationsState {
   if (["normal", "ping"].includes(scenario)) return sample;
   throw new Error("notification-sample-missing");
 }
+
+export const previewNotificationReads: Readonly<Record<string, boolean>> = {
+  "mock:emergency-contact:sample:ocr": false,
+};

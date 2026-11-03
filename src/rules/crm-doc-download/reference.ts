@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import { RunWorkbookReferenceSchema } from "../../models/dashboard/workbooks.js";
+import { RunWorkbookNamedReferenceSchema } from "../../models/dashboard/workbooks.js";
 import { CrmDocumentRecordsSchema, CrmDownloadedPeopleSchema } from "../../models/systems/crm/documents.js";
 import { CrmWorksheetPersonSchema } from "../../models/workflows/crm-doc-download/documents.js";
 import { CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema } from "../../models/workflows/crm-doc-download/read-document-rows.js";
@@ -8,7 +8,7 @@ import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { matchesCrmDocumentSubject } from "./documents.js";
 
 type Records = z.output<typeof CrmDocumentRecordsSchema>;
-type Reference = z.output<typeof RunWorkbookReferenceSchema>;
+type Reference = z.output<typeof RunWorkbookNamedReferenceSchema>;
 type Row = z.output<typeof CrmWorksheetPersonSchema>["reference"];
 type Candidate = Readonly<{ key: string; row: Row }>;
 
@@ -27,7 +27,7 @@ export function crmDocumentReferenceKeys(value: z.input<typeof CrmDocumentRecord
 
 export function resolveCrmDocumentRows(value: z.input<typeof CrmDocumentRecordsSchema>, referenceValue: Reference) {
   const records = CrmDocumentRecordsSchema.parse(value).records;
-  const { request, snapshot } = RunWorkbookReferenceSchema.parse(referenceValue);
+  const { request, snapshot } = RunWorkbookNamedReferenceSchema.parse(referenceValue);
   const keys = crmDocumentReferenceKeys({ records });
   if (request.typeId !== ONBOARDING_ROSTER_TYPE_ID || snapshot.type.keyFieldId !== "email"
     || request.keys.length !== keys.length || request.keys.some((key, index) => key !== keys[index])

@@ -1,15 +1,15 @@
 import { z } from "zod";
 import { defineTaskContract } from "../../task/task-contract.js";
-import { RunWorkbookReferenceSchema, WorkbookCellValuesSchema } from "../../dashboard/workbooks.js";
+import { RunWorkbookNamedReferenceSchema, WorkbookCellValuesSchema } from "../../dashboard/workbooks.js";
 import { CrmDocumentRecordsSchema, CrmLocatedPersonSchema } from "../../systems/crm/documents.js";
 import { FingerprintSchema, taskId } from "../../../rules/identity/ids.js";
 import { CrmWorksheetPersonSchema } from "./documents.js";
 
-const snapshot = RunWorkbookReferenceSchema.shape.snapshot;
+const snapshot = RunWorkbookNamedReferenceSchema.shape.snapshot;
 const retainedRow = snapshot.shape.rows.element;
 const retainedMatch = retainedRow.shape.matches.element;
 const cell = WorkbookCellValuesSchema.valueType;
-export const CrmDocumentRosterReferenceSchema = RunWorkbookReferenceSchema.safeExtend({ snapshot: snapshot.safeExtend({
+export const CrmDocumentRosterReferenceSchema = RunWorkbookNamedReferenceSchema.safeExtend({ snapshot: snapshot.safeExtend({
   rows: retainedRow.safeExtend({ matches: retainedMatch.safeExtend({ values: z.strictObject({
     email: cell, firstName: cell, lastName: cell, middleName: cell,
     "roster.livedFirstName": cell, "roster.livedLastName": cell, "roster.livedMiddleName": cell,

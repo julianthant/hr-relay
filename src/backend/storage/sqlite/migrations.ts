@@ -5,7 +5,7 @@ import { EXCLUSIVE_SESSION_LEASE_MIGRATION } from "./exclusive-session-leases.js
 import { OCR_REVIEW_MIGRATION } from "./ocr-review.js";
 import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION } from "./workbook-library-repository.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { RunWorkbookReferenceSchema } from "../../../models/dashboard/workbooks.js";
+import { RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
@@ -809,20 +809,30 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
   { version: 18, statements: [
     `CREATE TABLE workbook_reference_upgrade_guard (refused INTEGER CONSTRAINT workbook_reference_schema_upgrade_unproved CHECK(refused=0)) STRICT`,
     `INSERT INTO workbook_reference_upgrade_guard SELECT 1 FROM runs,json_each(runs.lifecycle_json,'$.input.workbookReferences') reference
-      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}' LIMIT 1`,
+      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output")}' LIMIT 1`,
     `INSERT INTO workbook_reference_upgrade_guard SELECT 1 FROM run_requests,json_each(run_requests.payload_json,'$.planned') planned,
       json_each(planned.value,'$.workbookReferences') reference
-      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}' LIMIT 1`,
+      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output")}' LIMIT 1`,
     `DROP TABLE workbook_reference_upgrade_guard`,
     ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements,
   ] },
   { version: 19, statements: [
     `CREATE TABLE workbook_reference_upgrade_guard (refused INTEGER CONSTRAINT workbook_reference_schema_upgrade_unproved CHECK(refused=0)) STRICT`,
     `INSERT INTO workbook_reference_upgrade_guard SELECT 1 FROM runs,json_each(runs.lifecycle_json,'$.input.workbookReferences') reference
-      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}' LIMIT 1`,
+      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookNamedAllRowsReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookSelectedRowReferenceSchema, "output")}' LIMIT 1`,
     `INSERT INTO workbook_reference_upgrade_guard SELECT 1 FROM run_requests,json_each(run_requests.payload_json,'$.planned') planned,
       json_each(planned.value,'$.workbookReferences') reference
-      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}' LIMIT 1`,
+      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookNamedAllRowsReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookSelectedRowReferenceSchema, "output")}' LIMIT 1`,
     `DROP TABLE workbook_reference_upgrade_guard`,
   ] },
 ]);

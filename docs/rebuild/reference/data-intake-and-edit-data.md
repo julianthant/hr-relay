@@ -136,15 +136,20 @@ manifest, original page, image and explicit reading invocation. Replay keeps tha
 a deliberate rereading uses a new invocation. Manual readings retain operator assertion provenance.
 The immutable review seed retains raw fields and absences, separate duplicate records, roster source
 evidence and match proposals, and explicit unresolved identity work. Source binding and review seeds
-support all three canonical forms. The unregistered definitions in
+support all three canonical forms. The child-only production definitions in
 `src/workflows/ocr/` and `src/workflows/ocr-page/` compose full-document rendering, subscription or
-manual page readings, all-settled page accounting and deduplicated Person Lookup children. Identity
-outcomes remain separate from the original review seed in a derived result checkpoint; neither grants
-approval. `worker/run-resources.ts` admits the retained run before OCR capabilities are issued;
-the checkpoint publisher verifies its exact claim, delegated page membership and operator start authority.
-`sourceRunId` is an optional assertion and must match the actual OCR run when supplied.
-The definitions and mini-stores are audited through a test-only inventory; neither public nor child
-production registries contain them. Page checkpoints publish immutable readings in their authority transaction.
+manual page readings and all-settled page accounting. Each form declares its lookup in the form
+registry: Emergency Contact and Oath use Person Lookup; I-9 uses the I-9 official-signer lookup.
+The generic descriptor has two sequential lookup edges; the form's unused edge emits an explicit
+empty join. Requests deduplicate identical search inputs while retaining every contributing record
+ID. Person and signer results retain their distinct output schemas. Neither grants approval.
+Page children are hidden unless failed; lookup children are inline. Record-group lineage remains
+the delegation owner's responsibility.
+
+`worker/run-resources.ts` admits the retained run before OCR capabilities are issued;
+the checkpoint publisher verifies its exact claim, delegated page and lookup membership and operator
+start authority. `sourceRunId` is an optional assertion and must match the actual OCR run when supplied.
+Page checkpoints publish immutable readings in their authority transaction.
 
 The native `artifacts` table stores `imported`, `extracted`, and `generated` rows. `AuthorityDatabase.authority.ocrExtractions.insert` accepts only a validated `OcrPageReading` and stores its exact source-bound `extractionId`, full page input and admitted extraction. Reusing the same reading identity and content returns `existing`; changing any content at that identity refuses with `ocr-extraction-replay-conflict`. A deliberate reread uses a new `readingId` and appends a separate extraction. `get(extractionId)` reads exactly that version. `findBySource(imageSha256)` returns every retained version in page/ID order, never a selected latest reading.
 
@@ -165,20 +170,71 @@ Queue and selected-detail subscriptions replace their reads. The `review` sectio
 pages, fields, provenance, issues, current revision and immutable snapshots; `people` remains unavailable.
 Read-only command-result queries reconcile an uncertain correction without replaying it.
 
+Records authenticates the original review checkpoint through its protected native publication and
+the revision's full-checkpoint digest. The publication binds the original schema hash and value
+together; later schema additions do not rewrite that evidence or substitute today's schema hash.
+The retained value must still parse through the current review schema. Workflow replay and snapshot
+release keep their separate current-build and freshness checks.
+
 OCR defaults to review-only completion. Explicit release mode parks on its registered operator
 gate. `resolve-gate` verifies the exact current revision, digest and selected record IDs, freezes
 the snapshot and settles the gate in one authority transaction. Parent completion returns that
 snapshot reference. Later drafts cannot mutate it, and checkpoint recovery refuses a superseded
-approval. Emergency Contact member recovery and live workflow activation still require their
-owning graphs, freshness policies and operator acceptance.
+approval. Workflow activation and live selector acceptance remain separate from retained approval
+authority.
 
 ### 4.5 Roster matching and contact advice
+
+OCR declares the `ocr-roster` workbook type with `eid` and `fullName` fields. Run planning captures
+all data rows from the selected named library version; omission selects the current in-use version.
+The reference retains named-version identity separately from the captured current library CAS. The run retains the full reference once; its canonical input binds the
+workbook identity, version, reference digest and ordered typed roster rows with worksheet/row IDs.
+Caller-supplied roster values refuse.
+Duplicate people remain separate rows, missing identities remain null, and invalid identity values
+refuse admission. Matching uses that captured snapshot, without SharePoint delegation or a later
+library read. Artifact roster provenance remains valid only inside retained review evidence; new
+canonical OCR inputs accept workbook provenance only. No retained correction, snapshot or digest
+is rewritten.
+Finite nonnegative integer EID cells use the canonical EID coercer; the retained workbook reference
+keeps their original numeric type. Boolean, date, fractional and invalid EID values refuse.
 
 `roster/match-spreadsheet` re-parses the roster through the shared grid edge. It verifies the mapping layout fingerprint and requires EID and full-name bindings. Its errors are `roster-unreadable`, `mapping-mismatch`, `no-eid-column`, and `no-name-column`.
 
 `src/rules/matching/roster-match.ts` owns scoring and mismatch decisions. A claimed EID is not replaced by a different name match. `name-eid-conflict` has confidence zero; distinct-EID top ties are `ambiguous`; `no-match` has `matchedEid: null`. `src/rules/matching/match-confidence.ts` owns tiers: high at 0.6, low below 0.4, otherwise medium. The task's default freshness limit is 24 hours. Matching returns records and performs no workbook writes.
 
 `normalization/read-contact-advice` applies deterministic relationship, phone, country, state, and ZIP rules. Optional geocoding uses Census before Nominatim for US-shaped addresses, otherwise Nominatim. It records city/state/ZIP advice and observation provenance; it does not offer street-line replacements. Its output includes `normalized`, `relationshipCanonical`, `changes`, and `complete`, `ambiguous`, or `advisory-unavailable` disposition. Ambiguity takes precedence when unresolved fields remain. No AI normalization arm exists. This read task does not approve or submit the advised values.
+
+#### Approved Emergency Contact consumption
+
+The Emergency Contact PDF operation awaits OCR release before reading or acquiring contacts.
+The local `ocr.approved-snapshot` capability authenticates the current run, attempt, claim and
+registered task, its exact native OCR child, and the reference returned by that child's terminal
+result. Member reads additionally authenticate native membership and exact canonical record/EID
+binding. Each call checks the current review revision and approval digest; foreign references,
+altered records and later drafts refuse. Snapshot records keep the operator's selected order.
+
+The shared graph builder lives in `src/workflows/ocr/steps/source-pages/step.ts`. The Emergency Contact consumer
+maps only approved contact fields, requests Primary, and keeps blank address fields null. It does
+not copy the employee's address or infer a country. Conflicting desired primary effects for one EID
+refuse before member admission. Equal effects retain every selected record and share the permanent
+desired-effect key.
+
+One OCR release covers the declared primary policy and ordered preparation plan. A different
+existing primary is bound by its unique full effect, row locator and original complete-set
+fingerprint. Preparation reopens the employee editor, verifies unchanged contact content, unchecks
+that primary, verifies the demotion, then adds the new primary and verifies the final protected set.
+Original observation evidence is retained while fresh read times may advance. Original and final
+full-set captures are required; capture failure fails the preview. A staged page cannot prove saved
+presence on a later read.
+
+Member previews use the ordinary protected sequencer and stop after preparation. Exact persisted
+presence skips preparation; an indeterminate probe or an attempting/parked permanent key refuses.
+The permanent key is employee plus canonical desired effect, independent of run and before-set.
+Real mode returns `CONTACT_SAVE_UNAVAILABLE` before contact acquisition. The driver has no Save
+method. Emergency Contact remains on its mock source. Delegated read-only children retain
+`dryRun: true` and return ordinary read results. Root compositions without a local transaction
+still refuse dry-run admission, and transaction-child preview joins refuse; parent previews need
+authenticated descendant-preview aggregation before this operation preview is usable.
 
 ### 4.6 Artifact projections
 
@@ -317,6 +373,20 @@ single immutable wire snapshot of the selected/default workbook, type and live r
 these snapshots are tagged ISO values. Workbook rows do not become run items through this API.
 Key matching retains nonempty strings exactly and compares finite numeric cells by their stable string value. It does not pad numeric keys or coerce booleans, dates, blanks or null. Numeric/string collisions stay ambiguous; snapshots retain original typed cell values.
 
+Full-roster reads use the adjacent explicit `mode: "all"` request with a library ID, expected CAS
+version and requested fields. They capture every data row in worksheet order, retaining stable
+worksheet/row identities, duplicates and original typed values. Header rows are excluded. A changed
+version refuses rather than selecting the new master. Full-row references have their own schema
+hash and are permanently read-only: they cannot authorize keyed patches or Onboarding row choices.
+Master keyed and all-row requests retain their existing schemas, hashes and semantics, including an empty keyed snapshot for
+`keys: []`. Selected keyed and named all-row references have separate current schemas and hashes. Selected keyed
+references permit paired source-metadata absence; when metadata is present, version ID and name must both be present
+and an explicit requested ID must match. New captures from named sources require the exact ID and name.
+Named all-row references always require both. A fifth active keyed schema retains the published optional physical-row selector and paired source metadata. Its retained values remain readable when the selector is absent; new captures use this schema only for an explicit selected row. The selector requires one lookup key, an explicit library and immutable version, and exactly one matching worksheet/row coordinate. Retained readers dispatch by exactly five declared hashes. Workflow declarations own keyed lookup keys and all-row fields; browser selections carry entry, type, library and optional version IDs, plus a physical row only when the workflow declares that input capability. Planning captures the exact in-use or explicitly selected named version,
+with its current library CAS revision captured server-side. An omitted requested version ID remains omitted
+in retained requests, preserving current default row-choice revalidation; explicit IDs remain pinned. Named row data comes
+from that immutable version, never from a master fallback. Existing reference bytes and hashes remain unchanged. The forward migration19 guard admits all five active identities across retained run and planned references, including terminal runs and consumed plans; unknown identities refuse before upgrade. Recognizing an older name-only capture grants no new Onboarding output-field or write authority.
+
 The live `version` is a CAS revision. Named versions are explicit operator snapshots; saves, run
 patches and manual Sync do not create versions. Existing saved revisions retain their data with
 migration provenance. The immutable creation record independently proves workflow publication replay.
@@ -375,6 +445,6 @@ document creation/modification timestamps are admitted; edits use the library's 
 Other document properties, table structures, non-cell styles and opaque package parts are refused
 for master mutation. Export creates an explicit value copy and never overwrites the source file.
 
-The `ocr/read-approved-records` service task reads a run's exact native OCR delegation outcomes through the local `ocr.review` adapter. It authenticates each current approved snapshot through the OCR authority reader; missing, foreign, altered and stale selections refuse. Corrected selected records stay separate from the original review seed.
+The `ocr/read-approved-records` service task reads a run's exact native OCR delegation outcomes through the local `ocr.review` adapter. The shared lifecycle reader authenticates the running task and its exact many/terminal OCR dependency, ordered native outcomes and each current approved snapshot; missing, foreign, altered and stale selections refuse. Corrected selected records stay separate from the original review seed.
 
 The worker composes `xlsx-retention` at the source run's retained `paths.i9CheckTrackerPath`, including verified physical-path relocation. Its four-column publication journal retains the existing receipt and recovery protocol; a derived I-9 Check worksheet presents the nine retention columns and the latest observed row per person. Unowned or changed destination bytes refuse.

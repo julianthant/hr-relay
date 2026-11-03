@@ -16,8 +16,11 @@ import { ReadOcrSourcePages } from "../../../src/models/workflows/ocr/read-sourc
 import { ReadOcrReviewSeed } from "../../../src/models/workflows/ocr/read-review-seed.js";
 import { readOcrSourcePagesTask } from "../../../src/workflows/ocr/tasks/read-source-pages.js";
 import { readOcrReviewSeedTask } from "../../../src/workflows/ocr/tasks/read-review-seed.js";
-import { ocrLookupRequests, ocrLookupItemId } from "../../../src/models/workflows/ocr/lookup.js";
-import { OcrPageOutcomeSchema, bindManualOcrPageReading } from "../../../src/models/workflows/ocr/page-accounting.js";
+import { ocrLookupRequests, ocrLookupItemId, ocrPersonLookupRequests, ocrSignerLookupRequests } from "../../../src/models/workflows/ocr/lookup.js";
+import { OcrPageOutcomeSchema, bindManualOcrPageReading, accountOcrPages } from "../../../src/models/workflows/ocr/page-accounting.js";
+import { buildOcrReviewSeed } from "../../../src/models/workflows/ocr/review-seed.js";
+import { OCR_FORMS } from "../../../src/models/ocr/form-registry.js";
+import { I9ReadSection2Signer } from "../../../src/models/systems/i9/read-section2-signer.js";
 import { ItemIdSchema } from "../../../src/rules/identity/ids.js";
 import { sourceFixture, donePage, submittedPage, READING_ID, SOURCE_RUN_ID } from "../../support/fixtures/ocr/source-pages.js";
 import { readOcrPageFixture } from "../../support/fixtures/ocr/read-page.js";
@@ -64,6 +67,32 @@ async function finishFixture(scope: Parameters<typeof completed.bind>[0]) {
 }
 
 describe("child-only OCR document graph", () => {
+  it.each(["emergency-contact", "oath", "i9"] as const)("emits only the %s form's declared lookup and retains its typed outcome", formType => {
+    const source = sourceFixture(2, formType);
+    const review = buildOcrReviewSeed({ roster: null, accounting: accountOcrPages(source.manifest, READING_ID,
+      source.inputs.map(input => donePage(input)), formType) });
+    const person = ocrPersonLookupRequests(review), signer = ocrSignerLookupRequests(review);
+    assert.equal(OCR_FORMS[formType].lookup, formType === "i9" ? "i9-lookup" : "person-lookup");
+    assert.equal(person.length, formType === "i9" ? 0 : 1);
+    assert.equal(signer.length, formType === "i9" ? 1 : 0);
+    const signerNode = nodes.find(node => node.id === "lookup-signers");
+    assert.ok(signerNode?.kind === "child-run");
+    const input = OcrInputSchema.parse({ ...requestFixture().request, formType });
+    assert.deepEqual(lookup.bind({ input, outputs: { "build-review": review } }), person.map(request => request.input));
+    assert.deepEqual(signerNode.bind({ input, outputs: { "build-review": review, "lookup-identities": [] } }), signer.map(request => request.input));
+    assert.equal(signerNode.policy.visibility, "inline");
+    assert.equal(nodes.some(node => node.kind === "parallel"), false);
+    if (formType !== "i9") return;
+    const request = signer[0]; assert.ok(request);
+    assert.deepEqual(request.recordIds, review.records.map(record => record.recordId));
+    const outcome = { state: "done", itemId: ocrLookupItemId(request.input),
+      runId: "00000000-0000-4000-8000-000000000801", output: I9ReadSection2Signer.example };
+    const result = OcrResultSchema.parse({ review, identities: [{ ...request, outcome }] });
+    assert.deepEqual(result.identities[0]?.outcome, outcome);
+    assert.equal(OcrResultSchema.safeParse({ review, identities: [{ ...request, outcome: { ...outcome,
+      output: { activeStatus: ReadActiveStatus.example, crmDates: { state: "not-requested" } } } }] }).success, false);
+  });
+
   it("compiles complete exact stores and generated timelines without public registration", () => {
     const modules = [ocrModule, ocrPageModule, ocrSourcePagesModule, ocrPageReadingModule];
     assert.deepEqual(modules.map(module => String(module.descriptor.id)), ["ocr", "ocr-page", "ocr-source-pages", "ocr-page-reading"]);
@@ -72,7 +101,9 @@ describe("child-only OCR document graph", () => {
     assert.equal(children.policy.cascadeCancel, "cascade");
     assert.equal(lookup.join, "all-settled");
     assert.deepEqual(workflowTerminalResultExecution(descriptor).dependsOn, ["read-result", "approve-records"]);
-    assert.deepEqual(descriptor.timeline.map(step => step.key), ["source-pages", "page-readings", "review-records", "identity-lookups", "approval"]);
+    assert.deepEqual(descriptor.timeline.map(step => step.key), ["source-pages", "page-readings", "review-records", "identity-lookups", "signer-lookups", "approval"]);
+    assert.equal(children.policy.visibility, "hidden-unless-failed");
+    assert.equal(lookup.policy.visibility, "inline");
     assert.ok(workflowExplorerDeclaration(ocrWorkflow));
     for (const id of ["ocr", "ocr-page"]) {
       assert.throws(() => workflowModuleOf(id));
@@ -99,7 +130,7 @@ describe("child-only OCR document graph", () => {
     const itemId = ItemIdSchema.parse(ocrLookupItemId(input));
     assert.equal(lookup.deriveChildItemId(input, { canonicalItemId: itemId }), itemId);
     const outcome = { state: "failed", itemId, runId: "00000000-0000-4000-8000-000000000801", failureId: "00000000-0000-4000-8000-000000000777" };
-    const scope = { input: request, outputs: { "build-review": review, "lookup-identities": [outcome] } };
+    const scope = { input: request, outputs: { "build-review": review, "lookup-identities": [outcome], "lookup-signers": [] } };
     const result = await finishFixture(scope);
     assert.deepEqual(OcrWorkflowResultSchema.parse(workflowTerminalResultExecution(descriptor).derive({ input: request,
       outputs: { "read-result": result } })), { ...result, approvedSnapshot: null });
@@ -143,7 +174,7 @@ describe("child-only OCR document graph", () => {
       manifest: source.manifest, readingId: READING_ID, formType: "emergency-contact", outcomes: [failed] }, ctx: ocrTaskContext().ctx }));
     assert.deepEqual(review.pages, [{ sourcePage: 1, disposition: "failed" }]);
     assert.deepEqual(lookup.bind({ input: request, outputs: { "build-review": review } }), []);
-    const result = await finishFixture({ input: request, outputs: { "build-review": review, "lookup-identities": [] } });
+    const result = await finishFixture({ input: request, outputs: { "build-review": review, "lookup-identities": [], "lookup-signers": [] } });
     assert.deepEqual(result.identities, []);
   });
 });

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
-import { UcpathReadEmergencyContacts, UcpathStageEmergencyContact, UcpathMatchEmergencyContact } from "../../../../src/models/systems/ucpath/contact-tasks.js";
+import { describe,it } from "vitest";
+import { ERROR_CATALOG,failureCodeFromTaskCode } from "../../../../src/models/failures/error-catalog.js";
 import { UcpathContactRefusalCodeSchema } from "../../../../src/models/systems/ucpath/emergency-contacts.js";
-import { ERROR_CATALOG, failureCodeFromTaskCode } from "../../../../src/models/failures/error-catalog.js";
+import { UcpathMatchEmergencyContact } from "../../../../src/models/systems/ucpath/match-emergency-contact.js";
+import { UcpathReadEmergencyContacts } from "../../../../src/models/systems/ucpath/read-emergency-contacts.js";
+import { UcpathStageEmergencyContact } from "../../../../src/models/systems/ucpath/stage-emergency-contact.js";
 
 describe("UCPath contact contracts awaiting workflow integration", () => {
   it("declares every named driver refusal with dashboard text for all three contracts", () => {

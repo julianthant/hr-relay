@@ -1,3 +1,6 @@
+import type { z } from "zod";
+import type { WorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import type { WorkbookRunReferenceSelectionSchema } from "../../../../src/models/dashboard/workbooks.js";
 import { boundProfileAdmission } from "../synthetic-database-admission.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import assert from "node:assert/strict";
@@ -18,14 +21,11 @@ import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflo
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { singleAppliedRunId } from "../../fixtures/operator-command-fixtures.js";
 import { testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
-import type { WorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
-import type { WorkbookRunReferenceSelectionSchema } from "../../../../src/models/dashboard/workbooks.js";
-import type { z } from "zod";
 
 export function canonicalChildExecution(deps: RunExecutorDependencies, database: AuthorityDatabase, path: string,
   resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined,
   checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>,
-  options?: Readonly<{ workbooks?: Pick<WorkbookLibraryService, "snapshot">;
+  options?: Readonly<{ workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion">;
     resources?(reader: Pick<RunRecordService, "read">, run: RunRecord): Pick<RunExecutorDependencies, "providers" | "artifactProjector"> }>) {
   const { clock } = deps;
   const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
@@ -115,7 +115,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
       const plan = planner.plan({ workflowId: descriptor.id, submissions: [input], dryRun: startOptions.dryRun,
         ...(startOptions.workbookReferences === undefined ? {} : { workbookReferences: startOptions.workbookReferences }),
         selectedStepKeys: descriptor.timeline.map(step => step.key) });
-      assert.equal(plan.planned.length, 1);
+      assert.equal(plan.planned.length, 1, JSON.stringify(plan.refused));
       assert.equal(plan.refused.length, 0);
       const result = kernel.execute({ commandId: randomUUID(), family: "start", type: "start-run", source: "dashboard",
         requestedBy: LOCAL_OPERATOR_ACTOR_ID, requestedAt: clock.now().toISOString(), target: { workflowId: descriptor.id,

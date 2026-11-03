@@ -74,6 +74,17 @@ describe("interactive notification destinations", () => {
     expect(notificationView(read, "attention").shown.map(row => row.id)).toContain(item.id);
     expect(notificationView(applyNotificationReads(approved, { [item.id]: true }), "all").unread).toBe(2);
   });
+  it("keeps records capability for empty, approved and discarded canonical record runs", () => {
+    const source = input.runs.find(run => run.id === "mock:emergency-contact:sample:ocr")!;
+    for (const state of [{ approved: false }, { approved: true }, { approved: false, discarded: true }]) {
+      const run = { ...source, ...state, records: [] };
+      const model = ready(notificationPreviewState("normal", { ...input, runs: [run] }));
+      const item = model.items.find(item => item.destination.kind === "preview-run")!;
+      expect(item).toMatchObject({ read: false, destination: { records: true } });
+      expect(notificationDestinationRefusal(item.destination, { ...input, runs: [run] })).toBeUndefined();
+      expect(model.items.filter(item => item.destination.kind === "preview-run")).toHaveLength(1);
+    }
+  });
   it("adds notifications for new completed runs and delegated OCR approvals, not unfinished parents", () => {
     const done = mockRunsForDraft("onboarding", { ...initialMockDraft("onboarding"), text: "new.hire@example.com", dryRun: true }, 51);
     const pending = mockRunsForDraft("emergency-contact", { ...initialMockDraft("emergency-contact"), files: [{ name: "new-contact.pdf", size: 100, digest: "synthetic" }] }, 52);

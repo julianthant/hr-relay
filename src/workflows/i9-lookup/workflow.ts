@@ -1,8 +1,7 @@
 import { z } from "zod";
-import { I9LookupInputSchema, I9ReadSection2Signer } from "../../models/systems/i9/read-section2-signer.js";
+import { I9LookupInputSchema, I9ReadSection2Signer, i9LookupMatchKey } from "../../models/systems/i9/read-section2-signer.js";
 import { defineCanonicalInput } from "../../models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
-import { sha256Hex } from "../../rules/validation/sha256.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { i9LookupStepDefinition } from "./steps/lookup/step.js";
@@ -27,7 +26,7 @@ export const i9LookupWorkflow = defineWorkflow({
   actions: STANDARD_WORKFLOW_ACTIONS,
   surfaces: {},
   role: defineWorkflowRole({ kind: "composition" }),
-  identity: { matchKey: input => ["i9", sha256Hex(JSON.stringify([input.lastName.toLowerCase(), input.firstName.toLowerCase(), input.ssn]))].join(":") },
+  identity: { matchKey: i9LookupMatchKey },
   presentation: { title: input => `${input.lastName}, ${input.firstName}` },
   details: [
     { key: "signer-name", label: "Authorized Official Signer", source: { kind: "result", fieldPath: "signerName" }, display: "text" },

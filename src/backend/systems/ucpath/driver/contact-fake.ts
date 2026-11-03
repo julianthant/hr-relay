@@ -1,7 +1,8 @@
+import { EidSchema } from "../../../../rules/identity/ids.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../models/ui/ucpath-emergency-contact.js";
 import type { UcpathContactPageSnapshot } from "../../../../models/ui/ucpath-emergency-contact.js";
 import type { UcpathContactPagePort } from "./contact-operation.js";
-import { contactEffect, decideContactAddition, readContactSetWithPort, stageContactAdditionWithPort } from "./contact-operation.js";
+import { readContactSetWithPort, stageContactPlanWithPort, interpretContactPage } from "./contact-operation.js";
 import { UcpathContactRefusedError } from "../../../../models/systems/ucpath/emergency-contacts.js";
 import type { UcpathEmergencyContactDriver } from "../../../../models/ui/ucpath-emergency-contact.js";
 
@@ -11,13 +12,13 @@ export function deterministicContactOperations(port?: UcpathContactPagePort): Uc
     return port;
   }
   return {
-    readEmergencyContacts: async (subject) => readContactSetWithPort(requirePort(), subject),
-    async stageEmergencyContact(input, before) {
-      const decision = decideContactAddition(before, contactEffect(input));
-      if (before.observation !== "persisted" || before.emplId !== input.emplId || decision.state !== "add") {
-        throw new UcpathContactRefusedError("contact-plan-refused");
-      }
-      return stageContactAdditionWithPort(requirePort(), input, decision);
+    async readEmergencyContacts(subject) {
+      const set = await readContactSetWithPort(requirePort(), subject);
+      if (set.observation !== "persisted") throw new UcpathContactRefusedError("contact-plan-refused");
+      return set;
+    },
+    async stageEmergencyContact(input, plan) {
+      return stageContactPlanWithPort(requirePort(), input, plan);
     },
   };
 }
@@ -41,6 +42,16 @@ export function createDeterministicUcpathContactPage(options: Readonly<{
       actions.push("view-all");
       if (options.expanded === undefined) throw new Error("contact fixture requires an explicit complete View All snapshot");
       page = UcpathContactPageSnapshotSchema.parse(options.expanded);
+    },
+    async demotePrimary(rowIndex, expected) {
+      actions.push(`demote-primary:${rowIndex}`);
+      const set = interpretContactPage(page, { emplId: EidSchema.parse(page.displayedEid), expectedName: page.displayedName });
+      const row = set.rows.find(row => row.rowIndex === rowIndex);
+      if (!expected.primary || row?.kind !== "contact" || JSON.stringify(row.effect) !== JSON.stringify(expected)
+        || set.rows.filter(row => row.kind === "contact" && JSON.stringify(row.effect) === JSON.stringify(expected)).length !== 1) {
+        throw new UcpathContactRefusedError("contact-set-changed");
+      }
+      page = { ...page, observation: "staged", rows: page.rows.map(row => row.rowIndex === rowIndex ? { ...row, primary: false } : row) };
     },
     async addBlankRow() {
       actions.push("add-row");
