@@ -1,6 +1,6 @@
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
 import { continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
-import { authenticateOnboardingRosterChoice, authenticateOnboardingRosterExecution } from "../workbooks.js";
+import { authenticateWorkbookReferenceChoice, authenticateWorkbookReferenceExecution } from "../workbooks.js";
 import type { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor, workflowDryRunSupport, workflowPlanning, workflowProjections, workflowTerminalResultExecution } from "../../../workflow-kit/workflow.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
@@ -105,7 +105,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
       if (canonicalJsonStringify(resolveInstances(descriptor, parent.envelope.requestedInstance)) !== canonicalJsonStringify(parent.envelope.resolvedInstance)) throw new Error("delegation-parent-instance-mismatch");
       if (repositories.writeIntents.listAttemptingByItem({ workflowId: parent.envelope.workflow, itemId: parent.envelope.itemId }).length > 0
         || repositories.writeIntents.listByRun(parent.envelope.runId).some(intent => intent.status === "parked")) throw new Error("delegation-write-recovery-required");
-      authenticateOnboardingRosterExecution(repositories, parent);
+      authenticateWorkbookReferenceExecution(repositories, parent);
       const canonicalInput = parseCanonicalInputSnapshot(descriptor.canonicalInput, parent.input.parsed);
       if (canonicalJsonStringify(canonicalInput) !== canonicalJsonStringify(context.scope.input)
         || canonicalJsonStringify(retainedRunProtectedBindings(parent)) !== canonicalJsonStringify(context.scope.protectedInputBindings ?? [])) throw new Error("delegation-scope-input-mismatch");
@@ -144,7 +144,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
             const command = repositories.commands.get(gate.commandId), audit = repositories.commandAudits.findByCommand(gate.commandId);
             if (command?.family === "run" && command.type === "resolve-workbook-reference-row") {
               if (source.resolvedBy !== "operator") throw new Error("delegation-approval-source-mismatch");
-              authenticateOnboardingRosterChoice(repositories, parent, gate);
+              authenticateWorkbookReferenceChoice(repositories, parent, gate);
             } else if (source.resolvedBy !== "operator" || command?.family !== "gate" || command.type !== "resolve-gate"
               || command.target.runId !== parent.envelope.runId || String(command.target.gateId) !== String(nodeId) || command.target.expectedVersion !== gate.expectedVersion
               || command.requestedBy !== gate.resolvedBy || canonicalJsonStringify(command.payload.result) !== canonicalJsonStringify(gate.result)

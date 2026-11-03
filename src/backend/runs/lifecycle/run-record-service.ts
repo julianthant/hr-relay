@@ -1,4 +1,4 @@
-import { authenticateOnboardingRosterExecution } from "../workbooks.js";
+import { authenticateWorkbookReferenceExecution } from "../workbooks.js";
 import { assertRunRecoveryCommandScope, planRunRecovery, planDelegatedRetry } from "../start/recovery-plan.js";
 import { protectedSubjectDisplay } from "../start/protected-input.js";
 import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
@@ -695,7 +695,7 @@ export class RunRecordService {
       }
       this.assertCurrentExecution({ runId: request.runId, claim: request.claim }, request.lifecycle.state === "parked-write");
       if (request.lifecycle.state === "validating" || request.lifecycle.state === "running") {
-        authenticateOnboardingRosterExecution(repositories, current.run);
+        authenticateWorkbookReferenceExecution(repositories, current.run);
       }
       const retainedLifetime = "workerLifetime" in current.run.lifecycle ? current.run.lifecycle.workerLifetime : undefined;
       const lifecycle = "workerId" in request.lifecycle && request.lifecycle.workerLifetime === undefined && retainedLifetime !== undefined
