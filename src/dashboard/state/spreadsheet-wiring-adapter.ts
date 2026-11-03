@@ -71,7 +71,7 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         ]);
         if (request !== catalogRequest) return;
         publish({ catalog, types, catalogLoading: false, catalogRefreshing: false });
-      } catch (error) { if (request === catalogRequest) publish({ catalogLoading: false, catalogRefreshing: false, catalogError: message(error) }); }
+      } catch { if (request === catalogRequest) publish({ catalogLoading: false, catalogRefreshing: false, catalogError: ERROR_CATALOG.DASHBOARD_READ_FAILED.text }); }
     },
     async saveType(type: WorkbookType): Promise<LibraryChangeResult> {
       const retained = typeIntents.get(type.id), authority = readAuthority;

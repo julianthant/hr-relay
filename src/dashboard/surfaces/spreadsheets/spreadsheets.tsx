@@ -21,8 +21,9 @@ import { saveMockSpreadsheet, addMockSpreadsheetType, renameMockSpreadsheetType,
 export function SpreadsheetTypeDialog({ open, onOpenChange, type, returnFocus, onSave, pending = false }: { open: boolean; onOpenChange: (open: boolean) => void; type?: WorkbookType; returnFocus: RefObject<HTMLButtonElement | null>; onSave: (type: WorkbookType) => Promise<LibraryChangeResult>; pending?: boolean }) {
   const { toast } = useToasts();
   const input = useRef<HTMLInputElement>(null);
+  const saveButton = useRef<HTMLButtonElement>(null);
   const [name, setName] = useState(type?.name ?? '');
-  const [error, setError] = useState(''), [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState(pending);
+  const [error, setError] = useState(pending ? 'This type change is not yet confirmed. Check its result before editing it.' : ''), [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState(pending);
   const [id] = useState(() => crypto.randomUUID());
   const save = async () => {
     setBusy(true); setError('');
@@ -33,9 +34,9 @@ export function SpreadsheetTypeDialog({ open, onOpenChange, type, returnFocus, o
     } catch (error) { setError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); }
   };
-  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent hideClose className="hub-sheets-dialog hub-sheets-type-dialog" title={type ? 'Edit spreadsheet type' : 'Create spreadsheet type'} onOpenAutoFocus={event => { event.preventDefault(); input.current?.focus(); }} onCloseAutoFocus={event => { if (returnFocus.current) { event.preventDefault(); returnFocus.current.focus(); } }}>
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent hideClose className="hub-sheets-dialog hub-sheets-type-dialog" title={type ? 'Edit spreadsheet type' : 'Create spreadsheet type'} onOpenAutoFocus={event => { event.preventDefault(); if (uncertain) saveButton.current?.focus(); else input.current?.focus(); }} onCloseAutoFocus={event => { if (returnFocus.current) { event.preventDefault(); returnFocus.current.focus(); } }}>
     <DialogBody><Field label="Type name" error={error || undefined}><Input ref={input} autoComplete="off" name="spreadsheet-type-name" className="hub-sheets-field" value={name} disabled={busy || uncertain} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && name.trim()) { event.preventDefault(); void save(); } }} /></Field><p className="hub-sheets-caption">Columns: {(type?.fields ?? ['firstName', 'lastName', 'eid']).map(field => spreadsheetField(field).label).join(', ')}</p></DialogBody>
-    <DialogFooter><Button className="hub-sheets-button" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button><Button className="hub-sheets-button hub-sheets-primary" disabled={busy || !name.trim()} onClick={() => void save()}>{uncertain ? 'Check result' : busy ? 'Saving…' : 'Save type'}</Button></DialogFooter>
+    <DialogFooter><Button className="hub-sheets-button" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button><Button ref={saveButton} className="hub-sheets-button hub-sheets-primary" disabled={busy || !name.trim()} onClick={() => void save()}>{uncertain ? 'Check result' : busy ? 'Saving…' : 'Save type'}</Button></DialogFooter>
   </DialogContent></Dialog>;
 }
 
@@ -69,7 +70,7 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook, onOp
   const [busy, setBusy] = useState(false);
   const [localFileError, setFileError] = useState("");
   const fileError = localFileError || (source === "served" ? served.error || served.openError || served.catalogError : "");
-  const loading = source === "served" && !fileError ? served.loading ? "Loading spreadsheets…" : served.opening ? "Loading spreadsheet…" : "" : "";
+  const loading = source === "served" && !fileError ? served.loading || served.catalogLoading ? "Loading spreadsheets…" : served.opening ? "Loading spreadsheet…" : "" : "";
   const [importOpen, setImportOpen] = useViewState("spreadsheetImport", false);
   const [importView, setImportView] = useViewState("spreadsheetImportView", "mapping");
   const importTrigger = useRef<HTMLButtonElement>(null);

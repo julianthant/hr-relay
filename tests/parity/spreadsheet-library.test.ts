@@ -6,7 +6,7 @@ import { attachShellA11y } from './helpers/shell-proof.js';
 import { SavedWorkbookWireSchema } from '../../src/models/dashboard/workbooks.js';
 
 for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
-  test(`named library actions ${theme} ${width}`, { annotation: [{ type: 'required-a11y-evidence', description: 'named-library.a11y.yml' }] }, async ({ page, hubServer }, info) => {
+  test(`named library actions ${theme} ${width}`, { annotation: [{ type: 'required-a11y-evidence', description: `named-library-${theme}-${width}.a11y.yml` }] }, async ({ page, hubServer }, info) => {
     const h = await harness(), posts: string[] = [];
     const headers = { host: 'localhost', origin: 'http://localhost', 'content-type': 'application/json' };
     const post = (path: string, body: unknown) => h.app.request(`http://localhost${path}`, { method: 'POST', headers, body: JSON.stringify(body) });
@@ -33,7 +33,7 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       const versions = page.getByRole('button', { name: 'Versions of Student applicants.xlsx', exact: true });
       await versions.click();
       const drawer = page.getByRole('dialog', { name: 'Versions', exact: true });
-      await expect(drawer.getByText('Original', { exact: true })).toBeVisible();
+      await expect(drawer.getByText('Original version', { exact: true })).toBeVisible();
       await drawer.getByRole('button', { name: 'New version', exact: true }).click();
       const create = page.getByRole('dialog', { name: 'New version', exact: true });
       await create.getByRole('textbox', { name: 'Version name', exact: true }).fill('Fall hires added');
@@ -52,7 +52,7 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       expect(posts).toHaveLength(1);
       await capturePresentationReference(page, info, 'versions');
       await drawer.getByRole('button', { name: 'Close', exact: true }).click(); await expect(versions).toBeFocused();
-      await attachShellA11y(page, info, 'named-library.a11y.yml');
+      await attachShellA11y(page, info, `named-library-${theme}-${width}.a11y.yml`);
     } finally { await disposeHttpRouteHarness(); }
   });
 }
