@@ -14,6 +14,7 @@ import { createServerVerifiedArtifactReader } from "../../../../src/backend/stor
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { ExtractPdfPages, type ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
+import { WorkbookReferenceReadRequestSchema } from "../../../../src/models/processing/workbooks/read-reference.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { searchPartitionDay } from "../../../../src/models/dashboard/search-calendar.js";
 import type { WorkbookLibraryChangeSchema } from "../../../../src/models/dashboard/workbook-library.js";
@@ -111,9 +112,9 @@ export function createI9CheckStartWorld() {
               ] as const) {
                 assert.throws(() => runWorkbooks.read(RunRecordSchema.parse(captured), request), { code: "WORKBOOK_INVALID" }); readRefusals.add(name);
               }
-              for (const [name, command] of [["foreign type", { ...request, typeId: "foreign" }], ["altered fields", { ...request, fields: request.fields.toReversed() }]] as const) {
-                assert.throws(() => runWorkbooks.read(run, command), { code: "WORKBOOK_INVALID" }); readRefusals.add(name);
-              }
+              assert.throws(() => runWorkbooks.read(run, { ...request, typeId: "foreign" }), { code: "WORKBOOK_INVALID" }); readRefusals.add("foreign type");
+              assert.equal(WorkbookReferenceReadRequestSchema.safeParse({ ...request, fields: [...I9_CHECK_REFERENCE.fields].toReversed() }).success, false);
+              readRefusals.add("altered fields");
               return runWorkbooks.read(run, request);
             } } }),
         } } }),

@@ -7,9 +7,13 @@ import { crmDriver } from "./driver-declaration.js";
 import { crmSession } from "./session-provider.js";
 import { readOnboardingDatesTask } from "./tasks/read-onboarding-dates.js";
 import { readOnboardingRecordTask } from "./tasks/read-onboarding-record.js";
+import { searchDocumentRecordsTask } from "./tasks/search-document-records.js";
+import { readIdocsTask } from "./tasks/read-idocs.js";
 
 
 export const crmStore = defineBrowserStore("crm", crmDriver, crmSession, {
+  searchDocumentRecords: searchDocumentRecordsTask,
+  readIdocs: readIdocsTask,
   readHireData: readHireDataTask,
   readOnboardingResults: readOnboardingResultsTask,
   searchOnboardingRecords: searchOnboardingRecordsTask,

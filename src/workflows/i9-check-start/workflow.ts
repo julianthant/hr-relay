@@ -25,7 +25,7 @@ export const i9CheckStartWorkflow = defineWorkflow({
   enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, role: defineWorkflowRole({ kind: "composition" }),
   scenarios: ["i9-check-start/pdfs"], details: [
     { key: "people", label: "People", source: { kind: "result", fieldPath: "personCount" }, display: "text" },
-    { key: "reference", label: "Reference version", source: { kind: "result", fieldPath: "reference.versionName" }, display: "text" },
+    { key: "reference", label: "Reference version", source: { kind: "result", fieldPath: "reference.snapshot.versionName" }, display: "text" },
   ],
   nodePurposes: [...i9CheckStartDocumentsDefinition.nodePurposes, ...i9CheckStartRosterReferenceDefinition.nodePurposes, ...i9CheckStartRetentionDefinition.nodePurposes],
   artifactProjections: [{ id: "i9-check-tracker", source: { nodeId: "publish-results", fieldPath: "tracker" }, keyFields: ["batchKey"], sink: "xlsx-retention", blocking: true }],

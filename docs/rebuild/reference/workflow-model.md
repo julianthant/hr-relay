@@ -53,7 +53,7 @@ requirements; production definitions declare an explicit array. It does not desc
 workbooks, spreadsheet intake, or delegated children's requirements. Retained step proofs inherit
 the parent declaration. The descriptor and its sealed planning and projections expose the same
 validated facts; workbook selection and reference snapshots belong to run planning. Onboarding
-requires `onboarding-roster`; the I-9 PDF parent requires Action History.
+and CRM Document Download require `onboarding-roster`; the I-9 PDF parent requires Action History.
 
 Start planning takes explicit entry-scoped `workbookReferences` (type, optional library and named
 version), derives lookup keys and fields from the workflow's admitted ingress declaration, requires
@@ -101,6 +101,22 @@ choice. Continued gate rows enter receipt derivation separately from own-run row
 exact native continuation tuple and row digest. Their `continued-gate-result` observations retain the
 original `sourceRunId`, command, operator and resolution time; the decision names the original run.
 No workbook patch or write receipt is created by a read choice. Hire writes remain unavailable.
+
+`workbooks/read-reference` resolves keys learned during execution through the existing run-bound
+`workbooks.library` provider. The caller supplies only a captured type and lookup keys. Runs checks
+the running claim, envelope and native input, then reads the exact retained named version through
+`libraryVersion`. Captured fields, worksheets and original row matches must still agree with those
+immutable bytes. Missing versions refuse; editable-head changes never replace the selected version.
+
+CRM Document Download keeps a mixed EID/email list in one batch. Verified CRM identities supply
+additional email lookup keys; names and worksheet destinations come only from the retained roster.
+Ambiguous people park together at `document-row-choice`. Each choice is keyed by the original
+requested identity and offers only that person's retained candidates. Native row-selection events
+bind the command audit, checkpoint digest and reference digest. Selections accumulate without
+resuming the gate until every unresolved person has a row. Exact command replay retains its first
+selection. Logs serves each member's native anchor and resolution time. The completed gate value
+must equal the authenticated selections before execution, continuation or receipt derivation.
+Missing rows remain unavailable; the workflow never substitutes a current-head row.
 
 The `workbooks/read-result` task accepts `patch-reference` with a stable run-local write ID and
 explicit field/value entries. Runs derives its target from the captured reference and journals the
@@ -176,8 +192,9 @@ Scenario-path helpers derive potential addresses; they do not prove scenario fil
 The workflow-ID boundary audits public, child-only and proof inventories. Retained dashboard mock
 literals and OCR service literals have exact AST references in
 `tests/support/helpers/retained-dashboard-mock-fixtures.ts`. The OCR service references cover review
-admission, source-bound resources, approval publication, the OCR CLI command, deferred-feature text
-and task-namespace source links. Added, removed or repurposed occurrences fail the boundary checks.
+admission, source-bound resources, approval publication, the OCR CLI command and deferred-feature text.
+Added, removed or repurposed occurrences fail the boundary checks. Explorer derives contract and
+implementation directories from the bound store's kind and namespace.
 These references admit no new workflow dispatch or public start.
 
 Success receipts authenticate the complete native delegation inventory and compare each child

@@ -961,7 +961,7 @@ export const RunWorkbookReferenceChoiceWireSchema = z.strictObject({
     z.strictObject({ state: z.literal("unavailable"), code: z.literal("WORKBOOK_ROW_CHOICE_UNAVAILABLE"), candidates: z.tuple([]) }),
     z.strictObject({ state: z.literal("available"), target: WorkbookReferenceRowChoiceTargetSchema,
       action: ActionDescriptorWireSchema, candidates: z.array(WorkbookReferenceRowCandidateWireSchema).min(1) }),
-    z.strictObject({ state: z.literal("resolved"), workbookVersion: z.number().int().positive(),
+    z.strictObject({ state: z.literal("resolved"), workbookVersion: z.number().int().positive(), resolvedAt: IsoInstantSchema,
       selected: WorkbookReferenceRowCandidateWireSchema }),
   ]),
 }).superRefine((choice, ctx) => {
@@ -989,9 +989,11 @@ export const RunWorkbookWritesWireSchema = z.strictObject({ runId: RunIdSchema,
   ]),
 })) }).superRefine((section, ctx) => {
   const references = section.referenceChoices ?? [];
-  if (new Set(references.map(choice => choice.typeId)).size !== references.length
+  if (new Set(references.map(choice => JSON.stringify([choice.typeId, choice.key]))).size !== references.length
     || references.some(choice => choice.native.runId !== section.runId
-      || choice.resolution.state === "available" && choice.resolution.target.runId !== section.runId)) {
+      || choice.resolution.state === "available" && choice.resolution.target.runId !== section.runId
+      || references.some(other => other.typeId === choice.typeId
+        && (other.libraryId !== choice.libraryId || other.referenceDigest !== choice.referenceDigest)))) {
     ctx.addIssue({ code: "custom", message: "reference choices must preserve exact run and type membership" });
   }
   const ids = new Set<string>();

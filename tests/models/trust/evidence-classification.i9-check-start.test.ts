@@ -13,7 +13,7 @@ import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 const values: readonly { scope: EvidenceValueScope; value: unknown }[] = [
   ...[ReadApprovedOcrRecords, ReadWorkbookReference, ReadI9CheckPeople, ReadI9CheckRequests, ReadI9CheckRows, ReadI9CheckPublication]
     .map(contract => ({ scope: { kind: "task-output" as const, taskId: contract.id }, value: contract.example })),
-  { scope: { kind: "task-output", taskId: ReadWorkbookReference.id }, value: { state: "read", reference: ReadI9CheckRequests.example.reference } },
+  { scope: { kind: "task-output", taskId: ReadWorkbookReference.id }, value: { state: "read", referenceDigest: "a".repeat(64), reference: ReadI9CheckRequests.example.reference } },
   ...["i9-check-start", "i9-check-start-documents", "i9-check-start-roster-reference", "i9-check-start-retention"].map(id => ({
     scope: { kind: "workflow-input" as const, workflowId: WorkflowIdSchema.parse(id) }, value: I9_CHECK_START_EXAMPLE,
   })),

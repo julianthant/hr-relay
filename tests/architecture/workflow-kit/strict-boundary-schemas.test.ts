@@ -1330,22 +1330,30 @@ describe("strict boundary schemas", () => {
     assert.deepEqual(invalid, []);
   });
 
-  const unknownKeyBatches = BOUNDARY_SCHEMA_CATALOG.flatMap(entry => entry.fixtures.flatMap((fixture, fixtureIndex) => {
+  for (const entry of BOUNDARY_SCHEMA_CATALOG) for (const [index, fixture] of entry.fixtures.entries()) {
     const parsed = entry.schema.parse(fixture);
     const paths = objectPaths(parsed).filter(path => {
       const text = pathText(path);
       return !entry.openFixturePaths?.some(open => text === open || text.startsWith(`${open}.`));
     });
-    return Array.from({ length: Math.ceil(paths.length / 64) }, (_, batch) => ({
-      name: entry.name, fixtureIndex, batch, schema: entry.schema, parsed, paths: paths.slice(batch * 64, (batch + 1) * 64),
-    }));
-  }));
-  it.each(unknownKeyBatches)("rejects unknown keys at every nested boundary: $name fixture $fixtureIndex batch $batch", entry => {
-    for (const path of entry.paths) {
-      assert.equal(entry.schema.safeParse(addUnknown(entry.parsed, path)).success, false,
-        `${entry.name} accepted unknown key at ${pathText(path) || "$"}`);
+    const groups = new Map<string, (readonly Segment[])[]>();
+    for (const path of paths) {
+      const group = entry.schema === BuildManifestSchema && typeof path[1] === "number"
+        ? pathText(path.slice(0, 2)) : "$";
+      const members = groups.get(group) ?? [];
+      members.push(path); groups.set(group, members);
     }
-  });
+    assert.deepEqual([...groups.values()].flat(), paths, `${entry.name} must retain every mutation in order`);
+    for (const [group, members] of groups) {
+      it(`rejects unknown keys: ${entry.name} fixture ${String(index)} ${group}`, () => {
+        for (const path of members) {
+          const text = pathText(path);
+          assert.equal(entry.schema.safeParse(addUnknown(parsed, path)).success, false,
+            `${entry.name} accepted unknown key at ${text || "$"}`);
+        }
+      });
+    }
+  }
 
   it("walks every object arm nested under arrays, unions, lazies, and wrappers", () => {
     const nested = z.lazy(() => z.strictObject({

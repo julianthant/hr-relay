@@ -65,9 +65,9 @@ describe("one I-9 PDF Start through admitted children", () => {
     expect(output.personCount).toBe(2);
     expect(output.tracker.rows.map(row => [row.ucpathEmplId, row.action])).toEqual([["10000001", "Keep"], ["10000002", "Keep"]]);
     expect(output.tracker.rows.map(row => row.ppsEid)).toEqual(["000012345", "000012345"]);
-    expect(output.reference).toMatchObject({ libraryId: f.referenceId, version: f.selectedReference.version,
+    expect(output.reference.snapshot).toMatchObject({ libraryId: f.referenceId, version: f.selectedReference.version,
       versionId: f.selectedReference.versionId, versionName: "Fall review", worksheets: [{ sheetId: "history", name: "Action History" }] });
-    expect(output.reference.rows.map(row => row.matches.map(match => [match.sheetId, match.rowId]))).toEqual([[["history", "person-0"]], [["history", "person-1"]]]);
+    expect(output.reference.snapshot.rows.map(row => row.matches.map(match => [match.sheetId, match.rowId]))).toEqual([[["history", "person-0"]], [["history", "person-1"]]]);
     expect(f.readRefusals).toEqual(new Set(["missing run", "foreign claim", "altered input", "foreign type", "altered fields"]));
     expect(output.people.map(person => person.sources.length)).toEqual([2, 2]);
     const workbooks = f.database.authority.workbooks.list().filter(workbook => workbook.libraryId.startsWith("workflow:"));

@@ -10,9 +10,11 @@ describe("Person Lookup task implementations", () => {
         .sort(),
       [
         "crm/read-hire-data",
+        "crm/read-idocs",
         "crm/read-onboarding-dates",
         "crm/read-onboarding-record",
         "crm/read-onboarding-results",
+        "crm/search-document-records",
         "crm/search-onboarding-records",
         "crm/verify-onboarding-record",
         // The extraction service store lands before any descriptor consumes it.
@@ -61,6 +63,8 @@ describe("Person Lookup task implementations", () => {
         "ucpath/verify-termination-filing-present",
         "workbooks/read-reference",
         "workbooks/read-result",
+        "workflow:crm-doc-download/read-document-rows",
+        "workflow:crm-doc-download/read-worksheet-archives",
         "workflow:i9-check-start/read-people",
         "workflow:i9-check-start/read-publication",
         "workflow:i9-check-start/read-requests",

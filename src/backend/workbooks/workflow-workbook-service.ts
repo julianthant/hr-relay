@@ -1,19 +1,27 @@
 import { z } from "zod";
 import { SavedWorkbookSchema, EditableWorkbookSchema, type WorkbookOperationReceipt } from "../../models/dashboard/workbooks.js";
 import { WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema, type WorkbookReferenceWriteSchema } from "../../models/processing/workbooks/read-result.js";
+import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema } from "../../models/processing/workbooks/read-reference.js";
 import { RunIdSchema, WorkflowIdSchema, DateOnlySchema } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { WorkbookLibraryError, type WorkbookLibraryRepository } from "./workbook-library-service.js";
-import type { ReadWorkbookReference, WorkbookReferenceReadSchema } from "../../models/processing/workbooks/read-reference.js";
 
 export function createWorkflowWorkbookService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock;
   publicationSource?: () => Readonly<{ workflowId: string; workflowLabel: string; partitionDay: string }>;
   references?: Readonly<{ runId: string; write(command: z.infer<typeof WorkbookReferenceWriteSchema>): WorkbookOperationReceipt;
-    read?(command: z.infer<typeof WorkbookReferenceReadSchema>): z.output<typeof ReadWorkbookReference.output> }>;
+    read?(command: z.infer<typeof WorkbookReferenceReadRequestSchema>): z.infer<typeof WorkbookReferenceReadSchema> }>;
 }>) {
   return Object.freeze({
+    readReference(runIdValue: unknown, commandValue: unknown, signal: AbortSignal) {
+      const runId = RunIdSchema.parse(runIdValue), command = WorkbookReferenceReadRequestSchema.parse(commandValue);
+      signal.throwIfAborted();
+      if (deps.references?.runId !== runId || deps.references.read === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+      const result = WorkbookReferenceReadSchema.parse(deps.references.read(command));
+      signal.throwIfAborted();
+      return result;
+    },
     async publish(runIdValue: unknown, commandValue: unknown, signal: AbortSignal): Promise<z.output<typeof WorkflowWorkbookResultSchema>> {
       const runId = RunIdSchema.parse(runIdValue), command = WorkflowWorkbookCommandSchema.parse(commandValue);
       if ("kind" in command) {

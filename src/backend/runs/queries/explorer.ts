@@ -136,51 +136,35 @@ function taskFingerprint(taskId: string): Fingerprint | undefined {
 }
 
 
-function taskPathTail(taskId: string): string {
-  return taskId.startsWith("workflow:") ? taskId.slice("workflow:".length) : taskId;
-}
-
-
-function contractSourceLink(
-  taskId: string,
-  closures: readonly ReadonlySet<string>[],
-): SourceLinkWire {
-  const tail = taskPathTail(taskId);
-  const namespace = tail.slice(0, tail.indexOf("/"));
-  const owner = taskId.startsWith("workflow:") ? `workflows/${namespace}`
-    : ["extraction", "normalization", "ocr", "roster", "workbooks"].includes(namespace)
-      ? `processing/${namespace}` : `systems/${namespace}`;
-  const candidate = `src/models/${owner}/${tail.slice(namespace.length + 1)}.ts`;
-  return closures.some((closure) => closure.has(candidate))
-    ? resolved(candidate)
-    : unresolved(candidate, "no fingerprinted source closure contains this path");
-}
-
-
-function implSourceLink(taskId: string, closure: ReadonlySet<string> | undefined): SourceLinkWire {
-  const tail = taskPathTail(taskId);
-  const namespace = tail.slice(0, tail.indexOf("/"));
-  const directories = taskId.startsWith("workflow:")
-    ? [`src/workflows/${namespace}/tasks`]
-    : ["extraction", "normalization", "ocr", "roster", "workbooks"].includes(namespace)
-      ? [`src/backend/processing/${namespace}/tasks`]
-      : [`src/backend/systems/${namespace}/tasks`];
-  if (closure === undefined) {
-    return unresolved(directories[0] ?? "src/backend/systems", `the build manifest carries no task entry for ${taskId}`);
+function taskSourceOwner(binding: ExplorerTaskBindingWire) {
+  if (binding.state !== "bound") return undefined;
+  const namespace = binding.storeNamespace;
+  if (namespace.startsWith("workflow:")) {
+    const workflow = namespace.slice("workflow:".length);
+    return { model: `src/models/workflows/${workflow}`, implementation: `src/workflows/${workflow}/tasks` };
   }
-  const matches = [...closure]
-    .filter((path) => directories.some((directory) => path.startsWith(`${directory}/`)))
-    .sort();
+  const directory = binding.storeKind === "browser" ? "systems" : "processing";
+  return { model: `src/models/${directory}/${namespace}`, implementation: `src/backend/${directory}/${namespace}/tasks` };
+}
+
+function contractSourceLink(taskId: string, binding: ExplorerTaskBindingWire, closures: readonly ReadonlySet<string>[]): SourceLinkWire {
+  const owner = taskSourceOwner(binding);
+  if (owner === undefined) return unresolved("src/models", "no registered task store declares this contract's source owner");
+  const candidate = `${owner.model}/${taskId.slice(taskId.indexOf("/") + 1)}.ts`;
+  return closures.some(closure => closure.has(candidate))
+    ? resolved(candidate) : unresolved(candidate, "no fingerprinted source closure contains this path");
+}
+
+function implSourceLink(taskId: string, binding: ExplorerTaskBindingWire, closure: ReadonlySet<string> | undefined): SourceLinkWire {
+  const owner = taskSourceOwner(binding);
+  if (owner === undefined) return unresolved("src", "no registered task store declares this implementation's source owner");
+  const directory = owner.implementation;
+  if (closure === undefined) return unresolved(directory, `the build manifest carries no task entry for ${taskId}`);
+  const matches = [...closure].filter(path => path.startsWith(`${directory}/`)).sort();
   if (matches.length === 1) return resolved(matches[0] ?? "");
-  const directory = directories.find((candidate) => [...closure].some((path) => path.startsWith(`${candidate}/`)))
-    ?? directories[0]
-    ?? "src/backend/systems";
-  return unresolved(
-    directory,
-    matches.length === 0
+  return unresolved(directory, matches.length === 0
     ? "the task's fingerprinted closure contains no implementation in its owner task directory"
-      : `the task's closure contains ${String(matches.length)} implementations across system and service store directories`,
-  );
+    : `the task's closure contains ${String(matches.length)} implementations in its declared store directory`);
 }
 
 /** Freshness, with `Infinity` turned into the word that survives JSON. */
@@ -456,8 +440,8 @@ function taskWire(
     inputSchemaHash: deriveSchemaHash(contract.input, "input"),
     outputSchemaHash: deriveSchemaHash(contract.output, "output"),
     fields: contractFieldWires(contract, freshness, provenance),
-    contractSource: contractSourceLink(taskId, closures),
-    implSource: implSourceLink(taskId, taskClosure),
+    contractSource: contractSourceLink(taskId, binding, closures),
+    implSource: implSourceLink(taskId, binding, taskClosure),
     ...(implFingerprint === undefined ? {} : { implFingerprint }),
   } as ExplorerTaskWire;
 }

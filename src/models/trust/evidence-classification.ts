@@ -494,19 +494,20 @@ function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
   return [...ocrReviewSeedLeaves(scope, "review."), ...ocrPrivateLeaves(scope, "identities")];
 }
 
-function workbookReferenceLeaves(scope: EvidenceValueScope): unknown[] {
-  return ocrPrivateLeaves(scope, ...["libraryId", "version", "versionId", "versionName", "typeId", "keyFieldId", "worksheets", "rows"].map(field => `reference.${field}`));
+function i9ReferenceLeaves(scope: EvidenceValueScope): unknown[] {
+  return ocrPrivateLeaves(scope,
+    ...["typeId", "libraryId", "versionId", "keys", "fields"].map(path => `reference.request.${path}`),
+    ...["libraryId", "version", "versionId", "versionName", "worksheets", "rows", "type.id", "type.name", "type.keyFieldId", "type.fields", "type.defaultWorkbookId"]
+      .map(path => `reference.snapshot.${path}`));
 }
 
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
-  ...open(taskOutput("workbooks/read-reference"), "state", "code"),
-  ...workbookReferenceLeaves(taskOutput("workbooks/read-reference")),
   ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-people"), "people"),
   ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-requests"), "people", "children"),
-  ...workbookReferenceLeaves(taskOutput("workflow:i9-check-start/read-requests")),
+  ...i9ReferenceLeaves(taskOutput("workflow:i9-check-start/read-requests")),
   ...[taskOutput("workflow:i9-check-start/read-rows"), taskOutput("workflow:i9-check-start/read-publication"),
     workflowResult("i9-check-start"), workflowResult("i9-check-start-retention")].flatMap(scope => [
-    ...open(scope, "personCount"), ...ocrPrivateLeaves(scope, "batchKey", "tracker.rows", "people"), ...workbookReferenceLeaves(scope),
+    ...open(scope, "personCount"), ...ocrPrivateLeaves(scope, "batchKey", "tracker.rows", "people"), ...i9ReferenceLeaves(scope),
   ]),
   ...[taskOutput("workflow:i9-check-start/read-publication"), workflowResult("i9-check-start"), workflowResult("i9-check-start-retention")]
     .flatMap(scope => [...ocrPrivateLeaves(scope, "workbook.libraryId", "workbook.operationId"), ...open(scope, "workbook.state", "workbook.version")]),
@@ -515,9 +516,34 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ]),
   ...ocrPrivateLeaves(workflowResult("i9-check-start-documents"), "people"),
   ...ocrPrivateLeaves(workflowResult("i9-check-start-roster-reference"), "people", "children"),
-  ...workbookReferenceLeaves(workflowResult("i9-check-start-roster-reference")),
+  ...i9ReferenceLeaves(workflowResult("i9-check-start-roster-reference")),
   ...open(taskOutput("ocr/read-approved-records"), "state", "code"),
   ...ocrPrivateLeaves(taskOutput("ocr/read-approved-records"), "sources"),
+  ...open(taskOutput("workbooks/read-reference"), "state", "reference.snapshot.version", "reference.request.fields", "reference.snapshot.type.fields"),
+  ...population(taskOutput("workbooks/read-reference"), "reference.snapshot.rows", "reference.snapshot.worksheets"),
+  ...["referenceDigest", "reference.request.typeId", "reference.request.libraryId", "reference.request.versionId", "reference.request.keys",
+    "reference.snapshot.libraryId", "reference.snapshot.versionId", "reference.snapshot.versionName", "reference.snapshot.type.id", "reference.snapshot.type.name",
+    "reference.snapshot.type.keyFieldId", "reference.snapshot.type.defaultWorkbookId"].map(path =>
+    ({ scope: taskOutput("workbooks/read-reference"), path, classification: "sensitive-hr", transform: "drop" })),
+  { scope: taskOutput("crm/search-document-records"), path: "records", classification: "direct-identifier", transform: "digest" },
+  { scope: taskOutput("crm/read-idocs"), path: "people", classification: "direct-identifier", transform: "digest" },
+  ...[taskOutput("workflow:crm-doc-download/read-document-rows"), workflowResult("crm-doc-download-reference")].flatMap(scope => [
+    ...population(scope, "people"), ...open(scope, "state"),
+    { scope, path: "referenceDigest", classification: "sensitive-hr", transform: "drop" },
+  ]),
+  ...[taskOutput("workflow:crm-doc-download/read-worksheet-archives"), workflowResult("crm-doc-download"), workflowResult("crm-doc-download-package-worksheets")].flatMap(scope => [
+    ...population(scope, "worksheets", "collection.files"),
+    ...open(scope, "worksheetCount", "personCount", "documentCount", "collection.artifact.bytes", "collection.artifact.mediaType"),
+    ...["collection.artifact.id", "collection.artifact.sha256"].map(path => ({ scope, path, classification: "sensitive-hr", transform: "drop" })),
+  ]),
+  { scope: workflowResult("crm-doc-download-search-records"), path: "records", classification: "direct-identifier", transform: "digest" },
+  { scope: workflowResult("crm-doc-download-read-idocs"), path: "people", classification: "direct-identifier", transform: "digest" },
+  ...["crm-doc-download", "crm-doc-download-search-records", "crm-doc-download-reference", "crm-doc-download-read-idocs", "crm-doc-download-package-worksheets"].map(id =>
+    ({ scope: workflowInput(id), path: "people", classification: "direct-identifier", transform: "digest" })),
+  ...["crm-doc-download", "crm-doc-download-reference", "crm-doc-download-package-worksheets"].flatMap(id => [
+    ...open(gateResult(id, "document-row-choice"), "state", "decision"), ...population(gateResult(id, "document-row-choice"), "people"),
+    { scope: gateResult(id, "document-row-choice"), path: "referenceDigest", classification: "sensitive-hr", transform: "drop" },
+  ]),
   ...open(taskOutput("extraction/extract-pdf-pages"), "pageCount"),
   ...ocrPrivateLeaves(taskOutput("extraction/extract-pdf-pages"), "pages"),
   ...ocrManifestLeaves(taskOutput("workflow:ocr/read-source-pages"), "manifest."),

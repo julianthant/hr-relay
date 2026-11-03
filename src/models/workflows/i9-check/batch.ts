@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { ArtifactIdSchema, CommandIdSchema, EidSchema, FingerprintSchema, RunIdSchema, StableRecordIdSchema } from "../../../rules/identity/ids.js";
-import { WorkbookReferenceFactsSchema } from "../../processing/workbooks/read-reference.js";
+import { WorkbookReferenceReadSchema } from "../../processing/workbooks/read-reference.js";
 import { WorkflowWorkbookResultSchema } from "../../processing/workbooks/read-result.js";
 import { ReadRetentionRow, I9CheckRowsSchema } from "./check.js";
 import { I9CheckPersonSchema } from "./input.js";
-import { I9_CHECK_START_EXAMPLE } from "./start.js";
+import { I9_CHECK_REFERENCE, I9_CHECK_START_EXAMPLE } from "./start.js";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
 import { deriveStableUuid } from "../../../rules/identity/stable-uuid.js";
 
@@ -27,11 +27,14 @@ export const I9_CHECK_PERSON_EXAMPLE = I9CheckPersonSeedSchema.parse({
     ocrRunId: "00000000-0000-4000-8000-000000000001", snapshotId: "00000000-0000-4000-8000-000000000002",
     recordId: `${I9_CHECK_START_EXAMPLE.documents[0].document.sha256}#i9#1`, sourcePage: 1 }],
 });
-export const I9_CHECK_REFERENCE_EXAMPLE = WorkbookReferenceFactsSchema.parse({
-  libraryId: "reference-library", version: 1, versionId: "selected-version", versionName: "Selected version",
-  typeId: "action-history", keyFieldId: "eid", worksheets: [{ sheetId: "history", name: "Action History" }],
-  rows: [{ key: I9_CHECK_PERSON_EXAMPLE.eid, state: "missing", matches: [] }],
+export const I9_CHECK_REFERENCE_EXAMPLE = WorkbookReferenceReadSchema.shape.reference.parse({
+  request: { typeId: "action-history", libraryId: "reference-library", versionId: "selected-version", keys: [I9_CHECK_PERSON_EXAMPLE.eid], fields: [...I9_CHECK_REFERENCE.fields] },
+  snapshot: { libraryId: "reference-library", version: 1, versionId: "selected-version", versionName: "Selected version",
+    type: { id: "action-history", name: "Action History", keyFieldId: "eid", fields: [...I9_CHECK_REFERENCE.fields], defaultWorkbookId: "reference-library" },
+    worksheets: [{ sheetId: "history", name: "Action History" }], rows: [{ key: I9_CHECK_PERSON_EXAMPLE.eid, state: "missing", matches: [] }],
+  },
 });
+
 export const I9_CHECK_BATCH_TASK_POLICY = {
   effect: "read", errorCodes: ["I9_CHECK_DATA_INVALID", "WORKBOOK_INVALID"],
   subject: { kind: "none", reason: "Derives source-bound batch facts from approved records and captured reference observations" },
@@ -40,7 +43,7 @@ export const I9_CHECK_BATCH_TASK_POLICY = {
 
 export const I9CheckBatchRowsSchema = z.strictObject({
   batchKey: FingerprintSchema, personCount: z.number().int().positive(), tracker: I9CheckRowsSchema,
-  reference: WorkbookReferenceFactsSchema,
+  reference: WorkbookReferenceReadSchema.shape.reference,
   people: z.array(z.strictObject({ eid: EidSchema, sources: z.array(I9CheckSourceSchema).min(1), result: ReadRetentionRow.output })).min(1),
 }).refine(value => value.personCount === value.people.length && value.personCount === value.tracker.rows.length
   && new Set(value.people.map(person => person.eid)).size === value.personCount

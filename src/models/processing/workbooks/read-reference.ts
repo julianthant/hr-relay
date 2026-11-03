@@ -1,38 +1,56 @@
 import { z } from "zod";
-import { taskId } from "../../../rules/identity/ids.js";
-import { WorkbookIdSchema, WorkbookCellValuesSchema } from "../../dashboard/workbooks.js";
+import { RunWorkbookReferenceSchema, WorkbookIdSchema, WorkbookCellValuesSchema } from "../../dashboard/workbooks.js";
+import { FingerprintSchema, taskId } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
+import { WorkbookRefusalSchema } from "./read-result.js";
 
-export const WorkbookReferenceReadSchema = z.strictObject({
-  typeId: WorkbookIdSchema, keys: z.array(z.string().min(1)).min(1),
-  fields: z.array(WorkbookCellValuesSchema.keyType).min(1),
-}).refine(value => new Set(value.keys).size === value.keys.length && new Set(value.fields).size === value.fields.length,
-  "Reference keys and fields must be unique");
-export const WorkbookReferenceFactsSchema = z.strictObject({
-  libraryId: WorkbookIdSchema, version: z.number().int().positive(), versionId: WorkbookIdSchema, versionName: z.string().min(1),
-  typeId: WorkbookIdSchema, keyFieldId: WorkbookCellValuesSchema.keyType,
-  worksheets: z.array(z.strictObject({ sheetId: WorkbookIdSchema, name: z.string().min(1) })).min(1),
-  rows: z.array(z.strictObject({ key: z.string().min(1), state: z.enum(["matched", "missing", "ambiguous"]),
-    matches: z.array(z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema,
-      cells: z.array(z.strictObject({ fieldId: WorkbookCellValuesSchema.keyType, value: WorkbookCellValuesSchema.valueType })).min(1) })) })).min(1),
-}).superRefine((facts, ctx) => {
-  const sheets = new Set(facts.worksheets.map(sheet => sheet.sheetId));
-  if (sheets.size !== facts.worksheets.length || new Set(facts.rows.map(row => row.key)).size !== facts.rows.length
-    || facts.rows.some(row => (row.state === "missing" ? row.matches.length !== 0 : row.state === "matched" ? row.matches.length !== 1 : row.matches.length < 2)
-      || new Set(row.matches.map(match => `${match.sheetId}\0${match.rowId}`)).size !== row.matches.length
-      || row.matches.some(match => !sheets.has(match.sheetId) || new Set(match.cells.map(cell => cell.fieldId)).size !== match.cells.length))) {
-    ctx.addIssue({ code: "custom", message: "Reference facts require exact key, row, field and worksheet membership" });
-  }
+export const WorkbookReferenceReadRequestSchema = z.strictObject({
+  typeId: WorkbookIdSchema, keys: z.string().min(1).array().min(1)
+    .refine(keys => new Set(keys).size === keys.length, "reference keys must be unique"),
 });
+const snapshot = RunWorkbookReferenceSchema.shape.snapshot;
+const row = snapshot.shape.rows.element, match = row.shape.matches.element;
+const referenceShape = z.strictObject({ ...RunWorkbookReferenceSchema.shape, snapshot: z.strictObject({ ...snapshot.shape,
+  versionId: WorkbookIdSchema, versionName: z.string().min(1),
+  rows: z.strictObject({ ...row.shape, matches: z.strictObject({ ...match.shape,
+    values: z.strictObject({ fieldId: WorkbookCellValuesSchema.keyType, value: WorkbookCellValuesSchema.valueType }).array()
+      .refine(cells => new Set(cells.map(cell => cell.fieldId)).size === cells.length, "reference fields must be unique"),
+  }).array() }).array(),
+}) });
+const retainedReference = referenceShape.superRefine((reference, ctx) => {
+  if (!RunWorkbookReferenceSchema.safeParse(referenceRecord(reference)).success) ctx.addIssue({ code: "custom", message: "reference must retain exact keys, fields and row membership" });
+});
+function referenceRecord(reference: z.input<typeof referenceShape>) {
+  return { ...reference, snapshot: { ...reference.snapshot, rows: reference.snapshot.rows.map(row => ({ ...row,
+    matches: row.matches.map(match => ({ ...match, values: Object.fromEntries(match.values.map(cell => [cell.fieldId, cell.value])) })),
+  })) } };
+}
+export const WorkbookReferenceReadSchema = z.strictObject({ state: z.literal("read"), referenceDigest: FingerprintSchema, reference: retainedReference });
+export const WorkbookReferenceReadResponseSchema = z.discriminatedUnion("state", [WorkbookReferenceReadSchema, WorkbookRefusalSchema]);
+
+export function encodeWorkbookReference(referenceValue: z.input<typeof RunWorkbookReferenceSchema>) {
+  const reference = RunWorkbookReferenceSchema.parse(referenceValue);
+  return retainedReference.parse({ ...reference, snapshot: { ...reference.snapshot, rows: reference.snapshot.rows.map(row => ({ ...row,
+    matches: row.matches.map(match => ({ ...match, values: Object.entries(match.values).map(([fieldId, value]) => ({ fieldId, value })) })),
+  })) } });
+}
+export function decodeWorkbookReference(referenceValue: z.input<typeof retainedReference>) {
+  return RunWorkbookReferenceSchema.parse(referenceRecord(retainedReference.parse(referenceValue)));
+}
+
 export const ReadWorkbookReference = defineTaskContract({
-  id: taskId("workbooks/read-reference"), title: "Read the selected reference version", effect: "read",
-  input: WorkbookReferenceReadSchema,
-  output: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("read"), reference: WorkbookReferenceFactsSchema }),
-    z.strictObject({ state: z.literal("refused"), code: z.enum(["WORKBOOK_INVALID", "WORKBOOK_NOT_FOUND", "WORKBOOK_REVISION_UNAVAILABLE", "WORKBOOK_STORAGE_CORRUPT", "WORKBOOK_STORAGE_FAILED"]) }),
-  ]),
-  errorCodes: ["WORKBOOK_PROVIDER_UNAVAILABLE", "WORKBOOK_INVALID", "WORKBOOK_NOT_FOUND", "WORKBOOK_REVISION_UNAVAILABLE", "WORKBOOK_STORAGE_CORRUPT", "WORKBOOK_STORAGE_FAILED"],
-  providers: ["workbooks.library"], subject: { kind: "none", reason: "Reads late-discovered people only from the run's captured immutable reference version" },
+  id: taskId("workbooks/read-reference"), title: "Read retained workbook reference", effect: "read",
+  input: WorkbookReferenceReadRequestSchema, output: WorkbookReferenceReadSchema,
+  providers: ["workbooks.library"], errorCodes: ["WORKBOOK_PROVIDER_UNAVAILABLE", ...WorkbookRefusalSchema.shape.code.options],
+  subject: { kind: "none", reason: "Reads lookup keys from the source run's exact retained workbook version through its bound provider" },
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "live" },
-  scenarios: ["workbooks/read-reference"], example: { state: "refused", code: "WORKBOOK_REVISION_UNAVAILABLE" },
+  scenarios: ["workbooks/read-reference"],
+  example: { state: "read", referenceDigest: "a".repeat(64), reference: {
+    request: { typeId: "onboarding-roster", libraryId: "fixture-library", versionId: "fixture-version", keys: ["fixture@example.test"], fields: ["email"] },
+    snapshot: { libraryId: "fixture-library", version: 1, versionId: "fixture-version", versionName: "Selected version",
+      worksheets: [{ sheetId: "fixture-sheet", name: "July 6" }],
+      type: { id: "onboarding-roster", name: "Onboarding roster", keyFieldId: "email", fields: ["email"], defaultWorkbookId: "fixture-library" },
+      rows: [{ key: "fixture@example.test", state: "matched", matches: [{ sheetId: "fixture-sheet", rowId: "fixture-row", values: [{ fieldId: "email", value: "fixture@example.test" }] }] }],
+    },
+  } },
 });

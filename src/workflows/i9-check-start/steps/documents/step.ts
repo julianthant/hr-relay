@@ -31,7 +31,7 @@ export const i9CheckStartDocumentsDefinition = defineStep({ group: step, build: 
     { nodeId: "read-approved-records", purpose: "Authenticate the exact native OCR outcomes and current corrected selections." },
     { nodeId: "read-people", purpose: "Group approved I-9 sections by asserted identity while retaining every source coordinate." },
   ],
-  proof: { id: "i9-check-start-documents", order: 21, build: (parent: WorkflowDefinition<typeof I9CheckStartInput>) => ({
+  proof: { id: "i9-check-start-documents", order: 25, build: (parent: WorkflowDefinition<typeof I9CheckStartInput>) => ({
     ...inheritStepProof(parent), code: "icsd", label: "I-9 PDF review", summary: "Proves admitted OCR review and grouping of approved I-9 sections.", steps: buildDocuments,
   }) },
 });

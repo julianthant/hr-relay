@@ -74,6 +74,7 @@ describe("span wire leaf parity with the domain vocabulary", () => {
 
     assert.deepEqual(SpanDataClassificationSchema.options, DataClassificationSchema.options);
     assert.equal(SpanTaskIdSchema.parse("workflow:separations/match-identity"), "workflow:separations/match-identity");
+    for (const id of ["workbooks/read-result", "workbooks/read-reference"]) assert.equal(SpanTaskIdSchema.parse(id), TaskIdSchema.parse(id));
     assert.throws(() => SpanTaskIdSchema.parse("Not/A-Task"));
     assert.throws(() => TaskIdSchema.parse("Not/A-Task"));
     assert.equal(SpanFieldPathSchema.parse("selection.status"), "selection.status");

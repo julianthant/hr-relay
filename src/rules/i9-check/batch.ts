@@ -58,16 +58,16 @@ export function i9CheckApprovedPeople({ request, selection }: z.output<typeof Re
 }
 
 export function i9CheckPersonRequests({ request, people, reference }: z.output<typeof ReadI9CheckRequests.input>) {
-  if (reference.state !== "read" || reference.reference.typeId !== I9_CHECK_REFERENCE.typeId || reference.reference.keyFieldId !== "eid") {
+  if (reference.reference.request.typeId !== I9_CHECK_REFERENCE.typeId || reference.reference.snapshot.type.keyFieldId !== "eid") {
     throw new Error("i9-check-reference-unavailable");
   }
-  const facts = reference.reference;
-  if (facts.rows.length !== people.people.length || facts.rows.some((row, index) => row.key !== people.people[index]?.eid)) throw new Error("i9-check-reference-membership-mismatch");
+  const facts = reference.reference, snapshot = facts.snapshot;
+  if (snapshot.rows.length !== people.people.length || snapshot.rows.some((row, index) => row.key !== people.people[index]?.eid)) throw new Error("i9-check-reference-membership-mismatch");
   const children = people.people.map((person, index) => {
-    const matches = facts.rows[index].matches;
+    const matches = snapshot.rows[index].matches;
     const rows = matches.map(match => {
       const cell = (field: string) => {
-        const found = match.cells.filter(cell => cell.fieldId === field);
+        const found = match.values.filter(cell => cell.fieldId === field);
         if (found.length !== 1) throw new Error("i9-check-reference-field-unavailable");
         const value = found[0].value;
         return typeof value === "object" && value !== null ? value.value.slice(0, 10) : value;
