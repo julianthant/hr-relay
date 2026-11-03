@@ -69,10 +69,14 @@ section serves separate `referenceChoices` with exact reference identity, typed 
 and an available, unavailable or resolved state. A missing key has no candidates. Refresh may show
 current exact-key matches only in the original worksheet set. `resolve-workbook-reference-row`
 accepts sheet and row identity, rechecks the live revision, type, key and worksheet membership, and
-rebuilds typed values into a durable gate result before the canonical gate transition resumes the
-run. Direct `resolve-gate` cannot settle this gate. The original reference stays unchanged; subsequent
+rebuilds typed values into a durable `{ decision: "selected", row }` gate result before the canonical
+gate transition resumes the run. Every Onboarding descriptor and retained proof declares this
+selection as a `taken` receipt decision bound to `row.binding.referenceDigest`. Direct `resolve-gate` cannot settle this gate. The original reference stays unchanged; subsequent
 execution and delegation authenticate retained chosen evidence, the applied command audit and the
-native gate-result hash without rereading the workbook.
+native gate-result hash without rereading the workbook. Runs checks this proof at the worker
+validating/running transition before executor replay or task admission and again at actual child
+admission. Continued runs authenticate the original source run and require identical canonical input
+and workbook references; Logs can show that retained source choice as resolved.
 No workbook patch or write receipt is created by a read choice. Hire writes remain unavailable.
 
 The `workbooks/read-result` task accepts `patch-reference` with a stable run-local write ID and

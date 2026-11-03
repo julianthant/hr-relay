@@ -1,4 +1,4 @@
-import { authenticateOnboardingRosterChoice } from "../workbooks.js";
+import { authenticateOnboardingRosterChoice, authenticateOnboardingRosterExecution } from "../workbooks.js";
 import type { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor, workflowDryRunSupport, workflowPlanning, workflowProjections, workflowTerminalResultExecution } from "../../../workflow-kit/workflow.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
@@ -93,6 +93,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, cont
     if (canonicalJsonStringify(resolveInstances(descriptor, parent.envelope.requestedInstance)) !== canonicalJsonStringify(parent.envelope.resolvedInstance)) throw new Error("delegation-parent-instance-mismatch");
     if (repositories.writeIntents.listAttemptingByItem({ workflowId: parent.envelope.workflow, itemId: parent.envelope.itemId }).length > 0
       || repositories.writeIntents.listByRun(parent.envelope.runId).some(intent => intent.status === "parked")) throw new Error("delegation-write-recovery-required");
+    authenticateOnboardingRosterExecution(repositories, parent);
     const canonicalInput = parseCanonicalInputSnapshot(descriptor.canonicalInput, parent.input.parsed);
     if (canonicalJsonStringify(canonicalInput) !== canonicalJsonStringify(context.scope.input)
       || canonicalJsonStringify(retainedRunProtectedBindings(parent)) !== canonicalJsonStringify(context.scope.protectedInputBindings ?? [])) throw new Error("delegation-scope-input-mismatch");

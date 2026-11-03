@@ -12,9 +12,10 @@ import { sha256Hex } from "../../rules/validation/sha256.js";
 import { localDatePart, type Clock } from "../../rules/time/clock.js";
 import { WorkbookLibraryError, snapshotWorkbookReference, writeRunWorkbook } from "../workbooks/workbook-library-service.js";
 import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema } from "../../models/workflows/onboarding/input.js";
-import { ONBOARDING_ROSTER_GATE_ID, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterSnapshotRowSchema } from "../../models/workflows/onboarding/roster.js";
+import { ONBOARDING_ROSTER_GATE_ID, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterChoiceSchema } from "../../models/workflows/onboarding/roster.js";
 import { bindOnboardingRoster, onboardingRosterRow } from "../../rules/onboarding/roster.js";
 import { deriveGateResultCheckpointFingerprint, type GateResultRecord } from "../../models/workflow/gates.js";
+import { readContinuationGate, validateRunContinuation } from "../storage/sqlite/run-continuation.js";
 import { rejectCommandRequest } from "./commands/command-refusal.js";
 
 type Reference = z.infer<typeof RunWorkbookReferenceSchema>;
@@ -112,12 +113,13 @@ function onboardingReference(run: RunRecord) {
 
 export function authenticateOnboardingRosterChoice(repositories: AuthorityRepositories, run: RunRecord, gate: GateResultRecord) {
   const { roster, reference, binding } = onboardingReference(run);
-  const row = schemaBoundValueSchema(OnboardingRosterSnapshotRowSchema, deriveSchemaHash(OnboardingRosterSnapshotRowSchema, "output")).parse(gate.result).value;
+  const row = schemaBoundValueSchema(OnboardingRosterChoiceSchema, deriveSchemaHash(OnboardingRosterChoiceSchema, "output")).parse(gate.result).value.row;
   const command = "commandId" in gate ? repositories.commands.get(gate.commandId) : undefined;
   const audit = "commandId" in gate ? repositories.commandAudits.findByCommand(gate.commandId) : undefined;
-  const recorded = "commandId" in gate ? repositories.timelineEvents.get(lifecycleCommandId("timeline-gate-resolved", gate.commandId)) : undefined;
+  const eventId = "commandId" in gate ? lifecycleCommandId("timeline-gate-resolved", gate.commandId) : undefined;
+  const recorded = eventId === undefined ? undefined : repositories.timelineEvents.get(eventId);
   const native = recorded?.payload.kind === "span" && recorded.payload.event.t === "gate.resolved" ? recorded.payload.event : undefined;
-  if (recorded?.source.kind !== "native" || recorded.scope.kind !== "run" || recorded.scope.runId !== run.envelope.runId
+  if (recorded?.source.kind !== "native" || recorded.eventId !== eventId || recorded.scope.kind !== "run" || recorded.scope.runId !== run.envelope.runId
     || recorded.workflow !== run.envelope.workflow || native === undefined || native.runId !== gate.runId
     || native.workflow !== run.envelope.workflow || native.traceId !== run.envelope.traceId || native.gate !== gate.gateId
     || native.attempt > run.envelope.attempt || native.ts !== gate.resolvedAt || recorded.occurredAt !== gate.resolvedAt
@@ -141,15 +143,30 @@ export function authenticateOnboardingRosterChoice(repositories: AuthorityReposi
   return row;
 }
 
+export function authenticateOnboardingRosterExecution(repositories: AuthorityRepositories, run: RunRecord) {
+  if (run.envelope.workflow !== "onboarding") return;
+  const { roster } = onboardingReference(run);
+  validateRunContinuation(repositories, run.envelope);
+  const gate = readContinuationGate(repositories, run.envelope, ONBOARDING_ROSTER_GATE_ID);
+  if (gate === undefined) return;
+  if (roster.state !== "resolve-required") throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  const source = repositories.runs.get(gate.runId);
+  if (source === undefined || source.input.workbookReferences === undefined || run.input.workbookReferences === undefined
+    || canonicalJsonStringify(source.input.parsed) !== canonicalJsonStringify(run.input.parsed)
+    || canonicalJsonStringify(source.input.workbookReferences) !== canonicalJsonStringify(run.input.workbookReferences)) {
+    throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  }
+  return authenticateOnboardingRosterChoice(repositories, source, gate);
+}
+
 function buildReferenceChoices(repositories: AuthorityRepositories, run: RunRecord) {
   if (run.envelope.workflow !== "onboarding") return [];
   const { roster, reference, binding } = onboardingReference(run);
   if (roster.state === "resolved") return [];
   const base = { libraryId: binding.workbookId, typeId: binding.workbookType, referenceDigest: reference.digest,
     key: binding.rowKey.email, reason: roster.reason };
-  const saved = repositories.gateResults.get(`${run.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`);
-  if (saved !== undefined) {
-    const row = authenticateOnboardingRosterChoice(repositories, run, saved);
+  const row = authenticateOnboardingRosterExecution(repositories, run);
+  if (row !== undefined) {
     const { legalName, livedName } = row.references;
     const values = [
       { fieldId: "email", value: row.binding.rowKey.email },
@@ -236,7 +253,7 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
       }
       try {
         const row = onboardingRosterRow({ ...binding, workbookVersion: live.version, capturedAt }, selected);
-        return { schemaHash: deriveSchemaHash(OnboardingRosterSnapshotRowSchema, "output"), value: row };
+        return { schemaHash: deriveSchemaHash(OnboardingRosterChoiceSchema, "output"), value: { decision: "selected" as const, row } };
       } catch (cause) {
         if (!(cause instanceof z.ZodError)) throw cause;
         rejectCommandRequest(command, "invalid-state", "The live roster name values are invalid. Correct the workbook before choosing its row.");

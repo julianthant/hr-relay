@@ -1,3 +1,14 @@
+import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
+import { childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
+import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
+import { canonicalChildExecution } from "../../support/helpers/backend/canonical-child-execution.js";
+import { healthyCrmDriver, healthyUcpathDriver, ManualScheduler, recordingLogger, recordingTimelineEmitter, sessionFactoryHarness, sessionManagerFor } from "../../support/helpers/phase1f-executor-harness.js";
+import { duoCeremonyGatesOver } from "../../support/helpers/duo-ceremony-fixtures.js";
+import { testRunLifecycle } from "../../support/fixtures/run-lifecycle-fixtures.js";
+import { runClaim } from "../../../src/models/run/record.js";
+import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding/result.js";
+import type { AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-database.js";
+import type { I9LookupInput } from "../../../src/models/systems/i9/read-section2-signer.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -8,7 +19,7 @@ import { authenticateOnboardingRosterChoice, buildRunWorkbookSection } from "../
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { encodeEditableWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema, ONBOARDING_INPUT_EXAMPLE } from "../../../src/models/workflows/onboarding/input.js";
-import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_GATE_ID, OnboardingRosterSnapshotRowSchema } from "../../../src/models/workflows/onboarding/roster.js";
+import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_GATE_ID, OnboardingRosterChoiceSchema } from "../../../src/models/workflows/onboarding/roster.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../src/models/workflow/gates.js";
 import { CommandRequestSchema } from "../../../src/rules/commands/commands.js";
@@ -21,16 +32,18 @@ import { onboardingWorkflow } from "../../../src/workflows/onboarding/workflow.j
 import { createProfileFixtureSet } from "../../support/helpers/admission-fixture.js";
 import { createCommandKernelTestWorld } from "../../support/helpers/backend/command-kernel-harness.js";
 import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
-import { singleAppliedRunId } from "../../support/fixtures/operator-command-fixtures.js";
+import { singleAppliedRunId, appliedRunIds } from "../../support/fixtures/operator-command-fixtures.js";
 import { testRunService, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import type { EditableWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
 
 const descriptor = compileWorkflow(onboardingWorkflow).descriptor;
+const managers: Awaited<ReturnType<typeof sessionManagerFor>>[] = [];
 const fixtureProfiles = createProfileFixtureSet();
 const world = createCommandKernelTestWorld(fixtureProfiles.create);
 afterAll(() => fixtureProfiles.close());
 afterEach(async () => {
+  while (managers.length) await managers.pop()!.closeAll("worker-stop");
   while (world.openDatabases.length) world.openDatabases.pop()!.close();
   while (world.profiles.length) await world.profiles.pop()!.close();
   while (world.roots.length) rmSync(world.roots.pop()!, { recursive: true, force: true });
@@ -109,8 +122,73 @@ async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate") 
       requestedBy: "local-operator", source: "run-detail", family: "run", type: "resolve-workbook-reference-row",
       target: resolution.target, payload: { sheetId: resolution.candidates[0].sheetId, rowId: resolution.candidates[0].rowId } });
   };
-  return { ...h, key, library, repository, id: saved.libraryId, selection, request, plan, start, edit, park, section, choice,
+  return { ...h, profilePath, key, library, repository, id: saved.libraryId, selection, request, plan, start, edit, park, section, choice,
     snapshots: () => snapshots };
+}
+
+type ExecutionFault = "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
+
+async function executionFixture() {
+  const f = await fixture();
+  const calls: { system: string; input: unknown }[] = [];
+  const sessions = sessionFactoryHarness({
+    crm: () => ({ ...healthyCrmDriver(), readHireData: async (input: { email: string }) => {
+      calls.push({ system: "crm", input }); return CrmReadHireData.example;
+    } }),
+    ucpath: () => ({ ...healthyUcpathDriver(), searchPersonMatch: async (input: unknown) => {
+      calls.push({ system: "ucpath", input }); return { hits: [], confirmed: [], dropped: [] };
+    } }),
+    i9: () => ({ system: "i9" as const, searchEmployees: async () => { throw new Error("unused search"); },
+      readRecordSummary: async () => { throw new Error("unused summary"); }, readSection2Signer: async (input: I9LookupInput) => {
+        calls.push({ system: "i9", input }); return { i9Status: "not-found" as const, signerName: "" as const };
+      } }),
+  });
+  const manager = await sessionManagerFor(sessions, f.clock, undefined, undefined, duoCeremonyGatesOver(f.database, f.clock));
+  managers.push(manager);
+  const execution = canonicalChildExecution({ descriptor, stores: taskStoreRegistry, authority: f.database,
+    lifecycle: testRunLifecycle(f.database, f.clock), sessions: manager, emitter: recordingTimelineEmitter(f.database, f.clock).emitter,
+    clock: f.clock, ids: { uuid: randomUUID }, scheduler: new ManualScheduler(f.clock), taskDeadlineMs: 60_000,
+    log: recordingLogger().log }, f.database, f.profilePath,
+    id => id === descriptor.id ? descriptor : id === "i9-lookup" ? childWorkflowModuleOf("onboarding", "i9-lookup").descriptor : undefined);
+  let fault: ExecutionFault | undefined;
+  const transaction = f.database.withAuthorityTransaction.bind(f.database);
+  f.database.withAuthorityTransaction = work => transaction(repositories => {
+    if (fault === undefined) return work(repositories);
+    const corruptGate = (gate: ReturnType<AuthorityRepositories["gateResults"]["get"]>) => {
+      if (gate === undefined || gate.gateId !== ONBOARDING_ROSTER_GATE_ID) return gate;
+      if (fault === "checkpoint") return { ...gate, checkpointFingerprint: FingerprintSchema.parse("b".repeat(64)) };
+      if (fault !== "legal-name" && fault !== "lived-name") return gate;
+      const selected = OnboardingRosterChoiceSchema.parse(gate.result.value);
+      const row = { ...selected.row, references: { ...selected.row.references,
+        ...(fault === "legal-name" ? { legalName: { ...selected.row.references.legalName, firstName: "Injected" } }
+          : { livedName: { firstName: "Injected", lastName: "Hire", middleName: "" } }) } };
+      const result = { ...gate.result, value: { ...selected, row } };
+      return { ...gate, result, checkpointFingerprint: FingerprintSchema.parse(deriveGateResultCheckpointFingerprint(result)) };
+    };
+    return work({ ...repositories,
+      gateResults: { ...repositories.gateResults, get: id => corruptGate(repositories.gateResults.get(id)),
+        listByRun: id => repositories.gateResults.listByRun(id).map(gate => corruptGate(gate)!) },
+      commands: { ...repositories.commands, get: id => {
+        const command = repositories.commands.get(id);
+        return fault === "command" && command?.type === "resolve-workbook-reference-row"
+          ? { ...command, payload: { sheetId: "archive", rowId: "archive-person" } } : command;
+      } },
+      commandAudits: { ...repositories.commandAudits, findByCommand: id => {
+        const audit = repositories.commandAudits.findByCommand(id);
+        if (fault === "audit-missing") return undefined;
+        return fault === "audit-changed" && audit?.request.type === "resolve-workbook-reference-row"
+          ? { ...audit, request: { ...audit.request, payload: { sheetId: "archive", rowId: "archive-person" } } } : audit;
+      } },
+      timelineEvents: { ...repositories.timelineEvents, get: id => {
+        const event = repositories.timelineEvents.get(id);
+        if (event?.payload.kind !== "span" || event.payload.event.t !== "gate.resolved") return event;
+        if (fault === "native-missing") return undefined;
+        return fault === "native-changed" ? { ...event, payload: { ...event.payload,
+          event: { ...event.payload.event, resultHash: "b".repeat(64) } } } : event;
+      } },
+    });
+  });
+  return { ...f, execution, calls, sessions, setFault: (value: ExecutionFault | undefined) => { fault = value; } };
 }
 
 describe("Onboarding captured roster admission and row choice", () => {
@@ -184,7 +262,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(chosen.binding.sheetId, "archive"); assert.equal(chosen.binding.workbookVersion, command.target.workbookVersion);
     const hirePlan = descriptorRuntimeNodes(descriptor).find(node => node.id === "hire-plan"); assert.ok(hirePlan?.kind === "task");
     const bound = OnboardingReadHirePlan.input.parse(hirePlan.bind({ input: current.input.parsed.value,
-      outputs: { "crm-source": CrmReadHireData.example, "roster-choice": chosen } }));
+      outputs: { "crm-source": CrmReadHireData.example, "roster-choice": { decision: "selected", row: chosen } } }));
     assert.deepEqual(bound.roster, chosen);
     f.edit(workbook => { workbook.sheets[1].rows[1].cells[1].value = "Later"; });
     assert.deepEqual(authenticateOnboardingRosterChoice(f.database.authority, current, gate), chosen);
@@ -201,7 +279,7 @@ describe("Onboarding captured roster admission and row choice", () => {
       workbookId: f.id, sheetId: "people", rowId: "people-person" } };
     assert.equal(f.kernel.execute({ ...command, family: "gate", type: "resolve-gate",
       target: { runId: run.envelope.runId, expectedVersion: run.version, gateId: ONBOARDING_ROSTER_GATE_ID },
-      payload: { result: { schemaHash: deriveSchemaHash(OnboardingRosterSnapshotRowSchema, "output"), value: forged } } }).state, "rejected");
+      payload: { result: { schemaHash: deriveSchemaHash(OnboardingRosterChoiceSchema, "output"), value: { decision: "selected", row: forged } } } }).state, "rejected");
     for (const target of [
       { ...command.target, referenceDigest: "b".repeat(64) }, { ...command.target, libraryId: "foreign" },
       { ...command.target, key: "other@example.test" }, { ...command.target, typeId: "general" },
@@ -244,12 +322,13 @@ describe("Onboarding captured roster admission and row choice", () => {
     const gate = f.database.authority.gateResults.get(`${run.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(gate);
     const current = f.database.authority.runs.get(run.envelope.runId); assert.ok(current);
     assert.equal(authenticateOnboardingRosterChoice(f.database.authority, current, gate).binding.rowId, "people-person");
-    const parsed = OnboardingRosterSnapshotRowSchema.parse(gate.result.value);
-    const tampered = { ...gate, result: { ...gate.result, value: { ...parsed, binding: { ...parsed.binding, rowId: "archive-person" } } } };
+    const choice = OnboardingRosterChoiceSchema.parse(gate.result.value);
+    const parsed = choice.row;
+    const tampered = { ...gate, result: { ...gate.result, value: { ...choice, row: { ...parsed, binding: { ...parsed.binding, rowId: "archive-person" } } } } };
     assert.throws(() => authenticateOnboardingRosterChoice(f.database.authority, current,
       { ...tampered, checkpointFingerprint: FingerprintSchema.parse(deriveGateResultCheckpointFingerprint(tampered.result)) }));
-    const changedNames = { ...gate, result: { ...gate.result, value: { ...parsed,
-      references: { ...parsed.references, legalName: { ...parsed.references.legalName, firstName: "Injected" } } } } };
+    const changedNames = { ...gate, result: { ...gate.result, value: { ...choice, row: { ...parsed,
+      references: { ...parsed.references, legalName: { ...parsed.references.legalName, firstName: "Injected" } } } } } };
     assert.throws(() => authenticateOnboardingRosterChoice(f.database.authority, current,
       { ...changedNames, checkpointFingerprint: FingerprintSchema.parse(deriveGateResultCheckpointFingerprint(changedNames.result)) }));
     const repositories = f.database.authority;
@@ -270,4 +349,100 @@ describe("Onboarding captured roster admission and row choice", () => {
       ...repositories.commandAudits, findByCommand: () => ({ ...audit, request: changedCommand }),
     } }, current, gate));
   });
+  it.each(["legal-name", "lived-name", "checkpoint", "command", "audit-missing", "audit-changed", "native-missing", "native-changed"] as const)(
+    "authenticates resumed %s evidence at real executor admission before task/browser hooks", async fault => {
+      const f = await executionFixture(), root = f.start();
+      assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "parked-gate");
+      assert.deepEqual(f.calls, []); assert.equal(f.sessions.opens(), 0);
+      assert.equal(f.kernel.execute(f.choice(root)).state, "applied");
+      f.setFault(fault);
+      try {
+        await assert.rejects(f.execution.step(root, new AbortController().signal));
+        assert.deepEqual(f.calls, []); assert.equal(f.sessions.opens(), 0);
+        assert.deepEqual(f.database.authority.runs.listChildren(root.envelope.runId), []);
+      } finally {
+        f.setFault(undefined);
+        const held = f.database.authority.runs.get(root.envelope.runId); assert.ok(held);
+        const claim = runClaim(held); assert.ok(claim);
+        assert.equal(testRunService(f.database, f.clock).requeue({ commandId: randomUUID(), runId: root.envelope.runId,
+          expectedVersion: held.version, claim, cause: "recovery" }).state, "applied");
+      }
+    });
+
+  it("executes the actual resumed hire review and I-9 child with retained chosen values and emits a selected terminal receipt", async () => {
+    const f = await executionFixture(), root = f.start();
+    assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "parked-gate");
+    f.edit(workbook => { workbook.sheets[0].rows[1].cells[1].value = "Chosen";
+      for (const [index, value] of ["Lived", "Hire", ""].entries()) workbook.sheets[0].rows[1].cells[index + 4].value = value; });
+    assert.equal(f.kernel.execute(f.choice(root)).state, "applied");
+    f.edit(workbook => { workbook.sheets[0].rows[1].cells[1].value = "Later"; });
+    const executed = await f.execution.execute(root, new AbortController().signal);
+    assert.ok(executed.run?.lifecycle.state === "terminal" && executed.run.lifecycle.outcome === "done");
+    const result = f.database.authority.runResults.get(root.envelope.runId); assert.ok(result);
+    const output = OnboardingResultSchema.parse(result.result.value);
+    assert.equal(output.plan.employee.firstName, "Chosen"); assert.equal(output.plan.employee.preferredFirstName, "Lived");
+    assert.equal(output.hireWrite.state, "unimplemented");
+    assert.deepEqual(f.calls.map(call => call.system), ["crm", "ucpath", "i9", "crm", "ucpath"]);
+    const childCall = f.calls.find(call => call.system === "i9"); assert.ok(childCall);
+    assert.equal(Reflect.get(Object(childCall.input), "firstName"), "Chosen");
+    const children = f.database.authority.runs.listChildren(root.envelope.runId);
+    assert.equal(children.length, 1); assert.equal(children[0].envelope.workflow, "i9-lookup");
+    assert.ok(children[0].lifecycle.state === "terminal" && children[0].lifecycle.outcome === "done");
+    const receipt = buildRunEvidenceReceipt({ descriptor, run: executed.run, result,
+      checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, root.envelope.itemId),
+      gateResults: f.database.authority.gateResults.listByRun(root.envelope.runId) });
+    assert.ok(receipt.decisions.some(decision => decision.kind === "gate" && decision.outcome === "taken"
+      && decision.reason.includes("selected") && decision.reason.includes("row.binding.referenceDigest")));
+    assert.deepEqual(f.repository.runOperations(root.envelope.runId), []);
+  });
+
+  it.each([false, true])("authenticates the actual transitive I-9 boundary and recovered source choice (tampered source: %s)", async tamper => {
+    const f = await executionFixture(), root = f.start();
+    assert.equal((await f.execution.step(root, new AbortController().signal)).outcome.state, "parked-gate");
+    assert.equal(f.kernel.execute(f.choice(root)).state, "applied");
+    const admit = f.execution.lifecycle.admitDelegation.bind(f.execution.lifecycle);
+    let admitted = 0;
+    f.execution.lifecycle.admitDelegation = (context, plan) => {
+      admitted++;
+      f.setFault("legal-name");
+      try { return admit(context, plan); } finally { f.setFault(undefined); }
+    };
+    const blocked = await f.execution.step(root, new AbortController().signal);
+    assert.equal(blocked.outcome.state, "failed"); assert.equal(admitted, 1);
+    assert.deepEqual(f.calls.map(call => call.system), ["crm", "ucpath"]);
+    assert.deepEqual(f.database.authority.runs.listChildren(root.envelope.runId), []);
+    assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(root.envelope.runId), []);
+    f.execution.lifecycle.admitDelegation = admit;
+    const failed = f.database.authority.runs.get(root.envelope.runId); assert.ok(failed);
+    const recoveredResult = f.kernel.execute({ commandId: world.nextCommandId(), requestedAt: f.clock.now().toISOString(),
+      requestedBy: "local-operator", source: "run-detail", family: "run", type: "recover-run",
+      target: { runId: root.envelope.runId, expectedVersion: failed.version } });
+    assert.equal(recoveredResult.state, "applied");
+    const recoveredId = appliedRunIds(recoveredResult).find(id => id !== root.envelope.runId); assert.ok(recoveredId);
+    const recovered = f.database.authority.runs.get(recoveredId); assert.ok(recovered?.envelope.continuation);
+    assert.ok(recovered.envelope.continuation.gates.some(gate => gate.runId === root.envelope.runId && gate.nodeId === ONBOARDING_ROSTER_GATE_ID));
+    assert.equal(f.section(recovered).referenceChoices?.[0]?.resolution.state, "resolved");
+    f.edit(workbook => { workbook.sheets[0].rows[1].cells[1].value = "Later"; });
+    if (tamper) {
+      const hooks = f.calls.length, browsers = f.sessions.opens();
+      f.setFault("native-missing");
+      try {
+        await assert.rejects(f.execution.step(recovered, new AbortController().signal));
+        assert.equal(f.calls.length, hooks); assert.equal(f.sessions.opens(), browsers);
+      } finally {
+        f.setFault(undefined);
+        const held = f.database.authority.runs.get(recoveredId); assert.ok(held);
+        const claim = runClaim(held); assert.ok(claim);
+        assert.equal(testRunService(f.database, f.clock).requeue({ commandId: randomUUID(), runId: recoveredId,
+          expectedVersion: held.version, claim, cause: "recovery" }).state, "applied");
+      }
+    } else {
+      const completed = await f.execution.execute(recovered, new AbortController().signal);
+      assert.ok(completed.run?.lifecycle.state === "terminal" && completed.run.lifecycle.outcome === "done");
+      const result = f.database.authority.runResults.get(recoveredId); assert.ok(result);
+      assert.equal(OnboardingResultSchema.parse(result.result.value).plan.employee.firstName, "Fixture");
+      assert.equal(f.calls.filter(call => call.system === "i9").length, 1);
+    }
+  });
+
 });

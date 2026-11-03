@@ -1642,7 +1642,7 @@ function executeResolveGate(
       + "no gate result was recorded",
     );
   }
-  verifyGateEvidenceCurrent(request, descriptor, node, evidenceScope, now);
+  verifyGateEvidenceCurrent(request, descriptor, node, evidenceScope, now, source);
   const result = { schemaHash: expectedSchemaHash, value: parsedValue.data };
   const stored = repositories.gateResults.insert({
     nodeId: node.id,
@@ -1810,11 +1810,15 @@ function verifyGateEvidenceCurrent(
   gate: Extract<ReturnType<typeof descriptorRuntimeNodes>[number], { kind: "gate" }>,
   scope: ReturnType<typeof gateEvidenceScope>,
   now: string,
+  source: "operator" | "workbook-reference",
 ): void {
   const declaration = findGateDecision(descriptor.id, request.target.gateId);
   if (declaration?.boundEvidencePath !== undefined) {
     const submitted = valueAtPath(request.payload.result.value, declaration.boundEvidencePath);
-    const currentEvidence = gate.dependsOn.flatMap((nodeId) => {
+    const currentEvidence = source === "workbook-reference" && descriptor.id === "onboarding" && gate.id === ONBOARDING_ROSTER_GATE_ID
+      && declaration.boundEvidencePath === "row.binding.referenceDigest" && valueAtPath(scope.input, "roster.state") === "resolve-required"
+      ? [{ nodeId: gate.id, value: valueAtPath(scope.input, "roster.binding.referenceDigest") }]
+      : gate.dependsOn.flatMap((nodeId) => {
       const checkpoint = scope.checkpoints.get(String(nodeId))?.record;
       const value = checkpoint === undefined ? undefined : valueAtPath(checkpoint.output.value, declaration.boundEvidencePath!);
       return value === undefined ? [] : [{ nodeId: String(nodeId), value }];

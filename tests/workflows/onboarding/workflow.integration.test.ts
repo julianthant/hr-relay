@@ -54,6 +54,7 @@ describe("read-only onboarding workflow", () => {
   });
   it("has workflow-owned task calls, a harness for every timeline checkpoint and exact implementation bindings", () => {
     assert.deepEqual(registration.exposure, { kind: "public", order: 2 });
+    assert.deepEqual(descriptor.requiredWorkbookTypeIds, ["onboarding-roster"]);
     const registered = workflowModuleOf("onboarding");
     assert.equal(WORKFLOW_DESCRIPTORS.find(value => String(value.id) === "onboarding"), registered.descriptor);
     assert.equal(childWorkflowModuleOf("onboarding", "i9-lookup").descriptor.id, "i9-lookup");
@@ -140,7 +141,7 @@ describe("read-only onboarding workflow", () => {
 
   it("classifies registered inputs and every planning outcome without exposing SSNs in diagnostic evidence", () => {
     for (const proof of [{ definition: onboardingWorkflow }, ...registration.proofs]) {
-      for (const leaf of evidenceLeaves(ONBOARDING_INPUT_EXAMPLE.roster.row)) {
+      for (const leaf of evidenceLeaves({ decision: "selected", row: ONBOARDING_INPUT_EXAMPLE.roster.row })) {
         classifyEvidenceLeaf({ kind: "gate-result", workflowId: WorkflowIdSchema.parse(proof.definition.id), gateId: GateIdSchema.parse("roster-choice") }, leaf.path);
       }
       for (const leaf of evidenceLeaves(ONBOARDING_INPUT_EXAMPLE)) {

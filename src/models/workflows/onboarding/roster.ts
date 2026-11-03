@@ -30,6 +30,10 @@ export const OnboardingRosterSnapshotRowSchema = z.strictObject({
   references: z.strictObject({ legalName: RosterPersonNameSchema, livedName: RosterPersonNameSchema.nullable() }),
 });
 
+export const OnboardingRosterChoiceSchema = z.strictObject({
+  decision: z.literal("selected"), row: OnboardingRosterSnapshotRowSchema,
+});
+
 export const OnboardingRosterReadInputSchema = z.strictObject({
   runId: RunIdSchema, workbookType: z.literal("onboarding-roster"),
   workbookId: WorkbookIdSchema, rowKey: OnboardingRosterRowKeySchema,

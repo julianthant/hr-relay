@@ -38,6 +38,10 @@ export const GateDecisionDeclarationSchema = z.strictObject({
 export type GateDecisionDeclaration = z.infer<typeof GateDecisionDeclarationSchema>;
 
 export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze([
+  ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-i9-profile-creation"].map(workflowId => ({
+    workflowId, gateId: "roster-choice", decisionPath: "decision", boundEvidencePath: "row.binding.referenceDigest",
+    arms: [{ value: "selected", outcome: "taken", summary: "an operator selected this roster row for the hire review" }],
+  })),
     /* The name-resolved identity approval: a supplied EID creates no gate row, and when this gate does open, `rejected` terminalizes the run, so both arms are real outcomes. */
   {
     workflowId: "separations-identity-check",

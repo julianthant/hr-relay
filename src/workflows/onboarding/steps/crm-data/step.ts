@@ -1,5 +1,5 @@
 import { OnboardingInput, OnboardingCanonicalValueSchema, type OnboardingInputValue } from "../../../../models/workflows/onboarding/input.js";
-import { ONBOARDING_ROSTER_GATE_ID, OnboardingRosterSnapshotRowSchema } from "../../../../models/workflows/onboarding/roster.js";
+import { ONBOARDING_ROSTER_GATE_ID, OnboardingRosterChoiceSchema } from "../../../../models/workflows/onboarding/roster.js";
 import { CrmReadHireData } from "../../../../models/systems/crm/read-hire-data.js";
 import { OnboardingReadHirePlan } from "../../../../models/workflows/onboarding/read-hire-plan.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
@@ -11,7 +11,7 @@ const entries = defineStepEntries(group);
 
 export function buildCrmData(author: WorkflowAuthor<typeof OnboardingInput>) {
   const choice = author.gate({ id: ONBOARDING_ROSTER_GATE_ID, label: "Choose roster row", statusKey: "awaitingRosterRowChoice",
-    result: OnboardingRosterSnapshotRowSchema,
+    result: OnboardingRosterChoiceSchema,
     when: { kind: "equals", of: { from: "input", path: "roster.state" }, value: "resolve-required" },
   }, []);
   const call = reuseTask(group, { id: "crm-source", contract: CrmReadHireData, replay: "always-rerun" },
@@ -20,7 +20,7 @@ export function buildCrmData(author: WorkflowAuthor<typeof OnboardingInput>) {
   const plan = author.task(entries.task("hire-plan", OnboardingReadHirePlan, { replay: "checkpoint" }), [source, choice], ({ input, outputs }) => {
     const roster = OnboardingCanonicalValueSchema.parse(input).roster;
     return {
-      crm: outputs["crm-source"], roster: roster.state === "resolved" ? roster.row : OnboardingRosterSnapshotRowSchema.parse(outputs[ONBOARDING_ROSTER_GATE_ID]),
+      crm: outputs["crm-source"], roster: roster.state === "resolved" ? roster.row : OnboardingRosterChoiceSchema.parse(outputs[ONBOARDING_ROSTER_GATE_ID]).row,
       ...(input.postalCodeOverride === undefined ? {} : { postalCodeOverride: input.postalCodeOverride }),
       ...(input.configuredJobEndDate === undefined ? {} : { configuredJobEndDate: input.configuredJobEndDate }),
     };
