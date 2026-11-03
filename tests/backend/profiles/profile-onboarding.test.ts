@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { duoAccountMatches } from "../../../src/backend/profiles/profile-onboarding.js";
+import { randomUUID } from "node:crypto";
+import { ProfileOnboardingDuoProviderError } from "../../../src/backend/runtime/browser/onboarding-duo-provider.js";
+import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
+import { manualClock } from "../../../src/rules/time/clock.js";
+import { createProfileOnboarding, duoAccountMatches } from "../../../src/backend/profiles/profile-onboarding.js";
 import { ProfileOnboardingStateSchema } from "../../../src/models/profiles/public-profile.js";
 
 it("binds Duo account names only to the verified UCSD email or its exact username", () => {
@@ -22,4 +26,49 @@ it("requires distinct served completion facts for both methods before Ready", ()
   assert.equal(ProfileOnboardingStateSchema.safeParse({ ...ready, methods: { ...ready.methods, touch: { ...complete, operatorConfirmed: false, exactCredentialRequestObserved: true } } }).success, false);
   assert.equal(ProfileOnboardingStateSchema.safeParse({ ...ready, methods: { ...ready.methods, key: { ...complete, operatorConfirmed: false, exactCredentialRequestObserved: true } } }).success, true);
   assert.equal(ProfileOnboardingStateSchema.safeParse({ ...ready, methods: { ...ready.methods, touch: { ...complete, state: "pending" } } }).success, false);
+});
+
+for (const path of ["provider", "scope-loss"] as const) it(`persists and logs only safe cause tags for an Unknown ${path} attempt`, async () => {
+  const operationId = randomUUID(), profileId = randomUUID();
+  let operation = SignUpOperationSchema.parse({ schemaVersion: 2, kind: "sign-up", operationId, profileId,
+    commandId: randomUUID(), writeId: randomUUID(), emailKey: "a".repeat(64), firstName: "Synthetic", lastName: "Operator",
+    createdAt: "2026-11-03T08:00:00.000Z", commandFingerprint: "b".repeat(64), phase: "applying",
+    credentials: { operationId: randomUUID(), keyId: randomUUID(), generation: 1, phase: "ready" },
+    onboarding: { accountId: randomUUID(), generation: 1, attempts: [] } });
+  let starts = 0;
+  const diagnostic = { kind: "unknown" as const, causeTag: path === "provider" ? "worker" as const : "scope" as const };
+  const noSecretAccess = (): never => { throw new Error("unexpected secret access"); };
+  const events: unknown[] = [];
+  const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)),
+    onFailure: (attempt, failure) => { events.push({ operationId: attempt.operationId, attemptId: attempt.attemptId, method: attempt.method, failure }); },
+    failureDiagnostic: error => error instanceof ProfileOnboardingDuoProviderError ? { kind: error.kind, causeTag: error.reason } : { kind: "unknown", causeTag: "provider" },
+    read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
+    email: () => "synthetic@ucsd.edu", credentials: noSecretAccess, store: noSecretAccess, publicState: noSecretAccess,
+    provider: { async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { throw new Error("unexpected portal"); },
+      async closeBrowser() { return { state: "closed" }; }, async cancel() { return { state: "closed" }; },
+      async start(_attempt, bind, reportFailure) {
+        starts++;
+        if (path === "provider") await reportFailure(new ProfileOnboardingDuoProviderError("unknown", "worker", new Error("private diagnostic must never be logged")));
+        else {
+          const capability = await bind({ contextId: "A0000000000040008000000000000007", tabId: 7, accountName: "synthetic@ucsd.edu", origin: "https://synthetic.duosecurity.com", rpId: "duosecurity.com" });
+          await capability.retainUnknown(diagnostic);
+          await capability.retainUnknown({ kind: "unknown", causeTag: "browser-lifetime" });
+        }
+      } },
+  });
+  try {
+    await owner.start(operationId, "key");
+    const attempt = operation.onboarding?.attempts[0]; assert.ok(attempt);
+    assert.equal(attempt.state, "unknown");
+    assert.deepEqual(attempt.failure, diagnostic);
+    assert.equal(SignUpOperationSchema.safeParse({ ...operation, onboarding: { ...operation.onboarding, attempts: [{ ...attempt, failure: { ...diagnostic, message: "private diagnostic must never be logged" } }] } }).success, false);
+    assert.equal(SignUpOperationSchema.safeParse({ ...operation, onboarding: { ...operation.onboarding, attempts: [{ ...attempt, failure: { kind: "unknown", causeTag: "private diagnostic" } }] } }).success, false);
+    assert.equal(events.length, 1);
+    assert.deepEqual(events[0], { operationId, attemptId: attempt.attemptId, method: "key", failure: diagnostic });
+    assert.doesNotMatch(JSON.stringify(events), /private diagnostic|synthetic@ucsd.edu|password|stack/);
+    await owner.showBrowser(operationId);
+    assert.equal(starts, 1);
+    await assert.rejects(owner.start(operationId, "key"));
+    assert.equal(starts, 1); assert.equal(operation.onboarding?.attempts.length, 1);
+  } finally { await owner.close(); }
 });
