@@ -2,7 +2,7 @@ import type { RunRecord } from "../../../models/run/record.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { authenticateDelegationGroup, retainedDelegationManifests, delegationEdgeForChild } from "../../storage/sqlite/delegation-authority.js";
+import { authenticateDelegationGroup, retainedDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import type { RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
@@ -28,8 +28,9 @@ export function delegatedCandidateEligible(repositories: AuthorityRepositories, 
   if (candidate.envelope.parent === undefined) return true;
   authenticateRootRun(repositories, current);
   if (resolveDescriptor === undefined) throw new Error("delegation-dispatch-resolver-unavailable");
-  for (const child of ancestry.slice(0, -1)) {
-    const parent = ancestry[ancestry.indexOf(child) + 1];
+  const independentChildren = new Set<string>();
+  for (const [index, child] of ancestry.slice(0, -1).entries()) {
+    const parent = ancestry[index + 1];
     if (parent === undefined) throw new Error("delegation-parent-unavailable");
     const matches = retainedDelegationManifests(repositories, parent.envelope.runId)
       .map(manifest => ({ manifest, group: authenticateDelegationGroup(repositories, manifest) }))
@@ -47,12 +48,12 @@ export function delegatedCandidateEligible(repositories: AuthorityRepositories, 
       || node.join !== manifest.join || canonicalJsonStringify(node.policy) !== canonicalJsonStringify(manifest.policy)
       || deriveSchemaHash(node.target.input, "input") !== invocation.target.inputSchemaHash
       || deriveSchemaHash(node.target.result, "output") !== invocation.target.resultSchemaHash) throw new Error("delegation-dispatch-definition-mismatch");
+    if (manifest.policy.cascadeCancel === "independent") independentChildren.add(child.envelope.runId);
   }
   for (const run of ancestry) {
     if (repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return false;
     if (run.envelope.parent === undefined) break;
-    const edge = delegationEdgeForChild(repositories, run.envelope.parent.runId, run.envelope.runId);
-    if (edge.policy.cascadeCancel === "independent") break;
+    if (independentChildren.has(run.envelope.runId)) break;
   }
   return true;
 }

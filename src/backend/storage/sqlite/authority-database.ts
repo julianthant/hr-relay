@@ -246,7 +246,7 @@ type DependencyRepository = Readonly<{
   activateRetry(input: unknown, now: string): void;
   settle(input: unknown): z.infer<typeof DependencyRecordSchema>;
   reconcile(parentRunId: string, now: string): void;
-  effectiveChild(dependencyId: string): RunRecord;
+  members(manifestId: string): ReturnType<typeof authenticateDelegationGroup>["children"];
   childHistory(dependencyId: string): readonly string[];
   lifecycleEdgeForChild(parentRunId: string, childRunId: string): z.infer<typeof DependencyRecordSchema> | undefined;
   edgeForChild(parentRunId: string, childRunId: string): z.infer<typeof DependencyRecordSchema>;
@@ -5085,12 +5085,15 @@ export class AuthorityDatabase implements Disposable {
         resetSnapshot: (reset: WorkerResetBinding, childRunId: string) => resetDependencySnapshot(this.authority, reset, childRunId),
         cancellationOutcome: (runId: string) => readDelegationCancellation(this.authority, runId),
         childHistory: (dependencyId: string) => authenticateDelegationDependency(this.authority, dependencyId).history,
-        effectiveChild: (dependencyId: string) => authenticateDelegationDependency(this.authority, dependencyId).child,
+        members: (manifestId: string) => {
+          const manifest = this.authority.delegationManifests.get(manifestId);
+          if (manifest === undefined) throw new Error("delegation-manifest-unavailable");
+          return authenticateDelegationGroup(this.authority, manifest).children;
+        },
         readiness: (parentRunId: string, intent: "join" | "cancel") => readDelegationReadiness(this.authority, parentRunId, intent),
         reconcile: (parentRunId: string, now: string) => this.withAuthorityTransaction(repositories => {
           for (const manifest of retainedDelegationManifests(repositories, parentRunId)) {
-            const group = authenticateDelegationGroup(repositories, manifest);
-            for (const { child, dependency } of group.children) {
+            for (const { child, dependency } of repositories.dependencies.members(manifest.manifestId)) {
               const terminal = childTerminalSettlement(child, repositories);
               if (terminal === undefined || dependency.state !== "active") continue;
               repositories.dependencies.settle({ commandId: lifecycleCommandId("delegation-settlement", {
