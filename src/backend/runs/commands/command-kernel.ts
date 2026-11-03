@@ -866,7 +866,9 @@ function deleteTreeOrder(
         throw new Error(`run ${childRunId} appears twice in the dependency tree under ${root.envelope.runId}`);
       }
       visited.add(childRunId);
-      if (!edges.some((candidate) => candidate.childRunId === childRunId)) {
+      if (edges.length === 0) {
+        repositories.dependencies.lifecycleEdgeForChild(parent.envelope.runId, childRunId);
+      } else if (!edges.some((candidate) => candidate.childRunId === childRunId)) {
         throw new Error(
           `run ${childRunId} is a child of ${parent.envelope.runId} but has no dependency edge in authority; `
           + "the tree is inconsistent, so nothing was deleted",
