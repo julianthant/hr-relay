@@ -93,15 +93,13 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
             !== canonicalJsonStringify(plan.children.map(({ childItemId, canonicalInputFingerprint }) => ({ childItemId, canonicalInputFingerprint })))) {
           throw new Error("delegation-manifest-plan-mismatch");
         }
-        const children = manifest.children.map((entry, index) => {
-          const child = authority.authority.dependencies.effectiveChild(entry.dependencyId);
+        const children = authority.authority.dependencies.members(manifest.manifestId).map(({ entry, child, dependency }, index) => {
           assertChildBinding(parent, child, context, target);
           if (child.envelope.descriptorVersion !== target.version || child.envelope.contractFingerprint !== target.contractFingerprint
             || child.input.ingressSchemaHash !== manifest.inputSchemaHash
             || canonicalJsonStringify(parseCanonicalInputSnapshot(target.canonicalInput, child.input.parsed))
               !== canonicalJsonStringify(plan.children[index]?.input)) throw new Error("delegation-child-input-mismatch");
-          const dependency = authority.authority.dependencies.get(entry.dependencyId);
-          if (dependency === undefined || dependency.parentRunId !== parent.envelope.runId || dependency.childRunId !== entry.childRunId
+          if (dependency.parentRunId !== parent.envelope.runId || dependency.childRunId !== entry.childRunId
             || dependency.childItemId !== entry.childItemId || child.envelope.itemId !== entry.childItemId
             || dependency.manifestId !== manifest.manifestId || dependency.edgeId !== manifest.edgeId
             || canonicalJsonStringify(dependency.policy) !== canonicalJsonStringify(plan.policy)) throw new Error("delegation-dependency-binding-mismatch");

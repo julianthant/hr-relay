@@ -74,6 +74,27 @@ test(`approved mixed queue and navbar @ ${theme.attribute}-${width}`, { annotati
         rows: [...element.querySelectorAll("tbody tr")].map(row => row.getBoundingClientRect().bottom),
       }));
       for (const bottom of visibleMemberBounds.rows) expect(bottom).toBeLessThanOrEqual(visibleMemberBounds.bottom);
+      const memberId = operation.memberRunIds[0];
+      if (memberId === undefined) throw new Error("member interaction fixture has no member");
+      const memberLine = table.locator(`tr[data-demo-row-id='${memberId}']`);
+      const memberName = memberLine.locator("button[aria-pressed]");
+      await expect(memberName).toHaveCount(1);
+      await expect(memberName).toHaveAttribute("type", "button");
+      await memberName.hover();
+      await expect(memberName).toHaveCSS("text-decoration-line", "none");
+      for (const cell of ["td:first-child", "td:last-child"]) {
+        await memberLine.locator(cell).click({ position: { x: 4, y: 4 } });
+        await expect.poll(() => new URL(page.url()).searchParams.get("run")).toBe(memberId);
+        await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: operation.runId });
+      }
+      for (const key of ["Enter", "Space"]) {
+        await memberName.focus();
+        await expect(memberName).toBeFocused();
+        await page.keyboard.press(key);
+        await expect.poll(() => new URL(page.url()).searchParams.get("run")).toBe(memberId);
+        await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: operation.runId });
+      }
+      await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
       const large = queue.getByRole("table", { name: "Members of Onboarding cohort — July stragglers", exact: true });
       await large.scrollIntoViewIfNeeded();
       const compactBounds = await large.evaluate(element => ({
