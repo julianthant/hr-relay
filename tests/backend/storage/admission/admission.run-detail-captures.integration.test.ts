@@ -1,8 +1,7 @@
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
-import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
-import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { testWorkerLifetime, testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 
+import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { prepareLiveDiagnosticArtifactLease,readDiagnosticBundleAttachment } from "../../../../src/backend/runs/queries/diagnostic-bundle.js";
 import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
@@ -26,13 +25,13 @@ import { createServerVerifiedArtifactReader } from "../../../../src/backend/stor
 import { ArtifactRefSchema,type ArtifactRef } from "../../../../src/models/artifacts/artifacts.js";
 import { deriveDiagnosticContentDigest } from "../../../../src/models/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../../src/models/trust/diagnostic.js";
-import { DiagnosticBundleIdSchema,FailureIdSchema,RunIdSchema } from "../../../../src/rules/identity/ids.js";
+import { DiagnosticBundleIdSchema,FailureIdSchema,LOCAL_OPERATOR_ACTOR_ID,RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { RGBA_PNG_BASE64 } from "../../../support/fixtures/diagnostic-image-fixtures.js";
 import { HASH_A,HASH_B,NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { makeWorld,queuedEventOf,uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
+import { makeWorld,queuedEventOf,runRecordOf,uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
-import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import type { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -86,26 +85,18 @@ function bundleOf(bundleSeed: number, origin: BundleInput["origin"], options: {
 }
 
 async function harness() {
-  const world = await makeWorld({ profileFixture: profileFixtures.create });
-  cleanups.push(async () => await world.dispose());
-  queuedEventOf(world, { seed: 1, enqueuedAt: NOW });
   const profile = await profileFixtures.create();
-  cleanups.push(async () => await profile.close());
-  const database = AuthorityDatabase.open({
-    path: profile.path, busyTimeoutMs: 1000,
-    migrationOwner: "run-detail-captures-test",
-  }, world.clock);
-  cleanups.push(() => {
-    releaseSeededWriteOwners(database, world.clock.now().toISOString());
-    database.close();
-  });
-  database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
+  const world = await makeWorld({ profileFixture: async () => profile, busyTimeoutMs: 1000 });
+  cleanups.push(async () => await world.dispose());
+  const database = world.database;
+  const seeded = runRecordOf({ seed: 1, enqueuedAt: NOW, descriptor: personLookupDescriptor });
+  const record = { ...seeded, input: { ...seeded.input, parsed: { ...seeded.input.parsed,
+    schemaHash: deriveSchemaHash(personLookupDescriptor.canonicalInput, "output") } } };
+  database.authority.runs.enqueue(record);
+  world.authority.put(record);
   const run = world.authority.getRun(uuidOf(1));
   assert.ok(run);
-  database.authority.runs.enqueue({ ...run, input: { ...run.input, parsed: { ...run.input.parsed,
-    schemaHash: deriveSchemaHash(personLookupDescriptor.canonicalInput, "output") } }, envelope: {
-    ...run.envelope, descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
-  } });
+  world.writer.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title: "Capture fixture" }));
   testWorkerPorts(database, world.clock, { path: profile.path, descriptor: personLookupDescriptor, poolIndex: 1 });
   writeArtifactEnvelope(profile.admission.artifactRoot, refOf(ATTACHMENT), BYTES);
   const sourceReads: number[] = [];
