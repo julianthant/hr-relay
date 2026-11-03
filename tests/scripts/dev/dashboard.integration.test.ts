@@ -63,6 +63,7 @@ describe("dashboard launcher with actual child processes", () => {
       await waitUntil(() => existsSync(frontendOwnerFile));
       assert.equal(backend.children.length, 1);
       const backendNonce = (mocks.spawn.mock.calls[0][2] as SpawnOptions).env?.[DASHBOARD_LAUNCH_NONCE_ENV];
+      assert.equal((mocks.spawn.mock.calls[0][2] as SpawnOptions).env?.RELAY_DEV_DEBUG_MIRROR, "1");
       web = await start(BACKEND, { mode: "web", frontendOwnerFile });
       await waitUntil(() => web!.output.join("").includes("frontend-started"));
       assert.equal(web.children.length, 1);
