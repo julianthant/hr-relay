@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { RunSummaryQuerySchema } from "../../storage/sqlite/run-summaries.js";
 import { runtimeTimeZone } from "../../../rules/time/clock.js";
-import { deriveRunStatus } from "../lifecycle/run-status.js";
+import { deriveRunStatus } from "../../../rules/runs/run-status.js";
 type SummaryRow = ReturnType<AuthorityDatabase["queryRunSummaries"]>["items"][number];
 /** Selected live summary rows, streamed in bounded indexed pages inside one database snapshot. */
 function visitRange(database:AuthorityDatabase,from:string,to:string,visit:(row:SummaryRow)=>void) {

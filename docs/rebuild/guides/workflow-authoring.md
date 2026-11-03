@@ -145,7 +145,7 @@ of `[group, entries[]]`. Tuple order controls presentation. References control e
 | `task(identity, references, bind)` | Read contract, stable `id`, `replay`, optional label and `when`. |
 | `gate(identity, references)` | Stable `id`, label, result schema, optional `statusKey` and `when`. |
 | `transaction(identity, references, { prepareBind, commitBind })` | Prepare/commit contracts, dry-run and probe policy, positive integer probe-to-fence budget, optional retry policy. |
-| `parallel(identity, branches)` | Explicit branches and task leaves; see §8. |
+| `parallel(identity, branches)` | Explicit branches with task or delegate leaves; see §8. |
 | `delegate(identity, references, { bind, deriveChildItemId })` | Typed child-run target and policy; see §8. |
 | `result(schema, references, derive, sources?)` | Terminal result schema, references and pure derivation; optional operation-display source bindings. |
 | `group(step, { omission })` | Whole-step omission declaration; see §7. |
@@ -256,12 +256,12 @@ execution validate facts and rebuilt outputs through the omission and task schem
 
 See `tests/support/fixtures/workflow-definition-fixtures.ts` and
 `tests/workflow-kit/workflow-definition.integration.test.ts` for executable compiler/runtime
-fixtures. Neither operator workflow uses parallel or delegate entries.
+fixtures. OCR declares page delegates and Onboarding declares its I-9 delegate.
 
 A parallel identity declares `join: "all"` and `failure: "fail-fast"`. It needs at least two
-branches, each with a unique ID and nonempty task leaves. A leaf belongs only to its parallel entry,
-not another branch or timeline tuple. Each leaf checkpoints independently. Readers reference leaf
-values directly; the parallel output names the branch-to-leaf mapping. Parallel `"all-settled"` is
+branches, each with a unique ID and nonempty task or delegate leaves. A leaf belongs only to its
+parallel entry, not another branch or timeline tuple. Task leaves checkpoint independently. Readers
+reference leaf values directly; the parallel output names the branch-to-leaf mapping. Parallel `"all-settled"` is
 a named `capability-unavailable` refusal.
 
 A delegate declares `target: { id, input, result }`, `edgeId`, `cardinality`, `await`, `join`,
@@ -269,6 +269,23 @@ A delegate declares `target: { id, input, result }`, `edgeId`, `cardinality`, `a
 `one/terminal/one`, `many/terminal/all`, `many/terminal/all-settled`, or either cardinality with
 `none/none`. It returns `DelegationManifestRef` without a wait or typed child outcomes after terminal
 waits. It uses child-run authority.
+
+Put independent delegates in the same parallel step when every fan-out must be admitted together.
+The runtime commits all of them before one claim release and waits for their awaited outcomes.
+Give each delegate its own target schemas, edge, policy and cardinality. A form needing only one
+lookup declares only that delegate. Keep a dependency on another leaf's result sequential; delegate
+cohorts refuse sibling-result dependencies. External task, gate or child prerequisites execute
+before the cohort. Replay, cancellation, retries and UNKNOWN-write fences remain per delegate.
+
+Choose `resume-parent` when a completed child retry may join automatically. Choose
+`manual-parent-resume` when the operator must release the parent with its existing Paused/Resume
+control after the retry settles. That acknowledgement binds the exact child attempt and result;
+another retry requires another Resume. `block-parent` holds the same parent row and propagates its
+block through waiting ancestors. Approval gates remain visible only on their owning run.
+
+During a parent dry run, a delegated child with no transactions keeps the dry-run flag and returns
+its normal typed read-only observations. A child with an unsupported transaction refuses admission.
+Standalone read-only workflows still have no transaction-preview option.
 
 ## 9 · Add a task only when needed
 

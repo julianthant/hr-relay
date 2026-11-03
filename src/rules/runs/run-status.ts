@@ -1,6 +1,7 @@
-import type { QueueStatusSchema } from "../../../models/dashboard/projection.js";
-import type { RunRecord } from "../../../models/run/record.js";
-import type { RunQueuedWire } from "../../../models/events/types.js";
+import type { QueueStatusSchema } from "../../models/dashboard/projection.js";
+import type { RunRecord } from "../../models/run/record.js";
+import type { RunQueuedWire } from "../../models/events/types.js";
+import type { DelegationWaitState } from "../../models/run/summary.js";
 import type { z } from "zod";
 
 export type RunQueueStatus = z.infer<typeof QueueStatusSchema>;
@@ -16,11 +17,14 @@ const RUN_OUTCOME_STATUS = {
 } as const satisfies Record<string, RunQueueStatus>;
 
 
-export function deriveRunStatus(authority: Readonly<{ lifecycle: RunRecord["lifecycle"]; cancelRequested?: boolean }>): RunQueueStatus {
+export function deriveRunStatus(authority: Readonly<{ lifecycle: RunRecord["lifecycle"]; cancelRequested?: boolean; delegationWait?: DelegationWaitState | null }>): RunQueueStatus {
   const { lifecycle } = authority;
   if (lifecycle.state === "terminal") return RUN_OUTCOME_STATUS[lifecycle.outcome];
   if (lifecycle.state === "parked-write") return "blocked";
   if (lifecycle.state === "parked-gate") return "awaiting-approval";
+  if (lifecycle.state === "queued" && authority.delegationWait != null) {
+    return authority.cancelRequested === true ? "cancelling" : authority.delegationWait.state;
+  }
   if (lifecycle.state === "claimed" || lifecycle.state === "validating" || lifecycle.state === "running") {
     return authority.cancelRequested === true ? "cancelling" : "running";
   }

@@ -6,6 +6,9 @@ import { z } from "zod";
 import { RunIdSchema, IsoInstantSchema, FingerprintSchema } from "../../rules/identity/ids.js";
 import { RunRecordSchema, RunLifecycleSchema } from "./record.js";
 
+export const DelegationWaitStateSchema = z.strictObject({ nodeId: z.string().min(1), state: z.enum(["running", "blocked"]) });
+export type DelegationWaitState = z.infer<typeof DelegationWaitStateSchema>;
+
 /** Server-internal row. Public Activity must select aggregates, never identity. */
 export const RunSummarySchema = z.strictObject({
   runId: RunIdSchema, workflow: z.string().min(1), itemId: z.string().min(1),
@@ -16,6 +19,7 @@ export const RunSummarySchema = z.strictObject({
   sessionId: z.string().nullable(), children: z.array(z.strictObject({runId:RunIdSchema,state:z.string(),outcome:z.string().nullable()})),
   dependencyRunIds:z.array(RunIdSchema), completionClass:z.string().nullable(), failureTransient:z.boolean().nullable(),
   createdAt: IsoInstantSchema, updatedAt: IsoInstantSchema, lifecycle: RunLifecycleSchema,
+  delegationWait: DelegationWaitStateSchema.nullable(),
   priority: z.enum(["interactive", "bulk"]), shape: z.enum(["single", "preview", "operation", "operation-member"]),
   parentRunId: RunIdSchema.nullable(), attempt: z.number().int().positive(),
   sourceGeneration: z.number().int().nonnegative(), sourceDigest: FingerprintSchema,
@@ -38,6 +42,7 @@ export const RunSummarySourceSchema = z.strictObject({
   failure: FailureRecordSchema.nullable(), resolution: FailureResolutionSchema.nullable(),
   cursor:z.number().int().nonnegative(), startedAt:IsoInstantSchema.nullable(), queueTitle:z.string().nullable(),
   children:RunSummarySchema.shape.children,dependencyRunIds:z.array(RunIdSchema),
+  delegationWait: DelegationWaitStateSchema.nullable(),
 });
 export type RunSummarySource = z.infer<typeof RunSummarySourceSchema>;
 

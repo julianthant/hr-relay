@@ -252,8 +252,8 @@ async function executeClaimedParent(f: Awaited<ReturnType<typeof fixture>>, clai
   let observed = 0;
   const outcome = await withBoundRunConfigFingerprint(f.deps.sessions, FingerprintSchema.parse(claimed.envelope.configFingerprint),
     () => executeClaimedRun({ ...f.deps, descriptor, lifecycle: workerRunLifecyclePort(f.execution.lifecycle),
-      childRuns: { async executeChildRun(context) {
-        const value = await actual.executeChildRun(context);
+      childRuns: { async executeChildRuns(context) {
+        const value = await actual.executeChildRuns(context);
         observed++;
         after();
         return value;
@@ -562,8 +562,8 @@ it("refuses a real awaited child outcome after canonical cancellation revokes th
   let observed = 0;
   const outcome = await withBoundRunConfigFingerprint(f.deps.sessions, FingerprintSchema.parse(claimed.run.envelope.configFingerprint),
     () => executeClaimedRun({ ...f.deps, descriptor, lifecycle: workerRunLifecyclePort(f.execution.lifecycle),
-    childRuns: { async executeChildRun(context) {
-      const value = await actual.executeChildRun(context);
+    childRuns: { async executeChildRuns(context) {
+      const value = await actual.executeChildRuns(context);
       observed++;
       assert.equal(f.execution.kernel.execute(f.cancel()).state, "applied");
       return value;

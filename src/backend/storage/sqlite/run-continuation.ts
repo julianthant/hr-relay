@@ -16,6 +16,7 @@ export class RunContinuationRefusedError extends Error {
 
 type ContinuationRepositories = Pick<AuthorityRepositories, "runCheckpoints" | "gateResults">
   & { readonly runs: Pick<AuthorityRepositories["runs"], "get">;
+    readonly dependencies?: Pick<AuthorityRepositories["dependencies"], "cancellationOutcome">;
     readonly lifecycleJournal?: Pick<AuthorityRepositories["lifecycleJournal"], "findContinuationIssue"> };
 
 export function continuationEvidenceDigest(value: unknown) {
@@ -38,6 +39,9 @@ export function validateRunContinuation(repositories: ContinuationRepositories, 
     || canonicalJsonStringify(issue.result.continuation) !== canonicalJsonStringify(continuation)) throw new RunContinuationRefusedError("run-continuation-issuance-unavailable");
   return continuation.sources.map(source => {
     const run = repositories.runs.get(source.runId);
+    const cancelledChild = run?.lifecycle.state === "terminal" && run.lifecycle.outcome === "cancelled"
+      && envelope.parent !== undefined && run.envelope.parent !== undefined
+      && canonicalJsonStringify(run.envelope.parent) === canonicalJsonStringify(envelope.parent);
     if (run === undefined || source.runId !== envelope.runId && run.version !== source.version
       || sourceIdentityDigest(run) !== source.identityDigest
       || run.envelope.attempt !== source.attempt || run.envelope.workflow !== envelope.workflow
@@ -45,8 +49,12 @@ export function validateRunContinuation(repositories: ContinuationRepositories, 
       || run.envelope.contractFingerprint !== envelope.contractFingerprint
       || run.envelope.configFingerprint !== envelope.configFingerprint
       || run.envelope.dryRun !== envelope.dryRun
-      || source.runId !== envelope.runId && (run.lifecycle.state !== "terminal" || !["failed", "interrupted"].includes(run.lifecycle.outcome))) {
+      || source.runId !== envelope.runId && !cancelledChild && (run.lifecycle.state !== "terminal" || !["failed", "interrupted"].includes(run.lifecycle.outcome))) {
       throw new RunContinuationRefusedError("run-continuation-source-unavailable");
+    }
+    if (cancelledChild && source.runId !== envelope.runId) {
+      if (repositories.dependencies === undefined) throw new RunContinuationRefusedError("run-continuation-cancellation-authority-unavailable");
+      repositories.dependencies.cancellationOutcome(source.runId);
     }
     return run;
   });
