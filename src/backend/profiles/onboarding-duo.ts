@@ -1,6 +1,7 @@
 import type { DuoAssertion, DuoAssertionRequest } from "../storage/configuration/duo-signing.js";
 import type { DuoEnrollmentScope } from "../../models/config/duo-credential-store.js";
 import type { ProfileOnboardingMethod, ProfileOnboardingState } from "../../models/profiles/public-profile.js";
+import type { ProfileOnboardingDuoFailure } from "../../models/profiles/profile.js";
 
 export interface DraftDuoBrowserOwner {
   readonly operationId: string;
@@ -65,7 +66,7 @@ export interface DraftDuoCapability {
   signAssertion(request: DuoAssertionRequest): Promise<DuoAssertion>;
   recordCeremony(receipt: DraftDuoCeremonyReceipt): Promise<void>;
   recordPortalAcceptance(receipt: DraftDuoPortalReceipt): Promise<void>;
-  retainUnknown(): Promise<void>;
+  retainUnknown(failure: ProfileOnboardingDuoFailure): Promise<void>;
 }
 
 export interface ProfileOnboardingDuoProvider {
