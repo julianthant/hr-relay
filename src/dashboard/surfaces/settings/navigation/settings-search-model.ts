@@ -34,8 +34,7 @@ export function settingsSearchIndex(groups: readonly SettingsNavGroup[], documen
   }
   if (document === undefined) return results;
   for (const section of document.sections) for (const leaf of section.leaves) {
-    // The folded General page renders these controls, not the retired operator-label field.
-    if (leaf.path === "features.debugScreenshots" || leaf.path === "features.duoWebAuthn" || leaf.path === "actor.label" || leaf.path.startsWith("display.") || section.id === "providers") continue;
+    if (leaf.path === "features.debugScreenshots" || leaf.path === "features.duoWebAuthn" || leaf.path === "actor.label" || leaf.path.startsWith("display.") || leaf.path.startsWith("preferences.") || section.id === "providers") continue;
     if (section.id === "routes") {
       const presentation = routePresentation(leaf);
       add("routes", presentation.name, leaf.path, presentation.description);

@@ -15,7 +15,7 @@ export function createAdmissionChildFixtures(children: ChildProcess[]) {
       const reader = readers.shift();
       if (reader === undefined) queued.push(parsed); else reader(parsed);
     });
-    child.on("exit", code => {
+    child.on("close", code => {
       while (readers.length > 0) readers.shift()?.({ state: "exited", detail: `${String(code)} ${output}` });
     });
     return { child, next: () => {

@@ -16,7 +16,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     page.on("request", request => { if (request.method() !== "GET") writes.push(new URL(request.url()).pathname); });
-    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&sessionsPreview=empty`);
+    await page.goto(`${server.baseUrl}/?fixture=workflow-catalog&day=${FIXTURE_DAY}&sessionsPreview=empty`);
     await page.getByRole("button", { name: "Close assistant", exact: true }).click();
     const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
     await expect(rail.getByRole("button")).toHaveCount(15);
@@ -27,8 +27,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(
     const picker = run.getByRole("navigation", { name: "Workflow", exact: true });
     expect(await picker.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")))).toEqual(labels);
     await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeEnabled();
-    await expect(picker.getByRole("button", { name: "Onboarding", exact: true })).toBeDisabled();
-    await expect(picker.getByRole("button", { name: "Onboarding", exact: true })).toHaveAttribute("aria-description", /declares no typed-input surface/u);
+    await expect(picker.getByRole("button", { name: "Onboarding", exact: true })).toBeEnabled();
+    await expect(picker.getByRole("button", { name: "Onboarding", exact: true })).not.toHaveAttribute("aria-description", /declares no typed-input surface/u);
     for (const label of ["SharePoint Download", "I-9 Lookup"]) {
       const choice = picker.getByRole("button", { name: label, exact: true });
       await expect(choice).toBeDisabled(); await expect(choice).toHaveAttribute("aria-description", "Started by a parent workflow.");
@@ -50,7 +50,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(
       await expect(page.getByRole("article", { name: new RegExp(`^Worker \\d+ · ${label?.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}$`, "u") })).toHaveCount(2);
     }
     await page.getByRole("button", { name: "Sessions", exact: true }).click();
-    await page.goto(`${server.baseUrl}/?settings=explorer&day=${FIXTURE_DAY}`);
+    await page.goto(`${server.baseUrl}/?fixture=workflow-catalog&settings=explorer&day=${FIXTURE_DAY}`);
     await page.getByRole("combobox", { name: "Explorer workflow", exact: true }).click();
     await expect(page.getByRole("option")).toHaveCount(labels.length);
     expect(await page.getByRole("option").allTextContents()).toEqual(labels);
