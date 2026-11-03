@@ -1,14 +1,18 @@
 import { z } from "zod";
-import { titleCasePersonName } from "../../models/fields/cell-coercion.js";
+import { collapseWhitespace, titleCasePersonName } from "../../models/fields/cell-coercion.js";
 import { NamedArtifactFileNameSchema } from "../../models/artifacts/artifacts.js";
 import { OnboardingRosterSnapshotRowSchema } from "../../models/workflows/onboarding/roster.js";
 
 export function crmDocumentFolderName(input: z.input<typeof OnboardingRosterSnapshotRowSchema.shape.references>): string {
   const { legalName, livedName } = OnboardingRosterSnapshotRowSchema.shape.references.parse(input);
-  const first = titleCasePersonName(legalName.firstName), last = titleCasePersonName(legalName.lastName);
+  let rawFirst = collapseWhitespace(legalName.firstName), rawMiddle = legalName.middleName;
+  const space = rawFirst.indexOf(" ");
+  if (rawMiddle === "" && space !== -1) { rawMiddle = rawFirst.slice(space + 1); rawFirst = rawFirst.slice(0, space); }
+  const first = titleCasePersonName(rawFirst), last = titleCasePersonName(legalName.lastName);
   const livedFirst = livedName === null ? "" : titleCasePersonName(livedName.firstName.split(/\s+/u)[0] ?? "");
   const lived = livedFirst !== "" && livedFirst.toLowerCase() !== first.toLowerCase() ? ` (${livedFirst})` : "";
-  const middle = legalName.middleName === "" ? "" : ` ${legalName.middleName.charAt(0).toUpperCase()}.`;
+  const initial = rawMiddle.replace(/\.+$/u, "").charAt(0).toUpperCase();
+  const middle = initial === "" ? "" : ` ${initial}.`;
   return NamedArtifactFileNameSchema.parse(`${last}, ${first}${lived}${middle} EID`);
 }
 

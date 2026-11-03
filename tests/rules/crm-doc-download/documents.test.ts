@@ -5,6 +5,8 @@ import { crmDocumentFileName, crmDocumentFolderName, crmDocumentIndices } from "
 it("names the person from legal and lived reference names with the literal EID suffix", () => {
   assert.equal(crmDocumentFolderName({ legalName: { firstName: "SAMUEL", lastName: "O'NEILL", middleName: "Matthew" }, livedName: { firstName: "Sam", lastName: "O'Neill", middleName: "" } }), "O'Neill, Samuel (Sam) M. EID");
   assert.equal(crmDocumentFolderName({ legalName: { firstName: "Sam", lastName: "Fixture", middleName: "" }, livedName: { firstName: "SAM", lastName: "Fixture", middleName: "" } }), "Fixture, Sam EID");
+  assert.equal(crmDocumentFolderName({ legalName: { firstName: "Sam Matthew", lastName: "Fixture", middleName: "" }, livedName: null }), "Fixture, Sam M. EID");
+  assert.equal(crmDocumentFolderName({ legalName: { firstName: "Sam", lastName: "Fixture", middleName: "." }, livedName: null }), "Fixture, Sam EID");
   assert.throws(() => crmDocumentFolderName({ legalName: { firstName: "", lastName: "Fixture", middleName: "" }, livedName: null }));
   assert.throws(() => crmDocumentFolderName({ legalName: { firstName: "Sam", lastName: "unsafe/path", middleName: "" }, livedName: null }));
 });
