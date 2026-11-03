@@ -30,11 +30,18 @@ export interface DashboardLauncherOptions {
 export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise<number> {
   const mode = options.mode ?? "dashboard";
   const frontendOwnerFile = options.frontendOwnerFile ?? join(repositoryRoot, "node_modules", ".cache", "relay-dashboard", "frontend-owner");
-  const launchNonce = mode === "web" ? DashboardLaunchNonceSchema.parse(readFileSync(frontendOwnerFile, "utf8"))
-    : DashboardLaunchNonceSchema.parse(randomBytes(32).toString("hex"));
+  const writeError = options.writeError ?? ((message: string) => { process.stderr.write(message); });
+  let launchNonce: string;
+  try {
+    launchNonce = mode === "web" ? DashboardLaunchNonceSchema.parse(readFileSync(frontendOwnerFile, "utf8"))
+      : DashboardLaunchNonceSchema.parse(randomBytes(32).toString("hex"));
+  } catch (error) {
+    if (!(mode === "web" && error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    writeError('[dashboard] Start npm run backend first and wait for "listening".\n');
+    return Promise.resolve(1);
+  }
   const childEnvironment = { ...process.env, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce, [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1" };
   const signals = options.signals ?? process;
-  const writeError = options.writeError ?? ((message: string) => { process.stderr.write(message); });
   const managed: Managed[] = [];
   let stopping = false;
   let result = 0;
