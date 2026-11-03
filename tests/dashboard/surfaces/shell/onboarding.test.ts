@@ -319,7 +319,7 @@ it("cancels sign-up from its footer only after confirmation and never repeats an
     assert.equal(cancellations, 0);
     await act(async () => button(document, "Keep setting up").click());
     assert.equal(cancellations, 0);
-    await vi.waitFor(() => assert.equal(document.activeElement, cancel));
+    await vi.waitFor(() => assert.equal(document.activeElement === cancel, true));
     await act(async () => cancel.click());
     await act(async () => button(document.querySelector('[role="dialog"]')!, "Cancel sign-up").click());
     assert.equal(cancellations, 1); assert.equal(cancel.disabled, true);
