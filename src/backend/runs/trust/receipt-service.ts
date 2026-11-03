@@ -1,3 +1,4 @@
+import { authenticateOnboardingRosterExecution } from "../workbooks.js";
 import { createFailureResolutionQuery } from "../queries/failure-resolution.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 
@@ -106,13 +107,24 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
     return descriptor;
   };
 
-  const ensure = (runId: string): EnsureReceiptOutcome => deps.database.withAuthorityTransaction(() => {
+  const ensure = (runId: string): EnsureReceiptOutcome => deps.database.withAuthorityTransaction(repositories => {
     const run = requireTrustRun(deps.runReader, runId);
+    const choice = authenticateOnboardingRosterExecution(repositories, run);
+    const continued = choice === undefined || choice.gate.runId === runId ? [] : [choice.gate];
     if (run.lifecycle.state === "terminal" && run.lifecycle.failureId !== undefined) {
       const failure = store.getFailure(run.lifecycle.failureId) as FailureRecord;
       assertTrustEvidenceIdentity(run, failure, "failure");
     }
-    const outcome = ensureRunEvidenceReceipt(store, descriptorFor(runId), runId);
+    const outcome = ensureRunEvidenceReceipt({ ...store,
+      listGateResultsByRun: id => {
+        if (id !== runId) throw new Error("TRUST_RECEIPT_GATE_OWNER_MISMATCH");
+        return repositories.gateResults.listByRun(id);
+      },
+      listContinuedGateResultsByRun: id => {
+        if (id !== runId) throw new Error("TRUST_RECEIPT_GATE_OWNER_MISMATCH");
+        return continued;
+      },
+    }, descriptorFor(runId), runId);
     assertTrustEvidenceIdentity(run, outcome.receipt, "receipt");
     return outcome;
   });

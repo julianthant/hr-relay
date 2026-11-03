@@ -15,8 +15,10 @@ function same(left: unknown, right: unknown): boolean {
 
 function authenticateRunGateResume(repositories: AuthorityRepositories, run: RunRecord, actorId: string): void {
   if (run.envelope.startAt === undefined) return;
-  const gates = repositories.gateResults.listByRun(run.envelope.runId)
-    .filter(gate => gate.expectedVersion < run.version).toSorted((left, right) => right.expectedVersion - left.expectedVersion);
+  const rows = repositories.gateResults.listByRun(run.envelope.runId);
+  if (rows.some(gate => gate.runId !== run.envelope.runId || gate.expectedVersion >= run.version)
+    || new Set(rows.map(gate => gate.nodeId)).size !== rows.length) throw new Error("delegation-gate-resume-authority-unavailable");
+  const gates = rows.toSorted((left, right) => right.expectedVersion - left.expectedVersion);
   const gate = gates[0];
   if (gate === undefined || !("commandId" in gate) || gate.runId !== run.envelope.runId
     || gates[1]?.expectedVersion === gate.expectedVersion || String(gate.nodeId) !== String(gate.gateId) || gate.resolvedBy !== actorId
@@ -25,14 +27,17 @@ function authenticateRunGateResume(repositories: AuthorityRepositories, run: Run
   }
   const command = repositories.commands.get(gate.commandId);
   const audit = repositories.commandAudits.findByCommand(gate.commandId);
-  if (command?.family !== "gate" || command.type !== "resolve-gate" || command.commandId !== gate.commandId
-    || command.source !== "dashboard" || command.requestedBy !== actorId || command.requestedBy !== gate.resolvedBy
+  if (command === undefined || !(command.family === "gate" && command.type === "resolve-gate"
+      || command.family === "run" && command.type === "resolve-workbook-reference-row") || command.commandId !== gate.commandId
+    || command.type === "resolve-gate" && command.source !== "dashboard" || command.requestedBy !== actorId || command.requestedBy !== gate.resolvedBy
     || command.target.runId !== run.envelope.runId || command.target.gateId !== gate.gateId
-    || command.target.expectedVersion !== gate.expectedVersion || !same(command.payload.result, gate.result)
+    || command.target.expectedVersion !== gate.expectedVersion || command.type === "resolve-gate" && !same(command.payload.result, gate.result)
     || audit?.result.state !== "applied" || audit.result.commandId !== command.commandId || !same(audit.request, command)
-    || audit.completedAt !== gate.resolvedAt
+    || audit.completedAt !== gate.resolvedAt || audit.versionChanges.length !== 1
     || !audit.versionChanges.some(change => change.target.family === "gate" && change.target.runId === run.envelope.runId
       && change.target.gateId === gate.gateId && Number(change.before) === Number(gate.expectedVersion) && change.after === gate.expectedVersion + 1)
+    || audit.result.affectedTargets.length !== 2
+    || !audit.result.affectedTargets.some(target => target.family === "gate" && target.runId === run.envelope.runId && target.gateId === gate.gateId)
     || !audit.result.affectedTargets.some(target => target.family === "run" && target.runId === run.envelope.runId)) {
     throw new Error("delegation-gate-resume-authority-unavailable");
   }
@@ -47,6 +52,16 @@ function authenticateRunGateResume(repositories: AuthorityRepositories, run: Run
   validateNativeLifecycleRequest(resumed);
   if (!same(CanonicalTransitionRequestSchema.parse(resumed.request), { commandId: resumeId, runId: run.envelope.runId,
     expectedVersion: gate.expectedVersion, lifecycle: { state: "queued" } })) throw new Error("delegation-gate-resume-authority-unavailable");
+  const resolved = repositories.timelineEvents.get(lifecycleCommandId("timeline-gate-resolved", command.commandId));
+  const event = resolved?.payload.kind === "span" && resolved.payload.event.t === "gate.resolved" ? resolved.payload.event : undefined;
+  if (resolved?.source.kind !== "native" || resolved.eventId !== lifecycleCommandId("timeline-gate-resolved", command.commandId)
+    || resolved.scope.kind !== "run" || resolved.scope.runId !== run.envelope.runId || resolved.workflow !== run.envelope.workflow
+    || resolved.occurredAt !== gate.resolvedAt || resolved.recordedAt !== gate.resolvedAt || event === undefined
+    || event.runId !== run.envelope.runId || event.workflow !== run.envelope.workflow || event.traceId !== run.envelope.traceId
+    || event.spanPath !== run.envelope.traceId || event.attempt > run.envelope.attempt || event.gate !== gate.gateId || event.ts !== gate.resolvedAt
+    || event.resultHash !== sha256Hex(`hrauto:gate-resolved-span:v1\0${canonicalJsonStringify(gate.result)}`)) {
+    throw new Error("delegation-gate-resume-authority-unavailable");
+  }
   const parked = repositories.lifecycleJournal.findGatePark(run.envelope.runId, gate.gateId, gate.expectedVersion);
   if (parked === undefined) throw new Error("delegation-gate-resume-authority-unavailable");
   const parkedAudit = repositories.lifecycleJournal.findAuditByCommand(parked.commandId);

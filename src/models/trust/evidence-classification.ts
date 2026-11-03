@@ -386,8 +386,8 @@ function onboardingPrivateLeaves(scope: EvidenceValueScope, ...paths: readonly s
 
 function onboardingRosterLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [
-    ...onboardingPrivateLeaves(scope, `${prefix}workbookId`, `${prefix}snapshotId`, `${prefix}rowKey.email`),
-    ...open(scope, `${prefix}workbookType`, `${prefix}runId`, `${prefix}capturedAt`),
+    ...onboardingPrivateLeaves(scope, `${prefix}workbookId`, `${prefix}sheetId`, `${prefix}rowId`, `${prefix}rowKey.email`),
+    ...open(scope, `${prefix}workbookType`, `${prefix}referenceDigest`, `${prefix}workbookVersion`, `${prefix}capturedAt`),
   ];
 }
 
@@ -523,10 +523,15 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...ocrPrivateLeaves(gateResult("ocr", "approve-records"), "snapshotId", "sourceRunId", "digest"),
   ...open(gateResult("ocr", "approve-records"), "revision"),
   ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-i9-profile-creation"].flatMap(id => [
-    ...open(workflowInput(id), "mode", "configuredJobEndDate"),
-    ...onboardingPrivateLeaves(workflowInput(id), "email", "postalCodeOverride", "roster.references.livedName",
-      ...["legalName", "livedName"].flatMap(name => ["firstName", "lastName", "middleName"].map(part => `roster.references.${name}.${part}`))),
+    ...open(workflowInput(id), "mode", "configuredJobEndDate", "roster.state", "roster.reason"),
+    ...onboardingPrivateLeaves(workflowInput(id), "email", "postalCodeOverride", "roster.row.references.livedName",
+      ...["legalName", "livedName"].flatMap(name => ["firstName", "lastName", "middleName"].map(part => `roster.row.references.${name}.${part}`))),
     ...onboardingRosterLeaves(workflowInput(id), "roster.binding."),
+    ...onboardingRosterLeaves(workflowInput(id), "roster.row.binding."),
+    ...open(gateResult(id, "roster-choice"), "decision"),
+    ...onboardingRosterLeaves(gateResult(id, "roster-choice"), "row.binding."),
+    ...onboardingPrivateLeaves(gateResult(id, "roster-choice"), "row.references.livedName",
+      ...["legalName", "livedName"].flatMap(name => ["firstName", "lastName", "middleName"].map(part => `row.references.${name}.${part}`))),
   ]),
   ...[taskOutput("workflow:onboarding/read-hire-plan"), workflowResult("onboarding-crm-data")].flatMap(scope => onboardingPlanLeaves(scope)),
   ...[taskOutput("workflow:onboarding/match-hire-subject"), workflowResult("onboarding-ucpath-search")].flatMap(scope => onboardingSubjectLeaves(scope)),
@@ -891,7 +896,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
 
   ...open(workflowResult("wiring-projection"), "done"),
   { scope: workflowInput("wiring-projection"), path: "name", classification: "direct-identifier", transform: "drop" },
-  ...["archive.fileName", "archive.artifact.id"].map(path => ({
+  ...["archive.fileName", "archive.files", "archive.artifact.id"].map(path => ({
     scope: taskOutput("workflow:wiring-projection/read-archive"), path, classification: "direct-identifier", transform: "drop",
   })),
   ...open(taskOutput("workflow:wiring-projection/read-archive"), "archive.artifact.sha256", "archive.artifact.bytes", "archive.artifact.mediaType"),

@@ -1,3 +1,4 @@
+import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
 import { planRunRecovery } from "../start/recovery-plan.js";
 import { OcrReviewRefusedError, readOcrReviewAuthority, readOcrSnapshotsAuthority, reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
 import { OcrApprovedSnapshotSchema, ocrSnapshotDigest } from "../../../models/ocr/review.js";
@@ -101,6 +102,7 @@ const PHASE1_ACTIVE = {
     "recheck-write",
     "resolve-write-absent",
     "resolve-workbook-row",
+    "resolve-workbook-reference-row",
   ],
   gate: ["resolve-gate"],
 
@@ -278,7 +280,10 @@ export interface RunConfigIdentity {
 }
 
 export interface CommandKernelDependencies {
-  readonly workbookRows?: Readonly<{ resolve(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-row" }>): unknown }>;
+  readonly workbookRows?: Readonly<{
+    resolve(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-row" }>): unknown;
+    resolveReference?(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>, capturedAt: string): SchemaBoundCanonicalValue;
+  }>;
   readonly preflight?: PreflightAdmission;
   readonly applicationQuitAvailable?: boolean;
   readonly authority: CommandAuthority;
@@ -1567,6 +1572,7 @@ function executeResolveGate(
   repositories: AuthorityRepositories,
   request: Extract<CommandRequest, { family: "gate" }>,
   now: string,
+  source: "operator" | "workbook-reference",
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
   if (current.version !== request.target.expectedVersion) {
@@ -1600,6 +1606,11 @@ function executeResolveGate(
       `run ${request.target.runId} is parked on gate ${request.target.gateId}, which ${descriptor.id} does not declare; `
       + "the stored park is inconsistent with the descriptor",
     );
+  }
+  const declaration = findGateDecision(descriptor.id, request.target.gateId);
+  if ((declaration !== undefined && declaration.resolution.source !== source)
+    || (declaration === undefined && source !== "operator")) {
+    reject(request, "policy-refused", "This gate must be resolved through its declared evidence source.");
   }
   if (node.resolvedBy !== "operator") {
     reject(
@@ -1822,7 +1833,13 @@ function verifyGateEvidenceCurrent(
   const declaration = findGateDecision(descriptor.id, request.target.gateId);
   if (declaration?.boundEvidencePath !== undefined) {
     const submitted = valueAtPath(request.payload.result.value, declaration.boundEvidencePath);
-    const currentEvidence = gate.dependsOn.flatMap((nodeId) => {
+    const policy = declaration.resolution;
+    const boundInput = policy.source === "workbook-reference"
+      && valueAtPath(scope.input, policy.inputCondition.path) === policy.inputCondition.equals
+      ? valueAtPath(scope.input, policy.boundInputPath) : undefined;
+    const currentEvidence = policy.source === "workbook-reference"
+      ? (boundInput === undefined ? [] : [{ nodeId: gate.id, value: boundInput }])
+      : gate.dependsOn.flatMap((nodeId) => {
       const checkpoint = scope.checkpoints.get(String(nodeId))?.record;
       const value = checkpoint === undefined ? undefined : valueAtPath(checkpoint.output.value, declaration.boundEvidencePath!);
       return value === undefined ? [] : [{ nodeId: String(nodeId), value }];
@@ -2478,7 +2495,7 @@ function dispatchActive(
         { target: runTarget(request.target.runId), before: current.run.version, after: updated.version }]);
     }
     case "gate":
-      return executeResolveGate(dependencies, repositories, request, now);
+      return executeResolveGate(dependencies, repositories, request, now, "operator");
     case "run": {
       switch (request.type) {
         case "pause":
@@ -2501,6 +2518,15 @@ function dispatchActive(
         case "delete": return executeDelete(dependencies, repositories, request, now);
         case "bump": return executeBump(dependencies, repositories, request, now);
         case "rename": return executePresentation(dependencies, repositories, request, now);
+        case "resolve-workbook-reference-row": {
+          if (dependencies.workbookRows?.resolveReference === undefined) return reject(request, "capability-unavailable", "Workbook reference row choices are unavailable.");
+          const result = dependencies.workbookRows.resolveReference(repositories, request, now);
+          return executeResolveGate(dependencies, repositories, {
+            ...request, family: "gate", type: "resolve-gate",
+            target: { runId: request.target.runId, expectedVersion: request.target.expectedVersion, gateId: request.target.gateId },
+            payload: { result },
+          }, now, "workbook-reference");
+        }
         case "resolve-workbook-row": {
           requireRun(repositories, request, request.target.runId);
           if (dependencies.workbookRows === undefined) return reject(request, "capability-unavailable", "Workbook row choices are unavailable.");

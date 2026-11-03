@@ -39,8 +39,8 @@ export const OnboardingReadHirePlan = defineTaskContract({
   example: {
     recordId: "fixture-hire", postalCodeOverride: null, jobEndDateSource: "crm", ssnState: "absent",
     roster: {
-      workbookType: "onboarding-roster", workbookId: "fixture-onboarding-roster", snapshotId: "fixture-roster-snapshot",
-      runId: "aaaaaaaa-0001-4000-8000-000100000000", capturedAt: "2026-09-01T18:00:00.000Z",
+      workbookType: "onboarding-roster", workbookId: "fixture-onboarding-roster", referenceDigest: "a".repeat(64),
+      workbookVersion: 1, sheetId: "fixture-people", rowId: "fixture-hire", capturedAt: "2026-09-01T18:00:00.000Z",
       rowKey: { email: "hire@example.test" },
     },
     employee: {

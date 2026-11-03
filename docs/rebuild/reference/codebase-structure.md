@@ -15,7 +15,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
 | `fast-duo/` | Dashboard-owned Chromium enrollment and backend-signed workflow login runtimes. |
-| `scripts/build/` | Workflow registry and manifest generation and checks; `generated-outputs.ts` owns merge-train regeneration paths and commands, and `merge-generated-conflicts.ts` resolves generated conflicts in temporary worktrees. |
+| `scripts/build/` | Workflow registry generation, manifest-only source-tool preparation and independent checks; `generated-outputs.ts` owns merge-train regeneration paths and commands, and `merge-generated-conflicts.ts` resolves generated conflicts in temporary worktrees. |
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
@@ -28,7 +28,11 @@ This map names the current source, test, and documentation owners. Relay runs lo
 
 `npm run build:registries` reads workflow indexes and generates `src/workflows/generated-descriptors.ts`
 and `src/backend/app/registries/generated-{workflow-modules,workflow-stores,step-proof-modules}.ts`.
-`npm run build:manifest` runs that generator, then generates `src/workflow-kit/validation/generated-build-manifest.ts`.
+`npm run build:manifest` runs that generator, then prepares the ignored
+`src/workflow-kit/validation/generated-build-manifest.ts`. `build:manifest:prepare` prepares only
+the manifest; source-tool configs and package prehooks call it before graph loading. Read-only
+`build:manifest:check` checks registry freshness before manifest bytes. [Guards and tests](guards-and-tests.md#build-manifest-preparation)
+owns preparation boundaries, watcher restart requirements and the future packaging contract.
 `npm run stores:catalog` generates the catalog section in `docs/rebuild/reference/stores.md`.
 `npm run roadmap` generates the roadmap site. Each command has a corresponding `:check` command.
 `npm run web:build` produces the dashboard bundle in `dist/`.
@@ -116,7 +120,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/workflows/person-lookup/result.ts` | Person Lookup terminal result schema shared by its definition, retained CRM proof and OCR outcome fold. |
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. `person-preferences.ts` owns the strict person appearance/shell values and neutral defaults; snapshot preference fingerprints are independent of execution config fingerprints. |
 | `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |
-| `src/models/workflow/build-manifest.ts` | Pure build-manifest path, schemas, types and parser shared by generation and runtime validation. `workflow-kit/validation/build-manifest.ts` owns the eagerly validated checked-in manifest and fingerprint resolvers. |
+| `src/models/workflow/build-manifest.ts` | Pure build-manifest path, schemas, types and parser shared by generation and runtime validation. `workflow-kit/validation/build-manifest.ts` owns the eagerly validated prepared static manifest and fingerprint resolvers. |
 | `src/models/events/` | Timeline, confirmed action, declared step result, and confirmation-proof schemas. |
 | `src/models/trust/` | Failure, diagnostic, receipt, and scenario schemas. |
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |
@@ -153,13 +157,13 @@ and `ocr-page/steps/read-page/step.ts` and enter the generated step-proof invent
 Its `index.ts` derives four retained proofs from step definitions: CRM data, UCPath duplicate search,
 delegated I-9 search, and the I-9 profile-creation plan. Each step owns its group, typed wiring,
 result and proof recipe; `workflow.ts` composes their build results. Thin system calls use `reuseTask` in the step modules; `tasks/` holds one implementation per pure task ID. The I-9 search step owns child input and item-ID bindings;
-pure validation and profile decisions live in `src/rules/onboarding/`. The I-9 contracts live in
+pure validation and profile decisions live in `src/rules/onboarding/`. `roster.ts` maps exact typed reference fields into retained legal and lived names; `src/backend/runs/workbooks.ts` owns its revalidated read-choice gate evidence. The I-9 contracts live in
 `src/models/workflows/onboarding/read-i9-lookup.ts` and `read-i9-profile-plan.ts`, matching their task IDs for exact Explorer source links. Tests compose the definition
 and proofs through the production registries. Legal/lived names
 arrive through the declared run-start roster snapshot input. I-9 profile creation and UCPath hire
 submission remain unimplemented writes; roster access remains a shared Spreadsheets dependency.
 
-`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Each UCPath call has a typed workflow-owned task call under `tasks/`; all three timeline groups have retained proofs under `steps/<key>/step.ts` using the same typed authors. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. The shared task creates a new Spreadsheets-library workbook per run. Generic captured-reference writes require an explicit planning declaration; current workflows declare none. SharePoint imports remain unexposed.
+`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Each UCPath call has a typed workflow-owned task call under `tasks/`; all three timeline groups have retained proofs under `steps/<key>/step.ts` using the same typed authors. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. The shared task creates a new Spreadsheets-library workbook per run. Captured-reference writes require an explicit planning declaration. Onboarding declares its roster for read-only name binding and row choice; it issues no workbook patches. SharePoint imports remain unexposed.
 `src/workflows/i9-lookup/workflow.ts` is child-only; Onboarding declares its parent edge in the registered read-only definition. It uses
 the I-9 system store, then retains its typed result through `tasks/read-result.ts` in the workflow
 store. Its one `lookup` timeline checkpoint groups both tasks. The registered harness at
