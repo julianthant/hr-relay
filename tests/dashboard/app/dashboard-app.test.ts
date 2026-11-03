@@ -582,6 +582,25 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
     stale: async (day: DashboardDayWire_m2) => { await act_m2(async () => publish(streams.at(-1)!, { type: 'snapshot', topic: 'dashboard-day', cursor: day.snapshotCursor, payload: day })); await settle(); },
   };
 }
+it_m2("renders an authenticated child workflow without a public launch source", async () => {
+  const parent = FIXTURE_DAY_WIRE_m2.queueSurfaces.find(row => row.surfaceKind === "operation");
+  assert_m2.ok(parent?.surfaceKind === "operation");
+  const member = FIXTURE_DAY_WIRE_m2.queueSurfaces.find(row => row.runId === parent.memberRunIds[0]);
+  assert_m2.ok(member);
+  const rows = [parent, { ...member, workflowId: "ocr-page" }];
+  const day = DashboardDayWireSchema_m2.parse({ ...FIXTURE_DAY_WIRE_m2, snapshotCursor: "pc:201",
+    queueSurfaces: rows, attemptHistory: undefined });
+  const h = await mount();
+  await h.deliver(day);
+  assert_m2.ok(h.host.textContent?.includes(parent.title));
+  assert_m2.ok(h.host.textContent?.includes(member.title));
+  const memberLine = h.host.querySelector(`[data-demo-row-id="${member.runId}"]`);
+  assert_m2.ok(memberLine instanceof HTMLElement);
+  await act_m2(async () => memberLine.click());
+  await settle();
+  assert_m2.ok(h.host.querySelector(`[data-demo-row-id="${parent.runId}"]`));
+  assert_m2.ok(h.host.querySelector(`[data-demo-row-id="${member.runId}"]`));
+});
 describe_m2("dispatchBulk's rejection arm (the selection band's bulk post)", () => {
   it_m2("preserves uncertainty from a post-dispatch throw", async () => {
     const bytes: string[] = [];
@@ -607,7 +626,7 @@ describe_m2("dispatchBulk's rejection arm (the selection band's bulk post)", () 
       const [pending, setPending] = useState<PendingBulkCommand | null>(null);
       const [recoveryKey, setRecoveryKey] = useState<string | null>(null);
       const [, update] = useState(0);
-      const candidates = FIXTURE_DAY_WIRE_m2.queueSurfaces.filter(row => row.lineage.state === "root").map(row => ({ runId: row.runId, title: row.title, actions: row.actions }));
+      const candidates = FIXTURE_DAY_WIRE_m2.queueSurfaces.filter(row => row.parent === null).map(row => ({ runId: row.runId, title: row.title, actions: row.actions }));
       const plan = planBulkVerb(candidates, "cancel", candidates.map(row => row.runId));
       const options: CommandExecutionOptions = { scope: binding.scope, readback: (request, reply) => verifyShellCommandEffect(client, FIXTURE_DAY_WIRE_m2.day, request, reply),
         publish: outcome => { published.push(outcome); binding.feedback(outcome); update(value => value + 1); } };

@@ -1,3 +1,4 @@
+import { isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
 import { Hono } from "hono";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -41,7 +42,7 @@ it("reads bounded real month counts and chronological bounds without whole-histo
     assert.equal(calendar.lastDay, "2026-09-08");
     const wire = f.projection.buildDashboardDayWire("2026-08-03");
     assert.deepEqual(calendar.monthCounts, wire.monthCounts);
-    assert.equal(wire.queueSurfaces.filter(row => row.surfaceKind !== "member").length, 2);
+    assert.equal(wire.queueSurfaces.filter(row => isQueueTopLevel(row)).length, 2);
     assert.equal(wire.statusCounts.reduce((sum, row) => sum + row.count, 0), 2);
     assert.deepEqual(query.read({ month: "2025-02", day: "2025-02-20" }).monthCounts, []);
     assert.equal(query.read({ month: "2026-09", day: "2026-09-08" }).nextDay, "2026-09-09");

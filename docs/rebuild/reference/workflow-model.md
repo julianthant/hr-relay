@@ -438,6 +438,10 @@ gate, or retry boundary between its arms and no independently resumable commit t
 and `visibility`. `src/models/workflow/delegation.ts` owns `planDelegationFanOut`,
 `assertDelegationReplayMatches`, and `joinDelegationOutcomes`.
 
+Authored delegates inherit an omitted visibility from `capabilities.delegationDisplay`, or `inline`
+when the workflow declares no default. An explicit edge visibility wins. The compiler resolves the
+default before planning, so native policy records always contain the full visibility value.
+
 Planning parses child inputs through the target schema before deriving stable child item ids.
 The fingerprint includes edge, target, cardinality, join, policy, and ordered children. Replay
 requires the same plan. A join requires the complete outcome set; zero children remain an explicit

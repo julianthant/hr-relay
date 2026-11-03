@@ -6,8 +6,11 @@ import { z } from "zod";
 import { CalendarQuerySchema, CalendarWireSchema } from "../../../models/dashboard/calendar.js";
 import { QueueStatusSchema } from "../../../models/dashboard/projection.js";
 import { RunStateSchema, type RunRecord } from "../../../models/run/record.js";
+import { RunEnvelopeSchema } from "../../../models/run/envelope.js";
+import { RunIdSchema } from "../../../rules/identity/ids.js";
 import { RunSummarySourceSchema, SummaryQuerySchema, type DelegationWaitState } from "../../../models/run/summary.js";
 import { deriveRunStatus } from "../../../rules/runs/run-status.js";
+import { isQueueTopLevel, type QueueParent } from "../../../models/dashboard/queue-parent.js";
 import { DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
 import { deriveRunSummary } from "../../../rules/runs/summary-derivation.js";
 import { runRecordFromRow } from "./run-record-row.js";
@@ -19,9 +22,12 @@ export const RunSummaryQuerySchema = SummaryQuerySchema.extend({
   { message: "run-summary-range-invalid" });
 export type RunSummaryQuery = z.infer<typeof RunSummaryQuerySchema>;
 
-export function createRunSummaries(database: DatabaseSync, waitState: (run: RunRecord) => DelegationWaitState | null) {
-  const snapshot = (sourceGeneration: number, selected?: readonly RunRecord[], waits?: ReadonlyMap<string, DelegationWaitState | null>) => {
+export function createRunSummaries(database: DatabaseSync, waitState: (run: RunRecord) => DelegationWaitState | null,
+  parentage: (envelopes: readonly RunRecord["envelope"][]) => ReadonlyMap<string, QueueParent | null>) {
+  const snapshot = (sourceGeneration: number, selected?: readonly RunRecord[], waits?: ReadonlyMap<string, DelegationWaitState | null>,
+    parentFacts?: ReadonlyMap<string, QueueParent | null>) => {
     const runs = selected ?? database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
+    const parents = parentFacts ?? parentage(runs.map(run => run.envelope));
     const ids = JSON.stringify(runs.map(run => run.envelope.runId));
     const selectSources = (table: string, key: string, suffix: string) => selected === undefined
       ? database.prepare(`SELECT * FROM ${table} ${suffix}`).all()
@@ -78,7 +84,10 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
     }
     const summaries = runs.map(run => {
       const id = run.envelope.runId, event = events.get(id);
+      const parent = parents.get(id);
+      if (parent === undefined) throw new Error("queue-parent-source-unavailable");
       return { ...deriveRunSummary(RunSummarySourceSchema.parse({ run,
+        parent,
         delegationWait: waits?.has(id) === true ? waits.get(id) : waitState(run),
         cursor: event?.cursor ?? 0,
         startedAt: event?.startedAt ?? ("claimedAt" in run.lifecycle ? run.lifecycle.claimedAt : null),
@@ -106,7 +115,6 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
         if (query.parentRunId === null) add("parent_id IS NULL");
         else add("parent_id=?", query.parentRunId);
       }
-      if (query.topLevel === true) add("json_extract(envelope_json,'$.shape')<>'operation-member'");
       if (query.sessionId !== undefined) add("session_id=?", query.sessionId);
       if (query.state !== undefined) add("state=?", query.state);
       if (query.status === "done" || query.status === "failed") add("state='terminal' AND outcome=?", query.status);
@@ -117,13 +125,23 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
       else if (query.status === "partial") add("0");
       else if (query.status !== undefined) add("state IN ('queued','claimed','validating','running')");
       const selected: RunRecord[] = [], waits = new Map<string, DelegationWaitState | null>();
+      const parents = new Map<string, QueueParent | null>();
       let after = query.after;
       for (;;) {
         const cursorClause = after === undefined ? "" : " AND (local_day>? OR (local_day=? AND id>?))";
         const cursorValues = after === undefined ? [] : [after.localDay, after.localDay, after.runId];
         const candidates = database.prepare(`SELECT * FROM runs INDEXED BY runs_day_idx WHERE ${clauses.join(" AND ")}${cursorClause}
           ORDER BY local_day,id LIMIT ?`).all(...values, ...cursorValues, query.limit + 1).map(runRecordFromRow);
+        if (query.topLevel === true) {
+          const missing = candidates.filter(run => !parents.has(run.envelope.runId));
+          for (const [runId, parent] of parentage(missing.map(run => run.envelope))) parents.set(runId, parent);
+        }
         for (const run of candidates) {
+          if (query.topLevel === true) {
+            const parent = parents.get(run.envelope.runId);
+            if (parent === undefined) throw new Error("queue-parent-source-unavailable");
+            if (!isQueueTopLevel({ parent })) continue;
+          }
           const delegationWait = waitState(run);
           if (query.status !== undefined && deriveRunStatus({ ...run, delegationWait }) !== query.status) continue;
           waits.set(run.envelope.runId, delegationWait);
@@ -135,27 +153,44 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
         const day = z.object({ local_day: z.string() }).parse(database.prepare("SELECT local_day FROM runs WHERE id=?").get(last.envelope.runId));
         after = { localDay: day.local_day, runId: last.envelope.runId };
       }
-      const rows = snapshot(sourceGeneration, selected, waits);
+      const rows = snapshot(sourceGeneration, selected, waits, query.topLevel === true ? parents : undefined);
       const items = rows.slice(0, query.limit), last = items.at(-1);
       return { items, next: rows.length > query.limit && last !== undefined ? { localDay: last.localDay, runId: last.runId } : null };
     },
     calendar(sourceGeneration: number, input: { month: string; day: string; today: string }) {
       const { month, day, today } = CalendarQuerySchema.extend({ today: z.iso.date() }).parse(input);
       if (day > today) throw new Error("calendar-future-day");
-      const dateRow = z.object({ day: z.iso.date() });
-      const boundary = (where: string, order: "ASC" | "DESC", values: string[]) => {
-        const raw = database.prepare(`SELECT local_day AS day FROM runs INDEXED BY runs_day_idx
-          WHERE json_extract(envelope_json,'$.shape')<>'operation-member' AND local_day<=? ${where} ORDER BY local_day ${order} LIMIT 1`).get(today, ...values);
-        return raw === undefined ? null : dateRow.parse(raw).day;
-      };
-      const next = boundary("AND local_day>?", "ASC", [day]);
+      const countRow = z.object({ day: z.iso.date(), count: z.number().int().positive() });
+      const counts = new Map(database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
+        WHERE parent_id IS NULL AND local_day<=? GROUP BY local_day ORDER BY local_day`).all(today)
+        .map(raw => { const row = countRow.parse(raw); return [row.day, row.count] as const; }));
+      const parentRow = z.object({ parentId: RunIdSchema, childRunId: RunIdSchema });
+      let afterParent = "";
+      for (;;) {
+        const parents = database.prepare(`SELECT parent_id AS parentId,min(id) AS childRunId FROM runs INDEXED BY runs_parent_idx
+          WHERE parent_id IS NOT NULL AND parent_id>? AND local_day<=?
+          GROUP BY parent_id ORDER BY parent_id LIMIT ?`).all(afterParent, today, 500).map(raw => parentRow.parse(raw));
+        for (const parent of parents) {
+          const raw = z.object({ envelope_json: z.string() }).parse(database.prepare("SELECT envelope_json FROM runs WHERE id=?").get(parent.childRunId));
+          const envelope = RunEnvelopeSchema.parse(JSON.parse(raw.envelope_json));
+          if (envelope.runId !== parent.childRunId || envelope.parent?.runId !== parent.parentId) throw new Error("queue-parent-source-unavailable");
+          const linked = [...parentage([envelope])].filter(([, fact]) => fact?.runId === parent.parentId && fact.visibility === "linked").map(([runId]) => runId);
+          if (linked.length === 0) continue;
+          const linkedCounts = database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
+            WHERE id IN (SELECT value FROM json_each(?)) AND parent_id=? AND local_day<=? GROUP BY local_day ORDER BY local_day`)
+            .all(JSON.stringify(linked), parent.parentId, today).map(raw => countRow.parse(raw));
+          for (const row of linkedCounts) counts.set(row.day, (counts.get(row.day) ?? 0) + row.count);
+        }
+        const last = parents.at(-1);
+        if (parents.length < 500 || last === undefined) break;
+        afterParent = last.parentId;
+      }
+      const days = [...counts.keys()].sort();
+      const next = days.find(candidate => candidate > day) ?? null;
       return CalendarWireSchema.parse({ month, day, today, authorityGeneration: sourceGeneration,
-        monthCounts: database.prepare(`SELECT local_day AS day,count(*) AS count FROM runs INDEXED BY runs_day_idx
-          WHERE json_extract(envelope_json,'$.shape')<>'operation-member' AND local_day<=? AND local_day>=? AND local_day<=?
-          GROUP BY local_day ORDER BY local_day`).all(today, `${month}-01`, `${month}-31`)
-          .map(row => z.object({ day: z.iso.date(), count: z.number().int().positive() }).parse(row)),
-        firstDay: boundary("", "ASC", []), lastDay: boundary("", "DESC", []),
-        previousDay: boundary("AND local_day<?", "DESC", [day]),
+        monthCounts: days.filter(candidate => candidate.startsWith(`${month}-`)).map(day => ({ day, count: counts.get(day) })),
+        firstDay: days.at(0) ?? null, lastDay: days.at(-1) ?? null,
+        previousDay: days.filter(candidate => candidate < day).at(-1) ?? null,
         nextDay: day < today && (next === null || today < next) ? today : next });
     },
   };
