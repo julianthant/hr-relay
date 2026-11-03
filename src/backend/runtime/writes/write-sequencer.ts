@@ -1978,7 +1978,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
               const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
               return withBrowserActionBinding(context.operationActionBinders?.prepare, () => runImpl({
                 input: prepareInput,
-                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context, "prepare", prepareInput), driver },
+                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context, "prepare", prepareInput), driver,
+                  captureScreenshot: () => captureScreenshot("step") },
               }));
             },
           );
@@ -2546,7 +2547,8 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
             return withBrowserActionBinding(context.operationActionBinders?.prepare, () => runImpl({
               input: prepareInput,
-              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context, "prepare", prepareInput), driver },
+              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context, "prepare", prepareInput), driver,
+                captureScreenshot: () => captureScreenshot() },
             }));
           },
         );

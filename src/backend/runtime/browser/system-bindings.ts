@@ -54,7 +54,7 @@ export const BROWSER_SYSTEM_BINDINGS: BrowserSystemBindings = Object.freeze({
   }),
   i9: Object.freeze({
     system: "i9",
-    createDriver: (page: Page, _clock: Clock, assertCurrent: () => void): BrowserDriver => createI9Driver(assertCurrent, page),
+    createDriver: (page: Page, clock: Clock, assertCurrent: () => void): BrowserDriver => createI9Driver(assertCurrent, page, clock),
     login: i9LoginRecipe,
     verifyAuthenticated: verifyI9AuthenticatedApplication,
   }),

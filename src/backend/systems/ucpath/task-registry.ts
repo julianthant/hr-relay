@@ -1,3 +1,8 @@
+import { readHireFindingsTask } from "./tasks/read-hire-findings.js";
+import { matchHireTask } from "./tasks/match-hire.js";
+import { verifyHireTask } from "./tasks/verify-hire.js";
+import { stageHireTask } from "./tasks/stage-hire.js";
+import { createHireTask } from "./tasks/create-hire.js";
 import { searchPersonMatchTask } from "./tasks/search-person-match.js";
 import { defineBrowserStore } from "../../../workflow-kit/task-registry.js";
 import { ucpathDriver } from "./driver-declaration.js";
@@ -22,6 +27,8 @@ export const ucpathStore = defineBrowserStore(
   ucpathDriver,
   ucpathSession,
   {
+    readHireFindings: readHireFindingsTask, matchHire: matchHireTask, verifyHire: verifyHireTask,
+    stageHire: stageHireTask, createHire: createHireTask,
     searchPersonMatch: searchPersonMatchTask,
     searchPersonOrg: searchPersonOrgTask,
     readJobSummary: readJobSummaryTask,

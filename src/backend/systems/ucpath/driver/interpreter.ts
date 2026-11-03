@@ -1,3 +1,5 @@
+import { createUcpathHireOperations } from "./hire-operation.js";
+import { UCPATH_HIRE_SUBJECT } from "../../../../models/ui/ucpath-hire.js";
 import { searchPersonMatchOnPage } from "./person-match-operation.js";
 import { createUcpathContactOperations } from "./contact-page.js";
 import { UCPATH_CONTACT_DISPLAYED_NAME } from "../../../../models/ui/ucpath-emergency-contact.js";
@@ -77,7 +79,9 @@ export function createUcpathPersonOrgDriver(
   smartHr: UcpathSmartHrOperations = ucpathSmartHrOperations,
 ): UcpathStoreDriver {
   let sweepSubjectEmplId: Eid | undefined;
+  const hire = createUcpathHireOperations(assertCurrent, page, clock);
   return {
+    ...hire,
     ...createUcpathContactOperations(assertCurrent, page, clock),
     system: "ucpath",
     searchPersonMatch: async (input) => {
@@ -163,6 +167,7 @@ export function createUcpathPersonOrgDriver(
       return UiActionProofSchema.parse({ elementId: id, effect: "prepare", performed: true });
     },
     async read(id) {
+      if (id === UCPATH_HIRE_SUBJECT) return hire.readHireSubject();
       if (id === UCPATH_CONTACT_DISPLAYED_NAME) {
         assertCurrent();
         const name = (await page.locator(UCPATH_PENDING_CONTACT_RECIPES.displayedName).textContent())?.trim();

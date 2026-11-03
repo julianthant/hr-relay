@@ -3,12 +3,15 @@ import { I9LookupError, I9LookupInputSchema, I9RecordIdsSchema, I9SignerOutputSc
 import { I9SearchCriteriaSchema, I9SearchOutputSchema, I9SearchRowSchema, type I9Driver, type I9SearchRow } from "../../../../models/ui/i9.js";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { I9_APP_ORIGIN, I9_UI_REGISTRY as ui } from "./ui-registry.js";
+import { createI9CreationOperations } from "./creation-operation.js";
+import { systemClock } from "../../../../rules/time/clock.js";
+import type { Clock } from "../../../../rules/time/clock.js";
 
 const CONTROL_MS = 10_000;
 const NAVIGATION_MS = 20_000;
 const normalize = (value: string): string => value.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US");
 
-export function createI9Driver(assertCurrent: () => void, page: Page): I9Driver {
+export function createI9Driver(assertCurrent: () => void, page: Page, clock: Clock = systemClock): I9Driver {
   const current = async <T>(operation: () => Promise<T>): Promise<T> => {
     assertCurrent();
     try {
@@ -25,6 +28,9 @@ export function createI9Driver(assertCurrent: () => void, page: Page): I9Driver 
   };
 
   const driver: I9Driver = {
+    ...createI9CreationOperations(assertCurrent, page, clock, {
+      searchEmployees: input => driver.searchEmployees(input), readRecordSummary: input => driver.readRecordSummary(input),
+    }),
     system: "i9",
     async searchEmployees(input) {
       const criteria = I9SearchCriteriaSchema.parse(input);

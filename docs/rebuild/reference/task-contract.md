@@ -164,7 +164,7 @@ optional `confirmed`. The remaining members depend on the contract.
 | Task | Additional context |
 | --- | --- |
 | Browser read | Concrete semantic `driver` and `ctx.captureScreenshot(): Promise<void>`. |
-| Browser prepare | Concrete semantic `driver`. |
+| Browser prepare | Concrete semantic `driver` and required run-owned `ctx.captureScreenshot(): Promise<void>` for intermediate browser steps. |
 | Browser commit | `driver` and `mutation`. |
 | Service read with providers | `providers`, narrowed to the declared capability keys. |
 | Read with artifacts | `artifacts: ContentAddressedArtifactWriter`. |

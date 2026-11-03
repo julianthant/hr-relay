@@ -41,6 +41,7 @@ export function createWriteSequencerTestWorld() {
   const disposers: (() => void | Promise<void>)[] = [];
 
   async function harness(options: Readonly<{
+    onCapture?: (boundary: "step" | "before-submit" | "after-submit" | undefined) => Promise<void>;
     captureFailure?: "before-submit" | "after-submit" | "probe" | "prepare" | "verify";
     hooks?: WriteSequencerHooks;
     commitHooks?: AuthorityWriteCommitHooks;
@@ -79,6 +80,7 @@ export function createWriteSequencerTestWorld() {
     const manager = await writeFixtureSessionManager(sessions, registry, clock, duoCeremonyGatesOver(database, clock, new ManualScheduler(clock)), {
       capture: async context => {
         if (context.trigger.kind !== "task-point") return;
+        await options.onCapture?.(context.trigger.boundary);
         if (options.captureFailure !== undefined) world.events.push(`capture:${context.trigger.boundary}`);
         const role = world.events.includes("verify") ? "verify" : world.events.includes("prepare") ? "prepare" : "probe";
         if (context.trigger.boundary === options.captureFailure
