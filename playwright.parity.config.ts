@@ -37,6 +37,7 @@ export default defineConfig({
     headless: true,
     timezoneId: "America/Los_Angeles",
     deviceScaleFactor: 1,
+    screenshot: "only-on-failure",
   },
   reporter: [
     ["list"],

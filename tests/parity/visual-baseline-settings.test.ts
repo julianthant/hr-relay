@@ -215,10 +215,10 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
     const open = (view: Record<string, unknown> = {}, suffix = "") => page.goto(`${server.baseUrl}/?settings=spreadsheets&view=${encodeURIComponent(JSON.stringify(view))}${suffix}`);
     try {
       await open();
-      await expect(page.getByRole("table", { name: "Registered spreadsheets", exact: true }).locator("tbody tr")).toHaveCount(3);
+      await expect(page.getByRole("table", { name: "Your spreadsheets", exact: true }).locator("tbody tr")).toHaveCount(3);
       await capture(page, info, theme, width, "spreadsheet-library");
       await expect(page.getByRole("searchbox", { name: "Find a spreadsheet", exact: true })).toHaveCount(0);
-      const file = page.getByRole("button", { name: "26–27 Student applicants.xlsx", exact: true });
+      const file = page.getByRole("button", { name: "Open 26–27 Student applicants.xlsx", exact: true });
       await file.focus(); await file.press("Enter");
       await expect(page.getByRole("region", { name: "Spreadsheet editor", exact: true })).toBeVisible();
       await capture(page, info, theme, width, "spreadsheet-library-open");
@@ -282,7 +282,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(dialog).toHaveCount(0);
       const failedImport = page.locator('[data-slot="toast"]').filter({ hasText: "couldn’t be imported" });
       await expect(failedImport).toBeVisible();
-      await expect(page.getByRole("table", { name: "Registered spreadsheets", exact: true }).locator("tbody tr")).toHaveCount(3);
+      await expect(page.getByRole("table", { name: "Your spreadsheets", exact: true }).locator("tbody tr")).toHaveCount(3);
       await page.evaluate(() => (window as Window & { restoreSpreadsheetFault?: () => void }).restoreSpreadsheetFault?.());
       await expect(page).not.toHaveURL(/spreadsheetPreviewOutcome/u);
       await failedImport.hover();
@@ -291,7 +291,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await dialog.getByRole("button", { name: /^Import / }).click();
       await expect(page.locator('[data-slot="toast"]').filter({ hasText: "Roster imported" })).toBeVisible();
       await expect(dialog).toHaveCount(0);
-      await expect(page.getByRole("table", { name: "Registered spreadsheets", exact: true }).locator("tbody tr")).toHaveCount(4);
+      await expect(page.getByRole("table", { name: "Your spreadsheets", exact: true }).locator("tbody tr")).toHaveCount(4);
 
       await attachTree(page, info, evidence("spreadsheet-library-coverage", theme, width));
     } finally {
@@ -456,6 +456,10 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       gate.resolve();
       await expect(page.getByText("SPREADSHEET_WORKER_FAILED", { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Import spreadsheet", exact: true })).toBeEnabled();
+      await page.unroute("**/assets/spreadsheet-import-worker-*.js");
+      await page.getByLabel("Open XLSX or CSV", { exact: true }).setInputFiles({ name: "Baseline retry.csv", mimeType: "text/csv", buffer: Buffer.from("Employee ID\n10000001\n") });
+      await expect(page.getByRole("dialog", { name: "Choose spreadsheet columns", exact: true })).toBeVisible();
+      await expect(page.getByText("SPREADSHEET_WORKER_FAILED", { exact: true })).toHaveCount(0);
 
       await attachTree(page, info, evidence("spreadsheet-reading", theme, width));
     } finally { gate.resolve(); await server.close(); }
@@ -530,20 +534,23 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
   });
 }
 
-test("Settings missing parts delay skeletons and retain independent Paths rows", { annotation: [{ type: "required-a11y-evidence", description: "settings-independent-paths.a11y.yml" }] }, async ({ page }, info) => {
+test("Settings missing parts delay skeletons and refuse unobserved Paths locations", { annotation: [{ type: "required-a11y-evidence", description: "settings-independent-paths.a11y.yml" }] }, async ({ page }, info) => {
   const server = await setup(page, PARITY_THEMES[0], 1280);
   const gate = Promise.withResolvers<void>();
   let reached = 0;
   await page.route("**/api/v1/settings/editable", async route => { reached++; await gate.promise; await route.fulfill({ status: 503, json: { state: "error", code: "SETTINGS_INITIAL_READ_UNAVAILABLE", message: "Synthetic read failure", retryable: true } }); });
   try {
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "paths" });
-    await expect(page.getByRole("textbox", { name: "Data path", exact: true })).toHaveAttribute("readonly", "");
-    await expect(page.getByRole("textbox", { name: "Evidence path", exact: true })).toHaveAttribute("readonly", "");
+    await expect(page.getByRole("textbox", { name: "Data path", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Evidence path", exact: true })).toHaveCount(0);
+    await expect(page.getByText("Reading app-data locations…", { exact: true })).toBeVisible();
     await expect(page.getByRole("status", { name: "Loading workflow paths", exact: true }).first()).toBeVisible();
     expect(reached).toBe(1);
     gate.resolve();
     await expect(page.getByText("Couldn’t load your folders", { exact: true })).toBeVisible();
-    await expect(page.getByRole("textbox", { name: "Data path", exact: true })).toHaveAttribute("readonly", "");
+    await expect(page.getByRole("textbox", { name: "Data path", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("textbox", { name: "Evidence path", exact: true })).toHaveCount(0);
+    await expect(page.getByText("App-data locations couldn’t be read.", { exact: true })).toBeVisible();
     await expect(page.locator('.settings-tab-body [data-slot="skeleton"]')).toHaveCount(0);
     await attachTree(page, info, "settings-independent-paths.a11y.yml");
   } finally { gate.resolve(); await server.close(); }
