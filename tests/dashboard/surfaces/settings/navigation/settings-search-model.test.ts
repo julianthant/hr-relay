@@ -43,6 +43,12 @@ describe("Settings field search", () => {
     for (const query of ["ask before submits", "without asking"]) assert.deepEqual(searchSettings(index, query), []);
   });
 
+  it("indexes each appearance control once through its visible destination", () => {
+    assert.deepEqual(searchSettings(index, "theme").map(result => result.target), ["appearance.theme"]);
+    assert.deepEqual(searchSettings(index, "animations").map(result => result.target), ["appearance.animations"]);
+    assert.equal(index.some(result => result.target?.startsWith("preferences.")), false);
+  });
+
   it("never searches or serializes current values, secrets, or source paths", () => {
     const value = "DO_NOT_INDEX_THIS_PRIVATE_VALUE";
     const copy = structuredClone(document);

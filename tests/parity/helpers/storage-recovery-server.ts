@@ -1,6 +1,6 @@
 import { testProcessImport } from "../../support/compiled-process.js";
 import { type OfflineMaintenanceOperation, RuntimeLifetimeLock } from "../../../src/backend/storage/admission/lifetime-lock.js";
-import { createBoundProfileFixture } from '../../support/helpers/admission-fixture.js';
+import { createBoundProfileFixture, signInBoundProfileFixture } from '../../support/helpers/admission-fixture.js';
 import { RuntimeAdmission as CanonicalRuntimeAdmission, acquireRecoveryRuntimeRestore, type RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
 /** Storage-owned test composition: real doctor route; fixture shell/settings/SSE/static responses. */
@@ -50,7 +50,6 @@ export async function storageRecoveryTarget() {
     const { OfflineAuthorityRestoreService } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/offline-restore.ts"))});
     const { profileBrowserClosure } = await import(${JSON.stringify(sourceUrl("src/backend/runtime/browser/profile-browser-closure.ts"))});
     const { createCredentialStore } = await import(${JSON.stringify(sourceUrl("src/backend/storage/configuration/credential-store.ts"))});
-    const { PROTECTED_SETTINGS_SCHEMA_HASH } = await import(${JSON.stringify(sourceUrl("src/models/config/protected-settings.ts"))});
     const { observeRuntimeLockSnapshot } = await import(${JSON.stringify(sourceUrl("src/backend/storage/sqlite/runtime-process-locks.ts"))});
         const { RuntimeLifetimeLock } = await import(${JSON.stringify(sourceUrl('src/backend/storage/admission/lifetime-lock.ts'))});
     const lifetime = await RuntimeLifetimeLock.acquire(Number(process.argv[3]));
@@ -59,11 +58,6 @@ export async function storageRecoveryTarget() {
     const path = join(root, "state.db"), directory = join(root, "backups", "authority"), processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
     const credentials = createCredentialStore({ admission, stateRoot: root });
     const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs: 500, migrationOwner: "parity-native-restore" }, systemClock, undefined, undefined, undefined, credentials);
-    const credentialResult = credentials.apply({commandId: "00000000-0000-4000-8000-000000089750",
-      commandFingerprint: "a".repeat(64), expectedRevision: credentials.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-      writeId: "00000000-0000-4000-8000-000000089751", updatedAt: systemClock.now().toISOString(),
-      entries: {ucpathPassword: {set: "SYNTHETIC_STORAGE_PROOF_NEVER_REAL"}}});
-    if (credentialResult.state !== "applied") throw new Error("synthetic-credential-refused");
     const backup = await new AuthorityBackupService(admission, database, {directory}).request({trigger: "operator", requiredGeneration: database.getMeta().authorityGeneration});
     database.close();
     const manifestPath = join(directory, backup.manifests[0].backupFileName + ".manifest.json");
@@ -73,7 +67,7 @@ export async function storageRecoveryTarget() {
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, {authorityPath: path, suspectDirectory: join(root, "backups", "suspects"),
       processLockRoot, busyTimeoutMs: 500}, async () => {}, undefined,
       {copyFile: copyFileSync, atomicReplace(source, destination) {
-        renameSync(source, destination); copyFileSync(destination, source);
+        renameSync(source, destination);
         const journal = JSON.parse(readFileSync(join(workspace, ".tracker", "control", "journal.json"), "utf8"));
         process.send({root, authorityPath: path, manifestPath, stagedPath: source, operationId: journal.restore.operationId, sourceDatabaseIdentity});
         const wait = new Int32Array(new SharedArrayBuffer(4));
@@ -231,6 +225,8 @@ export async function storageRecoveryTarget() {
     await resumePendingAutomaticRestore(repoRoot, lifetime);
     assert.deepEqual(readFileSync(credentialPath), credentialBytes);
     const machine = CanonicalRuntimeAdmission.acquireMachine(repoRoot, "exclusive", lifetime);
+    held.machine = machine;
+    signInBoundProfileFixture(machine);
     const admission = machine.admitProfile(profileId); held.admission = admission;
     admission.release(); machine.release();
     recoveryCompleted = true;
