@@ -36,6 +36,9 @@ the PR's eligibility and expected head; a moved head is left to its owner. Succe
 secret (fine-grained, this repository, Contents and Pull requests read/write), because pushes made
 with the default token do not start CI.
 
+Use a blob-filtered full-history checkout for the merge train. Keep all commit ancestry and fetch
+historical file contents on demand within the existing five-minute job budget.
+
 Cursor Bugbot reviews every push and only comments. The orchestrator session is the only fixer: it
 watches its open PRs and, on the PR branch, fixes failed CI, real Bugbot findings and PRs labeled
 `merge-conflict` (merging `staging` in, never rebasing). A failure unrelated to the PR's diff is a
@@ -44,16 +47,18 @@ skip or loosen tests, edit workflows, touch HR write paths, or update parity ref
 for screens the PR did not intentionally change; anything that needs those gets `needs-human`. While no orchestrator
 session runs, red PRs wait; nothing red merges. The operator watches only `needs-human`.
 
-CI takes Node from `package.json` engines and caches npm. Tests run on Ubuntu except the
-macOS-only storage and native browser proofs and Desktop parity. Native proofs and the
+CI takes Node from `package.json` engines and caches npm. Run portable suites on Ubuntu for staging
+pull requests. Run platform-native proofs and Desktop parity only on release pull requests into
+`main` and manual dispatches. Keep macOS-only files out of Ubuntu shards. Native proofs and the
 padded-receipt storage upgrade run in separate single-worker invocations, preserving their
 existing deadlines under duration-based assignment. Native integration jobs first verify the
 cached full-Chromium installation by opening a blank page and observing the owned browser process
 exit. This one-time setup has no retries; timed proofs still use fresh profiles and their existing
 deadlines. A full staging run uses two
 Ubuntu unit shards, two architecture shards and fourteen integration shards, plus static and
-privacy, within twenty Ubuntu runners. Native files use all five macOS runners; when parity is
-selected, three macOS runners run parity and two run native files. The release runner starts after
+privacy, within twenty Ubuntu runners. On release PRs and manual dispatches, use all five macOS
+runners for native files when parity is omitted. When parity is selected, use three macOS runners
+for parity and two for native files. The release runner starts after
 the routine suites finish. Windows jobs are not enabled.
 
 `ci.yml` retains per-PR or per-dispatch-branch cancellation, and queues its reusable `ci-checks.yml`
@@ -67,8 +72,9 @@ unit always runs, including after cancellation, and also requires a successful c
 including timing publication. This mandatory gate prevents skipped cancellation summaries from
 allowing an incomplete pipeline to merge. Other cancelled summaries and the merge train may stop.
 
-Ready PRs into `staging` run static, privacy, unit, integration and architecture; PRs into `main`
-add parity and release. Path filters select affected suites. Draft pushes run static, privacy and
+Run static, privacy and affected portable unit, integration and architecture suites for ready PRs
+into `staging`. For PRs into `main`, add selected native proofs, parity and release.
+Path filters select affected suites. Draft pushes run static, privacy and
 affected unit files; becoming ready starts full applicable validation. Explicit dispatches always
 select all routine suites, including parity. Drafts cannot merge. Protected-branch pushes do not
 repeat CI; Markdown-only PRs run static and privacy. A deliberately omitted suite has a successful
