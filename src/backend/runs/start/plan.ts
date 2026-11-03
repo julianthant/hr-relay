@@ -34,8 +34,7 @@ import type { WorkbookLibraryService } from "../../workbooks/workbook-library-se
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import type { z } from "zod";
-import { OnboardingInput } from "../../../models/workflows/onboarding/input.js";
-import { bindOnboardingRoster } from "../../../rules/onboarding/roster.js";
+import { workbookInputBinding } from "../workbooks.js";
 
 
 export interface StartPlannerDeps {
@@ -136,6 +135,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     }
   }
   const planning = workflowPlanning(descriptor);
+  const inputBinding = workbookInputBinding(descriptor.canonicalInput);
   const now = IsoInstantSchema.parse(deps.clock.now().toISOString());
   const ingressSchemaHash = deriveSchemaHash(descriptor.input, "input");
   const canonicalSchemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
@@ -160,9 +160,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     let canonicalInput: unknown;
     try {
       // This is the one and only ingress parse for this raw submission.
-      if (descriptor.id === "onboarding" && rawInput !== null && typeof rawInput === "object" && Object.hasOwn(rawInput, "roster")) {
-        throw new Error("Onboarding roster values are captured by Relay; caller-supplied roster input is invalid");
-      }
+      inputBinding?.assertSubmission(rawInput);
       parsed = planning.parseInput(admittedSubmissions[index].admitted);
     } catch (error) {
       refuse("input-invalid", admittedSubmissions[index].bindings.length > 0 ? "workflow input is invalid" : errorText(error));
@@ -190,15 +188,8 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       }
     }
     try {
-      if (descriptor.id === "onboarding") {
-        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-        const email = OnboardingInput.shape.email.parse(Reflect.get(parsed, "email"));
-        const reference = workbookReferences?.[0];
-        if (reference === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-        canonicalInput = planning.parseCanonicalInput({ ...parsed, roster: bindOnboardingRoster(reference, email, now) });
-      } else {
-        canonicalInput = planning.parseCanonicalInput(parsed);
-      }
+      canonicalInput = planning.parseCanonicalInput(inputBinding === undefined
+        ? parsed : inputBinding.bind(parsed, workbookReferences, now));
     } catch (error) {
       refuse("input-invalid", admittedSubmissions[index].bindings.length > 0 ? "workflow input is invalid" : errorText(error));
       continue;

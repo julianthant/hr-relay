@@ -1,3 +1,4 @@
+import { createRunWorkbookService } from "../../../src/backend/runs/workbooks.js";
 import { sourceBoundHarness } from "../../support/fixtures/integration/source-bound-fixtures.js";
 import { failedSourceReadDescriptor, sourceBoundReadStores } from "../../support/fixtures/source-bound-read-fixtures.js";
 import { randomUUID } from "node:crypto";
@@ -595,6 +596,7 @@ async function createHarness(wrap?: RepositoryWrap): Promise<GuardHarness> {
     configIdentity: database.authority.runtimeConfig.get()!,
     intakeParser: UNWIRED_INTAKE_PARSER,
     intakeProjections: NO_INTAKE_PROJECTIONS,
+    workbookRows: createRunWorkbookService({ database, clock }),
     authority: {
       withAuthorityTransaction: (work) => database.withAuthorityTransaction(
         (repositories) => work(wrap === undefined ? repositories : wrap(repositories)),

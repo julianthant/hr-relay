@@ -196,14 +196,15 @@ async function executionFixture() {
       } },
     });
   });
-  function creationBinding(run: RunRecord) {
+  function creationBinding(original: RunRecord) {
+    const run = f.database.authority.runs.get(original.envelope.runId); assert.ok(run);
     const origin = f.database.authority.lifecycleJournal.findRunOrigin(run.envelope.runId); assert.ok(origin?.operation === "create");
     const request = CanonicalCreateRunRequestSchema.parse(origin.request);
     const session = run.sessionId === undefined ? undefined : f.database.authority.runSessions.get(run.sessionId);
     const plan = session?.origin.kind === "start-plan" ? f.database.authority.startPlans.get(session.origin.startPlanId) : undefined;
     const entry = plan?.planned.find(value => value.itemId === run.envelope.itemId);
     const expectedInput = valueFreeProtectedData(run.input, retainedRunProtectedBindings(run));
-    return { continuation: request.continuation !== undefined, sameMatchKey: request.matchKey === entry?.matchKey, sameSession: request.sessionId === run.sessionId,
+    return { currentInputUnchanged: canonicalJsonStringify(run.input) === canonicalJsonStringify(original.input), continuation: request.continuation !== undefined, sameMatchKey: request.matchKey === entry?.matchKey, sameSession: request.sessionId === run.sessionId,
       sameInput: canonicalJsonStringify(request.input) === canonicalJsonStringify(expectedInput),
       inputParts: Object.keys(request.input).filter(key => canonicalJsonStringify(Reflect.get(request.input, key))
         !== canonicalJsonStringify(Reflect.get(Object(expectedInput), key))),

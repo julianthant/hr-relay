@@ -12,12 +12,32 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { localDatePart, type Clock } from "../../rules/time/clock.js";
 import { WorkbookLibraryError, snapshotWorkbookReference, writeRunWorkbook } from "../workbooks/workbook-library-service.js";
-import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema } from "../../models/workflows/onboarding/input.js";
+import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema, OnboardingInput } from "../../models/workflows/onboarding/input.js";
 import { ONBOARDING_ROSTER_GATE_ID, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterChoiceSchema } from "../../models/workflows/onboarding/roster.js";
 import { bindOnboardingRoster, onboardingRosterRow } from "../../rules/onboarding/roster.js";
 import { deriveGateResultCheckpointFingerprint, type GateResultRecord } from "../../models/workflow/gates.js";
 import { readContinuationGate, validateRunContinuation } from "../storage/sqlite/run-continuation.js";
 import { rejectCommandRequest } from "./commands/command-refusal.js";
+
+const onboardingInputBinding = Object.freeze({
+  assertSubmission(input: unknown) {
+    if (input !== null && typeof input === "object" && Object.hasOwn(input, "roster")) {
+      throw new Error("Onboarding roster values are captured by Relay; caller-supplied roster input is invalid");
+    }
+  },
+  bind(input: unknown, references: readonly SchemaBoundCanonicalValue[] | undefined, capturedAt: string) {
+    if (input === null || typeof input !== "object" || Array.isArray(input)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    const email = OnboardingInput.shape.email.parse(Reflect.get(input, "email"));
+    const reference = references?.[0];
+    if (reference === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    return { ...input, roster: bindOnboardingRoster(reference, email, capturedAt) };
+  },
+});
+const workbookInputBindings: ReadonlyMap<object, typeof onboardingInputBinding> = new Map([[OnboardingCanonicalInput, onboardingInputBinding]]);
+
+export function workbookInputBinding(canonicalInput: object) {
+  return workbookInputBindings.get(canonicalInput);
+}
 
 type Reference = z.infer<typeof RunWorkbookReferenceSchema>;
 type ReferenceCommand = Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>;
@@ -149,7 +169,12 @@ export function authenticateOnboardingRosterExecution(repositories: AuthorityRep
   const { roster } = onboardingReference(run);
   validateRunContinuation(repositories, run.envelope);
   const gate = readContinuationGate(repositories, run.envelope, ONBOARDING_ROSTER_GATE_ID);
-  if (gate === undefined) return;
+  if (gate === undefined) {
+    if (roster.state === "resolve-required" && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done") {
+      throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+    }
+    return;
+  }
   if (roster.state !== "resolve-required") throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   const source = repositories.runs.get(gate.runId);
   if (source === undefined || source.input.workbookReferences === undefined || run.input.workbookReferences === undefined
@@ -157,7 +182,7 @@ export function authenticateOnboardingRosterExecution(repositories: AuthorityRep
     || canonicalJsonStringify(source.input.workbookReferences) !== canonicalJsonStringify(run.input.workbookReferences)) {
     throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   }
-  return authenticateOnboardingRosterChoice(repositories, source, gate);
+  return { row: authenticateOnboardingRosterChoice(repositories, source, gate), gate };
 }
 
 function buildReferenceChoices(repositories: AuthorityRepositories, run: RunRecord) {
@@ -166,8 +191,9 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
   if (roster.state === "resolved") return [];
   const base = { libraryId: binding.workbookId, typeId: binding.workbookType, referenceDigest: reference.digest,
     key: binding.rowKey.email, reason: roster.reason };
-  const row = authenticateOnboardingRosterExecution(repositories, run);
-  if (row !== undefined) {
+  const choice = authenticateOnboardingRosterExecution(repositories, run);
+  if (choice !== undefined) {
+    const { row } = choice;
     const { legalName, livedName } = row.references;
     const values = [
       { fieldId: "email", value: row.binding.rowKey.email },
