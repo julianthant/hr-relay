@@ -101,6 +101,7 @@ describe("bootstrap start-surface block", () => {
       const systemsByStep: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
         "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "crm-dates": ["crm"] },
         separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "job-summary": ["ucpath"], "kronos-timecard": ["new-kronos"], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
+        onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "i9-profile-creation": [] },
       };
       for (const descriptor of WORKFLOW_DESCRIPTORS) {
         expect(served.get(String(descriptor.id)), String(descriptor.id)).toEqual({
@@ -126,8 +127,7 @@ describe("bootstrap start-surface block", () => {
             : { inputRun: descriptor.surfaces.inputRun }),
         });
       }
-      // Both operator workflows carry a typed start door. The absent arm is
-      // exercised by the synthetic descriptor below.
+      // Read-only Onboarding has no launch door while roster capture is pending.
       const doors = [...served.values()].map((start) => start?.inputRun !== undefined);
       expect(doors).toContain(true);
     } finally {

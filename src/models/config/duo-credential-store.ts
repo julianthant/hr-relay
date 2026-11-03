@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const PROFILE_ENROLLMENT_EXTENSION_MODE = "onboarding";
+
 const Base64Schema = z.string().min(4).max(16_384).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u);
 const CredentialIdSchema = z.string().min(1).max(2048).regex(/^[A-Za-z0-9_-]+$/u);
 const TimestampSchema = z.iso.datetime();

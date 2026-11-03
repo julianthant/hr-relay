@@ -11,6 +11,7 @@ import { ASSISTANT_DEFAULT_EFFORT,ASSISTANT_DEFAULT_MODEL,AssistantModelPreferen
 import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
+import { PROFILE_ONBOARDING_BROWSER_DIRECTORY } from "../../../storage/browser-root-contract.js";
 import { assertPrivateProfilePath,createBrowserRoots } from "../../../storage/browser-roots.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
@@ -25,6 +26,7 @@ CancelProfileOnboardingRequestSchema,
 CompleteProfileOnboardingRequestSchema,
 ConfirmProfileOnboardingDuoRequestSchema,
 ProfileLoginRequestSchema,
+PROFILE_ONBOARDING_STATE,
 ProfileOnboardingStateSchema,
 ProfileSignUpRequestSchema,
 PublicProfileStateSchema,
@@ -1142,7 +1144,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     const facts = hostConfigFacts(env);
     let onboardingDuo = input.onboardingDuo;
     if (onboardingDuo === undefined) {
-      const browsers = join(machine.stateRoot, "browsers"), browserRoot = join(browsers, "onboarding");
+      const browsers = join(machine.stateRoot, "browsers"), browserRoot = join(browsers, PROFILE_ONBOARDING_BROWSER_DIRECTORY);
       ensureChildDirectory(machine.stateRoot, browsers, "onboarding browsers", 0o700, 0o700);
       ensureChildDirectory(browsers, browserRoot, "onboarding browsers", 0o700, 0o700);
       onboardingDuo = createProfileOnboardingDuoProvider({ browserRoots: createBrowserRoots(machine), browserRoot, extensionDirectory: join(realpathSync(repoRoot), "fast-duo"),
@@ -1261,7 +1263,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       })();
       if (result.state === "signed-out") return result;
       if (result.state === "cancelling" && result.operationId !== undefined) return { state: "cancelling" as const, operationId: result.operationId };
-      if (result.state === "onboarding") {
+      if (result.state === PROFILE_ONBOARDING_STATE) {
         onboardingSelection = { sessionId: randomUUID(), token: result.token, operationId: result.operationId, profileId: result.profileId };
         const { token: _token, ...state } = result;
         return ProfileOnboardingStateSchema.parse(state);
@@ -1283,7 +1285,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.post("/api/v1/profile/sign-up", async c => {
     const admitted = await admitProfile(true, c.req.raw);
     if (admitted.session !== undefined) c.header("set-cookie", `${cookieName}=${admitted.session.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
-    if (admitted.result.state === "onboarding" && onboardingSelection !== undefined) c.header("set-cookie", `${onboardingCookieName}=${onboardingSelection.sessionId}; HttpOnly; SameSite=Strict; Path=/api/v1/profile`);
+    if (admitted.result.state === PROFILE_ONBOARDING_STATE && onboardingSelection !== undefined) c.header("set-cookie", `${onboardingCookieName}=${onboardingSelection.sessionId}; HttpOnly; SameSite=Strict; Path=/api/v1/profile`);
     return c.json(admitted.result);
   });
   app.post("/api/v1/profile/onboarding/duo/browser", async c => {

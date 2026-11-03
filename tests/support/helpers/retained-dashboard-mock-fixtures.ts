@@ -28,6 +28,7 @@ export function createRetainedDashboardMockFixtures() {
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.ts": [
     "[\"separations\",[\"StringLiteral:\",\"PropertyAssignment:\\\"id\\\"\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:WORKFLOW_PREVIEW_DEFINITIONS\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"id\\\":\\\"separations\\\"\"]",
+    "[\"onboarding\",[\"StringLiteral:\",\"PropertyAssignment:\\\"id\\\"\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:WORKFLOW_PREVIEW_DEFINITIONS\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"id\\\":\\\"onboarding\\\"\"]",
     "[\"person-lookup\",[\"StringLiteral:\",\"PropertyAssignment:\\\"id\\\"\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:WORKFLOW_PREVIEW_DEFINITIONS\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"id\\\":\\\"person-lookup\\\"\"]",
     "[\"i9-lookup\",[\"StringLiteral:\",\"PropertyAssignment:\\\"id\\\"\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:WORKFLOW_PREVIEW_DEFINITIONS\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"id\\\":\\\"i9-lookup\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"PropertyAssignment:\\\"id\\\"\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:WORKFLOW_PREVIEW_DEFINITIONS\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"id\\\":\\\"onbase\\\"\"]",
@@ -41,12 +42,15 @@ export function createRetainedDashboardMockFixtures() {
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"PropertyAssignment:formType\",\"ObjectLiteralExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:initialMockDraft\"],\"id===\\\"onbase\\\"\"]",
     "[\"person-lookup\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"CallExpression:\",\"PropertyAccessExpression:map\",\"CallExpression:\",\"PropertyAccessExpression:filter\",\"CallExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:mockInputEntries\"],\"id===\\\"person-lookup\\\"\"]",
     "[\"person-lookup\",[\"StringLiteral:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"ForOfStatement:\",\"Block:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockDraftInputError\"],\"id===\\\"person-lookup\\\"\"]",
+    "[\"onboarding\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"IfStatement:\",\"Block:\",\"ForOfStatement:\",\"Block:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockDraftInputError\"],\"id===\\\"onboarding\\\"\"]",
     "[\"separations\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"IfStatement:\",\"IfStatement:\",\"Block:\",\"ForOfStatement:\",\"Block:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockDraftInputError\"],\"id===\\\"separations\\\"\"]",
+    "[\"onboarding\",[\"StringLiteral:\",\"ArrayLiteralExpression:\",\"PropertyAccessExpression:includes\",\"CallExpression:\",\"PrefixUnaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"IfStatement:\",\"IfStatement:\",\"IfStatement:\",\"IfStatement:\",\"Block:\",\"ForOfStatement:\",\"Block:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockDraftInputError\"],\"[\\\"onboarding\\\",\\\"separations\\\",\\\"crm-doc-download\\\"]\"]",
     "[\"separations\",[\"StringLiteral:\",\"ArrayLiteralExpression:\",\"PropertyAccessExpression:includes\",\"CallExpression:\",\"PrefixUnaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"IfStatement:\",\"IfStatement:\",\"IfStatement:\",\"IfStatement:\",\"Block:\",\"ForOfStatement:\",\"Block:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockDraftInputError\"],\"[\\\"onboarding\\\",\\\"separations\\\",\\\"crm-doc-download\\\"]\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockDraftInputError\"],\"id===\\\"onbase\\\"\"]",
     "[\"i9-check\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:type\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockOcrReadSteps\"],\"id===\\\"i9-check\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:type\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockOcrReadSteps\"],\"id===\\\"onbase\\\"\"]",
     "[\"person-lookup\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockStepState\"],\"run.workflowId===\\\"person-lookup\\\"\"]",
+    "[\"onboarding\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockStepState\"],\"run.workflowId===\\\"onboarding\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockRunsForDraft\"],\"id===\\\"onbase\\\"\"]",
     "[\"i9-check\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockRunsForDraft\"],\"id===\\\"i9-check\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"PropertyAssignment:formType\",\"ObjectLiteralExpression:\",\"BinaryExpression:\",\"ExpressionStatement:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockRunsForDraft\"],\"id===\\\"onbase\\\"\"]",
@@ -59,6 +63,7 @@ export function createRetainedDashboardMockFixtures() {
     "[\"i9-check\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:resultFields\"],\"run.workflowId===\\\"i9-check\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:resultFields\"],\"run.workflowId===\\\"onbase\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:mockLaunchCount\"],\"id===\\\"onbase\\\"\"]",
+    "[\"onboarding\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ParenthesizedExpression:\",\"SpreadElement:\",\"ArrayLiteralExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:mockConfirmationFacts\"],\"id===\\\"onboarding\\\"\"]",
     "[\"person-lookup\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ParenthesizedExpression:\",\"SpreadElement:\",\"ArrayLiteralExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:mockConfirmationFacts\"],\"id===\\\"person-lookup\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ParenthesizedExpression:\",\"SpreadElement:\",\"ArrayLiteralExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:mockConfirmationFacts\"],\"id===\\\"onbase\\\"\"]"
   ],
@@ -70,7 +75,9 @@ export function createRetainedDashboardMockFixtures() {
   "src/dashboard/surfaces/workflows/mocks/workflow-operation-model.ts": [
     "[\"separations\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"PropertyAssignment:employeeId\",\"ObjectLiteralExpression:\",\"VariableDeclaration:values\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockOperationValue\"],\"run.workflowId!==\\\"separations\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"PropertyAssignment:formType\",\"ObjectLiteralExpression:\",\"VariableDeclaration:values\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockOperationValue\"],\"run.parentWorkflowId===\\\"onbase\\\"\"]",
-    "[\"person-lookup\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockOperations\"],\"run.workflowId===\\\"person-lookup\\\"\"]"
+    "[\"person-lookup\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockOperations\"],\"run.workflowId===\\\"person-lookup\\\"\"]",
+    "[\"onboarding\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockOperations\"],\"run.workflowId===\\\"onboarding\\\"\"]",
+    "[\"onboarding\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:stagesDryRunForm\"],\"run.workflowId===\\\"onboarding\\\"\"]"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-review-model.ts": [
     "[\"i9-check\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:type\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:extractedReviewRecords\"],\"run.workflowId===\\\"i9-check\\\"\"]",
@@ -81,6 +88,9 @@ export function createRetainedDashboardMockFixtures() {
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ParenthesizedExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"CallExpression:\",\"JsxExpression:\",\"JsxAttribute:className\",\"JsxAttributes:\",\"JsxOpeningElement:\",\"JsxElement:\",\"JsxFragment:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"JsxElement:\",\"JsxElement:\",\"JsxFragment:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:WorkflowMockRunForm\"],\"workflowId===\\\"onbase\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"JsxFragment:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"JsxElement:\",\"JsxElement:\",\"JsxFragment:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:WorkflowMockRunForm\"],\"workflowId===\\\"onbase\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxFragment:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"JsxElement:\",\"JsxElement:\",\"JsxFragment:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:WorkflowMockRunForm\"],\"workflowId===\\\"onbase\\\"\"]",
+    "[\"onboarding\",[\"StringLiteral:\",\"JsxAttribute:value\",\"JsxAttributes:\",\"JsxSelfClosingElement:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"JsxElement:\",\"JsxElement:\",\"JsxFragment:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:WorkflowMockRunForm\"],\"value=\\\"onboarding\\\"\"]",
+    "[\"onboarding\",[\"StringLiteral:\",\"PropertyAssignment:value\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"JsxExpression:\",\"JsxAttribute:options\",\"JsxAttributes:\",\"JsxSelfClosingElement:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"JsxElement:\",\"JsxElement:\",\"JsxFragment:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:WorkflowMockRunForm\"],\"value:\\\"onboarding\\\"\"]",
+    "[\"onboarding\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"JsxElement:\",\"JsxElement:\",\"JsxFragment:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:WorkflowMockRunForm\"],\"workflowId===\\\"onboarding\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"JsxExpression:\",\"JsxAttribute:description\",\"JsxAttributes:\",\"JsxOpeningElement:\",\"JsxElement:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"JsxElement:\",\"JsxElement:\",\"JsxFragment:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:WorkflowMockRunForm\"],\"workflowId===\\\"onbase\\\"\"]"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-preview-contracts.ts": [
@@ -97,7 +107,9 @@ export function createRetainedDashboardMockFixtures() {
     "[\"onbase\",[\"StringLiteral:\",\"PropertyAssignment:\\\"system\\\"\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"PropertyAssignment:\\\"contract\\\"\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"PropertyAssignment:nodes\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"VariableDeclaration:WORKFLOW_PREVIEW_GRAPHS\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"system\\\":\\\"onbase\\\"\"]"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-result-model.ts": [
-    "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockFieldValue\"],\"run.workflowId===\\\"onbase\\\"\"]"
+    "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockFieldValue\"],\"run.workflowId===\\\"onbase\\\"\"]",
+    "[\"onboarding\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:id\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockStepNode\"],\"run.workflowId===\\\"onboarding\\\"\"]",
+    "[\"onboarding\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockDetailEntries\"],\"run.workflowId===\\\"onboarding\\\"\"]"
   ]
 };
 
@@ -135,6 +147,7 @@ export function createRetainedDashboardMockFixtures() {
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.ts": [
     "separations",
+    "onboarding",
     "person-lookup",
     "i9-lookup",
     "onbase",
@@ -148,12 +161,15 @@ export function createRetainedDashboardMockFixtures() {
     "onbase",
     "person-lookup",
     "person-lookup",
+    "onboarding",
     "separations",
+    "onboarding",
     "separations",
     "onbase",
     "i9-check",
     "onbase",
     "person-lookup",
+    "onboarding",
     "onbase",
     "i9-check",
     "onbase",
@@ -166,6 +182,7 @@ export function createRetainedDashboardMockFixtures() {
     "i9-check",
     "onbase",
     "onbase",
+    "onboarding",
     "person-lookup",
     "onbase"
   ],
@@ -177,7 +194,9 @@ export function createRetainedDashboardMockFixtures() {
   "src/dashboard/surfaces/workflows/mocks/workflow-operation-model.ts": [
     "separations",
     "onbase",
-    "person-lookup"
+    "person-lookup",
+    "onboarding",
+    "onboarding"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-review-model.ts": [
     "i9-check",
@@ -188,6 +207,9 @@ export function createRetainedDashboardMockFixtures() {
     "onbase",
     "onbase",
     "onbase",
+    "onboarding",
+    "onboarding",
+    "onboarding",
     "onbase"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-preview-contracts.ts": [
@@ -204,7 +226,9 @@ export function createRetainedDashboardMockFixtures() {
     "onbase"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-result-model.ts": [
-    "onbase"
+    "onbase",
+    "onboarding",
+    "onboarding"
   ]
 };
 
