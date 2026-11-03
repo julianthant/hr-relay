@@ -138,7 +138,7 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
   const putLibrarySnapshot = (id: string, versionId: string, workbook: z.infer<typeof WorkbookLibrarySnapshotSchema>["workbook"]) => {
     const snapshotId = JSON.stringify([id, versionId]);
     const snapshot = WorkbookLibrarySnapshotSchema.parse({ id: snapshotId, libraryId: id, workbook });
-    database.prepare('INSERT INTO workbook_library_snapshots(id,workbook_id,payload_json) VALUES(?,?,?)').run(snapshotId, id, canonicalJsonStringify(snapshot));
+    database.prepare('INSERT INTO workbook_library_snapshots(id,workbook_id,payload_json) VALUES(?,?,?)').run(snapshotId, id, JSON.stringify(snapshot));
     return snapshotId;
   };
   const libraryVersion = (id: string, versionId?: string) => {
