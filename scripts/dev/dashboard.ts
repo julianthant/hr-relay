@@ -3,13 +3,13 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import {
   DASHBOARD_LAUNCH_NONCE_ENV,
   DashboardLaunchNonceSchema,
 } from "../../src/backend/transports/http/frontend-owner.js";
 
-const launchNonce = DashboardLaunchNonceSchema.parse(randomBytes(32).toString("hex"));
-const childEnvironment = { ...process.env, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce };
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 interface Managed {
@@ -19,12 +19,19 @@ interface Managed {
 }
 
 export interface DashboardLauncherOptions {
+  readonly mode?: "dashboard" | "backend" | "web";
+  readonly frontendOwnerFile?: string;
   readonly startupTimeoutMs?: number;
   readonly signals?: EventEmitter;
   readonly writeError?: (message: string) => void;
 }
 
 export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise<number> {
+  const mode = options.mode ?? "dashboard";
+  const frontendOwnerFile = options.frontendOwnerFile ?? join(repositoryRoot, "node_modules", ".cache", "relay-dashboard", "frontend-owner");
+  const launchNonce = mode === "web" ? DashboardLaunchNonceSchema.parse(readFileSync(frontendOwnerFile, "utf8"))
+    : DashboardLaunchNonceSchema.parse(randomBytes(32).toString("hex"));
+  const childEnvironment = { ...process.env, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce };
   const signals = options.signals ?? process;
   const writeError = options.writeError ?? ((message: string) => { process.stderr.write(message); });
   const managed: Managed[] = [];
@@ -39,6 +46,14 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     if (!stopping || !managed.every(item => item.closed)) return;
     signals.removeListener("SIGINT", onInterrupt);
     signals.removeListener("SIGTERM", onTerminate);
+    if (mode === "backend" && ready) {
+      try { if (readFileSync(frontendOwnerFile, "utf8") === launchNonce) unlinkSync(frontendOwnerFile); }
+      catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+          writeError("[dashboard] frontend ownership handoff cleanup failed.\n"); result = 1;
+        }
+      }
+    }
     finish(result);
   }
 
@@ -90,18 +105,36 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     stop("SIGTERM", 1);
   }, options.startupTimeoutMs ?? 30_000);
 
-  const backend = launch("bff", ["--import", "tsx", fileURLToPath(new URL("./secure-env-bootstrap.ts", import.meta.url)), "cli", "dashboard"], true);
+  const launchWeb = () => launch("web", [fileURLToPath(new URL("../../node_modules/vite/bin/vite.js", import.meta.url)), "--config", "vite.dashboard.config.ts"]);
+  if (mode === "web") {
+    ready = true;
+    clearTimeout(startupTimer);
+    launchWeb();
+    return done;
+  }
+  const backend = launch("bff", ["--conditions=development", "--import", "tsx", fileURLToPath(new URL("./secure-env-bootstrap.ts", import.meta.url)), "cli", "dashboard"], true);
   backend.on("message", (message: unknown) => {
     if (stopping || ready || message === null || typeof message !== "object"
       || !("type" in message) || message.type !== "hrauto-dashboard-ready") return;
     ready = true;
     clearTimeout(startupTimer);
-    launch("web", [fileURLToPath(new URL("../../node_modules/vite/bin/vite.js", import.meta.url)), "--config", "vite.dashboard.config.ts"]);
+    if (mode === "dashboard") launchWeb();
+    else {
+      try {
+        mkdirSync(dirname(frontendOwnerFile), { recursive: true });
+        const temporary = `${frontendOwnerFile}.${process.pid}.tmp`;
+        writeFileSync(temporary, launchNonce, { flag: "wx", mode: 0o600 });
+        renameSync(temporary, frontendOwnerFile);
+      } catch {
+        writeError("[dashboard] frontend ownership handoff failed.\n");
+        stop("SIGTERM", 1);
+      }
+    }
   });
   return done;
 }
 
 const entryPath = process.argv[1];
 if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url) {
-  process.exitCode = await runDevDashboard();
+  process.exitCode = await runDevDashboard({ mode: process.argv.includes("--backend-only") ? "backend" : process.argv.includes("--web-only") ? "web" : "dashboard" });
 }

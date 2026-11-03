@@ -263,7 +263,8 @@ for (const content of ["clean", "escaped-value", "escaped-key-material", "escape
     const f = await stoppedFixture();
     try {
       const error = new Error("synthetic boot failure"); error.stack = undefined;
-      appendEmergencyFault({ stateRoot: f.profileRoot, build: "synthetic", code: "DATABASE_WRITER_UNAVAILABLE", error, now: f.clock.now() });
+      appendEmergencyFault({ stateRoot: f.profileRoot, build: "synthetic", code: "DATABASE_WRITER_UNAVAILABLE", error, now: f.clock.now(),
+        area: "worker-startup", reason: "database-unavailable" });
       const path = join(f.profileRoot, "logs", "boot.jsonl"), record = z.looseObject({ payload: z.looseObject({ event: z.looseObject({ message: z.string() }) }) }).parse(JSON.parse(readFileSync(path, "utf8")));
       const key = credentialKeyCustody.read(JSON.parse(readFileSync(f.keyPath, "utf8")));
       const secret = content === "escaped-key-material" ? key.key : historicalIncompleteProfileFields.password;

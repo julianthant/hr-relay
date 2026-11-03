@@ -101,6 +101,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       },
     };
     const settingsBefore = settingsAuthoritySnapshot(h, settingsCommandId);
+    const settingsFaultBefore = faultAuthoritySnapshot(h);
 
     const mismatchedSettingsSchema = await h.app.request("/api/v1/commands", {
       method: "POST",
@@ -112,10 +113,12 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(rejection.state, "rejected");
     assert.equal(rejection.code, "schema-mismatch");
     assert.deepEqual(
-      settingsAuthoritySnapshot(h, settingsCommandId),
+      { ...settingsAuthoritySnapshot(h, settingsCommandId), authorityGeneration: settingsBefore.authorityGeneration },
       settingsBefore,
-      "a schema-mismatched settings command must leave file, prepare, current, journal, audit, and generations byte-exactly unchanged",
+      "a schema-mismatched settings command changes only its HTTP diagnostic",
     );
+
+    assertHttpFaultOnly(h, settingsFaultBefore, 1);
 
     const unknownWorkflowPlan = await h.app.request("/api/v1/start-plans", {
       method: "POST",
@@ -393,7 +396,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       "exact replay reuses the byte-exact accepted parent and its original accepted time",
     );
 
-    const snapshot = (): unknown => ({
+    const snapshot = () => ({
       generation: h.database.getMeta().authorityGeneration,
       parent: h.database.authority.commands.getBulk(envelope.bulkCommandId),
       runs: [runA, runB, runC, runD].map((runId) => h.database.authority.runs.get(runId)),
@@ -409,6 +412,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.ok(simultaneous.every((response) => response.payload.state === "vector"));
     assert.ok(simultaneous.every((response) => (response.payload.results as Record<string, unknown>[])[0].replayed === true));
     const identityBefore = snapshot();
+    const identityFaultBefore = faultAuthoritySnapshot(h);
     for (const commandId of [envelope.bulkCommandId, String(results[0].commandId)]) {
       const response = await h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
         body: JSON.stringify({ commandId, family: "run", type: "cancel", target: bulkBody.targets[0] }) });
@@ -419,12 +423,15 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     const bulkIdentityRefusal = await postBulk({ ...bulkBody, bulkCommandId: String(results[0].commandId) });
     assert.equal(bulkIdentityRefusal.payload.state, "refused");
     assert.equal(bulkIdentityRefusal.payload.code, "command-divergent");
-    assert.deepEqual(snapshot(), identityBefore);
+    assert.deepEqual({ ...snapshot(), generation: identityBefore.generation }, identityBefore);
+    assertHttpFaultOnly(h, identityFaultBefore, 3);
     const beforeConcurrent = snapshot();
+    const concurrentFaultBefore = faultAuthoritySnapshot(h);
     const divergentConcurrent = await Promise.all([postBulk(bulkBody), postBulk({ ...bulkBody, reason: "different selection reason" })]);
     assert.equal(divergentConcurrent[0].payload.state, "vector");
     assert.equal(divergentConcurrent[1].payload.state, "refused");
-    assert.deepEqual(snapshot(), beforeConcurrent);
+    assert.deepEqual({ ...snapshot(), generation: beforeConcurrent.generation }, beforeConcurrent);
+    assertHttpFaultOnly(h, concurrentFaultBefore, 3);
     const divergentReplays = [
       { label: "changes operation", body: { ...bulkBody, type: "retry" } },
       { label: "changes mode", body: { ...bulkBody, mode: "all-or-none" } },
@@ -457,11 +464,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     ] as const;
     for (const divergent of divergentReplays) {
       const before = snapshot();
+      const beforeFault = faultAuthoritySnapshot(h);
       const refusal = await postBulk(divergent.body);
       assert.equal(refusal.status, 422, divergent.label);
       assert.equal(refusal.payload.state, "refused", divergent.label);
       assert.equal(refusal.payload.code, "schema-mismatch", divergent.label);
-      assert.deepEqual(snapshot(), before, `${divergent.label} has byte-exact zero child effects`);
+      assert.deepEqual({ ...snapshot(), generation: before.generation }, before, `${divergent.label} has byte-exact zero child effects`);
+      assertHttpFaultOnly(h, beforeFault, 1);
     }
 
     const runG = await startRun("10873704", "1a000000-0000-4000-8000-000000000008");

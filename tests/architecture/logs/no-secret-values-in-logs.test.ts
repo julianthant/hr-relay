@@ -498,6 +498,7 @@ function directDiagnosticSinkKind(
   expression: ts.Expression,
   contextAliases: ReadonlySet<string>,
   sinkContainers: ReadonlySet<string>,
+  debugFactories: ReadonlySet<string>,
 ): DiagnosticSinkKind | undefined {
   if (ts.isIdentifier(expression) && expression.text === "Error") return "all-arguments";
   if (!ts.isPropertyAccessExpression(expression) && !ts.isElementAccessExpression(expression)) {
@@ -508,6 +509,9 @@ function directDiagnosticSinkKind(
     return "all-arguments";
   }
   const receiverName = bindingName(receiver);
+  if (sinkMemberName(expression) === "reportError"
+    || sinkMemberName(expression) === "emit" && (receiverName === "debugEvents"
+      || ts.isCallExpression(receiver) && receiverName !== undefined && debugFactories.has(receiverName))) return "all-arguments";
   if (sinkMemberName(expression) === "fail" && receiverName !== undefined
     && contextAliases.has(receiverName)) return "second-argument";
   return undefined;
@@ -543,6 +547,7 @@ function diagnosticSinkAliases(
   contextAliases: ReadonlySet<string>,
   bindings: readonly AliasBinding[],
   staticText: (expression: ts.Expression) => string | undefined,
+  debugFactories: ReadonlySet<string>,
 ): {
   readonly aliases: ReadonlyMap<string, DiagnosticSinkKind>;
   readonly containers: ReadonlySet<string>;
@@ -633,7 +638,7 @@ function diagnosticSinkAliases(
       : raw;
     if (resolvingExpressions.has(expression)) return undefined;
     const resolving = new Set([...resolvingExpressions, expression]);
-    const direct = directDiagnosticSinkKind(expression, contextAliases, containers)
+    const direct = directDiagnosticSinkKind(expression, contextAliases, containers, debugFactories)
       ?? (ts.isIdentifier(expression) ? aliases.get(expression.text) : undefined);
     if (direct !== undefined) return direct;
     if ((ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression))
@@ -678,6 +683,11 @@ function diagnosticSinkAliases(
     function visit(node: ts.Node): void {
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)
         && node.initializer !== undefined) {
+        if (ts.isCallExpression(node.initializer) && ts.isIdentifier(node.initializer.expression)
+          && debugFactories.has(node.initializer.expression.text) && !containers.has(node.name.text)) {
+          containers.add(node.name.text);
+          changed = true;
+        }
         const sourceName = bindingName(node.initializer);
         if (sourceName !== undefined && containers.has(sourceName)
           && !containers.has(node.name.text)) {
@@ -1024,6 +1034,7 @@ export function findSecretInterpolations(path: string, content: string): readonl
     contextAliases,
     bindings,
     staticExpressionText,
+    importedCanonicalBindings(path, source, "src/backend/logs/debug-events.ts", new Set(["createDebugEventWriter"])),
   );
 
   function report(node: ts.Node, name: string, why: string): void {
@@ -1103,6 +1114,30 @@ function rebuildViolations(): readonly string[] {
 const ALLOWLIST: CountAllowlist = {};
 
 describe("no secret values in logs", () => {
+  it("follows canonical debug writer factories, aliases and destructured emitters", () => {
+    const source = [
+      'import { createDebugEventWriter as make } from "../backend/logs/debug-events.js";',
+      'export function leak(eid: string, password: string) {',
+      '  const writer = make({}); const alias = writer; const { emit } = alias;',
+      '  alias.emit({ correlationId: eid });',
+      '  emit({ message: password });',
+      '  make({}).emit({ message: password });',
+      '}',
+    ].join("\n");
+    assert.equal(findSecretInterpolations("src/core/debug-factory-leak.ts", source).length, 3);
+  });
+  it("rejects credential and person values at debug and client report call sites", () => {
+    const source = [
+      "export function leak(password: string, eid: string, employeeName: string) {",
+      "  debugEvents.emit({ message: password });",
+      "  deps.debugEvents.emit({ correlationId: eid });",
+      "  client.reportError({ message: employeeName });",
+      "}",
+    ].join("\n");
+    assert.equal(findSecretInterpolations("src/core/debug-leak.ts", source).length, 3);
+    assert.deepEqual(findSecretInterpolations("src/core/debug-safe.ts",
+      'debugEvents.emit({ category: "worker", phase: "failed", reason: "worker-failed", correlationId: runId });'), []);
+  });
   it("scans a non-vacuous rebuild tree that actually contains interpolated diagnostics", () => {
     const files = rebuildSources();
     assert.equal(files.length > 0, true, "src resolved zero scannable source files");

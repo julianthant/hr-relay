@@ -19,17 +19,20 @@ it("constructs disconnected OCR without budget or effects and preserves snapshot
   const snapshotId = "00000000-0000-4000-8000-000000000001";
   const fingerprint = sha256Hex(canonicalJsonStringify(config));
   const effects = new Proxy({}, { get() { throw new Error("disconnected OCR touched an effect"); } });
+  const events: unknown[] = [];
   const dependencies = {
     execution: { runId: snapshotId, attempt: 1, nodeId: "extract", taskId: "ocr/extract-form-page" },
     configSnapshotId: snapshotId, configFingerprint: fingerprint,
     configSnapshot: { ...PREFERENCES_SNAPSHOT, configSnapshotId: snapshotId, revision: 1, fingerprint, config, provenance: {}, capturedAt: "2026-10-07T12:00:00Z", capturedBy: "local-operator" },
     adapters: {}, clock: effects, idFactory: effects, deadlineScheduler: effects,
     runSignal: new AbortController().signal,
+    observe: (event: unknown) => events.push(event),
   } as unknown as ProviderClientDependencies;
   const client = createProviderClient("ocr.extract", dependencies);
   assert.deepEqual(await client.call({ schemaHash: fingerprint, value: {} } as never), {
     state: "unavailable", reason: { code: "adapter-unavailable", message: "OCR provider not connected" },
   });
+  assert.deepEqual(events, [{ capability: "ocr.extract", state: "adapter-unavailable" }]);
   assert.throws(() => createProviderClient("ocr.extract", { ...dependencies, configFingerprint: "b".repeat(64) }), /inconsistent config snapshot/u);
 });
 }
