@@ -3,7 +3,7 @@ import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { z } from "zod";
 import { flow } from "../../../../src/workflow-kit/flow.js";
-import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
+import { defineWorkflowDescriptor, workflowDryRunSupport, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { FixtureReadReceipt } from "../../../support/fixtures/descriptor-fixtures.js";
@@ -52,7 +52,7 @@ const resumeDescriptor = defineWorkflowDescriptor({
     .build({ schema: FixtureReadReceipt.output, dependsOn: ["after-second"], derive: ({ outputs }) => outputs["after-second"] }),
 });
 
-async function fixture(descriptor: AnyWorkflowDescriptor = fixtureDescriptor) {
+async function fixture(descriptor: AnyWorkflowDescriptor = fixtureDescriptor, dryRun = true) {
   const profile = await createBoundProfileFixture();
   cleanup.push(async () => await profile.close());
   const clock = manualClock(new Date(NOW));
@@ -76,8 +76,10 @@ async function fixture(descriptor: AnyWorkflowDescriptor = fixtureDescriptor) {
     ids: sequentialIdFactory("b"), planTtlMs: 600_000, configFingerprint: active.configFingerprint,
     configSnapshotId: active.configSnapshotId, plannedBy: "local-operator" });
   const plan = planner.plan({ workflowId: descriptor.id, submissions: [{ eid: "10812345", mode: "write" }],
-    dryRun: true, priority: "bulk", selectedStepKeys: descriptor.timeline.map(step => step.key), browserMode: "headless",
+    dryRun, priority: "bulk", selectedStepKeys: descriptor.timeline.map(step => step.key), browserMode: "headless",
     captureBrowserScreenshots: false });
+  assert.equal(plan.refused.length, 0, JSON.stringify({ refusalCodes: plan.refused.map(entry => entry.code) }));
+  assert.equal(plan.planned.length, 1);
   const result = kernel.execute({ commandId: randomUUID(), requestedAt: NOW, requestedBy: "local-operator",
     source: "dashboard", family: "start", type: "start-run", target: { workflowId: descriptor.id,
       startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
@@ -87,7 +89,8 @@ async function fixture(descriptor: AnyWorkflowDescriptor = fixtureDescriptor) {
 }
 
 async function resumedRoot() {
-  const f = await fixture(resumeDescriptor);
+  assert.deepEqual(workflowDryRunSupport(resumeDescriptor), { state: "unsupported", reason: "no-transaction-node" });
+  const f = await fixture(resumeDescriptor, false);
   const ports = testWorkerPorts(f.database, f.clock, { path: f.profile.path, descriptor: resumeDescriptor, poolIndex: 1 });
   const worker = f.database.authority.workerSlots.list(resumeDescriptor.id).find(row => row.poolIndex === 1); assert.ok(worker);
   const workerId = worker.workerId;
