@@ -133,6 +133,7 @@ export function createProfileOnboarding(input: {
         if (store.readForScope(scope).length !== 0) return unavailable();
         const result = store.enroll({ credentialId: credential.credentialId, scope,
           privateKeyPkcs8: credential.privateKeyPkcs8, publicKeySpki: credential.publicKeySpki,
+          ...(credential.initialSignCount === undefined ? {} : { initialSignCount: credential.initialSignCount }),
           authenticator: { ...(credential.userHandle === undefined ? {} : { userHandle: credential.userHandle }),
             transport: credential.transport, isResidentCredential: credential.isResidentCredential } });
         assertCurrent(); return { revision: result.revision };

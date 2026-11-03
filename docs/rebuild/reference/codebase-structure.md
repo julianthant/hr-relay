@@ -71,7 +71,7 @@ src/
 ### Backend
 
 `storage/maintenance/account-deletion.ts` owns captured local-account erasure and startup continuation.
-`runtime/browser/onboarding-platform-authenticator.ts` selects native or Chromium virtual platform enrollment and exports virtual keys into canonical custody.
+`runtime/browser/duo-platform-authenticator.ts` prepares emulated platform enrollment and login, exporting fresh keys/counters to canonical custody and rehydrating ready keys over private CDP. `runtime/browser/native-browser-focus.ts` activates the exact owned Duo process and captured Relay return target on macOS and Windows.
 
 Paths in this table are relative to `src/backend/`.
 
