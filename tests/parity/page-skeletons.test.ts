@@ -6,6 +6,7 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { fixtureProviderSettings } from "./helpers/fixture-provider-settings.js";
 import { FIXTURE_INTAKE_IDS } from "../support/fixtures/dashboard/fixture-intake.js";
+import { attachShellA11y } from "./helpers/shell-proof.js";
 
 async function bounds(locator: Locator) {
   return locator.evaluateAll(nodes => nodes.map(node => {
@@ -17,7 +18,8 @@ async function bounds(locator: Locator) {
 
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`Settings skeletons keep each page's groups and controls @ ${theme.attribute} ${width}`, async ({ page }, _info) => {
+  const evidence = `settings-skeletons-${theme.attribute}-${width}.a11y.yml`;
+  test(`Settings skeletons keep each page's groups and controls @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidence }] }, async ({ page }, info) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const credentials = fixtureProviderSettings();
     const errors: string[] = [];
@@ -62,6 +64,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         } finally { release(); await page.unroute("**/api/v1/settings/editable"); }
       }
       expect(errors).toEqual([]);
+      await attachShellA11y(page, info, evidence);
     } finally { await server.close(); credentials.close(); }
   });
 

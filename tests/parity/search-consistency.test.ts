@@ -28,10 +28,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       for (const section of ["keyboard", "routes", "spreadsheets"]) {
         await page.goto(`${server.baseUrl}/?settings=${section}&day=${FIXTURE_DAY}`);
         await expect(page.getByRole("searchbox", { name: "Search settings", exact: true })).toBeVisible();
-        await expect(page.locator('.ds-search-field [data-slot="search-field-group"]:visible')).toHaveCount(section === 'spreadsheets' ? 1 : 2);
+        await expect(page.locator('.ds-search-field [data-slot="search-field-group"]:visible')).toHaveCount(2);
         if (section === 'spreadsheets') {
           await expect(page.getByRole('searchbox', { name: 'Find a spreadsheet', exact: true })).toHaveCount(0);
-          await expect(page.getByRole('table', { name: 'Registered spreadsheets', exact: true })).toBeVisible();
+          await expect(page.getByRole('searchbox', { name: 'Search spreadsheets', exact: true })).toHaveCount(1);
+          await expect(page.getByRole('table', { name: 'Your spreadsheets', exact: true })).toBeVisible();
         }
         await expectSearchCorners(page);
         await assertThemeApplied(page, theme);
