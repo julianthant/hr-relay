@@ -40,7 +40,7 @@ function groupPids(group: number): number[] {
 }
 async function waitFor(test: () => boolean, message: string, output: () => string, milliseconds = 20_000) {
   const deadline = systemClock.monotonicMs() + scaledMs(milliseconds);
-  while (!test()) { if (systemClock.monotonicMs() > deadline) throw new Error(`${message}\n${output()}`); await new Promise(resolve => setTimeout(resolve,25)); }
+  while (!test()) { if (systemClock.monotonicMs() > deadline) throw new Error(`${message}\n${output()}`); await new Promise(resolve => setTimeout(resolve,scaledMs(25))); }
 }
 
 it("real ingress, two real workers and Chromium: read-only claims, exact controls, replay, replacement and proven cleanup", async () => {
@@ -142,7 +142,7 @@ it("real ingress, two real workers and Chromium: read-only claims, exact control
     let db = profile.selectedContext(token).database; database = db;
     const baseline = readSettings(db.authority).revision;
     // Real workers inherit product deadlines from settings; stretch them like every other test deadline.
-    const patch = { "daemon.idleRepollMs": { set: 100 }, "browser.headless": { set: true }, "features.duoWebAuthn": { set: false },
+    const patch = { "daemon.idleRepollMs": { set: scaledMs(100) }, "browser.headless": { set: true }, "features.duoWebAuthn": { set: false },
       "timeouts.sessionAcquireMs": { set: scaledMs(60_000) }, "browser.closeProofMs": { set: scaledMs(15_000) } };
     phase = 'settings-request';
     const response = await fetch(`${origin}/api/v1/commands`, { method:"POST", headers:{"content-type":"application/json",origin},
