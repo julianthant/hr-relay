@@ -13,7 +13,8 @@ export const I9LookupInputSchema = z.strictObject({
 export type I9LookupInput = z.output<typeof I9LookupInputSchema>;
 
 export function i9LookupMatchKey(input: I9LookupInput): string {
-  return `i9:${sha256Hex(JSON.stringify([input.lastName.toLowerCase(), input.firstName.toLowerCase(), input.ssn]))}`;
+  const identityDigest = sha256Hex(JSON.stringify([input.lastName.toLowerCase(), input.firstName.toLowerCase(), input.ssn]));
+  return `i9:${identityDigest}`;
 }
 
 export const I9RecordIdsSchema = z.strictObject({

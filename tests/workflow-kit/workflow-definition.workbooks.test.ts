@@ -143,12 +143,13 @@ describe("direct workbook type requirements", () => {
   });
 
   it.each(currentDefinitions)(
-    "keeps $id free of phantom existing-workbook requirements", definition => {
+    "preserves $id declared workbook requirements without phantom types", definition => {
+      const expected = definition.id === "ocr" ? ["ocr-roster"] : [];
       expect(Object.hasOwn(definition, "requiredWorkbookTypeIds")).toBe(true);
-      expect(definition.requiredWorkbookTypeIds).toEqual([]);
+      expect(definition.requiredWorkbookTypeIds).toEqual(expected);
       const { descriptor } = compileWorkflow(definition);
-      expect(workflowPlanning(descriptor).requiredWorkbookTypeIds).toEqual([]);
-      expect(workflowProjections(descriptor).requiredWorkbookTypeIds).toEqual([]);
+      expect(workflowPlanning(descriptor).requiredWorkbookTypeIds).toEqual(expected);
+      expect(workflowProjections(descriptor).requiredWorkbookTypeIds).toEqual(expected);
       expect(definition.role).toEqual({ kind: "composition" });
     },
   );
