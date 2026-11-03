@@ -564,6 +564,7 @@ describe("bounded browser-session acquisition", () => {
   });
 
   it("lets an abandoned acquisition run its OWN proven cleanup when it is cooperative", async () => {
+    const failures: unknown[] = [];
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -584,6 +585,7 @@ describe("bounded browser-session acquisition", () => {
       workflowId: WORKFLOW_ID,
       stores: taskStoreRegistry,
       factory: slowOpen,
+      onFailure: failure => { failures.push(failure); },
       clock,
       scheduler,
       acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
@@ -600,6 +602,7 @@ describe("bounded browser-session acquisition", () => {
 
     release?.();
     for (let tick = 0; tick < 5; tick += 1) await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(failures, [{ system: "ucpath", reason: "abandoned-acquisition-failed" }]);
     // The provider refuses to authenticate under an aborted signal, so
     // `#openAndLogin` proved its own close; nothing is left owned or leaked.
     assert.deepEqual(sessions.activeSystems(), []);

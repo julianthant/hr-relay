@@ -325,6 +325,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       await (await h.app.request(`/api/v1/reports/activity?from=${DAY}&to=${DAY}`)).json(),
     );
     const before = h.database.getMeta();
+    const beforeFault = faultAuthoritySnapshot(h);
     const response = await h.app.request("/api/v1/exports/xlsx", {
       method: "POST",
       headers,
@@ -335,7 +336,8 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(response.status, status);
     assert.equal((await json(response)).code, code);
-    assert.deepEqual(h.database.getMeta(), before);
+    assert.deepEqual(h.database.getMeta(), { ...before, authorityGeneration: Number(before.authorityGeneration) + 1 });
+    assertHttpFaultOnly(h, beforeFault, 1);
   });
 
   it("exports every page of one real signed cross-date search selection as evidenced XLSX", async () => {
@@ -440,5 +442,5 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   });
 });
 
-import { OPERATOR_JSON_HEADERS, activityPeople, currentSeparationsRun, disposeHttpRouteHarness, harness, json, persistCurrentSeparationsEvidence, projectCurrentSeparationsRuns, seedCurrentSeparationsRun } from "../../../../support/helpers/backend/http-route-harness.js";
+import { OPERATOR_JSON_HEADERS, activityPeople, assertHttpFaultOnly, faultAuthoritySnapshot, currentSeparationsRun, disposeHttpRouteHarness, harness, json, persistCurrentSeparationsEvidence, projectCurrentSeparationsRuns, seedCurrentSeparationsRun } from "../../../../support/helpers/backend/http-route-harness.js";
 afterEach(disposeHttpRouteHarness);

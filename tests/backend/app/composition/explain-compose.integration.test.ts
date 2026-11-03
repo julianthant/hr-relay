@@ -5,6 +5,7 @@ import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixture
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
+import { z } from "zod";
 import { mkdtempSync,lstatSync,readFileSync,readdirSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -70,12 +71,21 @@ describe("explain run", () => {
     const admission = profileFixtureStorageAdmission(path);
     const before = readFileSync(path); const inventory = readdirSync(root, { recursive: true, encoding: "utf8" }).sort();
     const sourceBytes = inventory.filter(name => lstatSync(join(root, name)).isFile()).map(name => [name, readFileSync(join(root, name))] as const);
-    assert.match(composeExplainRuntime({ admission, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] }), /nextCursor/u);
+    const output = composeExplainRuntime({ admission, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] });
+    assert.match(output, /nextCursor/u);
     let after = 0; const categories = new Set<string>();
     for (;;) {
       const page = AuthorityDatabase.inspectTimelinePageReadOnly(admission, path, { after, limit: 2 });
       assert.ok(page.records.length <= 2);
-      for (const record of page.records) if (record.payload.kind === "debug") categories.add(record.payload.event.category);
+      const rendered = composeExplainRuntime({ admission, isolation: rebuildRuntimeIsolation,
+        args: ["diagnostics", "--after", String(after), "--limit", "2", "--json"] });
+      const view = z.object({ records: z.array(z.object({ eventId: z.string(),
+        payload: z.object({ kind: z.literal("debug"), event: z.object({ level: z.literal("error") }) }) })) }).parse(JSON.parse(rendered));
+      assert.deepEqual(view.records.map(record => record.eventId), page.records.map(record => record.eventId));
+      for (const record of page.records) if (record.payload.kind === "debug") {
+        categories.add(record.payload.event.category);
+        assert.equal("level" in record.payload.event, false);
+      }
       after = page.nextCursor;
       if (!page.hasMore) break;
     }
@@ -89,11 +99,13 @@ describe("explain run", () => {
 
   it("reads stopped boot faults without a database and refuses unsafe or incomplete spool bytes", () => {
     const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-explain-boot-")); roots.push(root);
-    appendEmergencyFault({ stateRoot: root, build: "fixture", code: "DATABASE_UNAVAILABLE", error: new Error("Bearer SECRET"), now: new Date("2026-08-04T00:11:13.500Z") });
+    appendEmergencyFault({ stateRoot: root, build: "fixture", code: "DATABASE_UNAVAILABLE", error: new Error("Bearer SECRET"), now: new Date("2026-08-04T00:11:13.500Z"),
+      area: "worker-startup", reason: "database-unavailable" });
     const path = join(root, "logs", "boot.jsonl"); const before = readFileSync(path);
     const output = composeExplainRuntime({ admission: RuntimeAdmission.syntheticFixture(join(root, "state.db")), isolation: rebuildRuntimeIsolation,
       args: ["diagnostics", "--boot", "--json"] });
     assert.match(output, /DATABASE_UNAVAILABLE/u); assert.equal(output.includes("SECRET"), false);
+    assert.match(output, /"level": "error"/u);
     assert.deepEqual(readFileSync(path), before); assert.equal(readdirSync(root).includes("state.db"), false);
     writeFileSync(path, "{", { mode: 0o600 }); assert.throws(() => readEmergencyFaults(root), /boot-log-incomplete/u);
     writeFileSync(path, "{\n", { mode: 0o600 }); assert.throws(() => readEmergencyFaults(root), /boot-log-invalid/u);

@@ -1,6 +1,6 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
-import { foreignOriginCases, disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
+import { foreignOriginCases, assertHttpFaultOnly,faultAuthoritySnapshot,disposeHttpRouteHarness, harness, json } from "../../../../support/helpers/backend/http-route-harness.js";
 
 import assert from "node:assert/strict";
 import { UNWIRED_INTAKE_SERVICE } from "../../../../support/fixtures/intake-kernel-seams.js";
@@ -90,13 +90,13 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       bytes[directory] = 0;
       assert.deepEqual(bytes.slice(-22), footer);
     }
-    const generation = h.database.getMeta().authorityGeneration;
+    const beforeFault = faultAuthoritySnapshot(h);
     const response = await h.app.request(`http://localhost/api/v1/intake/files?workflow=${INTAKE_FIXTURE_WORKFLOW_ID}&filename=broken.xlsx`, {
       method: "POST", headers: { host: "localhost", origin: "http://localhost", "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }, body: new Uint8Array(bytes).buffer,
     });
     assert.equal(response.status, 422); assert.equal((await json(response)).code, "INTAKE_UNREADABLE_FILE");
     assert.deepEqual(h.database.authority.intakeSessions.findActiveBySource(createHash("sha256").update(bytes).digest("hex")), []);
-    assert.equal(h.database.getMeta().authorityGeneration, generation);
+    assertHttpFaultOnly(h, beforeFault, 1);
   });
 });
 

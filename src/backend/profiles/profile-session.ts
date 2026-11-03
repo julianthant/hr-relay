@@ -455,6 +455,7 @@ export function createProfileSession(input: {
       AuthorityDatabase.withProfileOnboardingTimeline(admittedProfile(attempt.profileId), clock, repository => {
         const build = z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"))).version;
         createDebugEventWriter({ repository, clock, build }).emit({ category: "duo", phase: "failed", correlationId: attempt.attemptId,
+          area: "profile-onboarding", reason: failure.causeTag,
           code: "PROFILE_ONBOARDING_DUO_FAILED", message: JSON.stringify({ method: attempt.method, ...failure }), pinned: true },
         { kind: "transport", connectionId: attempt.operationId });
       });
