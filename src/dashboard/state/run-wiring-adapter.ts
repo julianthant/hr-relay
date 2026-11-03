@@ -274,10 +274,11 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
   for (const row of rows) {
     if (row.kind !== "note" || row.note.operatorAction?.submit !== true || row.note.operatorAction.kind !== "click"
       || row.note.operatorAction.sessionId === undefined || row.note.operatorAction.state === "started" || row.note.operatorAction.state === "failed" || row.note.operatorAction.state === "not-run") continue;
-    const nodeId = requireNative(row.native).nodeId, sessionId = row.note.operatorAction.sessionId;
+    const { nodeId, attempt } = requireNative(row.native), sessionId = row.note.operatorAction.sessionId;
     const submits = rows.filter(candidate => candidate.kind === "note" && candidate.note.operatorAction?.submit === true
-      && candidate.note.operatorAction.sessionId === sessionId && requireNative(candidate.native).nodeId === nodeId);
-    const captures = screenshotRows.filter(candidate => candidate.sessionId === sessionId && requireNative(candidate.row.native).nodeId === nodeId
+      && candidate.note.operatorAction.kind === "click" && !["started", "failed", "not-run"].includes(candidate.note.operatorAction.state ?? "")
+      && candidate.note.operatorAction.sessionId === sessionId && requireNative(candidate.native).nodeId === nodeId && requireNative(candidate.native).attempt === attempt);
+    const captures = screenshotRows.filter(candidate => candidate.sessionId === sessionId && requireNative(candidate.row.native).nodeId === nodeId && requireNative(candidate.row.native).attempt === attempt
       && candidate.shots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit"));
     const before = captures.filter(capture => capture.shots[0]?.boundary === "before-submit");
     const after = captures.filter(capture => capture.shots[0]?.boundary === "after-submit");
@@ -328,6 +329,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       const boundary = row.note.fields.find(field => field.key === "boundary" && field.kind === "text")?.value;
       const proved = sections.some(section => section.section === "failure" && section.payload.state === "available"
         && section.payload.value.nodeId === requireNative(row.native).nodeId
+        && section.payload.value.attempt === requireNative(row.native).attempt
         && (section.payload.value.writeState === "committed" || section.payload.value.writeState === "verified"));
       if (boundary === "before-submit" || boundary === "after-submit") entry = { ...entry, tone: "danger",
         captureFailure: boundary === "before-submit" ? "pre-submit-failed" : proved ? "post-submit-proved" : "post-submit-unknown" };

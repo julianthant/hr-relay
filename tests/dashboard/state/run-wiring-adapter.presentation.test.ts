@@ -192,7 +192,7 @@ it("pairs exact before/after capture events under the sole declared submit witho
       bundleId: id(600), browserCapture: { ...origin.browserCapture, boundary: "after-submit" } })) },
   ] } })];
   const rows = [...(base.logs.rows ?? []), submit, after];
-  const project = (input = rows) => projectRunLogs({ ...base, sections, logs: NotePageSchema.parse({ ...base.logs, rows: input,
+  const project = (input = rows, detail = base.detail) => projectRunLogs({ ...base, detail, sections, logs: NotePageSchema.parse({ ...base.logs, rows: input,
     notes: input.flatMap(row => row.kind === "note" ? [row.note] : []) }) }, client).steps.flatMap(step => step.entries);
   const entries = project();
   const clicked = entries.find(entry => entry.id === submit.logId); assert.ok(clicked?.kind === "click");
@@ -203,19 +203,30 @@ it("pairs exact before/after capture events under the sole declared submit witho
   const ambiguous = project([...rows, secondSubmit]);
   assert.ok(ambiguous.filter(entry => entry.kind === "click").every(entry => entry.screenshots === undefined));
   assert.equal(ambiguous.filter(entry => entry.kind === "decision" && entry.decision.screenshots).length, 2);
+  const startedSubmit = { ...secondSubmit, note: { ...secondSubmit.note,
+    operatorAction: { ...submit.note.operatorAction, state: "started" as const } } };
+  const completedWithStart = project([...rows, startedSubmit]).find(entry => entry.id === submit.logId);
+  assert.ok(completedWithStart?.kind === "click");
+  assert.equal(completedWithStart.screenshots?.length, 2);
   const missingAfter = project(rows.filter(row => row.logId !== after.logId));
   assert.ok(missingAfter.filter(entry => entry.kind === "click").every(entry => entry.screenshots === undefined));
+  const laterNative = NativeRunEventWireSchema.parse({ ...submit.native, attempt: 2 });
+  const laterSubmit = { ...submit, native: laterNative, note: { ...submit.note, native: laterNative } };
+  const nextAttempt = RunDetailWireSchema.parse({ ...base.detail, header: { ...base.detail.header, attempt: 2 } });
+  const earlierCaptures = project(rows.map(row => row.logId === submit.logId ? laterSubmit : row), nextAttempt);
+  assert.ok(earlierCaptures.filter(entry => entry.kind === "click").every(entry => entry.screenshots === undefined));
+  assert.equal(earlierCaptures.filter(entry => entry.kind === "decision" && entry.decision.screenshots).length, 2);
   assert.equal(missingAfter.filter(entry => entry.kind === "decision" && entry.decision.screenshots).length, 1);
 });
 
 it("renders capture failure from structured boundary facts and preserves independently proved write outcomes", () => {
   const base = snapshot();
   for (const state of ["pre-submit-failed", "post-submit-unknown", "post-submit-proved"] as const) {
-    const note = { native: native(8), noteId: id(108), runId: RUN, sequence: 8, at: AT, level: "warn", message: "Capture unavailable.",
+    const note = { native: native(8), noteId: id(108), runId: RUN, sequence: 8, at: AT, level: "warning", message: "Capture unavailable.",
       fields: [{ key: "code", kind: "text", value: "BROWSER_SCREENSHOT_CAPTURE_FAILED" },
         { key: "boundary", kind: "text", value: state === "pre-submit-failed" ? "before-submit" : "after-submit" }] };
     const failure = RunDetailSectionResponseSchema.parse({ section: "failure", payload: { state: "available", value: {
-      runId: RUN, traceId: TRACE, attempt: 1, workflowId: "person-lookup", nodeId: "searching", failureId: id(900), fingerprint: "a".repeat(64),
+      runId: RUN, traceId: TRACE, attempt: 1, workflowId: "person-lookup", nodeId: "searching", native: native(9), failureId: id(900), fingerprint: "a".repeat(64),
       code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: "Capture unavailable.", transient: false, writeState: "verified",
       subject: { state: "absent", reason: "fixture has no subject" },
       causeChain: [{ code: "BROWSER_SCREENSHOT_CAPTURE_FAILED", summary: "Capture unavailable.", role: "primary", transient: false }],
@@ -227,5 +238,13 @@ it("renders capture failure from structured boundary facts and preserves indepen
     const entry = result.steps.flatMap(step => step.entries).find(entry => entry.id === note.noteId);
     assert.ok(entry?.kind === "note");
     assert.equal(entry.captureFailure, state);
+    if (state === "post-submit-proved" && failure.section === "failure" && failure.payload.state === "available") {
+      const laterFailure = RunDetailSectionResponseSchema.parse({ ...failure, payload: { ...failure.payload, value: { ...failure.payload.value,
+        attempt: 2, native: { ...failure.payload.value.native, attempt: 2 } } } });
+      const detail = RunDetailWireSchema.parse({ ...base.detail, header: { ...base.detail.header, attempt: 2 } });
+      const earlier = projectRunLogs({ ...base, detail, logs, sections: [...base.sections, laterFailure] }, client).steps.flatMap(step => step.entries).find(entry => entry.id === note.noteId);
+      assert.ok(earlier?.kind === "note");
+      assert.equal(earlier.captureFailure, "post-submit-unknown");
+    }
   }
 });
