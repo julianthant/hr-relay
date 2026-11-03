@@ -95,6 +95,7 @@ export function delegationJoinDisposition(plan: Pick<DelegationManifest, "join" 
 export function delegationReadiness(manifest: DelegationManifest, children: readonly Readonly<{
   dependency: DependencyRecord;
   attempt: "original" | "retry";
+  resumed?: boolean;
 }>[], intent: "join" | "cancel"): DelegationReadiness {
   if (children.length !== manifest.children.length) throw new Error("delegation-membership-mismatch");
   for (const [index, entry] of manifest.children.entries()) {
@@ -104,12 +105,13 @@ export function delegationReadiness(manifest: DelegationManifest, children: read
       || dependency.edgeId !== manifest.edgeId || canonicalJsonStringify(dependency.policy) !== canonicalJsonStringify(manifest.policy)) throw new Error("delegation-membership-mismatch");
   }
   if (intent === "cancel" ? manifest.policy.cascadeCancel === "independent" : manifest.join === "none") return { state: "ready" };
+  const failed = children.find(child => child.dependency.state !== "active" && child.dependency.state !== "satisfied");
+  const blocked = failed !== undefined && delegationJoinDisposition(manifest, children.map(child => child.dependency.state === "satisfied" ? "done" : child.dependency.state)) === "blocked";
+  if (intent === "join" && blocked) return { state: "blocked", childRunId: failed.dependency.childRunId, reason: "child-failed" };
   const active = children.find(child => child.dependency.state === "active");
   if (active !== undefined) return { state: "waiting", childRunId: active.dependency.childRunId };
   if (intent === "cancel") return { state: "ready" };
-  const manual = children.find(child => child.attempt === "retry" && manifest.policy.afterChildRetry === "manual-parent-resume");
+  const manual = children.find(child => child.attempt === "retry" && child.resumed !== true && manifest.policy.afterChildRetry === "manual-parent-resume");
   if (manual !== undefined) return { state: "blocked", childRunId: manual.dependency.childRunId, reason: "manual-parent-resume" };
-  const failed = children.find(child => child.dependency.state !== "satisfied");
-  return failed !== undefined && delegationJoinDisposition(manifest, children.map(child => child.dependency.state === "satisfied" ? "done" : child.dependency.state)) === "blocked"
-    ? { state: "blocked", childRunId: failed.dependency.childRunId, reason: "child-failed" } : { state: "ready" };
+  return { state: "ready" };
 }

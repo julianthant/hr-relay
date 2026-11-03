@@ -26,6 +26,7 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
     stateRoot,
     projection,
     authority: {
+      delegationWait: runId => database.authority.dependencies.waitState(runId),
       getRun: (runId) => database.authority.runs.get(runId),
       latestCheckpoint: (workflowId, itemId, nodeId) =>
         database.authority.runCheckpoints.latest(workflowId, itemId, nodeId),

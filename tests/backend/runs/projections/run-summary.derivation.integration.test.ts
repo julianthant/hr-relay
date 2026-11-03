@@ -8,7 +8,7 @@ import { foundationFixture } from "../../../support/helpers/database-foundation/
 
 it("measures enqueue-to-end duration and keeps unknown warnings explicit", () => {
   const run=TERMINAL_SEPARATIONS_RUN;
-  const row=deriveRunSummary({run,result:TERMINAL_SEPARATIONS_RESULT,receipt:null,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[]},1);
+  const row=deriveRunSummary({run,result:TERMINAL_SEPARATIONS_RESULT,receipt:null,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[],delegationWait:null},1);
   assert.equal(row.durationMs,Date.parse(run.lifecycle.state === "terminal" ? run.lifecycle.endedAt : "")-Date.parse(run.envelope.enqueuedAt));
   assert.equal(row.warningCount,null);
   assert.equal(row.person.state,"available");
@@ -17,7 +17,7 @@ it("measures enqueue-to-end duration and keeps unknown warnings explicit", () =>
 
 it("keeps heartbeat-only derivation identity stable and notices presentation changes",async ()=>{
   const f=await foundationFixture();try {
-    const source={run:f.run,result:null,receipt:null,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[]};
+    const source={run:f.run,result:null,receipt:null,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[],delegationWait:null};
     const before=deriveRunSummary(source,1);
     assert.equal(before.durationMs,null);
     if(f.run.lifecycle.state!=="running")throw new Error("fixture-state");
@@ -31,7 +31,7 @@ it("uses the local enqueue day across a UTC boundary without changing the instan
   const f=await foundationFixture(),prior=process.env.TZ;
   try{
     const run=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,enqueuedAt:"2026-09-09T00:30:00.000Z"}});
-    const source={run,result:null,receipt:null,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[]};
+    const source={run,result:null,receipt:null,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[],delegationWait:null};
     process.env.TZ="UTC";assert.equal(deriveRunSummary(source,1).localDay,"2026-09-09");
     process.env.TZ="America/Los_Angeles";assert.equal(deriveRunSummary(source,1).localDay,"2026-09-08");
   }finally{if(prior===undefined)delete process.env.TZ;else process.env.TZ=prior;await f.dispose();}
@@ -40,7 +40,7 @@ it("uses the local enqueue day across a UTC boundary without changing the instan
 import { cleanReceiptOf,receiptWithWarningsOf } from "../../../support/helpers/backend/dashboard-harness.js";
 it("serves retained receipt warnings and distinguishes clean from warned modern receipts",()=>{
   const run=TERMINAL_SEPARATIONS_RUN;
-  const source={run,result:TERMINAL_SEPARATIONS_RESULT,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[]};
+  const source={run,result:TERMINAL_SEPARATIONS_RESULT,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[],delegationWait:null};
   const clean={...cleanReceiptOf({seed:620,workflow:"separations"}),composition:5 as const};
   const warned={...receiptWithWarningsOf({seed:620,workflow:"separations",summaries:["Synthetic warning"]}),composition:5 as const};
   assert.equal(deriveRunSummary({...source,receipt:clean},1).warningCount,0);

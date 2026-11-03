@@ -359,7 +359,7 @@ export interface FlowBuilder<
   parallel<Id extends string, const B extends ParallelBranches>(
     id: Id,
     branches: B,
-    opts: Readonly<{ join: "all" | "all-settled" }>,
+    opts: Readonly<{ join: "all" | "all-settled"; dependsOn?: readonly (keyof S & string)[] }>,
   ): FlowBuilder<
     InputSchema,
     S & { readonly [K in Id]: NodeEntry<ParallelOutput<B>, false, readonly []> },
@@ -588,7 +588,7 @@ function makeBuilder(state: MutableFlowState): unknown {
     parallel(
       id: string,
       branches: readonly { id: string; nodes: readonly string[] }[],
-      opts: { join: "all" | "all-settled" },
+      opts: { join: "all" | "all-settled"; dependsOn?: readonly string[] },
     ): unknown {
       const branchIds = branches.map((branch) => branch.id);
       if (new Set(branchIds).size !== branchIds.length) {
@@ -598,7 +598,7 @@ function makeBuilder(state: MutableFlowState): unknown {
       push({
         kind: "parallel",
         id: nodeId(id),
-        dependsOn: nodeIds([]),
+        dependsOn: nodeIds(opts.dependsOn ?? []),
         branches: Object.freeze(branches.map((branch) =>
           Object.freeze({ id: branch.id, nodes: nodeIds(branch.nodes) }))),
         join: opts.join,

@@ -85,6 +85,20 @@ current item; exact-worker reset, lifecycle and recovery reservations still fenc
 delegation edge stops ancestor cancellation propagation, without bypassing the child's own home-worker
 or profile lifetime.
 
+Parallel child-run leaves enter through one canonical admission transaction. Every declared fan-out
+is durable before the parent releases its execution claim once; the worker retains its home slot.
+The running transition binds the owner; per-leaf admissions bind branch invocations and scope
+evidence, and authenticated continuation receipts bind reused leaves. Each branch retains its manifest, retry history and terminal evidence. The
+executor authenticates the complete release proof after the await. Missing branches, changed
+bindings or an unproved release fail before parent continuation; UNKNOWN writes never redispatch.
+
+A released delegation wait retains its run, attempt, queue position and enqueue time. Dashboard
+reads authenticate the release and derive `running` at its owning step, or `blocked` when an awaited
+descendant holds a `block-parent` edge. Approval stays on the run that owns the gate. Child changes
+refresh every waiting ancestor. A manual retry pauses its parent through the existing pause control;
+Resume binds its native command identity to the exact completed retry receipts before another claim. Delegated Retry uses
+the same checkpoint, transaction and uncertain-write validation as checkpoint recovery.
+
 Worker composition renews its own lease every `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`.
 Heartbeat age never proves death or transfers a claim. Recovery follows actual child exit or
 exclusive startup; workers do not reclaim each other's runs or leases.

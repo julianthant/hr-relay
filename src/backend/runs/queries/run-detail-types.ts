@@ -113,6 +113,7 @@ export interface RunDetailQueryDeps {
   readonly stateRoot: string;
   readonly projection: RunQueueProjection;
   readonly authority: {
+    delegationWait?(runId: string): import("../../../models/run/summary.js").DelegationWaitState | null;
     getRun(runId: string): RunRecord | undefined;
     /** Ref workflow-model's "latest compatible attempt wins" read, for edit values. */
     latestCheckpoint(

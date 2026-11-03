@@ -1,13 +1,13 @@
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
-import { createRunDetailTestWorld } from "../../../support/helpers/backend/run-detail-world.js";
+import { createProfileFixtureSet } from "../../support/helpers/admission-fixture.js";
+import { createRunDetailTestWorld } from "../../support/helpers/backend/run-detail-world.js";
 import assert from "node:assert/strict";
-import { deriveRunStatus, taskStateOf } from "../../../../src/backend/runs/lifecycle/run-status.js";
-import type { RunDetailDescriptorView } from "../../../../src/backend/runs/queries/run-detail.js";
-import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
-import type { SpanOutcomeWire } from "../../../../src/models/events/types.js";
-import { claimEventOf, instantOffsetOf, queuedEventOf, runEndedEventOf, runRecordOf, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../../support/helpers/backend/dashboard-harness.js";
-import { HASH_A } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { deriveRunStatus, taskStateOf } from "../../../src/rules/runs/run-status.js";
+import type { RunDetailDescriptorView } from "../../../src/backend/runs/queries/run-detail.js";
+import { buildRunDetail } from "../../../src/backend/runs/queries/run-detail.js";
+import type { SpanOutcomeWire } from "../../../src/models/events/types.js";
+import { claimEventOf, instantOffsetOf, queuedEventOf, runEndedEventOf, runRecordOf, taskEventsOf, traceOf, uuidOf, type DashboardWorld } from "../../support/helpers/backend/dashboard-harness.js";
+import { HASH_A } from "../../support/fixtures/phase1c-contract-fixtures.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());

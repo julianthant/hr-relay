@@ -160,6 +160,7 @@ export const DelegationTerminalEvidenceSchema = z.strictObject({
     children: z.array(z.strictObject({ run: z.lazy(() => RunRecordSchema), result: z.lazy(() => RunResultRecordSchema),
       cancellation: z.strictObject({ cancelledBy: z.enum(["operator", "parent", "kernel"]), reason: z.string().min(1) }).optional() })),
   });
+export type DelegationTerminalEvidence = z.infer<typeof DelegationTerminalEvidenceSchema>;
 
 /** Exact executor evidence consumed by the factory-owned terminal derive. */
 export const TerminalDependencyEvidenceSchema = z.discriminatedUnion("state", [
