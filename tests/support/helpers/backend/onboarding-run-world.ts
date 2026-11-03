@@ -50,7 +50,7 @@ export function createOnboardingRunWorld() {
   const managers: Awaited<ReturnType<typeof sessionManagerFor>>[] = [];
   const fixtureProfiles = createProfileFixtureSet();
   const world = createCommandKernelTestWorld(fixtureProfiles.create);
-  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire" } = {}) {
+  async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate", options: { dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean } = {}) {
     const h = await world.createHarness(undefined, { descriptors: [descriptor], publishQueued: (run, publication) => {
       assert.ok(publication);
       createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -80,7 +80,10 @@ export function createOnboardingRunWorld() {
       descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, planTtlMs: 600_000,
       workbooks: { snapshot: value => { snapshots++; return library.snapshot(value); } }, configFingerprint: config.configFingerprint,
       configSnapshotId: config.configSnapshotId, plannedBy: "local-operator" });
-    const selection = { entry: 1, typeId: "onboarding-roster" };
+    const selection = { entry: 1, typeId: "onboarding-roster", ...(options.selectedRow ? {
+      libraryId: saved.libraryId, versionId: library.libraryVersion(saved.libraryId).version.id,
+      selectedRow: { sheetId: "people", rowId: "people-person" },
+    } : {}) };
     const request = { workflowId: descriptor.id, submissions: [{ email: key, mode: options.mode ?? "new-hire", configuredJobEndDate: "06/30/2027" }],
       dryRun: options.dryRun ?? false, workbookReferences: [selection] };
     const plan = (value: unknown = request) => {
@@ -133,7 +136,7 @@ export function createOnboardingRunWorld() {
   type ExecutionFault = "gate-missing" | "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
 
   async function executionFixture(corruptAssertedSubject = false, options: {
-    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire";
+    match?: "unique" | "missing" | "duplicate"; dryRun?: boolean; mode?: "new-hire" | "rehire"; selectedRow?: boolean;
     personMatch?: z.output<typeof SearchPersonMatchOutputSchema>;
     hire?: Omit<Parameters<typeof deterministicHireOperations>[0], "now">;
     i9?: Partial<Omit<Parameters<typeof createDeterministicI9Driver>[0], "now">>;

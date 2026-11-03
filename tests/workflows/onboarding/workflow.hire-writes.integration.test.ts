@@ -1,3 +1,4 @@
+import { RunWorkbookReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
 import { I9SignerOutputSchema } from "../../../src/models/systems/i9/read-section2-signer.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
@@ -18,8 +19,9 @@ function terminal(result: Awaited<ReturnType<Awaited<ReturnType<typeof world.exe
 }
 
 describe("public onboarding write execution", () => {
-  it("parks before all writes, then files three fenced receipts and patches only the captured live master", async () => {
-    const h = await world.executionFixture(false, { match: "unique" }), root = h.start();
+  it("starts from the selected saved row, parks before all writes, then files three fenced receipts and patches only the captured live master", async () => {
+    const h = await world.executionFixture(false, { match: "unique", selectedRow: true }), root = h.start();
+    assert.deepEqual(RunWorkbookReferenceSchema.parse(root.input.workbookReferences?.[0].value).request.selectedRow, { sheetId: "people", rowId: "people-person" });
     const review = await h.rawExecution.execute(root, signal());
     assert.equal(review.run?.lifecycle.state, "parked-gate", JSON.stringify(h.database.authority.failures.listByRun(root.envelope.runId)));
     assert.equal(review.run.lifecycle.state === "parked-gate" && review.run.lifecycle.gateId, ONBOARDING_WRITE_REVIEW_GATE);
@@ -43,7 +45,7 @@ describe("public onboarding write execution", () => {
 
   it("skips both I-9 transactions for a reviewed independently confirmed existing employee", async () => {
     const person = { emplId: EidSchema.parse("10800000"), name: "Hire, Fixture" };
-    const h = await world.executionFixture(false, { match: "unique", mode: "rehire", personMatch: { hits: [person], confirmed: [person], dropped: [] } });
+    const h = await world.executionFixture(false, { match: "unique", selectedRow: true, mode: "rehire", personMatch: { hits: [person], confirmed: [person], dropped: [] } });
     const root = h.start();
     const review = await h.rawExecution.execute(root, signal()); assert.equal(review.run?.lifecycle.state, "parked-gate", JSON.stringify(h.database.authority.failures.listByRun(root.envelope.runId)));
     assert.equal(h.approve(root, { decision: "existing-person", emplId: person.emplId }).state, "applied");
@@ -59,7 +61,7 @@ describe("public onboarding write execution", () => {
   });
 
   it("fills the full public preview with labelled samples and no intents, receipts or master writes", async () => {
-    const h = await world.executionFixture(false, { match: "unique", dryRun: true }), root = h.start();
+    const h = await world.executionFixture(false, { match: "unique", selectedRow: true, dryRun: true }), root = h.start();
     const review = await h.rawExecution.execute(root, signal());
     assert.ok(review.run?.lifecycle.state === "parked-gate" && review.run.lifecycle.gateId === ONBOARDING_WRITE_REVIEW_GATE, JSON.stringify(review.run?.lifecycle));
     const children = h.database.authority.runs.listChildren(root.envelope.runId);

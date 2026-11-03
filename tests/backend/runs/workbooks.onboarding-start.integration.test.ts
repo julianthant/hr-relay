@@ -38,7 +38,7 @@ async function fixture(workflow: AnyWorkflowDescriptor = descriptor) {
     columnBindings: ONBOARDING_ROSTER_FIELDS.map((fieldId, index) => ({ id: `${id}-${index}`, sourceColumn: index,
       sourceHeader: fieldId, fieldId, basis: "manual" })),
     rows: [{ id: `${id}-header`, cells: ONBOARDING_ROSTER_FIELDS.map(value => ({ value })) },
-      ...rows.map(([rowId, email, name]) => ({ id: rowId, cells: [email, name, "Hire", "", null, null, null].map(value => ({ value })) }))],
+      ...rows.map(([rowId, email, name]) => ({ id: rowId, cells: [email, name, "Hire", "", null, null, null, null, null, null, null].map(value => ({ value })) }))],
   });
   const saved = library.create({ name: "Selected roster.xlsx", themes: [], hasFormulas: false,
     sheets: [sheet("people", [["first", first, "First"], ["second", second, "Second"], ["upper", first.toUpperCase(), "Upper"]]),
