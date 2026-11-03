@@ -36,7 +36,7 @@ export function workbookReferenceLogs(state: 'unavailable' | 'available' | 'reso
   const f = workbookReferenceChoice();
   const choice = RunWorkbookWritesWireSchema.parse({ runId: f.target.runId, operations: [], referenceChoices: [{ ...f.choice,
     ...(state === 'unavailable' ? { native: { ...f.choice.native, order: 1 }, resolution: { state, code: 'WORKBOOK_ROW_CHOICE_UNAVAILABLE', candidates: [] } }
-      : state === 'resolved' ? { resolution: { state, workbookVersion: f.target.workbookVersion, selected: f.candidates[0] } } : {}) }] }).referenceChoices![0];
+      : state === 'resolved' ? { resolution: { state, workbookVersion: f.target.workbookVersion, resolvedAt: NOW, selected: f.candidates[0] } } : {}) }] }).referenceChoices![0];
   const original = workbookReferenceDetail(choice);
   const category = (key: string) => ({ key, label: key === 'prepare' ? 'Read reference' : 'Run notes', state: 'done',
     members: [{ nodeId: key, categoryKey: key, label: key, state: 'done' }] });

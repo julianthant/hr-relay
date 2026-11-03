@@ -7,7 +7,7 @@ import { parseCanonicalInputSnapshot } from "../../models/workflow/canonical-inp
 import { z } from "zod";
 import type { AuthorityDatabase, AuthorityRepositories } from "../storage/sqlite/authority-database.js";
 import { RunWorkbookReferenceSchema, type WorkbookOperationReceipt, type WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
-import { NativeRunEventWireSchema, RunWorkbookWritesWireSchema, type RunWorkbookWritesWire } from "../../models/dashboard/run-detail.js";
+import { NativeRunEventWireSchema, RunWorkbookWritesWireSchema, WorkbookReferenceRowCandidateWireSchema, RunWorkbookReferenceChoiceWireSchema, type RunWorkbookReferenceChoiceWire, type RunWorkbookWritesWire } from "../../models/dashboard/run-detail.js";
 import { WorkbookReferenceWriteSchema } from "../../models/processing/workbooks/read-result.js";
 import { schemaBoundValueSchema, deriveSchemaHash, type SchemaBoundCanonicalValue } from "../../models/validation/schema-bound-value.js";
 import type { RunRecord } from "../../models/run/record.js";
@@ -16,13 +16,18 @@ import { deriveStableUuid, lifecycleCommandId } from "../../rules/identity/ident
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { localDatePart, type Clock } from "../../rules/time/clock.js";
-import { WorkbookLibraryError, snapshotWorkbookReference, writeRunWorkbook } from "../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError, snapshotWorkbookReference, writeRunWorkbook, readRetainedWorkbookReference } from "../workbooks/workbook-library-service.js";
+import { WorkbookReferenceReadRequestSchema } from "../../models/processing/workbooks/read-reference.js";
 import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema, OnboardingInput } from "../../models/workflows/onboarding/input.js";
 import { ONBOARDING_ROSTER_GATE_ID, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterChoiceSchema } from "../../models/workflows/onboarding/roster.js";
 import { bindOnboardingRoster, onboardingRosterRow } from "../../rules/onboarding/roster.js";
 import { deriveGateResultCheckpointFingerprint, type GateResultRecord } from "../../models/workflow/gates.js";
 import { readContinuationGate, validateRunContinuation } from "../storage/sqlite/run-continuation.js";
 import { rejectCommandRequest } from "./commands/command-refusal.js";
+import { CrmDocDownloadCanonicalInput } from "../../models/workflows/crm-doc-download/input.js";
+import { ReadCrmDocumentRows, CrmDocumentRowCandidateSchema, CrmDocumentRowChoiceSchema, CRM_DOCUMENT_ROW_CHOICE_GATE_ID } from "../../models/workflows/crm-doc-download/read-document-rows.js";
+import { readRunCheckpoint } from "../runtime/checkpoints/run-checkpoint-reader.js";
+import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../workflow-kit/validation/build-manifest.js";
 
 const onboardingInputBinding = Object.freeze({
   sourceToIngress(source: unknown) {
@@ -56,6 +61,7 @@ export function workbookInputBinding(canonicalInput: object) {
 type Reference = z.infer<typeof RunWorkbookReferenceSchema>;
 type ReferenceCommand = Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>;
 type RowCommand = Extract<CommandRequest, { type: "resolve-workbook-row" }>;
+const crmReferenceWorkflows = new Set(["crm-doc-download", "crm-doc-download-reference", "crm-doc-download-package-worksheets"]);
 const referenceHash = deriveSchemaHash(RunWorkbookReferenceSchema, "output");
 
 function references(run: RunRecord): readonly Readonly<{ value: Reference; digest: string; bound: SchemaBoundCanonicalValue }>[] {
@@ -177,8 +183,8 @@ function queuedReferenceNative(repositories: AuthorityRepositories, run: RunReco
   return referenceNative(run, record);
 }
 
-function pendingReferenceNative(repositories: AuthorityRepositories, run: RunRecord) {
-  if (run.lifecycle.state === "parked-gate" && run.lifecycle.gateId === ONBOARDING_ROSTER_GATE_ID) {
+function pendingReferenceNative(repositories: AuthorityRepositories, run: RunRecord, gateId = ONBOARDING_ROSTER_GATE_ID) {
+  if (run.lifecycle.state === "parked-gate" && run.lifecycle.gateId === gateId) {
     const lifecycle = run.lifecycle;
     const parked = repositories.lifecycleJournal.findGatePark(run.envelope.runId, lifecycle.gateId, run.version);
     if (parked === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
@@ -265,7 +271,182 @@ export function authenticateOnboardingRosterExecution(repositories: AuthorityRep
   return { ...authenticateOnboardingRosterChoice(repositories, source, gate), gate };
 }
 
+function authenticateCrmReferenceChoice(repositories: AuthorityRepositories, run: RunRecord, gate: GateResultRecord) {
+  const data = crmReferenceRows(repositories, run);
+  if (data === undefined || data.rows.state !== "resolve-required" || !("commandId" in gate)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  const complete = completeCrmReferenceChoice(data, crmReferenceSelections(repositories, run, data));
+  const command = repositories.commands.get(gate.commandId), audit = repositories.commandAudits.findByCommand(gate.commandId);
+  const recorded = repositories.timelineEvents.get(lifecycleCommandId("timeline-gate-resolved", gate.commandId));
+  const event = recorded?.payload.kind === "span" && recorded.payload.event.t === "gate.resolved" ? recorded.payload.event : undefined;
+  if (complete === undefined || gate.runId !== run.envelope.runId || gate.gateId !== CRM_DOCUMENT_ROW_CHOICE_GATE_ID || String(gate.nodeId) !== String(gate.gateId)
+    || gate.result.schemaHash !== deriveSchemaHash(CrmDocumentRowChoiceSchema, "output")
+    || gate.checkpointFingerprint !== deriveGateResultCheckpointFingerprint(gate.result)
+    || canonicalJsonStringify(gate.result.value) !== canonicalJsonStringify(complete)
+    || command?.family !== "run" || command.type !== "resolve-workbook-reference-row"
+    || command.target.runId !== gate.runId || command.target.gateId !== gate.gateId || command.target.expectedVersion !== gate.expectedVersion
+    || command.requestedBy !== gate.resolvedBy || audit?.result.state !== "applied" || audit.completedAt !== gate.resolvedAt
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+    || event === undefined || event.gate !== gate.gateId || event.ts !== gate.resolvedAt
+    || event.resultHash !== sha256Hex(`hrauto:gate-resolved-span:v1\0${canonicalJsonStringify(gate.result)}`) || recorded === undefined) {
+    throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  }
+  return { native: referenceNative(run, recorded) };
+}
+
+export function authenticateWorkbookReferenceChoice(repositories: AuthorityRepositories, run: RunRecord, gate: GateResultRecord) {
+  return crmReferenceWorkflows.has(run.envelope.workflow) ? authenticateCrmReferenceChoice(repositories, run, gate)
+    : authenticateOnboardingRosterChoice(repositories, run, gate);
+}
+
+export function authenticateWorkbookReferenceExecution(repositories: AuthorityRepositories, run: RunRecord) {
+  if (!crmReferenceWorkflows.has(run.envelope.workflow)) return authenticateOnboardingRosterExecution(repositories, run);
+  const data = crmReferenceRows(repositories, run);
+  validateRunContinuation(repositories, run.envelope);
+  const gate = readContinuationGate(repositories, run.envelope, CRM_DOCUMENT_ROW_CHOICE_GATE_ID);
+  if (gate === undefined) {
+    if (data?.rows.state === "resolve-required" && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done") throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+    return;
+  }
+  const source = repositories.runs.get(gate.runId);
+  if (source === undefined || canonicalJsonStringify(source.input.parsed) !== canonicalJsonStringify(run.input.parsed)
+    || canonicalJsonStringify(source.input.workbookReferences) !== canonicalJsonStringify(run.input.workbookReferences)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  return { ...authenticateCrmReferenceChoice(repositories, source, gate), gate };
+}
+
+function crmReferenceRows(repositories: AuthorityRepositories, run: RunRecord) {
+  const checkpoint = readRunCheckpoint(repositories, run.envelope, "document-rows", true);
+  if (checkpoint === undefined) return undefined;
+  const owner = checkpoint.runId === run.envelope.runId ? run : repositories.runs.get(checkpoint.runId);
+  if (owner === undefined || checkpoint.runId !== run.envelope.runId && run.envelope.continuation === undefined
+    || canonicalJsonStringify(owner.input.parsed) !== canonicalJsonStringify(run.input.parsed)
+    || canonicalJsonStringify(owner.input.workbookReferences) !== canonicalJsonStringify(run.input.workbookReferences)
+    || checkpoint.workflowId !== run.envelope.workflow || checkpoint.itemId !== run.envelope.itemId
+    || checkpoint.nodeId !== "document-rows" || checkpoint.attempt > run.envelope.attempt || Number(checkpoint.claimGeneration) > Number(owner.claimGeneration)
+    || checkpoint.descriptorVersion !== run.envelope.descriptorVersion
+    || checkpoint.contractFingerprint !== run.envelope.contractFingerprint
+    || checkpoint.implFingerprint !== resolveTaskImplFingerprint(BUILD_MANIFEST, ReadCrmDocumentRows.id)
+    || checkpoint.output.schemaHash !== deriveSchemaHash(ReadCrmDocumentRows.output, "output")) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  const rows = ReadCrmDocumentRows.output.parse(checkpoint.output.value), reference = referenceFor(run, ONBOARDING_ROSTER_TYPE_ID);
+  const input = parseCanonicalInputSnapshot(CrmDocDownloadCanonicalInput, run.input.parsed);
+  if (rows.referenceDigest !== reference.digest || reference.value.snapshot.versionId === undefined
+    || canonicalJsonStringify(rows.people.map(person => person.subject)) !== canonicalJsonStringify(input.people)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  return { rows, reference, sourceAttempt: checkpoint.attempt, checkpointDigest: sha256Hex(canonicalJsonStringify(checkpoint)) };
+}
+type CrmRows = NonNullable<ReturnType<typeof crmReferenceRows>>;
+type CrmSelection = Readonly<{ candidate: z.infer<typeof CrmDocumentRowCandidateSchema>; record: TimelineEventRecord }>;
+
+function crmReferenceSelections(repositories: AuthorityRepositories, run: RunRecord, data: CrmRows) {
+  const selections = new Map<string, CrmSelection>();
+  for (const record of readTimelineRecords(repositories.timelineEvents, 0, run.envelope.runId).records) {
+    const event = record.payload;
+    if (event.kind !== "workbook-reference-row-selected" || event.attempt < data.sourceAttempt) continue;
+    const command = repositories.commands.get(event.commandId), audit = repositories.commandAudits.findByCommand(event.commandId);
+    const person = data.rows.people.find(person => person.subject.value === event.key);
+    const candidate = person?.resolution.state === "resolve-required"
+      ? person.resolution.candidates.find(candidate => candidate.row.worksheetId === event.sheetId && candidate.row.rowId === event.rowId) : undefined;
+    if (record.source.kind !== "native" || record.scope.kind !== "run" || record.scope.runId !== run.envelope.runId || record.workflow !== run.envelope.workflow
+      || event.runId !== run.envelope.runId || event.workflow !== run.envelope.workflow || event.traceId !== run.envelope.traceId
+      || event.attempt !== data.sourceAttempt || event.gateId !== CRM_DOCUMENT_ROW_CHOICE_GATE_ID
+      || event.referenceDigest !== data.reference.digest || event.checkpointDigest !== data.checkpointDigest
+      || record.occurredAt !== event.at || record.recordedAt !== event.at
+      || record.eventId !== deriveStableUuid("workbook-reference-row-selected", event.commandId)
+      || command?.family !== "run" || command.type !== "resolve-workbook-reference-row"
+      || command.target.runId !== event.runId || command.target.gateId !== event.gateId || command.target.key !== event.key
+      || command.target.referenceDigest !== event.referenceDigest || command.target.libraryId !== data.reference.value.snapshot.libraryId
+      || command.target.typeId !== ONBOARDING_ROSTER_TYPE_ID || command.target.workbookVersion !== data.reference.value.snapshot.version
+      || command.payload.sheetId !== event.sheetId || command.payload.rowId !== event.rowId
+      || audit?.result.state !== "applied" || audit.completedAt !== event.at || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+      || candidate === undefined || selections.has(event.key)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+    selections.set(event.key, { candidate, record });
+  }
+  return selections;
+}
+
+function completeCrmReferenceChoice(data: CrmRows, selections: ReadonlyMap<string, CrmSelection>) {
+  if (data.rows.people.some(person => person.resolution.state !== "resolved" && !selections.has(person.subject.value))) return undefined;
+  return CrmDocumentRowChoiceSchema.parse({ ...data.rows, state: "resolved", decision: "selected", people: data.rows.people.map(person => {
+    if (person.resolution.state === "resolved") return person;
+    const selected = selections.get(person.subject.value);
+    if (selected === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+    return { ...person, resolution: { state: "resolved", selected: selected.candidate } };
+  }) });
+}
+
+function crmCandidateWire(candidate: z.infer<typeof CrmDocumentRowCandidateSchema>) {
+  const { row, key } = candidate, { legalName, livedName } = row.names;
+  return WorkbookReferenceRowCandidateWireSchema.parse({ sheetId: row.worksheetId, rowId: row.rowId,
+    label: `${row.worksheetName} · ${legalName.lastName}, ${legalName.firstName} · ${row.rowId}`,
+    values: [{ fieldId: "email", value: key }, { fieldId: "firstName", value: legalName.firstName }, { fieldId: "lastName", value: legalName.lastName },
+      { fieldId: "middleName", value: legalName.middleName }, { fieldId: "roster.livedFirstName", value: livedName === null ? null : livedName.firstName },
+      { fieldId: "roster.livedLastName", value: livedName === null ? null : livedName.lastName }, { fieldId: "roster.livedMiddleName", value: livedName === null ? null : livedName.middleName }],
+  });
+}
+
+function buildCrmReferenceChoices(repositories: AuthorityRepositories, run: RunRecord): RunWorkbookReferenceChoiceWire[] {
+  const data = crmReferenceRows(repositories, run);
+  if (data === undefined || data.rows.state === "resolved") return [];
+  const execution = authenticateWorkbookReferenceExecution(repositories, run);
+  const owner = execution === undefined ? run : repositories.runs.get(execution.gate.runId);
+  if (owner === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  const source = owner.envelope.runId === run.envelope.runId ? data : crmReferenceRows(repositories, owner);
+  if (source === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  const selections = crmReferenceSelections(repositories, owner, source);
+  return data.rows.people.flatMap((person): z.input<typeof RunWorkbookReferenceChoiceWireSchema>[] => {
+    if (person.resolution.state === "resolved") return [];
+    const key = person.subject.value;
+    const base = { libraryId: data.reference.value.snapshot.libraryId, typeId: ONBOARDING_ROSTER_TYPE_ID,
+      referenceDigest: data.reference.digest, key, reason: person.resolution.reason };
+    const selected = selections.get(key);
+    if (selected !== undefined) {
+      const event = selected.record.payload;
+      if (event.kind !== "workbook-reference-row-selected") throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+      const native = owner.envelope.runId !== run.envelope.runId ? queuedReferenceNative(repositories, run)
+        : NativeRunEventWireSchema.parse({ eventId: selected.record.eventId, order: selected.record.cursor, runId: run.envelope.runId,
+          attempt: event.attempt, traceId: run.envelope.traceId, spanPath: run.envelope.traceId, nodeId: event.gateId });
+      return [{ ...base, native, resolution: { state: "resolved", workbookVersion: data.reference.value.snapshot.version, resolvedAt: event.at, selected: crmCandidateWire(selected.candidate) } }];
+    }
+    const native = pendingReferenceNative(repositories, run, CRM_DOCUMENT_ROW_CHOICE_GATE_ID);
+    if (run.lifecycle.state !== "parked-gate" || run.lifecycle.gateId !== CRM_DOCUMENT_ROW_CHOICE_GATE_ID || person.resolution.candidates.length === 0) {
+      return [{ ...base, native, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
+    }
+    const target = { runId: run.envelope.runId, expectedVersion: run.version, libraryId: base.libraryId, typeId: base.typeId,
+      referenceDigest: base.referenceDigest, key, workbookVersion: data.reference.value.snapshot.version, gateId: CRM_DOCUMENT_ROW_CHOICE_GATE_ID };
+    return [{ ...base, native, resolution: { state: "available", target, candidates: person.resolution.candidates.map(crmCandidateWire), action: {
+      kind: "command", key: "resolve-workbook-reference-row", command: "resolve-workbook-reference-row", label: "Choose a worksheet row",
+      intent: "primary", icon: "resolve", placement: ["review"], expectedVersion: run.version, referenceTarget: target,
+      confirm: { title: "Use this worksheet row", body: "Relay retains this row from the selected spreadsheet version. The batch continues after every person has a resolved row.", confirmLabel: "Use row", tone: "neutral" },
+    } } }];
+  }).map(choice => RunWorkbookReferenceChoiceWireSchema.parse(choice));
+}
+
+function resolveCrmReference(repositories: AuthorityRepositories, run: RunRecord, command: ReferenceCommand, capturedAt: string) {
+  const data = crmReferenceRows(repositories, run);
+  if (data === undefined || data.rows.state !== "resolve-required" || command.target.gateId !== CRM_DOCUMENT_ROW_CHOICE_GATE_ID
+    || command.target.referenceDigest !== data.reference.digest || command.target.libraryId !== data.reference.value.snapshot.libraryId
+    || command.target.typeId !== ONBOARDING_ROSTER_TYPE_ID || command.target.workbookVersion !== data.reference.value.snapshot.version) {
+    rejectCommandRequest(command, "invalid-state", "The retained worksheet reference changed. Reload its row choices.");
+  }
+  const selections = crmReferenceSelections(repositories, run, data);
+  const person = data.rows.people.find(person => person.subject.value === command.target.key);
+  const candidate = person?.resolution.state === "resolve-required"
+    ? person.resolution.candidates.find(candidate => candidate.row.worksheetId === command.payload.sheetId && candidate.row.rowId === command.payload.rowId) : undefined;
+  if (candidate === undefined || selections.has(command.target.key)) rejectCommandRequest(command, "invalid-state", "This row is not an unresolved member of the retained worksheet version.");
+  const appended = repositories.timelineEvents.append({ schemaVersion: 1, eventId: deriveStableUuid("workbook-reference-row-selected", command.commandId),
+    workflow: run.envelope.workflow, scope: { kind: "run", runId: run.envelope.runId }, occurredAt: capturedAt, recordedAt: capturedAt,
+    retentionDate: localDatePart(new Date(capturedAt)), source: { kind: "native" }, payload: {
+      kind: "workbook-reference-row-selected", runId: run.envelope.runId, workflow: run.envelope.workflow, attempt: data.sourceAttempt,
+      traceId: run.envelope.traceId, gateId: CRM_DOCUMENT_ROW_CHOICE_GATE_ID, commandId: command.commandId,
+      referenceDigest: data.reference.digest, checkpointDigest: data.checkpointDigest, key: command.target.key,
+      sheetId: candidate.row.worksheetId, rowId: candidate.row.rowId, at: capturedAt,
+    } });
+  selections.set(command.target.key, { candidate, record: appended.record });
+  const complete = completeCrmReferenceChoice(data, selections);
+  return complete === undefined ? { state: "pending" as const }
+    : { schemaHash: deriveSchemaHash(CrmDocumentRowChoiceSchema, "output"), value: complete };
+}
+
 function buildReferenceChoices(repositories: AuthorityRepositories, run: RunRecord) {
+  if (crmReferenceWorkflows.has(run.envelope.workflow)) return buildCrmReferenceChoices(repositories, run);
   if (run.envelope.workflow !== "onboarding") return [];
   const { roster, reference, binding } = onboardingReference(run);
   if (roster.state === "resolved") return [];
@@ -286,7 +467,7 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
     const sheet = reference.value.snapshot.worksheets.find(sheet => sheet.sheetId === row.binding.sheetId);
     if (sheet === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
     return [{ ...base, native: choice.gate.runId === run.envelope.runId ? choice.native : queuedReferenceNative(repositories, run),
-      resolution: { state: "resolved", workbookVersion: row.binding.workbookVersion,
+      resolution: { state: "resolved", workbookVersion: row.binding.workbookVersion, resolvedAt: choice.gate.resolvedAt,
       selected: { sheetId: row.binding.sheetId, rowId: row.binding.rowId, label: `${sheet.name} · ${legalName.lastName}, ${legalName.firstName}`, values } } }];
   }
   const native = pendingReferenceNative(repositories, run);
@@ -339,12 +520,25 @@ export function buildRunWorkbookSection(repositories: AuthorityRepositories, run
 
 export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDatabase; clock: Clock }>) {
   return Object.freeze({
+    read(captured: RunRecord, value: z.input<typeof WorkbookReferenceReadRequestSchema>) {
+      const command = WorkbookReferenceReadRequestSchema.parse(value);
+      return deps.database.withAuthorityReadSnapshot(() => {
+        const repositories = deps.database.authority, run = repositories.runs.get(captured.envelope.runId);
+        if (run?.lifecycle.state !== "running" || repositories.deletedRuns.get(captured.envelope.runId) !== undefined
+          || Number(run.claimGeneration) !== Number(captured.claimGeneration)
+          || canonicalJsonStringify(run.envelope) !== canonicalJsonStringify(captured.envelope)
+          || canonicalJsonStringify(run.input) !== canonicalJsonStringify(captured.input)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        return readRetainedWorkbookReference(repositories.workbooks, referenceFor(run, command.typeId).bound, command);
+      });
+    },
     resolveReference(repositories: AuthorityRepositories, command: ReferenceCommand, capturedAt: string) {
       const run = repositories.runs.get(command.target.runId);
       if (run === undefined || repositories.deletedRuns.get(command.target.runId) !== undefined || run.version !== command.target.expectedVersion
-        || run.lifecycle.state !== "parked-gate" || run.lifecycle.gateId !== ONBOARDING_ROSTER_GATE_ID || command.target.gateId !== ONBOARDING_ROSTER_GATE_ID) {
+        || run.lifecycle.state !== "parked-gate" || run.lifecycle.gateId !== command.target.gateId) {
         rejectCommandRequest(command, "invalid-state", "The roster gate changed. Reload its row choice.");
       }
+      if (crmReferenceWorkflows.has(run.envelope.workflow)) return resolveCrmReference(repositories, run, command, capturedAt);
+      if (command.target.gateId !== ONBOARDING_ROSTER_GATE_ID) rejectCommandRequest(command, "invalid-state", "The roster gate changed. Reload its row choice.");
       const { roster, reference, binding } = onboardingReference(run);
       if (roster.state !== "resolve-required" || command.target.libraryId !== binding.workbookId || command.target.typeId !== binding.workbookType
         || command.target.referenceDigest !== reference.digest || command.target.key !== binding.rowKey.email) {

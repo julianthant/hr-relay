@@ -1,6 +1,6 @@
 /** Declared gate decisions: how a stored `gate_results` row becomes the receipt's decision-evidence row, with each gate decision scoped by its own workflow and gate. */
 import { z } from "zod";
-import { GateIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
+import { GateIdSchema, WorkflowIdSchema, NodeIdSchema } from "../../rules/identity/ids.js";
 import { EvidenceLeafPathSchema } from "./evidence-classification.js";
 import { OcrApprovalReferenceSchema } from "../workflows/ocr/result.js";
 
@@ -26,10 +26,11 @@ export const GateDecisionArmSchema = z.strictObject({
   summary: z.string().min(1),
 });
 
-export const GateResolutionPolicySchema = z.discriminatedUnion("source", [
+export const GateResolutionPolicySchema = z.union([
   z.strictObject({ source: z.literal("operator") }),
   z.strictObject({ source: z.literal("workbook-reference"), boundInputPath: EvidenceLeafPathSchema,
     inputCondition: z.strictObject({ path: EvidenceLeafPathSchema, equals: z.string().min(1) }) }),
+  z.strictObject({ source: z.literal("workbook-reference"), boundNodeId: NodeIdSchema, boundOutputPath: EvidenceLeafPathSchema }),
 ]);
 
 export const GateDecisionDeclarationSchema = z.strictObject({
@@ -57,6 +58,11 @@ export const GateDecisionDeclarationSchema = z.strictObject({
 export type GateDecisionDeclaration = z.infer<typeof GateDecisionDeclarationSchema>;
 
 export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze([
+  ...["crm-doc-download", "crm-doc-download-reference", "crm-doc-download-package-worksheets"].map(workflowId => ({
+    workflowId, gateId: "document-row-choice", decisionPath: "decision", boundEvidencePath: "referenceDigest",
+    resolution: { source: "workbook-reference", boundNodeId: "document-rows", boundOutputPath: "referenceDigest" },
+    arms: [{ value: "selected", outcome: "taken", summary: "an operator selected retained worksheet rows for the CRM document batch" }],
+  })),
   ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-i9-profile-creation"].map(workflowId => ({
     workflowId, gateId: "roster-choice", decisionPath: "decision", boundEvidencePath: "row.binding.referenceDigest",
     resolution: { source: "workbook-reference", boundInputPath: "roster.binding.referenceDigest",

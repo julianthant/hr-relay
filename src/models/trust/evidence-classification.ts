@@ -495,6 +495,31 @@ function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
 }
 
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...open(taskOutput("workbooks/read-reference"), "state", "reference.snapshot.version", "reference.request.fields", "reference.snapshot.type.fields"),
+  ...population(taskOutput("workbooks/read-reference"), "reference.snapshot.rows", "reference.snapshot.worksheets"),
+  ...["referenceDigest", "reference.request.typeId", "reference.request.libraryId", "reference.request.versionId", "reference.request.keys",
+    "reference.snapshot.libraryId", "reference.snapshot.versionId", "reference.snapshot.versionName", "reference.snapshot.type.id", "reference.snapshot.type.name",
+    "reference.snapshot.type.keyFieldId", "reference.snapshot.type.defaultWorkbookId"].map(path =>
+    ({ scope: taskOutput("workbooks/read-reference"), path, classification: "sensitive-hr", transform: "drop" })),
+  { scope: taskOutput("crm/search-document-records"), path: "records", classification: "direct-identifier", transform: "digest" },
+  { scope: taskOutput("crm/read-idocs"), path: "people", classification: "direct-identifier", transform: "digest" },
+  ...[taskOutput("workflow:crm-doc-download/read-document-rows"), workflowResult("crm-doc-download-reference")].flatMap(scope => [
+    ...population(scope, "people"), ...open(scope, "state"),
+    { scope, path: "referenceDigest", classification: "sensitive-hr", transform: "drop" },
+  ]),
+  ...[taskOutput("workflow:crm-doc-download/read-worksheet-archives"), workflowResult("crm-doc-download"), workflowResult("crm-doc-download-package-worksheets")].flatMap(scope => [
+    ...population(scope, "worksheets", "collection.files"),
+    ...open(scope, "worksheetCount", "personCount", "documentCount", "collection.artifact.bytes", "collection.artifact.mediaType"),
+    ...["collection.artifact.id", "collection.artifact.sha256"].map(path => ({ scope, path, classification: "sensitive-hr", transform: "drop" })),
+  ]),
+  { scope: workflowResult("crm-doc-download-search-records"), path: "records", classification: "direct-identifier", transform: "digest" },
+  { scope: workflowResult("crm-doc-download-read-idocs"), path: "people", classification: "direct-identifier", transform: "digest" },
+  ...["crm-doc-download", "crm-doc-download-search-records", "crm-doc-download-reference", "crm-doc-download-read-idocs", "crm-doc-download-package-worksheets"].map(id =>
+    ({ scope: workflowInput(id), path: "people", classification: "direct-identifier", transform: "digest" })),
+  ...["crm-doc-download", "crm-doc-download-reference", "crm-doc-download-package-worksheets"].flatMap(id => [
+    ...open(gateResult(id, "document-row-choice"), "state", "decision"), ...population(gateResult(id, "document-row-choice"), "people"),
+    { scope: gateResult(id, "document-row-choice"), path: "referenceDigest", classification: "sensitive-hr", transform: "drop" },
+  ]),
   ...open(taskOutput("extraction/extract-pdf-pages"), "pageCount"),
   ...ocrPrivateLeaves(taskOutput("extraction/extract-pdf-pages"), "pages"),
   ...ocrManifestLeaves(taskOutput("workflow:ocr/read-source-pages"), "manifest."),

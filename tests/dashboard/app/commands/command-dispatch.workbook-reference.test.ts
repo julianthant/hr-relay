@@ -1,3 +1,5 @@
+import { RunWorkbookReferenceChoiceWireSchema } from '../../../../src/models/dashboard/run-detail.js';
+import { NOW } from '../../../support/fixtures/phase1c-contract-fixtures.js';
 import assert from 'node:assert/strict';
 import { it } from 'vitest';
 import { composeCommandRequest, verifyShellCommandEffect } from '../../../../src/dashboard/app/commands/command-dispatch.js';
@@ -6,6 +8,7 @@ import type { DashboardClient } from '../../../../src/dashboard/client/index.js'
 import { workbookReferenceChoice, workbookReferenceDetail } from '../../../support/fixtures/workbook-reference-choice.js';
 import { workbookReferenceMatchesReplay } from '../../../../src/dashboard/surfaces/run-detail/logs/workbook-write-model.js';
 import { checkedCommandResult } from '../../../../src/dashboard/client/commands/shared-commands.js';
+import { deriveStableUuid } from '../../../../src/rules/identity/stable-uuid.js';
 const f = workbookReferenceChoice();
 const answer = { sheetId: f.candidates[0].sheetId, rowId: f.candidates[0].rowId };
 const context = { actorId: 'local-operator', source: 'run-detail' as const, workbookReferenceChoice: f.choice, workbookReferenceAnswer: answer };
@@ -24,7 +27,7 @@ it('requires the exact selected reference and row in authoritative readback', as
   const targets = [{ family: 'gate', runId: f.target.runId, gateId: f.target.gateId }, { family: 'run', runId: f.target.runId }];
   const reply = CommandResultSchema.parse({ state: 'applied', commandId: command.commandId, affectedTargets: targets });
   assert.deepEqual(checkedCommandResult(command, reply), reply);
-  const resolved = { ...f.choice, resolution: { state: 'resolved' as const, workbookVersion: f.target.workbookVersion, selected: f.candidates[0] } };
+  const resolved = RunWorkbookReferenceChoiceWireSchema.parse({ ...f.choice, resolution: { state: 'resolved' as const, workbookVersion: f.target.workbookVersion, resolvedAt: NOW, selected: f.candidates[0] } });
   const detail = workbookReferenceDetail(resolved, 5);
   assert.equal(workbookReferenceMatchesReplay(resolved, command, detail), true);
   for (const [choice, expected] of [[f.choice, 'mismatch'], [resolved, 'matched'], [{ ...resolved, resolution: { ...resolved.resolution, selected: f.candidates[1] } }, 'mismatch'], [{ ...resolved, resolution: { ...resolved.resolution, workbookVersion: 9 } }, 'mismatch']] as const) {
@@ -48,4 +51,22 @@ it('requires the exact selected reference and row in authoritative readback', as
       events: detail.timeline.events.map(event => ({ ...event, native: { ...event.native, [field]: field === 'order' ? 11 : 'foreign' } })) } })),
   ]) assert.equal(workbookReferenceMatchesReplay(resolved, command, changed as typeof detail), false);
   assert.equal(workbookReferenceMatchesReplay(resolved, command, workbookReferenceDetail(f.choice, 5)), false);
+});
+it('recognizes an authenticated batch member while its run revision and shared gate remain unchanged', async () => {
+  const composed = composeCommandRequest(f.action, f.target, context); if (composed.state !== 'ready') throw new Error('fixture not composed');
+  const command = CommandRequestSchema.parse(composed.request), detail = workbookReferenceDetail(f.choice, f.target.expectedVersion);
+  const resolved = RunWorkbookReferenceChoiceWireSchema.parse({ ...f.choice, native: { ...f.choice.native, order: 11, nodeId: f.target.gateId, eventId: deriveStableUuid('workbook-reference-row-selected', command.commandId) },
+    resolution: { state: 'resolved' as const, resolvedAt: NOW, workbookVersion: f.target.workbookVersion, selected: f.candidates[0] } });
+  assert.equal(workbookReferenceMatchesReplay(resolved, command, detail), true);
+  for (const changed of [
+    { ...resolved, native: { ...resolved.native, eventId: f.choice.native.eventId } },
+    { ...resolved, native: { ...resolved.native, nodeId: 'foreign' } },
+    { ...resolved, resolution: { ...resolved.resolution, selected: f.candidates[1] } },
+    { ...resolved, referenceDigest: 'b'.repeat(64) },
+  ]) assert.equal(workbookReferenceMatchesReplay(RunWorkbookReferenceChoiceWireSchema.parse(changed), command, detail), false);
+  const reply = CommandResultSchema.parse({ state: 'applied', commandId: command.commandId,
+    affectedTargets: [{ family: 'gate', runId: f.target.runId, gateId: f.target.gateId }, { family: 'run', runId: f.target.runId }] });
+  const client = { runDetail: async () => detail,
+    runSection: async () => ({ section: 'workbook-writes', payload: { runId: f.target.runId, operations: [], referenceChoices: [resolved] } }) } as unknown as DashboardClient;
+  assert.equal((await verifyShellCommandEffect(client, '2026-11-01', command, checkedCommandResult(command, reply))).state, 'matched');
 });
