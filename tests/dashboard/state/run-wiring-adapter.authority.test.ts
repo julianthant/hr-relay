@@ -63,6 +63,43 @@ it("dispatches the served child retry once and checks its replacement before ref
   assert.equal(h.state?.onChildRetry, undefined);
 });
 
+it.each(["same-child", "changed-revision", "root-run"] as const)("reconciles a lost child-retry reply only for the retained source (%s)", async sourceState => {
+  const selected = selectionAt(3), sent: CommandRequest[] = [];
+  const replacementId = "00000000-0000-4000-8000-000000000004";
+  const source = detailAt(selected, 3, { header: { ...detailAt(selected, 3).header, parentRunId: NOTE, status: "failed" },
+    childRetry: { key: "retry-child", kind: "command", command: "retry", label: "Retry", expectedVersion: 3,
+      icon: "retry", intent: "neutral", placement: ["banner"] } });
+  const next = RunDetailWireSchema.parse({ ...source, runId: replacementId, rowRevision: 1, childRetry: undefined,
+    header: { ...source.header, runId: replacementId, retryOf: RUN, attempt: source.header.attempt + 1, status: "queued" } });
+  let accepted = false;
+  const client: DashboardClient = { ...createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => { throw new Error("unexpected retry fixture read"); } }),
+    runDetail: async (id: string) => id === replacementId ? next : !accepted ? source : RunDetailWireSchema.parse({ ...source, childRetry: undefined,
+      rowRevision: sourceState === "changed-revision" ? 4 : 3,
+      header: { ...source.header, parentRunId: sourceState === "root-run" ? undefined : NOTE } }),
+    runSection: async () => logs(),
+    executeCommand: async (raw: unknown) => {
+      const request = CommandRequestSchema.parse(raw); sent.push(request);
+      if (!accepted) { accepted = true; throw new Error("accepted retry reply lost"); }
+      return CommandResultSchema.parse({ state: "already-applied", commandId: request.commandId,
+        affectedTargets: [{ family: "run", runId: RUN }, { family: "run", runId: replacementId }] });
+    },
+  };
+  const h = await harness(client); await h.render(selected);
+  assert.ok(h.state?.onChildRetry);
+  await act(async () => h.state?.onChildRetry?.());
+  assert.equal(sent.length, 1); assert.equal(h.state?.command?.state, "uncertain");
+  await h.render(sourceState === "changed-revision" ? selectionAt(4) : selected, 1);
+  assert.equal(h.state?.snapshot?.detail.childRetry, undefined);
+  assert.equal(h.state?.onChildRetry, undefined); assert.ok(h.state?.replay);
+  await act(async () => h.state?.replay?.());
+  if (sourceState === "same-child") {
+    assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
+    assert.equal(h.outcomes.at(-1)?.kind, "confirmed"); assert.equal(h.state?.command, undefined); assert.equal(h.refreshed, 1);
+  } else {
+    assert.equal(sent.length, 1); assert.equal(h.state?.command?.state, "uncertain"); assert.equal(h.refreshed, 0);
+  }
+});
+
 it("continues a reference choice inline and retains its exact uncertain command across remount", async () => {
   const selected = selectionAt(3), f = workbookReferenceChoice(3, RUN, selected.row.traceId), sent: CommandRequest[] = [];
   let replay = false, resolved = false;

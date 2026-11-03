@@ -206,6 +206,8 @@ Run detail may serve a `childRetry` action for the current failed OCR child whil
 parent is queued and can still join it. Logs renders it in the header and dispatches the existing
 `run/retry` command through the shared executor. The action binds the exact child revision;
 readback verifies the immutable source and one replacement's native `retryOf` and parent identities.
+After a lost reply, the retained exact command may be replayed after the action disappears if the
+original failed child and revision still match. A root run or changed revision cannot use that path.
 Successful, replaced, paused, approved and uncertain-write children have no retry action. Parked
 review and completed parents require delegation-owned resumption before that action is available.
 

@@ -28,6 +28,11 @@ import { workbookReferenceMatchesReplay } from "../../surfaces/run-detail/logs/w
 
 export type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
 
+export function childRetrySourceMatches(detail: RunDetailWire, target: ActionTarget): boolean {
+  return detail.runId === target.runId && detail.rowRevision.valueOf() === target.expectedVersion.valueOf()
+    && detail.header.status === "failed" && detail.header.parentRunId !== undefined;
+}
+
 /** What the app can say about a descriptor it was asked to dispatch; `refused`
  * is a legitimate answer with a sentence the surface reports. */
 export type ComposedCommand =
@@ -368,8 +373,7 @@ export async function verifyShellCommandEffect(
     const replacement = reply.affectedTargets.find(target => target.family === "run" && target.runId !== request.target.runId);
     if (replacement?.family !== "run") return mismatch(reply);
     const [source, next] = await Promise.all([client.runDetail(request.target.runId), client.runDetail(replacement.runId)]);
-    return source.runId === request.target.runId && source.rowRevision.valueOf() === request.target.expectedVersion.valueOf()
-      && source.header.status === "failed" && source.header.parentRunId !== undefined && next.runId === replacement.runId
+    return childRetrySourceMatches(source, request.target) && next.runId === replacement.runId
       && next.header.retryOf === source.runId && next.header.parentRunId === source.header.parentRunId
       && next.header.workflowId === source.header.workflowId && next.header.attempt > source.header.attempt
       ? { state: "matched", evidence: [source, next] } : mismatch([source, next]);

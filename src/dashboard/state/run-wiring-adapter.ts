@@ -7,7 +7,7 @@ import type { ConfirmedActionEvent } from "../../models/events/confirmed-action.
 import type { DashboardClient } from "../client/index.js";
 import type { DashboardCommandBinding } from "../app/dashboard-app-model.js";
 import type { CommandOutcome, CommandExecutionScope } from "../app/commands/command-executor.js";
-import { composeCommandRequest, verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
+import { childRetrySourceMatches, composeCommandRequest, verifyShellCommandEffect } from "../app/commands/command-dispatch.js";
 import { CommandRequestSchema, type CommandRequest } from "../../rules/commands/commands.js";
 import { decisionAnswerValid, type LogDecisionAction, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
@@ -685,7 +685,10 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     if (!mounted.current || currentCommandOwner.current !== commandOwner || binding === undefined
       || binding.scope.client !== client || bindingRef.current?.scope !== binding.scope
       || envelope.requestedBy !== binding.scope.actorId) return;
+    const retainedChildRetry = envelope.family === "run" && envelope.type === "retry" && replayDetail !== undefined
+      && childRetrySourceMatches(replayDetail, envelope.target);
     if (replay && envelope.family !== "gate" && !currentDecisionMatches.current(envelope)
+      && !retainedChildRetry
       && !sameHeldOccurrence(envelope, currentParkedWrite.current)
       && !currentWorkbookWrites.current.some(operation => workbookWriteMatchesReplay(operation, envelope))
       && !(replayDetail !== undefined && currentReferenceChoices.current.some(choice => workbookReferenceMatchesReplay(choice, envelope, replayDetail)))) {
