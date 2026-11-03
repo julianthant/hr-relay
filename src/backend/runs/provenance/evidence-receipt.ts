@@ -1,3 +1,5 @@
+import { ONBOARDING_ROSTER_GATE_ID, OnboardingRosterChoiceSchema } from "../../../models/workflows/onboarding/roster.js";
+import { continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
 import { retainedRunProtectedBindings, publicTransactionKeyDigest } from "../../../models/write-safety/protected-input.js";
 import { valueFreeProtectedInput } from "../../../models/write-safety/protected-input.js";
 
@@ -28,7 +30,7 @@ import {
   type RunResultRecord,
   type TerminalNotRunReason,
 } from "../../../models/run/result.js";
-import { SchemaBoundCanonicalValueSchema, deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { SchemaBoundCanonicalValueSchema, deriveSchemaHash, schemaBoundValueSchema } from "../../../models/validation/schema-bound-value.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import {
   evidenceLeaves,
@@ -99,6 +101,7 @@ export interface ReceiptBuildInput {
   readonly writes?: readonly ReceiptWriteEvidence[];
 
   readonly gateResults?: readonly unknown[];
+  readonly continuedGateResults?: readonly unknown[];
 }
 
 /* ── node helpers ────────────────────────────────────────────────────────── */
@@ -359,8 +362,22 @@ export function deriveRunEvidenceReceipt(
       );
     }
   }
+  const continuedGateResults = (input.continuedGateResults ?? []).map(row => GateResultRecordSchema.parse(row));
+  for (const row of continuedGateResults) {
+    const reference = envelope.continuation?.gates.find(reference => reference.nodeId === row.nodeId);
+    if (envelope.workflow !== "onboarding" || row.gateId !== ONBOARDING_ROSTER_GATE_ID || row.nodeId !== ONBOARDING_ROSTER_GATE_ID
+      || row.runId === envelope.runId || "source" in row || reference === undefined || reference.runId !== row.runId
+      || reference.gateId !== row.gateId || reference.digest !== continuationEvidenceDigest(row)) {
+      throw new Error("receipt-continued-gate-membership-invalid");
+    }
+    schemaBoundValueSchema(OnboardingRosterChoiceSchema, deriveSchemaHash(OnboardingRosterChoiceSchema, "output")).parse(row.result);
+  }
+  const admittedGateResults = [...gateResults, ...continuedGateResults];
   const gateResultsByNode = new Map<string, GateResultRecord>();
-  for (const row of gateResults) gateResultsByNode.set(String(row.gateId), row);
+  for (const row of admittedGateResults) {
+    if (gateResultsByNode.has(String(row.gateId))) throw new Error("receipt-gate-evidence-duplicate");
+    gateResultsByNode.set(String(row.gateId), row);
+  }
 
 
   const binding = evaluateReceiptDerivationBinding({
@@ -369,7 +386,7 @@ export function deriveRunEvidenceReceipt(
     ...(result === undefined ? {} : { result }),
     checkpoints,
     writes: writes.map((entry) => entry.intent),
-    gateResults,
+    gateResults: admittedGateResults,
   });
   if (binding.state === "incompatible") throw new Error(binding.message);
 
@@ -516,6 +533,7 @@ export function deriveRunEvidenceReceipt(
       if (stored !== undefined) {
         emitGateEvidence({
           stored,
+          currentRunId: envelope.runId,
           nodeId: id,
           workflowId: descriptor.id,
           verificationId: evidence.verificationId,
@@ -988,6 +1006,7 @@ export interface EvidenceReceiptStore {
   listWritesByRun(runId: string): readonly ReceiptWriteEvidence[];
 
   listGateResultsByRun(runId: string): readonly unknown[];
+  listContinuedGateResultsByRun?(runId: string): readonly unknown[];
   findReceiptByRun(runId: string): unknown;
   insertReceipt(receipt: unknown): Readonly<{ state: "inserted" | "existing"; record: RunEvidenceReceipt }>;
 }
@@ -1022,6 +1041,7 @@ export function ensureRunEvidenceReceipt(
     checkpoints: store.listCheckpointsByRun(runId),
     writes: store.listWritesByRun(runId),
     gateResults: store.listGateResultsByRun(runId),
+    continuedGateResults: store.listContinuedGateResultsByRun?.(runId),
   }, composition);
   if (existing !== undefined) {
     const rederivation = evaluateReceiptRederivation({
@@ -1044,6 +1064,7 @@ export function ensureRunEvidenceReceipt(
 
 interface GateEvidenceInput {
   readonly stored: GateResultRecord;
+  readonly currentRunId: RunRecord["envelope"]["runId"];
   readonly nodeId: string;
   readonly workflowId: AnyWorkflowDescriptor["id"];
   readonly verificationId: EvidenceEntryId;
@@ -1096,7 +1117,11 @@ function emitGateEvidence(input: GateEvidenceInput): void {
     workflowId: input.workflowId,
     gateId: stored.gateId,
   };
-  const source = {
+  const continued = stored.runId !== input.currentRunId;
+  const source = continued ? {
+    kind: "continued-gate-result" as const, sourceRunId: stored.runId, commandId: stored.commandId,
+    gateId: stored.gateId, resolvedBy: stored.resolvedBy, resolvedAt: stored.resolvedAt,
+  } : {
     kind: "gate-result" as const,
     gateId: stored.gateId,
     resolvedBy: stored.resolvedBy,
@@ -1146,6 +1171,7 @@ function emitGateEvidence(input: GateEvidenceInput): void {
     outcome: arm.outcome,
     reason: `${arm.summary}: gate "${nodeId}" was resolved \`${arm.value}\` by `
       + `${stored.resolvedBy} at ${stored.resolvedAt} through command ${stored.commandId}`
+      + (continued ? ` on source run ${stored.runId}, reused through this run's retained continuation` : "")
       + (projectedBound === undefined
         ? ""
         : `, bound to the identity evidence it was granted on `

@@ -1,3 +1,6 @@
+import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
+import { redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
+import { GateIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
@@ -126,7 +129,7 @@ async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate") 
     snapshots: () => snapshots };
 }
 
-type ExecutionFault = "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
+type ExecutionFault = "gate-missing" | "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
 
 async function executionFixture() {
   const f = await fixture();
@@ -156,6 +159,7 @@ async function executionFixture() {
     if (fault === undefined) return work(repositories);
     const corruptGate = (gate: ReturnType<AuthorityRepositories["gateResults"]["get"]>) => {
       if (gate === undefined || gate.gateId !== ONBOARDING_ROSTER_GATE_ID) return gate;
+      if (fault === "gate-missing") return undefined;
       if (fault === "checkpoint") return { ...gate, checkpointFingerprint: FingerprintSchema.parse("b".repeat(64)) };
       if (fault !== "legal-name" && fault !== "lived-name") return gate;
       const selected = OnboardingRosterChoiceSchema.parse(gate.result.value);
@@ -167,7 +171,9 @@ async function executionFixture() {
     };
     return work({ ...repositories,
       gateResults: { ...repositories.gateResults, get: id => corruptGate(repositories.gateResults.get(id)),
-        listByRun: id => repositories.gateResults.listByRun(id).map(gate => corruptGate(gate)!) },
+        listByRun: id => repositories.gateResults.listByRun(id).flatMap(gate => {
+          const retained = corruptGate(gate); return retained === undefined ? [] : [retained];
+        }) },
       commands: { ...repositories.commands, get: id => {
         const command = repositories.commands.get(id);
         return fault === "command" && command?.type === "resolve-workbook-reference-row"
@@ -388,9 +394,20 @@ describe("Onboarding captured roster admission and row choice", () => {
     const children = f.database.authority.runs.listChildren(root.envelope.runId);
     assert.equal(children.length, 1); assert.equal(children[0].envelope.workflow, "i9-lookup");
     assert.ok(children[0].lifecycle.state === "terminal" && children[0].lifecycle.outcome === "done");
-    const receipt = buildRunEvidenceReceipt({ descriptor, run: executed.run, result,
-      checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, root.envelope.itemId),
-      gateResults: f.database.authority.gateResults.listByRun(root.envelope.runId) });
+    const receipts = createReceiptService({ database: f.database, runReader: testRunService(f.database, f.clock), descriptors: [descriptor] });
+    assert.equal(f.database.authority.evidenceReceipts.findByRun(root.envelope.runId), undefined);
+    for (const fault of ["gate-missing", "legal-name", "lived-name", "checkpoint", "command", "audit-missing", "audit-changed", "native-missing", "native-changed"] as const) {
+      f.setFault(fault);
+      try {
+        assert.throws(() => receipts.ensureReceipt(root.envelope.runId), fault);
+        assert.equal(f.database.authority.evidenceReceipts.findByRun(root.envelope.runId), fault);
+      } finally { f.setFault(undefined); }
+    }
+    const ensured = receipts.ensure(root.envelope.runId); assert.equal(ensured.state, "derived");
+    const receipt = ensured.receipt;
+    assert.deepEqual(receipts.ensureReceipt(root.envelope.runId), receipt);
+    f.setFault("native-missing");
+    try { assert.throws(() => receipts.ensureReceipt(root.envelope.runId)); } finally { f.setFault(undefined); }
     assert.ok(receipt.decisions.some(decision => decision.kind === "gate" && decision.outcome === "taken"
       && decision.reason.includes("selected") && decision.reason.includes("row.binding.referenceDigest")));
     assert.deepEqual(f.repository.runOperations(root.envelope.runId), []);
@@ -442,6 +459,39 @@ describe("Onboarding captured roster admission and row choice", () => {
       const result = f.database.authority.runResults.get(recoveredId); assert.ok(result);
       assert.equal(OnboardingResultSchema.parse(result.result.value).plan.employee.firstName, "Fixture");
       assert.equal(f.calls.filter(call => call.system === "i9").length, 1);
+      assert.deepEqual(f.database.authority.gateResults.listByRun(recoveredId), []);
+      const original = f.database.authority.gateResults.get(`${root.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(original && "commandId" in original);
+      const receipts = createReceiptService({ database: f.database, runReader: testRunService(f.database, f.clock), descriptors: [descriptor] });
+      assert.equal(f.database.authority.evidenceReceipts.findByRun(recoveredId), undefined);
+      for (const fault of ["gate-missing", "legal-name", "checkpoint", "command", "audit-missing", "audit-changed", "native-missing", "native-changed"] as const) {
+        f.setFault(fault);
+        try {
+          assert.throws(() => receipts.ensureReceipt(recoveredId), fault);
+          assert.equal(f.database.authority.evidenceReceipts.findByRun(recoveredId), fault);
+        } finally { f.setFault(undefined); }
+      }
+      const receipt = receipts.ensureReceipt(recoveredId);
+      const expected = redactEvidenceLeaf({ kind: "gate-result", workflowId: WorkflowIdSchema.parse(descriptor.id), gateId: GateIdSchema.parse(ONBOARDING_ROSTER_GATE_ID) },
+        { path: "row.references.legalName.firstName", field: "firstName", value: "Fixture" });
+      const chosen = receipt.observations.find(fact => fact.state === "satisfied" && fact.source.kind === "continued-gate-result"
+        && fact.value.key === "row.references.legalName.firstName" && canonicalJsonStringify(fact.value) === canonicalJsonStringify(expected));
+      assert.ok(chosen?.source.kind === "continued-gate-result");
+      assert.equal(chosen.source.sourceRunId, root.envelope.runId); assert.equal(chosen.source.commandId, original.commandId);
+      assert.equal(chosen.source.resolvedBy, original.resolvedBy); assert.equal(chosen.source.resolvedAt, original.resolvedAt);
+      assert.ok(receipt.decisions.some(decision => decision.kind === "gate" && decision.outcome === "taken"
+        && decision.reason.includes(root.envelope.runId) && decision.reason.includes(original.commandId)));
+      const input = { descriptor, run: completed.run, result,
+        checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, root.envelope.itemId),
+        gateResults: [], continuedGateResults: [original] };
+      assert.deepEqual(buildRunEvidenceReceipt(input), receipt);
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, gateResults: [original], continuedGateResults: [] }), /belongs to run/u);
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, continuedGateResults: [original, original] }), /duplicate/u);
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, gateResults: [{ ...original, runId: recoveredId }] }), /duplicate/u);
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, continuedGateResults: [{ ...original, runId: randomUUID() }] }), /continued-gate-membership/u);
+      const altered = structuredClone(completed.run); assert.ok(altered.envelope.continuation);
+      altered.envelope.continuation.gates[0].digest = FingerprintSchema.parse("b".repeat(64));
+      assert.throws(() => buildRunEvidenceReceipt({ ...input, run: altered }), /continued-gate-membership/u);
+      assert.deepEqual(f.database.authority.gateResults.listByRun(recoveredId), []);
     }
   });
 

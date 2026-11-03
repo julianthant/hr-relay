@@ -77,6 +77,11 @@ native gate-result hash without rereading the workbook. Runs checks this proof a
 validating/running transition before executor replay or task admission and again at actual child
 admission. Continued runs authenticate the original source run and require identical canonical input
 and workbook references; Logs can show that retained source choice as resolved.
+Lazy receipt reads authenticate this authority before derivation and before returning an existing
+receipt. A completed run with pending canonical roster input requires an effective authenticated
+choice. Continued gate rows enter receipt derivation separately from own-run rows, bound to the
+exact native continuation tuple and row digest. Their `continued-gate-result` observations retain the
+original `sourceRunId`, command, operator and resolution time; the decision names the original run.
 No workbook patch or write receipt is created by a read choice. Hire writes remain unavailable.
 
 The `workbooks/read-result` task accepts `patch-reference` with a stable run-local write ID and

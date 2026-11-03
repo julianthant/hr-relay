@@ -1,3 +1,8 @@
+import { authenticateOnboardingRosterExecution } from "../workbooks.js";
+import { readContinuationGate } from "../../storage/sqlite/run-continuation.js";
+import { OnboardingCanonicalValueSchema } from "../../../models/workflows/onboarding/input.js";
+import { ONBOARDING_ROSTER_GATE_ID } from "../../../models/workflows/onboarding/roster.js";
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
 import { createFailureResolutionQuery } from "../queries/failure-resolution.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 
@@ -82,13 +87,30 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
     return descriptor;
   };
 
-  const ensure = (runId: string): EnsureReceiptOutcome => deps.database.withAuthorityTransaction(() => {
+  const ensure = (runId: string): EnsureReceiptOutcome => deps.database.withAuthorityTransaction(repositories => {
     const run = requireTrustRun(deps.runReader, runId);
+    const choice = authenticateOnboardingRosterExecution(repositories, run);
+    if (run.envelope.workflow === "onboarding" && run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done"
+      && OnboardingCanonicalValueSchema.parse(run.input.parsed.value).roster.state === "resolve-required" && choice === undefined) {
+      throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+    }
+    const gate = choice === undefined ? undefined : readContinuationGate(repositories, run.envelope, ONBOARDING_ROSTER_GATE_ID);
+    if (choice !== undefined && gate === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+    const continued = gate === undefined || gate.runId === runId ? [] : [gate];
     if (run.lifecycle.state === "terminal" && run.lifecycle.failureId !== undefined) {
       const failure = store.getFailure(run.lifecycle.failureId) as FailureRecord;
       assertTrustEvidenceIdentity(run, failure, "failure");
     }
-    const outcome = ensureRunEvidenceReceipt(store, descriptorFor(runId), runId);
+    const outcome = ensureRunEvidenceReceipt({ ...store,
+      listGateResultsByRun: id => {
+        if (id !== runId) throw new Error("TRUST_RECEIPT_GATE_OWNER_MISMATCH");
+        return repositories.gateResults.listByRun(id);
+      },
+      listContinuedGateResultsByRun: id => {
+        if (id !== runId) throw new Error("TRUST_RECEIPT_GATE_OWNER_MISMATCH");
+        return continued;
+      },
+    }, descriptorFor(runId), runId);
     assertTrustEvidenceIdentity(run, outcome.receipt, "receipt");
     return outcome;
   });
