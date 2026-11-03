@@ -174,11 +174,12 @@ async function executionFixture(corruptAssertedSubject = false) {
     log: recordingLogger().log }, f.database, f.profilePath,
     id => id === descriptor.id ? descriptor : id === "i9-lookup" ? childWorkflowModuleOf("onboarding", "i9-lookup").descriptor : undefined);
   let fault: ExecutionFault | undefined;
+  let markSubjectCheckpoint = corruptAssertedSubject;
   let repositoryView: ((repositories: AuthorityRepositories) => AuthorityRepositories) | undefined;
   const transaction = f.database.withAuthorityTransaction.bind(f.database);
   f.database.withAuthorityTransaction = work => transaction(repositories => {
     if (repositoryView !== undefined) return work(repositoryView(repositories));
-    if (fault === undefined && !corruptAssertedSubject) return work(repositories);
+    if (fault === undefined && !markSubjectCheckpoint) return work(repositories);
     const corruptGate = (gate: ReturnType<AuthorityRepositories["gateResults"]["get"]>) => {
       if (gate === undefined || gate.gateId !== ONBOARDING_ROSTER_GATE_ID) return gate;
       if (fault === "gate-missing") return undefined;
@@ -194,8 +195,10 @@ async function executionFixture(corruptAssertedSubject = false) {
     return work({ ...repositories,
       runCheckpoints: { ...repositories.runCheckpoints, insert: input => {
         const row = RunCheckpointRecordSchema.parse(input);
-        return repositories.runCheckpoints.insert(corruptAssertedSubject && row.nodeId === "hire-subject"
-          ? { ...row, assertion: { step: "ucpath-search", assertedAt: row.writtenAt } } : row);
+        if (!markSubjectCheckpoint || row.nodeId !== "hire-subject") return repositories.runCheckpoints.insert(row);
+        const inserted = repositories.runCheckpoints.insert({ ...row, assertion: { step: "ucpath-search", assertedAt: row.writtenAt } });
+        markSubjectCheckpoint = false;
+        return inserted;
       } },
       gateResults: { ...repositories.gateResults, get: id => corruptGate(repositories.gateResults.get(id)),
         listByRun: id => repositories.gateResults.listByRun(id).flatMap(gate => {
@@ -686,11 +689,12 @@ describe("Onboarding captured roster admission and row choice", () => {
       .find(row => row.runId === source.envelope.runId); assert.ok(row);
     let candidate: RunRecord;
     if (capturedAssertion) {
-      assert.ok(row.assertion);
+      assert.deepEqual(row.assertion, { step: "ucpath-search", assertedAt: row.writtenAt });
       const result = f.kernel.execute({ commandId: world.nextCommandId(), requestedAt: f.clock.now().toISOString(),
         requestedBy: "local-operator", source: "run-detail", family: "run", type: "recover-run",
         target: { runId: failed.envelope.runId, expectedVersion: failed.version } });
-      assert.equal(result.state, "applied");
+      assert.equal(result.state, "applied", JSON.stringify({ state: result.state,
+        code: result.state === "rejected" ? result.code : undefined }));
       const id = appliedRunIds(result).find(id => id !== source.envelope.runId); assert.ok(id);
       const recovered = f.database.authority.runs.get(id); assert.ok(recovered?.envelope.continuation);
       candidate = recovered;
