@@ -31,12 +31,16 @@
     sendResponse(observation());
     return false;
   });
-  const nativeFailure = async request => {
+  const nativeFailure = async (request, error) => {
+    const details = { ONBOARDING_DUO_SCOPE: 'native-scope', ONBOARDING_DUO_NATIVE_ORIGIN: 'native-origin',
+      ONBOARDING_DUO_NATIVE_UNAVAILABLE: 'native-unavailable', SecurityError: 'native-security', NotAllowedError: 'native-not-allowed' };
+    const detail = Object.hasOwn(details, error?.message) ? details[error.message] : Object.hasOwn(details, error?.name) ? details[error.name] : 'native-other';
+    await reportEvent('refused', request.requestId, detail);
     await chrome.runtime.sendMessage({ type: 'RELAY_NATIVE_FAILED', request: { origin: location.origin,
       rpId: request.rpId, requestId: request.requestId } });
   };
-  const reportEvent = async (stage, requestId) => {
-    const reply = await chrome.runtime.sendMessage({ type: 'RELAY_DUO_EVENT', event: { stage, requestId } });
+  const reportEvent = async (stage, requestId, detail) => {
+    const reply = await chrome.runtime.sendMessage({ type: 'RELAY_DUO_EVENT', event: { stage, requestId, ...(detail === undefined ? {} : { detail }) } });
     if (!reply?.success) throw new Error('ONBOARDING_DUO_EVENT_UNRECORDED');
   };
   window.addEventListener('message', async event => {
@@ -81,7 +85,7 @@
           } });
           if (!receipt?.success || controller.signal.aborted || !sameObservation(before, observation())) throw new Error('ONBOARDING_DUO_NATIVE_UNRECORDED');
         } catch (error) {
-          try { await nativeFailure(request); }
+          try { await nativeFailure(request, error); }
           catch (reportError) { throw new AggregateError([error, reportError], 'ONBOARDING_DUO_NATIVE_UNRECORDED', { cause: reportError }); }
           throw error;
         }

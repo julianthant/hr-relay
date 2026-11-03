@@ -6,7 +6,7 @@
   const originalGet = credentials.get.bind(credentials);
   const originalCreate = credentials.create.bind(credentials);
   const encode = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes)));
-  const decode = text => Uint8Array.from(atob(text), character => character.charCodeAt(0)).buffer;
+  const decode = text => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), character => character.charCodeAt(0)).buffer;
   const urlId = text => text.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   const waiting = new Map();
   window.addEventListener('message', event => {

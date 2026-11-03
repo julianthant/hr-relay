@@ -20,7 +20,7 @@
       const rpHash = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(expected.rpId)));
       if (!equal(new Uint8Array(authData).slice(0, 32), rpHash) || signal.aborted) throw new Error('ONBOARDING_DUO_SCOPE');
       const publicKeySpki = response.getPublicKey();
-      return { credentialId: encode(credential.rawId), attachment: credential.authenticatorAttachment,
+      return { credentialId: base64url(encode(credential.rawId)), attachment: credential.authenticatorAttachment,
         clientDataJSON: encode(response.clientDataJSON), attestationObject: encode(response.attestationObject),
         authData: encode(authData), publicKeySpki: publicKeySpki === null ? null : encode(publicKeySpki),
         publicKeyAlgorithm: response.getPublicKeyAlgorithm(), transports: response.getTransports() };

@@ -113,7 +113,7 @@ export type ProfileOnboardingDuoFailure = z.infer<typeof ProfileOnboardingDuoFai
 export const ProfileOnboardingDuoEventSchema = z.strictObject({
   stage: z.enum(["intercepted", "forwarded", "backend-received", "replied", "refused", "timed-out", "aborted", "platform-native", "platform-virtual"]),
   requestId: z.uuid().optional(),
-  detail: z.enum(["sender", "request", "document", "account", "username", "backend"]).optional(),
+  detail: z.enum(["sender", "request", "document", "account", "username", "backend", "native-scope", "native-origin", "native-unavailable", "native-security", "native-not-allowed", "native-other"]).optional(),
 });
 export type ProfileOnboardingDuoEvent = z.infer<typeof ProfileOnboardingDuoEventSchema>;
 

@@ -472,7 +472,7 @@ test('native isolated completion calls captured browser create; page-created and
   const w = await isolatedWorld(async (_options, Credential, Attestation) => {
     await gate;
     const authData = new Uint8Array(37); authData.set(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('duosecurity.com'))));
-    return Object.assign(new Credential(), { rawId: new Uint8Array([1, 2, 3]).buffer, authenticatorAttachment: 'platform', response: Object.assign(new Attestation(), {
+    return Object.assign(new Credential(), { rawId: new Uint8Array([251, 255, 0, 1]).buffer, authenticatorAttachment: 'platform', response: Object.assign(new Attestation(), {
       clientDataJSON: new TextEncoder().encode(JSON.stringify({ type: 'webauthn.create', origin: ORIGIN, challenge: CHALLENGE.replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_') })).buffer,
       attestationObject: new Uint8Array([1]).buffer, getAuthenticatorData: () => authData.buffer,
       getPublicKey: () => null, getPublicKeyAlgorithm: () => -7, getTransports: () => ['internal'],
@@ -488,6 +488,7 @@ test('native isolated completion calls captured browser create; page-created and
   complete(); await operation;
   assert.equal(w.nativeCalls(), 1);
   assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED').length, 1);
+  assert.equal(w.sent.find(message => message.type === 'RELAY_NATIVE_CREATED').request.credentialId, '-_8AAQ');
   assert.equal(w.output.at(-1).success, true);
   assert.ok(!JSON.stringify(w.sent).includes('privateKey'));
 });
@@ -500,10 +501,21 @@ test('native browser refusal has no software fallback or successful ceremony', a
   assert.equal(w.nativeCalls(), 1);
   assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED').length, 0);
   assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_FAILED').length, 1);
+  assert.equal(w.sent.find(message => message.event?.stage === 'refused').event.detail, 'native-other');
   assert.equal(w.output.at(-1).success, false);
 });
 
-test('page realm creates and reads software credentials with browser readonly prototype getters', async () => {
+test('native security refusal emits only its closed diagnostic tag', async () => {
+  const w = await isolatedWorld(async () => { throw new DOMException('private native error detail', 'SecurityError'); });
+  const request = enrollment('platform').request;
+  await w.message({ type: 'RELAY_DUO_REQUEST', id: 'security-refused', operation: 'DUO_AUTOPILOT_ENROLL', request,
+    nativeOptions: { rp: { id: request.rpId }, challenge: Buffer.from(request.challenge, 'base64'), user: { name: request.username, id: Buffer.from(request.userHandle, 'base64') }, authenticatorSelection: { authenticatorAttachment: 'platform' } } });
+  assert.equal(w.sent.find(message => message.event?.stage === 'refused').event.detail, 'native-security');
+  assert.ok(!JSON.stringify([...w.sent, ...w.output]).includes('private native error detail'));
+  assert.equal(w.output.at(-1).success, false);
+});
+
+for (const credentialId of ['+/8=', '-_8']) test(`page realm creates and reads credentials with browser readonly prototype getters: ${credentialId}`, async () => {
   const { readFile } = await import('node:fs/promises');
   const { runInNewContext } = await import('node:vm');
   class Response {}
@@ -518,7 +530,7 @@ test('page realm creates and reads software credentials with browser readonly pr
   let listener;
   const requests = [];
   const settled = [];
-  const result = { ok: true, credentialId: '+/8=', clientDataJSON: 'AQ==', attestationObject: 'Ag==', authData: 'Aw==',
+  const result = { ok: true, credentialId, clientDataJSON: 'AQ==', attestationObject: 'Ag==', authData: 'Aw==',
     publicKeySpki: 'BA==', authenticatorData: 'BQ==', signature: 'Bg==', userHandle: 'Bw==', transport: 'usb' };
   const window = { addEventListener: (_type, callback) => { listener = callback; }, postMessage: message => {
     if (message.type === 'RELAY_DUO_SETTLED') settled.push(message.id);

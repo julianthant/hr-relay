@@ -303,8 +303,10 @@ if (typeof chrome !== 'undefined') {
       if (sender.url?.startsWith(chrome.runtime.getURL(''))) return browserReceive(message, sender);
       if (message?.type === 'RELAY_DUO_EVENT') {
         requireBrowser(); requireDuoSender(chrome, sender);
-        if (!message.event || !['intercepted', 'replied'].includes(message.event.stage)
-          || Object.keys(message.event).some(key => !['stage', 'requestId'].includes(key))) throw new Error('ONBOARDING_DUO_REQUEST');
+        if (!message.event || !['intercepted', 'replied', 'refused'].includes(message.event.stage)
+          || Object.keys(message.event).some(key => !['stage', 'requestId', 'detail'].includes(key))
+          || (message.event.stage === 'refused' ? !['native-scope', 'native-origin', 'native-unavailable', 'native-security', 'native-not-allowed', 'native-other'].includes(message.event.detail)
+            : message.event.detail !== undefined)) throw new Error('ONBOARDING_DUO_REQUEST');
         if (message.event.stage === 'intercepted') relay?.intercept(message.event, sender);
         await browserCall({ kind: 'event', event: message.event });
         return { observed: true };
