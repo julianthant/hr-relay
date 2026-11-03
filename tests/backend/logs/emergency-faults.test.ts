@@ -16,6 +16,8 @@ describe("bounded native debug events", () => {
       const path = join(root, "logs/boot.jsonl");
       const record = z.object({ eventId: z.string(), payload: z.object({ event: z.record(z.string(), z.unknown()) }).loose() }).loose().parse(JSON.parse(readFileSync(path, "utf8")));
       delete record.payload.event.level;
+      delete record.payload.event.area;
+      delete record.payload.event.reason;
       writeFileSync(path, JSON.stringify(record) + "\n");
       const { repository, records } = fixture();
       assert.equal(importEmergencyFaults(root, repository), 1);

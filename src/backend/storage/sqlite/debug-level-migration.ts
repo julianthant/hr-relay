@@ -15,7 +15,7 @@ export const DEBUG_LEVEL_MIGRATION = { version: 18, statements: [
 export function upgradeDebugEventLevel(input: unknown) {
   const document = z.object({ payload: z.object({ kind: z.literal("debug"), event: z.unknown() }) }).loose()
     .parse(input);
-  const event = DebugEventSchema.omit({ level: true }).parse(document.payload.event);
+  const event = DebugEventSchema.omit({ level: true, area: true, reason: true }).parse(document.payload.event);
   document.payload.event = { ...event, level: event.phase === "failed" ? "error" : event.phase === "expired" || event.phase === "reset" ? "warn" : "info" };
   return document;
 }
