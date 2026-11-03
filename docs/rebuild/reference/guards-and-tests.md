@@ -390,10 +390,17 @@ and its own violating scratch fixture. The scanners are not separate inventory g
 | `frontend-tailwind-compliance` | `src/dashboard` | Palette literals, arbitrary z-index, motion without reduced-motion handling, and images without alt text. |
 
 The catch scanner's reviewed exceptions live in
-`tests/architecture/tooling/helpers/reviewed-catch-defaults.ts`. Each pins current source bytes,
-a reason, and a nonzero original finding. The manifest proves unsafe-catch and independent
-comment-only changes invalidate the allowance. This is a source-bound exception, not a growing
-count-only waiver.
+`tests/architecture/tooling/helpers/reviewed-catch-defaults.ts`. Each file keeps its reviewed reason
+and a multiset of statement kind, SHA256 and positive occurrence count. The hash covers the exact
+AST source slice from `getStart(source)` to `end`: the complete try/catch/finally statement or the
+complete promise `.catch(...)` call, including receiver and arguments. In-span whitespace and
+comments remain significant; coordinates and statement order do not participate.
+Every finding-bearing statement must match a pin, every pin must match a finding-bearing statement,
+and occurrence counts must match exactly. Multiple findings in one handler share one statement pin.
+The manifest proves unsafe added catches, changed guarded bodies/handlers/finally blocks and in-span
+comments require re-review; deleted, empty, duplicate or overcounted pins fail. Outside comments and
+insertions preserve the allowance. This guarantees exact statement identity; changes to callers,
+helpers or imports outside the span can still change meaning and need ordinary code review.
 `runner-invocation-audit.ts` walks the bounded local executable import, re-export, and require closure of each package-declared runner and refuses chains, unresolved or escaping modules, and over-bound walks.
 
 ### 5.2 Gate and scope guards
