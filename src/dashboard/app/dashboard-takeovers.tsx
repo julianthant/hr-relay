@@ -43,7 +43,7 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
  return (takeover === "settings" || takeover === "archive" || dataContent !== undefined ? (
             <SettingsPage
               spreadsheetSource={spreadsheetSource}
-              storage={boot.storage} appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
+              storage={boot.storage} appearance={<AppearanceSettings personName={boot.actor.label} theme={theme} onToggleTheme={onToggleTheme} />}
               sections={settingsSections}
               workflowLabels={workflowLabels}
               section={route.settings ?? dataSection ?? ""}

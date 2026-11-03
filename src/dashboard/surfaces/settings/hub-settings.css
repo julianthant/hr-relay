@@ -41,12 +41,6 @@
 .hub-setting-control > button { display:flex;align-items:center;gap:6px;font-size:12px; }
 .hub-window-size { display:flex;align-items:center;gap:7px;min-width:0; }
 .hub-window-size > input { width:0;min-width:0;flex:1;height:34px;padding:6px 10px;border-radius:8px;font-size:13px; }
-.hub-permission-menu { width:max-content;max-width:calc(100vw - 40px);translate:calc(100% - 310px) 0;padding:7px;border-radius:18px;background:var(--ui-panel);border:1px solid var(--ui-stroke);box-shadow:0 8px 26px #0002; }
-.hub-permission-menu p { margin:0;padding:7px 9px;color:var(--ui-muted);font-size:11px; }
-.hub-permission-menu button { display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 9px;border:0;border-radius:12px;background:transparent;font-size:12px; }
-.hub-permission-menu button:hover { background:transparent; }
-.hub-permission-menu small { display:block;font-size:11px;line-height:15px;color:var(--ui-muted); }
-.hub-permission-menu svg { width:14px;height:14px;margin-left:auto;flex:none; }
 @media(max-width:1440px) { .settings-tab-body .ds-form-group .ds-body-row,.hub-settings-row { grid-template-columns:minmax(0,1fr) minmax(130px,290px); } }
 @media(max-width:1100px) { .dashboard-shell .settings-takeover > nav.settings-panel-nav { width:210px; }.hub-settings-row { grid-template-columns:1fr;gap:9px; }.hub-setting-control { justify-content:flex-start; } }
 
@@ -54,15 +48,10 @@
 .settings-compact-page > .ds-body-section:first-of-type .ds-field-label { font-weight:400; }
 .settings-compact-page > .ds-body-section:first-of-type .ds-field-description { line-height:16.2px;margin-top:3.6px; }
 
-.hub-permission-menu { font-size:12px;line-height:1.5; }
-.hub-permission-menu button>span { display:grid;gap:1px;flex:1;min-width:0; }
-.hub-permission-menu button>svg { width:16px;height:16px;margin:0; }
-.hub-permission-menu button>svg:last-child { width:16px; }
 .settings-takeover .hub-window-size input,.settings-takeover .settings-compact-control :is(input,[data-slot="date-input-group"]) { background:var(--ui-panel); }
 .settings-takeover .settings-compact-control [data-slot="date-input-group"] { height:34px; }
 .settings-takeover .ds-field-label>span[aria-hidden="true"][class*="--ds-danger"] { display:none; }
 
-.hub-permission-menu>div { padding:0;font-size:12px;line-height:1.5;color:var(--ui-primary); }
 
 .settings-nav-search { height:34px;min-height:34px; }
 .settings-nav-header button { width:30px;height:30px;border-radius:999px; }

@@ -23,6 +23,7 @@ interface BootstrapModuleView {
 
 export interface BootstrapQueryDeps {
   readonly appVersion: string;
+  readonly actorLabel: () => string;
   readonly clock: Clock;
   /** Composition's local-calendar authority, shared with Activity summaries. */
   readonly timeZone?: string;
@@ -83,7 +84,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     settingsSchemaHash: deps.settingsSchemaHash,
     protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
     projectionGeneration: deps.projection.generation(),
-    actor: { id: LOCAL_OPERATOR_ACTOR_ID, label: "Local operator" },
+    actor: { id: LOCAL_OPERATOR_ACTOR_ID, label: deps.actorLabel() },
     serverClock: { now: deps.clock.now().toISOString(), zone: deps.timeZone ?? runtimeTimeZone() },
     storage: {
       automaticRepair: deps.automaticRepair(),

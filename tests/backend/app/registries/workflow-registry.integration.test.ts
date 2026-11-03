@@ -91,6 +91,7 @@ describe("workflow definition registry conformance", () => {
         descriptorSetHash: descriptorSetHash_m0(WORKFLOW_MODULES.map(({ descriptor }) => descriptor.contractFingerprint)),
         settingsSchemaHash: descriptorSetHash_m0(["settings-schema"]),
         projection: world.projection,
+        actorLabel: () => "Fixture Operator",
         authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
         automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "current",
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
