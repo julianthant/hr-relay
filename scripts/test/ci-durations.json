@@ -1104,7 +1104,7 @@
   "tests/models/runtime/runtime-environment.test.ts": 0,
   "tests/models/systems/crm/read-onboarding-dates.integration.test.ts": 1.4,
   "tests/models/systems/kuali/save-separation-finalization.test.ts": 0,
-  "tests/models/systems/ucpath/contact-tasks.test.ts": 0,
+  "tests/models/systems/ucpath/contact-contract.test.ts": 0,
   "tests/models/systems/ucpath/delete-pending-terminations.test.ts": 0,
   "tests/models/systems/ucpath/emergency-contacts.test.ts": 0,
   "tests/models/systems/ucpath/search-person-org.test.ts": 0,
