@@ -54,6 +54,7 @@ test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String
       const refreshed = page.waitForResponse(response => response.url().endsWith("/api/v1/storage/doctor"));
       await doctor.click();
       const after = StorageDoctorWireSchema.parse(await (await refreshed).json());
+      await test.info().attach("restored-doctor.json", { body: JSON.stringify(after, null, 2), contentType: "application/json" });
       expect(after.recovery.state).toBe("clear");
       expect(after.authority.state).toBe("healthy");
       expect(after.protectedSettings.state).toBe("available");
@@ -69,7 +70,7 @@ test(`real storage recovery @ ${theme.name} @ ${String(viewport.width)}x${String
       expect(target.requests.filter(row => row.method !== "GET")).toEqual([]);
       expect(errors).toEqual([]);
       const body = await page.locator("body").ariaSnapshot();
-      expect(body).not.toContain("SYNTHETIC_STORAGE_PROOF_NEVER_REAL");
+      expect(body).not.toContain("disposable-fixture-password");
       test.info().annotations.push({type: `a11y-attachment-sha256:${a11yName}`, description: createHash("sha256").update(body).digest("hex")});
       await test.info().attach(a11yName, {body, contentType: "text/yaml"});
       await test.info().attach("real-route-proof.json", {body: JSON.stringify({provenance: target.provenance(), before: wire,

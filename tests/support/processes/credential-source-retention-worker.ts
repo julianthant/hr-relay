@@ -412,7 +412,8 @@ async function runLogout(): Promise<void> {
     process.send?.({ scenario, assertionsComplete: true });
     await new Promise<never>(() => { setInterval(() => {}, 1000); });
   }
-  const controller = await RuntimeLifetimeLock.acquire(port), machine = acquireEntrypointAdmission(workspace, "exclusive", controller);
+  // The parent's released ephemeral port can already belong to another fixture.
+  const controller = await RuntimeLifetimeLock.acquire(0), machine = acquireEntrypointAdmission(workspace, "exclusive", controller);
   const wall = manualClock(new Date("2026-10-21T12:01:00.000Z"));
   const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: wall.now().toISOString() };
   if (scenario === "logout-seed" || scenario === "logout-seed-unknown") {
@@ -714,7 +715,7 @@ async function runLogout(): Promise<void> {
     const { scaledMs } = await import("../time-scale.js");
     const { credentialKeychainTestEnvironment } = await import("../helpers/credential-keychain-fake.js");
     const { acquireRuntimeProcessLock } = await import("../../../src/backend/storage/sqlite/runtime-process-locks.js");
-    const child = fork(import.meta.filename, [String(port), workspace, profileId, "logout-exit-only", nonce], {
+    const child = fork(import.meta.filename, [String(controller.port), workspace, profileId, "logout-exit-only", nonce], {
       execArgv: ["--import", testProcessImport()], env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "ignore", "pipe", "ipc"] });
     const closed = once(child, "close");
     const diagnostics = { stderrBytes: 0 };
