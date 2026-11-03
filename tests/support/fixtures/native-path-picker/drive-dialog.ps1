@@ -6,11 +6,15 @@ $window = $null
 try {
   Add-Type -AssemblyName UIAutomationClient
   Add-Type -AssemblyName UIAutomationTypes
+  Add-Type -AssemblyName UIAutomationClientsideProviders
+  $registration = [System.Windows.Automation.ClientSettings].GetMethod('RegisterClientSideProviderAssembly')
+  $registration.Invoke($null, @([UIAutomationClientsideProviders.UIAutomationClientSideProviders].Assembly.GetName()))
   Add-Type -AssemblyName System.Windows.Forms
   if (-not [System.Windows.Forms.SystemInformation]::UserInteractive) {
     throw 'NATIVE_PICKER_DESKTOP_UNAVAILABLE: WinForms requires a UserInteractive window station'
   }
   $request = ConvertFrom-Json ([Console]::ReadLine())
+  if ($request.kind -eq 'file' -and $request.action -eq 'select') { Add-Type -Path $request.shim }
   $targetPid = [int]$request.pid
   $target = [Diagnostics.Process]::GetProcessById($targetPid)
   $null = $target.Handle
@@ -47,12 +51,16 @@ try {
     return $control
   }
 
-  $window = $null
+  $needsFile = $request.kind -eq 'file' -and $request.action -eq 'select'
+  $needsOk = $request.kind -eq 'folder' -and $request.action -ne 'cancel'
+  $needsCancel = $request.action -ne 'select'
   $ok = $null
   $cancel = $null
   $fileName = $null
-  while ($null -eq $window -or $null -eq $ok -or $null -eq $cancel -or
-    ($request.kind -eq 'file' -and $null -eq $fileName)) {
+  $nativeOpen = $null
+  $dialogHandle = [IntPtr]::Zero
+  $ready = $false
+  while (-not $ready) {
     Check-Deadline
     if ($target.HasExited) { throw 'NATIVE_PICKER_EXITED_BEFORE_DIALOG_READY' }
     $windows = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(
@@ -60,33 +68,38 @@ try {
     if ($windows.Count -gt 1) { throw 'NATIVE_PICKER_AMBIGUOUS_DIALOG' }
     if ($windows.Count -eq 1) {
       $window = $windows.Item(0)
-      $ok = Find-Control $window '1' ([System.Windows.Automation.ControlType]::Button)
-      $cancel = Find-Control $window '2' ([System.Windows.Automation.ControlType]::Button)
-      if ($request.kind -eq 'file') {
+      if ($needsOk) { $ok = Find-Control $window '1' ([System.Windows.Automation.ControlType]::Button) }
+      if ($needsCancel) { $cancel = Find-Control $window '2' ([System.Windows.Automation.ControlType]::Button) }
+      if ($needsFile) {
         $fileName = Find-Control $window '1148' ([System.Windows.Automation.ControlType]::Edit)
+        $dialogHandle = [IntPtr]::new($window.Current.NativeWindowHandle)
+        $nativeOpen = [NativePickerDialogControl]::InspectOpenButton($dialogHandle, $targetPid)
       }
+      $ready = (-not $needsOk -or $null -ne $ok) -and (-not $needsCancel -or $null -ne $cancel) -and
+        (-not $needsFile -or ($null -ne $fileName -and $null -ne $nativeOpen -and $nativeOpen.Enabled))
     }
-    if ($null -eq $ok -or $null -eq $cancel -or ($request.kind -eq 'file' -and $null -eq $fileName)) {
-      Start-Sleep -Milliseconds 25
-    }
+    if (-not $ready) { Start-Sleep -Milliseconds 25 }
   }
-  $okInvoke = [System.Windows.Automation.InvokePattern]$ok.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-  $cancelInvoke = [System.Windows.Automation.InvokePattern]$cancel.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
-  $fileValue = $null
-  if ($request.kind -eq 'file') {
+  if ($needsOk) { $okInvoke = [System.Windows.Automation.InvokePattern]$ok.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern) }
+  if ($needsCancel) { $cancelInvoke = [System.Windows.Automation.InvokePattern]$cancel.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern) }
+  if ($needsFile) {
     $fileValue = [System.Windows.Automation.ValuePattern]$fileName.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern)
     if ($fileValue.Current.IsReadOnly) { throw 'NATIVE_PICKER_FILENAME_READ_ONLY' }
+    [Console]::Error.WriteLine((@{ nativeButton = $nativeOpen } | ConvertTo-Json -Compress))
   }
   [Console]::WriteLine('READY')
   [Console]::Out.Flush()
   if ($request.action -eq 'select') {
     if ($target.HasExited) { throw 'NATIVE_PICKER_EXITED_BEFORE_ACTION' }
-    if ($request.kind -eq 'file') {
+    if ($needsFile) {
       $fileValue.SetValue([string]$request.path)
       if ($fileValue.Current.Value -cne $request.path) { throw 'NATIVE_PICKER_FILENAME_VALUE_MISMATCH' }
     }
     if ($target.HasExited) { throw 'NATIVE_PICKER_EXITED_BEFORE_ACTION' }
-    $okInvoke.Invoke()
+    if ($needsFile) {
+      $commandResult = [NativePickerDialogControl]::SelectFile($dialogHandle, $targetPid)
+      [Console]::Error.WriteLine((@{ nativeCommand = @{ message = 273; controlId = 1; notification = 0; result = $commandResult } } | ConvertTo-Json -Compress))
+    } else { $okInvoke.Invoke() }
   } elseif ($request.action -eq 'cancel') {
     if ($target.HasExited) { throw 'NATIVE_PICKER_EXITED_BEFORE_ACTION' }
     $cancelInvoke.Invoke()

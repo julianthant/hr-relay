@@ -3,7 +3,8 @@ import { spawn,type ChildProcess,type ChildProcessWithoutNullStreams } from "nod
 import { mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach,describe,it,vi } from "vitest";
+import { fileURLToPath } from "node:url";
+import { afterAll,afterEach,beforeAll,describe,it,vi } from "vitest";
 import { createNativePathPicker } from "../../../../src/backend/transports/http/native-path-picker.js";
 import { authorizeNativePickerDriver } from "../../../support/helpers/native-path-picker-driver.js";
 import type { NativePathPickerRequest } from "../../../../src/models/dashboard/native-path-picker.js";
@@ -21,6 +22,8 @@ vi.mock("node:child_process", async importOriginal => {
 
 const driverScript = readFileSync(new URL("../../../support/fixtures/native-path-picker/drive-dialog.ps1", import.meta.url), "utf8");
 const roots: string[] = [];
+let shimRoot: string | undefined;
+let shimPath: string | undefined;
 afterEach(() => {
   launched.length = 0;
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -94,8 +97,11 @@ async function exercise(request: NativePathPickerRequest, action: "select" | "ca
     });
     driving.stdin.on("error", () => { controller.abort(); driving.kill("SIGKILL"); });
     driving.stdin.write(`${JSON.stringify({ pid, executable: child.spawnfile,
-      kind: request.field === "paths.i9CheckTrackerPath" ? "file" : "folder", action, path })}\n`);
+      kind: request.field === "paths.i9CheckTrackerPath" ? "file" : "folder", action, path, shim: shimPath })}\n`);
     const [result] = await Promise.all([pending, driverClosed]);
+    for (const line of stderr.split(/\r?\n/u)) {
+      if (line.startsWith('{"nativeButton":') || line.startsWith('{"nativeCommand":')) process.stderr.write(`${line}\n`);
+    }
     assert.equal(deadlineReached, false, "native picker UI proof exceeded its bounded condition wait");
     assert.equal(bound, true, "the driver must bind a process handle before UI enumeration");
     assert.equal(authorizationRefused, false);
@@ -112,7 +118,42 @@ async function exercise(request: NativePathPickerRequest, action: "select" | "ca
   }
 }
 
+async function compileDialogShim(): Promise<void> {
+  const systemRoot = process.env.SystemRoot;
+  assert.ok(systemRoot);
+  shimRoot = mkdtempSync(join(realpathSync(tmpdir()), "native-picker-shim-"));
+  shimPath = join(shimRoot, "NativePickerDialogControl.dll");
+  const source = new URL("../../../support/fixtures/native-path-picker/native-picker-dialog-control.cs", import.meta.url);
+  const compiler = spawn(join(systemRoot, "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe"),
+    ["/noconfig", "/nologo", "/target:library", `/out:${shimPath}`, fileURLToPath(source)], { windowsHide: true, stdio: "pipe" });
+  let output = "";
+  let failure: Error | undefined;
+  const capture = (chunk: string) => {
+    output += chunk;
+    if (output.length > 8192) { output = output.slice(0, 8192); compiler.kill("SIGKILL"); }
+  };
+  compiler.stdout.setEncoding("utf8"); compiler.stderr.setEncoding("utf8");
+  compiler.stdout.on("data", capture); compiler.stderr.on("data", capture);
+  const timer = setTimeout(() => compiler.kill("SIGKILL"), 10_000);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      compiler.once("error", error => { failure = error; });
+      compiler.once("close", code => {
+        if (failure !== undefined) reject(failure);
+        else if (code !== 0) reject(new Error(`Native picker shim compilation failed: ${output}`));
+        else resolve();
+      });
+    });
+    const pid = compiler.pid;
+    assert.ok(pid);
+    assert.throws(() => process.kill(pid, 0), { code: "ESRCH" });
+    process.stderr.write(`${JSON.stringify({ nativePickerCompiler: { pid, code: compiler.exitCode, signal: compiler.signalCode, closed: true } })}\n`);
+  } finally { clearTimeout(timer); }
+}
+
 describe.runIf(process.platform === "win32")("Windows native picker dialogs", () => {
+  beforeAll(compileDialogShim);
+  afterAll(() => { if (shimRoot !== undefined) rmSync(shimRoot, { recursive: true, force: true }); });
   it("selects the hinted Unicode and quoted folder through the actual OK control", async () => {
     const p = paths();
     assert.deepEqual(await exercise({ field: "paths.reportsDir", initialPath: p.folder }, "select"),
