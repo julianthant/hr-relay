@@ -9,6 +9,10 @@ import { RunCheckpointRecordSchema, type RunCheckpointRecord } from "../../../..
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { observationLeafPaths } from "../../../../src/models/events/data-observation-origin.js";
 import { taskSpanPath } from "../../../../src/backend/logs/span-emitter.js";
+import { I9SignerOutputSchema } from "../../../../src/models/systems/i9/read-section2-signer.js";
+import { childRunOutcomeSchema } from "../../../../src/models/workflow/graph.js";
+import { bindOcrLookupOutcomes } from "../../../../src/models/workflows/ocr/lookup.js";
+import { OcrReviewRefusedError } from "../../../../src/backend/processing/ocr/review-authority.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -22,6 +26,58 @@ function publicationCheckpoint(checkpoint: RunCheckpointRecord, value: RunCheckp
     } })),
   });
 }
+
+it("retries one failed signer child while retaining successful lookup and page evidence", async () => {
+  const firstNames = ["Avery", "Morgan"] as const;
+  const f = await world.fixture({ record: true, release: true, pageCount: 2,
+    signerLookup: { firstNames, failOnce: firstNames[1] } });
+  const repositories = f.database.authority;
+  const original = repositories.ocrReviews.latest(f.run.envelope.runId); assert.ok(original);
+  assert.deepEqual(original.seed.identities.map(identity => identity.outcome.state), ["done", "failed"]);
+  const checkpoint = repositories.runCheckpoints.listByAttempt("ocr", f.run.envelope.itemId, "read-result", 1).at(-1); assert.ok(checkpoint);
+  const children = repositories.runs.listChildren(f.run.envelope.runId);
+  const failed = children.find(child => child.envelope.workflow === "i9-lookup" && child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed"); assert.ok(failed);
+  const retained = children.filter(child => child.envelope.runId !== failed.envelope.runId);
+  assert.equal(retained.filter(child => child.envelope.workflow === "i9-lookup").length, 1);
+  assert.equal(retained.filter(child => child.envelope.workflow === "ocr-page").length, 2);
+  const retainedCheckpoints = retained.map(child => repositories.runCheckpoints.listByItem(child.envelope.workflow, child.envelope.itemId));
+  const request = { commandId: randomUUID(), family: "run", type: "retry", requestedBy: "local-operator", source: "run-detail",
+    requestedAt: f.clock.now().toISOString(), target: { runId: failed.envelope.runId, expectedVersion: failed.version } };
+  assert.equal(f.canonical.kernel.execute(request).state, "applied");
+  assert.equal(f.canonical.kernel.execute(request).state, "already-applied");
+  const replacement = repositories.runs.listChildren(f.run.envelope.runId).find(child => child.envelope.retryOf === failed.envelope.runId); assert.ok(replacement);
+  const completed = await f.canonical.step(f.run, new AbortController().signal);
+  assert.equal(completed.run.envelope.runId, replacement.envelope.runId);
+  assert.equal(completed.outcome.state, "done");
+  assert.deepEqual(f.signerReads, [...firstNames, firstNames[1]]);
+  const stale = publicationCheckpoint(checkpoint, original.seed, f.run.envelope.traceId);
+  const generation = f.database.getMeta().authorityGeneration;
+  assert.throws(() => f.database.withAuthorityTransaction(authority => {
+    authority.runCheckpoints.insert(stale);
+    publishOcrReview(authority, f.canonical.lifecycle, f.run, stale);
+  }), OcrReviewRefusedError);
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  const outcomes = childRunOutcomeSchema(I9SignerOutputSchema).array().parse(delegationEvidenceOutput(
+    repositories.dependencies.evidence(f.run.envelope.runId, "lookup-signers"), I9SignerOutputSchema));
+  const seed = { ...original.seed, identities: bindOcrLookupOutcomes(original.seed.review, outcomes) };
+  const rebuilt = publicationCheckpoint(checkpoint, seed, f.run.envelope.traceId);
+  f.database.withAuthorityTransaction(authority => {
+    authority.runCheckpoints.insert(rebuilt);
+    publishOcrReview(authority, f.canonical.lifecycle, f.run, rebuilt);
+  });
+  const review = readOcrReviewAuthority(repositories, f.canonical.lifecycle, f.run.envelope.runId); assert.ok(review);
+  assert.equal(review.revision.revision, original.revision + 1);
+  assert.deepEqual(review.revision.seed.identities.map(identity => identity.outcome.state), ["done", "done"]);
+  const firstIdentity = original.seed.identities[0]; assert.ok(firstIdentity);
+  assert.deepEqual(review.revision.seed.identities.map(identity => identity.outcome.runId), [firstIdentity.outcome.runId, replacement.envelope.runId]);
+  assert.deepEqual(review.revision.seed.review, original.seed.review);
+  assert.deepEqual(repositories.ocrReviews.revision(f.run.envelope.runId, original.revision), original);
+  assert.deepEqual(retained.map(child => repositories.runs.get(child.envelope.runId)), retained);
+  assert.deepEqual(retained.map(child => repositories.runCheckpoints.listByItem(child.envelope.workflow, child.envelope.itemId)), retainedCheckpoints);
+  assert.equal(repositories.runs.listChildren(f.run.envelope.runId).length, children.length + 1);
+  assert.equal(repositories.runs.get(f.run.envelope.runId)?.lifecycle.state, "parked-gate");
+  assert.equal(f.database.readProfileResourceCustody().writeIntents.length, 0);
+});
 
 it("publishes a complete new review from retained pages and one authenticated failed-page replacement", async () => {
   const f = await world.fixture({ pageCount: 2, release: true, failManualPageOnce: 2 });
