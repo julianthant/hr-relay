@@ -494,41 +494,14 @@ function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
   return [...ocrReviewSeedLeaves(scope, "review."), ...ocrPrivateLeaves(scope, "identities")];
 }
 
-function ocrApprovalLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
-  return [
-    ...open(scope, `${prefix}revision`),
-    ...ocrPrivateLeaves(scope, `${prefix}snapshotId`, `${prefix}sourceRunId`, `${prefix}digest`),
-  ];
-}
-
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
   ...open(taskOutput("extraction/extract-pdf-pages"), "pageCount"),
   ...ocrPrivateLeaves(taskOutput("extraction/extract-pdf-pages"), "pages"),
-  ...[taskOutput("workflow:ocr/read-source-pages"), workflowResult("ocr-source-pages")].flatMap(scope => [
-    ...ocrManifestLeaves(scope, "manifest."), ...ocrPrivateLeaves(scope, "pages"),
-  ]),
-  ...[taskOutput("workflow:ocr-page/read-page-reading"), taskOutput("workflow:ocr-page/read-manual-reading"),
-    workflowResult("ocr-page"), workflowResult("ocr-page-reading")].flatMap(ocrPageReadingLeaves),
+  ...ocrManifestLeaves(taskOutput("workflow:ocr/read-source-pages"), "manifest."),
+  ...ocrPrivateLeaves(taskOutput("workflow:ocr/read-source-pages"), "pages"),
+  ...[taskOutput("workflow:ocr-page/read-page-reading"), taskOutput("workflow:ocr-page/read-manual-reading")].flatMap(ocrPageReadingLeaves),
   ...ocrReviewSeedLeaves(taskOutput("workflow:ocr/read-review-seed"), ""),
-  ...[taskOutput("workflow:ocr/read-result"), workflowResult("ocr")].flatMap(ocrResultLeaves),
-  ...ocrPrivateLeaves(workflowResult("ocr"), "approvedSnapshot"),
-  ...ocrApprovalLeaves(workflowResult("ocr"), "approvedSnapshot."),
-  ...ocrApprovalLeaves(gateResult("ocr", "approve-records")),
-  ...["ocr", "ocr-source-pages"].flatMap(id => {
-    const scope = workflowInput(id);
-    return [
-      ...ocrArtifactLeaves(scope, "document."), ...ocrRosterLeaves(scope, "roster."),
-      ...open(scope, "approval", "formType", "reading.kind"),
-      ...ocrPrivateLeaves(scope, "sourceRunId", "readingId", "reading.actorId", "reading.assertions"),
-    ];
-  }),
-  ...["ocr-page", "ocr-page-reading"].flatMap(id => {
-    const scope = workflowInput(id);
-    return [
-      ...ocrPageInputLeaves(scope, "page."), ...ocrExtractionLeaves(scope, "reading.extraction."),
-      ...open(scope, "reading.kind"), ...ocrPrivateLeaves(scope, "reading.actorId"),
-    ];
-  }),
+  ...ocrResultLeaves(taskOutput("workflow:ocr/read-result")),
   ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-i9-profile-creation"].flatMap(id => [
     ...open(workflowInput(id), "mode", "configuredJobEndDate"),
     ...onboardingPrivateLeaves(workflowInput(id), "email", "postalCodeOverride", "roster.references.livedName",

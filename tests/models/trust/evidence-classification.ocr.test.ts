@@ -40,6 +40,8 @@ const contracts = [ExtractPdfPages, ReadOcrSourcePages, ReadOcrReviewSeed, ReadO
   ReadManualOcrReading, ReadOcrPageReading] as const;
 const scopes: readonly Readonly<{ scope: EvidenceValueScope; schema: z.ZodType }>[] = [
   ...contracts.map(contract => ({ scope: { kind: "task-output" as const, taskId: contract.id }, schema: contract.output })),
+];
+const deferredScopes: typeof scopes = [
   ...["ocr", "ocr-source-pages"].map(id => ({
     scope: { kind: "workflow-input" as const, workflowId: WorkflowIdSchema.parse(id) }, schema: OcrInputSchema,
   })),
@@ -60,6 +62,15 @@ describe("OCR producer evidence classifications", () => {
       const projection = z.toJSONSchema(schema, { io: "output", unrepresentable: "any" });
       for (const path of schemaLeaves(projection)) classifyEvidenceLeaf(scope, path);
       for (const path of ["unexpected", "record.unexpected", "extraction.unexpected", "manifest.document.unexpected"]) {
+        assert.throws(() => classifyEvidenceLeaf(scope, path), /no declared evidence classification/u);
+      }
+    });
+  }
+
+  for (const { scope, schema } of deferredScopes) {
+    it(`keeps ${evidenceScopeKey(scope)} undeclared before workflow activation`, () => {
+      const projection = z.toJSONSchema(schema, { io: "output", unrepresentable: "any" });
+      for (const path of schemaLeaves(projection)) {
         assert.throws(() => classifyEvidenceLeaf(scope, path), /no declared evidence classification/u);
       }
     });
