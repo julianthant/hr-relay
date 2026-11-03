@@ -17,7 +17,7 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { BUILD_MANIFEST,resolveWorkflowFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { authenticateDescendantHome,readDelegationEvidence } from "../../storage/sqlite/delegation-authority.js";
+import { authenticateDescendantHome,childTerminalSettlement,readDelegationEvidence } from "../../storage/sqlite/delegation-authority.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import { RunContinuationRefusedError,readContinuationGate,validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
 import { CanonicalTransitionRequestSchema } from "../../storage/sqlite/run-store-contracts.js";
@@ -37,6 +37,39 @@ export function authenticateOcrOperator(repositories: AuthorityRepositories, rea
   if (!authenticateDescendantHome(repositories, run, root.envelope.workflow)
     || authenticateRootRun(repositories, root).command.requestedBy !== "local-operator") throw new OcrReviewRefusedError();
   return "local-operator";
+}
+
+export function assertOcrChildRetryCurrent(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, child: RunRecord): void {
+  const parent = child.envelope.parent === undefined ? undefined : repositories.runs.get(child.envelope.parent.runId);
+  if (parent?.envelope.workflow !== "ocr") return;
+  authenticateOcrOperator(repositories, reader, parent);
+  if (child.lifecycle.state !== "terminal" || child.lifecycle.outcome !== "failed"
+    || repositories.ocrReviews.snapshots(parent.envelope.runId).length > 0
+    || repositories.gateResults.get(`${parent.envelope.runId}:approve-records`) !== undefined) {
+    throw new RunContinuationRefusedError("ocr-child-retry-review-frozen-or-child-ineligible");
+  }
+  readOcrReviewAuthority(repositories, reader, parent.envelope.runId);
+  const members = repositories.dependencies.groups(parent.envelope.runId).flatMap(({ group }) => group.children)
+    .filter(member => member.child.envelope.runId === child.envelope.runId);
+  if (members.length !== 1) throw new RunContinuationRefusedError("ocr-child-retry-member-replaced");
+}
+
+export function ocrChildRetryAvailable(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, child: RunRecord): boolean {
+  if (child.envelope.parent === undefined || child.lifecycle.state !== "terminal" || child.lifecycle.outcome !== "failed") return false;
+  const parent = repositories.runs.get(child.envelope.parent.runId);
+  if (parent?.envelope.workflow !== "ocr" || parent.lifecycle.state !== "queued" || parent.cancelRequested === true
+    || parent.pause !== undefined || repositories.ocrReviews.snapshots(parent.envelope.runId).length > 0
+    || repositories.gateResults.get(`${parent.envelope.runId}:approve-records`) !== undefined
+    || repositories.workerControls.resetForRun(parent.envelope.runId) !== undefined
+    || repositories.workerControls.resetForRun(child.envelope.runId) !== undefined
+    || repositories.runtimeConfig.get()?.configSnapshotId !== child.envelope.configSnapshotId
+    || [parent, child].some(run => repositories.writeIntents.listByRun(run.envelope.runId).some(intent => intent.status === "attempting" || intent.status === "parked"))) return false;
+  const member = repositories.dependencies.groups(parent.envelope.runId).flatMap(({ group }) => group.children)
+    .find(member => member.child.envelope.runId === child.envelope.runId);
+  if (member === undefined) return false;
+  assertOcrChildRetryCurrent(repositories, reader, child);
+  return member.dependency.state === "failed" && childTerminalSettlement(child, repositories)?.state === "failed"
+    && child.envelope.contractFingerprint === resolveWorkflowFingerprint(BUILD_MANIFEST, child.envelope.workflow);
 }
 
 export function publishOcrReview(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
@@ -59,11 +92,23 @@ export function publishOcrReview(repositories: AuthorityRepositories, reader: Pi
     if (stored === undefined || stored.binding !== "source-bound"
       || !same({ ...outcome.output, binding: "source-bound" }, stored)) throw new OcrReviewRefusedError();
   }
-  const record = OcrReviewRevisionSchema.parse({ id: `${run.envelope.runId}#1`, sourceRunId: run.envelope.runId,
-    revision: 1, seed, records: initialOcrReviewRecords(seed),
+  const current = readOcrReviewAuthority(repositories, reader, run.envelope.runId);
+  if (current !== undefined && same(current.revision.seed, seed)) return;
+  if (repositories.ocrReviews.snapshots(run.envelope.runId).length > 0) throw new OcrReviewRefusedError();
+  const expectedRevision = current?.revision.revision ?? 0;
+  const record = OcrReviewRevisionSchema.parse({ id: `${run.envelope.runId}#${expectedRevision + 1}`, sourceRunId: run.envelope.runId,
+    revision: expectedRevision + 1, seed, records: initialOcrReviewRecords(seed),
     origin: { kind: "checkpoint", key: checkpointRecordKey(checkpoint), digest: sha256Hex(canonicalJsonStringify(checkpoint)), checkpoint: timelineCheckpointReference(checkpoint) },
     actorId, createdAt: checkpoint.writtenAt });
-  repositories.ocrReviews.append(record, 0);
+  if (current !== undefined) {
+    for (let revision = expectedRevision; revision > 0; revision--) {
+      const retained = repositories.ocrReviews.revision(run.envelope.runId, revision);
+      if (retained?.origin.kind !== "checkpoint") continue;
+      if (retained.origin.checkpoint.claimGeneration >= checkpoint.claimGeneration) throw new OcrReviewRefusedError();
+      break;
+    }
+  }
+  repositories.ocrReviews.append(record, expectedRevision);
 }
 
 export function reviseOcrReview(current: OcrReviewRevision,
@@ -86,6 +131,7 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
   if (latest === undefined) return undefined;
   if (latest.sourceRunId !== runId) throw new OcrReviewRefusedError();
   let previous: OcrReviewRevision | undefined;
+  let previousCheckpoint: OcrReviewRevision | undefined;
   for (let revision = 1; revision <= latest.revision; revision++) {
     const record = repositories.ocrReviews.revision(runId, revision);
     if (record === undefined || record.sourceRunId !== runId || record.revision !== revision) throw new OcrReviewRefusedError();
@@ -103,9 +149,12 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
         || publication.payload.runId !== runId || publication.payload.workflow !== checkpoint.workflowId
         || publication.payload.attempt !== checkpoint.attempt || publication.payload.claimGeneration !== checkpoint.claimGeneration
         || !same(publication.payload.checkpoint, timelineCheckpointReference(checkpoint))
+        || previousCheckpoint?.origin.kind === "checkpoint" && previousCheckpoint.origin.checkpoint.claimGeneration >= checkpoint.claimGeneration
+        || previous !== undefined && same(previous.seed, record.seed)
         || record.origin.digest !== sha256Hex(canonicalJsonStringify(checkpoint))
         || !same(record.origin.checkpoint, timelineCheckpointReference(checkpoint)) || record.createdAt !== checkpoint.writtenAt
         || !same(record.records, initialOcrReviewRecords(record.seed))) throw new OcrReviewRefusedError();
+      previousCheckpoint = record;
     } else {
       const request = repositories.commands.get(record.origin.commandId);
       const audit = repositories.commandAudits.findByCommand(record.origin.commandId);

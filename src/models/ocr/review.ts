@@ -43,7 +43,7 @@ export const OcrReviewRevisionSchema = z.strictObject({
     || record.seed.review.sourceRunId !== undefined && record.seed.review.sourceRunId !== record.sourceRunId
     || record.records.length !== record.seed.review.records.length
     || record.records.some((entry, index) => entry.recordId !== record.seed.review.records[index]?.recordId)
-    || (record.revision === 1) !== (record.origin.kind === "checkpoint")) {
+    || record.revision === 1 && record.origin.kind !== "checkpoint") {
     context.addIssue({ code: "custom", message: "OCR revision must retain its exact run, seed and record membership" });
   }
   for (const entry of record.records) {

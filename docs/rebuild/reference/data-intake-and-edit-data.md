@@ -163,8 +163,11 @@ The native OCR repository stores them in `ocr_source_uploads`, `ocr_review_revis
 the existing content-addressed writer. Source-page reads admit the current person, run, revision
 and original page before preparing a verified byte lease, then revalidate after preparation.
 
-The final OCR result checkpoint publishes revision 1 with the actual run identity. Corrections,
-discard and restore append immutable revisions with expected-revision CAS and command replay.
+The final OCR result checkpoint publishes revision 1 with the actual run identity. Changed authenticated child outcomes publish
+a later checkpoint-origin revision with all records derived from that one seed; corrections from
+the previous seed do not carry across. Unchanged child evidence leaves the current revision and
+its corrections intact. Machine rebuilds refuse after an approval snapshot exists.
+Corrections, discard and restore append immutable revisions with expected-revision CAS and command replay.
 The same transaction advances the canonical run version through its lifecycle service so existing
 Queue and selected-detail subscriptions replace their reads. The `review` section serves source
 pages, fields, provenance, issues, current revision and immutable snapshots; `people` remains unavailable.

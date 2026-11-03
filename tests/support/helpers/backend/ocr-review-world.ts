@@ -20,7 +20,7 @@ import { bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/p
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { ExtractPdfPages, type ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
-import { defineServiceStore, defineTaskStoreRegistry, type RegisteredTaskStore } from "../../../../src/workflow-kit/task-registry.js";
+import { defineServiceStore, defineTaskStoreRegistry, defineWorkflowStore, type RegisteredTaskStore } from "../../../../src/workflow-kit/task-registry.js";
 import { submittedPage, READING_ID } from "../../fixtures/ocr/source-pages.js";
 import { canonicalChildExecution } from "./canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "./run-executor-world.js";
@@ -31,12 +31,15 @@ import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { retainedOcrModule, retainedOcrStore, retainedOcrCheckpointPublication } from "../../fixtures/ocr/retained-review-producer.js";
 import { ocrWorkflowStore } from "../../../../src/workflows/ocr/task-registry.js";
 import type { WorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
+import { ocrPageStore } from "../../../../src/workflows/ocr-page/task-registry.js";
+import { readManualOcrReadingTask } from "../../../../src/workflows/ocr-page/tasks/read-manual-reading.js";
 
 export function createOcrReviewWorld() {
   const world = createRunExecutorTestWorld();
   return {
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule;
+      failManualPageOnce?: number; stopAfterPageFailure?: boolean;
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       const rendered: { value?: z.output<typeof ExtractPdfPagesOutputSchema> } = {};
@@ -52,7 +55,18 @@ export function createOcrReviewWorld() {
       const coordinator = options.coordinator === true ? compileWorkflow(emergencyContactWorkflow) : undefined;
       const member = options.coordinator === true ? compileWorkflow(emergencyContactMemberWorkflow) : undefined;
       const root = options.parent ?? coordinator ?? ocrRoot;
-      const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction" && store.namespace !== "workflow:ocr"),
+      let failedPage = false;
+      const manualReading = options.failManualPageOnce === undefined ? readManualOcrReadingTask : defineTask(readManualOcrReadingTask.contract, {
+        sessions: [], async run(args) {
+          if (!failedPage && args.input.page.sourcePage === options.failManualPageOnce) {
+            failedPage = true;
+            return args.ctx.fail("INCONSISTENT_INPUTS", "Synthetic first page-read failure.");
+          }
+          return readManualOcrReadingTask.impl.run(args);
+        },
+      });
+      const pages = defineWorkflowStore("ocr-page", { ...ocrPageStore.tasks, readManualReading: manualReading });
+      const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => !["extraction", "workflow:ocr", "workflow:ocr-page"].includes(store.namespace)), pages,
         defineServiceStore("extraction", { render }), options.retainedProducer === true ? retainedOcrStore : ocrWorkflowStore];
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
@@ -101,7 +115,11 @@ export function createOcrReviewWorld() {
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
       const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading }), { dryRun: options.dryRun ?? false,
           ...(options.retainedProducer === true || !root.descriptor.requiredWorkbookTypeIds.includes("ocr-roster") ? {} : { workbookReferences: [{ entry: 1, typeId: "ocr-roster", libraryId: roster.libraryId }] }) });
-      const result = await canonical.execute(parentRun, new AbortController().signal);
+      let result = await canonical.execute(parentRun, new AbortController().signal);
+      if (failedPage && options.stopAfterPageFailure !== true && result.run?.lifecycle.state === "queued") {
+        const continued = await canonical.execute(parentRun, new AbortController().signal);
+        result = { ...continued, outcomes: [...result.outcomes, ...continued.outcomes] };
+      }
       const run = root === ocrRoot ? parentRun : database.authority.runs.listChildren(parentRun.envelope.runId).find(child => child.envelope.workflow === "ocr");
       assert.ok(run);
       if (actorId === "local-operator") {
@@ -112,9 +130,12 @@ export function createOcrReviewWorld() {
             frames: [...(failure.debug?.stack ?? "").matchAll(/(?:src|tests)\/[A-Za-z0-9_./-]+\.ts:\d+:\d+/gu)]
               .map(match => match[0]).slice(0, 8) };
         });
-        assert.deepEqual(failures, [], `OCR fixture execution failed: ${JSON.stringify(failures)}`);
+        assert.deepEqual(failures.filter(failure => !(failedPage && failure.nodeId === "manual-reading" && failure.code === "INCONSISTENT_INPUTS")), [],
+          `OCR fixture execution failed: ${JSON.stringify(failures)}`);
+        assert.equal(failures.length, failedPage ? 1 : 0);
         const lifecycle = root === ocrRoot ? result.run?.lifecycle : database.authority.runs.get(run.envelope.runId)?.lifecycle;
-        assert.ok((options.release === true || coordinator !== undefined) ? lifecycle?.state === "parked-gate"
+        assert.ok(failedPage && options.stopAfterPageFailure === true ? lifecycle?.state === "queued"
+          : (options.release === true || coordinator !== undefined) ? lifecycle?.state === "parked-gate"
           : lifecycle?.state === "terminal" && lifecycle.outcome === "done",
         `OCR fixture stopped before review: ${JSON.stringify(result.outcomes.map(outcome => ({ state: outcome.state })))}`);
       }
