@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { WorkerStopDirectiveContextSchema } from "../../../../../src/backend/runtime/workers/worker-loop.js";
 import { instrumentPool, kernelOver, type PoolEffectEvent } from "../../../../support/helpers/backend/dashboard-pool-world.js";
 import { createDashboardChildTestWorld, type RealChildRecord } from "../../../../support/helpers/backend/dashboard-child-world.js";
@@ -144,7 +145,7 @@ describe("real processes: two children supervised concurrently through the compo
       const saved = readSettings(database.authority);
       const resolved = resolveConfigWithProvenance(saved.settings, hostConfigFacts({}), systemClock,
         { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot });
-      const active = database.authority.runtimeConfig.initialize({
+      const active = database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT,
         configSnapshotId: nextCommandId(), revision: saved.revision,
         fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
         capturedAt: systemClock.now().toISOString(), capturedBy: 'fixture'

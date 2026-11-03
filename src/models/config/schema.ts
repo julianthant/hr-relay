@@ -2,6 +2,7 @@ import { z } from "zod";
 import { LocalOperatorActorSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../rules/identity/ids.js";
 import type { ProviderCapabilityId } from "../../rules/identity/ids.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
+import { PersonPreferencesOverrideSchema } from "./person-preferences.js";
 import { ordinarySettingsObject } from "./catalog.js";
 
 export const ONBOARDING_DOCUMENTS_DIRECTORY_NAME = "onboarding";
@@ -235,6 +236,7 @@ function partialEndpoints<Shape extends z.ZodRawShape>(routes: z.ZodObject<Shape
 
 /** The catalog selects the ordinary members; templates supply their existing value schemas. */
 export const SettingsOverrideSchema = ordinarySettingsObject("", z.strictObject({
+  preferences: PersonPreferencesOverrideSchema.optional(),
   actor: ordinarySettingsObject("actor", ConfigSchema.shape.actor.unwrap()).partial().optional(),
   urls: ordinarySettingsObject("urls", z.strictObject({
     kuali: partialEndpoints(KualiRoutesSchema).optional(),

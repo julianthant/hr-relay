@@ -1,3 +1,4 @@
+import { restorePrePreferencesSettingsRows } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { DatabaseSync } from "node:sqlite";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -25,6 +26,7 @@ function historicalDatabase(version: 6 | 15) {
   const entries = Object.entries(runRecordColumns(record)).filter(([key]) => version === 15 || key !== "pause_state");
   database.prepare(`INSERT INTO runs (${entries.map(([key]) => key).join(",")}) VALUES (${entries.map(() => "?").join(",")})`)
     .run(...entries.map(([, value]) => value));
+  restorePrePreferencesSettingsRows(database);
   inspectNativeAuthority(database, version);
   return database;
 }

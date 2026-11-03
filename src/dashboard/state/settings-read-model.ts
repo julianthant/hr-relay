@@ -42,16 +42,22 @@ export function createSettingsRead<Value>() {
   };
 }
 export type SettingsRead<Value> = ReturnType<typeof createSettingsRead<Value>>;
-const scopes = new WeakMap<object, { authority: object; coordinate: string; resources: Map<string, unknown> }>();
+const scopes = new WeakMap<object, { authority: object; coordinate: string; resources: Map<string, SettingsRead<unknown>> }>();
 export function settingsReadResource<Value>(client: object, authority: object, coordinate: string, name: string): SettingsRead<Value> {
   let scope = scopes.get(client);
   if (scope === undefined || scope.authority !== authority || scope.coordinate !== coordinate) {
+    if (scope !== undefined) for (const resource of scope.resources.values()) resource.reset();
     scope = { authority, coordinate, resources: new Map() };
     scopes.set(client, scope);
   }
   let resource = scope.resources.get(name) as SettingsRead<Value> | undefined;
   if (resource === undefined) { resource = createSettingsRead<Value>(); scope.resources.set(name, resource); }
   return resource;
+}
+export function clearSettingsReads(client: object): void {
+  const scope = scopes.get(client);
+  if (scope !== undefined) for (const resource of scope.resources.values()) resource.reset();
+  scopes.delete(client);
 }
 export function useSettingsRead<Value>(client: object, name: string, input?: { actorId: string; descriptorFingerprint?: string }): SettingsRead<Value> {
   const binding = useDashboardCommandBinding();

@@ -93,7 +93,7 @@ export function createSettingsApplicationExecutor(
       const settingsFingerprint = derivePersistedSettingsFingerprint(settings);
       const configSnapshotId = randomUUID();
       repositories.configSnapshots.insert({ configSnapshotId, revision, fingerprint: resolved.fingerprint,
-        config: resolved.config, provenance: resolved.provenance,
+        config: resolved.config, provenance: resolved.provenance, preferences: resolved.preferences, preferencesFingerprint: resolved.preferencesFingerprint,
         capturedAt: command.requestedAt, capturedBy: command.requestedBy });
       repositories.runtimeConfig.activate({ settingsRevision: revision, settingsFingerprint,
         configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: command.requestedAt });

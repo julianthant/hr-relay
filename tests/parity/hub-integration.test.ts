@@ -23,7 +23,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
     page.on('request', request => { if (request.method() !== 'GET') writes.push(new URL(request.url()).pathname); });
     try {
-      await page.addInitScript(value => { localStorage.setItem('rebuild-demo.theme', value); localStorage.setItem('relay.animations', 'on'); }, theme);
+      await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); Reflect.set(window, "relayParityMotion", true); }, theme);
       await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: { state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' } }));
       await page.route('**/api/v1/workbooks**', async route => {
         const request = route.request(), path = new URL(request.url()).pathname;
@@ -183,7 +183,7 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
     page.on('pageerror', error => errors.push(error.message));
     page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
     try {
-      await page.addInitScript(value => localStorage.setItem('rebuild-demo.theme', value), theme);
+      await page.addInitScript(value => Reflect.set(window, "relayParityTheme", value), theme);
       await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: { state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' } }));
       await page.route('**/api/v1/workbooks**', async route => {
         const request = route.request(), path = new URL(request.url()).pathname;

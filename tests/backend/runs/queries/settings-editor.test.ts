@@ -17,7 +17,7 @@ function fixture() {
   const environment = { HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080" };
   const record = initialSettingsFileRecord();
   const config = resolveConfigWithProvenance({}, hostConfigFacts(environment), clock);
-  const snapshot = { record, runtimeStatus: { state: "current" as const, identity: settingsRuntimeIdentity(record, config.fingerprint) } };
+  const snapshot = { record, activePreferences: config.preferences, runtimeStatus: { state: "current" as const, identity: settingsRuntimeIdentity(record, config.fingerprint) } };
   const deps = { settings: { read: () => snapshot }, protectedSettings: createProtectedSettingsRuntimeReader({ read: initialProtectedStoreRecord }), environment, clock };
   return { deps, snapshot };
 }
@@ -48,9 +48,9 @@ describe("complete Settings catalog projection", () => {
   });
   it("shows only the current fiscal year's required date and retains stored history without exposing it", () => {
     const document = fixtureSettingsDocument({ annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026", kronosDefaultEndDate: "6/30/2027" } } }, 2);
-    assert.equal(document.catalog.length, 64);
+    assert.equal(document.catalog.length, 74);
     const leaves = document.sections.flatMap(section => section.leaves);
-    assert.equal(leaves.length, 51);
+    assert.equal(leaves.length, 61);
     assert.equal(leaves.some(leaf => leaf.path === "paths.browserProfileRoot"), false);
     assert.equal(leaves.some(leaf => leaf.path === "paths.duoCredential"), false);
     assert.equal(document.currentFiscalYear, 2027);

@@ -1,3 +1,5 @@
+import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
+import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { launchWorkflows } from "../../../src/dashboard/surfaces/run-start/run-launch-model.js";
 import { parseWorkflows } from "../../../src/dashboard/surfaces/shell/shell-model.js";
 import { FIXTURE_EXPLORER_WIRE } from "../../parity/helpers/fixture-explorer.js";
@@ -61,7 +63,7 @@ async function key(value: string) {
 }
 async function mount(overrides: Partial<DashboardClient_m0> = {}) {
   window.history.replaceState(null, "", `/?day=${FIXTURE_DAY_WIRE_m0.day}`);
-  localStorage.setItem("hr-dashboard.workflow-panel", "icon");
+  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "icon" });
   const { app } = createFixtureBff_m0();
   const client: DashboardClient_m0 = {
     ...createDashboardClient_m0({baseUrl:"http://fixture",fetchImpl:async (url,init) => app.request(String(url),init)}),
@@ -69,7 +71,7 @@ async function mount(overrides: Partial<DashboardClient_m0> = {}) {
     ...overrides,
   };
   const host=document.createElement("div"); document.body.append(host); root=createRoot_m0(host);
-  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(Fragment_m0, null, createElement_m0(DashboardApp_m0, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m0 }), createElement_m0(RegistryProbe))})));
+  await act_m0(async () => root?.render(createElement_m0(DashboardClientProvider_m0,{client,children:createElement_m0(Fragment_m0, null, createElement_m0(DashboardApp_m0, { workflowComposition: PARITY_WORKFLOW_COMPOSITION_m0, previewPreferences: preview }), createElement_m0(RegistryProbe))})));
   await settle();
 }
 it_m0("command binding never renders implementation comment text", async () => {
@@ -186,6 +188,7 @@ const _afterEachFixture0 = async () => {
   vi.restoreAllMocks();
   document.body.innerHTML = "";
   localStorage.clear();
+  shellPreferences = createPersonPreferences("preview");
   window.history.replaceState(null, "", "/");
 };
 async function settle() { await act_m1(async () => { await new Promise(resolve => setTimeout(resolve, 35)); }); }
@@ -201,9 +204,10 @@ function workflowButton(name: string): HTMLButtonElement {
   return found;
 }
 async function click(node: HTMLElement) { await act_m1(async () => node.click()); await settle(); }
+let shellPreferences = createPersonPreferences("preview");
 async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}, panelMode: "icon" | "sidebar" = "icon", workflowComposition = PARITY_WORKFLOW_COMPOSITION_m1) {
   window.history.replaceState(null, "", `/${search}`);
-  localStorage.setItem("hr-dashboard.workflow-panel", panelMode);
+  await shellPreferences.change({ "preferences.workflowPanelMode": { set: panelMode } });
   const { app } = createFixtureBff_m1();
   const client: DashboardClient_m1 = {
     ...createDashboardClient_m1({baseUrl:"http://fixture",fetchImpl: async (url, init) => app.request(String(url), init)}),
@@ -211,7 +215,7 @@ async function mount(search: string, overrides: Partial<DashboardClient_m1> = {}
     ...overrides,
   };
   const host = document.createElement("div"); document.body.append(host); root = createRoot_m1(host);
-  await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1,{client,children:createElement_m1(DashboardApp_m1, { workflowComposition })})));
+  await act_m1(async () => root?.render(createElement_m1(DashboardClientProvider_m1,{client,children:createElement_m1(DashboardApp_m1, { workflowComposition, previewPreferences: shellPreferences })})));
   await settle();
   return client;
 }
@@ -229,7 +233,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
     assert_m1.ok(workflowButton("Separations").querySelector('[aria-label="0 active of 0 in Separations"]'));
     assert_m1.doesNotMatch(document.querySelector('nav[aria-label="Workflows"]')?.textContent ?? "", /active\s*│\s*all/iu);
-    assert_m1.equal(localStorage.getItem("hr-dashboard.selected-workflow"), "separations");
+    assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, "separations");
     await click(button("Settings"));
     await historyMove("back");
     assert_m1.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
@@ -253,11 +257,11 @@ afterEach_m1(_afterEachFixture0);
     const link = document.querySelector<HTMLButtonElement>(`[data-demo-row-id="${FIXTURE_IDS_m1.queuedRun}"] button[data-demo-row-link]`);
     assert_m1.ok(link);
     const before = window.location.search;
-    const preference = localStorage.getItem("hr-dashboard.selected-workflow");
+    const preference = shellPreferences.snapshot().value.selectedWorkflowId;
     await click(link);
     assert_m1.match(document.body.textContent ?? "", /Workflow unavailable/);
     assert_m1.equal(window.location.search, before);
-    assert_m1.equal(localStorage.getItem("hr-dashboard.selected-workflow"), preference);
+    assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, preference);
     assert_m1.equal(workflowButton("Person Lookup").getAttribute("aria-current"), "page");
   });
   it_m1.each(["search", "notification"])("refused %s destination preserves a dirty Settings draft without asking to discard", async surface => {
@@ -278,7 +282,7 @@ afterEach_m1(_afterEachFixture0);
       await click(notifications);
     }
     const before = location.search;
-    const preference = localStorage.getItem("hr-dashboard.selected-workflow");
+    const preference = shellPreferences.snapshot().value.selectedWorkflowId;
     const target = surface === "search"
       ? [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(item => item.textContent?.includes(title))
       : [...document.querySelectorAll<HTMLButtonElement>('[aria-label="Notification updates"] button')].find(item => item.textContent === title);
@@ -287,7 +291,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
     assert_m1.match(document.body.textContent ?? "", /This workflow is not available for selection in the current catalog/);
     assert_m1.equal(location.search, before);
-    assert_m1.equal(localStorage.getItem("hr-dashboard.selected-workflow"), preference);
+    assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, preference);
     assert_m1.equal(document.querySelector<HTMLInputElement>('input[name="browser.headless"]')?.checked, false);
     if (surface === "notification") {
       const notifications = document.querySelector<HTMLButtonElement>('button[aria-label^="Notifications,"]'); assert_m1.ok(notifications);

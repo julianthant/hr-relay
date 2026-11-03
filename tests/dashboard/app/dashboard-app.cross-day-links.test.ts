@@ -1,3 +1,5 @@
+import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
+import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
 import { act, createElement } from 'react';
@@ -32,9 +34,9 @@ it('opens a linked child using its own partition day and exact run identity', as
     return { close: () => undefined };
   } };
   window.history.replaceState(null, '', `/?day=${parentWire.day}`);
-  localStorage.setItem('hr-dashboard.workflow-panel', 'sidebar');
+  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION }) })));
+  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { workflowComposition: PARITY_WORKFLOW_COMPOSITION, previewPreferences: preview }) })));
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
   const chip = host.querySelector<HTMLButtonElement>('button[aria-label^="Next day child —"]'); assert(chip);
   await act(async () => { chip.click(); await new Promise(resolve => setTimeout(resolve, 20)); });

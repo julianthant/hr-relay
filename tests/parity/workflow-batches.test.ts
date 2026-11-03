@@ -26,7 +26,7 @@ test(`workflow batches: separate rows for either served preference, ${theme}`, a
       const onRequest = (request: import("@playwright/test").Request) => { if (request.method() === "POST" && request.url().includes("/commands")) requests.push(request.url()); };
       page.on("request", onRequest);
       try {
-        await page.addInitScript(value => localStorage.setItem("rebuild-demo.theme", value), theme);
+        await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); }, theme);
         await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY });
         await expect(page.locator("html")).toHaveAttribute("data-demo-theme", theme);
         await expect(page.locator("body")).toHaveAttribute("data-demo-theme", theme);

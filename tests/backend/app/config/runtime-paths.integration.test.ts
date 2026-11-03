@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
 
 import { describe, it } from "vitest";
@@ -22,7 +23,7 @@ describe("strict current config snapshots", () => {
       assert.equal(StoredConfigSchema.safeParse({ ...config, timeouts }).success, false, key);
     }
     for (const configValue of [{ ...config, providers: { geocodeCensus: config.providers.geocodeCensus } }, { ...config, providers: { ...config.providers, geocodeNominatim: {} } }, { ...config, operator: {} }, { ...config, capture: {} }, { ...config, providers: { ...config.providers, geocodeCensus: { ...config.providers.geocodeCensus, concurrency: 1 } } }]) {
-      const record = { configSnapshotId: SNAPSHOT_ID, revision: 1, fingerprint: sha256Hex(canonicalJsonStringify(configValue)), capturedAt: NOW, capturedBy: "local-operator", config: configValue, provenance: {} };
+      const record = { ...PREFERENCES_SNAPSHOT, configSnapshotId: SNAPSHOT_ID, revision: 1, fingerprint: sha256Hex(canonicalJsonStringify(configValue)), capturedAt: NOW, capturedBy: "local-operator", config: configValue, provenance: {} };
       assert.equal(ConfigSnapshotRecordSchema.safeParse(record).success, false);
       assert.equal(ConfigSnapshotWriteSchema.safeParse(record).success, false);
     }

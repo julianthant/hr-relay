@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { ProfileVerifierDocumentSchema } from "../../../src/models/profiles/profile.js";
 import { DatabaseSync } from "node:sqlite";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
@@ -185,7 +186,7 @@ function seedClosedHistoricalActivity(f: Awaited<ReturnType<typeof historicalPre
     raw.exec("PRAGMA foreign_keys=ON; BEGIN IMMEDIATE");
     const resolved = resolveConfigWithProvenance(initialSettingsFileRecord().settings, { primaryDisplay: null }, capturedInstantClock(at),
       { stateRoot: f.profileRoot, artifactRoot: join(f.profileRoot, "artifacts") });
-    const snapshot = ConfigSnapshotRecordSchema.parse({ configSnapshotId: randomUUID(), revision: 1, fingerprint: resolved.fingerprint,
+    const snapshot = ConfigSnapshotRecordSchema.parse({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: 1, fingerprint: resolved.fingerprint,
       capturedAt: at, capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
     createSettingsActivationRepositories({ database: raw,
       mutate: work => work().result,

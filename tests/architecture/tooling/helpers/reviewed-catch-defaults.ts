@@ -13,7 +13,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/composition/dashboard/compose.ts",
-    "sha256": "fb4d0b6751c865f7e5374d7aafa3ce16744b62d3a6619bd4ba8c48d4b14ad7fd",
+    "sha256": "719e6e8a244ca45e8e0e433f973639b8d5d48d94d2f0e08fc2dc310402e72be1",
     "reason": "Startup producer closure failures retain dependent native database and admission custody. Selected-context open failure rethrows typed custody uncertainty. Root lifetime transfer failure kills the spawned child and emits the original error; shutdown awaits owned child closure. Rejection observers preserve the original lifetime and stop promises, whose callers await failures before storage release. An unavailable authority generation remains explicitly unavailable; backup presence is assessed separately. Automatic upgrade runs before composition in storage-compose.ts and has no HTTP response handoff. Confirmed account deletion shares the exact session logout drain; deletion errors propagate with pending identity retained and never report signed-out success."
   },
   {

@@ -19,7 +19,7 @@ describe("assistant model preference additive schema", () => {
       for (const statement of ninth.statements) database.exec(statement);
       for (const value of prior) { assert.ok(typeof value.name === "string"); assert.deepEqual(database.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name=?").get(value.name), value); }
       assert.deepEqual(tables.map(table => ({ table, rows: database.prepare(`SELECT * FROM ${table}`).all() })), rows);
-      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 15);
+      assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 16);
       assert.deepEqual(migrationTableNames(9).filter(table => !tables.includes(table)), ["assistant_model_preference"]);
       assert.equal(tableClassification("assistant_model_preference"), 'authority');
       assert.deepEqual(database.prepare("SELECT * FROM assistant_model_preference").all(), []);
@@ -33,10 +33,10 @@ describe("assistant model preference additive schema", () => {
     assert.equal(deriveAuthorityUpgradePlanDigest(7, fingerprint, 8), historical);
     assert.notEqual(deriveAuthorityUpgradePlanDigest(7, fingerprint), historical);
     assert.equal(deriveAuthorityUpgradePlanDigest(8, fingerprint), deriveAuthorityUpgradePlanDigest(8, fingerprint, CURRENT_AUTHORITY_SCHEMA_VERSION));
-    assert.equal(deriveAuthorityUpgradePlanDigest(7, fingerprint, 15), deriveAuthorityUpgradePlanDigest(7, fingerprint));
+    assert.equal(deriveAuthorityUpgradePlanDigest(7, fingerprint, 16), deriveAuthorityUpgradePlanDigest(7, fingerprint));
   });
 
-  it.each([[7, 8], [7, 9], [8, 9], [9, 10], [10, 11], [11, 12], [12, 13], [13, 14]] as const)("retains the exact historical %s-to-%s upgrade digest", (from, to) => {
+  it.each([[7, 8], [7, 9], [8, 9], [9, 10], [10, 11], [11, 12], [12, 13], [13, 14], [14, 15]] as const)("retains the exact historical %s-to-%s upgrade digest", (from, to) => {
     const fingerprint = "1".repeat(64);
     const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > from && migration.version <= to).flatMap(migration => migration.statements);
     const expected = createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion: from, toSchemaVersion: to, sourceContentFingerprint: fingerprint, statements })).digest("hex");

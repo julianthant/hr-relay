@@ -1,4 +1,4 @@
-import { useCallback,useEffect,useState } from "react";
+import { useCallback,useState } from "react";
 import { z } from "zod";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../models/dashboard/bootstrap.js";
 import type {
@@ -7,7 +7,7 @@ StatusCountWireSchema,
 WorkflowCountWireSchema
 } from "../../../models/dashboard/projection.js";
 import { dsFocus,dsMotion,dsRadius,dsText } from "../../ds/ui.js";
-import { readEnumPreference,writePreference } from "../../lib/preference-storage.js";
+import { usePersonPreferences } from "../../lib/person-preferences.js";
 import { cn } from "../../lib/utils.js";
 import { type QueueStatus } from "../shared/status/status-model.js";
 import {
@@ -33,35 +33,30 @@ export function parseWorkflows(workflows: readonly unknown[]): WorkflowBootstrap
   return z.array(WorkflowBootstrapPrimitiveSchema).parse(workflows);
 }
 
-const SELECTED_WORKFLOW_STORAGE_KEY = "hr-dashboard.selected-workflow";
-
 export function useSelectedWorkflow(workflows: readonly { readonly id: string }[]): {
   selectedWorkflowId: string;
   setSelectedWorkflowId: (workflowId: string) => boolean;
   canSelectWorkflowId: (workflowId: string) => boolean;
 } {
-  const [selectedWorkflowId, setSelectedWorkflowIdState] = useState(() =>
-    readEnumPreference(
-      SELECTED_WORKFLOW_STORAGE_KEY,
-      workflows.map((workflow) => String(workflow.id)),
-      String(workflows[0]?.id ?? ""),
-    ),
-  );
-  const valid = workflows.some(workflow => workflow.id === selectedWorkflowId);
-  if (!valid && selectedWorkflowId !== "") setSelectedWorkflowIdState("");
-  useEffect(() => {
-    if (!valid) void writePreference(SELECTED_WORKFLOW_STORAGE_KEY, "");
-  }, [valid]);
-  const canSelectWorkflowId = useCallback((workflowId: string) => workflows.some(workflow => workflow.id === workflowId), [workflows]);
-  const setSelectedWorkflowId = useCallback((workflowId: string) => {
-    if (!canSelectWorkflowId(workflowId)) return false;
-    setSelectedWorkflowIdState(workflowId);
-    void writePreference(SELECTED_WORKFLOW_STORAGE_KEY, workflowId);
+  const preferences = usePersonPreferences();
+  const selected = preferences.value.selectedWorkflowId;
+  const change = preferences.change;
+  const canSelectWorkflowId = useCallback((id: string) => workflows.some(workflow => workflow.id === id), [workflows]);
+  const initialId = canSelectWorkflowId(selected) ? selected : workflows[0]?.id ?? "";
+  const [choice, setChoice] = useState({ change, saved: selected, id: initialId });
+  let current = choice;
+  if (choice.change !== change || choice.saved !== selected) current = { change, saved: selected, id: initialId };
+  else if (choice.id !== "" && !canSelectWorkflowId(choice.id)) current = { ...choice, id: "" };
+  if (current !== choice) setChoice(current);
+  const selectedWorkflowId = current.id;
+  const setSelectedWorkflowId = useCallback((id: string) => {
+    if (!canSelectWorkflowId(id)) return false;
+    setChoice({ change, saved: selected, id });
+    void change?.({ "preferences.selectedWorkflowId": { set: id } });
     return true;
-  }, [canSelectWorkflowId]);
-  return { selectedWorkflowId: valid ? selectedWorkflowId : "", setSelectedWorkflowId, canSelectWorkflowId };
+  }, [canSelectWorkflowId, change, selected]);
+  return { selectedWorkflowId, setSelectedWorkflowId, canSelectWorkflowId };
 }
-
 
 // Empty projection buckets have no entry; absence means zero.
 function servedCount<Entry>(entries: readonly Entry[], match: (entry: Entry) => boolean): number {
@@ -138,47 +133,23 @@ export const WORKFLOW_PANEL_MODE_LABEL: Record<WorkflowPanelMode, string> = {
 };
 
 
-/** Rebuild-scoped so it can never collide with the stored demo mode. */
-const PANEL_MODE_STORAGE_KEY = "hr-dashboard.workflow-panel";
-
-
-/** The documented mode for an operator who has expressed no preference. */
-const PANEL_MODE_DEFAULT: WorkflowPanelMode = "floating";
-
-
-function readStoredPanelMode(): WorkflowPanelMode {
-  // Nothing stored, storage refused, and a stored value outside the cycle are three
-  // different things; `readEnumPreference` keeps them apart and lands on the named default.
-  return readEnumPreference(PANEL_MODE_STORAGE_KEY, PANEL_MODE_CYCLE, PANEL_MODE_DEFAULT);
-}
-
-
-/** Owns the mode, its persistence, and one thing more: whether the OPERATOR has
- * moved it this session (`opened`). */
 export function useWorkflowPanelMode(): {
   mode: WorkflowPanelMode;
   setMode: (mode: WorkflowPanelMode) => void;
   cycleMode: () => void;
   opened: boolean;
 } {
-  const [mode, setModeState] = useState<WorkflowPanelMode>(readStoredPanelMode);
+  const preferences = usePersonPreferences();
+  const mode = preferences.value.workflowPanelMode;
   const [opened, setOpened] = useState(false);
-
+  const change = preferences.change;
   const setMode = useCallback((next: WorkflowPanelMode) => {
     setOpened(true);
-    setModeState(next);
-    // Same as the read: an unwritable store loses the preference for next time
-// which is not a reason to refuse the operator this one — but the outcome
-    void writePreference(PANEL_MODE_STORAGE_KEY, next);
-  }, []);
-
-  const cycleMode = useCallback(() => {
-    setMode(PANEL_MODE_CYCLE[(PANEL_MODE_CYCLE.indexOf(mode) + 1) % PANEL_MODE_CYCLE.length]);
-  }, [mode, setMode]);
-
+    void change?.({ "preferences.workflowPanelMode": { set: next } });
+  }, [change]);
+  const cycleMode = useCallback(() => setMode(PANEL_MODE_CYCLE[(PANEL_MODE_CYCLE.indexOf(mode) + 1) % PANEL_MODE_CYCLE.length]), [mode, setMode]);
   return { mode, setMode, cycleMode, opened };
 }
-
 
 export type WorkflowRailGroup = WorkflowCategoryGroup<WorkflowBootstrapPrimitive>;
 

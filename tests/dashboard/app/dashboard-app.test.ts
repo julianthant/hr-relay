@@ -1,3 +1,5 @@
+import { createPersonPreferences } from "../../../src/dashboard/state/person-preferences-model.js";
+import { NEUTRAL_PERSON_PREFERENCES } from "../../../src/models/config/person-preferences.js";
 import { syntheticSettingsAuthority } from "../../support/helpers/dashboard/settings-harness.js";
 import { ApplicationLifecycleSchema } from "../../../src/models/dashboard/application-lifecycle.js";
 import { FixtureCommandBinding } from "../../support/helpers/dashboard/command-binding.js";
@@ -268,6 +270,25 @@ function takeFirstTab(frame: HTMLElement): HTMLElement {
   assert_m1.equal(document.activeElement === first, true);
   return first;
 }
+
+describe_m1("served signed-out appearance", () => {
+  afterEach_m1(_afterEachFixture0);
+  for (const preview of [false, true]) {
+    it_m1(preview ? "honors an explicit preview owner" : "keeps neutral preferences despite origin storage", async () => {
+      let reads = 0;
+      const client = { ...appClient(), readProfileSession: async () => { reads++; return { state: "signed-out" as const }; } };
+      localStorage.setItem("rebuild-demo.theme", "light");
+      try {
+        await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served",
+          workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1,
+          ...(preview ? { previewPreferences: createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: "light" }) } : {}),
+        }));
+        assert_m1.equal(reads, 1);
+        assert_m1.equal(document.querySelector("[data-app-root]")?.getAttribute("data-demo-theme"), preview ? "light" : NEUTRAL_PERSON_PREFERENCES.theme);
+      } finally { localStorage.clear(); }
+    });
+  }
+});
 
 describe_m1("ds/TakeoverFrame — entering a takeover moves focus into it", () => {
 afterEach_m1(_afterEachFixture0);
@@ -550,10 +571,10 @@ async function mount(options: { boot?: Promise<Response>; bootFailure?: boolean;
     return app.request(url, init);
   } });
   window.history.replaceState(null, '', `/?day=${FIXTURE_DAY_WIRE_m2.day}${options.search ? `&${options.search}` : ""}`);
-  localStorage.setItem('hr-dashboard.workflow-panel', 'sidebar');
+  const preview = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, workflowPanelMode: "sidebar" });
   const host = document.createElement('div'); document.body.append(host); root = createRoot_m2(host);
   const workflowComposition = options.workflowComposition ?? PARITY_WORKFLOW_COMPOSITION_m2;
-  await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { workflowComposition }) })));
+  await act_m2(async () => root?.render(createElement_m2(DashboardClientProvider_m2, { client, children: createElement_m2(DashboardApp_m2, { workflowComposition, previewPreferences: preview }) })));
   await settle(); disposers.push(() => { open = false; });
   return { host, requests, streams,
     deliver: async (day: DashboardDayWire_m2, index = streams.length - 1) => { await act_m2(async () => snapshot(streams[index], day)); await settle(); },

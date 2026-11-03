@@ -313,7 +313,7 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
               ...(previousBrowserRoot === undefined ? {} : { browserProfileRoot: join(targetRoot, "browsers") }) } };
             const resolved = resolveConfigWithProvenance(settings, hostFacts, clock, { stateRoot: targetRoot, artifactRoot: join(targetRoot, "artifacts") });
             const snapshot = ConfigSnapshotRecordSchema.parse({ configSnapshotId: randomUUID(), revision: saved.revision + (settingsUpdate === undefined ? 0 : 1),
-              config: resolved.config, provenance: resolved.provenance, fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(), capturedBy: LOCAL_OPERATOR_ACTOR_ID });
+              config: resolved.config, preferences: resolved.preferences, preferencesFingerprint: resolved.preferencesFingerprint, provenance: resolved.provenance, fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(), capturedBy: LOCAL_OPERATOR_ACTOR_ID });
             const custody = database.readProfileResourceCustody();
             const browserSnapshots = [...new Set(custody.browsers.map(browser => browser.configFingerprint))].map(fingerprint => {
               const source = custody.configSnapshots.find(row => row.fingerprint === fingerprint);
@@ -563,7 +563,7 @@ export function composeSelectedProfileStorage(input: Readonly<{
       const resolved = resolveSettings(saved.settings);
       const now = input.clock.now().toISOString(), configSnapshotId = randomUUID();
       const snapshot = { configSnapshotId, revision: saved.revision, fingerprint: resolved.fingerprint, capturedAt: now,
-        capturedBy: LOCAL_OPERATOR_ACTOR_ID, config: resolved.config, provenance: resolved.provenance };
+        capturedBy: LOCAL_OPERATOR_ACTOR_ID, config: resolved.config, preferences: resolved.preferences, preferencesFingerprint: resolved.preferencesFingerprint, provenance: resolved.provenance };
       repositories.runtimeConfig.initialize(snapshot);
     });
     assertProfileBrowserRoot(admission, database.withAuthorityReadSnapshot(() => activeSettingsConfig(database.authority)).paths.browserProfileRoot);

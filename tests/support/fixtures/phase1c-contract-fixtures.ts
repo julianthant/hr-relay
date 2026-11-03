@@ -1,3 +1,4 @@
+import { NEUTRAL_PERSON_PREFERENCES, derivePersonPreferencesFingerprint } from "../../../src/models/config/person-preferences.js";
 import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../../src/models/config/schema.js";
 import { sourceColumnId } from "../../../src/models/intake/mapping.js";
@@ -205,7 +206,9 @@ export const NOTIFICATION = {
 };
 
 const CONFIG_BODY=ConfigSchema.parse({ paths: defaultRuntimePaths() });
+export const PREFERENCES_SNAPSHOT = { preferences: NEUTRAL_PERSON_PREFERENCES, preferencesFingerprint: derivePersonPreferencesFingerprint(NEUTRAL_PERSON_PREFERENCES) };
 export const CONFIG_SNAPSHOT = {
+  ...PREFERENCES_SNAPSHOT,
   configSnapshotId: UUID_1,
   revision: 1,
   fingerprint: sha256Hex(canonicalJsonStringify(CONFIG_BODY)),
