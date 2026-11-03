@@ -247,9 +247,11 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         });
       });
       if (matches.length !== 1) throw new RunLogIdentityError("RUN_LOG_SCREENSHOT_IDENTITY_MISMATCH");
-      const { artifact, capturedAt } = matches[0];
-      return [{ src: client.artifactUrl(artifact.artifactId), alt: "Browser capture", time: fmtActionClock(capturedAt),
-        width: artifact.width, height: artifact.height, kind: "browser" }];
+      const { artifact, capturedAt, origin } = matches[0];
+      const boundary = origin.browserCapture?.boundary;
+      const label = boundary === "before-submit" ? "Before submit" : boundary === "after-submit" ? "After submit" : undefined;
+      return [{ logId: row.logId, src: client.artifactUrl(artifact.artifactId), alt: label ?? "Browser capture", time: fmtActionClock(capturedAt),
+        ...(label === undefined ? {} : { label }), ...(boundary === undefined ? {} : { boundary }), width: artifact.width, height: artifact.height, kind: boundary === "before-submit" ? "form" : "browser" }];
     }
     const observation = logs.operationStructure?.state === "observed" ? logs.operationStructure.observations.find(row => row.logId === logId) : undefined;
     if (captures?.section !== "captures" || observation === undefined) return [];
@@ -264,14 +266,35 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
           width: artifact.width, height: artifact.height }] : []);
     });
   };
+  const rows = logRowsOf(logs, "projection");
+  const screenshotRows = rows.flatMap(row => row.kind === "note" && row.note.screenshot !== undefined
+    ? [{ row, shots: screenshotsOf(row), sessionId: row.note.screenshot.sessionId }] : []);
+  const submitCaptures = new Map<string, readonly LogScreenshot[]>();
+  const attachedCaptures = new Set<string>();
+  for (const row of rows) {
+    if (row.kind !== "note" || row.note.operatorAction?.submit !== true || row.note.operatorAction.kind !== "click"
+      || row.note.operatorAction.sessionId === undefined || row.note.operatorAction.state === "started" || row.note.operatorAction.state === "failed" || row.note.operatorAction.state === "not-run") continue;
+    const { nodeId, attempt } = requireNative(row.native), sessionId = row.note.operatorAction.sessionId;
+    const submits = rows.filter(candidate => candidate.kind === "note" && candidate.note.operatorAction?.submit === true
+      && candidate.note.operatorAction.kind === "click" && !["started", "failed", "not-run"].includes(candidate.note.operatorAction.state ?? "")
+      && candidate.note.operatorAction.sessionId === sessionId && requireNative(candidate.native).nodeId === nodeId && requireNative(candidate.native).attempt === attempt);
+    const captures = screenshotRows.filter(candidate => candidate.sessionId === sessionId && requireNative(candidate.row.native).nodeId === nodeId && requireNative(candidate.row.native).attempt === attempt
+      && candidate.shots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit"));
+    const before = captures.filter(capture => capture.shots[0]?.boundary === "before-submit");
+    const after = captures.filter(capture => capture.shots[0]?.boundary === "after-submit");
+    if (submits.length !== 1 || before.length !== 1 || after.length !== 1 || captures.length !== 2
+      || requireNative(before[0].row.native).order >= requireNative(after[0].row.native).order) continue;
+    submitCaptures.set(row.logId, [...before[0].shots, ...after[0].shots]);
+    for (const capture of captures) attachedCaptures.add(capture.row.logId);
+  }
   const observedCauses = new Set<string>();
-  const steps = logRowsOf(logs, "projection").filter(row => !confirmationNotes.has(requireNative(row.native).eventId) || bindings.some(binding => binding.logId === row.logId)).flatMap((row): LogStep[] => {
+  const steps = rows.filter(row => !confirmationNotes.has(requireNative(row.native).eventId) || bindings.some(binding => binding.logId === row.logId)).flatMap((row): LogStep[] => {
     if (row.kind !== "transaction-fenced") groupable.add(row.logId);
     order.set(row.logId, requireNative(row.native).order);
     node.set(row.logId, requireNative(row.native).nodeId);
     const at = row.kind === "note" ? row.note.at : row.at;
     const time = fmtActionClock(at);
-    const screenshots = screenshotsOf(row);
+    const screenshots = attachedCaptures.has(row.logId) ? [] : submitCaptures.get(row.logId) ?? screenshotsOf(row);
     let entry: LogEntry | undefined;
     if (row.kind === "observed") {
       const fields = row.displayFields?.flatMap((field, index) => {
@@ -295,13 +318,22 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         const state = action.state === "failed" ? "Failed" : action.state === "not-run" ? "Skipped" : "Started";
         entry = { kind: "note", id: row.logId, time, message: `${state}: ${action.label}${action.reason === undefined ? "" : ` · ${operatorActionReason(action.reason)}`}`,
           ...(action.state === "failed" ? { tone: "danger" } : {}) };
-      } else if (action.kind === "click") entry = { kind: "click", id: row.logId, time, label: action.label };
+      } else if (action.kind === "click") entry = { kind: "click", id: row.logId, time, label: action.label, ...(submitCaptures.has(row.logId) ? { screenshots } : {}) };
       else if (action.kind === "fill" || action.kind === "read") entry = action.value === undefined
         ? { kind: "note", id: row.logId, time, message: `${action.kind === "fill" ? "Fill" : "Read"}: ${action.label}. Value not retained.` }
         : { kind: "fields", id: row.logId, fields: [{ id: row.logId, time, kind: action.kind, label: action.label, value: action.value }] };
       else entry = { kind: "note", id: row.logId, time, message: action.kind === "screenshot"
         ? "Screenshot unavailable: no verified capture association." : action.label };
     } else entry = { kind: "note", id: row.logId, time, message: row.note.message, ...(row.note.level === "error" ? { tone: "danger" } : {}) };
+    if (entry?.kind === "note" && row.kind === "note" && row.note.fields?.some(field => field.key === "code" && field.kind === "text" && field.value === "BROWSER_SCREENSHOT_CAPTURE_FAILED")) {
+      const boundary = row.note.fields.find(field => field.key === "boundary" && field.kind === "text")?.value;
+      const proved = sections.some(section => section.section === "failure" && section.payload.state === "available"
+        && section.payload.value.nodeId === requireNative(row.native).nodeId
+        && section.payload.value.attempt === requireNative(row.native).attempt
+        && (section.payload.value.writeState === "committed" || section.payload.value.writeState === "verified"));
+      if (boundary === "before-submit" || boundary === "after-submit") entry = { ...entry, tone: "danger",
+        captureFailure: boundary === "before-submit" ? "pre-submit-failed" : proved ? "post-submit-proved" : "post-submit-unknown" };
+    }
     const entries: LogEntry[] = entry === undefined ? [] : [entry];
     for (const binding of bindings.filter(binding => binding.logId === row.logId).toSorted((left, right) => left.native.order - right.native.order)) {
       const event = confirmedActions.find(event => event.eventId === binding.eventId);
@@ -312,9 +344,9 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
         time: fmtActionClock(event.kind === "fact" ? event.confirmedAt : event.occurredAt), message,
         ...(event.kind === "trace" && event.state === "failed" ? { tone: "danger" } : {}) });
     }
-    if (row.kind !== "observed" && screenshots.length > 0) entries.push({ kind: "decision", id: `${row.logId}:captures`, time,
+    if (row.kind !== "observed" && screenshots.length > 0 && !submitCaptures.has(row.logId)) entries.push({ kind: "decision", id: `${row.logId}:captures`, time,
       decision: { title: "Screenshot", state: "recorded", screenshots } });
-    if (row.kind === "observed" && entries.length === 0) return [];
+    if ((row.kind === "observed" || attachedCaptures.has(row.logId)) && entries.length === 0) return [];
     return [{ id: row.logId, time, title: row.kind === "note" ? row.note.screenshot === undefined ? "Run note" : "Screenshot" : row.producer.step,
       ...(row.kind !== "note" && row.producer.system !== undefined ? { system: row.producer.system }
         : row.kind === "note" && row.note.operatorAction?.system !== undefined ? { system: row.note.operatorAction.system } : {}), entries }];

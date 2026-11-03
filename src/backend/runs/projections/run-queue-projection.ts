@@ -1164,6 +1164,10 @@ export class RunQueueProjection {
       : retainedRunProtectedBindings(authority).length > 0
         ? { state: "absent", reason: "the operator's display name is withheld because this run carries protected input" }
         : { state: "present", value: authority.displayName };
+    const pauseUnavailable = authority.lifecycle.state === "terminal" || authority.lifecycle.state === "parked-write" || authority.cancelRequested === true;
+    const pauseControl: NonNullable<QueueSurfaceWire["pauseControl"]> = { expectedVersion: authority.version,
+      state: pauseUnavailable ? "unavailable" : authority.pause?.state === "requested" ? "pause-pending" : authority.pause?.state === "paused" ? "paused" : "running",
+      ...(pauseUnavailable || authority.pause?.state === "requested" ? {} : { command: authority.pause?.state === "paused" ? "resume" as const : "pause" as const }) };
     const base = {
       runId: queued.runId,
       itemId: queued.itemId,
@@ -1185,11 +1189,7 @@ export class RunQueueProjection {
 
       dryRun: authority.envelope.dryRun,
       ...(authority.pause === undefined ? {} : { pause: authority.pause }),
-      pauseControl: { expectedVersion: authority.version,
-        state: authority.lifecycle.state === "terminal" || authority.lifecycle.state === "parked-write" ? "unavailable"
-          : authority.pause?.state === "requested" ? "pause-pending" : authority.pause?.state === "paused" ? "paused" : "running",
-        ...(authority.lifecycle.state === "terminal" || authority.lifecycle.state === "parked-write" || authority.pause?.state === "requested"
-          ? {} : { command: authority.pause?.state === "paused" ? "resume" : "pause" }) },
+      pauseControl,
 
       priority: authority.envelope.priority,
       runNumber: this.#runNumber(authority),
@@ -1212,7 +1212,8 @@ export class RunQueueProjection {
       outcome: this.#resultOutcome(authority, receipt, descriptor?.outcomeProjection),
       facts: this.#facts(authority, descriptor, status, receipt),
       status,
-      liveMessage: this.#liveMessage(authority, status),
+      liveMessage: pauseControl.state === "pause-pending" ? { state: "present", value: "Pauses after this step finishes" }
+        : pauseControl.state === "paused" ? { state: "present", value: "Pause recorded. Resume to continue." } : this.#liveMessage(authority, status),
       warnings: this.#warnings(warningVerdict),
       pipeline: this.#pipeline(row, queued.workflow, authority.lifecycle.state === "terminal"),
       panelKind: panelKindOf(shape),
@@ -1225,6 +1226,9 @@ export class RunQueueProjection {
       ],
 
       actions: queueRowActions(descriptor?.actions, {
+        pauseControl,
+        crashed: authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "failed"
+          && authority.lifecycle.failureId !== undefined && this.#deps.authority.getFailure(authority.lifecycle.failureId)?.code === "RUN_INTERRUPTED_BY_CRASH",
         status,
         ...(authority.lifecycle.state === "terminal" && (authority.lifecycle.outcome === "failed" || authority.lifecycle.outcome === "interrupted")
           ? { recoverySource: authority.lifecycle.outcome } : {}),

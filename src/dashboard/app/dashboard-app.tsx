@@ -15,6 +15,7 @@ import { commandSaveState, settingsSaveProblem } from "../surfaces/settings/edit
 import { useInboxWiring } from "../state/inbox-wiring-adapter.js";
 import { useSearchWiring } from "../state/search-wiring-adapter.js";
 import { useQueueWiring } from "../state/queue-wiring-adapter.js";
+import { useApplicationLifecycle } from "../state/application-lifecycle-model.js";
 import type { RunWiringConfirm } from "../state/run-wiring-adapter.js";
 import { useWorkspaceSearchData } from "../surfaces/shell/search/search-wiring-model.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from "../../models/failures/error-catalog.js";
@@ -40,7 +41,7 @@ import {
 SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
-import { Button,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
+import { Banner,Button,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { useServedNow } from "../state/served-clock.js";
@@ -70,6 +71,7 @@ type QueueSortKey,
 import {
 ConfirmBulkCommandDialog,
 BulkCommandFeedback,
+PauseAllQuitControls,
 type PendingBulkCommand,
 } from "../surfaces/queue/queue-toolbar.js";
 import { FocusQueueHeader, FocusQueueToolbar } from '../surfaces/queue/queue-focus.js';
@@ -328,6 +330,9 @@ function LoadedApp({
  * only the monotonic time since that instant arrived, and every live elapsed */
   const client = useDashboardClient();
   const authorityEpoch = useMemo(() => Object.freeze({ client, bootstrap: boot }), [client, boot]);
+  const lifecycle = useApplicationLifecycle(client, authorityEpoch);
+  const application = lifecycle.resource.state === "loaded" ? lifecycle.resource.value : undefined;
+  const [quitRequested, setQuitRequested] = useState(false);
   const nowIso = useServedNow(boot.serverClock.now);
   const servedNowRef = useRef(nowIso);
   servedNowRef.current = nowIso;
@@ -436,11 +441,31 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     if (outcome.kind === "uncertain") unknownWarnings.current.set(outcome.commandId, toastId);
   }, [executor, toast, dismiss]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
+  const appAttempts = executor.retainedAttempts().filter(attempt => attempt.scope.actorId === commandScope.actorId
+    && attempt.scope.authority === commandScope.authority && attempt.scope.client === client
+    && (attempt.request.family === "application" || "targets" in attempt.request && attempt.request.type === "resume"));
+  const applicationBusy = appAttempts.some(attempt => attempt.state === "pending" || attempt.outcome?.kind === "uncertain");
+  const quitting = appAttempts.some(attempt => attempt.request.type === "pause-all-and-quit"
+    && (attempt.state === "pending" || attempt.outcome?.kind === "confirmed" || attempt.outcome?.kind === "uncertain")) || application?.state === "quitting";
+  const allPaused = application !== undefined && application.targets.length > 0 && application.targets.every(target => target.pause?.state === "paused" && target.pauseUnavailable === false);
+  useEffect(() => {
+    const quit = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "q") {
+        event.preventDefault();
+        if (!quitting && !applicationBusy) setQuitRequested(true);
+      }
+    };
+    window.addEventListener("keydown", quit);
+    return () => window.removeEventListener("keydown", quit);
+  }, [quitting, applicationBusy]);
   const recoveryEntries: readonly UncertainCommandEntry[] = executor.retainedAttempts().flatMap<UncertainCommandEntry>(attempt => {
     const request = attempt.request;
     if (attempt.state === "pending" && attempt.scope.client === commandScope.client && attempt.scope.authority === commandScope.authority && attempt.scope.dayRequest === commandScope.dayRequest) return [];
     if (attempt.scope.actorId !== commandScope.actorId || (attempt.state !== "pending" && attempt.outcome?.kind !== "uncertain")) return [];
     if ("targets" in request && request.type === "bump") return [];
+    if (!("targets" in request) && request.family === "application") return [{ request, inFlightKey: request.commandId,
+      label: commandLabels.current.get(request.commandId) ?? request.type,
+      targets: request.payload.targets.map(target => ({ ...target, title: dayWire?.queueSurfaces.find(row => row.runId === target.runId)?.title ?? target.runId })) }];
     if (!("targets" in request) && request.family !== "run" && request.family !== "gate" && request.family !== "workflow-batch") return [];
     if (!("targets" in request) && request.family === "workflow-batch") return [{ request, inFlightKey: request.commandId, label: "Queue grouping", targets: [], detail: `Batch ${request.target.batchId} · revision ${request.target.expectedVersion} · grouping ${request.payload.groupInQueue ? "on" : "off"}` }];
     const targets = "targets" in request ? request.targets : [request.target];
@@ -547,9 +572,26 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         }
       },
     };
-    if (replay) await executor.replay(request.commandId, options);
-    else await executor.execute(request, options);
+    const execution = replay ? executor.replay(request.commandId, options) : executor.execute(request, options);
+    refreshCommandRecovery(value => value + 1);
+    await execution;
   }, [commandScope, commandFeedback, executor, client, dayWire, workflowLabelOf, activeWorkflowId, nowIso, toast, setRoute, onBulkIds]);
+
+  const applicationAction = (action: "pause-all" | "pause-all-and-quit" | "resume") => {
+    if (application === undefined || application.state !== "ready" || applicationBusy || quitting) return;
+    const envelope = { commandId: crypto.randomUUID(), requestedAt: nowIso, requestedBy: boot.actor.id, source: "dashboard" };
+    const targets = application.targets.map(({ runId, expectedVersion }) => ({ runId, expectedVersion }));
+    if (action === "resume") {
+      if (!allPaused) return;
+      const plan: BulkVerbPlan = { verb: "resume", label: "Resume", eligible: targets.map(target => ({ ...target,
+        title: dayWire?.queueSurfaces.find(row => row.runId === target.runId)?.title ?? target.runId })), skipped: [], unavailable: [] };
+      void executeShell(BulkRunCommandRequestSchema.parse({ ...envelope, bulkCommandId: envelope.commandId, family: "run", type: "resume", targets, mode: "best-effort" }), "Resume all runs", plan).then(lifecycle.refresh);
+    } else {
+      void executeShell(CommandRequestSchema.parse({ ...envelope, family: "application", type: action,
+        target: { runtimeGeneration: application.runtimeGeneration }, payload: { targets, ...(action === "pause-all-and-quit" ? { confirmed: true } : {}) } }),
+      action === "pause-all" ? "Pause all requested" : "Quit requested").then(lifecycle.refresh);
+    }
+  };
 
   const dispatchCommand = useCallback((action: CommandAction, target: ActionTarget, answers: {
     renameAnswer?: string; source?: "queue" | "run-detail"; commandId?: string; requestedAt?: string;
@@ -944,6 +986,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           storage={boot.storage}
           onOpenSettings={openSettings}
         />
+        {quitting && <Banner tone="info" shape="band" title="Relay quits after runs pause">Each run finishes its current step first. A submit in progress is never interrupted.</Banner>}
+        {lifecycle.resource.state === "failed" && <Banner tone="danger" shape="band" title="Run controls unavailable">{operatorFailureSentence("APPLICATION_ADMISSION_REFUSED")}<Button size="sm" variant="secondary" onClick={lifecycle.refresh}>Check connection</Button></Banner>}
 
         <div className="flex min-h-0 flex-1">
 
@@ -967,7 +1011,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               const retained = recoveryEntries.find(candidate => candidate.inFlightKey === entry.inFlightKey);
               if (retained === undefined) return;
               const request = retained.request;
-              const plan: BulkVerbPlan | undefined = "targets" in request && (request.type === "retry" || request.type === "cancel") ? { verb: request.type, label: retained.label, eligible: retained.targets, skipped: [], unavailable: [] } : undefined;
+              const plan: BulkVerbPlan | undefined = "targets" in request && (request.type === "retry" || request.type === "cancel" || request.type === "resume") ? { verb: request.type, label: retained.label, eligible: retained.targets, skipped: [], unavailable: [] } : undefined;
               void executeShell(request, retained.label, plan, true);
             }}
           />
@@ -1016,6 +1060,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               <div className="dashboard-log-column">
                 <section aria-label="Action panel" className="dashboard-action-panel">
           <FocusQueueToolbar
+            pauseControls={<PauseAllQuitControls state={application === undefined ? "unavailable" : applicationBusy || quitting ? "pausing" : application.state === "blocked" ? "blocked" : application.state !== "ready" ? "pausing" : allPaused ? "paused" : "ready"}
+              activeCount={application?.targets.length ?? 0} quitRequested={quitRequested} onQuitDismiss={() => setQuitRequested(false)}
+              onPauseAll={() => applicationAction("pause-all")} onResumeAll={() => applicationAction("resume")} onPauseAndQuit={() => applicationAction("pause-all-and-quit")} />}
             sort={sort}
             onSort={onSort}
             active={filter}

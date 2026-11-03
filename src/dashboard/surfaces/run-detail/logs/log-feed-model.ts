@@ -9,6 +9,8 @@ export type LogField = Readonly<{
 }>;
 
 export type LogScreenshot = Readonly<{
+  logId?: string;
+  boundary?: "step" | "before-submit" | "after-submit";
   src: string;
   alt: string;
   time: string;
@@ -37,6 +39,7 @@ export type LogEntry = Readonly<{
   id: string;
   time: string;
   message: string;
+  captureFailure?: "pre-submit-failed" | "post-submit-unknown" | "post-submit-proved";
   tone?: "info" | "danger" | "positive";
   announce?: boolean;
 }> | Readonly<{

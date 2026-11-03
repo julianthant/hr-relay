@@ -24,6 +24,7 @@
     - heading "Start with a security key" [level=2]
     - paragraph: In the setup browser, follow Fast Duo’s security key instructions. You can add the methods in either order.
   - status: Security key and Touch ID not added
+  - button "Cancel sign-up"
   - button "Show setup browser"
 - paragraph: UI mock. Browser handoff and Duo results are simulated. No details are sent or saved.
 - region "Notifications"

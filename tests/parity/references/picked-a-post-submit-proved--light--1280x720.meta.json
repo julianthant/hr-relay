@@ -1,0 +1,11 @@
+{
+  "stateId": "picked-a-post-submit-proved",
+  "theme": "light",
+  "viewport": "1280x720",
+  "adapter": "fixture",
+  "fixtureId": "picked-dashboard-a",
+  "descriptorHash": "6a85af706245b422f0d5d485bac3fc1104e773c7bd3f859a407602f3ab16ef13",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "default"
+}

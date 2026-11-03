@@ -8,6 +8,8 @@ import {
   CircleSlash,
   ClipboardList,
   PauseCircle,
+  Pause,
+  Play,
   Pencil,
   RotateCcw,
   Search,
@@ -136,6 +138,8 @@ export function CommandResultFeed({
 }
 
 const ICONS: Record<ActionIconKey, ReactNode> = {
+  pause: <Pause aria-hidden className={dsIcon.md} />,
+  resume: <Play aria-hidden className={dsIcon.md} />,
   archive: undefined,
   retry: <RotateCcw aria-hidden className={dsIcon.md} />,
   cancel: <X aria-hidden className={dsIcon.md} />,
@@ -204,7 +208,9 @@ export function FooterActions({
           }
           onClick={(e) => {
             e.stopPropagation();
+            const row = e.currentTarget.closest<HTMLElement>('[data-demo-row-id][role="button"]');
             onAction(a, target);
+            if (a.kind === "command" && (a.command === "pause" || a.command === "resume")) row?.focus({ preventScroll: true });
           }}
         />
       ))}

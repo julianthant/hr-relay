@@ -85,6 +85,13 @@ how a run was created belongs in its information disclosure. Logs group ordered 
 under steps; read/fill observations use aligned label/value rows with shared facts at the heading. Timeline segments are
 categorical and equal width. Duration text carries elapsed time separately from segment width.
 
+Pause and Resume live in the real row footer. Pause all is an icon in the queue toolbar; the quit
+confirmation has no run list. A recorded pause reuses the outline Queued pill with a Paused label.
+At compact action widths, Start a run uses its existing icon and accessible name so every toolbar control stays visible.
+Sign-up method chips stay on one line, and Cancel sign-up lives in the Duo step footer with confirmation.
+Browser captures stay inline. A verified before/after pair sits under its declared submit action,
+with equal cards and captions below; incomplete or ambiguous capture associations remain visible.
+
 ## Motion
 
 `dsMotion.base` is a 140ms color/fill/edge transition. `fast` is a 90ms command hover/press,

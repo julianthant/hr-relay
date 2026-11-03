@@ -44,6 +44,9 @@ it("defers idle updates while a paused run is retained", async () => {
     updateHost: { pending: () => true, async install() { installs += 1; } } });
   cleanups.push(lifecycle.dispose);
   assert.equal(lifecycle.snapshot().update, "deferred");
+  const target = lifecycle.snapshot().targets.find(target => target.runId === run.envelope.runId);
+  assert.equal(target?.pause?.state, "paused");
+  assert.equal(target.pauseUnavailable, false);
   await assert.rejects(lifecycle.installIdleUpdate(), /application-update-work-active/u);
   assert.equal(installs, 0);
   assert.equal(f.database.authority.runs.admission().state, "open");

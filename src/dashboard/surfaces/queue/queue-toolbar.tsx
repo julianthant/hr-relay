@@ -1,9 +1,8 @@
 import { useMemo, useRef, type ReactNode } from "react";
-import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, RotateCcw, Square, X } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, Pause, Play, RotateCcw, Square, X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import type { BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
 import {
-  DialogBody,
   ActionBar,
   BareButton,
   Button,
@@ -36,7 +35,7 @@ import {
 } from "../../app/commands/bulk-dispatch.js";
 
 /** the icon per bulk verb — the same two the row's own footer draws */
-const BULK_VERB_ICON: Record<BulkVerb, typeof RotateCcw> = { cancel: Ban, retry: RotateCcw };
+const BULK_VERB_ICON: Record<BulkVerb, typeof RotateCcw> = { cancel: Ban, retry: RotateCcw, resume: Play };
 
 /** what one run's child command settled as, in the operator's words: a `conflict` carries the refresh instruction */
 const OUTCOME_TONE: Record<
@@ -471,23 +470,23 @@ export function RunPauseControl({ runLabel, state, onAction }: {
   </div>;
 }
 
-export function PauseAllQuitControls({ state, activeCount, runs, onPauseAll, onPauseAndQuit, quitRequested = false, onQuitDismiss }: {
+export function PauseAllQuitControls({ state, activeCount, onPauseAll, onResumeAll, onPauseAndQuit, quitRequested = false, onQuitDismiss }: {
   state: "ready" | "pausing" | "paused" | "blocked" | "unavailable";
   activeCount: number;
-  runs?: readonly { label: string; detail: string; id: string }[];
   quitRequested?: boolean;
   onQuitDismiss?: () => void;
   onPauseAll?: () => void;
+  onResumeAll?: () => void;
   onPauseAndQuit?: () => void;
 }) {
   const pauseAll = useRef<HTMLButtonElement>(null);
-  const enabled = state === "ready" && activeCount > 0;
-  return <div className="flex flex-col gap-[var(--ds-space-cozy)]">
-    <div className="flex items-center gap-2"><Button ref={pauseAll} size="sm" variant="secondary" disabled={!enabled || !onPauseAll} onClick={onPauseAll}>Pause all</Button></div>
+  const enabled = state === "ready" || state === "paused";
+  const resume = state === "paused";
+  return <>
+    <Button ref={pauseAll} size="sm" variant="secondary" className="size-8 p-0" aria-label={resume ? "Resume all runs" : "Pause all runs"} title={resume ? "Resume all paused runs" : "Pause all runs after their current step"} icon={resume ? <Play aria-hidden className={dsIcon.sm} /> : <Pause aria-hidden className={dsIcon.sm} />} disabled={!enabled || activeCount === 0 || (resume ? !onResumeAll : !onPauseAll)} onClick={resume ? onResumeAll : onPauseAll} />
     {state !== "ready" && <p role="status" className="sr-only">{state === "pausing" ? "Finishing current steps; pauses and shutdown are not yet confirmed." : state === "paused" ? "All runs paused. Resume them next time." : state === "blocked" ? "Closure is unknown. Keep Relay open and check active runs." : "Pause all is unavailable. Check the connection."}</p>}
-    <Dialog open={quitRequested && enabled} onOpenChange={open => { if (!open) onQuitDismiss?.(); }}><DialogContent size="sm" title="Pause all and quit?" description="Each run finishes its current step, then pauses. Resume them next time." onCloseAutoFocus={event => { event.preventDefault(); pauseAll.current?.focus(); }}>
-      <DialogBody>{runs ? <div className="divide-y divide-ui-stroke">{runs.map(run => <div key={run.id} className="flex items-center justify-between gap-4 py-[var(--ds-space-cozy)]"><div><strong className={dsText.ui}>{run.label}</strong><p className={`${dsText.meta} text-ui-muted`}>{run.detail}</p></div><span className={`${dsText.meta} font-mono text-ui-muted`}>{run.id}</span></div>)}</div> : <p>{activeCount} active {activeCount === 1 ? "run" : "runs"} will pause before Relay quits.</p>}</DialogBody>
-      <DialogFooter><Button variant="secondary" autoFocus onClick={onQuitDismiss}>Keep working</Button><Button disabled={!onPauseAndQuit} onClick={() => { onQuitDismiss?.(); onPauseAndQuit?.(); }}>Pause all and quit</Button></DialogFooter>
+    <Dialog open={quitRequested} onOpenChange={open => { if (!open) onQuitDismiss?.(); }}><DialogContent size="sm" title="Pause all and quit?" description="Each run finishes its current step, then pauses. Resume them next time." onCloseAutoFocus={event => { event.preventDefault(); if (pauseAll.current?.disabled === false) pauseAll.current.focus(); else document.getElementById("dashboard-main-region")?.focus(); }}>
+      <DialogFooter><Button variant="secondary" autoFocus onClick={onQuitDismiss}>Keep working</Button><Button disabled={!enabled || !onPauseAndQuit} onClick={() => { onQuitDismiss?.(); onPauseAndQuit?.(); }}>Pause all and quit</Button></DialogFooter>
     </DialogContent></Dialog>
-  </div>;
+  </>;
 }
