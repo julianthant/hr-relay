@@ -186,7 +186,7 @@ function withoutWorkerControlAdmissions(content: string, kernelContent: string):
   return content;
 }
 
-type DelegationAuditRead = Readonly<{ owner: string; id: string; guards: readonly string[]; calls?: readonly string[] }>;
+type DelegationAuditRead = Readonly<{ owner: string; id: string; guards: readonly string[]; calls?: readonly string[]; bindings?: Readonly<Record<string, string>> }>;
 const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRead[]>> = {
   "src/backend/storage/sqlite/command-record-row.ts": [
     { owner: "withCanonicalRunCommandScope", id: "request.commandId", guards: [
@@ -206,6 +206,37 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
     { owner: "delegationCancellationAvailability", id: "source.commandId", guards: ['run?.lifecycle.state!=="terminal"', "repositories.commandAudits.findByCommand(source.commandId)===undefined"], calls: ["readDelegationCancellation(repositories,runId)"] },
     { owner: "readDelegationCancellation", id: "source.commandId", guards: ['authored?.result.state!=="applied"', "canonicalJsonStringify(authored.request)!==canonicalJsonStringify(source)", "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(retained)"], calls: ["authenticateCancellationSource(repositories,run,request.cancellationSource)"] },
   ],
+  "src/backend/runs/workbooks.ts": [
+    { owner: "authenticateOnboardingRosterChoice", id: "gate.commandId", guards: [
+      'recorded?.source.kind!=="native"', 'recorded.eventId!==eventId', 'recorded.scope.kind!=="run"',
+      'recorded.scope.runId!==run.envelope.runId', 'recorded.workflow!==run.envelope.workflow', 'native===undefined',
+      'native.runId!==gate.runId', 'native.workflow!==run.envelope.workflow', 'native.traceId!==run.envelope.traceId',
+      'native.gate!==gate.gateId', 'native.attempt>run.envelope.attempt', 'native.ts!==gate.resolvedAt',
+      'recorded.occurredAt!==gate.resolvedAt',
+      'native.resultHash!==sha256Hex(`hrauto:gate-resolved-span:v1\\0${canonicalJsonStringify(gate.result)}`)',
+      'roster.state!=="resolve-required"', 'gate.runId!==run.envelope.runId', 'gate.gateId!==ONBOARDING_ROSTER_GATE_ID',
+      'gate.nodeId!==ONBOARDING_ROSTER_GATE_ID', '!("resolvedBy"ingate)',
+      'gate.checkpointFingerprint!==deriveGateResultCheckpointFingerprint(gate.result)',
+      'command?.family!=="run"', 'command.type!=="resolve-workbook-reference-row"',
+      'command.target.runId!==gate.runId', 'command.target.gateId!==gate.gateId',
+      'command.target.expectedVersion!==gate.expectedVersion', 'command.requestedBy!==gate.resolvedBy',
+      'command.target.referenceDigest!==reference.digest', 'command.target.libraryId!==binding.workbookId',
+      'command.target.typeId!==binding.workbookType', 'command.target.key!==binding.rowKey.email',
+      'row.binding.referenceDigest!==reference.digest', 'row.binding.workbookId!==binding.workbookId',
+      'row.binding.workbookType!==binding.workbookType', 'row.binding.rowKey.email!==binding.rowKey.email',
+      'row.binding.workbookVersion!==command.target.workbookVersion', 'row.binding.capturedAt!==gate.resolvedAt',
+      'row.binding.sheetId!==command.payload.sheetId', 'row.binding.rowId!==command.payload.rowId',
+      '!reference.value.snapshot.worksheets.some(sheet=>sheet.sheetId===row.binding.sheetId)',
+      'audit?.result.state!=="applied"', 'canonicalJsonStringify(audit.request)!==canonicalJsonStringify(command)',
+    ], calls: ['onboardingReference(run)'], bindings: {
+      row: 'schemaBoundValueSchema(OnboardingRosterChoiceSchema,deriveSchemaHash(OnboardingRosterChoiceSchema,"output")).parse(gate.result).value.row',
+      command: '"commandId"ingate?repositories.commands.get(gate.commandId):undefined',
+      audit: '"commandId"ingate?repositories.commandAudits.findByCommand(gate.commandId):undefined',
+      eventId: '"commandId"ingate?lifecycleCommandId("timeline-gate-resolved",gate.commandId):undefined',
+      recorded: 'eventId===undefined?undefined:repositories.timelineEvents.get(eventId)',
+      native: 'recorded?.payload.kind==="span"&&recorded.payload.event.t==="gate.resolved"?recorded.payload.event:undefined',
+    } },
+  ],
   "src/backend/runs/lifecycle/delegation-admission.ts": [
     { owner: "admitDelegation", id: "gate.commandId", guards: ['audit?.result.state!=="applied"', "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(command)", "command.target.expectedVersion!==gate.expectedVersion", "command.requestedBy!==gate.resolvedBy"] },
   ],
@@ -217,7 +248,8 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
   const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true);
   const compact = (node: ts.Node): string => node.getText(source).replace(/\s+/gu, "");
   const importsRepository = source.statements.some(node => ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
-    && node.moduleSpecifier.text === (path.endsWith("/delegation-admission.ts") ? "../../storage/sqlite/authority-database.js" : "./authority-database.js")
+    && node.moduleSpecifier.text === (path === "src/backend/runs/workbooks.ts" ? "../storage/sqlite/authority-database.js"
+      : path.endsWith("/delegation-admission.ts") ? "../../storage/sqlite/authority-database.js" : "./authority-database.js")
     && node.importClause?.namedBindings !== undefined && ts.isNamedImports(node.importClause.namedBindings)
     && node.importClause.namedBindings.elements.some(binding => binding.name.text === "AuthorityRepositories" && binding.propertyName === undefined));
   if (!importsRepository) return content;
@@ -242,8 +274,9 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     const use = candidates[0], method = use.parent, call = method.parent;
     if (compact(use.expression) !== "repositories" || !ts.isPropertyAccessExpression(method) || method.name.text !== "findByCommand"
       || !ts.isCallExpression(call) || call.expression !== method || call.arguments.length !== 1 || compact(call.arguments[0]) !== spec.id) return content;
-    const guards = new Set<string>(), calls = new Set<string>();
+    const guards = new Set<string>(), calls = new Set<string>(), bindings = new Map<string, string>();
     function facts(node: ts.Node): void {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined) bindings.set(node.name.text, compact(node.initializer));
       if (ts.isCallExpression(node)) calls.add(compact(node));
       if (ts.isIfStatement(node)) {
         let refuses = false;
@@ -271,7 +304,8 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
       ts.forEachChild(node, facts);
     }
     facts(owner.body);
-    if (spec.guards.some(proof => !guards.has(proof)) || spec.calls?.some(proof => !calls.has(proof))) return content;
+    if (spec.guards.some(proof => !guards.has(proof)) || spec.calls?.some(proof => !calls.has(proof))
+      || Object.entries(spec.bindings ?? {}).some(([name, value]) => bindings.get(name) !== value)) return content;
     if (spec.owner === "withCanonicalRunCommandScope") {
       const installed = owner.body.statements.some(statement => ts.isExpressionStatement(statement)
         && compact(statement) === "activeRunCommand={repositories,request:canonicalJsonStringify(request)};");
@@ -364,6 +398,32 @@ describe("finite native delegation audit read ownership", () => {
           assert.ok(proof, `missing refusal guard ${guard}`);
           mutants.push(mutate(proof, "true"));
         }
+      }
+      if (path === "src/backend/runs/workbooks.ts") {
+        const owner = parsed.statements.filter(ts.isFunctionDeclaration).find(fn => fn.name?.text === "authenticateOnboardingRosterChoice");
+        assert.ok(owner?.body);
+        mutants.push(mutate(owner.parameters[0], "repositories: ForeignRepositories"));
+        const repositoryImport = parsed.statements.filter(ts.isImportDeclaration).flatMap(node =>
+          node.importClause?.namedBindings !== undefined && ts.isNamedImports(node.importClause.namedBindings)
+            ? node.importClause.namedBindings.elements : []).find(binding => binding.name.text === "AuthorityRepositories");
+        assert.ok(repositoryImport);
+        mutants.push(mutate(repositoryImport, "AuthorityRepositories as ForeignRepositories"));
+        const declarations: ts.VariableDeclaration[] = [];
+        function variables(node: ts.Node): void { if (ts.isVariableDeclaration(node)) declarations.push(node); ts.forEachChild(node, variables); }
+        variables(owner.body);
+        for (const spec of specs) for (const name of Object.keys(spec.bindings ?? {})) {
+          const binding = declarations.find(node => ts.isIdentifier(node.name) && node.name.text === name);
+          assert.ok(binding?.initializer);
+          mutants.push(mutate(binding.initializer, "undefined"));
+        }
+        const bindingCall = calls.length === 1 ? owner.body.statements.flatMap(statement => {
+          if (!ts.isVariableStatement(statement)) return [];
+          return statement.declarationList.declarations.flatMap(declaration => declaration.initializer !== undefined
+            && declaration.initializer.getText(parsed).replace(/\s+/gu, "") === "onboardingReference(run)" ? [declaration.initializer] : []);
+        })[0] : undefined;
+        assert.ok(bindingCall);
+        mutants.push(mutate(bindingCall, "foreignReference(run)"));
+        mutants.push(source.replace("repositories.commandAudits.findByCommand(gate.commandId)", "aliasedAudits.findByCommand(gate.commandId)"));
       }
       for (const mutant of mutants) {
         assert.notEqual(mutant, source);
@@ -466,7 +526,7 @@ const EXPECTED_ACTIVE = {
     "cancel", "bump", "rename",
 
     "delete",
-    "recheck-write", "resolve-write-absent", "resolve-workbook-row",
+    "recheck-write", "resolve-write-absent", "resolve-workbook-row", "resolve-workbook-reference-row",
 
   ],
   gate: ["resolve-gate"],

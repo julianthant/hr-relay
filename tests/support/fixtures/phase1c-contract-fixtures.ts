@@ -81,6 +81,9 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   ...["pause", "resume"].map(type => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
   { ...BASE_COMMAND, family: "application", type: "pause-all", target: { runtimeGeneration: 1 }, payload: { targets: [RUN_TARGET] } },
   { ...BASE_COMMAND, family: "application", type: "pause-all-and-quit", target: { runtimeGeneration: 1 }, payload: { confirmed: true, targets: [RUN_TARGET] } },
+  { ...BASE_COMMAND, family: "run", type: "resolve-workbook-reference-row", target: { runId: UUID_1, expectedVersion: 1,
+    libraryId: UUID_2, typeId: "onboarding-roster", referenceDigest: HASH_A, key: "hire@example.test",
+    workbookVersion: 2, gateId: "roster-choice" }, payload: { sheetId: "sheet-1", rowId: "row-1" } },
 ];
 
 export const SUBJECT_EVIDENCE = {

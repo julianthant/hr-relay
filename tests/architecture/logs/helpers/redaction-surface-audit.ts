@@ -850,6 +850,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
       'resolution.action.confirm.title', 'resolution.action.detail', 'resolution.action.key', 'resolution.action.label',
       'resolution.action.navigate.runId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.referenceChoices[].${path}`, origin: 'repository-authored' as const })),
     ...['key', 'typeId', 'resolution.target.key', 'resolution.target.typeId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.referenceChoices[].${path}`, origin: 'captured-hr-value' as const })),
+    { surface: 'wire/run-detail-section', path: 'payload.referenceChoices[].resolution.candidates[]', origin: 'captured-hr-value' as const },
     ...['candidates[]', 'selected'].flatMap(arm => ['label', 'sheetId', 'rowId', 'values[].fieldId', 'values[].value'].map(path => ({
       surface: 'wire/run-detail-section', path: `payload.referenceChoices[].resolution.${arm}.${path}`, origin: 'captured-hr-value' as const,
     }))),
