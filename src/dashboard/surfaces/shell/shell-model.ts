@@ -1,4 +1,4 @@
-import { useCallback,useRef,useState } from "react";
+import { useCallback,useState } from "react";
 import { z } from "zod";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../models/dashboard/bootstrap.js";
 import type {
@@ -40,19 +40,21 @@ export function useSelectedWorkflow(workflows: readonly { readonly id: string }[
 } {
   const preferences = usePersonPreferences();
   const selected = preferences.value.selectedWorkflowId;
-  const valid = workflows.some(workflow => workflow.id === selected);
-  const lost = useRef<{ change: typeof preferences.change; id?: string }>({ change: preferences.change });
-  if (lost.current.change !== preferences.change) lost.current = { change: preferences.change };
-  if (selected !== "" && !valid) lost.current.id = selected;
-  const selectedWorkflowId = lost.current.id === selected ? "" : valid ? selected : selected === "" ? String(workflows[0]?.id ?? "") : "";
   const change = preferences.change;
   const canSelectWorkflowId = useCallback((id: string) => workflows.some(workflow => workflow.id === id), [workflows]);
+  const initialId = canSelectWorkflowId(selected) ? selected : workflows[0]?.id ?? "";
+  const [choice, setChoice] = useState({ change, saved: selected, id: initialId });
+  let current = choice;
+  if (choice.change !== change || choice.saved !== selected) current = { change, saved: selected, id: initialId };
+  else if (choice.id !== "" && !canSelectWorkflowId(choice.id)) current = { ...choice, id: "" };
+  if (current !== choice) setChoice(current);
+  const selectedWorkflowId = current.id;
   const setSelectedWorkflowId = useCallback((id: string) => {
     if (!canSelectWorkflowId(id)) return false;
-    lost.current.id = undefined;
+    setChoice({ change, saved: selected, id });
     void change?.({ "preferences.selectedWorkflowId": { set: id } });
     return true;
-  }, [canSelectWorkflowId, change]);
+  }, [canSelectWorkflowId, change, selected]);
   return { selectedWorkflowId, setSelectedWorkflowId, canSelectWorkflowId };
 }
 

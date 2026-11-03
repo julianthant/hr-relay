@@ -22,7 +22,8 @@ function world() {
     if (url.endsWith("/settings/editable")) return Response.json(await (readOverride?.() ?? Promise.resolve(fixtureSettingsDocument(saved.settings, saved.revision))));
     if (url.endsWith("/commands")) {
       writes++;
-      const command = SettingsCommandRequestSchema.parse(JSON.parse(String(init?.body)));
+      assert.ok(typeof init?.body === "string");
+      const command = SettingsCommandRequestSchema.parse(JSON.parse(init.body));
       const target = person;
       await writeOverride?.();
       const settings = mergeSettingsPatch(saved.settings, command.payload.patch);
@@ -30,7 +31,7 @@ function world() {
       people.set(target, { settings, revision: document.revision });
       return Response.json(CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
         affectedTargets: [{ family: "settings", revision: document.revision }], settingsRevision: document.revision,
-        settingsFingerprint: document.settingsFingerprint, restartRequired: false, detail: "Settings saved" }));
+        settingsFingerprint: document.settingsFingerprint, restartRequired: false }));
     }
     throw new Error("unexpected-preference-request");
   } });
@@ -86,12 +87,13 @@ it("cannot publish an in-flight A save into B and never retries an unknown outco
   a.close(); a.owner.clear(); w.write(undefined);
   const b = w.select("B"); await ready(b.owner); pending.resolve(); assert.equal(await saving, false);
   assert.deepEqual(b.owner.snapshot().value, NEUTRAL_PERSON_PREFERENCES); assert.equal(w.writes(), 1); b.close();
-  const again = w.select("A"); await ready(again.owner);
-  w.write(() => Promise.reject(new Error("connection lost after dispatch")));
+  const unknown = world();
+  const again = unknown.select("A"); await ready(again.owner);
+  unknown.write(() => Promise.reject(new Error("connection lost after dispatch")));
   assert.equal(await again.owner.change({ "preferences.animations": { set: false } }), false);
   assert.equal(again.owner.snapshot().state, "uncertain");
   assert.equal(await again.owner.change({ "preferences.animations": { set: false } }), false);
-  assert.equal(w.writes(), 2); again.close();
+  assert.equal(w.writes(), 1); assert.equal(unknown.writes(), 1); again.close();
 });
 it("refuses malformed persisted preferences instead of publishing them as defaults", async () => {
   const w = world(); const malformed = fixtureSettingsDocument();

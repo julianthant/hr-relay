@@ -35,3 +35,17 @@ it("clears an unavailable selection on catalog replacement without selecting a s
     assert.equal(seen.at(-1)?.selectedWorkflowId, "");
   } finally { await act(async () => root.unmount()); localStorage.clear(); }
 });
+
+it("uses the first served workflow when a remembered workflow is unavailable at mount", async () => {
+  Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+  const preferences = createPersonPreferences("preview");
+  await preferences.change({ "preferences.selectedWorkflowId": { set: "missing" } });
+  let selected = "";
+  function Probe() { selected = useSelectedWorkflow([{ id: "a" }]).selectedWorkflowId; return null; }
+  const root = createRoot(document.createElement("div"));
+  try {
+    await act(async () => root.render(createElement(PersonPreferencesContext.Provider, { value: preferences, children: createElement(Probe) })));
+    assert.equal(selected, "a");
+    assert.equal(preferences.snapshot().value.selectedWorkflowId, "missing");
+  } finally { await act(async () => root.unmount()); }
+});
