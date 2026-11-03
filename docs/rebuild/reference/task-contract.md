@@ -371,15 +371,16 @@ Unmatched values remain unmatched.
 
 ### 2.13 UCPath emergency contacts
 
-`contact-tasks.ts` declares contracts for complete contact reads, unambiguous addition preparation
+`read-emergency-contacts.ts`, `stage-emergency-contact.ts` and `match-emergency-contact.ts` declare complete contact reads, unambiguous addition preparation
 and fresh saved-effect comparison. The single UCPath driver exposes reads and staging through
 the shared contact-set interpreter. Preparation binds the earlier observed set fingerprint,
 independently checks displayed EID/name and preserves every existing contact. Conflicts and
 unspecified addresses refuse. The interpreter compares saved effects as four-state observations;
 it grants no receipt, write probe, Save or retry authority. Candidate selectors remain pending
-live read-only verification. Task implementations and provenance recording await the owning
-workflow and executable scenarios; the UCPath store advertises no contact tasks. The pending-binding
-inventory tracks only contracts referenced by registered descriptors.
+live read-only verification. Registered Emergency Contact members use the task-ID suffix modules
+for reads, staging and protected plan probes; `contact-contract.ts` owns their shared schemas and
+idempotency. Save remains unavailable. The pending-binding inventory tracks only contracts
+referenced by registered descriptors.
 
 ## 3. Task registration
 

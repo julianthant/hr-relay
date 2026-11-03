@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
 import { EidSchema, FingerprintSchema, IsoInstantSchema } from "../../../rules/identity/ids.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
 export const UcpathContactRelationshipSchema = z.enum([
   "Child", "Contact if Detained/Arrested", "Domestic Partner Adult", "Domestic Partner Child",
@@ -46,6 +47,9 @@ export const UcpathContactEffectSchema = z.strictObject({
   address: UcpathContactAddressSchema,
 });
 export type UcpathContactEffect = z.infer<typeof UcpathContactEffectSchema>;
+export function contactEffectIdentity(effect: UcpathContactEffect): string {
+  return canonicalJsonStringify({ ...effect, name: effect.name.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US") });
+}
 
 export const UcpathContactRowSchema = z.discriminatedUnion("kind", [
   z.strictObject({
@@ -95,6 +99,33 @@ export const UcpathContactDecisionSchema = z.discriminatedUnion("state", [
   }),
 ]);
 export type UcpathContactDecision = z.infer<typeof UcpathContactDecisionSchema>;
+
+export const UcpathContactPlanSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("already-present"), before: UcpathContactSetSchema,
+    setFingerprint: FingerprintSchema, effect: UcpathContactEffectSchema, rowIndex: z.number().int().nonnegative() }),
+  z.strictObject({ state: z.literal("prepare"), before: UcpathContactSetSchema,
+    setFingerprint: FingerprintSchema, effect: UcpathContactEffectSchema,
+    demotion: z.strictObject({ rowIndex: z.number().int().nonnegative(), effect: UcpathContactEffectSchema }).nullable(),
+    target: z.discriminatedUnion("kind", [z.strictObject({ kind: z.literal("insert-row") }),
+      z.strictObject({ kind: z.literal("reuse-blank"), rowIndex: z.number().int().nonnegative() })]),
+  }),
+]);
+export type UcpathContactPlan = z.infer<typeof UcpathContactPlanSchema>;
+export const UcpathContactWriteTargetSchema = UcpathEmergencyContactInputSchema.extend({ plan: UcpathContactPlanSchema });
+export type UcpathContactWriteTarget = z.infer<typeof UcpathContactWriteTargetSchema>;
+export const UcpathContactEffectProofSchema = z.strictObject({
+  kind: z.literal("ucpath-emergency-contact"), emplId: EidSchema, displayedName: CANONICAL_FIELDS.fullName.schema,
+  effect: UcpathContactEffectSchema, contacts: UcpathContactSetSchema,
+  source: z.literal("complete-contact-set-read"),
+}).superRefine((proof, context) => {
+  if (proof.contacts.observation !== "persisted" || proof.contacts.emplId !== proof.emplId
+    || proof.contacts.displayedName !== proof.displayedName
+    || proof.contacts.rows.filter(row => row.kind === "contact" && contactEffectIdentity(row.effect) === contactEffectIdentity(proof.effect)).length !== 1
+    || proof.contacts.rows.filter(row => row.kind === "contact" && row.effect.primary).length > 1) {
+    context.addIssue({ code: "custom", message: "A contact proof requires one complete persisted exact effect for its subject" });
+  }
+});
+export type UcpathContactEffectProof = z.infer<typeof UcpathContactEffectProofSchema>;
 
 export const UCPATH_CONTACT_REFUSAL_CODES = [
   "unexpected-contact-page", "contact-identity-unreadable", "contact-subject-mismatch",
