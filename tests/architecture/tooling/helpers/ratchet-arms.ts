@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { REVIEWED_CATCH_DEFAULTS } from "./reviewed-catch-defaults.js";
+import { REVIEWED_CATCH_DEFAULTS, type ReviewedCatchDefault } from "./reviewed-catch-defaults.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, extname, relative, resolve } from "node:path";
 import ts from "typescript";
@@ -207,12 +207,17 @@ function defaultUsesInHandler(root: ts.Block): readonly string[] {
   return uses;
 }
 
-export function auditFailLoudCatchDefaults(path: string, content: string): readonly string[] {
-  const violations: string[] = [];
+interface CatchFinding {
+  readonly owner: ts.TryStatement | ts.CallExpression;
+  readonly message: string;
+}
+
+function catchDefaultFindings(path: string, content: string): readonly CatchFinding[] {
+  const findings: CatchFinding[] = [];
   visit(parseContent(path, content), (node) => {
     if (ts.isCatchClause(node)) {
       for (const use of defaultUsesInHandler(node.block)) {
-        violations.push(`${path}: catch ${use} a bare default`);
+        findings.push({ owner: node.parent, message: `${path}: catch ${use} a bare default` });
       }
     }
     if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)
@@ -221,25 +226,54 @@ export function auditFailLoudCatchDefaults(path: string, content: string): reado
     if (!handler || (!ts.isArrowFunction(handler) && !ts.isFunctionExpression(handler))) return;
     if (ts.isBlock(handler.body)) {
       for (const use of defaultUsesInHandler(handler.body)) {
-        violations.push(`${path}: promise catch ${use} a bare default`);
+        findings.push({ owner: node, message: `${path}: promise catch ${use} a bare default` });
       }
     } else if (isBareDefault(handler.body)) {
-      violations.push(`${path}: promise catch returns a bare default`);
+      findings.push({ owner: node, message: `${path}: promise catch returns a bare default` });
     }
   });
-  return violations;
+  return findings;
+}
+
+export function auditFailLoudCatchDefaults(path: string, content: string): readonly string[] {
+  return catchDefaultFindings(path, content).map(finding => finding.message);
+}
+
+export function auditReviewedCatchDefaults(
+  path: string, content: string, reviewed: ReviewedCatchDefault,
+): readonly string[] {
+  const findings = catchDefaultFindings(path, content);
+  const source = parseContent(path, content);
+  const counts = new Map<string, number>();
+  for (const owner of new Set(findings.map(finding => finding.owner))) {
+    const kind = ts.isTryStatement(owner) ? "try" : "promise";
+    const sha256 = createHash("sha256").update(content.slice(owner.getStart(source), owner.end)).digest("hex");
+    const key = `${kind}:${sha256}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  let matches = true;
+  for (const pin of reviewed.statements) {
+    const key = `${pin.kind}:${pin.sha256}`;
+    if (!Number.isInteger(pin.occurrences) || pin.occurrences <= 0 || counts.get(key) !== pin.occurrences) matches = false;
+    counts.delete(key);
+  }
+  if (matches && counts.size === 0 && findings.length > 0) return [];
+  return [
+    ...findings.map(finding => finding.message),
+    ...(findings.length === 0 ? [`${path}: stale reviewed catch classification`] : []),
+    `${path}: reviewed catch source changed; re-review required`,
+  ];
 }
 
 function auditBareDefaults(files: readonly string[]): string[] {
   const violations: string[] = [];
   for (const file of files) {
-    const content=readFileSync(file, "utf8");
-    const path=normalize(file);
-    const findings=auditFailLoudCatchDefaults(path,content);
-    const reviewed=REVIEWED_CATCH_DEFAULTS.find(entry=>path.endsWith(`/${entry.path}`));
-    if (reviewed !== undefined && createHash("sha256").update(content).digest("hex") === reviewed.sha256) {
-      if (findings.length === 0) violations.push(`${path}: stale reviewed catch classification`);
-    } else violations.push(...findings, ...(reviewed === undefined ? [] : [`${path}: reviewed catch source changed; re-review required`]));
+    const content = readFileSync(file, "utf8");
+    const path = normalize(file);
+    const reviewed = REVIEWED_CATCH_DEFAULTS.find(entry => path.endsWith(`/${entry.path}`));
+    violations.push(...(reviewed === undefined
+      ? auditFailLoudCatchDefaults(path, content)
+      : auditReviewedCatchDefaults(path, content, reviewed)));
   }
   return violations;
 }
