@@ -392,7 +392,7 @@ function i9CreationProofLeaves(scope: EvidenceValueScope, prefix: string, remote
 
 function hireProofLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
   return [...open(scope, ...["kind", "source", "action", "approvalStatus", "detailVerified"].map(path => `${prefix}${path}`)),
-    ...onboardingPrivateLeaves(scope, ...["transactionId", "displayedName", "emplId", "effectiveDate", "positionNumber", "email", "dob"].map(path => `${prefix}${path}`))];
+    ...onboardingPrivateLeaves(scope, ...["transactionId", "profileId", "displayedName", "emplId", "effectiveDate", "positionNumber", "email", "dob"].map(path => `${prefix}${path}`))];
 }
 
 function onboardingRosterLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
@@ -431,7 +431,7 @@ function onboardingLookupLeaves(scope: EvidenceValueScope): unknown[] {
 
 function onboardingProfileLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
   return [
-    ...open(scope, ...["state", "subjectState", "i9Status", "reason", "write.state", "write.owner"].map(path => `${prefix}${path}`)),
+    ...open(scope, ...["state", "subjectState", "i9Status", "reason"].map(path => `${prefix}${path}`)),
     ...onboardingPrivateLeaves(scope, `${prefix}profileId`,
       ...["firstName", "lastName", "middleName", "ssn", "dob", "email", "departmentNumber", "startDate"].map(path => `${prefix}request.${path}`)),
   ];
@@ -652,7 +652,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...ocrPrivateLeaves(workflowResult("ocr-source-pages"), "pages"),
   ...ocrPrivateLeaves(gateResult("ocr", "approve-records"), "snapshotId", "sourceRunId", "digest"),
   ...open(gateResult("ocr", "approve-records"), "revision"),
-  ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-i9-profile-creation"].flatMap(id => [
+  ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-hire-writes"].flatMap(id => [
     ...open(workflowInput(id), "mode", "configuredJobEndDate", "roster.state", "roster.reason"),
     ...onboardingPrivateLeaves(workflowInput(id), "email", "postalCodeOverride", "roster.row.references.livedName",
       ...["legalName", "livedName"].flatMap(name => ["firstName", "lastName", "middleName"].map(part => `roster.row.references.${name}.${part}`))),
@@ -666,13 +666,28 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...[taskOutput("workflow:onboarding/read-hire-plan"), workflowResult("onboarding-crm-data")].flatMap(scope => onboardingPlanLeaves(scope)),
   ...[taskOutput("workflow:onboarding/match-hire-subject"), workflowResult("onboarding-ucpath-search")].flatMap(scope => onboardingSubjectLeaves(scope)),
   ...[taskOutput("workflow:onboarding/read-i9-lookup"), workflowResult("onboarding-i9-search")].flatMap(scope => onboardingLookupLeaves(scope)),
-  ...[taskOutput("workflow:onboarding/read-i9-profile-plan"), workflowResult("onboarding-i9-profile-creation")].flatMap(scope => onboardingProfileLeaves(scope)),
-  ...onboardingPlanLeaves(workflowResult("onboarding"), "plan."),
-  ...onboardingSubjectLeaves(workflowResult("onboarding"), "subject."),
-  ...onboardingProfileLeaves(workflowResult("onboarding"), "i9."),
+  ...onboardingProfileLeaves(taskOutput("workflow:onboarding/read-i9-profile-plan")),
+  ...onboardingRosterLeaves(taskOutput("workflow:onboarding/read-write-plan"), "roster."),
+  ...onboardingSubjectLeaves(taskOutput("workflow:onboarding/read-write-plan"), "subject."),
+  ...open(taskOutput("workflow:onboarding/read-write-plan"), "hire.mode"),
+  ...onboardingPrivateLeaves(taskOutput("workflow:onboarding/read-write-plan"), "hire.expectedName", "hire.emplId", "comments", "i9",
+    ...["firstName", "lastName", "middleName", "preferredFirstName", "preferredLastName", "preferredMiddleName", "ssn", "dob", "address", "addressLine2", "city", "state", "postalCode", "phone", "email", "positionNumber", "departmentNumber", "recruitmentNumber", "employeeClassification", "hourlyRateMinor", "effectiveDate", "expectedJobEndDate"].map(path => `hire.employee.${path}`),
+    ...["firstName", "lastName", "middleName", "ssn", "dob", "email", "departmentNumber", "expectedName"].map(path => `i9.${path}`)),
+  ...["onboarding", "onboarding-hire-writes"].flatMap(id => [
+    ...open(gateResult(id, "hire-review"), "decision"),
+    ...onboardingPrivateLeaves(gateResult(id, "hire-review"), "emplId"),
+    ...onboardingPlanLeaves(workflowResult(id), "plan."),
+    ...onboardingSubjectLeaves(workflowResult(id), "subject."),
+    ...open(workflowResult(id), "state", "i9.state", "hireWrite.state", "hireWrite.disposition",
+      "rosterAccess.state", "rosterAccess.version", "rosterAccess.receiptState", "rosterAccess.code", "rosterAccess.message"),
+    ...i9CreationProofLeaves(workflowResult(id), "i9.", true),
+    ...hireProofLeaves(workflowResult(id), "hireWrite.receipt."),
+    ...onboardingPrivateLeaves(workflowResult(id), "rosterAccess.operationId", "rosterAccess.libraryId"),
+  ]),
   ...[false, true].flatMap(remote => {
     const suffix = remote ? "remote-record" : "profile";
     return [
+      ...i9CreationProofLeaves(writeProof(`i9/create-${suffix}`), "", remote),
       ...i9CreationProofLeaves(taskOutput(`i9/create-${suffix}`), "receipt.", remote),
       ...open(taskOutput(`i9/stage-${suffix}`), "stagedPageState"),
       ...onboardingPrivateLeaves(taskOutput(`i9/stage-${suffix}`), "observedName"),
@@ -684,9 +699,12 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
       }),
     ];
   }),
+  ...hireProofLeaves(taskOutput("ucpath/read-hire-receipt")),
+  ...hireProofLeaves(writeProof("ucpath/create-hire")),
   ...hireProofLeaves(taskOutput("ucpath/create-hire"), "receipt."),
   ...open(taskOutput("ucpath/read-hire-findings"), "state", "observedAt", "source"),
   ...population(taskOutput("ucpath/read-hire-findings"), "rows"),
+  ...onboardingPrivateLeaves(taskOutput("ucpath/read-hire-findings"), "queryDigest"),
   ...open(taskOutput("ucpath/stage-hire"), "stagedPageState", "template", "reason", "transactionIdDisplay"),
   ...onboardingPrivateLeaves(taskOutput("ucpath/stage-hire"), "observedName"),
   ...["match", "verify"].flatMap(verb => {
@@ -695,7 +713,6 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
       ...onboardingPrivateLeaves(scope, "queryDigest", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"),
       ...population(scope, "evidence"), ...hireProofLeaves(scope, "proof.")];
   }),
-  ...open(workflowResult("onboarding"), "state", "hireWrite.state", "hireWrite.owner", "rosterAccess.state", "rosterAccess.owner"),
   ...[
     "recordId", "recordUrl", "requestedEmail", "personalEmail", "workEmail", "recordFirstName", "recordLastName",
     "department", "recruitmentNumber", "fields.positionNumber", "fields.firstName", "fields.lastName", "fields.middleName",
@@ -741,7 +758,7 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
     ...population(scope, "roster.rows"),
     ...open(scope, "person.hireDate", "person.sourcePages", "roster.seed.separationDate", "asOf", "person.useMatch"),
   ]),
-  ...open(taskOutput("workbooks/read-result"), "state", "version", "code", "message"),
+  ...open(taskOutput("workbooks/read-result"), "state", "version", "receiptState", "code", "message"),
   ...["operationId", "libraryId"].map(path => ({ scope: taskOutput("workbooks/read-result"), path, classification: "direct-identifier", transform: "digest" })),
   ...["i9-lookup", "i9-lookup-lookup"].flatMap(id => [
     ...person(workflowInput(id), "lastName", "firstName"),

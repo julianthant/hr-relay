@@ -35,6 +35,10 @@ import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../workflow-kit/v
 
 
 const onboardingInputBinding = Object.freeze({
+  sourceToIngress(source: unknown) {
+    const { roster: _roster, ...input } = OnboardingCanonicalValueSchema.parse(source);
+    return OnboardingInput.parse(input);
+  },
   assertSubmission(input: unknown) {
     if (input !== null && typeof input === "object" && Object.hasOwn(input, "roster")) {
       throw new Error("Onboarding roster values are captured by Relay; caller-supplied roster input is invalid");
@@ -45,7 +49,13 @@ const onboardingInputBinding = Object.freeze({
     const email = OnboardingInput.shape.email.parse(Reflect.get(input, "email"));
     const reference = references?.[0];
     if (reference === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-    return { ...input, roster: bindOnboardingRoster(reference, email, capturedAt) };
+    const retained = parseRunWorkbookReference(reference);
+    if ("mode" in retained.request) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    const selection = "selectedRow" in retained.request ? retained.request.selectedRow : undefined;
+    const selectedEmail = selection === undefined ? email : OnboardingInput.shape.email.parse(retained.snapshot.rows
+      .flatMap(row => row.matches).find(match => match.sheetId === selection.sheetId && match.rowId === selection.rowId)?.values.email);
+    if (selectedEmail !== email) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    return { ...input, email: selectedEmail, roster: bindOnboardingRoster(reference, selectedEmail, capturedAt) };
   },
 });
 const ocrInputBinding = Object.freeze({
@@ -60,6 +70,7 @@ const ocrInputBinding = Object.freeze({
   },
 });
 interface WorkbookInputBinding {
+  sourceToIngress?(this: void, source: unknown): unknown;
   assertSubmission(input: unknown): void;
   bind(input: unknown, references: readonly SchemaBoundCanonicalValue[] | undefined, capturedAt: string): unknown;
 }

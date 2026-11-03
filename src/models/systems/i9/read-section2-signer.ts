@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
+import { containsDryRunSample } from "../../workflow/dry-run.js";
 import { ERROR_CATALOG } from "../../failures/error-catalog.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 import { taskId } from "../../../rules/identity/ids.js";
@@ -18,9 +19,9 @@ export function i9LookupMatchKey(input: I9LookupInput): string {
 }
 
 export const I9RecordIdsSchema = z.strictObject({
-  profileId: z.string().regex(/^[1-9]\d*$/u),
+  profileId: CANONICAL_FIELDS.i9ProfileId.schema,
   i9Id: z.string().regex(/^[1-9]\d*$/u),
-});
+}).refine(value => !containsDryRunSample(value), "Preview samples cannot identify a saved I-9 record");
 
 export const I9SignerOutputSchema = z.discriminatedUnion("i9Status", [
   z.strictObject({ i9Status: z.literal("signed"), signerName: z.string().trim().min(1), ...I9RecordIdsSchema.shape }),
@@ -28,7 +29,7 @@ export const I9SignerOutputSchema = z.discriminatedUnion("i9Status", [
   z.strictObject({ i9Status: z.literal("historical"), signerName: z.literal(""), ...I9RecordIdsSchema.shape }),
   z.strictObject({ i9Status: z.literal("not-found"), signerName: z.literal("") }),
   z.strictObject({ i9Status: z.literal("unable-to-access"), signerName: z.literal("") }),
-]);
+]).refine(value => !containsDryRunSample(value), "Preview samples cannot become an I-9 lookup result");
 export type I9SignerOutput = z.output<typeof I9SignerOutputSchema>;
 
 export const I9ReadSection2Signer = defineTaskContract({

@@ -231,10 +231,13 @@ function registeredCommitContracts(): readonly CommitLike["contract"][] {
 }
 
 describe("the write-proof redaction table (declared, never guessed)", () => {
-  it("covers at least the three production commit contracts", () => {
+  it("covers exactly the registered production commit contracts", () => {
     const ids = registeredCommitContracts().map((contract) => String(contract.id)).sort();
     assert.deepEqual(ids, [
+      "i9/create-profile",
+      "i9/create-remote-record",
       "kuali/save-separation-finalization",
+      "ucpath/create-hire",
       "ucpath/create-termination",
       "ucpath/delete-pending-terminations",
     ]);

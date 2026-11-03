@@ -62,6 +62,7 @@ describe("Person Lookup task implementations", () => {
         "ucpath/match-hire",
         "ucpath/match-pending-terminations",
         "ucpath/read-hire-findings",
+        "ucpath/read-hire-receipt",
         "ucpath/read-job-summary",
         "ucpath/read-pending-termination-set",
         "ucpath/read-transaction-findings",
@@ -95,6 +96,7 @@ describe("Person Lookup task implementations", () => {
         "workflow:onboarding/read-hire-plan",
         "workflow:onboarding/read-i9-lookup",
         "workflow:onboarding/read-i9-profile-plan",
+        "workflow:onboarding/read-write-plan",
 
         "workflow:person-lookup/read-active-status",
         "workflow:person-lookup/read-resolved-identity",

@@ -54,7 +54,13 @@ function input<T>(schema: z.ZodType<T>, value: unknown): T {
 }
 
 export function snapshotWorkbookReference(repository: WorkbookLibraryRepository, value: unknown) {
-  return deepFreeze(repository.snapshot(input(WorkbookSnapshotRequestSchema, value)));
+  const request = input(WorkbookSnapshotRequestSchema, value);
+  const snapshot = repository.snapshot(request);
+  if ("selectedRow" in request && request.selectedRow !== undefined && snapshot.rows.flatMap(row => row.matches).filter(match =>
+    match.sheetId === request.selectedRow?.sheetId && match.rowId === request.selectedRow?.rowId).length !== 1) {
+    throw new WorkbookLibraryError('WORKBOOK_INVALID');
+  }
+  return deepFreeze(snapshot);
 }
 
 export function readRetainedWorkbookReference(repository: WorkbookLibraryRepository, bound: SchemaBoundCanonicalValue,

@@ -206,11 +206,12 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         planned: record.planned.map((planned) => ({
           ...(planned.supersedeTargets === undefined ? {} : { supersedeTargets: planned.supersedeTargets }),
           ...(planned.workbookReferences === undefined ? {} : { workbookReferences: planned.workbookReferences.map(reference => {
-            const snapshot = parseRunWorkbookReference(reference).snapshot;
+            const retained = parseRunWorkbookReference(reference);
+            const snapshot = retained.snapshot;
             const { libraryId, version, worksheets, type } = snapshot;
             const versionId = "versionId" in snapshot ? snapshot.versionId : undefined;
             const versionName = "versionName" in snapshot ? snapshot.versionName : undefined;
-            return { libraryId, version, ...(versionId === undefined ? {} : { versionId }), ...(versionName === undefined ? {} : { versionName }), worksheets, type };
+            return { libraryId, version, ...(versionId === undefined ? {} : { versionId }), ...(versionName === undefined ? {} : { versionName }), ...("selectedRow" in retained.request && retained.request.selectedRow !== undefined ? { selectedRow: retained.request.selectedRow } : {}), worksheets, type };
           }) }),
           ...(planned.outputs === undefined ? {} : { outputs: planned.outputs }),
           logicalKey: planned.itemId,

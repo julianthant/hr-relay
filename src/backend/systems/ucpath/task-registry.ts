@@ -3,6 +3,7 @@ import { stageEmergencyContactTask } from "./tasks/stage-emergency-contact.js";
 import { probeEmergencyContactTask } from "./tasks/match-emergency-contact-plan.js";
 import { verifyEmergencyContactTask } from "./tasks/verify-emergency-contact-plan.js";
 import { saveEmergencyContactTask } from "./tasks/save-emergency-contact.js";
+import { readHireReceiptTask } from "./tasks/read-hire-receipt.js";
 import { readHireFindingsTask } from "./tasks/read-hire-findings.js";
 import { matchHireTask } from "./tasks/match-hire.js";
 import { verifyHireTask } from "./tasks/verify-hire.js";
@@ -34,7 +35,7 @@ export const ucpathStore = defineBrowserStore(
   {
     readEmergencyContacts: readEmergencyContactsTask, stageEmergencyContact: stageEmergencyContactTask,
     probeEmergencyContact: probeEmergencyContactTask, verifyEmergencyContact: verifyEmergencyContactTask, saveEmergencyContact: saveEmergencyContactTask,
-    readHireFindings: readHireFindingsTask, matchHire: matchHireTask, verifyHire: verifyHireTask,
+    readHireReceipt: readHireReceiptTask, readHireFindings: readHireFindingsTask, matchHire: matchHireTask, verifyHire: verifyHireTask,
     stageHire: stageHireTask, createHire: createHireTask,
     searchPersonMatch: searchPersonMatchTask,
     searchPersonOrg: searchPersonOrgTask,

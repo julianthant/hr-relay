@@ -26,7 +26,7 @@ export function readI9ProfilePlan(raw: z.input<typeof OnboardingReadI9ProfilePla
   }
   const employee = plan.employee;
   return {
-    state: "creation-required", write: { state: "unimplemented", owner: "write-safety" },
+    state: "creation-required",
     request: { firstName: employee.firstName, lastName: employee.lastName, middleName: employee.middleName,
       ssn: employee.ssn, dob: employee.dob, email: employee.email, departmentNumber: employee.departmentNumber, startDate: employee.effectiveDate },
   };

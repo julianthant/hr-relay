@@ -91,17 +91,21 @@ export const childPrerequisiteRoot = compileWorkflow(defineWorkflow({ ...crashCo
 
 export const childReadPreviewRoot = compileWorkflow(defineWorkflow({ ...crashCommon,
   id: "fixture-child-read-preview-root", code: "fcrp", input: Plan1Input, canonicalInput: Plan1CanonicalInput,
-  identity: { matchKey: value => value.emplId }, steps: ({ delegate, transaction, result }) => {
+  identity: { matchKey: value => value.emplId }, steps: ({ delegate, task, transaction, result }) => {
     const lookup = delegate({ id: "lookup", target: { id: childExecutionNested.descriptor.id, input: Plan1Input, result: Plan1Output },
       edgeId: "lookup", cardinality: "one", await: "terminal", join: "one", policy: { cascadeCancel: "cascade", onChildFailed: "fail-parent",
         afterChildRetry: "resume-parent", visibility: "inline" } }, [],
     { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
-    const write = transaction({ id: "write", label: "Write", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
-      dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 }, [lookup], {
-      prepareBind: ({ outputs }) => { if (outputs.lookup.state !== "done") throw new Error("lookup-not-done"); return { eid: outputs.lookup.output.eid }; },
-      commitBind: ({ outputs }) => { if (outputs.lookup.state !== "done") throw new Error("lookup-not-done"); return { eid: outputs.lookup.output.eid }; },
+    const observe = task({ id: "observe", contract: plan1Contract, replay: "checkpoint" }, [lookup], ({ input, outputs }) => {
+      if (outputs.lookup.state !== "done") throw new Error("lookup-not-done");
+      return { ...input, emplId: outputs.lookup.output.eid };
     });
-    return { steps: [[{ key: "lookup", label: "Lookup" }, [lookup]], [{ key: "write", label: "Write" }, [write]]],
+    const write = transaction({ id: "write", label: "Write", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
+      dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 }, [observe], {
+      prepareBind: ({ outputs }) => ({ eid: outputs.observe.eid }),
+      commitBind: ({ outputs }) => ({ eid: outputs.observe.eid }),
+    });
+    return { steps: [[{ key: "lookup", label: "Lookup" }, [lookup]], [{ key: "observe", label: "Observe" }, [observe]], [{ key: "write", label: "Write" }, [write]]],
       result: result(Plan1Input, [], ({ input }) => input) };
   } }), { manifest: childExecutionBuildManifest });
 

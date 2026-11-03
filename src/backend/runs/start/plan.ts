@@ -188,12 +188,19 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
         workbookReferences = references.map(({ entry: _entry, ...selection }) => {
           const lookup = lookups.find(lookup => lookup.typeId === selection.typeId);
           if (lookup === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          if (selection.selectedRow !== undefined) {
+            const capability = descriptor.surfaces.inputRun?.workbookRows;
+            if (capability?.typeId !== selection.typeId || "mode" in lookup || lookup.keys.length !== 1
+              || parsed === null || typeof parsed !== "object"
+              || Reflect.get(parsed, capability.inputField) !== lookup.keys[0]) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          }
           const libraryId = selection.libraryId ?? workbooks.catalog().find(entry => entry.type.id === selection.typeId)?.type.defaultWorkbookId;
           if (!libraryId) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
           const selected = workbooks.libraryVersion(libraryId, selection.versionId);
           const current = workbooks.catalog().find(entry => entry.libraryId === libraryId);
           if (current === undefined) throw new WorkbookLibraryError("WORKBOOK_NOT_FOUND");
           const reference = { ...lookup, libraryId, ...(selection.versionId === undefined ? {} : { versionId: selection.versionId }),
+            ...(selection.selectedRow === undefined ? {} : { selectedRow: selection.selectedRow }),
             ...("mode" in lookup ? { expectedVersion: current.version } : {}) };
           return bindRunWorkbookReference(reference, workbooks.snapshot({ ...reference, versionId: selected.version.id }));
         });

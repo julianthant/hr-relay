@@ -5,6 +5,13 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { runRecordColumns, runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 
+export function restoreSchema18WorkbookReferenceFixture(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 19);
+  assert.equal(database.prepare("SELECT schema_version FROM database_states WHERE id=1").get()?.schema_version, 19);
+  assert.equal(database.prepare("UPDATE database_states SET schema_version=18 WHERE id=1").run().changes, 1);
+  database.exec("PRAGMA user_version=18");
+}
+
 export function removeEmptySchema18WorkbookCatalog(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 18);
   for (const table of ["workbook_library_actions", "workbook_library_snapshots", "workbook_library_state"]) {

@@ -5,14 +5,14 @@ import { EXCLUSIVE_SESSION_LEASE_MIGRATION } from "./exclusive-session-leases.js
 import { OCR_REVIEW_MIGRATION } from "./ocr-review.js";
 import { WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION } from "./workbook-library-repository.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
-import { RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema } from "../../../models/dashboard/workbooks.js";
+import { RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema, RunWorkbookSelectedRowReferenceSchema } from "../../../models/dashboard/workbooks.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 18;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 19;
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17] as const;
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -818,11 +818,28 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     `DROP TABLE workbook_reference_upgrade_guard`,
     ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements,
   ] },
+  { version: 19, statements: [
+    `CREATE TABLE workbook_reference_upgrade_guard (refused INTEGER CONSTRAINT workbook_reference_schema_upgrade_unproved CHECK(refused=0)) STRICT`,
+    `INSERT INTO workbook_reference_upgrade_guard SELECT 1 FROM runs,json_each(runs.lifecycle_json,'$.input.workbookReferences') reference
+      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookNamedAllRowsReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookSelectedRowReferenceSchema, "output")}' LIMIT 1`,
+    `INSERT INTO workbook_reference_upgrade_guard SELECT 1 FROM run_requests,json_each(run_requests.payload_json,'$.planned') planned,
+      json_each(planned.value,'$.workbookReferences') reference
+      WHERE json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookNamedReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookNamedAllRowsReferenceSchema, "output")}'
+        AND json_extract(reference.value,'$.schemaHash') IS NOT '${deriveSchemaHash(RunWorkbookSelectedRowReferenceSchema, "output")}' LIMIT 1`,
+    `DROP TABLE workbook_reference_upgrade_guard`,
+  ] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
-  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
-  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17)
+  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18)
     || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
   const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,

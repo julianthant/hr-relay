@@ -2,7 +2,7 @@
 import type { z } from "zod";
 
 /** One leaf of a proof, addressed by its dot path; `fixed` is not an operator input — it is a literal the schema pins. */
-export type ProofShapeField =
+type ProofShapeLeaf =
   | { readonly kind: "fixed"; readonly path: string; readonly value: string | number | boolean }
   | {
     readonly kind: "text";
@@ -24,6 +24,8 @@ export type ProofShapeField =
     readonly maximum?: number;
   }
   | { readonly kind: "boolean"; readonly path: string };
+
+export type ProofShapeField = ProofShapeLeaf & { readonly nullable?: true };
 
 export type ProofShape =
   | { readonly state: "described"; readonly fields: readonly ProofShapeField[] }
@@ -67,7 +69,7 @@ function describeString(path: string, definition: { readonly [key: string]: unkn
   let minLength: number | undefined;
   let maxLength: number | undefined;
   let pattern: string | undefined;
-  let serverOnlyRules = false;
+  let serverOnlyRules = definition.format === "email";
   for (const check of checksOf(definition)) {
     switch (check.check) {
       case "min_length":
@@ -81,6 +83,7 @@ function describeString(path: string, definition: { readonly [key: string]: unkn
         maxLength = numericCheck(check, "length");
         break;
       case "string_format": {
+        if (check.format === "email") { serverOnlyRules = true; break; }
         if (check.format !== "regex") {
           refuse(path, `carries the string format "${String(check.format)}", which this describer does not model`);
         }
@@ -157,6 +160,13 @@ function describeLeaf(path: string, schema: z.core.$ZodType): ProofShapeField {
   const definition = definitionOf(schema);
   const type = String(definition.type);
   switch (type) {
+    case "nullable": {
+      const inner = definition.innerType;
+      if (inner === null || typeof inner !== "object" || !("_zod" in inner) || checksOf(definition).length !== 0) {
+        refuse(path, "has an unsupported nullable definition");
+      }
+      return { ...describeLeaf(path, inner as z.core.$ZodType), nullable: true };
+    }
     case "string":
       return describeString(path, definition);
     case "number":

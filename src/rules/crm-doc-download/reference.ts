@@ -3,7 +3,7 @@ import { RunWorkbookNamedReferenceSchema } from "../../models/dashboard/workbook
 import { CrmDocumentRecordsSchema, CrmDownloadedPeopleSchema } from "../../models/systems/crm/documents.js";
 import { CrmWorksheetPersonSchema } from "../../models/workflows/crm-doc-download/documents.js";
 import { CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema } from "../../models/workflows/crm-doc-download/read-document-rows.js";
-import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_TYPE_ID } from "../../models/workflows/onboarding/roster.js";
+import { ONBOARDING_ROSTER_NAME_FIELDS, ONBOARDING_ROSTER_TYPE_ID } from "../../models/workflows/onboarding/roster.js";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { matchesCrmDocumentSubject } from "./documents.js";
 
@@ -31,8 +31,8 @@ export function resolveCrmDocumentRows(value: z.input<typeof CrmDocumentRecordsS
   const keys = crmDocumentReferenceKeys({ records });
   if (request.typeId !== ONBOARDING_ROSTER_TYPE_ID || snapshot.type.keyFieldId !== "email"
     || request.keys.length !== keys.length || request.keys.some((key, index) => key !== keys[index])
-    || request.fields.length !== ONBOARDING_ROSTER_FIELDS.length
-    || ONBOARDING_ROSTER_FIELDS.some(field => !request.fields.includes(field) || !snapshot.type.fields.includes(field))) {
+    || request.fields.length !== ONBOARDING_ROSTER_NAME_FIELDS.length
+    || ONBOARDING_ROSTER_NAME_FIELDS.some(field => !request.fields.includes(field) || !snapshot.type.fields.includes(field))) {
     throw new Error("CRM document reference does not retain the exact requested keys and fields");
   }
   return records.map(record => {
@@ -50,7 +50,7 @@ export function resolveCrmDocumentRows(value: z.input<typeof CrmDocumentRecordsS
           worksheetId: match.sheetId, worksheetName: worksheet.name, rowId: match.rowId,
           names: {
             legalName: { firstName: values.firstName, lastName: values.lastName, middleName: values.middleName },
-            livedName: ONBOARDING_ROSTER_FIELDS.slice(4).every(field => values[field] === null) ? null : {
+            livedName: ONBOARDING_ROSTER_NAME_FIELDS.slice(4).every(field => values[field] === null) ? null : {
               firstName: values["roster.livedFirstName"], lastName: values["roster.livedLastName"], middleName: values["roster.livedMiddleName"],
             },
           },

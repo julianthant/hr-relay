@@ -1,5 +1,7 @@
+import { OnboardingReadI9ProfilePlan } from "../../../../src/models/workflows/onboarding/read-i9-profile-plan.js";
 import { OnboardingReadHirePlan } from "../../../../src/models/workflows/onboarding/read-hire-plan.js";
-import { UcpathStageHire, UcpathCreateHire } from "../../../../src/models/systems/ucpath/hire-tasks.js";
+import { UcpathStageHire } from "../../../../src/models/systems/ucpath/stage-hire.js";
+import { UcpathCreateHire } from "../../../../src/models/systems/ucpath/create-hire.js";
 import { UCPATH_HIRE_SUBJECT } from "../../../../src/models/ui/ucpath-hire.js";
 import { deterministicHireOperations } from "../../../../src/backend/systems/ucpath/driver/hire-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
@@ -47,7 +49,9 @@ const descriptorBase = {
   surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [],
   identity: { matchKey: (input: typeof example) => input.email }, presentation: { title: (input: typeof example) => input.email }, scenarios: ["onboarding/write-transactions"],
 } as const;
-const i9Flow = () => flow(Input).transaction("profile-create", {
+const i9Flow = () => flow(Input).branch("profile-route", {
+    dependsOn: [], cases: { create: ["profile-create", "remote-create"], existing: ["skip-profile"] }, choose: () => "create",
+  }).transaction("profile-create", {
     dependsOn: [], prepare: { uses: I9StageProfile, bind: ({ input }) => profileTarget(input) },
     commit: { uses: I9CreateProfile, bind: ({ input }) => profileTarget(input) },
     dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000,
@@ -72,6 +76,9 @@ const i9Flow = () => flow(Input).transaction("profile-create", {
       return { prepare: target, commit: target, samples: [] };
     },
     dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000,
+  }).step("skip-profile", OnboardingReadI9ProfilePlan, {
+    dependsOn: [], replay: "always-rerun",
+    bind: () => ({ plan: OnboardingReadHirePlan.example, lookup: { state: "not-required", subjectState: "existing-person" } }),
   });
 export const i9WriteDescriptor = defineWorkflowDescriptor({ ...descriptorBase,
   flow: i9Flow().build({ schema: I9CreateRemoteRecord.output, dependsOn: ["remote-create"], derive: ({ outputs }) => outputs["remote-create"].output }),

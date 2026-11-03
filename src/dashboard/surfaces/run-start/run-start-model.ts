@@ -19,13 +19,16 @@ export interface RunInputPreview {
 }
 export function typedInputMode(surface: TypedInputSurface, draft: TypedInputDraft) {
   const value = draft[surface.modeField] ?? surface.initialMode;
+  if (value === null) return undefined;
   const mode = surface.modes.find(candidate => candidate.value === value);
   if (mode === undefined) throw new Error(`Undeclared input mode: ${String(value)}`);
   return mode;
 }
 
-export function typedInputDefaults(surface: TypedInputSurface, mode = surface.initialMode): TypedInputDraft {
+export function typedInputDefaults(surface: TypedInputSurface, mode: string | null = surface.initialMode): TypedInputDraft {
+  if (mode === null) return {};
   const selected = typedInputMode(surface, { [surface.modeField]: mode });
+  if (selected === undefined) throw new Error(`Choose ${surface.modeLabel}.`);
   return { [surface.modeField]: mode, ...Object.fromEntries(selected.defaults.map(({ field, value }) => {
     if (value.kind === "count") throw new Error("Typed input controls require text or boolean defaults");
     return [field, value.kind === "text" ? value.text : value.value];
@@ -34,7 +37,7 @@ export function typedInputDefaults(surface: TypedInputSurface, mode = surface.in
 
 export function typedControlAvailable(surface: TypedInputSurface, draft: TypedInputDraft, field: string): boolean {
   const control = surface.controls.find(candidate => candidate.field === field);
-  return control !== undefined && control.modes.includes(typedInputMode(surface, draft).value)
+  return control !== undefined && control.modes.includes(typedInputMode(surface, draft)?.value ?? "")
     && control.requires.every(required => draft[required] === true);
 }
 
@@ -57,7 +60,9 @@ export function typedInputText(surface: TypedInputSurface, input: JsonValue): st
   const record = typedRecord(input);
   const modeValue = record[surface.modeField];
   if (typeof modeValue !== "string") throw new Error("Typed input source has no mode");
-  const display = typedInputMode(surface, { [surface.modeField]: modeValue }).display;
+  const selected = typedInputMode(surface, { [surface.modeField]: modeValue });
+  if (selected === undefined) throw new Error("Typed input source has no mode");
+  const display = selected.display;
   if (display.kind === "first-present") {
     const value = display.fields.map(field => record[field]).find(value => value !== undefined);
     if (typeof value !== "string" || value.length === 0) throw new Error("Typed input source has no display identity");
@@ -82,6 +87,7 @@ export function restoreTypedInput(surface: TypedInputSurface, input: JsonValue):
     if (typeof value === "string" || typeof value === "boolean") draft[field] = value;
   }
   const selected = typedInputMode(surface, draft);
+  if (selected === undefined) throw new Error("Typed input source has no mode");
   if (selected.parser.kind === "name-tuple") {
     const parser = selected.parser;
     for (const field of [parser.familyName, parser.givenName]) {
@@ -106,6 +112,7 @@ export function restoreTypedInput(surface: TypedInputSurface, input: JsonValue):
 
 function parseTypedEntries(surface: TypedInputSurface, text: string, draft: TypedInputDraft): readonly JsonValue[] {
   const mode = typedInputMode(surface, draft);
+  if (mode === undefined) throw new Error(`Choose ${surface.modeLabel}.`);
   const options = Object.fromEntries(mode.defaults.map(({ field }) => [field, draft[field]]));
   for (const control of surface.controls) {
     if (options[control.field] === true && !typedControlAvailable(surface, draft, control.field)) throw new Error(`${control.label} requires its declared mode and options`);
@@ -137,8 +144,9 @@ export function previewRunInput(surface: InputRunSurface, text: string, draft: T
   try {
     if (surface.typedInput !== undefined) {
       const declaration = surface.typedInput;
-      const values = { ...typedInputDefaults(declaration, String(draft[declaration.modeField] ?? declaration.initialMode)), ...draft };
-      const mode = typedInputMode(declaration, values);
+      const mode = typedInputMode(declaration, draft);
+      if (mode === undefined) throw new Error(`Choose ${declaration.modeLabel}.`);
+      const values = { ...typedInputDefaults(declaration, mode.value), ...draft };
       if (sourceInput !== undefined) restoreTypedInput(declaration, sourceInput);
       const source = sourceInput === undefined ? undefined : typedRecord(sourceInput);
       const people = source !== undefined && source[declaration.modeField] === mode.value && text === typedInputText(declaration, source)
@@ -438,11 +446,14 @@ export function toggleStepSelection(
 }
 
 export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
-  selections: Readonly<Record<string, { libraryId: string; versionId: string }>>, submissionCount: number) {
+  selections: Readonly<Record<string, { libraryId: string; versionId: string }>>, submissionCount: number,
+  selectedRows?: { typeId: string; rows: readonly { sheetId: string; rowId: string }[] }) {
+  if (selectedRows !== undefined && (selectedRows.rows.length !== submissionCount || !requiredTypes.includes(selectedRows.typeId))) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
   return Array.from({ length: submissionCount }, (_, index) => requiredTypes.map(typeId => {
     const selection = selections[typeId];
     const entry = catalog.find(entry => entry.type.id === typeId && entry.libraryId === selection?.libraryId);
-    if (!entry || entry.state.origin.kind !== 'local' || !entry.state.versions.some(version => version.id === selection.versionId)) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
-    return WorkbookRunReferenceSelectionSchema.parse({ entry: index + 1, typeId, libraryId: entry.libraryId, versionId: selection.versionId });
+    if (!entry || entry.state.removed || entry.state.origin.kind !== 'local' || !entry.state.versions.some(version => version.id === selection.versionId)) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
+    return WorkbookRunReferenceSelectionSchema.parse({ entry: index + 1, typeId, libraryId: entry.libraryId, versionId: selection.versionId,
+      ...(selectedRows?.typeId === typeId ? { selectedRow: { sheetId: selectedRows.rows[index].sheetId, rowId: selectedRows.rows[index].rowId } } : {}) });
   })).flat();
 }

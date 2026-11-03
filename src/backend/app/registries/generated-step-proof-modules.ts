@@ -32,7 +32,7 @@ export const onbaseImportDocumentModule = composeWorkflowModule(compileWorkflow(
 export const onboardingCrmDataModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
 export const onboardingUcpathSearchModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[1].definition), taskStoreRegistry.stores);
 export const onboardingI9SearchModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[2].definition), taskStoreRegistry.stores);
-export const onboardingI9ProfileCreationModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[3].definition), taskStoreRegistry.stores);
+export const onboardingHireWritesModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[3].definition), taskStoreRegistry.stores);
 export const ocrSourcePagesModule = composeWorkflowModule(compileWorkflow(ocrModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
 export const ocrPageReadingModule = composeWorkflowModule(compileWorkflow(ocrPageModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
 export const crmDocumentSearchRecordsModule = composeWorkflowModule(compileWorkflow(crmDocDownloadModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
@@ -66,7 +66,7 @@ export const STEP_PROOF_MODULES = Object.freeze([
   onboardingCrmDataModule,
   onboardingUcpathSearchModule,
   onboardingI9SearchModule,
-  onboardingI9ProfileCreationModule,
+  onboardingHireWritesModule,
   ocrSourcePagesModule,
   ocrPageReadingModule,
   crmDocumentSearchRecordsModule,

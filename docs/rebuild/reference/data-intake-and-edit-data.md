@@ -382,12 +382,10 @@ Master keyed and all-row requests retain their existing schemas, hashes and sema
 `keys: []`. Selected keyed and named all-row references have separate current schemas and hashes. Selected keyed
 references permit paired source-metadata absence; when metadata is present, version ID and name must both be present
 and an explicit requested ID must match. New captures from named sources require the exact ID and name.
-Named all-row references always require both. Retained readers accept only those four declared hashes. Workflow declarations own keyed lookup keys
-and all-row fields; browser selections carry only entry, type, library and optional version IDs. Planning captures the exact in-use or explicitly selected named version,
+Named all-row references always require both. A fifth active keyed schema retains the published optional physical-row selector and paired source metadata. Its retained values remain readable when the selector is absent; new captures use this schema only for an explicit selected row. The selector requires one lookup key, an explicit library and immutable version, and exactly one matching worksheet/row coordinate. Retained readers dispatch by exactly five declared hashes. Workflow declarations own keyed lookup keys and all-row fields; browser selections carry entry, type, library and optional version IDs, plus a physical row only when the workflow declares that input capability. Planning captures the exact in-use or explicitly selected named version,
 with its current library CAS revision captured server-side. An omitted requested version ID remains omitted
 in retained requests, preserving current default row-choice revalidation; explicit IDs remain pinned. Named row data comes
-from that immutable version, never from a master fallback. The SQL layout and existing keyed payloads are unchanged;
-no migration or immutable evidence rewrite is required.
+from that immutable version, never from a master fallback. Existing reference bytes and hashes remain unchanged. The forward migration19 guard admits all five active identities across retained run and planned references, including terminal runs and consumed plans; unknown identities refuse before upgrade. Recognizing an older name-only capture grants no new Onboarding output-field or write authority.
 
 The live `version` is a CAS revision. Named versions are explicit operator snapshots; saves, run
 patches and manual Sync do not create versions. Existing saved revisions retain their data with

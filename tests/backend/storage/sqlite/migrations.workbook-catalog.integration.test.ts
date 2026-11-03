@@ -1,19 +1,19 @@
 import { DatabaseSync } from 'node:sqlite';
 import { expect, it } from 'vitest';
-import { SQLITE_MIGRATIONS, CURRENT_AUTHORITY_SCHEMA_VERSION } from '../../../../src/backend/storage/sqlite/migrations.js';
+import { SQLITE_MIGRATIONS } from '../../../../src/backend/storage/sqlite/migrations.js';
 import { createWorkbookLibraryRepository } from '../../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, bindRunWorkbookReference } from '../../../../src/models/dashboard/workbooks.js';
 import { deriveSchemaHash } from '../../../../src/models/validation/schema-bound-value.js';
 
 function source() {
   const database = new DatabaseSync(':memory:');
-  for (const migration of SQLITE_MIGRATIONS.filter(migration => migration.version < CURRENT_AUTHORITY_SCHEMA_VERSION)) {
+  for (const migration of SQLITE_MIGRATIONS.filter(migration => migration.version < 18)) {
     for (const sql of migration.statements) database.exec(sql);
   }
   return database;
 }
 function apply(database: DatabaseSync) {
-  const migration = SQLITE_MIGRATIONS.find(migration => migration.version === CURRENT_AUTHORITY_SCHEMA_VERSION);
+  const migration = SQLITE_MIGRATIONS.find(migration => migration.version === 18);
   if (migration === undefined) throw new Error('current migration missing');
   for (const sql of migration.statements) database.exec(sql);
 }
