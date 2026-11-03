@@ -5,7 +5,7 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { randomUUID } from "node:crypto";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
-import { afterEach, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, it } from "vitest";
 import { createOcrReviewAdapter } from "../../../../src/backend/processing/providers/ocr-review-adapter.js";
 import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
 import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
@@ -41,15 +41,20 @@ const parent = composeWorkflowModule(compileFixtureWorkflow(defineWorkflow({
   },
 })), [ocrStore]);
 const world = createOcrReviewWorld();
-afterEach(world.cleanup);
+let fixtureBuilds = 0;
+afterAll(async () => { try { assert.equal(fixtureBuilds, 1); } finally { await world.cleanup(); } });
 
-async function runningBulkFixture(pageCount = 2) {
+async function buildBulkFixture() {
+  fixtureBuilds++;
+  const pageCount = 2;
   const f = await world.fixture({ record: true, release: true, pageCount, parent });
   assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1, pageCount - 1)).state, "applied");
   const revision = f.database.authority.ocrReviews.latest(f.run.envelope.runId); assert.ok(revision);
   const approval = f.approval([revision.records[pageCount - 1].recordId]);
   assert.equal(f.canonical.kernel.execute(approval).state, "applied");
-  assert.equal((await f.canonical.step(f.parentRun, new AbortController().signal)).outcome.state, "done");
+  const completed = await f.canonical.step(f.parentRun, new AbortController().signal);
+  assert.equal(completed.run.envelope.runId, f.run.envelope.runId);
+  assert.equal(completed.outcome.state, "done");
   const owner = testWorkerLifetime(f.database, f.parentRun.envelope.workflow, 1), runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
   const claimed = f.canonical.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.parentRun.envelope.workflow, workerId: owner.workerId, workerLifetime: owner.workerLifetime,
     runtimeConfig: { generation: runtime.generation, settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
@@ -63,13 +68,35 @@ async function runningBulkFixture(pageCount = 2) {
   }
   const run = claimed.run;
   const outcomes = ReadApprovedOcrRecords.input.shape.outcomes.parse(delegationEvidenceOutput(readDelegationEvidence(f.database.authority, run.envelope.runId, "read-documents"), OcrWorkflowResultSchema));
+  return { f, run, revision, input: { delegationNodeId: NodeIdSchema.parse("read-documents"), outcomes } };
+}
+
+let shared: Awaited<ReturnType<typeof buildBulkFixture>>;
+let baseline: ReturnType<typeof custody>;
+function custody() {
+  const { f, run } = shared;
+  return {
+    meta: f.database.getMeta(), consumer: f.database.authority.runs.get(run.envelope.runId),
+    source: f.database.authority.runs.get(f.run.envelope.runId),
+    review: f.database.authority.ocrReviews.latest(f.run.envelope.runId),
+    snapshots: f.database.authority.ocrReviews.snapshots(f.run.envelope.runId),
+    gate: f.database.authority.gateResults.get(`${f.run.envelope.runId}:approve-records`),
+    sourceResult: f.database.authority.runResults.get(f.run.envelope.runId),
+    consumerResult: f.database.authority.runResults.get(run.envelope.runId),
+  };
+}
+beforeAll(async () => { shared = await buildBulkFixture(); baseline = structuredClone(custody()); });
+beforeEach(() => { assert.equal(fixtureBuilds, 1); assert.deepEqual(custody(), baseline); });
+afterEach(() => { assert.deepEqual(custody(), baseline); });
+
+function runningBulkFixture() {
+  const { f, run, revision, input } = shared;
   let profileChecks = 0;
   const authority = (captured = run, resolveDescriptor: (id: string) => AnyWorkflowDescriptor | undefined = f.resolve) => createApprovedOcrRecordReader({ database: f.database, reader: f.canonical.lifecycle, run: captured, resolveDescriptor, assertCurrent: () => { profileChecks++; f.admission.assertProfileRuntime(); } });
   const adapter = createOcrReviewAdapter({ reader: authority(), clock: f.clock });
   const invoke = async (value: z.input<typeof ReadApprovedOcrRecords.input>) => adapter.invoke({ capability: "ocr.review",
     payload: { schemaHash: deriveSchemaHash(ReadApprovedOcrRecords.input, "output"), value: ReadApprovedOcrRecords.input.parse(value) } },
   { signal: new AbortController().signal, deadlineMonotonicMs: Infinity, requestId: "fixture" });
-  const input = { delegationNodeId: NodeIdSchema.parse("read-documents"), outcomes };
   const read = async (value: z.input<typeof ReadApprovedOcrRecords.input> = input) => {
     const response = await invoke(value);
     assert.equal(response.response.state, "produced");
@@ -83,7 +110,7 @@ async function runningBulkFixture(pageCount = 2) {
 }
 
 it("ocr/approved-records — reads only the corrected, explicitly selected records from an authenticated OCR child", async () => {
-  const { f, revision, read, profileCheckCount } = await runningBulkFixture();
+  const { f, revision, read, profileCheckCount } = runningBulkFixture();
   const result = await read();
   assert.equal(profileCheckCount(), 2);
   assert.equal(result.state, "ready");
@@ -94,7 +121,7 @@ it("ocr/approved-records — reads only the corrected, explicitly selected recor
 });
 
 it("refuses substituted bulk consumer custody, task and dependency authority", async () => {
-  const { f, run, input, authority, read, refused } = await runningBulkFixture(1);
+  const { f, run, input, authority, read, refused } = runningBulkFixture();
   assert.equal((await read()).state, "ready");
   for (const captured of [
     RunRecordSchema.parse({ ...run, claimGeneration: Number(run.claimGeneration) + 1 }),
@@ -117,7 +144,7 @@ it("refuses substituted bulk consumer custody, task and dependency authority", a
 });
 
 it("refuses incomplete, foreign, altered and stale native bulk selections", async () => {
-  const { f, run, input, invoke, read, refused } = await runningBulkFixture(1);
+  const { f, run, input, invoke, read, refused } = runningBulkFixture();
   assert.equal((await read()).state, "ready");
   const generation = f.database.getMeta().authorityGeneration;
   await assert.rejects(invoke({ ...input, outcomes: [] }));
@@ -132,7 +159,33 @@ it("refuses incomplete, foreign, altered and stale native bulk selections", asyn
     });
     await refused({ ...input, outcomes: altered });
   }
-  assert.equal(f.canonical.kernel.execute(f.command("discard-ocr-record", 2, 0)).state, "applied");
-  await refused(input);
+  const selected = input.outcomes[0];
+  assert.ok(selected?.state === "done" && selected.output.approvedSnapshot !== null);
+  assert.equal(selected.output.approvedSnapshot.sourceRunId, f.run.envelope.runId);
+  const snapshot = f.database.authority.ocrReviews.snapshot(selected.output.approvedSnapshot.snapshotId); assert.ok(snapshot);
+  const selectedIndex = shared.revision.records.findIndex(record => record.recordId === snapshot.selectedRecordIds[0]);
+  assert.equal(selectedIndex, shared.revision.records.length - 1);
+  const discard = f.command("discard-ocr-record", 2, selectedIndex);
+  const real = createApprovedOcrRecordReader({ database: f.database, reader: f.canonical.lifecycle, run,
+    resolveDescriptor: f.resolve, assertCurrent: () => f.admission.assertProfileRuntime() });
+  const stale = createOcrReviewAdapter({ clock: f.clock, reader: {
+    readSources(query) {
+      return f.database.withAuthorityTransaction(() => {
+        assert.equal(f.canonical.kernel.execute(discard).state, "applied");
+        real.readSources(query);
+        assert.fail("A changed selected record retained approval authority");
+      });
+    },
+  } });
+  const response = await stale.invoke({ capability: "ocr.review",
+    payload: { schemaHash: deriveSchemaHash(ReadApprovedOcrRecords.input, "output"), value: input } },
+  { signal: new AbortController().signal, deadlineMonotonicMs: Infinity, requestId: "stale-selected-record" });
+  assert.equal(response.response.state, "produced");
+  if (response.response.state !== "produced") assert.fail("Stale selection protocol unavailable");
+  assert.deepEqual(ReadApprovedOcrRecords.output.parse(response.response.value.value), { state: "refused", code: "OCR_REVIEW_REFUSED" });
+  assert.equal(f.database.authority.commands.get(discard.commandId), undefined);
+  assert.equal(f.database.authority.commandAudits.findByCommand(discard.commandId), undefined);
+  assert.deepEqual(custody(), baseline);
+  assert.equal((await read()).state, "ready");
   assert.ok(f.database.getMeta().authorityGeneration >= generation);
 });
