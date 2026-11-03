@@ -87,6 +87,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/workflow/step-omission-terminal-fixtures.ts` | step omission terminal fixtures |
 | `fixtures/workflow-definition-fixtures.ts` | workflow definition fixtures |
 | `fixtures/write-sequencer-fixtures.ts` | write sequencer fixtures |
+| `fixtures/workbook-reference-choice.ts` | captured roster candidates, exact command target and retained native Logs states |
 | `helpers/admission-fixture.ts` | admission fixture |
 | `helpers/credential-keychain-fake.ts` | process-local fake keychain and child custody snapshots |
 | `helpers/credential-keychain-process-preload.mjs` | resolves keyring imports to the fake before child fixture evaluation |

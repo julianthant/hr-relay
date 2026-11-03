@@ -50,9 +50,10 @@ the parent declaration. The descriptor and its sealed planning and projections e
 validated facts; workbook selection and reference snapshots belong to run planning. Onboarding
 requires `onboarding-roster`; the other current definitions declare an empty array.
 
-Start planning takes explicit entry-scoped `workbookReferences` (type, optional library, keys and
-fields), requires exactly the workflow's declared types, and snapshots the selected or default
-workbook. Schema-bound references retain exact cell values, revision and every worksheet's identity
+Start planning takes explicit entry-scoped `workbookReferences` (type, optional library and named
+version), derives lookup keys and fields from the workflow's admitted ingress declaration, requires
+exactly the declared types, and snapshots the selected or default workbook. Captured references bind
+canonical input before identity and output planning. Schema-bound references retain exact cell values, revision and every worksheet's identity
 in the confirmation fingerprint and native run input. Later master edits or default changes do not
 replace them. No workflow-specific key or field mapping is inferred.
 

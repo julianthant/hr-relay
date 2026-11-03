@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
-import { act,createElement,useState } from 'react';
+import { act,createElement,createRef,useState } from 'react';
 import { createRoot,type Root } from 'react-dom/client';
 import { afterEach,beforeEach,it,vi } from 'vitest';
 import { ViewNavigationContext,type ViewRoute } from '../../../../src/dashboard/app/navigation/view-route-model.js';
@@ -12,10 +12,11 @@ import { SettingsPage } from '../../../../src/dashboard/surfaces/settings/settin
 import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { type EditableWorkbook } from '../../../../src/rules/spreadsheets/workbook-io.js';
 import { exportSpreadsheetInWorker,importSpreadsheetInWorker } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js';
-import { SpreadsheetsSettings } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheets.js';
+import { SpreadsheetTypeDialog, SpreadsheetsSettings } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheets.js';
 import { StorageHealthSummaryWireSchema } from '../../../../src/models/dashboard/bootstrap.js';
 import { SavedWorkbookSchema,WorkbookCreateRequestSchema,decodeEditableWorkbook,encodeSavedWorkbook,type SavedWorkbook } from '../../../../src/models/dashboard/workbooks.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
+import { WorkbookLibraryEntrySchema, type WorkbookLibraryEntry } from '../../../../src/models/dashboard/workbook-library.js';
 import { FIXTURE_EDITABLE_SETTINGS } from '../../../parity/helpers/fixture-settings.js';
 import { FixtureCommandBinding } from '../../../support/helpers/dashboard/command-binding.js';
 import { MeasurementFreeResizeObserver } from '../../../support/helpers/settings-storage-doctor-fixtures.js';
@@ -38,6 +39,14 @@ function workbookRequest(body: unknown) {
   const workbook: unknown = Reflect.get(body, "workbook");
   return WorkbookCreateRequestSchema.parse({ workbook }).workbook;
 }
+const rosterType = { id: 'roster', name: 'Roster', keyFieldId: 'eid', fields: ['eid'], defaultWorkbookId: null };
+function catalogEntry(record: SavedWorkbook) {
+  return WorkbookLibraryEntrySchema.parse({ libraryId: record.libraryId, version: record.version, name: record.workbook.name,
+    rowCount: 0, worksheets: record.workbook.sheets.map(sheet => ({ id: sheet.id, name: sheet.name })),
+    type: rosterType, metadata: { typeId: rosterType.id, sharePoint: null }, state: { libraryId: record.libraryId, revision: record.version,
+      origin: { kind: 'local' }, removed: false, selectedVersionId: 'current', versions: [{ id: 'current', name: 'Current version',
+        snapshotId: 'current', version: record.version, savedAt: record.savedAt, source: 'operator' }] } });
+}
 function world() {
   const base = newEditableWorkbook();
   let record: SavedWorkbook = SavedWorkbookSchema.parse({ libraryId: 'served-book', version: 2, createdAt: '2026-10-01T00:00:00Z', savedAt: '2026-10-15T00:00:00Z', workbook: { ...base, name: 'Served.xlsx', libraryId: 'served-book' } });
@@ -47,6 +56,8 @@ function world() {
   const clientOptions: Parameters<typeof createDashboardClient>[0] = { baseUrl: 'http://spreadsheets.test', fetchImpl: async (url, init) => {
     const path = new URL(String(url)).pathname; const method = init?.method ?? 'GET'; const body: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined; calls.push({ path, method, body });
     if (path.endsWith('/settings/editable')) return Response.json(FIXTURE_EDITABLE_SETTINGS);
+    if (path.endsWith('/catalog')) return Response.json([catalogEntry(record)]);
+    if (path.endsWith('/types')) return Response.json([rosterType]);
     if (method === 'POST') {
       await postGate;
       if (outcome === 'lost') throw new Error('lost response');
@@ -74,10 +85,11 @@ async function page(client: DashboardClient, initialView: ViewRoute = {}) {
   return { latest: () => latest, view: () => view, async remountChild() { await act(async () => toggleChild(false)); await act(async () => toggleChild(true)); }, async remount() { await act(async () => root?.unmount()); document.body.replaceChildren(); latest = { book: null, dirty: false }; await mount(); } };
 }
 it('mounts the served list/open, performs CAS and readback, and retains a conflict draft', async () => {
-  const w = world(); const p = await page(w.client); assert(button('Served.xlsx')); assert(!document.body.textContent?.includes('Student applicants'));
-  await click('Served.xlsx'); assert.equal(p.latest().book?.libraryId, 'served-book');
+  const w = world(); const p = await page(w.client); assert(button('Open Served.xlsx')); assert(!document.body.textContent?.includes('Student applicants'));
+  await click('Open Served.xlsx'); assert.equal(p.latest().book?.libraryId, 'served-book');
   await edit('Ada'); await click('Save'); assert.match(document.body.textContent, /Saved · version 3/); assert.equal(p.latest().dirty, false);
-  const posts = w.calls.filter(call => call.method === 'POST'); assert.equal(posts.length, 1); assert.equal((posts[0].body as { expectedVersion: number }).expectedVersion, 2); assert.equal(w.calls.at(-1)?.path, '/api/v1/workbooks/served-book');
+  const posts = w.calls.filter(call => call.method === 'POST'); assert.equal(posts.length, 1); assert.equal((posts[0].body as { expectedVersion: number }).expectedVersion, 2);
+  assert.equal(w.calls[w.calls.indexOf(posts[0]) + 1]?.path, '/api/v1/workbooks/served-book');
   w.outcome('conflict'); await edit('Grace'); const draft = p.latest().book; await click('Save'); assert.match(document.body.textContent, /Save version conflict/); assert.equal(p.latest().book, draft); assert(p.latest().dirty);
 });
 it('retains UNKNOWN through edits and remount and repeated Save clicks only read', async () => {
@@ -113,7 +125,7 @@ it('adopts a delayed create identity into newer edits and their history before t
   const writes = w.calls.filter(call => call.method === 'POST'); assert.equal(writes.length, 2); assert.equal(writes[1].path, '/api/v1/workbooks/generated/save'); assert.equal((writes[1].body as { expectedVersion: number }).expectedVersion, 1);
 });
 it('discards ordinary edits and rereads the saved workbook on explicit reopen', async () => {
-  const w = world(); const p = await page(w.client); await click('Served.xlsx'); await edit('Discard me'); await click('Spreadsheets'); await click('Discard copy'); await click('Served.xlsx');
+  const w = world(); const p = await page(w.client); await click('Open Served.xlsx'); await edit('Discard me'); await click('Spreadsheets'); await click('Discard copy'); await click('Open Served.xlsx');
   assert.equal(document.querySelector<HTMLInputElement>('input[aria-label="A2"]')?.value, ''); assert.equal(p.latest().dirty, false); assert.equal(w.calls.filter(call => call.path === '/api/v1/workbooks/served-book').length, 2); assert.equal(w.calls.filter(call => call.method === 'POST').length, 0);
 });
 it('shows failed library authority without a mock list or a definitive empty result', async () => {
@@ -121,10 +133,10 @@ it('shows failed library authority without a mock list or a definitive empty res
   assert.match(document.body.textContent, /Spreadsheet unavailable/); assert(document.body.textContent?.includes(ERROR_CATALOG.DASHBOARD_READ_FAILED.text)); assert.doesNotMatch(document.body.textContent, /No spreadsheets match|Student applicants/);
 });
 it('distinguishes a pending library from a verified empty library', async () => {
-  let settle!: (response: Response) => void;
-  const client = createDashboardClient({ baseUrl: 'http://spreadsheets.test', fetchImpl: () => new Promise(resolve => { settle = resolve; }) }); await page(client);
+  const pending = Promise.withResolvers<void>();
+  const client = createDashboardClient({ baseUrl: 'http://spreadsheets.test', fetchImpl: async () => { await pending.promise; return Response.json([]); } }); await page(client);
   assert.match(document.body.textContent, /Loading spreadsheets/); assert.doesNotMatch(document.body.textContent, /No spreadsheets yet/);
-  await act(async () => settle(Response.json([]))); assert.match(document.body.textContent, /No spreadsheets yet/); assert.doesNotMatch(document.body.textContent, /Loading spreadsheets/);
+  await act(async () => pending.resolve()); assert.match(document.body.textContent, /No spreadsheets yet/); assert.doesNotMatch(document.body.textContent, /Loading spreadsheets/);
 });
 it('reopens a verified first create through its durable route with a fresh client', async () => {
   const w = world(); const p = await page(w.client); await importDraft(); await edit('Ada'); await click('Save');
@@ -135,7 +147,7 @@ it('reopens a verified first create through its durable route with a fresh clien
   assert.equal(w.calls.at(-1)?.path, '/api/v1/workbooks/generated'); assert.equal(w.calls.filter(call => call.method === 'POST').length, 1);
 });
 it('retains existing-workbook mapping review through child navigation and saves with its opened version', async () => {
-  const w = world(); const p = await page(w.client); await click('Served.xlsx'); await edit('Ada'); await menu('Workbook actions', 'Edit column mappings');
+  const w = world(); const p = await page(w.client); await click('Open Served.xlsx'); await edit('Ada'); await menu('Workbook actions', 'Edit column mappings');
   await click('Dashboard field for A');
   const aListbox = button('Dashboard field for A').getAttribute('aria-controls'); assert(aListbox);
   const notes = document.getElementById(aListbox)?.querySelector<HTMLElement>('[role="option"][data-value="roster.notes"]'); assert(notes); await act(async () => notes.click());
@@ -150,7 +162,7 @@ it('retains existing-workbook mapping review through child navigation and saves 
   const writes = w.calls.filter(call => call.method === 'POST'); assert.equal(writes.length, 1); assert.equal(writes[0].path, '/api/v1/workbooks/served-book/save'); assert.equal((writes[0].body as { expectedVersion: number }).expectedVersion, 2);
 });
 it('exports the served draft as a download without saving or clearing its dirty authority', async () => {
-  const w = world(); const p = await page(w.client); await click('Served.xlsx'); await edit('Ada'); const draft = p.latest().book;
+  const w = world(); const p = await page(w.client); await click('Open Served.xlsx'); await edit('Ada'); const draft = p.latest().book;
   vi.mocked(exportSpreadsheetInWorker).mockResolvedValue(new ArrayBuffer(4));
   const createUrl = vi.fn(() => 'blob:spreadsheet-export'); vi.stubGlobal('URL', class extends URL { static createObjectURL = createUrl; static revokeObjectURL = vi.fn(); });
   const download = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
@@ -160,10 +172,10 @@ it('exports the served draft as a download without saving or clearing its dirty 
 
 for (const operation of ['list', 'open'] as const) it(`shows ${operation} loading as status and a rejected read as danger`, async () => {
   const w = world();
-  const list = Promise.withResolvers<readonly SavedWorkbook[]>();
+  const list = Promise.withResolvers<readonly WorkbookLibraryEntry[]>();
   const open = Promise.withResolvers<SavedWorkbook>();
   const client: DashboardClient = { ...w.client,
-    workbookList: () => operation === 'list' ? list.promise : w.client.workbookList(),
+    workbookCatalog: () => operation === 'list' ? list.promise : w.client.workbookCatalog(),
     workbookOpen: id => operation === 'open' ? open.promise : w.client.workbookOpen(id) };
   await page(client, operation === 'open' ? { spreadsheet: 'served-book' } : {});
   const loading = operation === 'list' ? 'Loading spreadsheets…' : 'Loading spreadsheet…';
@@ -236,4 +248,18 @@ it('opens the selected type through the mounted route and restores its trigger',
   assert.match(document.querySelector('[role="dialog"]')?.textContent ?? '', /Create spreadsheet type/);
   assert.equal(document.querySelector<HTMLInputElement>('input[name="spreadsheet-type-name"]')?.value, '');
   assert.equal(w.calls.filter(call => call.method === 'POST').length, 0);
+});
+
+it('reopens a pending type on Check result with its name locked', async () => {
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  const type = { id: 'roster', name: 'Roster', keyFieldId: 'eid', fields: ['eid'], defaultWorkbookId: null };
+  let checks = 0;
+  await act(async () => root?.render(createElement(ToastProvider, null, createElement(SpreadsheetTypeDialog, {
+    open: true, onOpenChange: () => undefined, type, returnFocus: createRef<HTMLButtonElement>(), pending: true,
+    onSave: async value => { assert.deepEqual(value, type); checks++; return { state: 'confirmed' }; },
+  }))));
+  const name = document.querySelector<HTMLInputElement>('input[name="spreadsheet-type-name"]');
+  assert.equal(name?.disabled, true); assert.match(document.body.textContent, /not yet confirmed/);
+  await vi.waitFor(() => assert.equal(document.activeElement, button('Check result')));
+  assert.equal(checks, 0); await click('Check result'); assert.equal(checks, 1);
 });

@@ -321,12 +321,12 @@ describe("spreadsheet registration stays outside Run", () => {
     assert.ok(!dialog.text().includes("Import a spreadsheet"));
     assert.equal(uploads, 0); assert.deepEqual(intakeHandoffs, []);
   });
-  it("describes workbook reference use and excludes it from the live request", async () => {
+  it("omits reference controls for a workflow without declared references", async () => {
     let submission: unknown;
     const dialog = await openDialog(stubClient({ submitStartPlan: async input => { submission = input; return planResponse("5a000000-0000-4000-8000-000000000001"); } }));
     await dialog.type(TYPED); await dialog.press("Continue");
-    assert.ok(dialog.text().includes("Workbook · Optional"));
-    assert.ok(dialog.text().includes("Choose an already imported workbook for reference or results."));
+    assert.equal(dialog.text().includes("Workbook · Optional"), false);
+    assert.equal(dialog.text().includes("Reference spreadsheet"), false);
     await dialog.press("Continue");
     const request = StartPlanSubmissionSchema.parse(submission);
     assert.equal(request.submissions.length, 1); assert.equal(Object.hasOwn(request, "workbookId"), false);
@@ -371,7 +371,7 @@ const SEPARATIONS_WORKFLOWS: readonly RunStartWorkflow[] = parseWorkflows(
       start.inputRun === undefined
         ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
         : { state: "present", surface: start.inputRun },
-    spreadsheetIntake: start.spreadsheetIntake,
+    spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookTypeIds: start.requiredWorkbookTypeIds,
   };
 });
 

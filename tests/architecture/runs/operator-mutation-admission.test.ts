@@ -23,6 +23,7 @@ const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
   "/api/v1/workbooks": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/types": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/:libraryId/operations": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/workbooks/:libraryId/library-actions": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/:libraryId/sync": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/:libraryId/save": { guard: "operatorMutationIngressGuard" },
   "/api/v1/workbooks/:libraryId/intake": { guard: "operatorMutationIngressGuard" },

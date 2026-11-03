@@ -182,7 +182,7 @@ export const separationsWorkflow = defineWorkflow({
       display: "text",
     },
   ],
-  subjectProjection: { nodeId: JOB_SUMMARY_NODE, fieldPath: "displayedName" },
+  subjectProjection: { nodeId: JOB_SUMMARY_NODE, fieldPath: "displayedName", eidFieldPath: "emplId" },
   identity: {
     matchKey: (input) => (input.reRead === undefined
       ? `separations:${input.documentNumber}`

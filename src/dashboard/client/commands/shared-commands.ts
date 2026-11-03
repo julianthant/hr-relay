@@ -27,6 +27,7 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
   if (result.state !== "applied" && result.state !== "already-applied") return result;
   if (!commandNoChangeResultMatches(command, result)) identityMismatch(response);
   const targets = result.affectedTargets;
+  if (command.family === "run" && command.type === "resolve-workbook-reference-row" && targets.length !== 2) identityMismatch(response);
   if (command.family === "worker-browser" && command.type === "check-parked-write" && targets.length !== 2) identityMismatch(response);
   const matches = (target: typeof targets[number]): boolean => {
     switch (command.family) {
@@ -34,7 +35,10 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
       case "application": return target.family === "application" && target.runtimeGeneration === command.target.runtimeGeneration;
       case 'assistant-model-preference': return target.family === 'assistant-model-preference'
         && target.profileId === command.target.profileId && target.revision === command.target.expectedRevision + 1;
-      case "run": return target.family === "run" && (target.runId === command.target.runId
+      case "run": return command.type === "resolve-workbook-reference-row"
+        ? (target.family === "gate" && target.runId === command.target.runId && target.gateId === command.target.gateId)
+          || (target.family === "run" && target.runId === command.target.runId)
+        : target.family === "run" && (target.runId === command.target.runId
         || ["cancel", "delete", "retry", "restart", "recover-run"].includes(command.type));
       case "gate": return (target.family === "gate" && target.runId === command.target.runId && target.gateId === command.target.gateId)
         || (target.family === "run" && target.runId === command.target.runId);

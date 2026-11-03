@@ -41,6 +41,9 @@ for (const theme of ["light", "dark"] as const) {
         await page.goto(`${server.baseUrl}/?fixture=picked-a&day=${world.day.day}&run=${world.row.runId}&view=${encodeURIComponent(JSON.stringify({ workflow: world.row.workflowId, preview: null }))}`);
         await expect(page.getByRole("region", { name: "Run logs", exact: true })).toBeVisible();
         await page.getByRole("button", { name: "Close assistant", exact: true }).click();
+        expect(world.day.queueSurfaces.filter(row => row.workflowId === "onboarding")).toHaveLength(0);
+        await expect(page.getByRole("navigation", { name: "Workflows", exact: true })
+          .getByLabel("0 active of 0 in Onboarding", { exact: true })).toHaveText("0 · 0");
         if (state === "quit-confirm" || state === "quitting") {
           await expect(page.getByRole("button", { name: "Pause all runs", exact: true })).toBeEnabled();
           await page.keyboard.press("Control+q");

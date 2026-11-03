@@ -4,10 +4,12 @@ import { createChatFilesPort } from '../../../../src/dashboard/surfaces/shell/ch
 import { createSpreadsheetChatRegistrationPort } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-chat-registration-model.js';
 import { createSpreadsheetWiringAdapter } from '../../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
 import { newEditableWorkbook } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import type { WorkbookLibraryQueries } from '../../../../src/dashboard/client/queries/workbook-library-queries.js';
 import { SavedWorkbookSchema, type SavedWorkbook } from '../../../../src/models/dashboard/workbooks.js';
 function world() {
   let saved: SavedWorkbook | undefined;
   const client = {
+    workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>(),
     workbookList: vi.fn(async () => saved ? [saved] : []),
     workbookOpen: vi.fn(async () => { if (!saved) throw new Error('unavailable'); return saved; }),
     workbookCreate: vi.fn(async (workbook: unknown) => { saved = SavedWorkbookSchema.parse({ libraryId: 'book', version: 1, createdAt: '2026-10-01T00:00:00Z', savedAt: '2026-10-01T00:00:00Z', workbook: { ...workbook as object, libraryId: 'book' } }); return saved; }),
