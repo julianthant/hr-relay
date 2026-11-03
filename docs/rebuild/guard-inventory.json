@@ -85,7 +85,7 @@
       "file": "tests/architecture/logs/terminal-failures.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/frontend-backend-integration.md",
-      "invariant": "Caught request failures cannot silently return success or empty defaults. The shared HTTP observer covers returned refusals and thrown errors; worker, provider and asynchronous authorization owners retain the debug writer. Unsafe catch and removed-sink controls fail.",
+      "invariant": "Caught request failures cannot silently return success or empty defaults. The shared HTTP observer covers returned refusals and thrown errors; worker, provider and asynchronous authorization owners retain the debug writer. Unsafe catch and removed-sink controls fail. An asynchronous diagnostic append fault is retained and must surface as LOGGING_UNAVAILABLE at completion readback; removing that readback fails.",
       "replacementRequired": true
     },
     {

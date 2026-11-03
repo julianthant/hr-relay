@@ -25,7 +25,9 @@ function silentRequestCatches(path: string, text: string): string[] {
       const emits = /\.(?:emit|error)\??\.?(?:\()/u.test(text);
       const propagates = /\bthrow\b|\bpopulationFailure\(/u.test(text);
       const responds = /\.json\(/u.test(text) && /\b(?:failure|wireError)\(|state:\s*["'](?:error|failed|refused|rejected|unknown|uncertain|unavailable)["']/u.test(text);
-      if (!emits && !propagates && !responds) violations.push(`${path}:${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1}`);
+      const retained = /current\.loggingFailure\s*=\s*\{\s*cause:/u.test(text)
+        && /if \(current\.loggingFailure !== undefined\) return c\.json\(wireError\("LOGGING_UNAVAILABLE"/u.test(source.text);
+      if (!emits && !propagates && !responds && !retained) violations.push(`${path}:${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1}`);
     }
     ts.forEachChild(node, visit);
   }
@@ -50,6 +52,11 @@ describe("terminal failures remain observable", () => {
     assert.ok(api.includes("registerDebugResponses(app, debugEvents)"));
     assert.ok(api.indexOf("registerDebugResponses(app, debugEvents)") < api.indexOf('app.use("*"'));
     assert.match(read("src/backend/transports/http/routes/debug-responses.ts"), /debugFailureOutcomes\(body, c.res.status\)[\s\S]*writer.emit/u);
+  });
+  it("requires retained asynchronous logging faults to surface at readback", () => {
+    const source = 'app.post("/auth", c => { try { record(); } catch (error) { current.loggingFailure = { cause: error }; } if (current.loggingFailure !== undefined) return c.json(wireError("LOGGING_UNAVAILABLE", "unavailable", false), 500); });';
+    assert.deepEqual(silentRequestCatches("src/retained.ts", source), []);
+    assert.equal(silentRequestCatches("src/retained.ts", source.replace("current.loggingFailure !== undefined", "current.other !== undefined")).length, 1);
   });
   it("requires durable sinks at worker, provider and asynchronous authorization boundaries", () => {
     const requirements = [

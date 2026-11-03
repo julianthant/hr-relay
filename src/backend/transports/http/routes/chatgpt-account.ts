@@ -9,6 +9,7 @@ import { ChatGptAccountViewSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSc
 import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
 import type { DashboardApp } from "./api-types.js";
 import type { ShellRouteDeps } from "./shell-types.js";
+import { wireError } from "./failure-status.js";
 
 export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "readAccount" | "signIn" | "signOut">; readonly chatGptOcrTest?: ChatGptOcrTestService }
 function failure(error: unknown, dispatched = false) {
@@ -33,7 +34,8 @@ async function waitForCompletion(completion: Promise<ChatGptSignInCompletion>, s
 }
 
 export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAccountRouteDeps): void {
-  let latest: { id: string; authorization: ChatGptAuthorization; pending: boolean; completion: Promise<ChatGptSignInCompletion> } | undefined;
+  let latest: { id: string; authorization: ChatGptAuthorization; pending: boolean; completion: Promise<ChatGptSignInCompletion>;
+    loggingFailure?: { cause: unknown } } | undefined;
   const service = () => {
     if (deps.chatGptAccount === undefined) throw new ChatGptAccountError("CHATGPT_AUTH_UNAVAILABLE");
     return deps.chatGptAccount;
@@ -68,8 +70,10 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
       const current: NonNullable<typeof latest> = { id, authorization, pending: true, completion: authorization.completion.then(account => ChatGptSignInCompletionSchema.parse({ state: "completed", attemptId: id, account }))
         .catch(error => {
           const result = failure(error, true);
-          deps.debugEvents?.emit({ category: "http", phase: "failed", correlationId: id, area: "chatgpt-sign-in",
-            code: result.code, reason: "authorization-failed" });
+          try {
+            deps.debugEvents?.emit({ category: "http", phase: "failed", correlationId: id, area: "chatgpt-sign-in",
+              code: result.code, reason: "authorization-failed" });
+          } catch (loggingError) { current.loggingFailure = { cause: loggingError }; }
           return ChatGptSignInCompletionSchema.parse({ ...result, attemptId: id });
         })
         .finally(() => { current.pending = false; }) };
@@ -80,7 +84,11 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
   app.get("/api/v1/settings/chatgpt-account/sign-in/:attemptId", async c => {
     c.header("Cache-Control", "no-store");
     const id = c.req.param("attemptId");
-    try { return c.json(await waitForCompletion(attempt(id).completion, c.req.raw.signal)); }
+    try {
+      const current = attempt(id), completion = await waitForCompletion(current.completion, c.req.raw.signal);
+      if (current.loggingFailure !== undefined) return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
+      return c.json(completion);
+    }
     catch (error) {
       return c.json(failure(error), 400);
     }
