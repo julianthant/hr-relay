@@ -32,9 +32,10 @@ describe("CI file selection", () => {
     expect(() => selectCiFiles(portable, "integration", "ubuntu", 1, 1, durations)).toThrow(/does not list/u);
   });
 
-  it("runs padded-receipt upgrades separately from native proofs and parallel storage files", () => {
+  it("runs upgrade proofs separately from native proofs and parallel storage files", () => {
+    expect(SERIAL_STORAGE_FILES).toContain("tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts");
     expect(SERIAL_STORAGE_FILES.every(file => MACOS_FILES.includes(file))).toBe(true);
-    expect(run(integration, "integration", "storage", 5)).toEqual([...SERIAL_STORAGE_FILES]);
+    expect(run(integration, "integration", "storage", 5).sort()).toEqual([...SERIAL_STORAGE_FILES].sort());
     for (const runner of ["macos", "serial"] as const) {
       expect(run(integration, "integration", runner, 5).some(file => SERIAL_STORAGE_FILES.includes(file))).toBe(false);
     }

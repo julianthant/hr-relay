@@ -146,7 +146,8 @@ the preceding successful run's `ci-timings` artifact, seeded by `scripts/test/ci
 when none is retained; unmeasured files count as the positive median, or one second.
 Zero-rounded measurements still receive positive work. Native proofs and `SERIAL_STORAGE_FILES`
 count their full time and run in separate single-worker invocations. The padded-receipt upgrade
-fixture is in the storage group because competing files pushed it beyond its existing budget.
+and startup-upgrade fixture run in the storage group: their stopped backups and real native
+closure probes require isolation from competing storage files within their existing budgets.
 Other macOS files count half because two workers share them.
 
 | Job | Runner | Jobs | Contents |

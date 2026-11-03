@@ -10,6 +10,17 @@ export interface ReviewedCatchDefault {
 
 export const REVIEWED_CATCH_DEFAULTS = [
   {
+    "path": "src/backend/storage/artifacts/named-file-output-sink.ts",
+    "reason": "Only ENOENT denotes an absent publication destination or parent directory. The sink checks absence before exclusive creation, refuses disappeared retained directory identities, and propagates every other stat error. Staging, publication and close failures remain explicit or retain their original causes as custody uncertainty.",
+    "statements": [
+      {
+        "kind": "try",
+        "sha256": "a4b621928e6b43f07bc1f5623a3be1ed04157a7938f943bd8268214a1a13abcd",
+        "occurrences": 1
+      }
+    ]
+  },
+  {
     "path": "src/backend/runs/queries/run-detail/receipts-failures.ts",
     "reason": "Only the canonical typed RerunRefusedError suppresses an unavailable recovery action; it grants no correction or retry. Unexpected snapshot, custody or validation failures propagate. Separate negative controls verify typed refusal and original unexpected-error propagation.",
     "statements": [
