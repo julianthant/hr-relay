@@ -494,16 +494,19 @@ test('page realm creates and reads software credentials with browser readonly pr
   ]) for (const field of fields) Object.defineProperty(prototype, field, { get() { throw new TypeError('Illegal invocation'); } });
   let listener;
   const requests = [];
+  const settled = [];
   const result = { ok: true, credentialId: '+/8=', clientDataJSON: 'AQ==', attestationObject: 'Ag==', authData: 'Aw==',
     publicKeySpki: 'BA==', authenticatorData: 'BQ==', signature: 'Bg==', userHandle: 'Bw==', transport: 'usb' };
   const window = { addEventListener: (_type, callback) => { listener = callback; }, postMessage: message => {
+    if (message.type === 'RELAY_DUO_SETTLED') settled.push(message.id);
+    if (message.type !== 'RELAY_DUO_REQUEST') return;
     requests.push(message);
-    listener({ source: window, origin: ORIGIN, data: { type: 'RELAY_DUO_RESPONSE', id: message.id, success: true, result } });
+    queueMicrotask(() => listener({ source: window, origin: ORIGIN, data: { type: 'RELAY_DUO_RESPONSE', id: message.id, success: true, result } }));
   } };
   const credentials = { create: () => assert.fail('unexpected native create'), get: () => assert.fail('unexpected native get') };
   runInNewContext(await readFile(new URL('../src/relay-inpage.js', import.meta.url), 'utf8'), {
     window, location: { origin: ORIGIN, hostname: 'test.duosecurity.com' }, navigator: { credentials },
-    crypto, Uint8Array, btoa, atob, DOMException, PublicKeyCredential: Credential,
+    crypto, Uint8Array, btoa, atob, DOMException, setTimeout, clearTimeout, PublicKeyCredential: Credential,
     AuthenticatorAttestationResponse: Attestation, AuthenticatorAssertionResponse: Assertion,
   });
   const created = await credentials.create({ publicKey: { rp: { id: 'duosecurity.com' }, challenge: new Uint8Array([8]),
@@ -526,6 +529,7 @@ test('page realm creates and reads software credentials with browser readonly pr
   assert.deepEqual(Buffer.from(signed.response.signature), Buffer.from([6]));
   assert.deepEqual(Buffer.from(signed.response.userHandle), Buffer.from([7]));
   assert.equal(requests[1].request.allowCredentials[0], '+/8=');
+  assert.deepEqual(settled, requests.map(request => request.id));
 });
 
 for (const invalid of ['origin', 'challenge', 'type', 'attachment', 'rpHash']) test(`native ${invalid} mismatch cannot produce a ceremony`, async () => {
