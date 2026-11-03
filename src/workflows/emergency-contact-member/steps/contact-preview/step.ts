@@ -17,7 +17,7 @@ export function buildContactPreview(author: WorkflowAuthor<typeof EmergencyConta
     ({ disposition: outputs["contact-preview"].disposition, proof: outputs["contact-preview"].output.proof })) };
 }
 export const contactPreviewDefinition = defineStep({ group: CONTACT_PREVIEW_STEP, build: buildContactPreview,
-  proof: { id: "emergency-contact-member-contact-preview", order: 26,
+  proof: { id: "emergency-contact-member-contact-preview", order: 29,
     build: (parent: WorkflowDefinition<typeof EmergencyContactMemberInputSchema>) => ({ ...inheritStepProof(parent), code: "ecv",
       label: "Emergency Contact preview", summary: "Prepares the approved primary contact changes through the ordinary transaction preview.",
       steps: (author: WorkflowAuthor<typeof EmergencyContactMemberInputSchema>) => {

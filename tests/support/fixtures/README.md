@@ -27,6 +27,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/person-lookup-presentation.ts` | fictional served Person Lookup presentation evidence |
 | `fixtures/crm-doc-download.ts` | synthetic verified CRM identities and retained worksheet roster rows |
 | `fixtures/i9-check.ts` | synthetic OCR-derived I-9 inputs and UCPath identity/retention evidence |
+| `fixtures/i9-check-start.ts` | admitted synthetic I-9 PDF pages, review snapshots and source coordinates |
 | `fixtures/advisory-prompt-fixtures.ts` | advisory prompt fixtures |
 | `fixtures/cross-date-search-corpus.ts` | cross date search corpus |
 | `fixtures/dashboard/diagnostic-jpeg-fixture.ts` | diagnostic jpeg fixture |

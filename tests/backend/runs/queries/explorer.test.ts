@@ -505,7 +505,8 @@ describe("the workflow explorer projection", () => {
           )
           .map(({ id }) => `${String(workflow.id)}:${String(id)}`),
       ),
-      ["onboarding:i9-lookup-child", "emergency-contact:read-document", "emergency-contact:members"],
+      ["onboarding:i9-lookup-child", "i9-check-start:read-documents", "i9-check-start:check-people", "emergency-contact:read-document", "emergency-contact:members"],
+
     );
     for (const module of WORKFLOW_MODULES) {
       const projected = wire.workflows.find(

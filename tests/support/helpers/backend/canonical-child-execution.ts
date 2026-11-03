@@ -25,7 +25,8 @@ import { testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifec
 export function canonicalChildExecution(deps: RunExecutorDependencies, database: AuthorityDatabase, path: string,
   resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined,
   checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>,
-  providersForRun?: (run: RunRecord, reader: Pick<RunRecordService, "read">) => NonNullable<RunExecutorDependencies["providers"]>) {
+  options?: Readonly<{ workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion">;
+    resources?(reader: Pick<RunRecordService, "read">, run: RunRecord): Pick<RunExecutorDependencies, "providers" | "artifactProjector"> }>) {
   const { clock } = deps;
   const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
   const lifecycle = new RunRecordService({ database, clock, ids: deps.ids, resolveDescriptor: resolve,
@@ -89,7 +90,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     stage = "execute";
     const outcome = await withBoundRunConfigFingerprint(deps.sessions, FingerprintSchema.parse(run.envelope.configFingerprint),
       () => executeClaimedRun({ ...deps, lifecycle: workerRunLifecyclePort(lifecycle), descriptor: execution, childRuns,
-        ...(providersForRun === undefined ? {} : { providers: providersForRun(run, lifecycle) }),
+        ...options?.resources?.(lifecycle, run),
         ...(checkpointPublication === undefined ? {} : { publishCheckpoint: checkpointPublication(lifecycle, run) }) },
         { run, claim, signal }), run.envelope.browserMode, { runId: run.envelope.runId,
         descriptorFingerprint: run.envelope.contractFingerprint,
@@ -102,19 +103,18 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   }
   return {
     kernel, lifecycle, childRuns, step,
-    start(descriptor: AnyWorkflowDescriptor, input: unknown, options: Readonly<{ dryRun: boolean; protectedSubmissionBindings?: readonly ProtectedInputBinding[];
-      workbooks?: WorkbookLibraryService;
-      workbookReferences?: readonly z.input<typeof WorkbookRunReferenceSelectionSchema>[] }>) {
+    start(descriptor: AnyWorkflowDescriptor, input: unknown, startOptions: Readonly<{ dryRun: boolean; protectedSubmissionBindings?: readonly ProtectedInputBinding[];
+      workbookReferences?: readonly z.infer<typeof WorkbookRunReferenceSelectionSchema>[] }>) {
       const active = database.authority.runtimeConfig.get();
       assert.ok(active);
       const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors: { resolve },
+        ...(options?.workbooks === undefined ? {} : { workbooks: options.workbooks }),
         clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: LOCAL_OPERATOR_ACTOR_ID,
         configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId,
-        ...(options.workbooks === undefined ? {} : { workbooks: options.workbooks }),
-        ...(options.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: options.protectedSubmissionBindings }) });
-      const plan = planner.plan({ workflowId: descriptor.id, submissions: [input], dryRun: options.dryRun,
-        selectedStepKeys: descriptor.timeline.map(step => step.key),
-        ...(options.workbookReferences === undefined ? {} : { workbookReferences: options.workbookReferences }) });
+        ...(startOptions.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: startOptions.protectedSubmissionBindings }) });
+      const plan = planner.plan({ workflowId: descriptor.id, submissions: [input], dryRun: startOptions.dryRun,
+        ...(startOptions.workbookReferences === undefined ? {} : { workbookReferences: startOptions.workbookReferences }),
+        selectedStepKeys: descriptor.timeline.map(step => step.key) });
       assert.equal(plan.planned.length, 1, JSON.stringify(plan.refused));
       assert.equal(plan.refused.length, 0);
       const result = kernel.execute({ commandId: randomUUID(), family: "start", type: "start-run", source: "dashboard",

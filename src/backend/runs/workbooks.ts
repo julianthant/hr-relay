@@ -539,7 +539,7 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
       const command = WorkbookReferenceReadRequestSchema.parse(value);
       return deps.database.withAuthorityReadSnapshot(() => {
         const repositories = deps.database.authority, run = repositories.runs.get(captured.envelope.runId);
-        if (run?.lifecycle.state !== "running" || repositories.deletedRuns.get(captured.envelope.runId) !== undefined
+        if (run?.lifecycle.state !== "running" || run.cancelRequested === true || repositories.deletedRuns.get(captured.envelope.runId) !== undefined
           || Number(run.claimGeneration) !== Number(captured.claimGeneration)
           || canonicalJsonStringify(run.envelope) !== canonicalJsonStringify(captured.envelope)
           || canonicalJsonStringify(run.input) !== canonicalJsonStringify(captured.input)) throw new WorkbookLibraryError("WORKBOOK_INVALID");

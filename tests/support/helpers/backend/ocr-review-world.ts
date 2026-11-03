@@ -1,3 +1,4 @@
+import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
 import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
 import { emergencyContactMemberWorkflow } from "../../../../src/workflows/emergency-contact-member/workflow.js";
@@ -29,12 +30,13 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { retainedOcrModule, retainedOcrStore, retainedOcrCheckpointPublication } from "../../fixtures/ocr/retained-review-producer.js";
 import { ocrWorkflowStore } from "../../../../src/workflows/ocr/task-registry.js";
+import type { WorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 
 export function createOcrReviewWorld() {
   const world = createRunExecutorTestWorld();
   return {
     cleanup: world.cleanup,
-    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean;
+    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule;
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       const rendered: { value?: z.output<typeof ExtractPdfPagesOutputSchema> } = {};
@@ -49,7 +51,7 @@ export function createOcrReviewWorld() {
       const ocrRoot = options.retainedProducer === true ? retainedOcrModule : ocrModule;
       const coordinator = options.coordinator === true ? compileWorkflow(emergencyContactWorkflow) : undefined;
       const member = options.coordinator === true ? compileWorkflow(emergencyContactMemberWorkflow) : undefined;
-      const root = coordinator ?? ocrRoot;
+      const root = options.parent ?? coordinator ?? ocrRoot;
       const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction" && store.namespace !== "workflow:ocr"),
         defineServiceStore("extraction", { render }), options.retainedProducer === true ? retainedOcrStore : ocrWorkflowStore];
       const tasks = entries.flatMap(store => Object.values(store.tasks));
@@ -69,14 +71,14 @@ export function createOcrReviewWorld() {
       const admission = boundProfileAdmission(path);
       const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
       const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
-      const resolve = (id: string) => id === "ocr" ? ocrRoot.descriptor : id === coordinator?.descriptor.id ? coordinator.descriptor : id === member?.descriptor.id ? member.descriptor
+      const resolve = (id: string) => id === root.descriptor.id ? root.descriptor : id === "ocr" ? ocrRoot.descriptor : id === coordinator?.descriptor.id ? coordinator.descriptor : id === member?.descriptor.id ? member.descriptor
         : (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
       const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve,
         options.retainedProducer === true ? retainedOcrCheckpointPublication : createOcrCheckpointPublication,
-        coordinator === undefined ? undefined : (run, reader) => ({ configSnapshots: database.authority.configSnapshots,
-          idFactory: { next: () => randomUUID() }, adapters: { "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({
-            database, run, reader, clock, resolveDescriptor: resolve, assertCurrent: () => admission.assertProfileRuntime(),
-          }) } }));
+        { workbooks, resources: (reader, run) => ({ providers: { configSnapshots: database.authority.configSnapshots,
+          idFactory: { next: () => randomUUID() }, adapters: { "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({clock,
+            reader: createApprovedOcrRecordReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime()}),
+          }) } } }) });
       const sources = createOcrSourceService({ database, reader: canonical.lifecycle, clock, artifacts, artifactReader,
         assertCurrent: () => admission.assertProfileRuntime() });
       const upload = await sources.upload({ actorId: "local-operator", fileName: "source.pdf", mediaType: "application/pdf",
@@ -98,9 +100,9 @@ export function createOcrReviewWorld() {
         formType: "emergency-contact", roster: null, approval: options.release === true ? "release" : "review-only",
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
       const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading }), { dryRun: options.dryRun ?? false,
-          ...(options.retainedProducer === true ? {} : { workbooks, workbookReferences: [{ entry: 1, typeId: "ocr-roster", libraryId: roster.libraryId }] }) });
+          ...(options.retainedProducer === true || !root.descriptor.requiredWorkbookTypeIds.includes("ocr-roster") ? {} : { workbookReferences: [{ entry: 1, typeId: "ocr-roster", libraryId: roster.libraryId }] }) });
       const result = await canonical.execute(parentRun, new AbortController().signal);
-      const run = coordinator === undefined ? parentRun : database.authority.runs.listChildren(parentRun.envelope.runId).find(child => child.envelope.workflow === "ocr");
+      const run = root === ocrRoot ? parentRun : database.authority.runs.listChildren(parentRun.envelope.runId).find(child => child.envelope.workflow === "ocr");
       assert.ok(run);
       if (actorId === "local-operator") {
         const failures = result.outcomes.filter(outcome => outcome.state === "failed").map(outcome => {
@@ -111,7 +113,7 @@ export function createOcrReviewWorld() {
               .map(match => match[0]).slice(0, 8) };
         });
         assert.deepEqual(failures, [], `OCR fixture execution failed: ${JSON.stringify(failures)}`);
-        const lifecycle = coordinator === undefined ? result.run?.lifecycle : database.authority.runs.get(run.envelope.runId)?.lifecycle;
+        const lifecycle = root === ocrRoot ? result.run?.lifecycle : database.authority.runs.get(run.envelope.runId)?.lifecycle;
         assert.ok((options.release === true || coordinator !== undefined) ? lifecycle?.state === "parked-gate"
           : lifecycle?.state === "terminal" && lifecycle.outcome === "done",
         `OCR fixture stopped before review: ${JSON.stringify(result.outcomes.map(outcome => ({ state: outcome.state })))}`);

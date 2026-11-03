@@ -124,19 +124,18 @@ export const PROVIDER_ADAPTER_SPECS = deepFreeze(ProviderAdapterSpecSchema.array
   { provider: "nominatim", capabilities: ["geocode.nominatim"], endpoint: "https://nominatim.openstreetmap.org/search", consumer: "provider-adapter" },
 ]));
 
-export const LocalProviderAdapterSpecSchema = z.discriminatedUnion("capability", [z.strictObject({
-  capability: z.literal("workbooks.library"),
-  owner: z.literal("src/backend/processing/providers/workbook-library-adapter.ts"),
-  dependency: z.literal("storage.sqlite"),
-  check: z.literal("authority.health"),
-}), z.strictObject({
-  capability: z.literal("ocr.approved-snapshot"),
-  owner: z.literal("src/backend/processing/providers/ocr-approved-snapshot-adapter.ts"),
-  dependency: z.literal("storage.sqlite"), check: z.literal("authority.health"),
-})]);
+export const LocalProviderAdapterSpecSchema = z.discriminatedUnion("capability", [
+  z.strictObject({ capability: z.literal("workbooks.library"), owner: z.literal("src/backend/processing/providers/workbook-library-adapter.ts"),
+    dependency: z.literal("storage.sqlite"), check: z.literal("authority.health") }),
+  z.strictObject({ capability: z.literal("ocr.approved-snapshot"), owner: z.literal("src/backend/processing/providers/ocr-approved-snapshot-adapter.ts"),
+    dependency: z.literal("storage.sqlite"), check: z.literal("authority.health") }),
+  z.strictObject({ capability: z.literal("ocr.review"), owner: z.literal("src/backend/processing/providers/ocr-review-adapter.ts"),
+    dependency: z.literal("storage.sqlite"), check: z.literal("authority.health") }),
+]);
 export const LOCAL_PROVIDER_ADAPTER_SPECS = deepFreeze(LocalProviderAdapterSpecSchema.array().parse([
   { capability: "workbooks.library", owner: "src/backend/processing/providers/workbook-library-adapter.ts", dependency: "storage.sqlite", check: "authority.health" },
   { capability: "ocr.approved-snapshot", owner: "src/backend/processing/providers/ocr-approved-snapshot-adapter.ts", dependency: "storage.sqlite", check: "authority.health" },
+  { capability: "ocr.review", owner: "src/backend/processing/providers/ocr-review-adapter.ts", dependency: "storage.sqlite", check: "authority.health" },
 ]));
 
 const ProviderBackedFeatureCapabilitySchema = z.never();

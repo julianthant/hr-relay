@@ -35,7 +35,7 @@ export function buildEmergencyContactRecords(author: WorkflowAuthor<typeof Emerg
     result: author.result(ReadApprovedOcrSnapshot.output, [graph.approved], ({ outputs }) => outputs["approved-records"]) };
 }
 export const emergencyContactReadDocumentDefinition = defineStep({ group: READ_DOCUMENT_STEP, build: buildEmergencyContactRecords,
-  proof: { id: "emergency-contact-read-document", order: 27,
+  proof: { id: "emergency-contact-read-document", order: 30,
     build: (parent: WorkflowDefinition<typeof EmergencyContactInputSchema>) => ({ ...inheritStepProof(parent), code: "ecr",
       label: "Emergency Contact approved PDF", summary: "Awaits OCR release and reads its authenticated immutable snapshot without contact members.",
       steps: (author: WorkflowAuthor<typeof EmergencyContactInputSchema>) => buildEmergencyContactRecords(author),

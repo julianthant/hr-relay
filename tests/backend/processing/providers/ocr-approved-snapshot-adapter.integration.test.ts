@@ -1,3 +1,4 @@
+import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
 import { StartPlanWireSchema } from "../../../../src/models/dashboard/start-plan.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import type { z } from "zod";
@@ -78,8 +79,8 @@ it("authenticates record reads under an admitted member's actual claim and node,
   const request = { capability: "ocr.approved-snapshot" as const, payload: { schemaHash: deriveSchemaHash(OcrApprovalReadRequestSchema, "output"),
     value: { kind: "record", approval: input.approval, recordId: input.record.recordId } } };
   const options = { signal: new AbortController().signal, deadlineMonotonicMs: 60_000, requestId: "native-member-record" };
-  const adapter = (run = claimed.run) => createOcrApprovedSnapshotAdapter({ database: f.database, clock: f.clock, run, reader: f.canonical.lifecycle,
-    resolveDescriptor: f.resolve, assertCurrent: () => f.admission.assertProfileRuntime() });
+  const adapter = (run = claimed.run) => createOcrApprovedSnapshotAdapter({ clock: f.clock, reader: createApprovedOcrRecordReader({ database: f.database, run, reader: f.canonical.lifecycle,
+    resolveDescriptor: f.resolve, assertCurrent: () => f.admission.assertProfileRuntime() }) });
   const read = async (run = claimed.run, query: z.input<typeof OcrApprovalReadRequestSchema> = rawQuery) => {
     const result = await adapter(run).invoke({ ...request, payload: { ...request.payload, value: query } }, options); assert.ok(result.response.state === "produced");
     return schemaBoundValueSchema(OcrApprovalReadResultSchema, deriveSchemaHash(OcrApprovalReadResultSchema, "output")).parse(result.response.value).value;

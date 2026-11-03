@@ -27,7 +27,7 @@ export function buildContactPlan(author: WorkflowAuthor<typeof EmergencyContactM
   return { plan, steps: [[CONTACT_PLAN_STEP, [approved, mapped, contacts, plan]]] as const };
 }
 export const contactPlanDefinition = defineStep({ group: CONTACT_PLAN_STEP, build: buildContactPlan,
-  proof: { id: "emergency-contact-member-contact-plan", order: 25,
+  proof: { id: "emergency-contact-member-contact-plan", order: 28,
     build: (parent: WorkflowDefinition<typeof EmergencyContactMemberInputSchema>) => ({ ...inheritStepProof(parent), code: "ecp",
       label: "Emergency Contact plan", summary: "Authenticates one OCR member and declares ordered contact changes without preparation.",
       steps: (author: WorkflowAuthor<typeof EmergencyContactMemberInputSchema>) => {

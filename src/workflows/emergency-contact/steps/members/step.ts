@@ -16,7 +16,7 @@ export function buildEmergencyContactMembers(author: WorkflowAuthor<typeof Emerg
       result: author.result(EmergencyContactResultSchema, [settled], ({ outputs }) => outputs["read-result"]) };
 }
 export const emergencyContactMembersDefinition = defineStep({ group: MEMBERS_STEP, build: buildEmergencyContactMembers,
-  proof: { id: "emergency-contact-members", order: 28,
+  proof: { id: "emergency-contact-members", order: 31,
     build: (parent: WorkflowDefinition<typeof EmergencyContactInputSchema>) => ({ ...inheritStepProof(parent), code: "ecb",
       label: "Emergency Contact members", summary: "Proves released-record member admission and exact typed terminal accounting.",
       steps: (author: WorkflowAuthor<typeof EmergencyContactInputSchema>) => {

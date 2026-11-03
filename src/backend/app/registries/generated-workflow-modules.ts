@@ -5,6 +5,7 @@ import { registration as crmDocDownloadModuleRegistration } from "../../../workf
 import { registration as emergencyContactModuleRegistration } from "../../../workflows/emergency-contact/index.js";
 import { registration as emergencyContactMemberModuleRegistration } from "../../../workflows/emergency-contact-member/index.js";
 import { registration as i9CheckModuleRegistration } from "../../../workflows/i9-check/index.js";
+import { registration as i9CheckStartModuleRegistration } from "../../../workflows/i9-check-start/index.js";
 import { registration as i9LookupModuleRegistration } from "../../../workflows/i9-lookup/index.js";
 import { registration as ocrModuleRegistration } from "../../../workflows/ocr/index.js";
 import { registration as ocrPageModuleRegistration } from "../../../workflows/ocr-page/index.js";
@@ -17,6 +18,7 @@ export const crmDocDownloadModule = composeWorkflowModule(compileWorkflow(crmDoc
 export const emergencyContactModule = composeWorkflowModule(compileWorkflow(emergencyContactModuleRegistration.definition), taskStoreRegistry.stores);
 export const emergencyContactMemberModule = composeWorkflowModule(compileWorkflow(emergencyContactMemberModuleRegistration.definition), taskStoreRegistry.stores);
 export const i9CheckModule = composeWorkflowModule(compileWorkflow(i9CheckModuleRegistration.definition), taskStoreRegistry.stores);
+export const i9CheckStartModule = composeWorkflowModule(compileWorkflow(i9CheckStartModuleRegistration.definition), taskStoreRegistry.stores);
 export const i9LookupModule = composeWorkflowModule(compileWorkflow(i9LookupModuleRegistration.definition), taskStoreRegistry.stores);
 export const ocrModule = composeWorkflowModule(compileWorkflow(ocrModuleRegistration.definition), taskStoreRegistry.stores);
 export const ocrPageModule = composeWorkflowModule(compileWorkflow(ocrPageModuleRegistration.definition), taskStoreRegistry.stores);
@@ -29,8 +31,9 @@ export const WORKFLOW_MODULES = Object.freeze([
   personLookupModule,
   separationsModule,
   onboardingModule,
-  emergencyContactModule,
+  i9CheckStartModule,
   crmDocDownloadModule,
+  emergencyContactModule,
 ] as const);
 
 export const CHILD_ONLY_WORKFLOW_MODULES = Object.freeze([
