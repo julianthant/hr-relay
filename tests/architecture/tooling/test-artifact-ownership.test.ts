@@ -1,3 +1,4 @@
+import { BUILD_MANIFEST_PATH } from "../../../src/models/workflow/build-manifest.js";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -6,13 +7,13 @@ import { it } from "vitest";
 import { artifactOwnershipViolations } from "../../../scripts/test/artifact-policy.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 
-it("keeps generated test output ignored and external evidence outside the checkout", () => {
-  const tracked = execFileSync("git", ["ls-files", "--", "test-results/", "coverage/"],
+it("keeps generated output ignored and external evidence outside the checkout", () => {
+  const tracked = execFileSync("git", ["ls-files", "--", "test-results/", "coverage/", BUILD_MANIFEST_PATH],
     { cwd: REPO_ROOT, encoding: "utf8" }).trim().split("\n").filter(Boolean);
-  const ignored = ["test-results/.last-run.json", "coverage/index.html"]
+  const ignored = ["test-results/.last-run.json", "coverage/index.html", BUILD_MANIFEST_PATH]
     .filter((path) => {
       try {
-        execFileSync("git", ["check-ignore", "-q", "--", path], { cwd: REPO_ROOT, stdio: "ignore" });
+        execFileSync("git", ["check-ignore", "--no-index", "-q", "--", path], { cwd: REPO_ROOT, stdio: "ignore" });
         return true;
       } catch { return false; }
     });
