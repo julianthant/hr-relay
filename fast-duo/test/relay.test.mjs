@@ -439,9 +439,32 @@ async function isolatedWorld(nativeBehavior) {
     } } },
   };
   for (const file of ['relay-native.js', 'relay-content.js']) runInNewContext(await readFile(new URL(`../src/${file}`, import.meta.url), 'utf8'), context);
-  return { sent, output, nativeCalls: () => nativeCalls,
+  return { sent, output, runtime: context.chrome.runtime, nativeCalls: () => nativeCalls,
     message: data => listeners.get('message')({ source: window, origin: ORIGIN, data }) };
 }
+
+test('abort waits for the interception receipt before ending the backend attempt', async () => {
+  const w = await isolatedWorld(() => assert.fail('aborted enrollment must not call native create'));
+  let release, entered;
+  const gate = new Promise(resolve => { release = resolve; });
+  const intercepting = new Promise(resolve => { entered = resolve; });
+  const send = w.runtime.sendMessage;
+  w.runtime.sendMessage = async message => {
+    if (message.type === 'RELAY_DUO_EVENT' && message.event.stage === 'intercepted') { entered(); await gate; }
+    return send(message);
+  };
+  const request = enrollment().request;
+  const operation = w.message({ type: 'RELAY_DUO_REQUEST', id: 'abort-before-ack', operation: 'DUO_AUTOPILOT_ENROLL', request });
+  await intercepting;
+  const aborted = w.message({ type: 'RELAY_DUO_ABORT', id: 'abort-before-ack', reason: 'aborted' });
+  try {
+    await Promise.resolve();
+    assert.equal(w.sent.filter(message => message.type === 'RELAY_ENROLLMENT_FAILED').length, 0);
+  } finally { release(); await Promise.all([operation, aborted]); }
+  assert.equal(w.nativeCalls(), 0);
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_ENROLLMENT_FAILED').length, 1);
+  assert.equal(w.sent.find(message => message.type === 'RELAY_ENROLLMENT_FAILED').request.reason, 'aborted');
+});
 
 test('native isolated completion calls captured browser create; page-created and page-failed messages cannot attest', async () => {
   let complete;

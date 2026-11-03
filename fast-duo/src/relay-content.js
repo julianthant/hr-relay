@@ -47,9 +47,9 @@
       const entry = controllers.get(message.id);
       if (entry && ['aborted', 'timed-out'].includes(message.reason)) {
         entry.controller.abort();
-        entry.failure ||= chrome.runtime.sendMessage({ type: 'RELAY_ENROLLMENT_FAILED', request: {
+        entry.failure ||= Promise.resolve(entry.intercepted).then(() => chrome.runtime.sendMessage({ type: 'RELAY_ENROLLMENT_FAILED', request: {
           origin: location.origin, rpId: entry.request.rpId, requestId: entry.request.requestId, reason: message.reason,
-        } });
+        } }));
         try { await entry.failure; } catch { window.postMessage({ type: 'RELAY_DUO_UNCERTAIN' }, location.origin); }
       }
       return;
@@ -65,7 +65,7 @@
         [...document.querySelectorAll('h1, h2, [role="heading"]')].map(element => [element, element.textContent.trim()]));
       before = observation();
       const request = { ...message.request, origin: before.origin, usernames: before.accountNames };
-      if (message.operation === 'DUO_AUTOPILOT_ENROLL') await reportEvent('intercepted', request.requestId);
+      if (message.operation === 'DUO_AUTOPILOT_ENROLL') { entry.intercepted = reportEvent('intercepted', request.requestId); await entry.intercepted; }
       if (controller.signal.aborted) throw new Error('ONBOARDING_DUO_REVOKED');
       const reply = await chrome.runtime.sendMessage({ type: message.operation, request });
       if (controller.signal.aborted) throw new Error('ONBOARDING_DUO_REVOKED');
