@@ -92,7 +92,12 @@ export function createAssistantWorkflowStarts(input: Readonly<{
           const expiresAt = new Date(Math.min(Date.parse(record.expiresAt), Date.parse(plan.expiresAt))).toISOString();
           const action = AssistantActionProposalSchema.parse({ chatId: chat.chatId, actionId: proposal.id, revision: proposal.revision,
             expiresAt, label: `Start ${descriptor.label}`, targetLabel: plan.planned[0].title,
-            subject: "selected-run", effect: "workflow-start", workflowId: descriptor.id, dryRun, startPlan: planned });
+            subject: "selected-run", effect: "workflow-start", workflowId: descriptor.id, dryRun, startPlan: {
+              startPlanId: planned.startPlanId, workflowId: planned.workflowId, expectedVersion: planned.expectedVersion,
+              expiresAt: planned.expiresAt, dryRun: planned.dryRun, browserMode: planned.browserMode,
+              captureBrowserScreenshots: planned.captureBrowserScreenshots, fingerprints: planned.fingerprints,
+              planned: planned.planned.map(({ title, subtitle }) => ({ title, subtitle })),
+            } });
           pending.set(proposal.id, { chat, revision: proposal.revision, expiresAt, record, assertCurrent });
           return { kind: "complete", result: { state: "action-proposal", proposal: action } };
         },

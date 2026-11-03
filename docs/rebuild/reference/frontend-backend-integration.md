@@ -76,7 +76,7 @@ The assistant's selected subject reference is the visible served run and its exa
 resolved locally through the canonical run reader; the Responses request receives only a fresh opaque
 reference and workflow/mode metadata. Workflow confirmation uses the existing assistant action endpoint,
 then the same command service as dashboard Run. It preserves the ordinary start planner, preflight,
-worker capacity and once-only command/audit authority. The workflow-start action carries its canonical public start plan, restricted to one accepted run, with browser mode and captures explicit. Its displayed expiry cannot exceed the retained plan expiry.
+worker capacity and once-only command/audit authority. The workflow-start action projects its canonical plan ID, revision, fingerprints, one input display label, mode, browser, captures and expiry. Its displayed expiry cannot exceed the retained plan expiry.
 
 Bootstrap projects the admitted person registry name as the actor label. Appearance uses that label with the existing person/epoch preference owner and claims saved state only after confirmed settings readback. Preference commands use `source: person-preferences`; the ordinary editor recovers only its own `settings-surface` attempts, so simultaneous preference saves cannot become ordinary editor retries.
 

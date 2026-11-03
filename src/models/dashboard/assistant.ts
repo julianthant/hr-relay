@@ -153,9 +153,12 @@ const AssistantActionProposalFields = {
 export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
   z.strictObject({ ...AssistantActionProposalFields, subject: z.literal("none"), effect: z.literal("local-write") }),
   z.strictObject({ ...AssistantActionProposalFields, subject: z.literal("selected-run"), effect: z.literal("workflow-start"),
-    workflowId: z.string().min(1), dryRun: z.boolean(), startPlan: StartPlanWireSchema.extend({
+    workflowId: z.string().min(1), dryRun: z.boolean(), startPlan: StartPlanWireSchema.pick({
+      startPlanId: true, workflowId: true, expectedVersion: true, expiresAt: true, dryRun: true,
+      browserMode: true, captureBrowserScreenshots: true, fingerprints: true, planned: true,
+    }).extend({
       browserMode: StartPlanWireSchema.shape.browserMode.unwrap(), captureBrowserScreenshots: z.literal(true),
-      planned: StartPlanWireSchema.shape.planned.length(1), refused: StartPlanWireSchema.shape.refused.length(0),
+      planned: z.array(StartPlanWireSchema.shape.planned.element.pick({ title: true, subtitle: true })).length(1),
     }),
   }).refine(value => value.startPlan.workflowId === value.workflowId && value.startPlan.dryRun === value.dryRun
     && value.targetLabel === value.startPlan.planned[0]?.title

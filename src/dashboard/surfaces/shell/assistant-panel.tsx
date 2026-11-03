@@ -65,7 +65,7 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
               {proposal.values.map(value => <Fragment key={value.label}><dt aria-label={value.label}>{value.label === "Configuration" ? "Config" : value.label}</dt><dd>{value.value}</dd></Fragment>)}
               {proposal.startPlan && <><dt>Output</dt><dd>Run results in Logs</dd></>}
             </dl><Disclosure summary="Effects and stop points"><p>{proposal.startPlan ? "Proposed workflow start" : proposal.action !== undefined ? "Proposed action · Local change" : `${proposal.workflow.version} ${proposal.workflow.id}`}</p>
-              {proposal.startPlan && <><p>Plan: {proposal.startPlan.startPlanId} · revision {proposal.startPlan.expectedVersion}</p>{Object.entries(proposal.startPlan.fingerprints).map(([label, value]) => <p key={label}>{label}: {value}</p>)}</>}
+              {proposal.startPlan && <><p>Plan: <span className="break-all">{proposal.startPlan.startPlanId}</span> · revision {proposal.startPlan.expectedVersion}</p>{Object.entries(proposal.startPlan.fingerprints).map(([label, value]) => <p key={label}>{label}: <span className="break-all">{value}</span></p>)}</>}
               {proposal.effects.map(effect => <p key={effect}>{effect}</p>)}{proposal.stopBefore.map(stop => <p key={stop}>{stop}</p>)}
             </Disclosure></div>
             <footer className="hub-card-footer"><span className="hub-footer-status" role="status">{assistantConfirmRefusal(served.state, served.revision, served.accountAvailable) ?? served.confirmRefusal ?? (proposal.startPlan ? 'Waiting for you' : undefined)}</span><span className="hub-footer-actions">

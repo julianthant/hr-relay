@@ -3,7 +3,7 @@ import { it } from "vitest";
 import { AssistantActionProposalSchema } from "../../../src/models/dashboard/assistant.js";
 import { ASSISTANT_START_PROPOSAL } from "../../support/fixtures/dashboard/assistant-start.js";
 
-it("refuses missing, mixed, expired or multiple-run start plan facts", () => {
+it("refuses missing or inconsistent plan facts, extra fields and multiple runs", () => {
   const proposal = ASSISTANT_START_PROPOSAL;
   assert.equal(proposal.effect, "workflow-start");
   if (proposal.effect !== "workflow-start") throw new Error("workflow start fixture required");

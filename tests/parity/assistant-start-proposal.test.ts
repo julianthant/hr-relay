@@ -56,6 +56,14 @@ for (const theme of ["light", "dark"]) for (const outcome of ["applied", "cancel
     const contrast = await start.evaluate(element => ({ background: getComputedStyle(element).backgroundColor, color: getComputedStyle(element).color }));
     expect(contrast.background).not.toBe(contrast.color);
     if (outcome === "applied") await capture(page, info, "proposal", theme);
+    if (outcome === "applied") {
+      const disclosure = card.getByRole("button", { name: "Effects and stop points", exact: true });
+      await disclosure.click();
+      await expect(card.getByText(`inputFingerprint: ${"e".repeat(64)}`, { exact: true })).toBeVisible();
+      await page.setViewportSize({ width: 1024, height: 720 });
+      expect(await card.locator("p").evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth))).toBe(true);
+      await disclosure.click(); await page.setViewportSize({ width: 1440, height: 900 });
+    }
     const action = outcome === "cancelled" ? card.getByRole("button", { name: "Not now", exact: true }) : start;
     await action.focus(); await page.keyboard.press("Enter");
     await expect.poll(() => decisions.length).toBe(1);
