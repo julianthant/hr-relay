@@ -9,6 +9,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 const databases: DatabaseSync[] = [];
+const rootParentage: Parameters<typeof createRunSummaries>[2] = envelopes => new Map(envelopes.map(envelope => [envelope.runId, null]));
 afterEach(() => { for (const db of databases.splice(0)) db.close(); });
 function fixture() {
   const db = new DatabaseSync(":memory:", { enableForeignKeyConstraints: false });
@@ -22,7 +23,7 @@ function fixture() {
     db.prepare(`INSERT INTO runs (${Object.keys(row).join(",")}) VALUES (${Object.keys(row).map(() => "?").join(",")})`).run(...Object.values(row));
     return row.id;
   };
-  return { db, add, summaries: createRunSummaries(db, () => null) };
+  return { db, add, summaries: createRunSummaries(db, () => null, rootParentage) };
 }
 
 describe("native summary snapshots", () => {
@@ -115,7 +116,7 @@ describe("native summary snapshots", () => {
     const ids = Array.from({ length: 12 }, (_, index) => f.add(index + 1, "2026-10-01T12:00:00.000Z"));
     const running = new Set([ids[3], ids[8], ids[11]]), blocked = new Set([ids[1], ids[9]]);
     const summaries = createRunSummaries(f.db, run => running.has(run.envelope.runId) ? { nodeId: "children", state: "running" }
-      : blocked.has(run.envelope.runId) ? { nodeId: "children", state: "blocked" } : null);
+      : blocked.has(run.envelope.runId) ? { nodeId: "children", state: "blocked" } : null, rootParentage);
     const query = { workflow: QUEUED_RUN.envelope.workflow, status: "running", limit: 2 } as const;
     const first = summaries.query(1, query);
     expect(first.items.map(row => row.runId)).toEqual([ids[3], ids[8]]);

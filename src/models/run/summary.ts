@@ -5,6 +5,7 @@ import { FailureResolutionSchema } from "../trust/failure-resolution.js";
 import { z } from "zod";
 import { RunIdSchema, IsoInstantSchema, FingerprintSchema } from "../../rules/identity/ids.js";
 import { RunRecordSchema, RunLifecycleSchema } from "./record.js";
+import { QueueParentSchema } from "../dashboard/queue-parent.js";
 
 export const DelegationWaitStateSchema = z.strictObject({ nodeId: z.string().min(1), state: z.enum(["running", "blocked"]) });
 export type DelegationWaitState = z.infer<typeof DelegationWaitStateSchema>;
@@ -21,7 +22,7 @@ export const RunSummarySchema = z.strictObject({
   createdAt: IsoInstantSchema, updatedAt: IsoInstantSchema, lifecycle: RunLifecycleSchema,
   delegationWait: DelegationWaitStateSchema.nullable(),
   priority: z.enum(["interactive", "bulk"]), shape: z.enum(["single", "preview", "operation", "operation-member"]),
-  parentRunId: RunIdSchema.nullable(), attempt: z.number().int().positive(),
+  parent: QueueParentSchema.nullable(), attempt: z.number().int().positive(),
   sourceGeneration: z.number().int().nonnegative(), sourceDigest: FingerprintSchema,
   warningCount: z.number().int().nonnegative().nullable(),
   receiptResult: RunEvidenceReceiptSchema.shape.result.nullable(),
@@ -43,6 +44,7 @@ export const RunSummarySourceSchema = z.strictObject({
   cursor:z.number().int().nonnegative(), startedAt:IsoInstantSchema.nullable(), queueTitle:z.string().nullable(),
   children:RunSummarySchema.shape.children,dependencyRunIds:z.array(RunIdSchema),
   delegationWait: DelegationWaitStateSchema.nullable(),
+  parent: QueueParentSchema.nullable(),
 });
 export type RunSummarySource = z.infer<typeof RunSummarySourceSchema>;
 
