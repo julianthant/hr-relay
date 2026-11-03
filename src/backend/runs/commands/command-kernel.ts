@@ -17,6 +17,7 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { ASSISTANT_INPUT_PROJECTION_VERSION,assistantKnowledgeArtifact } from "../../assistant/context.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
+import { retainedDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
 import { admitWorkerLifecycle,admitWorkerReset } from "../../storage/sqlite/worker-control.js";
 import { admitWorkerPoolRoster,requireWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
 import { executeFailureResolution,failureResolutionCapability } from "../lifecycle/failure-resolution.js";
@@ -756,15 +757,15 @@ function executeCancel(
   const dependencyIds: string[] = [];
   const visited = new Set<string>([current.envelope.runId]);
   const walk = (parent: RunRecord): void => {
-    const edges = repositories.dependencies.listByParentRun(parent.envelope.runId);
+    const members = retainedDelegationManifests(repositories, parent.envelope.runId)
+      .flatMap(manifest => repositories.dependencies.members(manifest.manifestId));
     for (const child of repositories.runs.listChildren(parent.envelope.runId)) {
       const childRunId = child.envelope.runId;
       if (visited.has(childRunId)) {
         throw new Error(`run ${childRunId} appears twice in the dependency tree under ${request.target.runId}`);
       }
       visited.add(childRunId);
-      const edge = edges.find((candidate) => candidate.childRunId === childRunId
-        || repositories.dependencies.childHistory(candidate.dependencyId).includes(childRunId));
+      const edge = members.find(member => member.history.includes(childRunId))?.dependency;
       if (edge === undefined) {
         throw new Error(
           `run ${childRunId} is a child of ${parent.envelope.runId} but has no dependency edge in authority; `

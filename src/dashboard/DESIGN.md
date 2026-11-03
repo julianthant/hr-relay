@@ -81,7 +81,8 @@ the last item is passive text. Wizard Back changes stages, while dismissal close
 hold aligned peer facts, and short chips carry facts that tolerate truncation.
 
 Queue footers stay on one line. They show time, `#attempt`, trace text, and duration. Context about
-how a run was created belongs in its information disclosure. Logs group ordered action entries
+how a run was created belongs in its information disclosure. Clicking anywhere on a member line selects
+that member. Its name remains a keyboard-accessible button without a hover underline. Logs group ordered action entries
 under steps; read/fill observations use aligned label/value rows with shared facts at the heading. Timeline segments are
 categorical and equal width. Duration text carries elapsed time separately from segment width.
 
