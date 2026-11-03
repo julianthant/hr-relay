@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { buildPcSource, pcSyncFiles, preparePcSource } from "../../../scripts/test/pc-source.js";
 import { runInNewContext } from "node:vm";
 import { MACOS_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "../../../scripts/test/ci-files.js";
-import { measurePcPhase, pcDurationScript, pcSyncFiles, readPcTiming, selectPcFiles } from "../../../scripts/test/pc.js";
+import { measurePcPhase, pcDurationScript, readPcTiming, selectPcFiles } from "../../../scripts/test/pc.js";
 
 describe("PC test selection", () => {
   const portable = ["tests/models/a.test.ts", "tests/backend/a.integration.test.ts", "tests/architecture/a.test.ts"];
@@ -82,5 +87,103 @@ describe("PC phase receipts", () => {
     for (const change of [{ durationMs: -1 }, { durationMs: "25" }, { phase: "fallback" }, { startedAt: "not-a-date" }, { outcome: "unknown" }]) {
       expect(() => readPcTiming(line({ runId, timing: { ...timing, ...change } }), runId)).toThrow();
     }
+  });
+});
+
+
+describe("PC Git source transport", () => {
+  const roots: string[] = [];
+  afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+  function fixture() {
+    const root = mkdtempSync(join(tmpdir(), "relay-pc-source-"));
+    roots.push(root);
+    const origin = join(root, "origin.git");
+    const work = join(root, "mac");
+    const run = join(root, "run");
+    const slot = join(root, "slot");
+    for (const path of [origin, work, run, join(slot, "work/node_modules")]) mkdirSync(path, { recursive: true });
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: work, encoding: "utf8" }).trim();
+    execFileSync("git", ["init", "--bare", "--quiet", origin]);
+    git("init", "--quiet");
+    git("config", "user.name", "PC fixture");
+    git("config", "user.email", "pc@example.invalid");
+    git("config", "core.autocrlf", "false");
+    git("remote", "add", "origin", origin);
+    for (const [path, bytes] of Object.entries({ "deleted.txt": "delete", "renamed.txt": "rename", "mode.sh": "echo ok\n", "staged.txt": "base", "unstaged.txt": "base", ".gitattributes": "*.txt text eol=crlf\n", ".gitignore": "ignored.txt\n" })) writeFileSync(join(work, path), bytes);
+    writeFileSync(join(work, "binary.bin"), Buffer.from([0, 1, 2, 255]));
+    git("add", ".");
+    git("commit", "--quiet", "-m", "base");
+    const base = git("rev-parse", "HEAD");
+    git("push", "--quiet", "origin", "HEAD:refs/heads/staging");
+    writeFileSync(join(slot, "work/node_modules/retained"), "installed");
+    return { origin, work, run, slot, git, base };
+  }
+  function apply(f: ReturnType<typeof fixture>, source: ReturnType<typeof buildPcSource>) {
+    writeFileSync(join(f.slot, "request.json"), JSON.stringify({ source }));
+    writeFileSync(join(f.slot, "source.patch"), readFileSync(join(f.run, "source.patch")));
+    preparePcSource(f.slot, f.origin);
+  }
+
+  it("recreates committed, staged, unstaged, untracked, deleted, renamed, binary and mode changes", () => {
+    const f = fixture();
+    writeFileSync(join(f.work, "committed.txt"), "unpushed\n");
+    f.git("add", "committed.txt");
+    f.git("commit", "--quiet", "-m", "unpushed");
+    writeFileSync(join(f.work, "staged.txt"), "staged\n");
+    f.git("add", "staged.txt");
+    writeFileSync(join(f.work, "unstaged.txt"), "unstaged\r\n");
+    writeFileSync(join(f.work, "untracked space\tname.txt"), "untracked\n");
+    writeFileSync(join(f.work, "ignored.txt"), "ignored private input");
+    writeFileSync(join(f.work, ".env.local"), "excluded private input");
+    rmSync(join(f.work, "deleted.txt"));
+    renameSync(join(f.work, "renamed.txt"), join(f.work, "new-name.txt"));
+    writeFileSync(join(f.work, "binary.bin"), Buffer.from([0, 9, 128, 255, 0]));
+    chmodSync(join(f.work, "mode.sh"), 0o755);
+    symlinkSync("new-name.txt", join(f.work, "safe-link"));
+    const indexBefore = f.git("ls-files", "--stage");
+    const source = buildPcSource(f.work, f.run, f.base);
+    apply(f, source);
+    const remote = join(f.slot, "work");
+    for (const path of ["committed.txt", "staged.txt", "unstaged.txt", "untracked space\tname.txt", "binary.bin", "new-name.txt"]) expect(readFileSync(join(remote, path))).toEqual(readFileSync(join(f.work, path)));
+    for (const path of ["deleted.txt", "renamed.txt", "ignored.txt", ".env.local"]) expect(existsSync(join(remote, path))).toBe(false);
+    expect(readFileSync(join(remote, "safe-link"), "utf8")).toBe("rename");
+    expect(execFileSync("git", ["ls-files", "--stage"], { cwd: join(f.slot, "source.git"), encoding: "utf8" })).toMatch(/100755 .*\tmode.sh/u);
+    expect(readFileSync(join(remote, "node_modules/retained"), "utf8")).toBe("installed");
+    expect(f.git("ls-files", "--stage")).toBe(indexBefore);
+    expect(source.deltaBytes).toBeGreaterThan(0);
+  });
+
+  it("selects the live published staging base and supports an empty delta", () => {
+    const f = fixture();
+    const source = buildPcSource(f.work, f.run);
+    expect(source.baseCommit).toBe(f.base);
+    expect(source.deltaBytes).toBe(0);
+    apply(f, source);
+  });
+
+  it("refuses a base that exists only in the local repository", () => {
+    const f = fixture();
+    writeFileSync(join(f.work, "local.txt"), "local");
+    f.git("add", "local.txt");
+    f.git("commit", "--quiet", "-m", "local only");
+    expect(() => buildPcSource(f.work, f.run, f.git("rev-parse", "HEAD"))).toThrow("not advertised on origin");
+    expect(existsSync(join(f.run, "source.patch"))).toBe(false);
+  });
+
+  it.each(["identity", "extra-file", "patch"])("refuses mismatched %s before execution", fault => {
+    const f = fixture();
+    writeFileSync(join(f.work, "delta.txt"), "delta");
+    const source = buildPcSource(f.work, f.run, f.base);
+    if (fault === "identity") source.identity = "0".repeat(64);
+    if (fault === "extra-file") writeFileSync(join(f.slot, "work/stale.txt"), "stale");
+    if (fault === "patch") source.tree = f.base;
+    expect(() => apply(f, source)).toThrow("PC source tree identity mismatch");
+    expect(existsSync(join(f.slot, "completed"))).toBe(false);
+  });
+
+  it.each(["../outside", "/absolute", ".env.local"])("refuses unsafe source symlink %s", target => {
+    const f = fixture();
+    symlinkSync(target, join(f.work, "unsafe"));
+    expect(() => buildPcSource(f.work, f.run, f.base)).toThrow(/Unsafe PC source link|Excluded PC source path/u);
   });
 });
