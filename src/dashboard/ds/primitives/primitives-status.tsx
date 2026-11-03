@@ -7,6 +7,7 @@ import {
   Clock,
   Loader2,
   PauseCircle,
+  Pause,
   TriangleAlert,
   UserRoundSearch,
 } from "lucide-react";
@@ -235,8 +236,10 @@ export function StatusPill({
   label,
   className,
   presentation = "default",
+  pause,
 }: {
   status: DsStatus;
+  pause?: "requested" | "paused";
   /** how long it has been in this state — "12m", "2h". Show it when known. */
   age?: string;
   size?: DsStatusPillSize;
@@ -248,9 +251,11 @@ export function StatusPill({
   /** Queue rows use the operator-approved compact attention treatments. */
   presentation?: "default" | "queue";
 }) {
-  const spec = DS_STATUS[status];
+  const displayStatus = pause === "paused" ? "queued" : pause === "requested" ? "running" : status;
+  const spec = pause === "paused" ? { ...DS_STATUS.queued, label: "Paused", icon: Pause, meaning: "Pause recorded. Resume to continue." }
+    : pause === "requested" ? { ...DS_STATUS.running, label: "Pausing", meaning: "Finishing the current step. A submit is never interrupted." } : DS_STATUS[status];
   const Icon = spec.icon;
-  const compactAttention = presentation === "queue" && (status === "waiting" || status === "failed");
+  const compactAttention = presentation === "queue" && (displayStatus === "waiting" || displayStatus === "failed");
   const chip = compactAttention
     ? status === "waiting"
       ? "bg-[var(--ds-queue-info-bg)] border-[color:var(--ds-queue-info-border)]"
@@ -258,7 +263,7 @@ export function StatusPill({
     : spec.chip;
   const text = compactAttention
     ? status === "waiting" ? "text-ui-info font-medium" : "text-ui-danger font-medium"
-    : presentation === "queue" && status === "running" ? "text-ui-info" : spec.text;
+    : presentation === "queue" && displayStatus === "running" ? "text-ui-info" : spec.text;
   return (
     <ShadcnBadge
       title={spec.meaning}
@@ -281,7 +286,7 @@ export function StatusPill({
           className={cn(
             dsIcon.sm,
             "shrink-0",
-            presentation === "queue" && (compactAttention || status === "running") ? text : spec.iconTone,
+            presentation === "queue" && (compactAttention || displayStatus === "running") ? text : spec.iconTone,
             spec.spin && "animate-spin motion-reduce:animate-none",
           )}
         />

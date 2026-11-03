@@ -20,6 +20,54 @@ async function witness(page: Page, info: TestInfo, name: string) {
   info.annotations.push({ type: `a11y-attachment-sha256:${name}`, description: createHash("sha256").update(tree).digest("hex") });
 }
 
+async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (typeof PARITY_THEMES)[number]) {
+  for (const scenario of previewScenarios) {
+    await page.goto(`${baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}&logPreview=${scenario.id}`);
+    await page.getByRole("button", { name: "Close assistant", exact: true }).click();
+    const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
+    await expect(logs).toBeVisible();
+    if (["empty", "waiting", "failed"].includes(scenario.id)) await attachPresentationReference(page, info, `logs-${scenario.id}-${theme.attribute}.png`);
+  }
+  for (const flow of MOCK_WORKFLOWS) {
+    if (["person-lookup", "separations"].includes(flow.id)) {
+      await page.goto(`${baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: flow.id, mockRun: `mock:${flow.id}:sample` }))}`);
+    } else {
+      await page.goto(`${baseUrl}/?day=${FIXTURE_DAY}`);
+      await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: flow.label, exact: true }).click();
+    }
+    await page.getByRole("button", { name: "Close assistant", exact: true }).click();
+    await expect(page.getByRole("region", { name: "Queue", exact: true })).toBeVisible();
+    const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
+    await expect(logs).toBeVisible();
+    await expect(logs.getByRole("heading", { level: 2 })).toHaveText(seedMockRuns().find(run => run.workflowId === flow.id)!.subject);
+    await expect(page.getByRole("heading", { level: 1, name: `${flow.label} queue`, exact: true })).toBeVisible();
+    await attachPresentationReference(page, info, `workflow-queue-logs-${flow.id}.png`);
+    if (["ocr", "oath-signature", "oath-upload", "emergency-contact", "i9-check", "onbase"].includes(flow.id)) {
+      if (flow.id !== "ocr") await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
+      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await expect(logs.getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
+      await attachPresentationReference(page, info, `workflow-records-${flow.id}.png`);
+    }
+  }
+}
+
+test.describe("picked A affected Logs references", () => {
+  for (const theme of PARITY_THEMES) test(`mounted Logs and all Explorer workflows @ ${theme.attribute}`, { annotation: [{ type: "required-a11y-evidence", description: "baseline-workflows.a11y.yml" }] }, async ({ page }, info) => {
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    const errors: string[] = [], writes: string[] = [];
+    page.on("pageerror", error => errors.push(error.message));
+    page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
+    try {
+      await page.setViewportSize({ width: 1280, height: 720 });
+      await installTheme(page, theme);
+      await installFrozenMonotonic(page);
+      await mountedLogs(page, info, server.baseUrl, theme);
+      await witness(page, info, "baseline-workflows.a11y.yml");
+      expect(errors).toEqual([]); expect(writes).toEqual([]);
+    } finally { await server.close(); }
+  });
+});
+
 for (const theme of PARITY_THEMES) {
   test(`mounted Logs and all Explorer workflows @ ${theme.attribute}`, { annotation: [{ type: "required-a11y-evidence", description: "baseline-workflows.a11y.yml" }] }, async ({ page }, info) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
@@ -30,34 +78,7 @@ for (const theme of PARITY_THEMES) {
       await page.setViewportSize({ width: 1280, height: 720 });
       await installTheme(page, theme);
       await installFrozenMonotonic(page);
-      for (const scenario of previewScenarios) {
-        await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}&logPreview=${scenario.id}`);
-        await page.getByRole("button", { name: "Close assistant", exact: true }).click();
-        const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-        await expect(logs).toBeVisible();
-        if (["empty", "waiting", "failed"].includes(scenario.id)) await attachPresentationReference(page, info, `logs-${scenario.id}-${theme.attribute}.png`);
-      }
-      for (const flow of MOCK_WORKFLOWS) {
-        if (["person-lookup", "separations"].includes(flow.id)) {
-          await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&view=${encodeURIComponent(JSON.stringify({ preview: flow.id, mockRun: `mock:${flow.id}:sample` }))}`);
-        } else {
-          await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-          await page.getByRole("navigation", { name: "Workflows", exact: true }).getByRole("button", { name: flow.label, exact: true }).click();
-        }
-        await page.getByRole("button", { name: "Close assistant", exact: true }).click();
-        await expect(page.getByRole("region", { name: "Queue", exact: true })).toBeVisible();
-        const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-        await expect(logs).toBeVisible();
-        await expect(logs.getByRole("heading", { level: 2 })).toHaveText(seedMockRuns().find(run => run.workflowId === flow.id)!.subject);
-        await expect(page.getByRole("heading", { level: 1, name: `${flow.label} queue`, exact: true })).toBeVisible();
-        await attachPresentationReference(page, info, `workflow-queue-logs-${flow.id}.png`);
-        if (["ocr", "oath-signature", "oath-upload", "emergency-contact", "i9-check", "onbase"].includes(flow.id)) {
-          if (flow.id !== "ocr") await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
-          await logs.getByRole("button", { name: /^Records \d+$/u }).click();
-          await expect(logs.getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
-          await attachPresentationReference(page, info, `workflow-records-${flow.id}.png`);
-        }
-      }
+      await mountedLogs(page, info, server.baseUrl, theme);
       await page.goto(`${server.baseUrl}/?settings=explorer`);
       const explorer = page.getByRole("region", { name: "Workflow explorer preview", exact: true });
       const picker = explorer.getByRole("combobox", { name: "Explorer workflow", exact: true });

@@ -5,7 +5,7 @@ import { OnboardingSetup } from "../../../../src/dashboard/surfaces/shell/onboar
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
 import { createServedOnboardingPort, mockOnboardingPort, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 
@@ -156,9 +156,13 @@ it("returning to Details requires confirmed draft cancellation", async () => {
   try {
     await act(async () => root.render(createElement(Onboarding, props)));
     await act(async () => details().click());
+    assert.equal(cancelled, 0);
+    const confirm = () => { const button = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(button => button.textContent === "Cancel sign-up"); assert.ok(button); return button; };
+    await act(async () => confirm().click());
     assert.equal(cancelled, 1); assert.deepEqual(transitions, []);
     allow = true;
     await act(async () => details().click());
+    await act(async () => confirm().click());
     assert.equal(cancelled, 2); assert.deepEqual(transitions, ["signup"]);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
@@ -290,5 +294,38 @@ it.each(["refusal", "transport"] as const)("shows the served catalog refusal and
     await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
     assert.equal(host.querySelector(".form-error")?.textContent, operatorFailureSentence(failure === "refusal" ? "PROFILE_TRANSITION_BLOCKED" : "PROFILE_AUTHORITY_UNAVAILABLE"));
     assert.doesNotMatch(host.textContent ?? "", /private server cause/);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+
+it("cancels sign-up from its footer only after confirmation and never repeats an unknown cancellation", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const method = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+  const onboarding = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
+    profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const,
+    methods: { key: method, touch: { ...method, platformAuthenticator: "chromium-platform" as const } } };
+  const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
+  const unavailable = async () => ({ state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const });
+  let cancellations = 0;
+  const port: ServedOnboardingPort = { source: "served", onboarding, validate: mockOnboardingPort.validate,
+    submit: unused, complete: unused, cancelDuo: unused, start: unused, confirmDuo: unused, showBrowser: unavailable, openPortal: unavailable,
+    async cancel() { cancellations++; throw new Error("lost cancellation response"); } };
+  const button = (scope: ParentNode, text: string) => { const button = [...scope.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === text); assert.ok(button); return button; };
+  try {
+    await act(async () => root.render(createElement(Onboarding, { port, step: "duo", onStep() { assert.fail("unconfirmed cancellation cannot navigate"); }, onDashboard() { assert.fail("cannot finish"); } })));
+    assert.match(host.querySelector(".heading p")?.textContent ?? "", /This Mac has no Touch ID/);
+    const cancel = button(host.querySelector("footer")!, "Cancel sign-up");
+    await act(async () => cancel.click());
+    assert.equal(cancellations, 0);
+    await act(async () => button(document, "Keep setting up").click());
+    assert.equal(cancellations, 0);
+    await vi.waitFor(() => assert.equal(document.activeElement === cancel, true));
+    await act(async () => cancel.click());
+    await act(async () => button(document.querySelector('[role="dialog"]')!, "Cancel sign-up").click());
+    assert.equal(cancellations, 1); assert.equal(cancel.disabled, true);
+    await act(async () => cancel.click());
+    await act(async () => host.querySelector<HTMLButtonElement>("ol button")!.click());
+    assert.equal(cancellations, 1);
+    assert.match(host.querySelector('[role="status"]')?.textContent ?? "", /could not confirm|unknown|uncertain/i);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { createDashboardClient } from "../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../src/dashboard/state/client-context.js";
 import { DashboardApp } from "../../src/dashboard/app/dashboard-app.js";
-import { PARITY_WORKFLOW_COMPOSITION } from "./helpers/workflow-composition.js";
+import { servedFixtureSources, PARITY_WORKFLOW_COMPOSITION } from "./helpers/workflow-composition.js";
 import "../../src/dashboard/app/index.css";
 
 const container = document.getElementById("root");
@@ -15,12 +15,14 @@ const fixture = new URLSearchParams(location.search).get("fixture");
 const controlPreviews = import.meta.glob<{ ControlPreview: ComponentType }>("../support/helpers/dashboard/controls/*-preview.tsx");
 const previewLoader = new Map(Object.entries(controlPreviews)).get(`../support/helpers/dashboard/controls/${fixture}-preview.tsx`);
 const ControlPreview = previewLoader ? lazy(() => previewLoader().then(module => ({ default: module.ControlPreview }))) : undefined;
-const composition = fixture === "hub-served"
+const composition = fixture === "picked-a"
+  ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), logsSources: servedFixtureSources(workflows) })
+  : fixture === "hub-served"
   ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), assistant: "served" as const })
   : fixture === "hub-integration"
   ? (workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION>[0]) => ({ ...PARITY_WORKFLOW_COMPOSITION(workflows), spreadsheets: "served" as const })
   : PARITY_WORKFLOW_COMPOSITION;
 const accountPort = createServedChatGptAccountPort(client, { open: () => ({ navigate: () => undefined, close: () => undefined }) });
 createRoot(container).render(ControlPreview ? <Suspense fallback={<p role="status">Loading control preview…</p>}><ControlPreview /></Suspense> : <StrictMode><DashboardClientProvider client={client}>
-  <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} /></ChatGptAccountContext.Provider>
+  <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} profileSource={fixture === "picked-onboarding" ? "served" : "mock"} /></ChatGptAccountContext.Provider>
 </DashboardClientProvider></StrictMode>);

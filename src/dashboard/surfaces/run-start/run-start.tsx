@@ -210,12 +210,14 @@ export function RunStartButton({ id, onOpen }: { id: string; onOpen: () => void 
       id={id}
       size="toolbar"
       variant="brand"
+      className="queue-start-trigger"
+      aria-label="Start a run"
       onClick={onOpen}
       icon={<Play aria-hidden className={dsIcon.sm} />}
       // Keep shortcut hints in their shared discovery route so the primary control stays focused on its verb.
       title="Start a run — any workflow, from anywhere (r)"
     >
-      Start a run
+      <span className="queue-start-label">Start a run</span>
     </Button>
   );
 }

@@ -282,6 +282,7 @@
       - button "Filter queue by status": Status
       - combobox "Sort the queue": Newest first
       - button "Attention first" [pressed]
+      - button "Pause all runs"
     - group "Log date controls":
       - text: Dashboard date*
       - group "Dashboard date*":

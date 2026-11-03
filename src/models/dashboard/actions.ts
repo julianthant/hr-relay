@@ -4,11 +4,11 @@ import { WriteIntentIdSchema, WriteAttemptIdSchema, FingerprintSchema } from "..
 
 export const ActionPlacementSchema = z.enum(["footer", "banner", "outcome", "menu", "data", "review"]);
 export const ActionIntentSchema = z.enum(["primary", "neutral", "destructive", "violet", "success", "info", "warning"]);
-export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "archive", "delete", "review", "resolve", "rename", "external", "drill"]);
+export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "archive", "delete", "review", "resolve", "rename", "external", "drill", "pause", "resume"]);
 /** The command verbs a served action may name; the two write resolutions are INTENT-scoped rather than run-scoped, and every verb on this list has a durable reason it is here. */
 export const ActionCommandKeySchema = z.enum([
   "retry", "restart", "recover-run", "cancel", "bump", "rename", "archive", "delete", "resolve-gate",
-  "recheck-write", "resolve-write-absent",
+  "recheck-write", "resolve-write-absent", "pause", "resume",
 ]);
 
 /** Both write resolutions are INTENT-scoped as well as run-scoped: a stale generation is refused by the kernel, so the descriptor carries the generation it was projected from. */

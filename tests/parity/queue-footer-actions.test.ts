@@ -23,6 +23,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920])
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       await expect(page.locator("[data-queue-row-footer]").first()).toBeVisible();
       const checkFooters = async () => {
+        const pause = page.getByRole("button", { name: "Pause all runs", exact: true });
+        const placement = await pause.evaluate(button => {
+          const box = button.getBoundingClientRect(), toolbar = button.closest(".operations-toolbar")!.getBoundingClientRect();
+          return { left: box.left, right: box.right, toolbarLeft: toolbar.left, toolbarRight: toolbar.right,
+            hit: innerWidth < 1024 || button.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)) };
+        });
+        expect(placement.left).toBeGreaterThanOrEqual(placement.toolbarLeft);
+        expect(placement.right).toBeLessThanOrEqual(placement.toolbarRight);
+        expect(placement.hit).toBe(true);
         const footers = page.locator("[data-queue-row-footer]");
         expect(await footers.count()).toBeGreaterThan(0);
         for (const footer of await footers.all()) {

@@ -1,3 +1,4 @@
+import { PositiveIntSchema } from "../../../src/rules/identity/ids.js";
 import { composeCommandRequest } from "../../../src/dashboard/app/commands/command-dispatch.js";
 import { RunLifecycleSchema } from "../../../src/models/run/record.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
@@ -215,7 +216,10 @@ function projectedRowCommands(): ReadonlySet<string> {
   const commands = new Set<string>();
   for (const status of QueueStatusSchema.options) {
     for (const isMember of [false, true]) {
+      const controls = status === "running" ? [undefined, { state: "running", command: "pause", expectedVersion: PositiveIntSchema.parse(1) }, { state: "paused", command: "resume", expectedVersion: PositiveIntSchema.parse(1) }] as const : [undefined];
+      for (const pauseControl of controls) {
       const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, {
+        ...(pauseControl === undefined ? {} : { pauseControl }),
         status,
         ...(status === "failed" ? { recoverySource: "failed" as const } : {}),
         rowRevision: 1,
@@ -228,6 +232,7 @@ function projectedRowCommands(): ReadonlySet<string> {
         hasReviewPanel: false,
       });
       for (const action of actions) if (action.kind === "command") commands.add(action.command);
+      }
     }
   }
   return commands;
@@ -237,10 +242,8 @@ function projectedRowCommands(): ReadonlySet<string> {
 const RETAINED_UNPROJECTED_ACTIONS = new Set(["retry", "restart"]);
 
 const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
-  "pause": "typed backend and served pauseControl are ready; the action descriptor UI awaits its approved mockup",
-  "resume": "typed backend and served pauseControl are ready; the action descriptor UI awaits its approved mockup",
-  "pause-all": "application command; the application controls UI awaits its approved mockup",
-  "pause-all-and-quit": "application command; the quit UI is deferred pending its approved mockup",
+  "pause-all": "application toolbar targets exact global membership, not a run row",
+  "pause-all-and-quit": "application quit dialog targets exact global membership, not a run row",
   "annotate-failure": "failure resolution targets an exact failure/version and uses the resolution command payload, not a generic run action descriptor",
   "set-batch-grouping": "queue batch controls target batch presentation, not an executable run row",
   "start-run": "the Start surface composes a start plan; there is no run row to hang it off yet",
