@@ -3,7 +3,7 @@ import { it } from 'vitest';
 import { projectRunLogs, type RunLogSnapshot } from '../../../src/dashboard/state/run-wiring-adapter.js';
 import { workbookReferenceChoiceId } from '../../../src/dashboard/surfaces/run-detail/logs/workbook-write-model.js';
 import { workbookReferenceLogs } from '../../support/fixtures/workbook-reference-choice.js';
-import { NativeRunEventWireSchema } from '../../../src/models/dashboard/run-detail.js';
+import { RunWorkbookWritesWireSchema, NativeRunEventWireSchema } from '../../../src/models/dashboard/run-detail.js';
 
 function snapshot(state: Parameters<typeof workbookReferenceLogs>[0]): RunLogSnapshot {
   const f = workbookReferenceLogs(state);
@@ -42,4 +42,21 @@ it('refuses foreign, conflicting, future-attempt and wrong-gate native joins', (
   assert.throws(() => projectRunLogs({ ...original, detail: { ...original.detail, gate: { state: 'absent', reason: 'No gate' } } }, client), /RUN_GATE_IDENTITY_MISMATCH/);
   assert.throws(() => projectRunLogs({ ...original, detail: { ...original.detail, timeline: { ...original.detail.timeline,
     events: original.detail.timeline.events.map(event => ({ ...event, native: NativeRunEventWireSchema.parse({ ...choice.native, nodeId: 'prepare' }), categoryKey: 'prepare' })) } } }, client), /RUN_GATE_IDENTITY_MISMATCH/);
+});
+
+it('keeps two batch members distinct and uses each retained selection time while their gate remains open', () => {
+  const original = snapshot('available'), section = original.sections[0];
+  if (section.section !== 'workbook-writes') throw new Error('fixture missing');
+  const choice = section.payload.referenceChoices![0];
+  const choices = [11, 12].map((order, index) => ({ ...choice, key: `person-${String(index)}`,
+    native: { ...choice.native, order, nodeId: 'choose-roster-row', eventId: `10000000-0000-4000-8000-${String(order).padStart(12, '0')}` },
+    resolution: { state: 'resolved', workbookVersion: 3, resolvedAt: `2026-01-01T12:${String(index).padStart(2, '0')}:00.000Z`,
+      selected: { sheetId: 'july', rowId: `row-${String(index)}`, label: `Person ${String(index)}`, values: [{ fieldId: 'email', value: `person-${String(index)}@example.test` }] } },
+  }));
+  const payload = RunWorkbookWritesWireSchema.parse({ ...section.payload, referenceChoices: choices });
+  const projected = projectRunLogs({ ...original, sections: [{ ...section, payload }] }, client);
+  const steps = payload.referenceChoices!.map(choice => projected.steps.find(step => step.id === workbookReferenceChoiceId(choice))!);
+  assert.equal(new Set(steps.map(step => step.id)).size, 2);
+  assert.notEqual(steps[0].time, steps[1].time);
+  assert.ok(steps.every(step => step.entries[0]?.kind === 'decision' && step.entries[0].decision.state === 'recorded'));
 });

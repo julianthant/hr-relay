@@ -7,6 +7,7 @@ import type { CommandRequest } from "../../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { SPREADSHEET_FIELDS } from "../../spreadsheets/spreadsheet-fields-model.js";
+import { deriveStableUuid } from "../../../../rules/identity/stable-uuid.js";
 
 export type WorkbookWrite = RunWorkbookWritesWire["operations"][number];
 export function workbookRowChoiceId(candidate: Readonly<{ sheetId: string; rowId: string }>): string {
@@ -56,10 +57,12 @@ export function workbookReferenceTimelineEvent(choice: WorkbookReferenceChoice, 
 export function workbookReferenceMatchesReplay(choice: WorkbookReferenceChoice, command: CommandRequest, detail: RunDetailWire): boolean {
   const event = workbookReferenceTimelineEvent(choice, detail);
   return command.family === 'run' && command.type === 'resolve-workbook-reference-row'
-    && detail.runId === command.target.runId && detail.rowRevision > command.target.expectedVersion
+    && detail.runId === command.target.runId && detail.rowRevision >= command.target.expectedVersion
     && choice.native.runId === detail.runId && choice.native.traceId === detail.header.traceId
     && choice.native.spanPath === detail.header.traceId && choice.native.attempt === detail.header.attempt
-    && event?.state === 'done' && event.native?.nodeId?.valueOf() === command.target.gateId.valueOf()
+    && (choice.native.eventId === deriveStableUuid('workbook-reference-row-selected', command.commandId)
+      && String(choice.native.nodeId) === String(command.target.gateId)
+      || detail.rowRevision > command.target.expectedVersion && event?.state === 'done' && event.native?.nodeId?.valueOf() === command.target.gateId.valueOf())
     && choice.libraryId === command.target.libraryId && choice.typeId === command.target.typeId
     && choice.referenceDigest === command.target.referenceDigest && choice.key === command.target.key
     && choice.resolution.state === 'resolved' && choice.resolution.workbookVersion === command.target.workbookVersion

@@ -18,4 +18,10 @@ describe("gate resolution declarations", () => {
     assert.equal(GateDecisionDeclarationSchema.safeParse(declaration).success, false);
     assert.equal(GateDecisionDeclarationSchema.safeParse({ ...declaration, resolution: { source: "unverified" } }).success, false);
   });
+  it("binds every CRM row-choice gate to its retained resolution checkpoint", () => {
+    for (const workflow of ["crm-doc-download", "crm-doc-download-reference", "crm-doc-download-package-worksheets"]) {
+      assert.deepEqual(gateDecisionFor(workflow, "document-row-choice").resolution,
+        { source: "workbook-reference", boundNodeId: "document-rows", boundOutputPath: "referenceDigest" });
+    }
+  });
 });

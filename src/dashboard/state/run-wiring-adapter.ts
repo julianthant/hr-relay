@@ -400,7 +400,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
       for (const operation of section.payload.operations) { order.set(operation.native.eventId, operation.native.order); steps.push(workbookWriteLogStep(operation)); }
       for (const choice of section.payload.referenceChoices ?? []) {
         const id = workbookReferenceChoiceId(choice), event = workbookReferenceTimelineEvent(choice, detail);
-        const time = event === undefined ? "—" : fmtActionClock(event.at);
+        const time = choice.resolution.state === "resolved" ? fmtActionClock(choice.resolution.resolvedAt) : event === undefined ? "—" : fmtActionClock(event.at);
         order.set(id, choice.native.order); node.set(id, event?.native?.nodeId ?? choice.native.nodeId);
         steps.push({ id, time, title: "Look up in roster", entries: [{ kind: "decision", id, time, decision: workbookReferenceLogDecision(choice) }] });
       }
