@@ -85,6 +85,13 @@ current item; exact-worker reset, lifecycle and recovery reservations still fenc
 delegation edge stops ancestor cancellation propagation, without bypassing the child's own home-worker
 or profile lifetime.
 
+Parallel child-run leaves enter through one canonical admission transaction. Every declared fan-out
+is durable before the parent releases its execution claim once; the worker retains its home slot.
+One ordered admission audit binds the owner, branch invocations, scope evidence and any reused
+continuation receipts. Each branch retains its manifest, retry history and terminal evidence. The
+executor authenticates the complete release proof after the await. Missing branches, changed
+bindings or an unproved release fail before parent continuation; UNKNOWN writes never redispatch.
+
 Worker composition renews its own lease every `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`.
 Heartbeat age never proves death or transfers a claim. Recovery follows actual child exit or
 exclusive startup; workers do not reclaim each other's runs or leases.

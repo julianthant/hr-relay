@@ -1,7 +1,7 @@
 import { afterAll } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
-import { childWriteRecoveryRoot as root, childPrerequisiteRoot, childPrerequisiteModules } from "../../../support/fixtures/child-execution-write-workflow.js";
+import { childWriteRecoveryRoot as root, childPrerequisiteRoot, childPrerequisiteModules, childCrashWrite, parallelChildWriteRecoveryRoot } from "../../../support/fixtures/child-execution-write-workflow.js";
 import assert from "node:assert/strict";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -32,9 +32,10 @@ afterAll(() => profiles.close());
 const world = createRunExecutorTestWorld(profiles.create);
 afterEach(world.cleanup);
 
-async function fixture(prerequisites = false) {
-  const driver = createWriteFixtureWorld(), graph = prerequisites ? childPrerequisiteModules(driver) : undefined;
-  const selectedRoot = prerequisites ? childPrerequisiteRoot : root;
+async function fixture(mode: "single" | "prerequisites" | "parallel" = "single") {
+  const prerequisites = mode === "prerequisites", parallel = mode === "parallel";
+  const driver = createWriteFixtureWorld(), graph = prerequisites || parallel ? childPrerequisiteModules(driver) : undefined;
+  const selectedRoot = parallel ? parallelChildWriteRecoveryRoot : prerequisites ? childPrerequisiteRoot : root;
   const stores = graph?.stores ?? buildWriteFixtureRegistry(driver);
   const h = await world.executorHarness({ descriptor: selectedRoot.descriptor, stores, sessions: writeFixtureSessions(driver) });
   const { database, clock, stateRoot, path } = h.authority;
@@ -46,10 +47,11 @@ async function fixture(prerequisites = false) {
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }).state, "applied");
   const sequencer = createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: database,
     sessions: h.manager, emitter: h.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: h.scheduler, taskDeadlineMs: 60_000,
-    operator: "local-operator", log: h.deps.log, resolveImplFingerprint: id => prerequisites ? resolveTaskImplFingerprint(childExecutionBuildManifest, id) : WRITE_FIXTURE_IMPL_FINGERPRINT });
+    operator: "local-operator", log: h.deps.log, resolveImplFingerprint: id => prerequisites || parallel ? resolveTaskImplFingerprint(childExecutionBuildManifest, id) : WRITE_FIXTURE_IMPL_FINGERPRINT });
   const execution = canonicalChildExecution({ ...h.deps, writeSequencer: sequencer,
-    ...(prerequisites ? { buildManifest: childExecutionBuildManifest } : {}) }, database, path,
+    ...(prerequisites || parallel ? { buildManifest: childExecutionBuildManifest } : {}) }, database, path,
     workflow => graph === undefined ? workflow === root.descriptor.id ? root.descriptor : workflow === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined
+      : workflow === selectedRoot.descriptor.id ? selectedRoot.descriptor : parallel && workflow === childCrashWrite.descriptor.id ? childCrashWrite.descriptor
       : graph.modules.find(module => module.descriptor.id === workflow)?.descriptor);
   const run = execution.start(selectedRoot.descriptor, prerequisites ? { emplId: WRITE_FIXTURE_EID, text: "same", mode: "ok" } : { eid: WRITE_FIXTURE_EID }, { dryRun: false });
   return { ...h.authority, driver, execution, run };
@@ -124,9 +126,51 @@ it("retains an UNKNOWN child write as parked without retry, parent settlement or
   } finally { reopened.close(); }
 });
 
+it("preserves a completed parallel branch while its differently typed sibling parks UNKNOWN across cancellation, retry and reopen", async () => {
+  const f = await fixture("parallel");
+  f.driver.probeResults.push(absentProbeEvidence(f.clock.now().toISOString()));
+  f.driver.commitThrows = new Error("synthetic parallel write failed after the actual write fence");
+  assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "yielded-delegation");
+  assert.equal(f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId).length, 2);
+  const steps = [await f.execution.step(f.run, world.SIGNAL), await f.execution.step(f.run, world.SIGNAL)];
+  const completed = steps.find(step => step.outcome.state === "done");
+  const unknown = steps.find(step => step.outcome.state === "parked-write");
+  assert.ok(completed && unknown);
+  const receipt = f.database.authority.runResults.get(completed.run.envelope.runId);
+  assert.ok(receipt);
+  const intent = f.database.authority.writeIntents.listByRun(unknown.run.envelope.runId)[0];
+  assert.ok(intent?.status === "parked");
+  const parent = f.database.authority.runs.get(f.run.envelope.runId);
+  const parked = f.database.authority.runs.get(unknown.run.envelope.runId);
+  assert.ok(parent && parked?.lifecycle.state === "parked-write");
+  for (const [type, target] of [["cancel", parent], ["recover-run", parent], ["retry", parked]] as const) {
+    const result = f.execution.kernel.execute({ commandId: randomUUID(), family: "run", type, source: "dashboard", requestedBy: "local-operator",
+      requestedAt: f.clock.now().toISOString(), target: { runId: target.envelope.runId, expectedVersion: target.version } });
+    assert.ok(result.state === "rejected");
+    assert.equal(result.code, type === "recover-run" ? "RUN_CONTINUATION_REFUSED" : "invalid-state");
+  }
+  assert.deepEqual(f.database.authority.writeIntents.get(intent.writeIntentId), intent);
+  assert.deepEqual(f.database.authority.runResults.get(completed.run.envelope.runId), receipt);
+  assert.equal(f.database.authority.runs.listChildren(f.run.envelope.runId).length, 2);
+  assert.equal(f.database.authority.runResults.get(f.run.envelope.runId), undefined);
+  assert.equal(f.database.authority.dependencies.readiness(f.run.envelope.runId, "join").state, "waiting");
+  stopSyntheticDatabaseWorkers({ database: f.database, path: f.path });
+  f.closeDatabase();
+  const reopened = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "parallel-unknown-reopen-proof" }, f.clock);
+  try {
+    assert.deepEqual(reopened.authority.writeIntents.get(intent.writeIntentId), intent);
+    assert.deepEqual(reopened.authority.runResults.get(completed.run.envelope.runId), receipt);
+    assert.equal(reopened.authority.runs.listChildren(f.run.envelope.runId).length, 2);
+    assert.equal(reopened.authority.runResults.get(f.run.envelope.runId), undefined);
+    assert.equal(reopened.authority.dependencies.readiness(f.run.envelope.runId, "join").state, "waiting");
+    assert.equal(reopened.authority.dependencies.wait(f.run.envelope.runId, parallelChildWriteRecoveryRoot.descriptor)?.nodeId, "children");
+    assert.equal(f.driver.events.filter(event => event === "prepare").length, 1);
+  } finally { reopened.close(); }
+});
+
 for (const unrelatedReset of [false, true]) {
 it(`authenticates task and transaction prerequisites through child resume with unrelated reset ${String(unrelatedReset)}`, async () => {
-  const f = await fixture(true);
+  const f = await fixture("prerequisites");
   let control: ReturnType<typeof admitWorkerReset> | undefined;
   if (unrelatedReset) {
     const home = testAdmittedWorker(f.database, f.clock, { path: f.path, workflow: f.run.envelope.workflow,

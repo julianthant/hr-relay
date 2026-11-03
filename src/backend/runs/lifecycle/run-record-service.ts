@@ -68,7 +68,7 @@ import type { AuthorityDatabase, AuthorityRepositories } from "../../storage/sql
 import { authenticateCancellationSource, assertResetCancellationAdmission, prepareDelegationRetry } from "../../storage/sqlite/delegation-authority.js";
 import { DelegationRetryRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
 import { admitDelegation } from "./delegation-admission.js";
-import type { ChildRunContext } from "../../runtime/execution/run-executor.js";
+import type { ChildRunBatchContext } from "../../runtime/execution/run-executor.js";
 import type { DelegationPlan } from "../../../models/workflow/delegation.js";
 import type { AnyWorkflowRef } from "../../../models/workflow/graph.js";
 
@@ -247,10 +247,10 @@ export class RunRecordService {
     }
   }
 
-  admitDelegation(context: ChildRunContext, plan: DelegationPlan<AnyWorkflowRef>) {
+  admitDelegation(context: ChildRunBatchContext, plans: readonly DelegationPlan<AnyWorkflowRef>[]) {
     return this.dependencies.database.withAuthorityTransaction(() => {
       this.assertCurrentExecution({ runId: context.run.envelope.runId, claim: context.claim });
-      return admitDelegation(this.dependencies, context, plan, {
+      return admitDelegation(this.dependencies, context, plans, {
       create: (request, publication) => requireLifecycleApplied(this.createCanonical(request, publication)),
       inspectJournal: (repositories, operation, request, fence) => this.inspectJournal(repositories, operation, request, fence),
       recordJournal: (repositories, command, result) => this.recordJournal(repositories, command, result),

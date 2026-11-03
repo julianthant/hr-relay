@@ -1,4 +1,6 @@
 import { captureRunContinuation, validateRunContinuation } from "./run-continuation.js";
+import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
+import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { authenticateRootRun, authenticateRunPriority } from "./delegation-root-authority.js";
 import { z } from "zod";
 import type { WorkerResetBinding } from "../../../models/run/worker-control.js";
@@ -12,10 +14,10 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { DependencyRecordSchema, delegationReadiness, type DelegationManifest, type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
-import { DelegationInvocationRequestSchema, DelegationScopeEvidenceSchema, DelegationRetryRequestSchema, DelegationSettlementRequestSchema } from "./delegation-contracts.js";
+import { DelegationAdmissionRequestSchema, DelegationInvocationRequestSchema, DelegationScopeEvidenceSchema, DelegationRetryRequestSchema, DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import type { AuthorityRepositories } from "./authority-database.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../rules/identity/ids.js";
-import { CancellationSourceSchema, CanonicalCreateRunRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalRecoverRunRequestSchema } from "./run-store-contracts.js";
+import { CancellationSourceSchema, CanonicalCreateRunRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalRecoverRunRequestSchema, CanonicalRequeueRequestSchema } from "./run-store-contracts.js";
 import { assertCanonicalRunCommandScope } from "./command-record-row.js";
 
 function authenticateOperatorSource(repositories: AuthorityRepositories, source: NonNullable<ReturnType<AuthorityRepositories["commands"]["get"]>>) {
@@ -199,6 +201,69 @@ export function retainedDelegationManifests(repositories: AuthorityRepositories,
     || dependencies.some(dependency => !manifests.some(manifest => manifest.manifestId === dependency.manifestId
       && manifest.children.some(child => child.dependencyId === dependency.dependencyId)))) throw new Error("delegation-group-incomplete");
   return manifests;
+}
+
+export function readDelegationWait(repositories: AuthorityRepositories, parent: RunRecord, descriptor: AnyWorkflowDescriptor) {
+  if (parent.lifecycle.state !== "queued" || Number(parent.claimGeneration) === 0) return undefined;
+  const command = repositories.lifecycleJournal.findDelegationAdmission(parent.envelope.runId, parent.claimGeneration);
+  if (command === undefined) return undefined;
+  const request = DelegationAdmissionRequestSchema.parse(command.request);
+  const audit = repositories.lifecycleJournal.findAuditByCommand(command.commandId);
+  if (command.operation !== "delegation-admission" || audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
+    || audit.result.kind !== "run" || audit.result.runId !== parent.envelope.runId
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+    || request.runId !== parent.envelope.runId || Number(request.claim.claimGeneration) !== Number(parent.claimGeneration)) throw new Error("delegation-admission-authority-unavailable");
+  if (parent.version < audit.result.appliedVersion || request.expectedVersion > parent.version
+    || descriptor.id !== parent.envelope.workflow || descriptor.version !== parent.envelope.descriptorVersion
+    || descriptor.contractFingerprint !== parent.envelope.contractFingerprint) throw new Error("delegation-admission-binding-mismatch");
+  const nodes = descriptorRuntimeNodes(descriptor), owner = nodes.find(node => node.id === request.nodeId);
+  if (owner?.kind !== "child-run" && owner?.kind !== "parallel") throw new Error("delegation-owner-binding-mismatch");
+  const first = request.members[0];
+  const expectedId = owner.kind === "child-run" && first?.state === "admitted"
+    ? lifecycleCommandId("delegation-admission", { invocationCommandId: first.invocationCommandId, claimGeneration: request.claim.claimGeneration, version: request.expectedVersion })
+    : lifecycleCommandId("parallel-delegation-admission", { runId: parent.envelope.runId, nodeId: owner.id,
+      claimGeneration: request.claim.claimGeneration, version: request.expectedVersion });
+  if (command.commandId !== expectedId) throw new Error("delegation-admission-binding-mismatch");
+  if (audit.result.appliedVersion === request.expectedVersion) return undefined;
+  if (audit.result.appliedVersion !== request.expectedVersion + 1) throw new Error("delegation-admission-binding-mismatch");
+  const leaves = (owner.kind === "child-run" ? [owner.id] : owner.branches.flatMap(branch => branch.nodes))
+    .flatMap(id => nodes.filter(node => node.id === id && node.kind === "child-run"));
+  if (leaves.length !== request.members.length || new Set(leaves.map(node => node.id)).size !== leaves.length) throw new Error("delegation-owner-membership-mismatch");
+  const manifests: DelegationManifest[] = [];
+  for (const [index, leaf] of leaves.entries()) {
+    const member = request.members[index];
+    if (leaf.kind !== "child-run" || member?.nodeId !== leaf.id) throw new Error("delegation-owner-membership-mismatch");
+    if (member.state === "reused") {
+      const evidence = AuthenticatedRunContinuation.authenticate(repositories, parent.envelope).delegation(leaf.id, leaf.edgeId);
+      if (evidence === undefined || canonicalJsonStringify(delegationDependencyRecord(evidence)) !== canonicalJsonStringify(member.receipt)) throw new Error("delegation-replay-divergent");
+      continue;
+    }
+    const invocationCommand = repositories.lifecycleJournal.getCommand(member.invocationCommandId);
+    if (invocationCommand === undefined || !("kind" in invocationCommand) || invocationCommand.kind !== "run-lifecycle"
+      || invocationCommand.operation !== "delegation-invocation") throw new Error("delegation-invocation-authority-unavailable");
+    const invocation = DelegationInvocationRequestSchema.parse(invocationCommand.request);
+    const manifest = repositories.delegationManifests.get(invocation.manifestId);
+    if (manifest === undefined || invocation.runId !== parent.envelope.runId || invocation.nodeId !== leaf.id
+      || invocation.edgeId !== leaf.edgeId || invocation.target.workflowId !== leaf.target.id
+      || manifest.cardinality !== leaf.cardinality || manifest.join !== leaf.join
+      || canonicalJsonStringify(manifest.policy) !== canonicalJsonStringify(leaf.policy)
+      || manifest.inputSchemaHash !== deriveSchemaHash(leaf.target.input, "input")
+      || manifest.resultSchemaHash !== deriveSchemaHash(leaf.target.result, "output")) throw new Error("delegation-manifest-binding-mismatch");
+    authenticateDelegationGroup(repositories, manifest);
+    const scope = readDelegationScopeEvidence(repositories, parent, member.scopeEvidence);
+    if (sha256Hex(canonicalJsonStringify(valueFreeProtectedData(scope))) !== member.observedScopeDigest) throw new Error("delegation-approval-binding-mismatch");
+    manifests.push(manifest);
+  }
+  const releaseId = lifecycleCommandId("delegation-release", command.commandId);
+  const release = repositories.lifecycleJournal.getCommand(releaseId), released = repositories.lifecycleJournal.findAuditByCommand(releaseId);
+  if (release === undefined || !("kind" in release) || release.kind !== "run-lifecycle" || release.operation !== "requeue"
+    || released === undefined || !("kind" in released) || released.kind !== "run-lifecycle" || released.result.kind !== "run"
+    || released.result.runId !== parent.envelope.runId || released.result.appliedVersion !== audit.result.appliedVersion
+    || canonicalJsonStringify(released.request) !== canonicalJsonStringify(release)) throw new Error("delegation-parent-release-unproved");
+  const requeue = CanonicalRequeueRequestSchema.parse(release.request);
+  if (requeue.cause !== "recovery" || requeue.runId !== parent.envelope.runId || requeue.expectedVersion !== request.expectedVersion
+    || canonicalJsonStringify(requeue.claim) !== canonicalJsonStringify(request.claim)) throw new Error("delegation-parent-release-unproved");
+  return { nodeId: request.nodeId, admissionCommandId: command.commandId, claim: request.claim, manifests };
 }
 
 export function lifecycleChildEdge(repositories: AuthorityRepositories, parentRunId: string, childRunId: string): DependencyRecord | undefined {

@@ -97,3 +97,16 @@ export function childPrerequisiteModules(world: WriteFixtureWorld) {
   });
   return { stores, modules: [composeWorkflowModule(childPrerequisiteRoot, stores.stores), composeWorkflowModule(plan1Leaf, stores.stores)] };
 }
+
+export const parallelChildWriteRecoveryRoot = compileWorkflow(defineWorkflow({ ...crashCommon, id: "fixture-parallel-child-write-recovery", code: "fpw",
+  steps: ({ delegate, parallel, result }) => {
+    const policy = { cascadeCancel: "cascade", onChildFailed: "fail-parent", afterChildRetry: "resume-parent", visibility: "inline" } as const;
+    const read = delegate({ id: "read", target: { id: plan1Leaf.descriptor.id, input: Plan1Input, result: Plan1Output }, edgeId: "read",
+      cardinality: "one", await: "terminal", join: "one", policy }, [],
+    { bind: ({ input }) => ({ emplId: input.eid, text: "parallel read", mode: "ok" as const }), deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+    const write = delegate({ id: "write", target: { id: childCrashWrite.descriptor.id, input, result: output }, edgeId: "write",
+      cardinality: "one", await: "terminal", join: "one", policy }, [],
+    { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+    const children = parallel({ id: "children", join: "all", failure: "fail-fast" }, [{ id: "read", leaves: [read] }, { id: "write", leaves: [write] }]);
+    return { steps: [[{ key: "children", label: "Children" }, [children]]], result: result(input, [], ({ input }) => input) };
+  } }), { manifest: childExecutionBuildManifest });

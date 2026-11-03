@@ -150,8 +150,13 @@ export interface ChildRunContext {
   readonly signal: AbortSignal;
 }
 
+export interface ChildRunBatchContext extends Omit<ChildRunContext, "node" | "scope"> {
+  readonly owner: Extract<RuntimeFlowNode, { kind: "child-run" | "parallel" }>;
+  readonly leaves: readonly Pick<ChildRunContext, "node" | "scope">[];
+}
+
 export interface ChildRunExecutor {
-  executeChildRun(context: ChildRunContext): Promise<unknown>;
+  executeChildRuns(context: ChildRunBatchContext): Promise<unknown>;
 }
 
 
@@ -1547,6 +1552,26 @@ export async function executeClaimedRun(
       });
     };
 
+    const childSourceEvidence = (node: ChildRunRuntimeNode) => {
+      const entry = plan.get(String(node.id));
+      if (entry === undefined) throw new Error("delegation-branch-plan-unavailable");
+      if (entry.mode === "replay-child"
+        && canonicalJsonStringify(completedOwnDelegation(node)) !== canonicalJsonStringify(entry.evidence)) {
+        throw new RunContinuationRefusedError("run-gate-resume-child-authority-changed");
+      }
+      const sourceEvidence = continuationAuthority?.delegation(String(node.id), String(node.edgeId));
+      if (sourceEvidence !== undefined) {
+        const original = node.bind(sourceScopeFor(sourceEvidence.parentRunId, node.dependsOn));
+        const continued = node.bind(scopeFor(node.dependsOn));
+        if (canonicalJsonStringify(original) !== canonicalJsonStringify(continued)
+          || sourceEvidence.manifest.cardinality !== node.cardinality || sourceEvidence.manifest.join !== node.join
+          || canonicalJsonStringify(sourceEvidence.manifest.policy) !== canonicalJsonStringify(node.policy)
+          || sourceEvidence.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")) throw new RunContinuationRefusedError("run-continuation-child-input-mismatch");
+      }
+      return sourceEvidence;
+    };
+    const childBatchOutputs = new Map<string, JsonValue>();
+
     for (const [index, node] of nodes.entries()) {
       if (getRun().pause?.state === "requested") {
         requireLifecycleApplied(deps.lifecycle.acknowledgePause({
@@ -2113,7 +2138,10 @@ export async function executeClaimedRun(
           continue;
         }
         case "child-run": {
-          transitionTo(runningLifecycle(node.id));
+          const parallel = nodes.find(candidate => candidate.kind === "parallel"
+            && candidate.branches.some(branch => branch.nodes.includes(node.id)));
+          const owner = parallel?.kind === "parallel" ? parallel : node;
+          transitionTo(runningLifecycle(owner.id));
           const unresolved = deps.authority.withAuthorityTransaction?.(repositories =>
             repositories.writeIntents.listAttemptingByItem({ workflowId: envelope.workflow, itemId: envelope.itemId })[0]
               ?? repositories.writeIntents.listByRun(runId).find(intent => intent.status === "parked"));
@@ -2131,7 +2159,7 @@ export async function executeClaimedRun(
               intentGeneration: parked.lifecycle.intentGeneration, code: parked.lifecycle.code });
           }
           if (deps.childRuns === undefined) {
-            return await failNode(node, undefined, new Error(
+            return await failNode(owner, undefined, new Error(
               `child-run node "${node.id}" requires the delegation executor seam, which is not wired `
               + "(capability-unavailable); refusing to skip a delegation",
             ));
@@ -2141,24 +2169,26 @@ export async function executeClaimedRun(
             input.signal.throwIfAborted();
             checkCancellation();
             requireOriginalClaim(getRun());
-            if (entry.mode === "replay-child"
-              && canonicalJsonStringify(completedOwnDelegation(node)) !== canonicalJsonStringify(entry.evidence)) {
-              throw new RunContinuationRefusedError("run-gate-resume-child-authority-changed");
+            const sourceEvidence = childSourceEvidence(node);
+            let raw: unknown;
+            if (sourceEvidence !== undefined) raw = delegationEvidenceOutput(sourceEvidence, node.target.result);
+            else if (childBatchOutputs.has(node.id)) raw = childBatchOutputs.get(node.id);
+            else {
+              const leafIds = owner.kind === "child-run" ? [owner.id] : owner.branches.flatMap(branch => branch.nodes);
+              const leaves = leafIds.flatMap(id => {
+                const leaf = nodes.find(candidate => candidate.id === id);
+                if (leaf?.kind !== "child-run") return [];
+                childSourceEvidence(leaf);
+                return [{ node: leaf, scope: scopeFor(leaf.dependsOn) }];
+              });
+              const returned = await deps.childRuns.executeChildRuns({ descriptor, owner, run: getRun(), claim, leaves, signal: input.signal });
+              if (DelegationPendingSchema.safeParse(returned).success) raw = returned;
+              else {
+                const values = z.record(z.string(), JsonValueSchema).parse(returned);
+                for (const [id, value] of Object.entries(values)) childBatchOutputs.set(id, value);
+                raw = childBatchOutputs.get(node.id);
+              }
             }
-            const sourceEvidence = continuationAuthority?.delegation(String(node.id), String(node.edgeId));
-            if (sourceEvidence !== undefined) {
-              const original = node.bind(sourceScopeFor(sourceEvidence.parentRunId, node.dependsOn));
-              const continued = node.bind(scopeFor(node.dependsOn));
-              if (canonicalJsonStringify(original) !== canonicalJsonStringify(continued)
-                || sourceEvidence.manifest.cardinality !== node.cardinality || sourceEvidence.manifest.join !== node.join
-                || canonicalJsonStringify(sourceEvidence.manifest.policy) !== canonicalJsonStringify(node.policy)
-                || sourceEvidence.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")) throw new RunContinuationRefusedError("run-continuation-child-input-mismatch");
-            }
-            const raw = sourceEvidence === undefined ? await deps.childRuns.executeChildRun({
-              descriptor, node, run: getRun(), claim,
-              scope: scopeFor(node.dependsOn),
-              signal: input.signal,
-            }) : delegationEvidenceOutput(sourceEvidence, node.target.result);
             input.signal.throwIfAborted();
             const pending = DelegationPendingSchema.safeParse(raw);
             if (pending.success) {
@@ -2167,12 +2197,16 @@ export async function executeClaimedRun(
               if (pending.data.runId !== runId || released.lifecycle.state !== "queued" || runClaim(released) !== undefined
                 || released.cancelRequested === true || Number(released.claimGeneration) !== Number(claim.claimGeneration)) throw new Error("delegation-release-unproved");
               const manifest = deps.authority.withAuthorityTransaction?.(repositories => {
+                const wait = repositories.dependencies.wait(runId, descriptor);
+                if (wait?.admissionCommandId !== pending.data.admissionCommandId || wait.nodeId !== owner.id
+                  || !wait.manifests.some(manifest => manifest.manifestId === pending.data.manifestId)) throw new Error("delegation-release-authority-unavailable");
                 const manifest = repositories.delegationManifests.get(pending.data.manifestId);
-                if (manifest === undefined || manifest.parentRunId !== runId || manifest.edgeId !== node.edgeId) throw new Error("delegation-release-manifest-unavailable");
+                if (manifest === undefined || manifest.parentRunId !== runId || !nodes.some(candidate => candidate.kind === "child-run" && candidate.edgeId === manifest.edgeId
+                  && (owner.kind === "child-run" ? candidate.id === owner.id : owner.branches.some(branch => branch.nodes.includes(candidate.id))))) throw new Error("delegation-release-manifest-unavailable");
                 repositories.dependencies.readiness(runId, "join");
                 return manifest;
               });
-              if (manifest === undefined || node.await === "none") throw new Error("delegation-release-authority-unavailable");
+              if (manifest === undefined || owner.kind === "child-run" && node.await === "none") throw new Error("delegation-release-authority-unavailable");
               await deps.sessions.closeAll("parked");
               return RunExecutionOutcomeSchema.parse({ ...pending.data, state: "yielded-delegation" });
             }
@@ -2206,7 +2240,7 @@ export async function executeClaimedRun(
               || error instanceof RunLifecycleRefusedError && error.outcome.state === "refused" && error.outcome.refusal.reason === "lost") throw error;
             if (runClaim(getRun())?.claimGeneration !== claim.claimGeneration) throw error;
             deps.lifecycle.assertCurrentExecution({ runId, claim });
-            return await failNode(node, undefined, error);
+            return await failNode(owner, undefined, error);
           }
           continue;
         }

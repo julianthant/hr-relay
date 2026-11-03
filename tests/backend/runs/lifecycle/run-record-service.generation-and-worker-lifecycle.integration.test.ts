@@ -138,10 +138,10 @@ describe("canonical run-record service", () => {
         workerLifetime: { ...retainedLifetime, membershipRevision: retainedLifetime.membershipRevision + 1 } },
     }), /run-claim-lifetime-immutable/u));
     measure("admitDelegation", 0, () => assert.throws(() => service.admitDelegation({
-      descriptor: plan1Parent.descriptor, node: childNode, run: source,
+      descriptor: plan1Parent.descriptor, owner: childNode, run: source,
       claim: { workerId: activeClaim.workerId, claimGeneration: activeClaim.claimGeneration },
-      scope: { input, outputs: {} }, signal: new AbortController().signal,
-    }, plan), (error: unknown) => {
+      leaves: [{ node: childNode, scope: { input, outputs: {} } }], signal: new AbortController().signal,
+    }, [plan]), (error: unknown) => {
       assert.ok(error instanceof RunLifecycleRefusedError);
       assert.deepEqual(error.outcome, { state: "refused", refusal: { reason: "lost" } });
       return true;

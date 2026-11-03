@@ -1,3 +1,4 @@
+import { convertDelegationAdmissionRow, migrateDelegationAdmissions } from "./delegation-admission-migration.js";
 import { convertPersonPreferencesRow } from "./person-preferences-migration.js";
 import { readContinuationGate, validateRunContinuation } from "./run-continuation.js";
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
@@ -111,8 +112,8 @@ import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeas
 import { assertWorkflowRunResultAuthorization,descriptorRuntimeNodes,workflowProjections,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
 import type { VerifiedBackup } from "./backup-service.js";
-import { assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationReadiness,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
-import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
+import { assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationReadiness,readDelegationWait,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
+import { DelegationAdmissionRequestSchema,DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { AUTHORITY_APPLICATION_ID,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
@@ -216,6 +217,7 @@ type RunLifecycleJournalRepository = Readonly<{
   findCancellation(runId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   listDelegationInvocations(parentRunId: string): readonly z.infer<typeof RunLifecycleCommandRecordSchema>[];
   findDelegationInvocation(manifestId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
+  findDelegationAdmission(runId: string, claimGeneration: number): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
 }>;
 
 type RuntimeConfigRepository = Readonly<{
@@ -254,6 +256,7 @@ type DependencyRepository = Readonly<{
   cancellationOutcome(runId: string): ReturnType<typeof readDelegationCancellation>;
   evidence(parentRunId: string, nodeId: string): ReturnType<typeof readDelegationEvidence>;
   readiness(parentRunId: string, intent: "join" | "cancel"): DelegationReadiness;
+  wait(parentRunId: string, descriptor: AnyWorkflowDescriptor): ReturnType<typeof readDelegationWait>;
 }>;
 
 type WriteIntentRepository = Readonly<{
@@ -1150,7 +1153,10 @@ function inspectionRunReader(expectedSchemaVersion: number): typeof runRecordFro
 
 function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION): number {
   const readRun = inspectionRunReader(expectedSchemaVersion);
-  const convertPreferences = expectedSchemaVersion < 16 ? convertPersonPreferencesRow : (_table: string, row: unknown) => row;
+  const convertPreferences = (table: string, row: unknown) => {
+    const preferences = expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
+    return expectedSchemaVersion < 19 ? convertDelegationAdmissionRow(database, table, preferences) : preferences;
+  };
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
@@ -1423,7 +1429,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = expectedSchemaVersion < 10 ? z.array(z.union([currentTables.element,
     z.strictObject({ name: z.literal("explorer_overrides"), classification: z.literal("authority") }),
   ])) : currentTables;
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -1508,6 +1514,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
         }
         database.exec(statement);
         if (migration.version === 16 && index === 2) migratePersonPreferences(database);
+        if (migration.version === 19 && index === 1) migrateDelegationAdmissions(database);
       }
     }
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
@@ -2120,7 +2127,7 @@ export class AuthorityDatabase implements Disposable {
     owner.assertStoppedProfile(operation); copy.assertReadOnlyAuthorityDatabase(path);
     return withAuthorityDatabaseReadOnly(copy, path, database => {
       const version = readIntPragma(database, "user_version"), meta = readMetaRow(database), binding = owner.profileBinding;
-      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)
         || meta.schema_version !== version || meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) throw new Error("restore-candidate-binding-mismatch");
       const facts = Object.freeze(browserProfileInventory(database, version));
       owner.assertStoppedProfile(operation); return facts;
@@ -2375,7 +2382,7 @@ export class AuthorityDatabase implements Disposable {
         const version = readIntPragma(database, "user_version");
         if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("profile-startup-foreign-application");
         if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup schema is newer than supported");
-        if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) throw new Error("profile-startup-unsupported-schema");
+        if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) throw new Error("profile-startup-unsupported-schema");
         const inspection = inspectNativeAuthority(database, version);
         machine.assertOfflineMaintenance(machine.maintenanceOperation());
         if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");
@@ -2443,7 +2450,7 @@ export class AuthorityDatabase implements Disposable {
       if (record === undefined || !("startupLogout" in record) || record.startupLogout === undefined
         || canonicalJsonStringify(record.startupLogout.operation) !== canonicalJsonStringify(operation)) return undefined;
       const settlement = operation.settlement;
-      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17].includes(record.fromSchemaVersion)
+      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].includes(record.fromSchemaVersion)
         || settlement === undefined || record.startupLogout.postimage !== authorityContentFingerprint(database, record.recordKey)) throw new Error("profile-startup-logout-postimage-changed");
       const backup = verifyBackup(admission, record.backup.manifestPath);
       if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId
@@ -5019,6 +5026,16 @@ export class AuthorityDatabase implements Disposable {
           if (rows.length > 1) throw new Error("delegation-invocation-ambiguous");
           return rows[0] === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
         },
+        findDelegationAdmission: (runId: string, claimGeneration: number) => {
+          const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle' AND target_id=?
+            AND json_extract(request_json,'$.operation')='delegation-admission'
+            AND json_extract(request_json,'$.request.claim.claimGeneration')=?
+            ORDER BY json_extract(request_json,'$.request.expectedVersion') DESC,id LIMIT 2`).all(runId, claimGeneration)
+            .map(row => RunLifecycleCommandRecordSchema.parse(commandFromRow(row)));
+          if (rows.length === 2 && DelegationAdmissionRequestSchema.parse(rows[0]?.request).expectedVersion
+            === DelegationAdmissionRequestSchema.parse(rows[1]?.request).expectedVersion) throw new Error("delegation-admission-ambiguous");
+          return rows[0];
+        },
         insertCommand: (input: unknown) => {
           const record = RunLifecycleCommandRecordSchema.parse(input);
           const json = canonicalJsonStringify(record);
@@ -5087,6 +5104,11 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       dependencies: Object.freeze({
+        wait: (parentRunId: string, descriptor: AnyWorkflowDescriptor) => {
+          const parent = this.authority.runs.get(parentRunId);
+          if (parent === undefined) throw new Error("delegation-parent-unavailable");
+          return readDelegationWait(this.authority, parent, descriptor);
+        },
         evidence: (parentRunId: string, nodeId: string) => readDelegationEvidence(this.authority, parentRunId, nodeId),
         lifecycleEdgeForChild: (parentRunId: string, childRunId: string) => lifecycleChildEdge(this.authority, parentRunId, childRunId),
         edgeForChild: (parentRunId: string, childRunId: string) => delegationEdgeForChild(this.authority, parentRunId, childRunId),

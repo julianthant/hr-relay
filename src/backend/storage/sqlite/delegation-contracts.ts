@@ -39,9 +39,12 @@ export const DelegationAdmissionRequestSchema = z.strictObject({
   runId: RunIdSchema,
   expectedVersion: PositiveIntSchema,
   claim: z.strictObject({ workerId: WorkerIdSchema, claimGeneration: PositiveIntSchema }),
-  invocationCommandId: CommandIdSchema,
-  scopeEvidence: DelegationScopeEvidenceSchema,
-  observedScopeDigest: FingerprintSchema,
+  nodeId: NodeIdSchema,
+  members: z.array(z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("admitted"), nodeId: NodeIdSchema, invocationCommandId: CommandIdSchema,
+      scopeEvidence: DelegationScopeEvidenceSchema, observedScopeDigest: FingerprintSchema }),
+    z.strictObject({ state: z.literal("reused"), nodeId: NodeIdSchema, receipt: DelegationTerminalDependencySchema }),
+  ])).min(1),
 });
 
 export const DelegationSettlementRequestSchema = z.strictObject({

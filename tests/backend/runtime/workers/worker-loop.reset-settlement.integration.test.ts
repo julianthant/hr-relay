@@ -442,8 +442,8 @@ it("exposes no raw success setter and atomically cancels a safe queued cascade b
   await createDurableChildRunExecutor({ authority: database,
     admission: { admitAndRelease: (context, plan) => execution.lifecycle.admitDelegation(context, plan) },
     resolveTarget: id => { const descriptor = resolve(id); if (descriptor === undefined) throw new Error("missing reset child descriptor"); return descriptor; },
-  }).executeChildRun({ descriptor: root.descriptor, node, run: current, claim,
-    scope: { input: parent.input.parsed.value, outputs: {} }, signal: new AbortController().signal });
+  }).executeChildRuns({ descriptor: root.descriptor, owner: node, run: current, claim,
+    leaves: [{ node, scope: { input: parent.input.parsed.value, outputs: {} } }], signal: new AbortController().signal });
   const child = database.authority.runs.listChildren(parent.envelope.runId)[0];
   expect(child).toBeDefined();
   if (child === undefined) throw new Error("canonical reset child was not admitted");

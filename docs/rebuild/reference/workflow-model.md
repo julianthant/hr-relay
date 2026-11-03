@@ -267,13 +267,15 @@ browser stores first, and returns `descriptor`, `stores`, `role`, `intake`, `def
 | Author entry | Compiled node | Current limit |
 | --- | --- | --- |
 | `task` | `task` | Read contract with explicit `checkpoint` or `always-rerun` replay |
-| `parallel` | `parallel` and task leaves | `join: "all"`, `failure: "fail-fast"`; at least two nonempty branches |
+| `parallel` | `parallel` and task or child-run leaves | `join: "all"`, `failure: "fail-fast"`; at least two nonempty branches |
 | `delegate` | `child-run` | Typed target and explicit cardinality, await, join, and policy |
 | `gate` | `gate` | Author produces operator gates with typed results |
 | `transaction` | `transaction` | Prepare and commit contracts, stable binds, dry-run and probe policy |
 
-The compiler refuses `parallel` with `join: "all-settled"`. Parallel leaves must be task entries and
-cannot be shared across branches. The low-level graph vocabulary also contains `branch`; the
+The compiler refuses `parallel` with `join: "all-settled"`. Parallel leaves are tasks or delegates
+and cannot be shared across branches. A delegate cohort admits every fan-out before yielding;
+its leaves cannot depend on sibling results. The compiler orders all external prerequisites before
+the cohort. Task-only parallel entries retain their independent checkpoint replay. The low-level graph vocabulary also contains `branch`; the
 workflow author does not expose a separate branch entry.
 
 #### 1.6.4 Operation display
@@ -415,7 +417,19 @@ root start plan, retained invocation, declared edge and complete child membershi
 keeps its home slot while a fresh canonical claim identifies the executing descendant. The parent
 releases its claim while awaiting children and resumes through a fresh claim. Missing child capacity
 refuses explicitly; uncertain writes are never retried. A direct executor without this port refuses
-`capability-unavailable`. Neither registered workflow declares a child-run node.
+`capability-unavailable`. OCR delegates page reads to `ocr-page`; Onboarding delegates I-9 search
+to `i9-lookup`.
+
+A parallel step can contain several child-run leaves. One admission transaction authenticates every
+leaf and records their ordered membership before releasing the parent once. Each leaf keeps its own
+invocation, manifest, dependencies, child results and retry history. Ready or unawaited-only cohorts
+do not yield. A resumed parent authenticates each branch again; completed continuation branches
+reuse their retained evidence. A cancelled cascading branch does not cancel an independent sibling.
+An UNKNOWN write in any awaited branch prevents the parent from joining or being retried.
+
+The current lifecycle admission request names its owning node and ordered admitted or reused
+members. Stopped schema upgrades convert singleton admission commands and both retained audit
+copies, preserving command and release identities. Ordinary readers accept only the current shape.
 
 ### 3.3 Conditions
 

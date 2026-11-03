@@ -52,6 +52,22 @@ export const childExecutionModules = [plan1Leaf, childExecutionNested, childExec
   .map(compiled => composeWorkflowModule(compiled, plan1Stores.stores));
 export const childExecutionStores = plan1Stores;
 
+export const childExecutionParallelRoot = compileWorkflow(defineWorkflow({ ...common, id: "fixture-child-runtime-parallel", code: "fcp",
+  steps: ({ delegate, parallel, result }) => {
+    const left = delegate({ id: "left", target: { id: childExecutionNested.descriptor.id, input: Plan1Input, result: Plan1Output },
+      edgeId: "left", cardinality: "one", await: "terminal", join: "one", policy }, [],
+      { bind: ({ input }) => ({ ...input, emplId: EidSchema.parse("10800001") }), deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+    const right = delegate({ id: "right", target: leaf, edgeId: "right", cardinality: "one", await: "terminal", join: "one",
+      policy: { ...policy, cascadeCancel: "independent" } }, [],
+      { bind: ({ input }) => ({ ...input, emplId: EidSchema.parse("10800002"), mode: "ok" as const }), deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+    const lookups = parallel({ id: "lookups", join: "all", failure: "fail-fast" }, [
+      { id: "left", leaves: [left] }, { id: "right", leaves: [right] },
+    ]);
+    return { steps: [[{ key: "lookups", label: "Lookups" }, [lookups]]], result: result(Plan1Input, [], ({ input }) => input) };
+  } }), { manifest });
+export const childExecutionParallelModules = [composeWorkflowModule(plan1Leaf, plan1Stores.stores),
+  composeWorkflowModule(childExecutionNested, plan1Stores.stores), composeWorkflowModule(childExecutionParallelRoot, plan1Stores.stores)];
+
 export const childContinuationRoot = compileWorkflow(defineWorkflow({ ...common, id: "fixture-child-continuation", code: "fcc",
   steps: ({ delegate, result }) => {
     const children = delegate({ id: "members", target: leaf, edgeId: "members", cardinality: "many", await: "terminal", join: "all", policy }, [], {
