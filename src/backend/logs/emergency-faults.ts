@@ -2,9 +2,11 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, lstatSync, unlinkS
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import { TimelineAppendSchema, timelineAppendContent, type TimelineRepository } from "../../models/events/timeline.js";
+import { DebugEventSchema, TimelineAppendSchema, timelineAppendContent, type TimelineRepository } from "../../models/events/timeline.js";
 import { sanitizeDebugText } from "../../rules/redaction/redaction.js";
 import { localDatePart } from "../../rules/time/clock.js";
+import { upgradeDebugEventLevel } from "../storage/sqlite/debug-level-migration.js";
+import { mirrorDebugEvent } from "./debug-events.js";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 function faultPath(root: string): string {
@@ -17,29 +19,33 @@ function faultPath(root: string): string {
 }
 
 /** Call only when database admission or the authoritative writer failed. */
-export function appendEmergencyFault(input: { stateRoot: string; build: string; code: string; error: Error; now: Date }) {
+export function appendEmergencyFault(input: { stateRoot: string; build: string; code: string; error: Error; now: Date; area?: string; reason?: string }) {
   const path = faultPath(input.stateRoot);
   const eventId = randomUUID();
+  const event = DebugEventSchema.parse({ level: "error", category: "boot", phase: "failed", correlationId: eventId,
+    area: input.area ?? "boot", reason: input.reason ?? "authority-unavailable", code: input.code,
+    message: sanitizeDebugText(input.error.message),
+    ...(input.error.stack === undefined ? {} : { stack: sanitizeDebugText(input.error.stack) }),
+    build: input.build, pid: process.pid, pinned: true });
   const record = TimelineAppendSchema.parse({ schemaVersion: 1, eventId,
     scope: { kind: "transport", connectionId: "database-unavailable" },
     occurredAt: input.now.toISOString(), recordedAt: input.now.toISOString(), retentionDate: localDatePart(input.now),
-    payload: { kind: "debug", event: { category: "boot", phase: "failed", correlationId: eventId,
-      code: input.code, message: sanitizeDebugText(input.error.message),
-      ...(input.error.stack === undefined ? {} : { stack: sanitizeDebugText(input.error.stack) }),
-      build: input.build, pid: process.pid, pinned: true } }, source: { kind: "native" } });
+    payload: { kind: "debug", event }, source: { kind: "native" } });
   const line = `${canonicalJsonStringify(record)}\n`;
   const size = existsSync(path) ? lstatSync(path).size : 0;
   if (size + Buffer.byteLength(line) > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
   mkdirSync(join(input.stateRoot, "logs"), { recursive: true, mode: 0o700 });
   appendFileSync(path, line, { mode: 0o600, flush: true });
+  mirrorDebugEvent({ ...record, event });
 }
 
-function parseEmergencyFaults(content: string) {
+function parseEmergencyFaults(content: string, convert: (value: unknown) => unknown = value => value) {
   if (!content.endsWith("\n")) throw new Error("boot-log-incomplete");
   const lines = content.trimEnd().split("\n");
   return lines.map(line => {
     let input: unknown;
     try { input = JSON.parse(line); } catch { throw new Error("boot-log-invalid"); }
+    try { input = convert(input); } catch { throw new Error("boot-log-invalid"); }
     const parsed = TimelineAppendSchema.safeParse(input);
     if (!parsed.success || parsed.data.payload.kind !== "debug" || parsed.data.payload.event.category !== "boot"
       || parsed.data.scope.kind !== "transport" || parsed.data.scope.connectionId !== "database-unavailable") throw new Error("boot-log-invalid");
@@ -81,7 +87,7 @@ export function importEmergencyFaults(stateRoot: string, repository: TimelineRep
   if (!existsSync(path)) return 0;
   if (lstatSync(path).size > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
   const content = readFileSync(path, "utf8");
-  const records = parseEmergencyFaults(content);
+  const records = parseEmergencyFaults(content, value => TimelineAppendSchema.safeParse(value).success ? value : upgradeDebugEventLevel(value));
   for (const record of records) {
     repository.append(record);
     const stored = repository.get(record.eventId);

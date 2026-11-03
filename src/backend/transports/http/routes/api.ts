@@ -1,6 +1,5 @@
 import { registerAssistantRoutes } from "./assistant.js";
-import { errorText } from "../../../runs/lifecycle/support.js";
-import { DashboardReadFailedError } from "../../../runs/commands/refusals.js";
+import { registerDebugResponses } from "./debug-responses.js";
 import { registerChatGptAccountRoutes } from "./chatgpt-account.js";
 import { registerWorkbookRoutes } from "./workbooks.js";
 import { registerNotificationRoutes } from "./notifications.js";
@@ -24,7 +23,6 @@ import { composeDataQueries } from "../../../app/composition/dashboard/data.js";
 import { withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
 import { createDebugEventWriter } from "../../../logs/debug-events.js";
 import { DashboardErrorReportSchema } from "../../../../models/events/debug-report.js";
-import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
 
 import { staticBundleHandler } from "../static-bundle.js";
@@ -34,15 +32,11 @@ import { failureStatus, wireError } from "./failure-status.js";
 
 export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   const app = new Hono<{ Variables: { requestActorId: ReturnType<RequestIdentityCheckpoint["identify"]> } }>();
-  const debugEvents = createDebugEventWriter({ repository: withEmergencyTimelineWriter(deps.runDetail.timeline, { stateRoot: deps.runDetail.stateRoot, clock: deps.bootstrap.clock, build: deps.bootstrap.appVersion }), clock: deps.bootstrap.clock, build: deps.bootstrap.appVersion });
+  const debugEvents = deps.debugEvents ?? createDebugEventWriter({ repository: withEmergencyTimelineWriter(deps.runDetail.timeline, { stateRoot: deps.runDetail.stateRoot, clock: deps.bootstrap.clock, build: deps.bootstrap.appVersion }), clock: deps.bootstrap.clock, build: deps.bootstrap.appVersion });
+  registerDebugResponses(app, debugEvents);
   let reportWindow = 0, reportCount = 0;
   app.onError((error, c) => {
     const { status, body } = failureStatus(error);
-    const diagnostic = error instanceof DashboardReadFailedError ? error.cause : error;
-    try { debugEvents.emit({ category: "http", phase: "failed", correlationId: randomUUID(),
-      code: String(body.code), method: c.req.method, route: c.req.routePath, status,
-      message: errorText(diagnostic), stack: diagnostic instanceof Error ? diagnostic.stack : undefined }); }
-    catch { return c.json(wireError("LOGGING_UNAVAILABLE", "Debug logging is unavailable; inspect the local emergency fault log.", false), 500); }
     return c.json(body, status);
   });
 
@@ -99,6 +93,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     if (!parsed.success) return c.json(wireError("DEBUG_REPORT_INVALID", "Dashboard error report fields are invalid.", false), 400);
     const report = parsed.data;
     debugEvents.emit({ category: "client", phase: "failed", correlationId: report.reportId,
+      area: "dashboard", level: report.level, reason: report.reason,
       route: report.route, surface: report.surface, release: report.release, code: report.code, message: report.message, stack: report.stack }, { kind: "client", clientId: report.clientId });
     return c.json({ state: "recorded", reportId: report.reportId }, 201);
   });
@@ -109,7 +104,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerNotificationRoutes(app, deps);
   registerSettingsPreflightRoutes(app, { clock: deps.bootstrap.clock, preflight: deps.preflight });
   registerSettingsRoutes(app, deps);
-  registerChatGptAccountRoutes(app, deps);
+  registerChatGptAccountRoutes(app, { ...deps, debugEvents });
   registerAssistantRoutes(app, deps.assistant);
   registerStorageRoutes(app, deps);
   registerExplorerRoutes(app, deps);

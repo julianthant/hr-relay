@@ -8,8 +8,9 @@ import { ChatGptAccountViewSchema, ChatGptAttemptIdSchema, ChatGptCancelResultSc
   type ChatGptSignInCompletion } from "../../../../models/dashboard/chatgpt-account.js";
 import { operatorMutationIngressGuard } from "./operator-mutation-ingress.js";
 import type { DashboardApp } from "./api-types.js";
+import type { ShellRouteDeps } from "./shell-types.js";
 
-export interface ChatGptAccountRouteDeps { readonly chatGptAccount?: Pick<ChatGptAccountService, "readAccount" | "signIn" | "signOut">; readonly chatGptOcrTest?: ChatGptOcrTestService }
+export interface ChatGptAccountRouteDeps { readonly debugEvents?: ShellRouteDeps["debugEvents"]; readonly chatGptAccount?: Pick<ChatGptAccountService, "readAccount" | "signIn" | "signOut">; readonly chatGptOcrTest?: ChatGptOcrTestService }
 function failure(error: unknown, dispatched = false) {
   const known = error instanceof ChatGptAccountError || error instanceof ChatGptCredentialError;
   const code: ErrorCatalogCode = known ? error.code : "CHATGPT_AUTH_UNAVAILABLE";
@@ -65,7 +66,12 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
       if (!parsedResult.success) { await authorization.cancel(); throw new ChatGptAccountError("CHATGPT_AUTH_INVALID"); }
       const result = parsedResult.data;
       const current: NonNullable<typeof latest> = { id, authorization, pending: true, completion: authorization.completion.then(account => ChatGptSignInCompletionSchema.parse({ state: "completed", attemptId: id, account }))
-        .catch(error => ChatGptSignInCompletionSchema.parse({ ...failure(error, true), attemptId: id }))
+        .catch(error => {
+          const result = failure(error, true);
+          deps.debugEvents?.emit({ category: "http", phase: "failed", correlationId: id, area: "chatgpt-sign-in",
+            code: result.code, reason: "authorization-failed" });
+          return ChatGptSignInCompletionSchema.parse({ ...result, attemptId: id });
+        })
         .finally(() => { current.pending = false; }) };
       latest = current;
       return c.json(result);

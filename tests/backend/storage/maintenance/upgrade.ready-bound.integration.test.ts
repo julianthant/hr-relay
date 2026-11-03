@@ -48,7 +48,7 @@ import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/s
 const hostFacts = { primaryDisplay: null };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 = 8, extractionEvidence = false) {
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 = 8, extractionEvidence = false) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -110,7 +110,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
-    removeEmptySchema17OcrReview(raw);
+    if (sourceVersion < 17) removeEmptySchema17OcrReview(raw);
     if (sourceVersion < 16) removeSchema16PersonPreferences(raw);
     if (sourceVersion < 15) removeSchema15RunPause(raw);
     if (sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(raw);
@@ -262,7 +262,7 @@ it("refuses a genuine canonical queued run despite stopped global process roles"
   } finally { await f.close(); }
 });
 
-it.each([8, 11, 12, 13, 14, 15, 16] as const)("automatically upgrades schema %s with queued work intact instead of retiring its durable state", async sourceVersion => {
+it.each([8, 11, 12, 13, 14, 15, 16, 17] as const)("automatically upgrades schema %s with queued work intact instead of retiring its durable state", async sourceVersion => {
   const f = await readyBoundEight("queued", sourceVersion);
   try {
     const before = rawEight(f.path);
@@ -477,7 +477,7 @@ it("revokes READY custody on exact artifact-root ancestry substitution", async (
   }
 });
 
-it.each([9, 10, 11, 12, 13, 14, 15, 16] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
+it.each([9, 10, 11, 12, 13, 14, 15, 16, 17] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
   const f = await readyBoundEight("idle", sourceVersion);
   try {
     const before = rawEight(f.path);

@@ -25,10 +25,13 @@ const { proof: _proof, ...ledgerFields } = LedgerEntryPayloadSchema.shape;
 const ConfirmedOperationFactsSchema = z.strictObject(ledgerFields);
 
 export const DebugEventSchema = z.strictObject({
+  level: z.enum(["error", "warn", "info"]),
   category: z.enum(["session", "duo", "worker", "http", "sse", "client", "boot"]),
   phase: z.enum(["started", "settled", "failed", "reset", "acquired", "renewed", "released", "expired"]),
   correlationId: z.string().min(1).max(128),
   code: z.string().max(128).optional(),
+  area: z.string().min(1).max(128).regex(/^[a-z0-9-]+$/u).optional(),
+  reason: z.string().min(1).max(128).regex(/^[a-z0-9-]+$/u).optional(),
   message: z.string().max(65536).optional(),
   stack: z.string().max(65536).optional(),
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]).optional(),

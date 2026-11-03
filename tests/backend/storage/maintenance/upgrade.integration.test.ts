@@ -72,6 +72,9 @@ function initialize(f:Awaited<ReturnType<typeof liveFixture>>){const database=Au
    restorePrePreferencesSettingsRows(raw);
    const repository=createTimelineRepository({database:raw,mutate,read:work=>work(),assertOwner:()=>{}});
    createDebugEventWriter({repository,clock,build:"test"}).emit({category:"http",phase:"failed",correlationId:"retained-history"});
+   raw.exec("DROP TRIGGER timeline_events_immutable");
+   raw.exec("UPDATE timeline_events SET payload_json=json_remove(payload_json,'$.payload.event.level') WHERE kind='debug'");
+   raw.exec("CREATE TRIGGER timeline_events_immutable BEFORE UPDATE ON timeline_events BEGIN SELECT RAISE(ABORT,'timeline-history-immutable'); END");
    assert.equal(inspectNativeAuthority(raw,version).schemaVersion,version);
   } finally {raw.close();}
   return f;

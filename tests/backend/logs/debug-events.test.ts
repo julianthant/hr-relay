@@ -1,21 +1,47 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
+import { z } from "zod";
 import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.js";
-import { TimelineEventRecordSchema,type TimelineEventRecord,type TimelineRepository } from "../../../src/models/events/timeline.js";
+import { debugTimelineFixture as fixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
-function fixture() {
-  const records: TimelineEventRecord[] = [];
-  const repository: TimelineRepository = { withReadSnapshot: read => read(),
-    append(input) { const record = TimelineEventRecordSchema.parse({ ...(input as object), cursor: records.length + 1 });
-      const existing = records.find(row => row.eventId === record.eventId);
-      if (existing !== undefined) return { state: "existing", record: existing };
-      records.push(record); return { state: "inserted", record }; },
-    get: id => records.find(row => row.eventId === id), page: () => records, highWaterMark: () => records.length, pruneBefore: () => 0, confirmedActionHeads: () => [] };
-  return { records, repository };
-}
 describe("bounded native debug events", () => {
+  it("persists levels and mirrors only inserted redacted metadata in development", () => {
+    const { records, repository } = fixture();
+    const lines: string[] = [];
+    const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test", development: true,
+      writeStderr: line => { assert.equal(records.length, lines.length + 1); lines.push(line); } });
+    const event = { category: "client", phase: "failed", correlationId: "owned", area: "dashboard", reason: "operation-failed",
+      code: "token=CODE_CANARY", message: "PRIVATE_NAME_CANARY", stack: "PRIVATE_PAGE_CANARY", route: "/api/runs?token=ROUTE_CANARY" };
+    writer.emit(event);
+    writer.emit(event);
+    writer.emit({ category: "session", phase: "acquired", correlationId: "session" });
+    writer.emit({ category: "sse", phase: "reset", correlationId: "stream" });
+    writer.emit({ category: "http", phase: "failed", level: "warn", correlationId: "refusal" });
+    assert.equal(lines.length, 4);
+    const mirrors = lines.map(line => z.object({ level: z.enum(["error", "warn", "info"]), time: z.string(), correlationId: z.string() }).loose().parse(JSON.parse(line)));
+    assert.deepEqual(mirrors.map(mirror => mirror.level), ["error", "info", "warn", "warn"]);
+    for (const [index, mirror] of mirrors.entries()) {
+      const line = lines[index];
+      assert.equal(line.split("\n").length, 2);
+      assert.equal(/CANARY/u.test(line), false);
+      assert.equal(mirror.time, AT.toISOString());
+      assert.ok(mirror.correlationId);
+      assert.equal("message" in mirror || "stack" in mirror || "route" in mirror, false);
+    }
+  });
+  it("keeps production silent and never mirrors an append failure", () => {
+    const { repository } = fixture();
+    const lines: string[] = [];
+    const writeStderr = (line: string) => { lines.push(line); };
+    createDebugEventWriter({ repository, clock: manualClock(AT), build: "test", development: false, writeStderr })
+      .emit({ category: "boot", phase: "failed", correlationId: "production" });
+    const writer = createDebugEventWriter({ repository: { ...repository, append() { throw new Error("append-failed"); } },
+      clock: manualClock(AT), build: "test", development: true, writeStderr });
+    assert.throws(() => writer.emit({ category: "http", phase: "failed", correlationId: "failed" }), /append-failed/u);
+    assert.deepEqual(lines, []);
+  });
   it("binds idempotent client reports to the explicit workflow as well as scope", () => {
     const { records, repository } = fixture();
     const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });

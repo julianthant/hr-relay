@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { createDashboardClient } from "../client/index.js";
 import { DashboardClientProvider } from "../state/client-context.js";
 import { DashboardApp } from "./dashboard-app.js";
+import { activeTakeover, parseRoute, shellViewOf } from "./navigation/url-state.js";
 import "./index.css";
 
 const container = document.getElementById("root");
@@ -11,7 +12,8 @@ if (container === null) {
   throw new Error("the dashboard bundle requires a #root element; index.html did not provide one");
 }
 
-const client = createDashboardClient({ baseUrl: window.location.origin });
+const client = createDashboardClient({ baseUrl: window.location.origin,
+  surface: () => shellViewOf(activeTakeover(parseRoute(window.location.search))) });
 
 const clientId = crypto.randomUUID();
 const deliveryFailures = new WeakSet<Error>();

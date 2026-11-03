@@ -1,23 +1,29 @@
 import assert from "node:assert/strict";
-import { existsSync,mkdirSync,mkdtempSync,rmSync,writeFileSync } from "node:fs";
+import { existsSync,mkdirSync,mkdtempSync,readFileSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe,it } from "vitest";
 import { appendEmergencyFault,importEmergencyFaults,withEmergencyTimelineWriter } from "../../../src/backend/logs/emergency-faults.js";
-import { TimelineEventRecordSchema,type TimelineEventRecord,type TimelineRepository } from "../../../src/models/events/timeline.js";
+import { debugTimelineFixture as fixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
+import { z } from "zod";
 import { manualClock } from "../../../src/rules/time/clock.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
-function fixture() {
-  const records: TimelineEventRecord[] = [];
-  const repository: TimelineRepository = { withReadSnapshot: read => read(),
-    append(input) { const record = TimelineEventRecordSchema.parse({ ...(input as object), cursor: records.length + 1 });
-      const existing = records.find(row => row.eventId === record.eventId);
-      if (existing !== undefined) return { state: "existing", record: existing };
-      records.push(record); return { state: "inserted", record }; },
-    get: id => records.find(row => row.eventId === id), page: () => records, highWaterMark: () => records.length, pruneBefore: () => 0, confirmedActionHeads: () => [] };
-  return { records, repository };
-}
 describe("bounded native debug events", () => {
+  it("converts retained boot event levels only during verified import", () => {
+    const root = mkdtempSync(join(tmpdir(), "relay-emergency-upgrade-"));
+    try {
+      appendEmergencyFault({ stateRoot: root, build: "test", code: "DATABASE_UNAVAILABLE", error: new Error("writer-unavailable"), now: AT });
+      const path = join(root, "logs/boot.jsonl");
+      const record = z.object({ eventId: z.string(), payload: z.object({ event: z.record(z.string(), z.unknown()) }).loose() }).loose().parse(JSON.parse(readFileSync(path, "utf8")));
+      delete record.payload.event.level;
+      writeFileSync(path, JSON.stringify(record) + "\n");
+      const { repository, records } = fixture();
+      assert.equal(importEmergencyFaults(root, repository), 1);
+      assert.equal(records[0].eventId, record.eventId);
+      assert.equal(records[0].payload.kind === "debug" ? records[0].payload.event.level : undefined, "error");
+      assert.equal(existsSync(path), false);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
   it("imports emergency IDs deterministically and keeps unresolved bytes on failed verification", () => {
     const root = mkdtempSync(join(tmpdir(), "relay-emergency-"));
     try {

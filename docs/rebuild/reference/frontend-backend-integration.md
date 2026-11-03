@@ -392,3 +392,13 @@ client method for inference. The endpoint and canonical `ChatGptOcrTestResultSch
 the account transport; there is no second API or preflight-admission result type. A diagnostic is
 never dispatched by readiness reads, reruns or scope refreshes. The shell disposes the diagnostic
 before the account owner when the active profile changes or the page closes.
+
+## Local debug events
+
+`logs/debug-events.ts` is the debug timeline writer. Events have error, warn or info levels, redacted text, per-category size caps and the existing timeline retention. Development backend and worker launches mirror inserted events to stderr with time, level, category, phase, code, area, reason and structural IDs; messages, stacks and request values stay out of that mirror. Production builds do not mirror.
+
+The shared HTTP response observer records returned refusals, failures and uncertain outcomes, including HTTP 200 envelopes, and failures mapped by the thrown-error handler. It records the registered route template and approved codes, never body values. Asynchronous ChatGPT authorization, worker process/transfer faults and provider failures use the same writer at their terminal owner. A logging failure remains a named unavailable response or retained runtime failure.
+
+The product client reports handled HTTP, network, binary, stream, schema and protocol failures through `/api/v1/debug/errors`, using the current surface, a value-free route, approved code and static reason. Reporting never retries an operation or changes its result. Report delivery failures surface once in the browser console and are excluded from recursive reporting. The terminal-failures architecture guard protects request catches and the production terminal sinks; the secret-values guard also covers debug emissions and client reports.
+
+`npm run backend` starts only the development BFF; `npm run web` starts only Vite. `npm run dashboard` owns both and waits for BFF readiness before starting Vite.

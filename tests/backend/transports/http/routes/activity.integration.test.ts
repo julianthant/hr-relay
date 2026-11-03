@@ -145,7 +145,7 @@ it("serves selected population reads and maps malformed, foreign and stale selec
   }
 });
 
-it("logs the original population read failure privately and serves only catalog text", async () => {
+it("logs population failure metadata without retaining the caught value and serves catalog text", async () => {
   const h = await harness();
   const detail = "activity-query-unavailable-detail";
   const spy = vi.spyOn(h.database, "withAuthorityReadSnapshot").mockImplementation(() => { throw new Error(detail); });
@@ -162,6 +162,8 @@ it("logs the original population read failure privately and serves only catalog 
   assert.ok(diagnostic);
   assert.equal(diagnostic.payload.kind, "debug");
   if (diagnostic.payload.kind !== "debug") throw new Error("debug event expected");
-  assert.equal(diagnostic.payload.event.message, detail);
-  assert.ok(diagnostic.payload.event.stack?.includes(detail));
+  assert.equal(diagnostic.payload.event.level, "error");
+  assert.equal(diagnostic.payload.event.reason, "operation-failed");
+  assert.equal(diagnostic.payload.event.route, "/api/v1/reports/activity/population");
+  assert.equal(JSON.stringify(diagnostic).includes(detail), false);
 });

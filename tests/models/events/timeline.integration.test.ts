@@ -196,7 +196,7 @@ afterEach(_afterEachFixture0);
       const inputs = ["2026-07-31", "2026-07-31", "2026-07-31", "2026-08-01"].map((day, i) =>
         TimelineAppendSchema.parse({ schemaVersion: 1, eventId: randomUUID(), scope: { kind: "client", clientId: "upgrade-fixture" },
           occurredAt: `${day}T12:00:00.000Z`, recordedAt: `${day}T12:00:00.000Z`, retentionDate: day,
-          payload: { kind: "debug", event: { category: "client", phase: "settled", correlationId: `native-${String(i)}`,
+          payload: { kind: "debug", event: { level: "info", category: "client", phase: "settled", correlationId: `native-${String(i)}`,
             build: "fixture", pid: process.pid } }, source: { kind: "native" } }));
       const retained = inputs.map(input => f.db.authority.timelineEvents.append(input).record);
       assert.equal(retained.length, 4); assert.equal(new Set(retained.map(event => event.eventId)).size, 4);

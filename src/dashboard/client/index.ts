@@ -1,5 +1,5 @@
 import { DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
-import { DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
+import { debugFailureOutcome, DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
 /** The ONE typed dashboard client (ref frontend-backend-integration) */
 import { createDashboardCommands, type DashboardCommands } from "./commands.js";
@@ -55,11 +55,21 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
 export function createDashboardClient(input: Readonly<{
   baseUrl: string;
   fetchImpl?: FetchLike;
+  surface?: () => string;
 }>): DashboardClient {
-  const transport = createDashboardTransport(input);
+  const surface = input.surface;
+  const clientId = crypto.randomUUID();
+  const reportFailure = (failure: NonNullable<ReturnType<typeof debugFailureOutcome>> & { route: string }): void => {
+    if (surface === undefined) return;
+    void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard",
+      route: failure.route, surface: surface(), code: failure.code, level: failure.level, reason: failure.reason,
+      message: "Dashboard request did not complete successfully" })
+      .catch(() => { console.error("DASHBOARD_ERROR_REPORT_UNAVAILABLE"); });
+  };
+  const transport = createDashboardTransport({ ...input, ...(surface === undefined ? {} : { onFailure: reportFailure }) });
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
-  const client: DashboardClient = Object.freeze<DashboardClient>({
+  const client: DashboardClient = {
     async ocrCommandResult(runId, commandId, signal) {
       const result = OcrCommandResultWireSchema.parse(await transport.requestJson(`/api/v1/runs/${encodeURIComponent(RunIdSchema.parse(runId))}/ocr/commands/${encodeURIComponent(commandId)}`,
         signal === undefined ? undefined : { signal }));
@@ -150,8 +160,28 @@ export function createDashboardClient(input: Readonly<{
     },
     subscribeDay: (subscriptionInput: Omit<DashboardDaySubscriptionDeps, "transport">): DashboardDaySubscription =>
       subscribeDashboardDay({ ...subscriptionInput, transport }),
-  });
-  return client;
+  };
+  if (surface !== undefined) {
+    const reportSchemaFailure = (error: unknown): never => {
+      if (!(error instanceof DashboardClientError) || error.kind === "schema" || error.kind === "protocol") {
+        const failure = debugFailureOutcome({ state: "error", code: error instanceof DashboardClientError ? error.code : undefined });
+        if (failure !== undefined) reportFailure({ ...failure, route: "/api/v1" });
+      }
+      throw error;
+    };
+    for (const key of Object.keys(client) as (keyof DashboardClient)[]) {
+      if (key === "reportError") continue;
+      const method = client[key]?.bind(client);
+      if (method === undefined) continue;
+      Object.defineProperty(client, key, { value: (...args: unknown[]): unknown => {
+        try {
+          const result: unknown = Reflect.apply(method, client, args);
+          return result instanceof Promise ? result.catch(reportSchemaFailure) : result;
+        } catch (error) { return reportSchemaFailure(error); }
+      } });
+    }
+  }
+  return Object.freeze(client);
 }
 
 export type { NotificationQueries } from "./queries/notification-queries.js";
