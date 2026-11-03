@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { expect, it } from 'vitest';
 import { SQLITE_MIGRATIONS } from '../../../../src/backend/storage/sqlite/migrations.js';
 import { createWorkbookLibraryRepository } from '../../../../src/backend/storage/sqlite/workbook-library-repository.js';
-import { RunWorkbookReferenceSchema } from '../../../../src/models/dashboard/workbooks.js';
+import { RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, bindRunWorkbookReference } from '../../../../src/models/dashboard/workbooks.js';
 import { deriveSchemaHash } from '../../../../src/models/validation/schema-bound-value.js';
 
 function source() {
@@ -36,13 +36,21 @@ it('initializes the empty named catalogue without changing a numeric workbook re
   } finally { database.close(); }
 });
 
-it.each([false, true])('refuses incompatible captured reference identity before catalogue effects; compatible=%s', compatible => {
+it.each(['unknown', 'altered', 'keyed', 'all'] as const)('refuses incompatible captured reference identity before catalogue effects; mode=%s', mode => {
+  const compatible = mode === 'keyed' || mode === 'all';
   const database = source();
   try {
-    const schemaHash = compatible ? deriveSchemaHash(RunWorkbookReferenceSchema, 'output') : 'a'.repeat(64);
+    const masterHash = deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, 'output');
+    const schemaHash = compatible ? deriveSchemaHash(mode === 'all' ? RunWorkbookAllRowsReferenceSchema : RunWorkbookReferenceSchema, 'output')
+      : mode === 'altered' ? `${masterHash.slice(0, -1)}${masterHash.endsWith('0') ? '1' : '0'}` : 'a'.repeat(64);
+    const snapshot = { libraryId: 'library', version: 1, worksheets: [{ sheetId: 'people', name: 'People' }],
+      type: { id: 'roster', name: 'Roster', keyFieldId: 'eid', fields: ['eid'], defaultWorkbookId: 'library' }, rows: [] };
+    const request = mode === 'keyed' ? { typeId: 'roster', keys: [], fields: ['eid'] }
+      : { mode: 'all', typeId: 'roster', libraryId: 'library', expectedVersion: 1, fields: ['eid'] };
+    const retained = bindRunWorkbookReference(request, snapshot);
     database.prepare('INSERT INTO run_requests(id,workflow,actor_id,expires_at,version,payload_json,created_at) VALUES(?,?,?,?,?,?,?)')
       .run('plan', 'workflow', 'local-operator', '2026-11-03T00:00:00Z', 1,
-        JSON.stringify({ planned: [{ workbookReferences: [{ schemaHash, value: {} }] }] }), '2026-11-02T00:00:00Z');
+        JSON.stringify({ planned: [{ workbookReferences: [{ ...retained, schemaHash }] }] }), '2026-11-02T00:00:00Z');
     if (compatible) {
       expect(() => apply(database)).not.toThrow();
       expect(database.prepare("SELECT name FROM sqlite_master WHERE name='workbook_library_state'").get()).toBeDefined();

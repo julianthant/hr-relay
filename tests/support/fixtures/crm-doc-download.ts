@@ -1,4 +1,4 @@
-import { RunWorkbookReferenceSchema, EditableWorkbookSchema } from "../../../src/models/dashboard/workbooks.js";
+import { RunWorkbookNamedReferenceSchema, EditableWorkbookSchema } from "../../../src/models/dashboard/workbooks.js";
 import { CrmDocumentRecordsSchema } from "../../../src/models/systems/crm/documents.js";
 import { ONBOARDING_ROSTER_NAME_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
 
@@ -9,7 +9,7 @@ export const CRM_DOCUMENT_RECORDS_FIXTURE = CrmDocumentRecordsSchema.parse({ rec
 
 export function crmDocumentReferenceFixture() {
   const keys = ["one@example.test", "two@example.test", "other@example.test"];
-  return RunWorkbookReferenceSchema.parse({ request: { typeId: "onboarding-roster", keys, fields: [...ONBOARDING_ROSTER_NAME_FIELDS] },
+  return RunWorkbookNamedReferenceSchema.parse({ request: { typeId: "onboarding-roster", keys, fields: [...ONBOARDING_ROSTER_NAME_FIELDS] },
     snapshot: { libraryId: "roster", version: 2, worksheets: [{ sheetId: "july", name: "July 6" }, { sheetId: "august", name: "August 2" }],
       type: { id: "onboarding-roster", name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_NAME_FIELDS], defaultWorkbookId: "roster" },
       rows: keys.map((key, index) => ({ key, state: index === 2 ? "missing" : "matched", matches: index === 2 ? [] : [{

@@ -1,3 +1,5 @@
+import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/driver/fake.js";
+import { WorkbookNamedReferenceSnapshotSchema } from "../../../../src/models/dashboard/workbooks.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { i9CheckStartModule, CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY } from "../../../../src/backend/app/registries/workflow-registry.js";
@@ -60,7 +62,7 @@ export function createI9CheckStartWorld() {
       { ...i9Candidate, emplId: EidSchema.parse("10000001"), name: "Example, Avery", startDate: "06/01/2020" },
       { ...i9Candidate, emplId: EidSchema.parse("10000002"), name: "Example, Blair", startDate: "06/01/2020" },
     ];
-    const sessions = sessionFactoryHarness({ crm: () => healthyCrmDriver(), ucpath: (): UcpathPersonOrgDriver => ({ ...createDeterministicUcpathPersonOrgDriver(),
+    const sessions = sessionFactoryHarness({ crm: () => healthyCrmDriver(), i9: () => createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: clock.now().toISOString() }), ucpath: (): UcpathPersonOrgDriver => ({ ...createDeterministicUcpathPersonOrgDriver(),
       async searchPersonOrg(input) { return i9Search(candidates.filter(candidate => input.kind === "by-name" ? candidate.name === input.name : candidate.emplId === input.emplId)); },
       async searchPersonMatch(input) {
         const confirmed = candidates.filter(candidate => candidate.name === `${input.lastName}, ${input.firstName}`).map(candidate => ({ emplId: candidate.emplId, name: candidate.name }));
@@ -92,14 +94,14 @@ export function createI9CheckStartWorld() {
         expectedVersion: entry.version, change }, new AbortController().signal);
     };
     const named = await referenceChange({ kind: "create-version", name: "Fall review", from: { kind: "version", versionId: "original" }, useNow: true });
-    const selectedReference = library.snapshot({ typeId: I9_CHECK_REFERENCE.typeId, libraryId: saved.libraryId,
-      versionId: named.action.operationId, keys: [], fields: columns });
+    const selectedReference = WorkbookNamedReferenceSnapshotSchema.parse(library.snapshot({ typeId: I9_CHECK_REFERENCE.typeId, libraryId: saved.libraryId,
+      versionId: named.action.operationId, keys: [], fields: columns }));
     const runWorkbooks = createRunWorkbookService({ database, clock }), readRefusals = new Set<string>();
     const projector = composeWorkerArtifactProjector({ admission, database, artifacts, clock });
     const resolve = (id: string) => (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
     const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve, createOcrCheckpointPublication, { workbooks: library,
       resources: (reader, run) => ({ artifactProjector: projector, providers: { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
-        adapters: { "ocr.review": createOcrReviewAdapter({ read: createApprovedOcrRecordReader({ database, reader, run }), clock }),
+        adapters: { "ocr.review": createOcrReviewAdapter({ reader: createApprovedOcrRecordReader({ database, reader, run, resolveDescriptor: resolve, assertCurrent: () => admission.assertProfileRuntime() }), clock }),
           "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
             publicationSource: () => { const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
               return { workflowId: descriptor.id, workflowLabel: descriptor.label, partitionDay: searchPartitionDay(new Date(run.envelope.enqueuedAt)) }; },
@@ -149,7 +151,7 @@ export function createI9CheckStartWorld() {
       database.authority.workbooks.putType({ ...type, defaultWorkbookId: other.libraryId });
       const request = { typeId: I9_CHECK_REFERENCE.typeId, keys: candidates.map(candidate => candidate.emplId), fields: columns };
       return { master: library.snapshot({ ...request, libraryId: saved.libraryId }), currentDefault: library.snapshot(request),
-        renamed: library.snapshot({ ...request, libraryId: saved.libraryId, versionId: named.action.operationId }) };
+        renamed: WorkbookNamedReferenceSnapshotSchema.parse(library.snapshot({ ...request, libraryId: saved.libraryId, versionId: named.action.operationId })) };
     };
     const approveNext = () => {
       const child = database.authority.runs.listChildren(run.envelope.runId).find(child => child.envelope.workflow === "ocr" && child.lifecycle.state === "parked-gate"); assert.ok(child);

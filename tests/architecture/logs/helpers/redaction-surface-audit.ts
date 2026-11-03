@@ -5,7 +5,7 @@ import { EditableWorkbookSchema, SavedWorkbookSchema, EditableWorkbookWireSchema
   WorkbookListWireSchema, WorkbookHistoryWireSchema, WorkbookCreateRequestSchema, WorkbookSaveRequestSchema,
   WorkbookIntakeRequestSchema, WorkbookIntakeResultSchema, IntakeCommandResultWireSchema,
   WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookOperationSchema, WorkbookOperatorOperationRequestSchema,
-  WorkbookOperationReceiptSchema, WorkbookNamedVersionSchema, WorkbookReferenceRequestSchema, WorkbookReferenceSnapshotSchema } from "../../../../src/models/dashboard/workbooks.js";
+  WorkbookOperationReceiptSchema, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookSnapshotSchema } from "../../../../src/models/dashboard/workbooks.js";
 import { CompositeStreamEnvelopeSchema } from "../../../../src/models/dashboard/run-logs-subscription.js";
 import { OperationSourceResponseSchema } from "../../../../src/models/dashboard/operation-structure.js";
 import { CalendarWireSchema } from "../../../../src/models/dashboard/calendar.js";
@@ -754,8 +754,8 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "request/workbook-operation", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookOperatorOperationRequestSchema },
   { id: "wire/workbook-operation-receipt", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookOperationReceiptSchema },
   { id: "wire/workbook-named-version", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookNamedVersionSchema },
-  { id: "request/workbook-reference", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookReferenceRequestSchema },
-  { id: "wire/workbook-reference", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookReferenceSnapshotSchema },
+  { id: "request/workbook-reference", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookSnapshotRequestSchema },
+  { id: "wire/workbook-reference", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookSnapshotSchema },
   { id: "request/workbook-create", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookCreateRequestSchema },
   { id: "request/workbook-save", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookSaveRequestSchema },
   { id: "request/workbook-intake", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookIntakeRequestSchema },
@@ -880,6 +880,7 @@ const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }
   { path: "revision.seed.identities[].outcome.output.activeStatus.details.terminationReason", origin: "captured-hr-value" },
   { path: "revision.seed.identities[].outcome.output.activeStatus.reason", origin: "captured-hr-value" },
   { path: "revision.seed.identities[].outcome.output.crmDates.dates.reason", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.signerName", origin: "captured-hr-value" },
   { path: "revision.seed.identities[].outcome.reason", origin: "external-text" },
   { path: "revision.seed.review.accounting.outcomes[].output.extraction.record.answers[].raw", origin: "captured-hr-value" },
   { path: "revision.seed.review.accounting.outcomes[].output.extraction.record.answers[].reason", origin: "captured-hr-value" },
@@ -897,6 +898,9 @@ const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }
   { path: "revision.seed.review.records[].fields.answers[].value", origin: "captured-hr-value" },
   { path: "revision.seed.review.records[].lookup.name", origin: "captured-hr-value" },
   { path: "revision.seed.review.records[].subjectName", origin: "captured-hr-value" },
+  { path: "revision.seed.review.roster.workbookId", origin: "repository-authored" },
+  { path: "revision.seed.review.roster.rows[].rowId", origin: "captured-hr-value" },
+  { path: "revision.seed.review.roster.rows[].sheetId", origin: "captured-hr-value" },
   { path: "revision.seed.review.roster.rows[].name", origin: "captured-hr-value" },
 ];
 

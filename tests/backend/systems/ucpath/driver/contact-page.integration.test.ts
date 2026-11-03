@@ -1,3 +1,4 @@
+import { planEmergencyContact, contactEffect } from "../../../../../src/rules/ucpath/emergency-contact.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
@@ -18,12 +19,13 @@ async function browserFixture(options: { foreign?: boolean; changeProtected?: bo
   if (options.foreign) data.page.displayedEid = "10000002";
   if (options.insert) data.page.rows = data.page.rows.slice(0, 1);
   const body = template.replace("__FIXTURE__", JSON.stringify({ ...data, ...options }));
-  await page.route("**/*", route => route.fulfill({ contentType: "text/html", body }));
+  const navigations: string[] = [];
+  await page.route("**/*", route => { navigations.push(new URL(route.request().url()).pathname); return route.fulfill({ contentType: "text/html", body }); });
   await page.goto("https://ucphrprdpub.universityofcalifornia.edu/");
   let active = true;
   const driver = createUcpathPersonOrgDriver(() => { if (!active) throw new Error("owner-revoked"); }, page,
     manualClock(new Date("2026-11-02T12:00:00.000Z")));
-  return { browser, page, driver, revoke: () => { active = false; } };
+  return { browser, page, driver, navigations, revoke: () => { active = false; } };
 }
 
 async function events(page: Awaited<ReturnType<typeof browserFixture>>["page"]) {
@@ -34,6 +36,30 @@ async function events(page: Awaited<ReturnType<typeof browserFixture>>["page"]) 
 }
 
 describe("production UCPath contact driver on a synthetic browser page", () => {
+  it("enters by employee search and reloads persisted contacts for two same-person primary previews", async () => {
+    const h = await browserFixture(), primary = { ...input, contact: { ...input.contact, primary: true } };
+    try {
+      for (let preview = 0; preview < 2; preview++) {
+        const before = await h.driver.readEmergencyContacts(primary);
+        assert.equal(before.observation, "persisted");
+        assert.equal(before.rows.filter(row => row.kind === "contact").length, 1);
+        const plan = planEmergencyContact(before, contactEffect(primary));
+        const staged = await h.driver.stageEmergencyContact(primary, plan);
+        assert.equal(staged.observation, "staged");
+        assert.deepEqual(staged.rows.map(row => row.kind === "contact" ? row.effect.primary : null), [false, true]);
+        assert.equal((await events(h.page)).saves, 0);
+        const searches = await h.page.evaluate(() => {
+          const state: unknown = Reflect.get(window, "contactFixtureState");
+          if (typeof state !== "object" || state === null) throw new Error("contact-fixture-state-missing");
+          const searches: unknown = Reflect.get(state, "searches");
+          return searches;
+        });
+        assert.deepEqual(searches, [input.emplId]);
+      }
+      assert.equal(h.navigations.length, 5);
+      assert.ok(h.navigations.slice(1).every(path => path.includes("EMERGENCY_CONTACT")));
+    } finally { await h.browser.close(); }
+  });
   for (const insert of [false, true]) {
     it(`stages the exact complete contact effect with ${insert ? "inserted" : "reused blank"} row and no Save`, async () => {
       const h = await browserFixture({ insert });
@@ -41,7 +67,7 @@ describe("production UCPath contact driver on a synthetic browser page", () => {
         const before = await h.driver.readEmergencyContacts(input);
         assert.equal(before.viewAll, "expanded");
         assert.equal(before.displayedName, input.expectedName);
-        const staged = await h.driver.stageEmergencyContact(input, before);
+        const staged = await h.driver.stageEmergencyContact(input, planEmergencyContact(before, contactEffect(input)));
         assert.equal(staged.observation, "staged");
         assert.equal(staged.rows.filter(row => row.kind === "contact").length, 2);
         assert.equal(await h.driver.read(UCPATH_CONTACT_DISPLAYED_NAME), input.expectedName);
@@ -72,7 +98,7 @@ describe("production UCPath contact driver on a synthetic browser page", () => {
       const h = await browserFixture(options);
       try {
         const before = await h.driver.readEmergencyContacts(input);
-        await assert.rejects(h.driver.stageEmergencyContact(input, before), UcpathContactRefusedError);
+        await assert.rejects(h.driver.stageEmergencyContact(input, planEmergencyContact(before, contactEffect(input))), UcpathContactRefusedError);
         assert.equal((await events(h.page)).saves, 0);
       } finally { await h.browser.close(); }
     });

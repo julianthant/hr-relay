@@ -44,6 +44,8 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 `src/backend/runs/queries/run-detail/ucpath-findings.ts` verifies retained registered-task findings, their held-check acknowledgement and closed recovery activity for a parked termination. `runtime/writes/recovery-activity.ts` runs that read within the existing bounded session/capture owner. `src/models/dashboard/ucpath-findings.ts` owns the wire shape; `src/dashboard/surfaces/run-detail/logs/ucpath-found-model.ts` maps it into the existing table. Pending selector provenance grants no resolution authority.
 
+`src/models/ocr/review-record.ts` owns corrected record fields shared by review revisions and OCR commands; the leaf schema keeps workbook reference models independent of review graph initialization.
+
 `src/models/run/display-name.ts` owns the browser-safe run display-name schema; command and run records share that leaf.
 
 `src/models/dashboard/workbook-library.ts` owns catalogue/version/action wire shapes.
@@ -163,14 +165,22 @@ tuple imports definitions directly, keeping those backend imports out of the das
 `src/backend/runs/lifecycle/ocr-checkpoint-publication.ts` admits OCR resource ownership and publishes readings with checkpoints;
 `ocr-review-authority.ts` authenticates review journals, snapshots and OCR recovery references.
 `src/backend/runs/commands/ocr-source-service.ts` owns uploaded PDF admission, authorized source-page bytes and read-only command settlement.
-`src/backend/runs/lifecycle/approved-ocr-records.ts` authenticates current selections from exact native OCR child outcomes through the existing snapshot authority. The required read port is bound by worker composition into `src/backend/processing/providers/ocr-review-adapter.ts`; no unauthenticated selection path is exposed.
+`src/backend/runs/lifecycle/approved-ocr-records.ts` owns approved snapshot, native member-record and bulk source reads. It authenticates current worker/task custody, operator ancestry and exact native OCR outcomes through the snapshot authority. `src/backend/processing/ocr/review-authority.ts` owns the transport-facing reader port and refusal error; it depends only on model types. Worker composition injects its operations into the thin `ocr-approved-snapshot-adapter.ts` and `ocr-review-adapter.ts` provider codecs. Bulk sources retain original terminal review metadata separately from corrected selected records.
 `src/backend/runs/queries/ocr-review.ts` projects the existing review section, served through the existing typed client.
 
 The child-only `src/workflows/ocr/` and `src/workflows/ocr-page/` folders use the same layout.
 Their indexes generate production child modules and task stores; OCR delegates page readings to
-OCR Page and identity lookups to Person Lookup. Only declared parent edges admit these children;
+OCR Page and form-specific identity lookups to Person Lookup or I-9 Lookup. Only declared parent edges admit these children;
 neither has a public start surface. Their retained proofs live at `ocr/steps/source-pages/step.ts`
 and `ocr-page/steps/read-page/step.ts` and enter the generated step-proof inventory.
+
+`src/workflows/ocr/steps/source-pages/step.ts` also owns the generic approved-record graph builder: one awaited
+OCR child, authenticated snapshot retrieval, then ordered member delegation. Target, selection
+policy and member mapping belong to each consuming workflow. `src/workflows/emergency-contact/`
+uses it for the PDF operation; `src/workflows/emergency-contact-member/` owns one employee's
+contact plan and transaction preview. Both retain step proofs and schema-owned results.
+The local `ocr.approved-snapshot` and `ocr.review` capabilities are issued by
+`worker/run-resources.ts`; they have no endpoint or configurable provider.
 
 `src/workflows/onboarding/` composes snapshot-bound CRM planning, UCPath identity search, delegated I-9 lookup, complete transaction findings and an operator hire-path gate, protected profile/remote-record creation, hire filing and fresh receipt verification, and run-bound master result cells. Its four retained proofs cover CRM data, UCPath search, I-9 search and the complete write sequence. The dashboard source remains `mock` until an operator dry run and sign-off.
 `steps/hire-review/step.ts` owns the reviewed write sequence and its proof recipe. Other step definitions own their typed entries and proofs. `tasks/` contains one implementation per pure workflow task ID; `src/rules/onboarding/` validates the reviewed path and cross-checks receipts before constructing master commands. `roster.ts` binds captured legal/lived names and declares the EID, I-9 profile, transaction and status output fields. `src/backend/runs/workbooks.ts` owns native row-choice authentication and the shared run-bound patch/ownership/receipt seam. System drivers own the three independently fenced effects and fresh saved-detail reads; UNKNOWN submissions remain parked.
@@ -246,11 +256,14 @@ launch imports and content-addressed loading; `guards-and-tests.md` owns its cac
 New Kronos, and UCPath. The semantic registries name these fixtures; architecture tests and the UCPath
 registry test read or assert their paths.
 `src/backend/systems/ucpath/driver/contact-page.ts` adapts the standalone contact editor to the
-shared contact-set interpreter and the single UCPath driver. Candidate recipes live in
+shared contact-set interpreter and the single UCPath driver. Pure mapping, complete-set fingerprints,
+primary-plan decisions and exact presence rules live in `src/rules/ucpath/emergency-contact.ts`. Candidate recipes live in
 `UCPATH_PENDING_CONTACT_RECIPES` outside the verified UI registry; the synthetic contact HTML
 fixture proves adapter behavior, not live selector validity. Contact read, prepare and comparison
-contracts live in `src/models/systems/ucpath/contact-tasks.ts`; task implementations and registration
-await their owning workflow. The driver and comparison interpreter expose no contact Save capability.
+contracts use their task-ID suffix modules under `src/models/systems/ucpath/`, with shared schemas and idempotency in `contact-contract.ts`; their implementations live under
+`src/backend/systems/ucpath/tasks/`, one file per task ID. `contact-verdict.ts` owns the shared protected
+probe fold. Preparation can demote one uniquely bound primary and add the declared primary contact.
+The driver exposes no contact Save capability, and real-mode members refuse before acquisition.
 `tests/architecture/systems/fixtures/selector-evidence-bindings.json` owns selector-binding inputs.
 `tests/architecture/dashboard/fixtures/pending-wire-bindings.json` owns dashboard wire exceptions.
 
@@ -284,3 +297,5 @@ Workflow execution uses the signed-in dashboard Run and its canonical start-plan
 `src/rules/spreadsheets/workbook-io.ts` owns shared library XLSX/CSV IO, structural admission, retained cell metadata and deterministic intake export through `@shbernal/ts-xlsx`. Imported formulas or metadata outside the editable model mark the workbook for named master-edit refusal. The dashboard editor owns editing/rendering behavior and consumes this browser-safe boundary.
 
 `transports/http/routes/debug-responses.ts` observes terminal HTTP failure responses through the existing debug writer.
+
+Task contract modules follow each task ID suffix: Emergency Contact uses `models/workflows/emergency-contact/read-result.ts`; its member uses `read-approved-contact.ts` and `read-contact-plan.ts`, with shared plan data in `contact-plan.ts`. OCR snapshot and record tasks use separate `models/processing/ocr/read-approved-snapshot.ts` and `read-approved-record.ts` modules; `approved-snapshot.ts` owns their shared transport protocol. UCPath contact tasks each use their task suffix module, while `models/systems/ucpath/contact-contract.ts` owns shared contact schemas, policy and idempotency.

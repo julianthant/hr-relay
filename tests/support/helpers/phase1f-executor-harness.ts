@@ -375,13 +375,14 @@ export async function sessionManagerFor(
   onEvent?: (event: WorkerSessionEvent) => void,
   scheduler: MonotonicDeadlineScheduler = new ManualScheduler(clock),
   duoCeremony?: DuoCeremonyGateFactory,
+  screenshotCapture?: NonNullable<ConstructorParameters<typeof WorkerSessionManager>[0]["browserScreenshotCapture"]>,
 ): Promise<WorkerSessionManager> {
   const manager = new WorkerSessionManager({
     workerId: EXECUTOR_WORKER_ID,
     workflowId: EXECUTOR_WORKFLOW_ID,
     stores: taskStoreRegistry,
     factory: harness.factory,
-    browserScreenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } },
+    browserScreenshotCapture: screenshotCapture ?? { capture: async context => { assert.equal(context.screenshot.state, "available"); } },
     clock,
     scheduler,
     acquireDeadlineMs: FIXTURE_SESSION_ACQUIRE_MS,
