@@ -301,17 +301,27 @@ describe("Onboarding captured roster admission and row choice", () => {
 
   it.each(["revision", "key", "sheet", "type", "fields", "names"] as const)("refuses stale %s authority without resuming or writing", async change => {
     const f = await fixture(), run = f.park(f.start()), command = f.choice(run);
-    if (change === "type" || change === "fields") {
-      const type = f.repository.types().find(type => type.id === "onboarding-roster"); assert.ok(type);
-      f.repository.putType({ ...type, ...(change === "type" ? { keyFieldId: "firstName" } : { fields: ["email"] }) });
+    if (change === "type") {
+      f.repository.putType({ id: "other-roster", name: "Other roster", keyFieldId: "email",
+        fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
+      const record = f.library.read(f.id); assert.ok(record);
+      const receipt = f.library.operatorOperation(f.id, randomUUID(), { kind: "metadata", expectedVersion: record.version,
+        metadata: { typeId: "other-roster", sharePoint: null } });
+      assert.equal(receipt.state, "applied"); assert.equal(f.repository.metadata(f.id).typeId, "other-roster");
     } else f.edit(workbook => {
       if (change === "revision") workbook.name = "Changed.xlsx";
       if (change === "key") workbook.sheets[0].rows[1].cells[0].value = "other@example.test";
       if (change === "sheet") workbook.sheets[0].id = "replacement-sheet";
+      if (change === "fields") {
+        const binding = workbook.sheets[0].columnBindings?.find(value => value.fieldId === "firstName"); assert.ok(binding);
+        binding.fieldId = null;
+      }
       if (change === "names") workbook.sheets[0].rows[1].cells[1].value = null;
     });
-    const candidate = change === "names" && command.type === "resolve-workbook-reference-row"
-      ? { ...command, target: { ...command.target, workbookVersion: f.library.read(f.id)?.version } } : command;
+    const changed = f.library.read(f.id); assert.ok(changed);
+    if (change === "fields") assert.equal(changed.workbook.sheets[0].columnBindings?.some(value => value.fieldId === "firstName"), false);
+    const candidate = change !== "revision" && command.type === "resolve-workbook-reference-row"
+      ? { ...command, target: { ...command.target, workbookVersion: changed.version } } : command;
     assert.equal(f.kernel.execute(candidate).state, "rejected");
     assert.equal(f.database.authority.gateResults.listByRun(run.envelope.runId).length, 0);
     assert.equal(f.database.authority.runs.get(run.envelope.runId)?.lifecycle.state, "parked-gate");
@@ -370,7 +380,8 @@ describe("Onboarding captured roster admission and row choice", () => {
       } finally {
         f.setFault(undefined);
         const held = f.database.authority.runs.get(root.envelope.runId); assert.ok(held);
-        const claim = runClaim(held); assert.ok(claim);
+        const heldClaim = runClaim(held); assert.ok(heldClaim);
+        const claim = { workerId: heldClaim.workerId, claimGeneration: heldClaim.claimGeneration };
         assert.equal(testRunService(f.database, f.clock).requeue({ commandId: randomUUID(), runId: root.envelope.runId,
           expectedVersion: held.version, claim, cause: "recovery" }).state, "applied");
       }
@@ -384,7 +395,10 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(f.kernel.execute(f.choice(root)).state, "applied");
     f.edit(workbook => { workbook.sheets[0].rows[1].cells[1].value = "Later"; });
     const executed = await f.execution.execute(root, new AbortController().signal);
-    assert.ok(executed.run?.lifecycle.state === "terminal" && executed.run.lifecycle.outcome === "done");
+    assert.ok(executed.run?.lifecycle.state === "terminal" && executed.run.lifecycle.outcome === "done",
+      JSON.stringify({ lifecycle: executed.run?.lifecycle.state, outcomes: executed.outcomes.map(value => value.state),
+        failures: [root, ...f.database.authority.runs.listChildren(root.envelope.runId)].flatMap(run =>
+          f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId }) => ({ code, nodeId }))) }));
     const result = f.database.authority.runResults.get(root.envelope.runId); assert.ok(result);
     const output = OnboardingResultSchema.parse(result.result.value);
     assert.equal(output.plan.employee.firstName, "Chosen"); assert.equal(output.plan.employee.preferredFirstName, "Lived");
@@ -450,13 +464,17 @@ describe("Onboarding captured roster admission and row choice", () => {
       } finally {
         f.setFault(undefined);
         const held = f.database.authority.runs.get(recoveredId); assert.ok(held);
-        const claim = runClaim(held); assert.ok(claim);
+        const heldClaim = runClaim(held); assert.ok(heldClaim);
+        const claim = { workerId: heldClaim.workerId, claimGeneration: heldClaim.claimGeneration };
         assert.equal(testRunService(f.database, f.clock).requeue({ commandId: randomUUID(), runId: recoveredId,
           expectedVersion: held.version, claim, cause: "recovery" }).state, "applied");
       }
     } else {
       const completed = await f.execution.execute(recovered, new AbortController().signal);
-      assert.ok(completed.run?.lifecycle.state === "terminal" && completed.run.lifecycle.outcome === "done");
+      assert.ok(completed.run?.lifecycle.state === "terminal" && completed.run.lifecycle.outcome === "done",
+        JSON.stringify({ lifecycle: completed.run?.lifecycle.state, outcomes: completed.outcomes.map(value => value.state),
+          failures: [recovered, ...f.database.authority.runs.listChildren(recoveredId)].flatMap(run =>
+            f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId }) => ({ code, nodeId }))) }));
       const result = f.database.authority.runResults.get(recoveredId); assert.ok(result);
       assert.equal(OnboardingResultSchema.parse(result.result.value).plan.employee.firstName, "Fixture");
       assert.equal(f.calls.filter(call => call.system === "i9").length, 1);
