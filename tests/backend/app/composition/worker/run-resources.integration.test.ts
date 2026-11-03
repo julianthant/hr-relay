@@ -12,6 +12,7 @@ import { boundProfileAdmission, findProfileFixtureAdmission } from "../../../../
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { createContentAddressedArtifactWriter } from "../../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { ConfigSchema } from "../../../../../src/models/config/schema.js";
+import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { ConfigSnapshotIdSchema,FingerprintSchema,PositiveIntSchema,RunIdSchema } from "../../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../../src/rules/validation/sha256.js";
@@ -47,6 +48,9 @@ describe("F actual four-way baseline independence",()=>{
    const ocr=createChatGptOcrAdapter({account:account.service,artifacts:writer,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
    const factory=createRunResourcesFactory({admission,database:f.db,nominatim:createNominatimWorkerAdapter(f.clock),ocr,assertBrowserRoot:root=>assertProfileBrowserRoot(admission,root),assertProfileOwner:()=>{throw new Error("snapshot proof must not acquire a browser profile");},authority:f.db.authority,artifacts:writer,clock:f.clock,ids:sequentialIdFactory("c"),isolation:rebuildRuntimeIsolation,protectedSecrets:{read:()=>{throw new Error("unexpected credential read");}},scheduler,environment:{},duoCeremony:{openGate:()=>{throw new Error("no browser in snapshot proof");}}});
    const first=factory.forRun(f.run);
+   assert.equal(factory.forRun(f.run),first);
+   const reclaimed=factory.forRun(RunRecordSchema.parse({...f.run,claimGeneration:Number(f.run.claimGeneration)+1}));
+   assert.notEqual(reclaimed.providers?.adapters["workbooks.library"],first.providers?.adapters["workbooks.library"]);
    assert.equal(first.providers?.adapters["workbooks.library"]?.capability,"workbooks.library");
    const otherRun=factory.forRun({...f.run,envelope:{...f.run.envelope,runId:RunIdSchema.parse(id(92))}});
    assert.notEqual(otherRun.providers?.adapters["workbooks.library"],first.providers?.adapters["workbooks.library"]);

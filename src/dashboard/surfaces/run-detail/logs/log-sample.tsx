@@ -16,6 +16,7 @@ import { useDashboardClient, useDashboardCommandBinding } from "../../../state/c
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
 import { LogSkeleton } from "../../shared/loading/loading.js";
 import { queueRunHeader } from "../run-header-model.js";
+import { UcpathFoundTransactions } from "./log-decision.js";
 
 export function LogSample({ selection, nowIso, source = "served", initialStepId, confirm }: { selection?: LogSelection; nowIso?: string; source?: WorkflowSource; initialStepId?: string; confirm?: RunWiringConfirm }) {
   if (source === "served" && selection !== undefined) return <ServedLogSample selection={selection} nowIso={nowIso} initialStepId={initialStepId} confirm={confirm} />;
@@ -30,7 +31,7 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm }: { select
   const logsUnavailableTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_UNAVAILABLE_TITLE", {})).text;
   const confirmedActionsUnavailableTitle = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTIONS_UNAVAILABLE_TITLE", {})).text;
   const incompleteActionEvidenceText = formatErrorCatalogFailure(createErrorCatalogFailure("LOGS_CONFIRMED_ACTION_EVIDENCE_INCOMPLETE", {})).text;
-  const projection = useMemo(() => {
+  const projection = useMemo<ReturnType<typeof projectRunLogs>>(() => {
     if (resource.snapshot === undefined) return { steps: [], timeline: [] };
     const logs = projectRunLogs(resource.snapshot, client);
     return { ...logs, timeline: pauseTimeline(logs.timeline, selection.row.pauseControl?.state) };
@@ -38,12 +39,21 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm }: { select
   const failureMissing = resource.snapshot !== undefined && initialStepId !== undefined && !projection.steps.some(step => step.id === initialStepId);
   const preview = resource.snapshot?.logs.dryRunPreview;
   const lastStepId = projection.steps.at(-1)?.id;
-  const afterStep = useCallback((id: string) => id !== lastStepId || preview?.state !== "available" && preview?.state !== "unavailable" ? undefined : <div className="col-start-2 mt-4 min-w-0">{preview?.state === "available" ? <FullDryRunPreview
-    stages={preview.stages.map(stage => ({ ...stage, state: stage.submitNotClicked ? "not-clicked" : stage.state }))}
-    facts={preview.stages.flatMap(stage => stage.sample === undefined ? [] : [{ label: stage.label, value: stage.sample.value, sample: true }])} />
-    : preview?.state === "unavailable" ? <Banner tone="warning" title="Dry-run preview unavailable">{preview.reason === "preview-not-completed" ? "The dry run did not complete. Review its recorded steps." : preview.reason === "preview-result-unreadable" ? "The dry-run result could not be read. No complete preview is claimed." : "Preview authority is unavailable. No complete preview is claimed."}</Banner> : undefined}</div>, [lastStepId, preview]);
   const toolbar = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" ? <Banner tone="danger" title={logsReadFailedTitle}>{resource.error}</Banner> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, logsReadFailedTitle]);
   const content = useMemo(() => failureMissing ? <Banner tone="danger" title={logsUnavailableTitle}>{formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text}</Banner> : resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Banner tone="danger" title={logsUnavailableTitle}>{resource.error}</Banner> : undefined : resource.snapshot.actionEvidence?.state === "unavailable" && projection.steps.length === 0 ? <Banner tone="warning" title={confirmedActionsUnavailableTitle}>{incompleteActionEvidenceText}</Banner> : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, resource.error, projection.steps.length, confirmedActionsUnavailableTitle, incompleteActionEvidenceText]);
+  const afterStep = useCallback((id: string) => {
+    const findings = projection.ucpathFindings;
+    const showFindings = findings?.stepId === id;
+    const showPreview = id === lastStepId && (preview?.state === "available" || preview?.state === "unavailable");
+    if (!showFindings && !showPreview) return undefined;
+    return <>{showFindings && findings !== undefined ? <UcpathFoundTransactions key={`${selection.row.runId}:${findings.stepId}`} attemptLabel={findings.attemptLabel}
+      presentation={resource.command?.state === "pending" ? { state: "checking" } : findings.presentation}
+      onDecision={resource.onUcpathDecision} /> : undefined}
+      {showPreview ? <div className="col-start-2 mt-4 min-w-0">{preview?.state === "available" ? <FullDryRunPreview
+        stages={preview.stages.map(stage => ({ ...stage, state: stage.submitNotClicked ? "not-clicked" : stage.state }))}
+        facts={preview.stages.flatMap(stage => stage.sample === undefined ? [] : [{ label: stage.label, value: stage.sample.value, sample: true }])} />
+        : preview?.state === "unavailable" ? <Banner tone="warning" title="Dry-run preview unavailable">{preview.reason === "preview-not-completed" ? "The dry run did not complete. Review its recorded steps." : preview.reason === "preview-result-unreadable" ? "The dry-run result could not be read. No complete preview is claimed." : "Preview authority is unavailable. No complete preview is claimed."}</Banner> : undefined}</div> : undefined}</>;
+  }, [projection.ucpathFindings, selection.row.runId, resource.command?.state, resource.onUcpathDecision, lastStepId, preview]);
   return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? selection.row.title} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision}
     context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}
     status={<StatusBadge status={dsStatusOf(selection.row.status)} pauseControl={selection.row.pauseControl} presentation="queue" />}

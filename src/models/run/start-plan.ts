@@ -30,6 +30,7 @@ import {
 export { StartRefusalCodeSchema, type StartRefusalCode } from "./start-refusal.js";
 
 export const PlannedRunSchema = z.strictObject({
+  workbookReferences: z.array(SchemaBoundCanonicalValueSchema).optional(),
   supersedeTargets: StartSupersedeTargetsSchema.optional(),
   itemId: ItemIdSchema,
   /** The exact title/subtitle the confirmation surface showed. */
@@ -172,6 +173,7 @@ export function derivePlannedInputFingerprint(
         rawInput: valueFreeProtectedData(run.rawInput, run.input.protectedBindings),
         canonicalInput: { ...run.input, value: valueFreeProtectedInput(run.input.value, run.input.protectedBindings) },
         canonicalInputDigest: run.canonicalInputDigest,
+        ...(run.workbookReferences === undefined ? {} : { workbookReferences: run.workbookReferences }),
       })),
     }))
     .digest("hex"));

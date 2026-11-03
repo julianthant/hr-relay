@@ -3,6 +3,8 @@ import { createProfileFixtureSet, openBoundDatabaseFixture } from "../../../supp
 import assert from "node:assert/strict";
 import { recordBrowserAction, withBrowserActionSession } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { RecoveryActivityError } from "../../../../src/backend/runtime/writes/recovery-activity.js";
+import { retainedUcpathFindings } from "../../../../src/backend/runs/queries/run-detail/ucpath-findings.js";
+import type { RunDetailQueryDeps } from "../../../../src/backend/runs/queries/run-detail-types.js";
 import { BrowserSessionClosureUnprovedError } from "../../../../src/workflow-kit/session.js";
 import { WorkerControlRefusal } from "../../../../src/models/run/worker-control.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
@@ -16,6 +18,8 @@ import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { UcpathTerminationTargetSchema, UcpathTransactionScanSchema } from "../../../../src/models/ui/ucpath-smart-hr-termination.js";
+import { UcpathTransactionFindingsReadSchema } from "../../../../src/models/ui/ucpath-transaction-findings.js";
+import { UcpathReadTransactionFindings } from "../../../../src/models/systems/ucpath/read-transaction-findings.js";
 import { UcpathCreateTermination, UcpathCreateTerminationOutputSchema, ucpathTerminationIdempotencyKey } from "../../../../src/models/systems/ucpath/create-termination.js";
 import { UcpathStageTermination } from "../../../../src/models/systems/ucpath/stage-termination.js";
 import { CommandRequestSchema, ParkedWriteCheckTargetSchema } from "../../../../src/rules/commands/commands.js";
@@ -126,7 +130,15 @@ async function fixture(rows: number, workflowId: string = descriptor.id) {
   let afterRead = () => {};
   const driver = { system: "ucpath" as const, scanTerminationTransactions: async () => { recordBrowserAction("opened", "ucpath.smart-hr.transaction-search"); await readHold; return UcpathTransactionScanSchema.parse({ state: "read", emplId: TARGET.emplId,
     rows: Array.from({ length: rows }, (_, index) => ({ transactionId: `T00220963${index + 1}`, emplId: TARGET.emplId, action: "Terminatn", approvalStatus: "Pending",
-      startDate: TARGET.effectiveDate, displayedName: TARGET.expectedName })), scannedRowCount: rows, observedAt: NOW }); } };
+      startDate: TARGET.effectiveDate, displayedName: TARGET.expectedName })), scannedRowCount: rows, observedAt: NOW }); },
+    readTransactionFindings: async () => { recordBrowserAction("opened", "ucpath.smart-hr.transaction-search"); await readHold;
+      return UcpathTransactionFindingsReadSchema.parse({ state: "read", emplId: TARGET.emplId,
+        rows: Array.from({ length: rows }, (_, index) => ({ transactionId: `T00220963${index + 1}`, emplId: TARGET.emplId,
+          action: "Terminatn", approvalStatus: "Pending", startDate: TARGET.effectiveDate, displayedName: TARGET.expectedName,
+          submittedAt: "06/11/26 1:02:03.123456PM", detailVerified: true })), scannedRowCount: rows,
+        completeness: rows === 300 ? { state: "incomplete", reason: "search-cap", reportedRowCount: 300 }
+          : { state: "complete", reportedRowCount: rows }, observedAt: NOW, source: "ss-smart-hr-list-and-detail" }); },
+  };
   const sessions: Parameters<typeof checkParkedWrite>[0]["sessions"] = {
     withDriver: async (_need, _instance, _signal, operation) => { events.push("read"); if (failRead) throw new Error("synthetic-read-unavailable"); const result = await withBrowserActionSession(UUID_6, () => operation(driver, async () => {
       if (failCapture) throw new RecoveryActivityError(new Error("synthetic-capture-failure"));
@@ -159,7 +171,7 @@ describe("held-only parked write checks", () => {
     const at = h.clock.now().toISOString();
     const before = canonicalJsonStringify([h.run, h.intent, h.attempt]);
     const result = await checkParkedWrite(h.input);
-    assert.equal(result.result.code, "PARKED_CHECK_OCCURRENCE_UNPROVED");
+    assert.equal(result.result.code, "PARKED_CHECK_UNKNOWN");
     const events = h.timeline.page({ runId: h.run.envelope.runId });
     assert.deepEqual(events.map(event => event.payload.kind),
       ["recovery-activity-started", "note", "note", "recovery-activity-ended"]);
@@ -258,8 +270,8 @@ describe("held-only parked write checks", () => {
       stores: taskStoreRegistry, clock: h.clock, scheduler, acquireDeadlineMs: 10_000, duoCeremony: await fixtureDuoCeremonyGates(h.clock),
       browserScreenshotCapture: h.browserScreenshotCapture,
       factory: { probeProfile: async () => undefined, open: async request => ({ ...request, sessionId, signInFingerprint: request.configFingerprint, profileRevision: 1,
-        profileDirectory: "/synthetic/parked-probe", driver: { ...h.driver, scanTerminationTransactions: async () => {
-          readCount++; started(); return h.driver.scanTerminationTransactions();
+        profileDirectory: "/synthetic/parked-probe", driver: { ...h.driver, readTransactionFindings: async () => {
+          readCount++; started(); return h.driver.readTransactionFindings();
         } }, authentication: { authenticate: async () => "already-authenticated" }, reset: async () => undefined,
         screenshot: screenshotFor(h.clock, sessionId),
         close: async () => { closeCount++; closed(); if (closeFails) throw new Error("synthetic-close-unproved");
@@ -392,21 +404,31 @@ describe("held-only parked write checks", () => {
     const record = h.database.authority.workerControls.get(request.commandId);
     assert.ok(record?.phase.state === "succeeded" && record.phase.acknowledgement.kind === "parked-write-check");
     if (record?.phase.state !== "succeeded" || record.phase.acknowledgement.kind !== "parked-write-check") throw new Error("missing-held-journal");
-    assert.equal(record.phase.acknowledgement.result.code, "PARKED_CHECK_OCCURRENCE_UNPROVED");
+    assert.equal(record.phase.acknowledgement.result.code, "PARKED_CHECK_UNKNOWN");
+    const findings = retainedUcpathFindings({ authorityIdentity: { installationId: target.installationId, profileId: target.profileId },
+      canonical: { database: h.database, descriptors: { resolve: () => descriptor } },
+    } as unknown as RunDetailQueryDeps, h.run, h.intent, record);
+    assert.ok(findings.state === "found"); assert.equal(findings.authoritative, false);
+    assert.equal(findings.findings.rows[0].submittedAt, "06/11/26 1:02:03.123456PM");
     assert.deepEqual(record.phase.acknowledgement.result.target, target);
     const taskCaptures = h.captures.filter(captured => captured.trigger.kind === "task-point");
     assert.equal(taskCaptures.length, 1);
     assert.deepEqual(taskCaptures[0].trigger, { kind: "task-point", nodeId: "submit-write", attempt: h.run.envelope.attempt, boundary: "step" });
   });
-  for (const rows of [0, 1, 2]) it(`reads ${rows} synthetic matches without changing write or run authority`, async () => {
+  for (const rows of [0, 1, 2, 300]) it(`retains ${rows} findings without changing write or run authority`, async () => {
     const h = await fixture(rows);
     const before = canonicalJsonStringify([h.run, h.intent, h.attempt]);
     const result = await checkParkedWrite(h.input);
     assert.equal(result.result.held, true);
-    assert.equal(result.result.state, rows === 0 ? "absent" : "ambiguous");
-    assert.equal(result.result.code, rows === 1 ? "PARKED_CHECK_OCCURRENCE_UNPROVED" : rows === 0 ? "PARKED_CHECK_ABSENT" : "PARKED_CHECK_AMBIGUOUS");
+    assert.equal(result.result.state, "unknown");
+    assert.equal(result.result.code, "PARKED_CHECK_UNKNOWN");
     assert.equal(result.result.provenance, "system-probe");
     assert.ok(result.evidence);
+    assert.ok(result.findingsIdentity);
+    assert.equal(result.result.probeTaskId, UcpathReadTransactionFindings.id);
+    const findings = UcpathTransactionFindingsReadSchema.parse(result.evidence.value);
+    assert.equal(findings.rows.length, rows); assert.equal(findings.completeness.state, rows === 300 ? "incomplete" : "complete");
+    if (rows > 0) assert.equal(findings.rows[0].submittedAt, "06/11/26 1:02:03.123456PM");
     assert.deepEqual(h.events, ["close", "bind", "read", "close", "release"]);
     assert.equal(canonicalJsonStringify([h.run, h.intent, h.attempt]), before);
   });
@@ -417,7 +439,7 @@ describe("held-only parked write checks", () => {
     assert.ok(descriptor);
     assert.equal(descriptor.id, "person-lookup");
     assert.equal(result.result.provenance, "system-probe");
-    assert.equal(result.result.code, "PARKED_CHECK_ABSENT");
+    assert.equal(result.result.code, "PARKED_CHECK_UNKNOWN");
     assert.equal(result.result.held, true);
     assert.deepEqual(h.events, ["close", "bind", "read", "close", "release"]);
   });
@@ -445,6 +467,28 @@ describe("held-only parked write checks", () => {
     const result = await checkParkedWrite({ ...h.input, probe: { ...h.input.probe, stores: { ...taskStoreRegistry, stores: [] } } });
     assert.equal(result.result.state, "unavailable"); assert.equal(result.result.provenance, "not-observed");
     assert.equal(result.evidence, undefined); assert.deepEqual(h.events, []);
+  });
+  it("refuses a missing registered findings task instead of substituting the operational probe", async () => {
+    const h = await fixture(1);
+    const stores = taskStoreRegistry.stores.map(store => ({ ...store, tasks: Object.fromEntries(Object.entries(store.tasks)
+      .filter(([, task]) => task.contract.id !== UcpathReadTransactionFindings.id)) }));
+    const result = await checkParkedWrite({ ...h.input, probe: { ...h.input.probe, stores: { ...taskStoreRegistry, stores } } });
+    assert.equal(result.result.state, "unavailable"); assert.equal(result.evidence, undefined); assert.equal(result.findingsIdentity, undefined);
+    assert.deepEqual(h.events, []); assert.equal(h.intent.status, "parked");
+  });
+  for (const foreign of ["employee", "name"] as const) it(`does not retain findings for a foreign ${foreign}`, async () => {
+    const h = await fixture(1), originalRead = h.driver.readTransactionFindings;
+    h.driver.readTransactionFindings = async () => {
+      const scan = await originalRead();
+      return UcpathTransactionFindingsReadSchema.parse({ ...scan, ...(foreign === "employee" ? { emplId: "10800001" } : {}),
+        rows: scan.rows.map(row => ({ ...row, ...(foreign === "employee" ? { emplId: "10800001" } : { displayedName: "Foreign Person" }) })) });
+    };
+    const before = canonicalJsonStringify([h.run, h.intent, h.attempt]);
+    const result = await checkParkedWrite(h.input);
+    assert.equal(result.result.state, "unknown"); assert.equal(result.result.provenance, "not-observed");
+    assert.equal(result.evidence, undefined); assert.equal(result.findingsIdentity, undefined);
+    assert.equal(canonicalJsonStringify([h.run, h.intent, h.attempt]), before);
+    assert.deepEqual(h.events, ["close", "bind", "read", "close", "release"]);
   });
   it("refuses a foreign actor or cancelled request before provider access", async () => {
     const h = await fixture(1);

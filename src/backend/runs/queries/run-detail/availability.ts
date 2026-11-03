@@ -8,12 +8,13 @@ export function availableSections(
   authority: RunRecord,
   trust?: RunDetailTrustDeps,
   captures?: RunCaptureAvailabilityWire,
-): readonly ("logs" | "receipt" | "context-data" | "context-attempts" | "failure" | "captures" | "parked-write" | "identity-gate")[] {
+): readonly ("logs" | "receipt" | "context-data" | "context-attempts" | "failure" | "captures" | "parked-write" | "identity-gate" | "workbook-writes")[] {
   const { lifecycle } = authority;
   const terminal = lifecycle.state === "terminal";
   const settled = terminal && lifecycle.outcome !== "interrupted";
   return [
     "logs",
+    ...(authority.input.workbookReferences === undefined ? [] : ["workbook-writes"] as const),
     ...(settled && trust !== undefined ? (["receipt"] as const) : []),
     "context-data",
     "context-attempts",

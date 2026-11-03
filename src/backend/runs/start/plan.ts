@@ -29,9 +29,15 @@ import {
 } from "../../../models/run/start-plan.js";
 import type { PlannedRun, StartPlanRecord, StartRefusal } from "../../../models/run/start-plan.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { RunWorkbookReferenceSchema, WorkbookRunReferenceSelectionSchema } from "../../../models/dashboard/workbooks.js";
+import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
+import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import type { z } from "zod";
 
 
 export interface StartPlannerDeps {
+  readonly workbooks?: Pick<WorkbookLibraryService, "snapshot">;
   readonly protectedSecrets?: ProtectedSecretSource;
 
   readonly authority: Readonly<{
@@ -44,6 +50,7 @@ export interface StartPlannerDeps {
 }
 
 export interface StartPlanRequest {
+  readonly workbookReferences?: readonly z.infer<typeof WorkbookRunReferenceSelectionSchema>[];
   readonly descriptor: AnyWorkflowDescriptor;
   readonly protectedSubmissionBindings?: readonly ProtectedInputBinding[];
   readonly retainedInputs?: readonly SchemaBoundCanonicalValue[];
@@ -105,6 +112,8 @@ export function dryRunRefusalMessage(descriptor: AnyWorkflowDescriptor): string 
 
 export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): StartPlanRecord {
   const { descriptor } = request;
+  const selections = WorkbookRunReferenceSelectionSchema.array().parse(request.workbookReferences ?? []);
+  if (selections.some(selection => selection.entry > request.submissions.length)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
 
   const admittedSubmissions = admitProtectedInput(descriptor, request.submissions, deps.protectedSecrets, request.retainedInputs, request.protectedSubmissionBindings);
   const rawSubmissions: JsonValue[] = [];
@@ -176,8 +185,29 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     }
 
     const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(parsed), subtitle: planning.subtitle(parsed) }));
+    const references = selections.filter(selection => selection.entry === entry);
+    const requiredTypes = planning.requiredWorkbookTypeIds;
+    if (references.length !== requiredTypes.length || new Set(references.map(reference => reference.typeId)).size !== references.length
+      || references.some(reference => !requiredTypes.includes(reference.typeId))) {
+      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
+    }
+    let workbookReferences: SchemaBoundCanonicalValue[] | undefined;
+    if (references.length > 0) {
+      const workbooks = deps.workbooks;
+      if (workbooks === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); continue; }
+      try {
+        workbookReferences = references.map(({ entry: _entry, ...reference }) => ({
+          schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output"),
+          value: JsonValueSchema.parse(RunWorkbookReferenceSchema.parse({ request: reference, snapshot: workbooks.snapshot(reference) })),
+        }));
+      } catch (error) {
+        if (!(error instanceof WorkbookLibraryError)) throw error;
+        refuse("capability-unavailable", error.message); continue;
+      }
+    }
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
+      ...(workbookReferences === undefined ? {} : { workbookReferences }),
       ...(descriptor.enqueue !== "supersede-active" ? {} : { supersedeTargets: startSupersedeTargets(
         deps.authority.authority.runs.listByItem({ workflow: descriptor.id, itemId })) }),
       itemId,

@@ -1,5 +1,5 @@
 /** Fresh-identity minting, injected the same way time is: a caller who cannot pin a value makes a durable record impossible to assert against, so every id comes from an injected factory. */
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import type { Clock } from "../time/clock.js";
 import { TraceIdSchema } from "./ids.js";
 import type { TraceId } from "./ids.js";
@@ -19,20 +19,5 @@ export function deriveTraceId(code: string, runId: string, clock: Clock): TraceI
   return TraceIdSchema.parse(`${code}-${clock.timeOfDayCode()}-${runId.slice(0, 4)}`);
 }
 
-export function deriveStableUuid(namespace: string, key: string): string {
-  const digest = createHash("sha256")
-    .update(namespace)
-    .update("\0")
-    .update(key)
-    .digest("hex");
-  const variant = "89ab"[Number.parseInt(digest[16], 16) % 4];
-  return [
-    digest.slice(0, 8),
-    digest.slice(8, 12),
-    `5${digest.slice(13, 16)}`,
-    `${variant}${digest.slice(17, 20)}`,
-    digest.slice(20, 32),
-  ].join("-");
-}
-
+export { deriveStableUuid } from "./stable-uuid.js";
 export { deriveItemId } from "./logical-item.js";

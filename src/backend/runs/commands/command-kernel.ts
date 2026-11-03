@@ -97,6 +97,7 @@ const PHASE1_ACTIVE = {
     "delete",
     "recheck-write",
     "resolve-write-absent",
+    "resolve-workbook-row",
   ],
   gate: ["resolve-gate"],
 
@@ -274,6 +275,7 @@ export interface RunConfigIdentity {
 }
 
 export interface CommandKernelDependencies {
+  readonly workbookRows?: Readonly<{ resolve(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-row" }>): unknown }>;
   readonly preflight?: PreflightAdmission;
   readonly applicationQuitAvailable?: boolean;
   readonly authority: CommandAuthority;
@@ -585,6 +587,7 @@ function executeStartRun(
       matchKey: planned.matchKey,
       rawInput: planned.rawInput,
       parsedInput: planned.input,
+      ...(planned.workbookReferences === undefined ? {} : { workbookReferences: planned.workbookReferences }),
     })),
     now,
     `plan ${plan.startPlanId}`,
@@ -2466,6 +2469,12 @@ function dispatchActive(
         case "delete": return executeDelete(dependencies, repositories, request, now);
         case "bump": return executeBump(dependencies, repositories, request, now);
         case "rename": return executePresentation(dependencies, repositories, request, now);
+        case "resolve-workbook-row": {
+          requireRun(repositories, request, request.target.runId);
+          if (dependencies.workbookRows === undefined) return reject(request, "capability-unavailable", "Workbook row choices are unavailable.");
+          dependencies.workbookRows.resolve(repositories, request);
+          return applied(request, [runTarget(request.target.runId)], []);
+        }
         case "recheck-write":
         case "resolve-write-absent":
           return executeWriteResolution(dependencies, repositories, request, now, auditId);

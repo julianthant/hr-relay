@@ -906,6 +906,7 @@ function assertConfirmationPublication(database:DatabaseSync,id:string,readRun =
 
 function timelineEvidenceRepositories(database: DatabaseSync) {
   return {
+    workbooks: createWorkbookLibraryRepository({ database, read: work => work(), mutate: () => { throw new Error("timeline-workbook-reader-is-read-only"); } }),
     writeAttempts: {get(id:string) {
       const row=database.prepare("SELECT * FROM write_attempts WHERE id=?").get(id);
       return row === undefined ? undefined : WriteAttemptRecordSchema.parse(nativeOrdinaryRecordFromRow("write_attempts",row));
@@ -938,6 +939,32 @@ function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, app
     const run = readTimelineRun(database, record.scope.runId, readRun);
     if (run === undefined) throw new Error("timeline-event-owner-missing");
     if (run.envelope.workflow !== record.workflow) throw new Error("timeline-event-owner-mismatch");
+    if (record.payload.kind === "workbook-write-recorded") {
+      const event = record.payload, repositories = timelineEvidenceRepositories(database);
+      const entry = repositories.workbooks.runOperations(run.envelope.runId).find(entry => entry.libraryId === event.libraryId && entry.operation.operationId === event.operationId);
+      const digest = entry?.operation.source.kind === "run" ? entry.operation.source.referenceDigest : undefined;
+      if (entry === undefined || entry.operation.source.kind !== "run" || entry.operation.source.referenceDigest === undefined
+        || !run.input.workbookReferences?.some(reference => sha256Hex(canonicalJsonStringify(reference)) === digest)
+        || event.runId !== run.envelope.runId || event.workflow !== run.envelope.workflow || event.traceId !== run.envelope.traceId
+        || event.attempt > run.envelope.attempt || Number(event.claimGeneration) > Number(run.claimGeneration)
+        || event.receiptDigest !== sha256Hex(canonicalJsonStringify(entry.receipt)) || event.at !== entry.receipt.at
+        || record.occurredAt !== event.at || record.source.kind !== "native"
+        || record.eventId !== deriveStableUuid("run-workbook-write", canonicalJsonStringify({ runId: event.runId, libraryId: event.libraryId, operationId: event.operationId }))) {
+        throw new Error("workbook-write-timeline-identity-mismatch");
+      }
+      if (appending && event.resolvedBy === undefined && (run.lifecycle.state !== "running" || Number(event.claimGeneration) !== Number(run.claimGeneration))) {
+        throw new Error("workbook-write-claim-unavailable");
+      }
+      if (event.resolvedBy !== undefined) {
+        const command = repositories.commands.get(event.resolvedBy);
+        const change = entry.operation.change;
+        if (command === undefined || !("family" in command) || command.family !== "run" || command.type !== "resolve-workbook-row" || command.target.runId !== event.runId
+          || command.target.libraryId !== event.libraryId || change.kind !== "patch" || change.resolves?.operationId !== command.target.operationId
+          || change.resolves?.receiptDigest !== command.target.receiptDigest || change.selection?.sheetId !== command.payload.sheetId
+          || change.selection?.rowId !== command.payload.rowId || change.selection?.expectedVersion !== command.target.workbookVersion
+          || entry.receipt.state !== "applied") throw new Error("workbook-write-resolution-timeline-mismatch");
+      }
+    }
     const recoveryStart = (activityId: string) => {
       const row = database.prepare("SELECT * FROM timeline_events WHERE id=?").get(activityId);
       const start = row === undefined ? undefined : timelineEventFromRow(row);

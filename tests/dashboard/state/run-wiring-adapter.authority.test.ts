@@ -17,12 +17,13 @@ import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../src/models
 import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../src/models/failures/error-catalog.js";
-import { CommandRequestSchema, CommandResultSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
+import { CommandRequestSchema, CommandResultSchema, ParkedWriteCheckTargetSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
 import { ActorIdSchema, RunIdSchema } from "../../../src/rules/identity/ids.js";
 import { IdentityApprovalResultSchema } from "../../../src/rules/separations/identity-approval.js";
 import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../support/helpers/dashboard/identity-ceremony-fixtures.js";
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
+import { UcpathReadTransactionFindings } from "../../../src/models/systems/ucpath/read-transaction-findings.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
 const NOTE = "00000000-0000-4000-8000-000000000003";
@@ -227,6 +228,12 @@ function parkedClient(selected: LogSelection, sent: CommandRequest[], options: {
     executeCommand: async (raw: unknown) => {
       const request = CommandRequestSchema.parse(raw); sent.push(request);
       if (options.execute !== undefined) return options.execute(request);
+      if (request.family === "worker-browser" && request.type === "check-parked-write") {
+        write = ParkedWriteDetailWireSchema.parse({ ...write, lastCheck: { commandId: request.commandId, requestedBy: request.requestedBy,
+          target: request.target, observedAt: AT, held: true, state: "unknown", code: "PARKED_CHECK_UNKNOWN", provenance: "not-observed", evidenceDigest: "a".repeat(64) } });
+        return CommandResultSchema.parse({ state: "applied", commandId: request.commandId,
+          affectedTargets: [{ family: "run", runId: RUN }, { family: "worker-browser", workerId: request.target.workerId }] });
+      }
       version++;
       return CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [{ family: "run", runId: RUN }] });
     },
@@ -235,6 +242,139 @@ function parkedClient(selected: LogSelection, sent: CommandRequest[], options: {
 }
 
 describe("served parked-write Logs decisions", () => {
+  function findingsWrite() {
+    const write = parkedAt();
+    const recheck = write.actions.find(action => action.kind === "command" && action.command === "recheck-write");
+    assert.ok(recheck?.kind === "command" && recheck.writeTarget !== undefined);
+    const target = ParkedWriteCheckTargetSchema.parse({ installationId: RUN, profileId: NOTE, workerId: "separations-worker-1", expectedVersion: 2,
+      membershipRevision: 1, processId: 1234, startedAt: AT, controlBasis: { leaseGeneration: 1, controlRevision: 1 },
+      workflowId: "separations", itemId: NOTE, runId: RUN, runVersion: 3, runAttempt: 1, traceId: write.native?.traceId, nodeId: write.native?.nodeId,
+      writeIntentId: write.writeIntentId, intentVersion: 2, intentGeneration: write.generation,
+      writeAttemptId: recheck.writeTarget.writeAttemptId, bindingProofDigest: recheck.writeTarget.bindingProofDigest,
+      occurrenceKeyDigest: recheck.writeTarget.occurrenceKeyDigest });
+    return ParkedWriteDetailWireSchema.parse({ ...write, taskId: "ucpath/create-termination", check: { state: "available", target },
+      actions: [...write.actions, { ...recheck, key: "check-parked-write", command: "check-parked-write", checkTarget: target }],
+      ucpathFindings: { state: "found", findings: UcpathReadTransactionFindings.example,
+        selectorVerification: "pending-live-verification", authoritative: false, matches: [] } });
+  }
+
+  it("projects retained findings at the exact parked Logs step", async () => {
+    const selected = selectionAt(3), write = findingsWrite();
+    const fixture = parkedClient(selected, [], { write });
+    const snapshot = await readRunLogs(fixture.client, selected, new AbortController().signal);
+    const projection = projectRunLogs(snapshot, fixture.client);
+    assert.ok(projection.steps.some(step => step.id === write.writeIntentId));
+    assert.deepEqual(projection.ucpathFindings, { stepId: write.writeIntentId, attemptLabel: "Attempt 1",
+      presentation: { state: "found", complete: true, authoritative: false, rows: [] } });
+  });
+
+  for (const transactionNumber of [undefined, "T123456"]) it(`confirms the findings recheck with its original targets (${transactionNumber})`, async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [];
+    const write = findingsWrite(), fixture = parkedClient(selected, sent, { write });
+    const h = await harness(fixture.client, (_pending, send) => confirmations.push(send)); await h.render(selected);
+    await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again", ...(transactionNumber === undefined ? {} : { transactionNumber }) }));
+    assert.equal(sent.length, 0); assert.equal(confirmations.length, 1);
+    await act(async () => confirmations[0]());
+    assert.equal(sent.length, 1);
+    const request = sent[0];
+    if (transactionNumber === undefined) {
+      assert.ok(request.family === "worker-browser" && request.type === "check-parked-write");
+      assert.ok(write.check?.state === "available"); assert.deepEqual(request.target, write.check.target);
+      return;
+    }
+    assert.ok(request.family === "run" && request.type === "recheck-write");
+    const action = write.actions.find(action => action.kind === "command" && action.command === "recheck-write");
+    assert.ok(action?.kind === "command" && action.writeTarget !== undefined);
+    const { occurrenceKeyDigest, ...target } = action.writeTarget;
+    assert.deepEqual(request.target, { runId: RUN, expectedVersion: 3, ...target });
+    assert.deepEqual(request.payload, { occurrenceKeyDigest, ...(transactionNumber === undefined ? {} : { transactionId: transactionNumber }) });
+  });
+
+  it("refuses findings submitted/absent decisions and invalid typed IDs while selector authority is pending", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [];
+    const h = await harness(parkedClient(selected, sent, { write: findingsWrite() }).client, (_pending, send) => confirmations.push(send));
+    await h.render(selected);
+    await act(async () => h.state?.onUcpathDecision?.({ kind: "submitted", transactionNumber: "T123456" }));
+    await act(async () => h.state?.onUcpathDecision?.({ kind: "not-submitted" }));
+    await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again", transactionNumber: "invalid" }));
+    assert.equal(confirmations.length, 0); assert.equal(sent.length, 0);
+  });
+
+  it("disables table commands without an admitted idle-worker check", async () => {
+    const selected = selectionAt(3), write = findingsWrite();
+    const unavailable = ParkedWriteDetailWireSchema.parse({ ...write, check: { state: "unavailable", code: "PARKED_CHECK_UNAVAILABLE" },
+      actions: write.actions.filter(action => action.kind !== "command" || action.command !== "check-parked-write") });
+    const h = await harness(parkedClient(selected, [], { write: unavailable }).client); await h.render(selected);
+    assert.equal(h.state?.onUcpathDecision, undefined);
+  });
+
+  it("refuses a held confirmation after its worker control revision changes", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [], write = findingsWrite();
+    const fixture = parkedClient(selected, sent, { write }), h = await harness(fixture.client, (_pending, send) => confirmations.push(send));
+    await h.render(selected); await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again" }));
+    assert.ok(write.check?.state === "available");
+    const target = { ...write.check.target, controlBasis: { ...write.check.target.controlBasis, controlRevision: 2 } };
+    fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, check: { state: "available", target },
+      actions: write.actions.map(action => action.kind === "command" && action.command === "check-parked-write" ? { ...action, checkTarget: target } : action) }));
+    await h.render(selectionAt(3)); await act(async () => confirmations[0]());
+    assert.equal(sent.length, 0); assert.equal(h.outcomes.at(-1)?.kind, "refused");
+  });
+
+  it("allows another held check after a settled result serves a new worker-control target", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [], write = findingsWrite();
+    const fixture = parkedClient(selected, sent, { write }), h = await harness(fixture.client, (_pending, send) => confirmations.push(send));
+    await h.render(selected); await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again" }));
+    await act(async () => confirmations[0]()); assert.equal(h.state?.command?.state, "settled");
+    assert.ok(write.check?.state === "available");
+    const target = { ...write.check.target, expectedVersion: 3, controlBasis: { ...write.check.target.controlBasis, controlRevision: 2 } };
+    fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, check: { state: "available", target },
+      actions: write.actions.map(action => action.kind === "command" && action.command === "check-parked-write" ? { ...action, checkTarget: target } : action) }));
+    await h.render(selectionAt(3)); assert.ok(h.state?.onUcpathDecision);
+    await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again" }));
+    assert.equal(confirmations.length, 2); await act(async () => confirmations[1]());
+    assert.equal(sent.length, 2); assert.notEqual(sent[0].commandId, sent[1].commandId);
+    assert.ok(sent[1].family === "worker-browser" && sent[1].type === "check-parked-write");
+    assert.equal(sent[1].target.controlBasis?.controlRevision, 2);
+  });
+
+  for (const changed of [false, true]) it(`restores an uncertain held check and replays only its original occurrence (${changed})`, async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [], write = findingsWrite();
+    let replay = false;
+    const fixture = parkedClient(selected, sent, { write, execute: async request => {
+      assert.ok(request.family === "worker-browser" && request.type === "check-parked-write");
+      if (!replay) throw new Error("reply lost");
+      fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, lastCheck: { commandId: request.commandId, requestedBy: request.requestedBy,
+        target: request.target, observedAt: AT, held: true, state: "unknown", code: "PARKED_CHECK_UNKNOWN", provenance: "not-observed", evidenceDigest: "a".repeat(64) } }));
+      return CommandResultSchema.parse({ state: "already-applied", commandId: request.commandId,
+        affectedTargets: [{ family: "run", runId: RUN }, { family: "worker-browser", workerId: request.target.workerId }] });
+    } });
+    const h = await harness(fixture.client, (_pending, send) => confirmations.push(send)); await h.render(selected);
+    await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again" })); await act(async () => confirmations[0]());
+    assert.equal(h.state?.command?.state, "uncertain");
+    fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, generation: changed ? 2 : 1,
+      check: { state: "unavailable", code: "PARKED_CHECK_UNAVAILABLE" },
+      actions: write.actions.filter(action => action.kind !== "command" || action.command !== "check-parked-write")
+        .map(action => action.kind === "command" ? { ...action, writeTarget: { ...action.writeTarget, intentGeneration: changed ? 2 : 1 } } : action) }));
+    await h.render(selected, 1); assert.equal(h.state?.command?.state, "uncertain");
+    replay = true; await act(async () => h.state?.replay?.());
+    assert.equal(sent.length, changed ? 1 : 2);
+    if (changed) assert.equal(h.outcomes.at(-1)?.kind, "refused");
+    else { assert.deepEqual(sent[1], sent[0]); assert.equal(h.state?.command?.state, "settled"); }
+  });
+
+  it("refuses the findings confirmation after the original write target changes", async () => {
+    const selected = selectionAt(3), sent: CommandRequest[] = [], confirmations: (() => void)[] = [];
+    const write = findingsWrite(), fixture = parkedClient(selected, sent, { write });
+    const h = await harness(fixture.client, (_pending, send) => confirmations.push(send)); await h.render(selected);
+    await act(async () => h.state?.onUcpathDecision?.({ kind: "check-again", transactionNumber: "T123456" }));
+    const checkTarget = write.check?.state === "available" ? { ...write.check.target, intentGeneration: 2 } : undefined;
+    fixture.setWrite(ParkedWriteDetailWireSchema.parse({ ...write, generation: 2,
+      check: { state: "available", target: checkTarget }, actions: write.actions.map(action => action.kind === "command"
+      ? { ...action, writeTarget: { ...action.writeTarget, intentGeneration: 2 }, ...(action.checkTarget === undefined ? {} : { checkTarget }) } : action) }));
+    await h.render(selectionAt(3)); await act(async () => confirmations[0]());
+    assert.equal(sent.length, 0); assert.equal(h.outcomes.at(-1)?.kind, "refused");
+  });
+
   for (const [acceptsId, choice, answer, verb, transactionId] of [
     [true, 0, {}, "recheck-write", undefined],
     [true, 1, { outcome: "present", transaction: " T123456 " }, "recheck-write", "T123456"],
