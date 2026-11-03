@@ -9,7 +9,7 @@ import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js"
 // menu's irreversible-last rule. This is the strip's presentation order only.
 export const BULK_STRIP_VERBS = ["cancel"] as const;
 /** Retain the historical verb only to refuse stale saved selections explicitly. */
-export type BulkVerb = "cancel" | "retry";
+export type BulkVerb = "cancel" | "retry" | "resume";
 
 /** What a surface hands over per selected row */
 export interface BulkCandidateRow {
@@ -38,7 +38,7 @@ export interface BulkVerbPlan {
   readonly unavailable: readonly string[];
 }
 
-const VERB_LABEL: Record<BulkVerb, string> = { cancel: "Cancel", retry: "Retry" };
+const VERB_LABEL: Record<BulkVerb, string> = { cancel: "Cancel", retry: "Retry", resume: "Resume" };
 
 function commandFor(
   row: BulkCandidateRow,

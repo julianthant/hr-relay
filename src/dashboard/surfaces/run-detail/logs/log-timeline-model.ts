@@ -18,6 +18,15 @@ export type LogTimelineStage = Readonly<{
   substeps: readonly LogTimelineSubstep[];
 }>;
 
+export function pauseTimeline(timeline: readonly LogTimelineStage[], state: "running" | "pause-pending" | "paused" | "unavailable" | undefined): readonly LogTimelineStage[] {
+  if (state !== "paused" && state !== "pause-pending") return timeline;
+  const active = timeline.findIndex(stage => stage.state === "active");
+  const index = active >= 0 ? active : state === "paused" ? timeline.findLastIndex(stage => stage.state === "completed") : -1;
+  return timeline.map((stage, position) => position !== index ? stage : { ...stage,
+    state: state === "paused" && stage.state === "active" ? "waiting" : stage.state,
+    statusLabel: state === "paused" ? "Paused after this step" : "Pauses after this step" });
+}
+
 export const LOG_TIMELINE_STYLES = {
   completed: { label: "Completed", color: "text-ui-positive", bar: "bg-ui-positive" },
   active: { label: "In progress", color: "text-ui-info", bar: "bg-ui-info" },

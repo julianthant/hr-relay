@@ -100,12 +100,12 @@ describe("THE run/queue projection", () => {
 
     const actionKeys = (seed: number): string[] =>
       (day.queueSurfaces.find(({ runId }) => runId === uuidOf(seed))?.actions ?? []).map(({ key }) => key);
-    assert.deepEqual(actionKeys(1), ["bump", "cancel", "rename"], "the queued row");
-    assert.deepEqual(actionKeys(2), ["cancel", "rename"], "the running row");
+    assert.deepEqual(actionKeys(1), ["pause", "bump", "cancel", "rename"], "the queued row");
+    assert.deepEqual(actionKeys(2), ["pause", "cancel", "rename"], "the running row");
 
     assert.deepEqual(actionKeys(3), ["rerun", "rename", "delete"], "the done row");
     assert.deepEqual(actionKeys(4), ["rerun", "recover-run", "rename", "delete"], "the failed row");
-    assert.deepEqual(actionKeys(9), ["cancel", "rename"], "the awaiting-approval row");
+    assert.deepEqual(actionKeys(9), ["pause", "cancel", "rename"], "the awaiting-approval row");
 
     assert.deepEqual(actionKeys(8), []);
     // The operation's cancel is the TREE cancel, keyed so the footer titles it

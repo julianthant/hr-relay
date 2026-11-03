@@ -5,6 +5,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { CommandRequest, CommandResult, BulkRunCommandOutcome } from "../../../rules/commands/commands.js";
 import type { DashboardDayWire, QueueSurfaceWire } from "../../../models/dashboard/projection.js";
+import { isTerminalQueueStatus } from "../../../models/dashboard/projection.js";
 import type { CommandReadbackVerification } from "./command-executor.js";
 import { lifecycleCommandId } from "../../../rules/commands/lifecycle-command-id.js";
 /** Turning a SERVED action descriptor into the ONE command envelope (ref frontend-backend-integration
@@ -163,6 +164,8 @@ export function composeCommandRequest(
     case "archive":
       return { state: "refused", reason: "Archive page removed" };
     case "recover-run":
+    case "pause":
+    case "resume":
     case "cancel":
     case "bump":
     case "delete":
@@ -261,6 +264,22 @@ export async function verifyShellCommandEffect(
       && resolution?.receipt.state === "applied"
       && resolution.receipt.version === request.target.workbookVersion + 1
       ? { state: "matched", evidence: section } : mismatch(section);
+  }
+  if (request.family === "application") {
+    const current = await client.applicationLifecycle();
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 1
+      || reply.affectedTargets[0]?.family !== "application" || reply.affectedTargets[0].runtimeGeneration !== request.target.runtimeGeneration
+      || current.runtimeGeneration !== request.target.runtimeGeneration) return mismatch(current);
+    for (const target of request.payload.targets) {
+      const row = current.targets.find(row => row.runId === target.runId);
+      if (row !== undefined) {
+        if (row.expectedVersion < target.expectedVersion || row.pause === undefined && row.pauseUnavailable !== true) return mismatch(current);
+      } else {
+        const detail = await client.runDetail(target.runId);
+        if (detail.runId !== target.runId || detail.rowRevision < target.expectedVersion || !isTerminalQueueStatus(detail.header.status)) return mismatch(detail);
+      }
+    }
+    return { state: "matched", evidence: current };
   }
   if (request.family === "notification" && "members" in request.target) {
     if (!("affectedTargets" in reply) || reply.affectedTargets.length !== request.target.matchingCount) return mismatch(reply);
@@ -407,6 +426,12 @@ export async function verifyShellCommandEffect(
   if (request.type === "rename") return root.rowRevision === request.target.expectedVersion + 1
     && root.displayName.state === "present" && root.displayName.value === request.payload.displayName
     ? { state: "matched", evidence: root } : mismatch(root);
+  if (request.type === "pause" || request.type === "resume") {
+    const commandId = lifecycleCommandId(`operator-${request.type}`, request.commandId);
+    const matches = request.type === "pause" ? root.pause?.commandId === commandId
+      : root.pause === undefined && root.rowRevision > request.target.expectedVersion;
+    return root.rowRevision >= request.target.expectedVersion && matches ? { state: "matched", evidence: root } : mismatch(root);
+  }
   if (request.type === "bump") return root.rowRevision >= request.target.expectedVersion && root.priority === "interactive"
     ? { state: "matched", evidence: root } : mismatch(root);
   if (request.type !== "cancel") return mismatch(root);

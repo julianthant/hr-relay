@@ -26,11 +26,11 @@ test("Quit confirms and waits for pause and resource settlement", async ({ page 
   const dialog = page.getByRole("dialog", { name: "Pause all and quit?", exact: true });
   await expect(dialog.getByRole("button", { name: "Keep working", exact: true })).toBeFocused();
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("button", { name: "Pause all", exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Pause all runs", exact: true })).toBeFocused();
   await page.keyboard.press("Control+q");
   await dialog.getByRole("button", { name: "Pause all and quit", exact: true }).click();
   await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByText("Finishing current steps; pauses and shutdown are not yet confirmed.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Pause all", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Pause all runs", exact: true })).toBeDisabled();
   await page.goto(`${servers.server.baseUrl}/?fixture=run-pause&state=closure-unknown`);
   await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByText("Closure is unknown. Keep Relay open and check active runs.", { exact: true })).toBeVisible();
 });

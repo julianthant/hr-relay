@@ -320,6 +320,8 @@ export const NoteWireSchema = z.strictObject({
     kind: z.enum(["click", "fill", "read", "action", "screenshot"]),
     value: z.string().optional(),
     label: z.string().min(1),
+    submit: z.boolean().optional(),
+    sessionId: BrowserSessionIdSchema.optional(),
     system: BrowserSystemIdSchema.optional(),
     state: z.enum(["started", "completed", "failed", "not-run", "confirmed"]).optional(),
     reason: z.enum(["condition-false", "dry-run", "cancelled", "callback-failed"]).optional(),
@@ -392,6 +394,7 @@ export const DryRunPreviewWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("unavailable"), reason: z.enum(["preview-authority-unavailable", "preview-not-completed", "preview-result-unreadable"]) }),
   z.strictObject({ state: z.literal("available"), coverage: z.enum(["full", "partial"]), stages: z.array(z.strictObject({
     id: NodeIdSchema, label: z.string().min(1), state: z.enum(["exercised", "unavailable", "skipped"]), detail: z.string().min(1),
+    submitNotClicked: z.literal(true).optional(),
     sample: z.strictObject({ label: z.literal("dry-run sample"), value: z.string().min(1) }).optional(),
   })) }),
 ]);

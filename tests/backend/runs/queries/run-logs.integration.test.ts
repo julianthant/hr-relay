@@ -1,4 +1,7 @@
 import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
+import { freezeWorkflowOperationDisplaySnapshot } from "../../../../src/models/workflow/operation-display-snapshot.js";
+import { compileWorkflowOperationDisplay } from "../../../../src/models/workflow/operation-display.js";
+import { z } from "zod";
 import type { LogRowWire } from "../../../../src/models/dashboard/run-detail.js";
 import { createConfirmedActionPublisher } from "../../../../src/backend/logs/confirmed-action-publisher.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
@@ -17,7 +20,7 @@ import { ucpathStore } from "../../../../src/backend/systems/ucpath/task-registr
 import { NoteWireSchema } from "../../../../src/models/events/types.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { SearchPersonOrg, SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
-import { NodeIdSchema, TraceIdSchema } from "../../../../src/rules/identity/ids.js";
+import { EidSchema, NodeIdSchema, TraceIdSchema } from "../../../../src/rules/identity/ids.js";
 import { TaskError } from "../../../../src/workflow-kit/errors.js";
 import { defineBrowserStore, defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
@@ -292,6 +295,7 @@ it("retains a task screenshot association and native node without exposing raw a
   assert.ok(row?.kind === "note");
   assert.equal(row.note.message, "Screenshot");
   assert.deepEqual(row.note.screenshot, { bundleId: UUID_4, artifactId: UUID_5, sessionId });
+  assert.equal(row.note.operatorAction?.sessionId, sessionId);
   assert.equal(row.native?.nodeId, "searching");
   assert.equal("action" in row.note, false);
 });
@@ -348,4 +352,20 @@ it("projects retained classified Fill and Read values only through their frozen 
   assert.ok(undeclared.section === "logs");
   assert.ok(undeclared.payload.notes.every(note => note.operatorAction?.value === undefined));
   assert.equal(section.payload.operationStructure?.state, "observed");
+  assert.ok(actions.every(action => action.submit === undefined));
+  const display = actionBindingCompiled.descriptor.operationDisplay;
+  assert.ok(display?.capability === "complete");
+  const commitDisplay = compileWorkflowOperationDisplay({ workflowId: run.envelope.workflow,
+    input: z.strictObject({ emplId: EidSchema }), entries: [{ id: "search", kind: "transaction", dependsOn: [],
+      contracts: [{ role: "commit", contract: SearchPersonOrg }], output: SearchPersonOrgOutputSchema }],
+    declaration: { ...display, invocations: display.invocations.map(invocation => ({ ...invocation, contractRole: "commit" as const })) } });
+  const commitSnapshot = freezeWorkflowOperationDisplaySnapshot({ workflowId: run.envelope.workflow,
+    definitionFingerprint: run.envelope.contractFingerprint, display: commitDisplay });
+  const commit = buildRunLogsSection(deps, run.envelope.runId, undefined, { ...run,
+    envelope: { ...run.envelope, operationDisplaySnapshot: commitSnapshot } });
+  assert.ok(commit.section === "logs");
+  const submits = commit.payload.notes.flatMap(note => note.operatorAction?.submit && note.operatorAction.state === "completed" ? [note.operatorAction] : []);
+  assert.equal(submits.length, 1);
+  assert.equal(submits[0].kind, "click");
+  assert.equal(submits[0].label, "Person Org Search button");
 });

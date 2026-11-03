@@ -2,7 +2,7 @@ import type { QueueBusinessOutcome } from "../shared/status/status-model.js";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/primitives/dropdown-menu.js";
 import { memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText, Pause } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import {
   BareButton,
@@ -50,6 +50,7 @@ import {
   partition,
   queueGateAge,
   queueRowAccessibleName,
+  queuePauseLabel,
   queueRowTitle,
   queueRowTitleTooltip,
   groupQueueAttempts,
@@ -227,6 +228,7 @@ function HeaderChips({
       )}
       <StatusBadge
         status={status}
+        pauseControl={surface.pauseControl}
         outcome={outcome}
         presentation="queue"
         hideIcon={status !== "running" && status !== "waiting" && status !== "failed"}
@@ -370,19 +372,20 @@ function MemberLine({ surface, item, selected, onSelect }: {
   onSelect: (runId: string) => void;
 }) {
   const status = dsStatusOf(surface.status);
-  const spec = PROPOSED_STATUS[status];
-  const Icon = spec.icon;
+  const pause = queuePauseLabel(surface);
+  const spec = PROPOSED_STATUS[pause === "Paused" ? "queued" : status];
+  const Icon = pause === "Paused" ? Pause : spec.icon;
   const selectionLabel = `${queueRowTitle(surface)} ${
-    surface.subtitle.state === "present" ? surface.subtitle.value : statusAccessibleName(status).toLowerCase()
+    surface.subtitle.state === "present" ? surface.subtitle.value : (pause ?? statusAccessibleName(status)).toLowerCase()
   }`;
   return (
     <tr data-demo-row-id={surface.runId}
-      title={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
+      title={`${queueRowTitle(surface)} — ${(pause ?? statusAccessibleName(status)).toLowerCase()}`}
       className={cn(dsText.body, dsMotion.fast, "h-[var(--ds-h-queue-member-line)] hover:bg-[var(--ds-surface-3)]", selected && "bg-[var(--ds-surface-selected)]")}
     >
       <td className="max-w-0 border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]">
         <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
-          <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass, status === "running" && "animate-spin motion-reduce:animate-none")} />
+          <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass, status === "running" && pause !== "Paused" && "animate-spin motion-reduce:animate-none")} />
           <BareButton type="button" title={surface.subtitle.state === "present" ? surface.subtitle.value : surface.subtitle.reason}
             aria-label={selectionLabel} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); onSelect(String(surface.runId)); }}
             className={cn("min-w-0 truncate text-left text-[color:var(--ds-fg)] hover:underline", dsFocus)}
@@ -392,8 +395,8 @@ function MemberLine({ surface, item, selected, onSelect }: {
 
         </div>
       </td>
-      <td className={cn(dsText.meta, "w-px whitespace-nowrap border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-right", status === "waiting" || status === "running" ? "text-ui-info" : status === "failed" ? "text-ui-danger" : spec.soloTone)}>
-        <span aria-label={statusAccessibleName(status)}>{statusText(status)}</span>
+      <td className={cn(dsText.meta, "w-px whitespace-nowrap border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-right", pause === "Paused" ? spec.soloTone : status === "waiting" || status === "running" ? "text-ui-info" : status === "failed" ? "text-ui-danger" : spec.soloTone)}>
+        <span aria-label={pause ?? statusAccessibleName(status)}>{pause ?? statusText(status)}</span>
       </td>
     </tr>
   );

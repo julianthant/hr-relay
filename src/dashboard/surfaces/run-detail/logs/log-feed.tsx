@@ -7,9 +7,10 @@ import { cn } from "../../../lib/utils.js";
 import { filterLogSteps, logPlainText, logRowCount, visualLogSteps, type LogEntry, type LogStep } from "./log-feed-model.js";
 import { LogDecisionBlock } from "./log-decision.js";
 import type { LogDecisionAction, LogDecisionAnswer } from "./log-decision-model.js";
-import { LogScreenshots } from "./log-screenshots.js";
+import { LogScreenshots, RequiredCaptureStatus } from "./log-screenshots.js";
 
 function Entry({ entry, onDecision, timeInStep = false }: { entry: LogEntry; timeInStep?: boolean; onDecision?: (id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => void }) {
+  if (entry.kind === "decision" && entry.decision.title === "Screenshot" && entry.decision.state === "recorded" && entry.decision.screenshots) return <LogScreenshots screenshots={entry.decision.screenshots} presentation={entry.decision.screenshots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit") ? "submit" : undefined} />;
   if (entry.kind === "decision" && timeInStep) return <LogDecisionBlock decision={entry.decision} onAction={onDecision ? (action, answer) => onDecision(entry.id, action, answer) : undefined} />;
   if (entry.kind === "decision") return <div className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-3"><time className="pt-4 font-data text-caption tabular-nums text-ui-muted">{entry.time}</time><LogDecisionBlock decision={entry.decision} onAction={onDecision ? (action, answer) => onDecision(entry.id, action, answer) : undefined} /></div>;
   if (entry.kind === "fields") return <div className={cn("overflow-hidden rounded-lg border border-ui-stroke bg-ui-table", entry.title === undefined && entry.result === undefined && "px-3")}>
@@ -33,7 +34,7 @@ function Entry({ entry, onDecision, timeInStep = false }: { entry: LogEntry; tim
       <span className="inline-flex min-w-0 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-2.5 py-1.5 text-body font-medium"><MousePointer2 aria-hidden className="size-3.5 shrink-0 text-ui-muted" />{entry.label}</span>
     </div>
   </div>;
-  return <LogNote entry={entry} timeInStep={timeInStep} />;
+  return <><LogNote entry={entry} timeInStep={timeInStep} />{entry.captureFailure && <RequiredCaptureStatus state={entry.captureFailure} />}</>;
 }
 function LogNote({ entry, timeInStep }: { entry: Extract<LogEntry, { kind: "note" }>; timeInStep: boolean }) {
   const target = useRef<HTMLParagraphElement>(null);
@@ -131,7 +132,7 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
             role={entry.kind === "decision" || (step.header === false && index === 0) ? "group" : undefined}
             aria-label={entry.kind === "decision" ? entry.decision.title : step.header === false && index === 0 ? step.title : undefined}
             tabIndex={entry.kind === "decision" || (step.header === false && index === 0) ? -1 : undefined}
-            className="rounded-lg focus:outline-2 focus:outline-offset-2 focus:outline-ui-info"><Entry entry={entry} onDecision={onDecision} timeInStep={step.header === false && index === 0} />{(entry.kind === "fields" || entry.kind === "click") && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} />}</div>)}</div>
+            className="rounded-lg focus:outline-2 focus:outline-offset-2 focus:outline-ui-info"><Entry entry={entry} onDecision={onDecision} timeInStep={step.header === false && index === 0} />{(entry.kind === "fields" || entry.kind === "click") && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} presentation={entry.screenshots.some(shot => shot.boundary === "before-submit" || shot.boundary === "after-submit") ? "submit" : undefined} />}</div>)}</div>
         </div>
         {afterStep?.(step.id)}
       </section>)}

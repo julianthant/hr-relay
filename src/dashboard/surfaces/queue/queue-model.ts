@@ -216,12 +216,15 @@ export function queueGateAge(surface: QueueSurfaceWire, nowIso: string): string 
     : undefined;
 }
 
-/** Visual and spoken gate age use one fold so they cannot disagree. */
+export function queuePauseLabel(surface: QueueSurfaceWire): "Paused" | "Pausing" | undefined {
+  return surface.pauseControl?.state === "paused" ? "Paused" : surface.pauseControl?.state === "pause-pending" ? "Pausing" : undefined;
+}
+
 export function queueRowAccessibleName(surface: QueueSurfaceWire, nowIso: string): string {
-  return `${queueRowTitle(surface)} — ${statusAccessibleName(
+  return `${queueRowTitle(surface)} — ${(queuePauseLabel(surface) ?? statusAccessibleName(
     dsStatusOf(surface.status),
     queueGateAge(surface, nowIso),
-  ).toLowerCase()}`;
+  )).toLowerCase()}`;
 }
 
 export function sortQueueBand(

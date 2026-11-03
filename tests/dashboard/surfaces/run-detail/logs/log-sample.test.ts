@@ -6,6 +6,7 @@ import { afterEach,beforeEach,describe,it,vi } from 'vitest';
 import { LogSample } from '../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js';
 import { initialMockDraft,type MockRun } from '../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js';
 import { mockQueueSurface } from '../../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js';
+import { DryRunPreviewWireSchema } from '../../../../../src/models/dashboard/run-detail.js';
 
 const { useRunWiring, projectRunLogs } = vi.hoisted(() => ({ useRunWiring: vi.fn(), projectRunLogs: vi.fn() }));
 vi.mock('../../../../../src/dashboard/state/client-context.js', () => ({ useDashboardClient: () => ({}), useDashboardCommandBinding: () => undefined }));
@@ -48,18 +49,32 @@ describe('compact run headers', () => {
     } finally { window.history.replaceState(null, '', locationBefore); }
   });
 
-  it('mounts the retained UCPath table at its parked step without enabling unverified resolutions', () => {
+  it.each([
+    { previewState: 'none', trailingStep: false },
+    { previewState: 'pending', trailingStep: false },
+    { previewState: 'available', trailingStep: false },
+    { previewState: 'unavailable', trailingStep: false },
+    { previewState: 'available', trailingStep: true },
+    { previewState: 'unavailable', trailingStep: true },
+  ] as const)('keeps UCPath findings and $previewState dry-run output at their own steps (trailing: $trailingStep)', ({ previewState, trailingStep }) => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
-    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Retained run' } }, unavailableEvidence: [] }, onUcpathDecision: vi.fn() });
+    const dryRunPreview = previewState === 'none' ? undefined : DryRunPreviewWireSchema.parse(previewState === 'available'
+      ? { state: 'available', coverage: 'full', stages: [{ id: 'submit', label: 'Submit', state: 'exercised', detail: 'Submit was not clicked.', submitNotClicked: true }] }
+      : previewState === 'unavailable' ? { state: 'unavailable', reason: 'preview-not-completed' } : { state: 'pending' });
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Retained run' } },
+      logs: { ...(dryRunPreview === undefined ? {} : { dryRunPreview }) }, unavailableEvidence: [] }, onUcpathDecision: vi.fn() });
     projectRunLogs.mockReturnValue({ steps: [{ id: 'parked-submit', time: '13:02:03', title: 'Write parked',
-      entries: [{ kind: 'note', id: 'parked-note', time: '13:02:03', message: 'Uncertain' }] }], timeline: [],
+      entries: [{ kind: 'note', id: 'parked-note', time: '13:02:03', message: 'Uncertain' }] },
+      ...(trailingStep ? [{ id: 'retained-tail', time: '13:02:04', title: 'Additional retained step',
+        entries: [{ kind: 'note', id: 'tail-note', time: '13:02:04', message: 'Retained' }] }] : [])], timeline: [],
       ucpathFindings: { stepId: 'parked-submit', attemptLabel: 'Attempt 1', presentation: { state: 'found', complete: true, authoritative: false,
         rows: [{ transactionNumber: 'T123456', person: 'Fixture, Jordan', employeeId: '10800000', transactionType: 'Terminatn',
           effectiveDate: '11/01/2026', submittedAt: '11/01/26 1:02:03.123456PM', detailVerified: true, match: 'exact' }] } } });
     const markup = renderToStaticMarkup(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } }));
     const container = document.createElement('div'); container.innerHTML = markup;
     const table = container.querySelector('[aria-label="UCPath found transactions"]'); assert.ok(table);
+    assert.equal(container.querySelectorAll('[aria-label="UCPath found transactions"]').length, 1);
     assert.match(table.textContent ?? '', /T123456/); assert.match(table.textContent ?? '', /11\/01\/26 1:02:03\.123456PM/);
     assert.match(table.textContent ?? '', /authority unverified/);
     for (const label of ['Submitted', 'Not submitted']) {
@@ -68,5 +83,14 @@ describe('compact run headers', () => {
     }
     const check = [...table.querySelectorAll('button')].find(candidate => candidate.textContent === 'Check again');
     assert.ok(check); assert.equal(check.disabled, false);
+    assert.equal(container.querySelectorAll('[aria-label="Full dry-run preview"]').length, previewState === 'available' ? 1 : 0);
+    if (previewState === 'available') assert.match(container.querySelector('[aria-label="Full dry-run preview"]')?.textContent ?? '', /Not clicked/);
+    if (previewState === 'unavailable') assert.match(markup, /Dry-run preview unavailable/);
+    else assert.doesNotMatch(markup, /Dry-run preview unavailable/);
+    if (trailingStep) {
+      const tail = markup.indexOf('Additional retained step'); assert.ok(tail > 0);
+      assert.ok(markup.indexOf('aria-label="UCPath found transactions"') < tail);
+      assert.ok(markup.indexOf(previewState === 'available' ? 'aria-label="Full dry-run preview"' : 'Dry-run preview unavailable') > tail);
+    }
   });
 });
