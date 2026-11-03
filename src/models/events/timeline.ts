@@ -29,6 +29,8 @@ export const DebugEventSchema = z.strictObject({
   phase: z.enum(["started", "settled", "failed", "reset", "acquired", "renewed", "released", "expired"]),
   correlationId: z.string().min(1).max(128),
   code: z.string().max(128).optional(),
+  area: z.string().min(1).max(128).regex(/^[a-z0-9-]+$/u).optional(),
+  reason: z.string().min(1).max(128).regex(/^[a-z0-9-]+$/u).optional(),
   message: z.string().max(65536).optional(),
   stack: z.string().max(65536).optional(),
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]).optional(),
@@ -45,6 +47,13 @@ export const DebugEventSchema = z.strictObject({
   pinned: z.boolean().default(false),
 });
 export type DebugEvent = z.infer<typeof DebugEventSchema>;
+
+export function debugEventLevel(event: Pick<DebugEvent, "phase" | "reason" | "status">): "error" | "warn" | "info" {
+  if (event.reason === "outcome-unknown" || event.status !== undefined && event.status >= 500) return "error";
+  if (event.reason === "operation-refused" || event.reason === "remote-revocation-unconfirmed"
+    || event.phase === "expired" || event.phase === "reset" || event.status !== undefined && event.status >= 400) return "warn";
+  return event.phase === "failed" ? "error" : "info";
+}
 
 export const TimelinePayloadSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("workbook-reference-row-selected"), runId: RunIdSchema, workflow: WorkflowIdSchema,

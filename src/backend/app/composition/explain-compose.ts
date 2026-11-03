@@ -1,7 +1,7 @@
 
 import { join } from "node:path";
 import type { z } from "zod";
-import { TimelinePageRequestSchema, TimelineEventRecordSchema } from "../../../models/events/timeline.js";
+import { TimelinePageRequestSchema, TimelineEventRecordSchema, debugEventLevel, type TimelineAppend } from "../../../models/events/timeline.js";
 import { readEmergencyFaults } from "../../logs/emergency-faults.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { CHILD_ONLY_WORKFLOW_MODULES, DESCRIPTORS } from "../registries/workflow-registry.js";
@@ -50,6 +50,11 @@ export function parseDiagnosticArgs(args: readonly string[]) {
   return { json, boot, request: TimelinePageRequestSchema.parse(values) };
 }
 
+function debugRecordView<T extends Pick<TimelineAppend, "payload">>(record: T) {
+  return record.payload.kind === "debug" ? { ...record,
+    payload: { ...record.payload, event: { ...record.payload.event, level: debugEventLevel(record.payload.event) } } } : record;
+}
+
 function renderDebugRecords(records: readonly z.infer<typeof TimelineEventRecordSchema>[]) {
   return records.map(record => `${String(record.cursor)} ${record.occurredAt} ${record.scope.kind} ${JSON.stringify(record.payload)}`).join("\n");
 }
@@ -61,11 +66,13 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
     const options = parseDiagnosticArgs(input.args.slice(1));
     if (options.boot) {
       admission.assertExclusive();
-      const report = readEmergencyFaults(admission.stateRoot);
+      const stored = readEmergencyFaults(admission.stateRoot);
+      const report = stored.state === "present" ? { ...stored, records: stored.records.map(debugRecordView) } : stored;
       return options.json ? JSON.stringify(report, null, 2) : report.state === "absent" ? `boot diagnostics: absent (${report.reason})`
         : report.records.map(record => `${record.occurredAt} ${JSON.stringify(record.payload)}`).join("\n");
     }
-    const page = AuthorityDatabase.inspectTimelinePageReadOnly(admission, join(admission.stateRoot, "state.db"), options.request);
+    const stored = AuthorityDatabase.inspectTimelinePageReadOnly(admission, join(admission.stateRoot, "state.db"), options.request);
+    const page = { ...stored, records: stored.records.map(debugRecordView) };
     return options.json ? JSON.stringify(page, null, 2) : `${renderDebugRecords(page.records)}\nnextCursor=${String(page.nextCursor)} through=${String(page.through)} highWaterMark=${String(page.highWaterMark)} hasMore=${String(page.hasMore)}`;
   }
   if (subject !== "run") {
