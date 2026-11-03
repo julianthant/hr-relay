@@ -275,7 +275,9 @@ dispatches bypass the draft limit.
 
 Select the union for mixed changes. Only release pull requests from `staging` into `main` select
 native and parity jobs and add the release job. Other pull requests leave both native matrices
-empty and omit parity. Treat machine-readable inputs under `docs/`, including the guard inventory,
+empty and omit parity. Other heads targeting `main` also omit expensive release work, but their
+required release summary runs and fails head validation. Valid Markdown-only release PRs retain
+the intentional release omission. Treat machine-readable inputs under `docs/`, including the guard inventory,
 as configuration. Only the operator may start a manual full-release dispatch. It bypasses
 filtering and selects all four routine suites, including native and parity jobs. Agents must never dispatch or rerun
 `ci.yml`. Do not repeat CI on protected-branch pushes.

@@ -15,8 +15,11 @@ release pull request.
 | `staging` | `static`, `privacy`, `unit`, `integration`, `architecture`, `parity` |
 | `main` | the `staging` checks, plus `release` |
 
-`release` runs only on PRs from `staging` into `main`, after the other checks. Its isolated
-runner builds the web bundle, runs coverage alone, then performance. The operator authorizes release PRs from
+The expensive `release` job runs only on PRs from `staging` into `main`, after the other checks.
+The required top-level `release` summary also runs for other heads targeting `main` and fails their
+head validation, so a skipped expensive job cannot satisfy main protection.
+The expensive job’s isolated macOS runner builds the web bundle, runs coverage alone, then
+performance. The operator authorizes release PRs from
 `staging` to `main`, and syncs `main` back into `staging` after merging.
 
 ## Merge train and automatic fixes
@@ -83,7 +86,7 @@ into `staging`. For PRs from `staging` into `main`, add selected native proofs, 
 Path filters select affected suites. Draft pushes run static, privacy and
 affected unit files; becoming ready starts full applicable validation. Only the operator may start
 a manual full-release dispatch; it selects all routine suites, including native proofs and parity. Other PR heads targeting `main` omit
-native proofs, parity and release. Drafts cannot merge. Protected-branch pushes do not
+native proofs, parity and expensive release work; their required release summary fails. Drafts cannot merge. Protected-branch pushes do not
 repeat CI; Markdown-only PRs run static and privacy. A deliberately omitted suite has a successful
 summary, while failed change detection or any failed/cancelled selected group fails its summary.
 Markdown-only release PRs omit coverage and perf.

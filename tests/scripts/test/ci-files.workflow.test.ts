@@ -40,14 +40,14 @@ function select(base = "staging", filters: Record<string, string> = { shared: "t
   return outputs;
 }
 
-function summary(workflow: string, suite: Suite, needs: Record<string, Need>): Result {
+function summary(workflow: string, suite: Suite | "release", needs: Record<string, Need>, github: Record<string, string> = {}): Result {
   const body = job(workflow, suite);
   const condition = body.match(/^ {4}if: (.+)$/mu)?.[1];
   assert.ok(condition, `Missing ${suite} summary condition`);
   expect(condition).toMatch(/!cancelled\(\)|always\(\)/u);
-  if (!expression(condition, needs)) return "skipped";
+  if (!expression(condition, needs, github)) return "skipped";
   const env = Object.fromEntries([...body.matchAll(/^ {10}([A-Z_]+): (.+)$/gmu)].map(([, name, value]) => {
-    const evaluated = value.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) => String(expression(code, needs)));
+    const evaluated = value.replace(/\$\{\{(.*?)\}\}/gu, (_, code: string) => String(expression(code, needs, github)));
     return [name, evaluated];
   }));
   const script = body.match(/^ {8}run: \|\n((?: {10}[^\n]*\n|\n)+)/mu)?.[1]
@@ -194,18 +194,25 @@ describe("CI workflow selection and required summaries", () => {
   });
 
   it.each([
-    { event: "pull_request", base: "main", head: "staging", expected: true },
-    { event: "pull_request", base: "main", head: "feature/other", expected: false },
-    { event: "pull_request", base: "staging", head: "feature/other", expected: false },
-    { event: "workflow_dispatch", base: "main", head: "staging", expected: false },
-  ])("aligns both release job conditions for $event $head to $base", ({ event, base, head, expected }) => {
-    const needs = { changes: { result: "success" as const, outputs: { architecture: "true" } },
-      checks: { result: "success" as const, outputs: { release: "success" } } };
-    for (const workflow of [ci, checks]) {
-      const condition = job(workflow, "release").match(/^ {4}if: (.+)$/mu)?.[1];
-      assert.ok(condition);
-      expect(expression(condition, needs, { event_name: event, base_ref: base, head_ref: head })).toBe(expected);
-    }
+    { event: "pull_request", base: "main", head: "staging", release: "success", architecture: "true", work: true, result: "success" },
+    { event: "pull_request", base: "main", head: "feature/other", release: "skipped", architecture: "true", work: false, result: "failure" },
+    { event: "pull_request", base: "main", head: "feature/other", release: "success", architecture: "true", work: false, result: "failure" },
+    { event: "pull_request", base: "main", head: "staging", release: "skipped", architecture: "false", work: false, result: "skipped" },
+    { event: "pull_request", base: "staging", head: "feature/other", release: "skipped", architecture: "true", work: false, result: "skipped" },
+    { event: "workflow_dispatch", base: "main", head: "staging", release: "skipped", architecture: "true", work: false, result: "skipped" },
+  ])("enforces the required release summary for $event $head to $base ($release)", ({ event, base, head, release, architecture, work, result }) => {
+    const needs = { changes: { result: "success" as const, outputs: { architecture } },
+      checks: { result: "success" as const, outputs: { release } } };
+    const github = { event_name: event, base_ref: base, head_ref: head };
+    const condition = job(checks, "release").match(/^ {4}if: (.+)$/mu)?.[1];
+    assert.ok(condition);
+    expect(expression(condition, needs, github)).toBe(work);
+    expect(summary(ci, "release", needs, github)).toBe(result);
+  });
+
+  it.each(["failure", "cancelled"])("fails the valid release summary for an unsuccessful selected job (%s)", release => {
+    expect(summary(ci, "release", { checks: { result: "success", outputs: { release } } },
+      { event_name: "pull_request", base_ref: "main", head_ref: "staging" })).toBe("failure");
   });
 
   it("exports every required summary through the reusable workflow", () => {
