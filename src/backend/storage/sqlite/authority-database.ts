@@ -1909,7 +1909,7 @@ export class AuthorityDatabase implements Disposable {
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
     credentials?: CredentialStore,
-    purpose: "stopped-startup-recovery" | "stopped-layout-source" | "stopped-layout-target" | "ordinary" | "profile-initialization" | "stopped-restore-projection" | "stopped-span-root-repair" | "stopped-logout-settlement" | "stopped-logout-inspection" = "ordinary",
+    purpose: "stopped-startup-recovery" | "stopped-layout-source" | "stopped-layout-target" | "ordinary" | "profile-initialization" | "profile-onboarding-debug" | "stopped-restore-projection" | "stopped-span-root-repair" | "stopped-logout-settlement" | "stopped-logout-inspection" = "ordinary",
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     this.#admission = requireRuntimeAdmission(admission);
@@ -1917,7 +1917,7 @@ export class AuthorityDatabase implements Disposable {
       : purpose === "stopped-layout-target" ? () => this.#admission.assertFixedLayoutDatabase(options.path)
       : purpose === "stopped-layout-source" ? () => { throw new Error("fixed-layout-source-read-only-required"); }
       : purpose === "ordinary" ? () => this.#admission.assertWritable()
-      : purpose === "profile-initialization" ? () => this.#admission.assertProfileInitialization()
+      : purpose === "profile-initialization" || purpose === "profile-onboarding-debug" ? () => this.#admission.assertProfileInitialization()
       : purpose === "stopped-restore-projection" ? () => this.#admission.assertStoppedRestoreProjection(options.path)
       : purpose === "stopped-span-root-repair" ? () => this.#admission.assertStoppedProfile(this.#admission.maintenanceOperation())
       : purpose === "stopped-logout-settlement" ? () => { this.#admission.assertPendingLogoutSettlementDatabase(options.path); }
@@ -2343,6 +2343,14 @@ export class AuthorityDatabase implements Disposable {
     if (existsSync(path)) throw new Error("profile-database-initialization-already-exists");
     const database = new AuthorityDatabase(admission, { path, busyTimeoutMs: 250, migrationOwner: "profile-initialization" }, clock, undefined, undefined, undefined, undefined, "profile-initialization");
     database.close();
+  }
+
+  static withProfileOnboardingTimeline(admission: RuntimeAdmission, clock: Clock, write: (repository: TimelineRepository) => void): void {
+    admission.assertProfileInitialization();
+    const database = new AuthorityDatabase(admission, { path: join(admission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "profile-onboarding-debug" }, clock,
+      undefined, undefined, undefined, undefined, "profile-onboarding-debug");
+    try { write(database.authority.timelineEvents); }
+    finally { database.close(); }
   }
 
   static sourceDatabaseIdentity(source: AuthorityBackupExpectedSource): string {

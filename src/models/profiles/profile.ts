@@ -104,6 +104,12 @@ export const CanonicalCredentialCreationSchema = z.strictObject({
   phase: z.enum(["planned", "ready"]), protectedRevision: z.number().int().safe().positive().optional(),
 });
 
+export const ProfileOnboardingDuoFailureSchema = z.strictObject({
+  kind: z.enum(["unavailable", "refused", "unknown"]),
+  causeTag: z.enum(["scope", "revoked", "busy", "browser-root", "browser-lifetime", "counter", "worker", "provider"]),
+});
+export type ProfileOnboardingDuoFailure = z.infer<typeof ProfileOnboardingDuoFailureSchema>;
+
 export const SignUpDuoAttemptSchema = z.strictObject({
   attemptId: z.uuid(), generation: z.number().int().safe().positive(), method: z.enum(["key", "touch"]),
   expiresAt: IsoInstantSchema, state: z.enum(["pending", "complete", "unknown", "closed"]),
@@ -114,6 +120,7 @@ export const SignUpDuoAttemptSchema = z.strictObject({
     acceptance: z.enum(["portal-accepted", "exact-credential-request"]) }).optional(),
   operatorConfirmedAt: IsoInstantSchema.optional(),
   providerClosedAt: IsoInstantSchema.optional(),
+  failure: ProfileOnboardingDuoFailureSchema.optional(),
 });
 export const SignUpOnboardingSchema = z.strictObject({
   accountId: z.uuid(),
