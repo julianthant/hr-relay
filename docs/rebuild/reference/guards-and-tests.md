@@ -140,15 +140,26 @@ npm run test:pc -- 'tests/backend/runs/**/*.integration.test.ts'
 ```
 
 The PC needs tailnet-only SSH (prefer Tailscale SSH with its systemd service enabled), Node
-satisfying `package.json`, rsync, Git, flock, and Chromium's libraries installed with
+satisfying `package.json`, Git, flock, and Chromium's libraries installed with
 `npx playwright install --with-deps chromium`. Keep its private host in local configuration.
 Normal SSH host verification applies.
 
 Vitest selects the files; the runner subtracts `MACOS_FILES`, `SERIAL_FILES` and
-`SERIAL_STORAGE_FILES` with one skip note. Those files run in GitHub CI. Rsync copies tracked and
-unignored working files, including uncommitted edits; credentials, private inputs, runtime state,
-dependencies and build output are excluded. Edits after sync belong to the next run. Remote Git
-metadata retains the Mac's index for inventory guards, without history.
+`SERIAL_STORAGE_FILES` with one skip note. Those files run in GitHub CI. Each leased slot fetches
+`origin/staging`'s pinned commit directly from the public GitHub repository. The Mac verifies that
+base is advertised by origin before sending a binary Git patch of the allowed candidate tree.
+The patch includes committed-but-unpushed, staged, unstaged and untracked non-ignored files,
+deletions, renames, executable modes and binary bytes. Credentials, private inputs, runtime state,
+dependencies and build output remain excluded from the candidate and filtered base. Absolute,
+escaping and private-target symlinks are refused; safe relative links retain their targets.
+
+Before install or tests, the slot checks the applied Git tree and independently hashes the actual
+file set, paths, executable modes, symlink targets and raw contents against the Mac's candidate.
+Any mismatch fails the run. There is no full-source fallback. Each run has a private local object
+store/index; each slot retains its own Git object cache and `node_modules` under its lease.
+Git checkout filters and line-ending conversions are disabled for source materialization.
+Edits after candidate capture belong to the next run. Remote test Git metadata retains the Mac's
+index for inventory guards, without history; the transport cache is outside the test checkout.
 
 Three independent slots under `~/.cache/relay-test-pc/` retain separate `node_modules` while the
 lockfile hash is unchanged. A kernel lock holds the slot through sync and execution; a run takes
@@ -159,12 +170,15 @@ use `/dev/shm`, and each run uses at most two Vitest workers.
 
 Output streams and is saved with a final `result.json` under the main checkout's ignored
 `.work/test-pc/<run-id>/`. The printed result path records selected files, slot, exit code and
-elapsed time. The command exits with the remote test result.
+elapsed time. Its `source` records `baseCommit`, candidate Git `tree`, raw tree `identity` (SHA-256)
+and `deltaBytes` (patch payload size). The command exits with the remote test result.
 
 The receipt also contains its `runId`, `timings` and `timingErrors`. Each timing records `phase`,
 `startedAt` (UTC), `durationMs` and `outcome` (`completed`, `failed` or `skipped`). Local phases are
-`listing`, `admission` (waiting for the slot marker), `source-sync` and `request-sync`. Remote phases
-are `install` (npm plus Chromium installation, or a cache hit), `build`, `test`, `cleanup` (tmpfs)
+`listing`, `source-capture` (published base verification and candidate snapshot), `admission`
+(waiting for the slot marker), `source-sync` and `request-sync`. Remote phases are `source-prepare`
+(GitHub fetch, patch application and identity proof), `install` (npm plus Chromium installation,
+or a cache hit), `build`, `test`, `cleanup` (tmpfs)
 and `lease-release`. Skipped builds and cached installs are explicit; phases never reached after a
 failure are absent. All durations use Node's monotonic clock, including the shell's install/release
 timers. Compare durations rather than subtracting clocks across machines.
@@ -172,7 +186,9 @@ timers. Compare durations rather than subtracting clocks across machines.
 Remote timing lines carry the invocation UUID and are validated before collection. Malformed or
 foreign timing events are reported on stderr and retained in `timingErrors`; they do not replace
 the command's exit code. A receipt with timing errors cannot establish complete phase measurements.
-Source membership, private exclusions, index binding, lease/completion rules and deadlines are unchanged.
+Source membership, private exclusions, index binding and deadlines are unchanged. A failed source
+preparation releases its normally held lease without running install or tests; an interrupted
+connection still retains its lease for ownership verification.
 
 To run in the background:
 

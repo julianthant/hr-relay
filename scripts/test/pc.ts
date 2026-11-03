@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { dirname, isAbsolute, join, matchesGlob, relative, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { MACOS_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./ci-files.js";
 import { isDirectExecution } from "./scope-files.js";
+import { buildPcSource } from "./pc-source.js";
+import type { PcSource } from "./pc-source.js";
 
 const projects = ["--project", "unit", "--project", "integration", "--project", "architecture"];
 const macosFiles = new Set([...MACOS_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES]);
@@ -14,7 +16,7 @@ const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 export const pcDurationScript = "process.stdout.write(String(Number(process.hrtime.bigint() - BigInt(process.argv[1])) / 1e6))";
 
 const timingSchema = z.object({
-  phase: z.enum(["listing", "admission", "source-sync", "request-sync", "install", "build", "test", "cleanup", "lease-release"]),
+  phase: z.enum(["listing", "source-capture", "admission", "source-sync", "request-sync", "source-prepare", "install", "build", "test", "cleanup", "lease-release"]),
   startedAt: z.iso.datetime(),
   durationMs: z.number().finite().nonnegative(),
   outcome: z.enum(["completed", "failed", "skipped"]),
@@ -53,29 +55,34 @@ export function selectPcFiles(listed: readonly string[], patterns: readonly stri
   return { files: selected.filter(file => !macosFiles.has(file)), skipped: selected.filter(file => macosFiles.has(file)) };
 }
 
-export function pcSyncFiles(files: readonly string[]): string[] {
-  return files.filter(file => !file.split("/").some(part =>
-    [".git", "node_modules", "dist", ".work", ".worktrees", ".tracker", "credentials", ".local-private"].includes(part)
-    || part === ".env" || part.startsWith(".env."))
-    && file !== "config/test-data.local.json");
-}
-
-async function command(program: string, args: string[], cwd: string, log?: string): Promise<number> {
-  const child = spawn(program, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+async function command(program: string, args: string[], cwd: string, log?: string, input?: Buffer): Promise<number> {
+  const child = spawn(program, args, { cwd, stdio: ["pipe", "pipe", "pipe"] });
   child.stdout.on("data", (chunk: Buffer) => { process.stdout.write(chunk); if (log) appendFileSync(log, chunk); });
   child.stderr.on("data", (chunk: Buffer) => { process.stderr.write(chunk); if (log) appendFileSync(log, chunk); });
   return new Promise((resolveExit, reject) => {
     child.once("error", reject);
+    child.stdin.once("error", reject);
+    child.stdin.end(input);
     child.once("close", (code, signal) => signal ? reject(new Error(`${program} stopped by ${signal}`)) : resolveExit(code ?? 1));
   });
 }
 
-async function checked(program: string, args: string[], cwd: string, log?: string) {
-  const code = await command(program, args, cwd, log);
+async function checked(program: string, args: string[], cwd: string, log?: string, input?: Buffer) {
+  const code = await command(program, args, cwd, log, input);
   if (code !== 0) throw new Error(`${program} exited ${code}`);
 }
 
-const requestSchema = z.object({ runId: z.uuid(), files: z.array(z.string().startsWith("tests/")).min(1), tracked: z.string() });
+const requestSchema = z.object({
+  runId: z.uuid(),
+  files: z.array(z.string().startsWith("tests/")).min(1),
+  tracked: z.string(),
+  source: z.object({
+    baseCommit: z.string().regex(/^[a-f0-9]{40}$/u),
+    tree: z.string().regex(/^[a-f0-9]{40}$/u),
+    identity: z.string().regex(/^[a-f0-9]{64}$/u),
+    deltaBytes: z.number().int().nonnegative(),
+  }).strict(),
+}).strict();
 
 async function remote(slot: string): Promise<number> {
   const cwd = process.cwd();
@@ -138,6 +145,13 @@ while :; do
       if ! read -r ready; then echo "Interrupted sync: retained lease $slot/lease" >&2; exit 1; fi
       if [ "$ready" = abort ]; then rmdir "$slot/lease"; exit 1; fi
       [ "$ready" = synced ]
+      phase_start
+      set +e
+      (cd "$slot" && node --input-type=module -e 'import { preparePcSource } from "./pc-source.ts"; preparePcSource(process.argv[1])' "$slot")
+      source_status=$?
+      set -e
+      if [ "$source_status" -ne 0 ]; then phase_end source-prepare failed; rmdir "$slot/lease"; exit "$source_status"; fi
+      phase_end source-prepare completed
       cd "$slot/work"
       hash=$(sha256sum package-lock.json | cut -d' ' -f1)
       phase_start
@@ -178,7 +192,7 @@ async function mac(patterns: string[]): Promise<number> {
   mkdirSync(run, { recursive: true, mode: 0o700 });
   const log = join(run, "output.log");
   const started = Date.now();
-  const result: { exitCode: number; slot?: string; files?: string[]; error?: string; runId: string; timings: PcTiming[]; timingErrors: string[] } = { exitCode: 1, runId, timings: [], timingErrors: [] };
+  const result: { exitCode: number; slot?: string; files?: string[]; error?: string; runId: string; timings: PcTiming[]; timingErrors: string[]; source?: PcSource } = { exitCode: 1, runId, timings: [], timingErrors: [] };
   const record = (timing: PcTiming) => { result.timings.push(timing); };
   process.stdout.write(`test:pc result: ${join(run, "result.json")}\n`);
   try {
@@ -195,9 +209,8 @@ async function mac(patterns: string[]): Promise<number> {
       result.exitCode = 0;
       return 0;
     }
-    const files = pcSyncFiles(git(["ls-files", "--cached", "--others", "--exclude-standard", "-z"]).split("\0").filter(file => file && existsSync(join(root, file))));
-    writeFileSync(join(run, "sync-files"), files.join("\0") + "\0");
-    writeFileSync(join(run, "request.json"), JSON.stringify({ runId, files: selected.files, tracked: Buffer.from(git(["ls-files", "--stage", "-z"])).toString("base64") }));
+    result.source = await measurePcPhase("source-capture", record, async () => buildPcSource(root, run));
+    writeFileSync(join(run, "request.json"), JSON.stringify({ runId, files: selected.files, source: result.source, tracked: Buffer.from(git(["ls-files", "--stage", "-z"])).toString("base64") }));
     const sshArgs = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"];
     const child = spawn("ssh", [...sshArgs, host, `bash -c ${quote(leaseScript)} -- ${quote(runId)}`], { stdio: ["pipe", "pipe", "pipe"] });
     const closed = new Promise<number>((resolveExit, reject) => {
@@ -222,8 +235,10 @@ async function mac(patterns: string[]): Promise<number> {
       const slot = await measurePcPhase("admission", record, () => Promise.race([ready, closed.then(code => { throw new Error(`SSH exited ${code} before acquiring a slot`); })]));
       if (!/^\/home\/[a-zA-Z0-9_.-]+\/\.cache\/relay-test-pc\/slot-\d+$/u.test(slot)) throw new Error("Unexpected remote slot path");
       result.slot = slot;
-      await measurePcPhase("source-sync", record, () => checked("rsync", ["-rlpt", "--safe-links", "--from0", `--files-from=${join(run, "sync-files")}`, "-e", "ssh " + sshArgs.join(" "), root + "/", `${host}:${slot}/work/`], root, log));
-      await measurePcPhase("request-sync", record, () => checked("rsync", ["-t", "-e", "ssh " + sshArgs.join(" "), join(run, "request.json"), `${host}:${slot}/request.json`], root, log));
+      await measurePcPhase("source-sync", record, () => checked("ssh", [...sshArgs, host, `cat > ${quote(join(slot, "source.patch"))}`], root, log, readFileSync(join(run, "source.patch"))));
+      const envelope = Buffer.from(JSON.stringify({ request: readFileSync(join(run, "request.json"), "utf8"), bootstrap: readFileSync(join(root, "scripts/test/pc-source.ts"), "utf8") }));
+      const receive = 'const fs = require("node:fs"); const input = JSON.parse(fs.readFileSync(0, "utf8")); fs.writeFileSync(process.argv[1] + "/request.json", input.request); fs.writeFileSync(process.argv[1] + "/pc-source.ts", input.bootstrap);';
+      await measurePcPhase("request-sync", record, () => checked("ssh", [...sshArgs, host, `node -e ${quote(receive)} ${quote(slot)}`], root, log, envelope));
       child.stdin.end("synced\n");
       result.exitCode = await closed;
       return result.exitCode;
