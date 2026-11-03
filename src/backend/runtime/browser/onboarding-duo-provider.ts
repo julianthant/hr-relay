@@ -8,7 +8,7 @@ import { basename, isAbsolute, join } from "node:path";
 import { submitPinnedUcsdSsoCredentials } from "../../systems/browser-shared/ucsd-sso.js";
 import type { BrowserContext, Page, Worker } from "playwright";
 import { z } from "zod";
-import { BrowserDocumentIdSchema } from "../../../models/config/duo-credential-store.js";
+import { BrowserDocumentIdSchema, PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../models/config/duo-credential-store.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { onboardingProfileDirectory, type BrowserRoots, type BrowserRootLaunch, type BrowserRootLaunchInput } from "../../storage/browser-roots.js";
@@ -339,7 +339,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       mkdirSync(join(session.profileDirectory, "Default"), { mode: 0o700 });
       writeFileSync(join(session.profileDirectory, "Default", "Preferences"), JSON.stringify({ credentials_enable_service: false, profile: { password_manager_enabled: false } }), { mode: 0o600, flag: "wx" });
       const extensionDirectory = join(session.profileDirectory, "relay-extension");
-      try { stageFastDuoExtension(options.extensionDirectory, extensionDirectory, "onboarding"); }
+      try { stageFastDuoExtension(options.extensionDirectory, extensionDirectory, PROFILE_ENROLLMENT_EXTENSION_MODE); }
       catch (error) { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root", error); }
       session.launchStarted = true;
       session.launching = browserLauncher.launch({ profileDirectory: session.profileDirectory, headless: false,

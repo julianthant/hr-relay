@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { STEP_PROOF_DESCRIPTORS } from "../../src/backend/app/registries/step-proof-modules.js";
-import { SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../src/backend/app/registries/workflow-registry.js";
 import { createWorkflowDescriptorRegistry, WORKFLOW_DESCRIPTORS } from "../../src/workflows/descriptor-registry.js";
 import { plan1Child, plan1Leaf, plan1Parent } from "../support/fixtures/plan1-operation-workflows.js";
 
@@ -38,7 +38,7 @@ describe("workflow descriptor registry", () => {
   it("resolves declared children without listing or publicly resolving them", () => {
     const registry = createWorkflowDescriptorRegistry(
       [...WORKFLOW_DESCRIPTORS, plan1Parent.descriptor],
-      [plan1Child.descriptor, plan1Leaf.descriptor],
+      [...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), plan1Child.descriptor, plan1Leaf.descriptor],
     );
     expect(registry.descriptors).toEqual([...WORKFLOW_DESCRIPTORS, plan1Parent.descriptor]);
     for (const descriptor of registry.descriptors) expect(registry.resolve(descriptor.id)).toBe(descriptor);
@@ -66,12 +66,14 @@ describe("workflow descriptor registry", () => {
     expect(WORKFLOW_DESCRIPTORS.map(({ id }) => String(id))).toEqual([
       "person-lookup",
       "separations",
+      "onboarding",
     ]);
     expect(WORKFLOW_MODULES.map(({ descriptor }) => String(descriptor.id))).toEqual([
       "person-lookup",
       "separations",
+      "onboarding",
     ]);
-    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations"]);
+    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations", "onboarding"]);
     for (const descriptor of STEP_PROOF_DESCRIPTORS) {
       expect(() => workflowModuleOf(descriptor.id)).toThrow(/not registered/u);
     }

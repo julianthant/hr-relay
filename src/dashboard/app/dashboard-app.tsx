@@ -1,3 +1,4 @@
+import { PROFILE_ONBOARDING_STATE } from "../../models/profiles/public-profile.js";
 import { PreflightOcrContext, createServedPreflightOcrPort } from "../surfaces/settings/preflight/preflight-ocr-model.js";
 import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfaces/settings/general/chatgpt-account-model.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
@@ -156,7 +157,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
   const onboardingProfile = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (session?.state === "onboarding") onboardingProfile.current = session.profileId;
+    if (session?.state === PROFILE_ONBOARDING_STATE) onboardingProfile.current = session.profileId;
     else if (session?.state === "active" && session.duoState === "ready" && onboardingProfile.current === session.profileId) {
       onboardingProfile.current = undefined; setRoute({ start: false });
     } else if (session?.state === "signed-out") onboardingProfile.current = undefined;
@@ -191,10 +192,10 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
     <ToastProvider>
       {route.viewInvalid ? (
         <EmptyState title="Invalid navigation link" description="The view parameters are invalid. Open the dashboard to recover." action={<Button onClick={() => setRoute({ start: false })}>Open dashboard</Button>} />
-      ) : route.onboardingSetup !== undefined && profileSource === "served" && session?.state === "onboarding" ? (
+      ) : route.onboardingSetup !== undefined && profileSource === "served" && session?.state === PROFILE_ONBOARDING_STATE ? (
         <OnboardingSetup page="fast" port={publicProfile.port} />
       ) : profileSource === "served" && (publicProfile.failure || session !== undefined && (session.state !== "active" || session.duoState !== "ready")) ? (
-        <Onboarding step={session?.state === "onboarding" ? session.step : session?.state === "active" ? "duo" : route.onboarding === "signup" ? "signup" : "login"}
+        <Onboarding step={session?.state === PROFILE_ONBOARDING_STATE ? session.step : session?.state === "active" ? "duo" : route.onboarding === "signup" ? "signup" : "login"}
           authenticated={session?.state === "active"} port={publicProfile.port}
           problem={publicProfile.failure ? operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE")
             : session?.state === "refused" || session?.state === "error" ? operatorFailureSentence(session.code)

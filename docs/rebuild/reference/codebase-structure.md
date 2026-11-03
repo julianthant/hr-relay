@@ -143,8 +143,18 @@ folders use the same layout; their test-only composition inventory in
 audits without making either workflow available in production registries. Their retained proofs live
 at `ocr/steps/source-pages/step.ts` and `ocr-page/steps/read-page/step.ts` in the same unregistered inventory.
 
-`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Each UCPath call has a typed workflow-owned task call under `tasks/`; all three timeline groups have retained proofs under `steps/<key>/step.ts` using the same typed authors. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. The shared task creates a new Spreadsheets-library workbook per run. Generic captured-reference writes require an explicit planning declaration; current workflows declare none.
-`src/workflows/i9-lookup/workflow.ts` is child-only, with no public delegating parent yet. It uses
+`src/workflows/onboarding/` registers the read-only hire review; hire submission and I-9 profile creation remain unavailable.
+Its `index.ts` derives four retained proofs from step definitions: CRM data, UCPath duplicate search,
+delegated I-9 search, and the I-9 profile-creation plan. Each step owns its group, typed wiring,
+result and proof recipe; `workflow.ts` composes their build results. Thin system calls use `reuseTask` in the step modules; `tasks/` holds one implementation per pure task ID. The I-9 search step owns child input and item-ID bindings;
+pure validation and profile decisions live in `src/rules/onboarding/`. The I-9 contracts live in
+`src/models/workflows/onboarding/read-i9-lookup.ts` and `read-i9-profile-plan.ts`, matching their task IDs for exact Explorer source links. Tests compose the definition
+and proofs through the production registries. Legal/lived names
+arrive through the declared run-start roster snapshot input. I-9 profile creation and UCPath hire
+submission remain unimplemented writes; roster access remains a shared Spreadsheets dependency.
+
+`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Each UCPath call has a typed workflow-owned task call under `tasks/`; all three timeline groups have retained proofs under `steps/<key>/step.ts` using the same typed authors. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. The shared task creates a new Spreadsheets-library workbook per run. Generic captured-reference writes require an explicit planning declaration; current workflows declare none. SharePoint imports remain unexposed.
+`src/workflows/i9-lookup/workflow.ts` is child-only; Onboarding declares its parent edge in the registered read-only definition. It uses
 the I-9 system store, then retains its typed result through `tasks/read-result.ts` in the workflow
 store. Its one `lookup` timeline checkpoint groups both tasks. The registered harness at
 `steps/lookup/step.ts` reuses that exact group. Results contain `signerName`, `i9Status`, and record

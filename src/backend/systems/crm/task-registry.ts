@@ -1,4 +1,5 @@
 import { readOnboardingResultsTask } from "./tasks/read-onboarding-results.js";
+import { readHireDataTask } from "./tasks/read-hire-data.js";
 import { verifyOnboardingRecordTask } from "./tasks/verify-onboarding-record.js";
 import { searchOnboardingRecordsTask } from "./tasks/search-onboarding-records.js";
 import { defineBrowserStore } from "../../../workflow-kit/task-registry.js";
@@ -9,6 +10,7 @@ import { readOnboardingRecordTask } from "./tasks/read-onboarding-record.js";
 
 
 export const crmStore = defineBrowserStore("crm", crmDriver, crmSession, {
+  readHireData: readHireDataTask,
   readOnboardingResults: readOnboardingResultsTask,
   searchOnboardingRecords: searchOnboardingRecordsTask,
   verifyOnboardingRecord: verifyOnboardingRecordTask,
