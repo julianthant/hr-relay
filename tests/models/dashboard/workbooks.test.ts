@@ -1,6 +1,32 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { EditableWorkbookSchema, EditableWorkbookWireSchema, SavedWorkbookSchema, decodeEditableWorkbook, encodeEditableWorkbook, decodeSavedWorkbook, encodeSavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
+import { WorkbookReferenceRequestSchema, WorkbookRunReferenceSelectionSchema, RunWorkbookReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
+
+it("retains selected physical row authority only with one key, explicit library and immutable version", () => {
+  const selectedRow = { sheetId: "people", rowId: "person" };
+  const request = { typeId: "onboarding-roster", libraryId: "roster", versionId: "saved", selectedRow,
+    keys: ["hire@example.test"], fields: ["email"] };
+  const snapshot = { libraryId: "roster", version: 1, versionId: "saved", versionName: "Saved",
+    worksheets: [{ sheetId: "people", name: "People" }],
+    type: { id: "onboarding-roster", name: "Roster", keyFieldId: "email", fields: ["email"], defaultWorkbookId: null },
+    rows: [{ key: request.keys[0], state: "matched", matches: [{ ...selectedRow, values: { email: request.keys[0] } }] }] };
+  assert.deepEqual(RunWorkbookReferenceSchema.parse({ request, snapshot }), { request, snapshot });
+  assert.deepEqual(WorkbookRunReferenceSelectionSchema.parse({ entry: 1, typeId: request.typeId,
+    libraryId: request.libraryId, versionId: request.versionId, selectedRow }).selectedRow, selectedRow);
+  for (const value of [{ ...request, libraryId: undefined }, { ...request, versionId: undefined },
+    { ...request, keys: [] }, { ...request, keys: [...request.keys, "other@example.test"] }]) {
+    assert.equal(WorkbookReferenceRequestSchema.safeParse(value).success, false);
+  }
+  for (const value of [{ ...request, selectedRow: { ...selectedRow, sheetId: "foreign" } },
+    { ...request, selectedRow: { ...selectedRow, rowId: "missing" } }]) {
+    assert.equal(RunWorkbookReferenceSchema.safeParse({ request: value, snapshot }).success, false);
+  }
+  assert.equal(RunWorkbookReferenceSchema.safeParse({ request, snapshot: { ...snapshot, versionId: "different" } }).success, false);
+  assert.equal(RunWorkbookReferenceSchema.safeParse({ request, snapshot: { ...snapshot,
+    rows: [{ ...snapshot.rows[0], state: "ambiguous", matches: [...snapshot.rows[0].matches, ...snapshot.rows[0].matches] }] } }).success, false);
+  assert.equal(WorkbookRunReferenceSelectionSchema.safeParse({ entry: 1, typeId: request.typeId, selectedRow }).success, false);
+});
 
 it("roundtrips explicit Date cells while ISO-looking strings stay strings and provenance survives", () => {
   const workbook = EditableWorkbookSchema.parse({ name: "Dates.xlsx", libraryId: "library", themes: { theme1: "theme" }, hasFormulas: true,

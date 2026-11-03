@@ -1,6 +1,6 @@
 import { removeSchema16PersonPreferences } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
@@ -84,6 +84,7 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 |
       const native = new DatabaseSync(profile.path);
       try {
         native.exec("BEGIN EXCLUSIVE");
+        restoreSchema18WorkbookReferenceFixture(native);
         removeEmptySchema18WorkbookCatalog(native);
         removeEmptySchema17OcrReview(native);
         if (sourceVersion < 16) removeSchema16PersonPreferences(native);
@@ -241,6 +242,7 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     const source = new DatabaseSync(profile.path);
     try {
       source.exec("BEGIN EXCLUSIVE");
+      restoreSchema18WorkbookReferenceFixture(source);
       removeEmptySchema18WorkbookCatalog(source);
       removeEmptySchema17OcrReview(source);
       removeSchema16PersonPreferences(source);

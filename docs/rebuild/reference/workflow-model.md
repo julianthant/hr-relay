@@ -55,12 +55,12 @@ the parent declaration. The descriptor and its sealed planning and projections e
 validated facts; workbook selection and reference snapshots belong to run planning. Onboarding
 and CRM Document Download require `onboarding-roster`; the I-9 PDF parent requires Action History.
 
-Start planning takes explicit entry-scoped `workbookReferences` (type, optional library and named
-version), derives lookup keys and fields from the workflow's admitted ingress declaration, requires
+Start planning takes explicit entry-scoped `workbookReferences`, derives lookup keys and fields from the workflow's admitted ingress declaration, requires
 exactly the declared types, and snapshots the selected or default workbook. Captured references bind
 canonical input before identity and output planning. Schema-bound references retain exact cell values, revision and every worksheet's identity
 in the confirmation fingerprint and native run input. Later master edits or default changes do not
 replace them. No workflow-specific key or field mapping is inferred.
+[Run reference planning](frontend-backend-integration.md#run-reference-and-output-plans) owns explicit saved-row selection and public entry coverage.
 
 The I-9 PDF parent captures Action History's named version with no keys until OCR review supplies
 the approved EIDs. Its run-bound read uses those late keys against the captured immutable version,
@@ -71,11 +71,14 @@ Onboarding maps the exact requested email key and seven fields: `email`, `firstN
 `middleName`, `roster.livedFirstName`, `roster.livedLastName` and `roster.livedMiddleName`.
 All three lived-name cells must be null for explicit absence; otherwise all three must contain valid
 name strings. A single `livedName` cell is never split. The public planner refuses supplied roster
-values and builds required canonical roster input from the one captured reference. Native run
-membership supplies run identity; its reference digest, library revision and row membership remain
-immutable during execution.
+values and builds required canonical roster input from the one captured reference. With `selectedRow`,
+the server derives and checks the email from that retained physical row and binds its typed names.
+Execution authentication rebinds from the selector in the retained reference request, never from the
+canonical row's self-claimed coordinates. The full reference, including its selector, contributes to
+the reference digest and plan fingerprint. Native run membership supplies run identity; the reference digest,
+library revision and row membership remain immutable during execution.
 
-A missing or ambiguous match parks at `roster-choice` before the CRM read. The `workbook-writes`
+Without an explicit selector, a missing or ambiguous match still parks at `roster-choice` before the CRM read. The `workbook-writes`
 section serves separate `referenceChoices` with exact reference identity, typed field/value entries,
 and an available, unavailable or resolved state. Every choice carries an own-run `native` event
 anchor: queued issuance before review, the parked gate's opening during review, the authenticated
@@ -101,6 +104,8 @@ choice. Continued gate rows enter receipt derivation separately from own-run row
 exact native continuation tuple and row digest. Their `continued-gate-result` observations retain the
 original `sourceRunId`, command, operator and resolution time; the decision names the original run.
 No workbook patch or write receipt is created by a read choice. Hire writes remain unavailable.
+The current Onboarding graph is read-only and contains no transaction node. Its derived
+`supportsDryRun` is false, so its launcher has no Dry run switch; row selection does not activate hire writes.
 
 `workbooks/read-reference` resolves keys learned during execution through the existing run-bound
 `workbooks.library` provider. The caller supplies only a captured type and lookup keys. Runs checks
@@ -580,6 +585,12 @@ accepted unchanged by both schemas. The form combines those fields with current 
 identity text only when the current mode's identity requirements are complete. Otherwise, the text box
 is blank for operator re-entry. Rejected fields are not coerced. Submitted values go through
 `planStart` with the registered descriptor and its current input schemas.
+
+For Onboarding, an available retained source that exactly matches the current canonical schema passes
+through the registered workbook binding's `sourceToIngress`. It removes server-owned `roster` and validates
+strict ingress while preserving `email`, explicit `mode`, `postalCodeOverride` and `configuredJobEndDate`. The caller-roster refusal remains
+in force. Older partial or protected sources retain the rules above. Retained protected-input bindings are
+required storage metadata; missing bindings refuse the source rather than becoming an empty array.
 
 For an older descriptor version or fingerprint, `readRerunValues` reports every current step as
 unfinished, so `defaultRerunSteps` selects every current step. For a matching descriptor, it preserves

@@ -38,6 +38,23 @@ const PARSER = InputParserSpecSchema.parse({
 });
 
 describe("run-surface ingress", () => {
+  it("retains a declared workbook row source for a parser-emitted field", () => {
+    const surface = { placeholder: "Employee IDs", parser: PARSER };
+    const workbookRows = { typeId: "employee-roster", inputField: "emplId" };
+    assert.deepEqual(InputRunSurfaceSchema.parse({ ...surface, workbookRows }), { ...surface, workbookRows });
+    assert.deepEqual(InputRunSurfaceSchema.parse(surface), surface);
+  });
+
+  it("refuses malformed workbook row declarations and fields the parser does not emit", () => {
+    const surface = { placeholder: "Employee IDs", parser: PARSER };
+    for (const workbookRows of [
+      { typeId: "", inputField: "emplId" }, { typeId: " \t\n", inputField: "emplId" },
+      { typeId: 1, inputField: "emplId" }, { typeId: "employee-roster", inputField: "employee_id" },
+      { typeId: "employee-roster" }, { typeId: "employee-roster", inputField: "emplId", sheetId: "people" },
+      { typeId: "employee-roster", inputField: "email" }, { typeId: "employee-roster", inputField: "keepNonHdh" },
+    ]) assert.throws(() => InputRunSurfaceSchema.parse({ ...surface, workbookRows }));
+  });
+
   it("splits typed text into one entry per intended run and classifies each", () => {
     const entries = parseInputRunText(PARSER, " 10873698 ; Battistessa, Johnnie\n10101010 ");
     assert.deepEqual(entries.map((entry) => entry.sourceText), [

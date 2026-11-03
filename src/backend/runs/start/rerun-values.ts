@@ -17,6 +17,7 @@ import { RerunValueMappingsSchema } from "../../../models/workflow/rerun-values.
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { rerunInputFieldAccepts, rerunTargetAccepts } from "../../../models/validation/rerun-values.js";
+import { workbookInputBinding } from "../workbooks.js";
 
 export interface RerunValuesDependencies {
   readonly reader: { read(runId: string): RunExistence };
@@ -289,6 +290,14 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
             && rerunInputFieldAccepts(descriptor.canonicalInput, field, value)) accepted[field] = value;
         }
         if (Object.keys(accepted).length > 0) sourceInput = { state: "partial", value: accepted, identityCopied: true };
+      }
+      if (sourceInput.state === "available") {
+        const binding = workbookInputBinding(descriptor.canonicalInput);
+        if (binding !== undefined) {
+          const canonical = descriptor.canonicalInput.safeParse(sourceInput.value);
+          if (canonical.success && canonicalJsonStringify(canonical.data) === canonicalJsonStringify(sourceInput.value))
+            sourceInput = { state: "available", value: binding.sourceToIngress(canonical.data) };
+        }
       }
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {
         sourceInput,

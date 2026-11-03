@@ -16,6 +16,9 @@ runControlGroups,
 startRequestFingerprint,
 toggleStepSelection,
 previewRunInput,
+typedInputDefaults,
+typedInputMode,
+typedControlAvailable,
 restoreTypedInput,
 changeTypedInput,
 type StartRequestShape,
@@ -388,5 +391,29 @@ describe("the cascade locks exactly what the planner would refuse", () => {
       omittedStepViews(CASCADING_STEPS, ["finalize"]).map((step) => step.key),
       ["read", "stage"],
     );
+  });
+});
+
+
+describe("explicit unchosen typed mode", () => {
+  const surface = WORKFLOW_DESCRIPTORS.find(workflow => workflow.id === "onboarding")?.surfaces.inputRun;
+  assert.ok(surface?.typedInput);
+  const declaration = surface.typedInput;
+  it("keeps null unchosen while preserving existing string defaults", () => {
+    assert.equal(declaration.initialMode, null);
+    assert.deepEqual(typedInputDefaults(declaration), {});
+    assert.equal(typedInputMode(declaration, {}), undefined);
+    assert.equal(typedControlAvailable(declaration, {}, "unavailable"), false);
+    assert.match(previewRunInput(surface, "hire@example.test").problem ?? "", /Choose Hire mode/u);
+    const ordinary = WORKFLOW_DESCRIPTORS.find(workflow => workflow.id === "person-lookup")?.surfaces.inputRun?.typedInput;
+    assert.ok(ordinary);
+    assert.equal(typedInputDefaults(ordinary).mode, "search");
+    assert.equal(typedInputMode(ordinary, {})?.value, "search");
+  });
+  it("uses declared explicit modes and refuses missing/invalid source modes", () => {
+    assert.deepEqual(previewRunInput(surface, "hire@example.test", { mode: "rehire" }).submissions, [{ email: "hire@example.test", mode: "rehire" }]);
+    assert.deepEqual(changeTypedInput(declaration, {}, "mode", "new-hire"), { mode: "new-hire" });
+    assert.throws(() => restoreTypedInput(declaration, { email: "hire@example.test" }), /no mode/u);
+    assert.throws(() => restoreTypedInput(declaration, { email: "hire@example.test", mode: "unknown" }), /Undeclared/u);
   });
 });

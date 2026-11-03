@@ -79,7 +79,8 @@ export const StartPlanWireSchema = z.strictObject({
   planned: z.array(z.strictObject({
     supersedeTargets: StartSupersedeTargetsSchema.optional(),
     outputs: z.array(PlannedRunOutputSchema).optional(),
-    workbookReferences: z.array(WorkbookReferenceSnapshotSchema.pick({ libraryId: true, version: true, versionId: true, versionName: true, worksheets: true, type: true })).optional(),
+    workbookReferences: z.array(WorkbookReferenceSnapshotSchema.pick({ libraryId: true, version: true, versionId: true, versionName: true, worksheets: true, type: true })
+      .extend({ selectedRow: WorkbookRunReferenceSelectionSchema.shape.selectedRow })).optional(),
     logicalKey: z.string().min(1),
     title: z.string().min(1),
     subtitle: z.string().min(1).optional(),
