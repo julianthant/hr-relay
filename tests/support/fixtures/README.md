@@ -25,6 +25,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/child-execution-write-workflow.ts` | child write workflow with durable attempting and UNKNOWN controls |
 | `helpers/assistant-function-fixtures.ts` | synthetic assistant function descriptors and recording call owners |
 | `fixtures/person-lookup-presentation.ts` | fictional served Person Lookup presentation evidence |
+| `fixtures/crm-doc-download.ts` | synthetic verified CRM identities and retained worksheet roster rows |
 | `fixtures/i9-check.ts` | synthetic OCR-derived I-9 inputs and UCPath identity/retention evidence |
 | `fixtures/advisory-prompt-fixtures.ts` | advisory prompt fixtures |
 | `fixtures/cross-date-search-corpus.ts` | cross date search corpus |

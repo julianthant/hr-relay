@@ -185,3 +185,5 @@ export async function readCrmHireDataOnPage(assertCurrent: () => void, page: Pag
   assertLocation(page, SHEET_PATH, selected.recordId);
   return result;
 }
+
+export { search as searchCrmOnboardingOfferRows };
