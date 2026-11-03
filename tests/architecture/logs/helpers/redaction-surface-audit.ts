@@ -928,8 +928,12 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     ...LIBRARY_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].type.${path}`, origin: 'captured-hr-value' as const })),
     ...['versionId', 'versionName'].map(path => ({ surface: 'wire/workbook-reference', path, origin: path === 'versionId' ? 'repository-authored' : 'operator-authored' })),
     { surface: 'request/workbook-reference', path: 'versionId', origin: 'repository-authored' },
+    { surface: 'request/workbook-reference', path: 'selectedRow.sheetId', origin: 'captured-hr-value' },
+    { surface: 'request/workbook-reference', path: 'selectedRow.rowId', origin: 'captured-hr-value' },
     ...['libraryId', 'versionId'].map(path => ({ surface: 'wire/start-plan', path: `planned[].workbookReferences[].${path}`, origin: 'repository-authored' as const })),
     { surface: 'wire/start-plan', path: 'planned[].workbookReferences[].versionName', origin: 'operator-authored' },
+    { surface: 'wire/start-plan', path: 'planned[].workbookReferences[].selectedRow.sheetId', origin: 'captured-hr-value' },
+    { surface: 'wire/start-plan', path: 'planned[].workbookReferences[].selectedRow.rowId', origin: 'captured-hr-value' },
     ...['worksheets[].sheetId', 'worksheets[].name', ...LIBRARY_TYPE_ORIGINS.map(path => `type.${path}`)].map(path => ({ surface: 'wire/start-plan', path: `planned[].workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
   ...[
     { surface: "wire/run-logs-stream", prefix: "envelope.payload.ocr" },
