@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../phase1c-contract-fixtures.js";
 import { ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
 import { renameSync } from "node:fs";
 import { runtimeFixture, populatedProtectedRecord } from "./runtime-fixture.js";
@@ -28,7 +29,7 @@ export async function servedPreflightRuntime(scene: SetupScene) {
   const resolved={...resolveConfigWithProvenance({},hostConfigFacts({}),f.clock),config:f.input.config,fingerprint};
   const settings=initialSettingsFileRecord();
   const identity={configSnapshotId:f.input.scope.configSnapshotId,configFingerprint:fingerprint};
-  database.authority.runtimeConfig.initialize({configSnapshotId:identity.configSnapshotId,fingerprint,config:resolved.config,provenance:resolved.provenance,revision:1,capturedAt:f.clock.now().toISOString(),capturedBy:"local-operator"});
+  database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT,configSnapshotId:identity.configSnapshotId,fingerprint,config:resolved.config,provenance:resolved.provenance,revision:1,capturedAt:f.clock.now().toISOString(),capturedBy:"local-operator"});
   if(scene==="browser-missing")renameSync(f.executable,`${f.executable}.parked`);
   if(scene==="secret-missing")f.setProtected(populatedProtectedRecord("ucpathPassword"));
   if(scene==="optional-warning")Reflect.set(f.input.providerAvailability,"nominatim/geocode.nominatim",false);

@@ -7,7 +7,7 @@ for (const fixture of ["delete-account", "fixed-backup", "run-pause", "ucpath-fo
   const writes: string[] = [], errors: string[] = [];
   page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
   page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(value => localStorage.setItem("rebuild-demo.theme", value), theme);
+  await page.addInitScript(value => Reflect.set(window, "relayParityTheme", value), theme);
   await page.setViewportSize({ width: 1024, height: 720 });
   await page.goto(`${servers.server.baseUrl}/?fixture=${fixture}`);
   await expect(page.locator("[data-app-root]")).toHaveAttribute("data-demo-theme", theme);

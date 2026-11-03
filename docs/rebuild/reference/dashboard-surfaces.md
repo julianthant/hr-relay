@@ -434,9 +434,13 @@ served admission. Startup completes automatic repair before ordinary runtime adm
 
 ### Keyboard
 
-Keyboard lists and edits the current shortcut preferences. Shortcuts remain keyboard-reachable
-without visible search hints. Retired row-menu bindings do not remain in preferences. App navigation,
-inner popup dismissal, and text editing keep their scope rather than turning typing undo into a run action.
+The existing keyboard controls edit the current person’s ordinary settings through the typed client
+and settings command executor. The strict shared model rejects reserved keys and duplicate chords.
+Theme, animations, workflow panel mode, selected workflow and shortcuts share one renderer owner
+per person/session epoch. Switching people clears that owner and its settings read cache; superseded
+reads and command settlements cannot publish into the next person. Signed-out presentation uses
+neutral defaults and cannot save. Preview compositions supply explicit in-memory preferences.
+Origin-wide browser preferences are never read or adopted.
 
 ## Spreadsheets
 

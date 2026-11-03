@@ -26,12 +26,12 @@ it("hides replaced authority and cannot revive old A data through A to B to A", 
   const a = settingsReadResource<number>(client, authorityA, "actor-a:descriptor-a", "editor");
   a.accept(7);
   const pending = Promise.withResolvers<number>();
-  const old = a.read(() => pending.promise, "SETTINGS_INITIAL_READ_UNAVAILABLE");
+  const old = a.read(() => pending.promise, "SETTINGS_INITIAL_READ_UNAVAILABLE").catch((error: unknown) => error);
   const b = settingsReadResource<number>(client, authorityB, "actor-a:descriptor-a", "editor");
   assert.equal(b.snapshot().value, undefined);
   const nextA = settingsReadResource<number>(client, authorityA, "actor-a:descriptor-a", "editor");
   assert.notEqual(nextA, a); assert.equal(nextA.snapshot().value, undefined);
-  pending.resolve(8); await old; assert.equal(nextA.snapshot().value, undefined);
+  pending.resolve(8); assert.ok(await old instanceof Error); assert.equal(a.snapshot().value, undefined); assert.equal(nextA.snapshot().value, undefined);
   const actor = settingsReadResource<number>(client, authorityA, "actor-b:descriptor-a", "editor");
   assert.equal(actor.snapshot().value, undefined);
   const descriptor = settingsReadResource<number>(client, authorityA, "actor-b:descriptor-b", "editor");

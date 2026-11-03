@@ -3,6 +3,7 @@ import { sha256Hex } from "../../rules/validation/sha256.js";
 import { z } from "zod";
 import { ActorIdSchema, ConfigSnapshotIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
 import { ConfigLeafPathSchema } from "./provenance.js";
+import { PersonPreferencesSchema, derivePersonPreferencesFingerprint } from "./person-preferences.js";
 import { ConfigSchema } from "./schema.js";
 
 /** Stored configuration requires every current leaf and applies no live defaults. */
@@ -32,8 +33,11 @@ export const ConfigSnapshotRecordSchema = z.strictObject({
   capturedAt: IsoInstantSchema,
   capturedBy: ActorIdSchema,
   config: StoredConfigSchema,
+  preferences: PersonPreferencesSchema,
+  preferencesFingerprint: FingerprintSchema,
   provenance: z.record(ConfigLeafPathSchema, z.enum(["settings", "default"])),
 }).superRefine((record,context)=>{
+  if (record.preferencesFingerprint !== derivePersonPreferencesFingerprint(record.preferences)) context.addIssue({ code: "custom", path: ["preferencesFingerprint"], message: "person-preferences-fingerprint-mismatch" });
   if(record.fingerprint !== sha256Hex(canonicalJsonStringify(record.config)))context.addIssue({code:"custom",path:["fingerprint"],message:"config-snapshot-fingerprint-mismatch"});
 });
 

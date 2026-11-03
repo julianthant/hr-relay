@@ -12,7 +12,7 @@ async function prepare(page: Page, theme: "light" | "dark") {
   await page.setViewportSize({ width: 1280, height: 720 });
   await installFrozenMonotonic(page);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.addInitScript(theme => { localStorage.setItem("rebuild-demo.theme", theme); localStorage.setItem("relay.animations", "off"); }, theme);
+  await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); Reflect.set(window, "relayParityMotion", false); }, theme);
 }
 async function capture(page: Page, info: TestInfo, state: string, theme: string, descriptorHash: string = FIXTURE_DESCRIPTOR_HASH) {
   const evidence = `picked-a-${state}-${theme}.a11y.yml`;

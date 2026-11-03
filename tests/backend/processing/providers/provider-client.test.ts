@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { default as assert } from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "vitest";
@@ -21,7 +22,7 @@ it("constructs disconnected OCR without budget or effects and preserves snapshot
   const dependencies = {
     execution: { runId: snapshotId, attempt: 1, nodeId: "extract", taskId: "ocr/extract-form-page" },
     configSnapshotId: snapshotId, configFingerprint: fingerprint,
-    configSnapshot: { configSnapshotId: snapshotId, revision: 1, fingerprint, config, provenance: {}, capturedAt: "2026-10-07T12:00:00Z", capturedBy: "local-operator" },
+    configSnapshot: { ...PREFERENCES_SNAPSHOT, configSnapshotId: snapshotId, revision: 1, fingerprint, config, provenance: {}, capturedAt: "2026-10-07T12:00:00Z", capturedBy: "local-operator" },
     adapters: {}, clock: effects, idFactory: effects, deadlineScheduler: effects,
     runSignal: new AbortController().signal,
   } as unknown as ProviderClientDependencies;
@@ -50,7 +51,7 @@ function fixture() {
   const deps: ProviderClientDependencies = {
     execution: { runId: id, attempt: 1, nodeId: "search", taskId: "normalization/read-contact-advice" },
     configSnapshotId: id, configFingerprint,
-    configSnapshot: { configSnapshotId: id, revision: 1, fingerprint: configFingerprint, config, provenance: {}, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" },
+    configSnapshot: { ...PREFERENCES_SNAPSHOT, configSnapshotId: id, revision: 1, fingerprint: configFingerprint, config, provenance: {}, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" },
     adapters: { "geocode.census": { capability: "geocode.census", invoke: async () => produced } },
     clock, idFactory: { next: randomUUID }, runSignal: controller.signal,
     deadlineScheduler: { schedule(_at, fire) { expired = fire; return { cancel() { cancellations++; } }; } },

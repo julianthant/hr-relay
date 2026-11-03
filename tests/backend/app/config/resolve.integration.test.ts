@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import type { CredentialStore } from "../../../../src/models/config/credential-store.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { AuthorityDatabase as NativeAuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -259,7 +260,7 @@ function journalWorkerSettings(
     const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, {
       stateRoot, artifactRoot: admission.artifactRoot,
     });
-    database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
+    database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: 1,
       fingerprint: resolved.fingerprint, capturedAt: clock.now().toISOString(),
       capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
   }
@@ -296,7 +297,7 @@ const acquired: { profile?: ReturnType<typeof composeProfileRuntime>; admission?
   journalWorkerSettings(database, settings, currentAdmission, credentials);
   const record = readSettings(database.authority);
   const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock, { stateRoot, artifactRoot: currentAdmission.artifactRoot });
-  database.authority.configSnapshots.insert({ configSnapshotId: UUID_7, revision: 1,
+  database.authority.configSnapshots.insert({ ...PREFERENCES_SNAPSHOT, configSnapshotId: UUID_7, revision: 1,
    fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
    capturedAt: NOW, capturedBy: "local-operator" });
   database.authority.runtimeConfig.activate({ settingsRevision: record.revision, settingsFingerprint: record.settingsFingerprint,

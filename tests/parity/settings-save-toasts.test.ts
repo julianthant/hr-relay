@@ -3,7 +3,6 @@ import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { createHash, randomUUID } from "node:crypto";
 import { SettingsCommandRequestSchema, ProtectedSettingsCommandRequestSchema, CommandResultSchema } from "../../src/rules/commands/commands.js";
-import { validateShortcutPreferences } from "../../src/dashboard/surfaces/settings/navigation/keyboard-preferences-model.js";
 import { mergeSettingsPatch } from "../../src/models/config/settings.js";
 import { EditableSettingsWireSchema } from "../../src/models/dashboard/settings-editor.js";
 import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
@@ -143,8 +142,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await shortcut.press("g"); await page.getByRole("button", { name: "Save shortcut", exact: true }).click();
       await expect(page.getByRole("dialog", { name: "Edit shortcut" })).toHaveCount(0);
       await expect(toasts.filter({ hasText: "Saved Search runs shortcut" })).toBeVisible();
-      const storedShortcuts = await page.evaluate(() => localStorage.getItem("hr-gpt-shortcuts-v2"));
-      expect(validateShortcutPreferences(JSON.parse(storedShortcuts ?? "null") as unknown).bindings.search).toEqual(["g"]);
+      await expect(page.locator(".shortcut-reference-row").filter({ hasText: "Search runs" }).locator("kbd")).toHaveText("g");
+      expect(await page.evaluate(() => localStorage.getItem("hr-gpt-shortcuts-v2"))).toBeNull();
       await toasts.locator('[data-slot="toast-close"]').hover(); await expect(toasts.getByRole("button", { name: "Dismiss", exact: true })).toBeVisible();
       await toasts.getByRole("button", { name: "Dismiss", exact: true }).click(); await expect(toasts).toHaveCount(0);
 

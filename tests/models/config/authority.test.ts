@@ -24,13 +24,13 @@ describe("authority classification and command families", () => {
   });
 });
 
-it("accepts the fresh pause-capable authority baseline and refuses unsupported versions", () => {
+it("accepts the fresh preference-capable authority baseline and refuses unsupported versions", () => {
   const baseline = {
     recordKey: "2fb8e9f6-65a8-4b44-a644-2c134f63bade",
     upgradeId: "fresh",
     phase: "baseline",
     fromSchemaVersion: 0,
-    toSchemaVersion: 15,
+    toSchemaVersion: 16,
     by: LOCAL_OPERATOR_ACTOR_ID,
     recordedAt: "2026-11-02T00:00:00.000Z",
   };
@@ -38,7 +38,8 @@ it("accepts the fresh pause-capable authority baseline and refuses unsupported v
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 12 }).success, true);
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 13 }).success, true);
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 14 }).success, true);
-  for (const toSchemaVersion of [0, 16, 15.5]) {
+  assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 15 }).success, true);
+  for (const toSchemaVersion of [0, 17, 16.5]) {
     assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion }).success, false);
   }
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, fromSchemaVersion: 11 }).success, false);

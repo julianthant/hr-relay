@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { z } from "zod";
 import assert from "node:assert/strict";
@@ -25,7 +26,7 @@ export async function foundationFixture<Profile extends BoundProfileStorageFixtu
  const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock);
  const resolved=resolveConfigWithProvenance(initialSettingsFileRecord().settings,hostConfigFacts({}),clock,
   {stateRoot:root,artifactRoot:join(root,"artifacts")});
- const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:resolved.fingerprint,capturedAt:NOW,capturedBy:"local-operator",config:resolved.config,provenance:resolved.provenance});
+ const snapshot=ConfigSnapshotRecordSchema.parse({ ...PREFERENCES_SNAPSHOT,configSnapshotId:id(90),revision:1,fingerprint:resolved.fingerprint,capturedAt:NOW,capturedBy:"local-operator",config:resolved.config,provenance:resolved.provenance});
  db.authority.runtimeConfig.initialize(snapshot);
  const createRun=(runId:string)=>{
  const slots=db.authority.workerSlots.list("person-lookup").filter(slot=>slot.retiredAt===null);
