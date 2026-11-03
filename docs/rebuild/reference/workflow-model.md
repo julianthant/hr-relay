@@ -499,9 +499,10 @@ run; a fresh claim reacquires sessions. Neither park has an edge directly to `ru
 `src/backend/runtime/gates/gate-source-runtime.ts` owns source binding for workflow and external
 gates. The workflow author currently produces operator gates.
 
-A same-run resume at a resolved final gate replays that result. Earlier completed terminal child
-joins pass through canonical child admission with their original input and native proofs. Their
-manifests, child runs and results remain unchanged; absent or changed proof refuses the resume.
+A same-run gate resolution resumes at its next node, or at the gate itself when it is last.
+The resolved gate replays its typed result. Earlier completed terminal child joins pass through
+canonical child admission with their original input and native proofs. Their manifests, child runs
+and results remain unchanged; absent or changed proof refuses the resume.
 
 A `parked-write` records the exact intent generation and code: `unknown`, `ambiguous`,
 `present-proof-invalid`, `binding-invalid`, or `operator-required`. Write recovery owns its exits.
