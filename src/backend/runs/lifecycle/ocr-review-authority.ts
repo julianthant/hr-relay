@@ -72,18 +72,19 @@ export function ocrChildRetryAvailable(repositories: AuthorityRepositories, read
     && child.envelope.contractFingerprint === resolveWorkflowFingerprint(BUILD_MANIFEST, child.envelope.workflow);
 }
 
-export function publishOcrReview(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
-  run: RunRecord, checkpoint: RunCheckpointRecord): void {
-  const actorId = authenticateOcrOperator(repositories, reader, run);
-  const seed = OcrResultSchema.parse(checkpoint.output.value);
-  if (seed.review.sourceRunId !== undefined && seed.review.sourceRunId !== run.envelope.runId) throw new OcrReviewRefusedError();
-  const pages = readDelegationEvidence(repositories, run.envelope.runId, "read-pages");
-  const identities = readDelegationEvidence(repositories, run.envelope.runId, "lookup-identities");
-  const signers = readDelegationEvidence(repositories, run.envelope.runId, "lookup-signers");
+export function assertOcrReviewChildrenCurrent(repositories: AuthorityRepositories, runId: string, seed: OcrReviewRevision["seed"],
+  lookupNodes: readonly ("lookup-identities" | "lookup-signers")[]): void {
+  if (seed.review.sourceRunId !== undefined && seed.review.sourceRunId !== runId
+    || repositories.runs.listChildren(runId).some(child => child.lifecycle.state !== "terminal")) throw new OcrReviewRefusedError();
+  const pages = readDelegationEvidence(repositories, runId, "read-pages");
+  const identities = lookupNodes.flatMap<OcrReviewRevision["seed"]["identities"][number]["outcome"]>(nodeId => {
+    const evidence = readDelegationEvidence(repositories, runId, nodeId);
+    return nodeId === "lookup-identities"
+      ? childRunOutcomeSchema(PersonLookupResultSchema).array().parse(delegationEvidenceOutput(evidence, PersonLookupResultSchema))
+      : childRunOutcomeSchema(I9SignerOutputSchema).array().parse(delegationEvidenceOutput(evidence, I9SignerOutputSchema));
+  });
   if (!same(delegationEvidenceOutput(pages, OcrPageReadingSchema), seed.review.accounting.outcomes)
-    || !same([...childRunOutcomeSchema(PersonLookupResultSchema).array().parse(delegationEvidenceOutput(identities, PersonLookupResultSchema)),
-      ...childRunOutcomeSchema(I9SignerOutputSchema).array().parse(delegationEvidenceOutput(signers, I9SignerOutputSchema))],
-      seed.identities.map(entry => entry.outcome))) {
+    || !same(identities, seed.identities.map(entry => entry.outcome))) {
     throw new OcrReviewRefusedError();
   }
   for (const outcome of seed.review.accounting.outcomes) {
@@ -92,6 +93,13 @@ export function publishOcrReview(repositories: AuthorityRepositories, reader: Pi
     if (stored === undefined || stored.binding !== "source-bound"
       || !same({ ...outcome.output, binding: "source-bound" }, stored)) throw new OcrReviewRefusedError();
   }
+}
+
+export function publishOcrReview(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
+  run: RunRecord, checkpoint: RunCheckpointRecord): void {
+  const actorId = authenticateOcrOperator(repositories, reader, run);
+  const seed = OcrResultSchema.parse(checkpoint.output.value);
+  assertOcrReviewChildrenCurrent(repositories, run.envelope.runId, seed, ["lookup-identities", "lookup-signers"]);
   const current = readOcrReviewAuthority(repositories, reader, run.envelope.runId);
   if (current !== undefined && same(current.revision.seed, seed)) return;
   if (repositories.ocrReviews.snapshots(run.envelope.runId).length > 0) throw new OcrReviewRefusedError();

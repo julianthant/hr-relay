@@ -121,3 +121,24 @@ it("refuses retry of a failed page after a selected subset has been approved", a
   assert.deepEqual(repositories.ocrReviews.snapshots(f.run.envelope.runId), snapshots);
   assert.equal(f.database.readProfileResourceCustody().writeIntents.length, 0);
 });
+
+it("refuses approval of the previous review after a failed page has been replaced", async () => {
+  const f = await world.fixture({ pageCount: 2, record: true, release: true, failManualPageOnce: 2 });
+  const repositories = f.database.authority;
+  assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
+  const approval = f.approval();
+  const failed = repositories.runs.listChildren(f.run.envelope.runId).find(child => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed"); assert.ok(failed);
+  const retry = { commandId: randomUUID(), family: "run", type: "retry", requestedBy: "local-operator", source: "run-detail",
+    requestedAt: f.clock.now().toISOString(), target: { runId: failed.envelope.runId, expectedVersion: failed.version } };
+  assert.equal(f.canonical.kernel.execute(retry).state, "applied");
+  const reply = f.canonical.kernel.execute(approval);
+  assert.ok(reply.state === "rejected" && reply.code === "OCR_REVIEW_REFUSED");
+  const replacement = repositories.runs.listChildren(f.run.envelope.runId).find(child => child.envelope.retryOf === failed.envelope.runId); assert.ok(replacement);
+  const completed = await f.canonical.step(f.run, new AbortController().signal);
+  assert.equal(completed.run.envelope.runId, replacement.envelope.runId); assert.equal(completed.outcome.state, "done");
+  const settledReply = f.canonical.kernel.execute(f.approval());
+  assert.ok(settledReply.state === "rejected" && settledReply.code === "OCR_REVIEW_REFUSED");
+  assert.deepEqual(repositories.ocrReviews.snapshots(f.run.envelope.runId), []);
+  assert.equal(repositories.gateResults.get(`${f.run.envelope.runId}:approve-records`), undefined);
+  assert.equal(repositories.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.retryOf === failed.envelope.runId).length, 1);
+});

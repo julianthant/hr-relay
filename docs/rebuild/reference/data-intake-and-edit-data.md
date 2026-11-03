@@ -182,7 +182,9 @@ release keep their separate current-build and freshness checks.
 
 OCR defaults to review-only completion. Explicit release mode parks on its registered operator
 gate. `resolve-gate` verifies the exact current revision, digest and selected record IDs, freezes
-the snapshot and settles the gate in one authority transaction. Parent completion returns that
+the snapshot and settles the gate in one authority transaction. Approval rechecks the registered
+lookup dependencies and current page/lookup outcomes; pending replacements and an older review
+after replacement completion refuse until a rebuilt revision is published. Parent completion returns that
 snapshot reference. Later drafts cannot mutate it, and checkpoint recovery refuses a superseded
 approval. Workflow activation and live selector acceptance remain separate from retained approval
 authority.
