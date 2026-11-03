@@ -136,9 +136,12 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-Run portable CI suites on Ubuntu for pull requests into `staging`. Run platform-native proofs only
-on release pull requests into `main` and manual dispatches. Keep native-only files out of Ubuntu
-shards. `scripts/test/ci-files.ts` names the native
+Run portable CI suites on Ubuntu for pull requests into `staging`. Run platform-native proofs and
+parity in CI only for full releases started by the operator:
+`staging` → `main` pull requests or manual full-release dispatches. Only the operator may start
+one; agents must never dispatch or rerun `ci.yml`. Between releases, run Windows-native tests
+locally on Windows and macOS-native tests locally on the Mac when load is low. Keep native-only
+files out of Ubuntu shards. `scripts/test/ci-files.ts` names the native
 files: `NATIVE_FILES` (storage closure, backup and restore proofs requiring native runners, unit and
 integration) and `SERIAL_FILES` (native browser process proofs that require file isolation). `scripts/test/ci-run.sh` lists a project through
 Vitest, selects the job's files with that script and passes the paths explicitly; Vitest 4.1.11's
@@ -157,9 +160,9 @@ Other native files count half because two workers share them.
 | unit | Ubuntu | 2 (3 without integration) | unit files except `NATIVE_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
 | integration | Ubuntu | 14 | integration files except `NATIVE_FILES` and `SERIAL_FILES` |
-| native | macOS, release PRs and manual dispatches only | 5 (2 when parity runs) | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
-| native | Windows, release PRs and manual dispatches only | 5 (1 for unit only) | The same native membership and isolated serial/storage groups |
-| parity | macOS, release PRs and manual dispatches only | 3 shards | Desktop parity |
+| native | macOS, operator-started full releases only | 5 (2 when parity runs) | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
+| native | Windows, operator-started full releases only | 5 (1 for unit only) | The same native membership and isolated serial/storage groups |
+| parity | macOS, operator-started full releases only | 3 shards | Desktop parity |
 
 With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The runner-free FIFO
 admission and draft policy are described in [repository governance](../../repository-governance.md).
@@ -256,7 +259,8 @@ Local runs use 1. Product defaults are unchanged. Remaining steps run after a fa
 unless the workflow is cancelled, preserving failure visibility, and any shard failure fails its suite.
 
 PR filtering uses these rules. Static and privacy always run. Draft PRs select only affected unit files;
-`ready_for_review` triggers all applicable suites, and explicit dispatches bypass the draft limit.
+`ready_for_review` triggers all applicable suites. Only operator-started manual full-release
+dispatches bypass the draft limit.
 
 | Changed paths | Routine suites selected |
 | --- | --- |
@@ -269,15 +273,16 @@ PR filtering uses these rules. Static and privacy always run. Draft PRs select o
 | Parity helpers, fixtures or entrypoints | All four; unit and integration also import these. |
 | Local or perf test files only | Architecture; local remains machine-only and perf remains release-only. |
 
-Select the union for mixed changes. For pull requests into `staging`, omit parity and leave the
-macOS matrix empty. For release pull requests into `main`, retain selected native and parity jobs
-and add the release job. Treat machine-readable inputs under `docs/`, including the guard inventory,
-as configuration. For manual dispatches, bypass filtering and select all four suites, including
-native and parity jobs. Do not repeat CI on protected-branch pushes.
+Select the union for mixed changes. Only release pull requests from `staging` into `main` select
+native and parity jobs and add the release job. Other pull requests leave both native matrices
+empty and omit parity. Treat machine-readable inputs under `docs/`, including the guard inventory,
+as configuration. Only the operator may start a manual full-release dispatch. It bypasses
+filtering and selects all four routine suites, including native and parity jobs. Agents must never dispatch or rerun
+`ci.yml`. Do not repeat CI on protected-branch pushes.
 Run required summaries (`unit`, `integration`, `architecture`, `parity`) on Ubuntu even when a runner
 job is intentionally omitted. Require successful change detection and either an explicit suite
-omission or successful selected runners. For unit and integration, require Ubuntu success and macOS
-success when its matrix is nonempty; require macOS to be skipped when its matrix is empty.
+omission or successful selected runners. For unit and integration, require Ubuntu success and each
+native platform to succeed when its matrix is nonempty or be skipped when its matrix is empty.
 For architecture, require Ubuntu success. For selected parity, require macOS success.
 Fail the summary when a required runner fails, is cancelled, or is unexpectedly skipped.
 
@@ -285,7 +290,8 @@ Membership verification compares an unsharded `vitest list --filesOnly --json` f
 integration and architecture with the union of the exact CI selections. `tests/scripts/test/ci-files.test.ts`
 proves the selections give each file to exactly one job, so selected paths need no Vitest sharding.
 `tests/scripts/test/ci-files.workflow.test.ts` executes workflow selection and summary scripts for
-staging, release and manual runs, including native membership and failure propagation.
+staging PRs, `staging` → `main` release PRs, other PRs into `main` and manual runs, including
+operator-started full-release native/parity membership and failure propagation.
 Parity's three Playwright shards' `--list --reporter=json` test identities must also form the
 unsharded listing exactly once. Coverage, perf and local selection are unchanged.
 

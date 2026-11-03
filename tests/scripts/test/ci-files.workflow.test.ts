@@ -20,18 +20,18 @@ function job(workflow: string, name: string): string {
   return body;
 }
 
-function expression(value: string, needs: Record<string, Need>): unknown {
+function expression(value: string, needs: Record<string, Need>, github: Record<string, string> = {}): unknown {
   return runInNewContext(value.replace(/\$\{\{(.*?)\}\}/gu, "$1"), {
-    needs, cancelled: () => false, always: () => true,
+    needs, github, cancelled: () => false, always: () => true,
   });
 }
 
-function select(base = "staging", filters: Record<string, string> = { shared: "true" }, eventName = "pull_request", draft = false) {
+function select(base = "staging", filters: Record<string, string> = { shared: "true" }, eventName = "pull_request", draft = false, head = "staging") {
   const source = checks.match(/ {8}id: select[\s\S]*? {10}script: \|\n((?: {12}[^\n]*\n|\n)+)/u)?.[1];
   assert.ok(source, "Missing workflow selection script");
   const outputs: Record<string, string> = {};
   runInNewContext(source.replace(/^ {12}/gmu, ""), {
-    context: { eventName, payload: { pull_request: { base: { ref: base }, draft } } },
+    context: { eventName, payload: { pull_request: { base: { ref: base }, head: { ref: head }, draft } } },
     process: { env: { FILTERS: JSON.stringify({ ...Object.fromEntries(
       ["shared", ...suites].map(name => [name, "false"]),
     ), ...filters }) } },
@@ -84,8 +84,8 @@ describe("CI workflow selection and required summaries", () => {
     }
   });
 
-  it.each(["pull_request", "workflow_dispatch"])("keeps native and parity shards for release/manual %s", event => {
-    const outputs = select(event === "pull_request" ? "main" : "staging", { shared: "true" }, event);
+  it("keeps native and parity shards for staging to main release PRs", () => {
+    const outputs = select("main");
     const macos = matrixSchema.parse(JSON.parse(outputs.macos));
     expect(macos.include).toEqual([
       ...[1, 2, 3].map(shard => ({ suite: "parity", shard, shards: 3 })),
@@ -117,13 +117,10 @@ describe("CI workflow selection and required summaries", () => {
     expect(select("staging", filters, "pull_request", draft).macos).toBe('{"include":[]}');
   });
 
-  it("selects Windows native shards only for release and manual runs", () => {
+  it("selects Windows native shards for full release validation", () => {
     expect(select().windows).toBe('{"include":[]}');
     expect(select("main", { shared: "false" }).windows).toBe('{"include":[]}');
-    for (const event of ["pull_request", "workflow_dispatch"]) {
-      const outputs = select(event === "pull_request" ? "main" : "staging", { shared: "true" }, event);
-      expect(JSON.parse(outputs.windows)).toEqual({ include: Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })) });
-    }
+    expect(JSON.parse(select("main").windows)).toEqual({ include: Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })) });
     const windows = job(checks, "windows");
     expect(windows).toContain("runs-on: windows-latest");
     expect(windows).toContain("shell: bash");
@@ -150,6 +147,64 @@ describe("CI workflow selection and required summaries", () => {
       }
       expect(summary(checks, suite, { changes: { result: "success", outputs: select() },
         ubuntu: { result: "success" }, macos: { result: "skipped" }, windows: { result: "success" } })).toBe("failure");
+    }
+  });
+
+  it.each([
+    { event: "pull_request", base: "main", head: "feature/other" },
+    { event: "pull_request", base: "staging", head: "feature/other" },
+  ])("omits native and parity for $event $head to $base", ({ event, base, head }) => {
+    const outputs = select(base, { shared: "true" }, event, false, head);
+    expect(outputs.macos).toBe('{"include":[]}');
+    expect(outputs.windows).toBe('{"include":[]}');
+    expect(outputs.parity).toBe("false");
+    const ubuntu = matrixSchema.parse(JSON.parse(outputs.ubuntu));
+    expect(ubuntu.include).toHaveLength(18);
+    for (const platform of ["macos", "windows"]) {
+      const condition = job(checks, platform).match(/^ {4}if: (.+)$/mu)?.[1];
+      assert.ok(condition);
+      expect(expression(condition, { changes: { result: "success", outputs } })).toBe(false);
+    }
+    for (const suite of suites) expect(aggregate(suite, outputs, "success", "skipped")).toBe("success");
+    for (const result of ["success", "failure", "cancelled"] as const) {
+      for (const suite of ["unit", "integration"] as const) {
+        expect(aggregate(suite, outputs, "success", result)).toBe("failure");
+        expect(aggregate(suite, outputs, "success", "skipped", "success", result)).toBe("failure");
+      }
+    }
+  });
+
+  it("preserves the operator manual full native and parity run", () => {
+    const outputs = select("staging", { shared: "false" }, "workflow_dispatch", false, "feature/windows-support");
+    expect(outputs.parity).toBe("true");
+    expect(JSON.parse(outputs.windows)).toEqual({ include: Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })) });
+    expect(JSON.parse(outputs.macos)).toEqual({ include: [
+      ...[1, 2, 3].map(shard => ({ suite: "parity", shard, shards: 3 })),
+      ...[1, 2].map(shard => ({ suite: "native", shard, shards: 2 })),
+    ] });
+    for (const suite of suites) expect(aggregate(suite, outputs, "success", "success")).toBe("success");
+    for (const result of ["failure", "cancelled", "skipped"] as const) {
+      for (const suite of ["unit", "integration", "parity"] as const) {
+        expect(aggregate(suite, outputs, "success", result)).toBe("failure");
+      }
+      for (const suite of ["unit", "integration"] as const) {
+        expect(aggregate(suite, outputs, "success", "success", "success", result)).toBe("failure");
+      }
+    }
+  });
+
+  it.each([
+    { event: "pull_request", base: "main", head: "staging", expected: true },
+    { event: "pull_request", base: "main", head: "feature/other", expected: false },
+    { event: "pull_request", base: "staging", head: "feature/other", expected: false },
+    { event: "workflow_dispatch", base: "main", head: "staging", expected: false },
+  ])("aligns both release job conditions for $event $head to $base", ({ event, base, head, expected }) => {
+    const needs = { changes: { result: "success" as const, outputs: { architecture: "true" } },
+      checks: { result: "success" as const, outputs: { release: "success" } } };
+    for (const workflow of [ci, checks]) {
+      const condition = job(workflow, "release").match(/^ {4}if: (.+)$/mu)?.[1];
+      assert.ok(condition);
+      expect(expression(condition, needs, { event_name: event, base_ref: base, head_ref: head })).toBe(expected);
     }
   });
 

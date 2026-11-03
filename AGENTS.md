@@ -104,8 +104,9 @@ The repository holds only the current version. No compatibility readers, old mig
   pull request branch; it is the only agent that pushes to an open pull request. The operator handles
   only pull requests labeled `needs-human`.
 - Run static, privacy and portable Ubuntu unit, integration and architecture checks for pull
-  requests into `staging`. Run platform-native proofs and parity only on release pull requests into
-  `main` or manual dispatches. Fix a red release by a pull request into `staging`. Run the tests related
+  requests into `staging`. Run platform-native proofs and parity in CI only for a full release
+  started by the operator: a `staging` → `main` pull request or a manual full-release dispatch. Agents must never
+  dispatch or rerun `ci.yml`. Fix a red release by a pull request into `staging`. Run the tests related
   to your change locally before pushing, and parity when the change touches a dashboard screen.
 - A test file that needs native platform proofs goes in `NATIVE_FILES` in `scripts/test/ci-files.ts`. When CI jobs'
   end times spread more than a minute, refresh `scripts/test/ci-durations.json` (see
@@ -141,7 +142,9 @@ The repository holds only the current version. No compatibility readers, old mig
   Update tests when behavior changes, and say when none exist.
 - Before push: `npm run test:local`, `npm run typecheck` and `npm run lint`. Run portable cloud unit,
   integration and architecture suites on Ubuntu, plus static and privacy. Run platform-native proofs
-  and parity only on release pull requests into `main` or manual dispatches. A release
+  and parity in CI only for operator-started full releases (`staging` → `main` pull requests or
+  manual full-release dispatches). Otherwise run Windows-native tests locally on Windows and
+  macOS-native tests locally on the Mac when load is low. A release
   pull request then runs `npm run web:build`, `npm run test:coverage` alone, and `npm run test:perf`.
   Coverage selects the unit, integration and architecture suites without perf, so don't run those
   three separately.
