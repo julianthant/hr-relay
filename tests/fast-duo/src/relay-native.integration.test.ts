@@ -37,6 +37,7 @@ it("real extension isolated native create uses page RP/origin and ignores forged
     globalThis.realmGuardFailures = [];
     globalThis.realmDocumentFormats = [];
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.type === 'RELAY_DUO_EVENT') { sendResponse({ success: true }); return false; }
       let parsedUrl;
       try { parsedUrl = new URL(sender.url); } catch { parsedUrl = undefined; }
       realmDocumentFormats.push({
@@ -147,6 +148,7 @@ it("real extension isolated native create uses page RP/origin and ignores forged
     assert.ok(Array.isArray(documentFormats));
     assert.equal(output.success, true, JSON.stringify({ success: output.success, nativeCredentials, receiptTypes: (await receipts()).map(receipt => receipt.type), guardFailures, documentFormats }));
     assert.equal(output.result.native, true);
+    assert.equal(Buffer.from(output.result.credentialId, "base64url").toString("base64url"), output.result.credentialId);
     const clientData = JSON.parse(Buffer.from(output.result.clientDataJSON, "base64").toString("utf8")) as { origin: string; challenge: string; type: string };
     assert.equal(clientData.origin, origin);
     assert.equal(clientData.type, "webauthn.create");
