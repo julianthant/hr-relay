@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { applyMasterChange, WorkbookOwnershipSchema, workbookMatches } from "../../workbooks/master-changes.js";
-import { WorkbookReferenceRequestSchema, WorkbookReferenceSnapshotSchema, WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookNamedVersionSchema, WorkbookOperationSchema, WorkbookOperationReceiptSchema, decodeEditableWorkbook } from "../../../models/dashboard/workbooks.js";
+import { WorkbookSnapshotRequestSchema, WorkbookReferenceSnapshotSchema, WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookNamedVersionSchema, WorkbookOperationSchema, WorkbookOperationReceiptSchema, decodeEditableWorkbook } from "../../../models/dashboard/workbooks.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { WorkbookLibraryError, type WorkbookLibraryRepository } from "../../workbooks/workbook-library-service.js";
@@ -271,24 +271,29 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     })),
     metadata: id => storage(() => deps.read(() => { required(id); return metadata(id); })),
     snapshot: value => storage(() => deps.read(() => {
-      const request = WorkbookReferenceRequestSchema.parse(value), workbookType = type(request.typeId);
+      const request = WorkbookSnapshotRequestSchema.parse(value), workbookType = type(request.typeId);
       if (!workbookType || workbookType.keyFieldId === null || request.fields.some(field => !workbookType.fields.includes(field))) throw new WorkbookLibraryError('WORKBOOK_INVALID');
       const id = request.libraryId ?? workbookType.defaultWorkbookId;
       if (!id) throw new WorkbookLibraryError('WORKBOOK_NOT_FOUND');
       const record = required(id);
+      if ("mode" in request && request.expectedVersion !== record.version) throw new WorkbookLibraryError('WORKBOOK_VERSION_CONFLICT');
       if (metadata(id).typeId !== workbookType.id) throw new WorkbookLibraryError('WORKBOOK_INVALID');
       const workbook = encodeSavedWorkbook(record).workbook, keyField = workbookType.keyFieldId;
+      const values = (sheet: typeof workbook.sheets[number], row: typeof workbook.sheets[number]["rows"][number]) =>
+        Object.fromEntries(request.fields.map(field => {
+          const indexes = sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === field ? [index] : []) ?? [];
+          if (indexes.length !== 1) throw new WorkbookLibraryError('WORKBOOK_INVALID');
+          return [field, row.cells[indexes[0]].value];
+        }));
       return WorkbookReferenceSnapshotSchema.parse({ libraryId: id, version: record.version, type: workbookType,
         worksheets: workbook.sheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name })),
-        rows: request.keys.map(key => {
+        rows: "mode" in request ? workbook.sheets.flatMap(sheet => sheet.rows.slice(sheet.headerRow ?? 1).map(row => ({
+          key: `${sheet.id}#${row.id}`, state: "matched", matches: [{ sheetId: sheet.id, rowId: row.id, values: values(sheet, row) }],
+        }))) : request.keys.map(key => {
           const matches = workbookMatches(workbook, keyField, key);
           return { key, state: matches.length === 0 ? 'missing' : matches.length === 1 ? 'matched' : 'ambiguous',
             matches: matches.map(({ sheetId, rowId, sheet, row }) => ({ sheetId, rowId,
-              values: Object.fromEntries(request.fields.map(field => {
-                const indexes = sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === field ? [index] : []) ?? [];
-                if (indexes.length !== 1) throw new WorkbookLibraryError('WORKBOOK_INVALID');
-                return [field, row.cells[indexes[0]].value];
-              })) })) };
+              values: values(sheet, row) })) };
         }) });
     })),
     enqueue, drain, operation,

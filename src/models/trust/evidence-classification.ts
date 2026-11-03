@@ -473,9 +473,9 @@ function ocrPageReadingLeaves(scope: EvidenceValueScope): unknown[] {
 
 function ocrRosterLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [
-    ...ocrPrivateLeaves(scope, prefix.slice(0, -1), `${prefix}rows`),
+    ...ocrPrivateLeaves(scope, prefix.slice(0, -1), `${prefix}rows`, `${prefix}workbookId`, `${prefix}referenceDigest`),
     ...ocrArtifactLeaves(scope, `${prefix}artifact.`),
-    ...open(scope, `${prefix}readAt`),
+    ...open(scope, `${prefix}readAt`, `${prefix}workbookType`, `${prefix}workbookVersion`),
   ];
 }
 

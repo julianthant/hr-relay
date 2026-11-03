@@ -12,6 +12,8 @@ import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { delegationEvidenceOutput } from "../../../models/run/result.js";
 import { OcrPageReadingSchema } from "../../../models/workflows/ocr/page-accounting.js";
 import { PersonLookupResultSchema } from "../../../models/workflows/person-lookup/result.js";
+import { I9SignerOutputSchema } from "../../../models/systems/i9/read-section2-signer.js";
+import { childRunOutcomeSchema } from "../../../models/workflow/graph.js";
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
 import { readContinuationGate, validateRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -52,8 +54,11 @@ export function publishOcrReview(repositories: AuthorityRepositories, reader: Pi
   if (seed.review.sourceRunId !== undefined && seed.review.sourceRunId !== run.envelope.runId) throw new OcrReviewRefusedError();
   const pages = readDelegationEvidence(repositories, run.envelope.runId, "read-pages");
   const identities = readDelegationEvidence(repositories, run.envelope.runId, "lookup-identities");
+  const signers = readDelegationEvidence(repositories, run.envelope.runId, "lookup-signers");
   if (!same(delegationEvidenceOutput(pages, OcrPageReadingSchema), seed.review.accounting.outcomes)
-    || !same(delegationEvidenceOutput(identities, PersonLookupResultSchema), seed.identities.map(entry => entry.outcome))) {
+    || !same([...childRunOutcomeSchema(PersonLookupResultSchema).array().parse(delegationEvidenceOutput(identities, PersonLookupResultSchema)),
+      ...childRunOutcomeSchema(I9SignerOutputSchema).array().parse(delegationEvidenceOutput(signers, I9SignerOutputSchema))],
+      seed.identities.map(entry => entry.outcome))) {
     throw new OcrReviewRefusedError();
   }
   for (const outcome of seed.review.accounting.outcomes) {

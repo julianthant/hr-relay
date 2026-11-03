@@ -1,7 +1,8 @@
 import { ExtractPdfPages } from "../../../../models/processing/extraction/extract-pdf-pages.js";
 import { OcrPageWorkflowInputSchema } from "../../../../models/workflows/ocr-page/input.js";
 import { OcrInputSchema } from "../../../../models/workflows/ocr/input.js";
-import { ocrLookupRequests } from "../../../../models/workflows/ocr/lookup.js";
+import { ocrPersonLookupRequests, ocrSignerLookupRequests } from "../../../../models/workflows/ocr/lookup.js";
+import { I9LookupInputSchema, I9SignerOutputSchema } from "../../../../models/systems/i9/read-section2-signer.js";
 import { OcrPageReadingSchema } from "../../../../models/workflows/ocr/page-accounting.js";
 import { ReadOcrResult } from "../../../../models/workflows/ocr/read-result.js";
 import { ReadOcrReviewSeed } from "../../../../models/workflows/ocr/read-review-seed.js";
@@ -34,7 +35,8 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
   const pages = delegate({
     id: "read-pages", label: "Read every original page",
     target: { id: WorkflowIdSchema.parse("ocr-page"), input: OcrPageWorkflowInputSchema, result: OcrPageReadingSchema },
-    edgeId: "ocr-pages", cardinality: "many", await: "terminal", join: "all-settled", policy: childPolicy
+    edgeId: "ocr-pages", cardinality: "many", await: "terminal", join: "all-settled",
+    policy: { ...childPolicy, visibility: "hidden-unless-failed" }
   }, [source], {
     bind: ({ outputs }) => outputs["read-source-pages"].pages,
     deriveChildItemId: (_input, context) => context.canonicalItemId,
@@ -49,11 +51,19 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
     target: { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: PersonLookupResultSchema },
     edgeId: "ocr-identities", cardinality: "many", await: "terminal", join: "all-settled", policy: childPolicy
   }, [review], {
-    bind: ({ outputs }) => ocrLookupRequests(outputs["build-review"]).map(request => request.input),
+    bind: ({ outputs }) => ocrPersonLookupRequests(outputs["build-review"]).map(request => request.input),
     deriveChildItemId: (_input, context) => context.canonicalItemId,
   });
-  const completed = task({ id: "read-result", contract: ReadOcrResult, replay: "checkpoint" }, [review, identities],
-    ({ outputs }) => ({ review: outputs["build-review"], outcomes: [...outputs["lookup-identities"]] }));
+  const signers = delegate({
+    id: "lookup-signers", label: "Look up official signers",
+    target: { id: WorkflowIdSchema.parse("i9-lookup"), input: I9LookupInputSchema, result: I9SignerOutputSchema },
+    edgeId: "ocr-signers", cardinality: "many", await: "terminal", join: "all-settled", policy: childPolicy
+  }, [review, identities], {
+    bind: ({ outputs }) => ocrSignerLookupRequests(outputs["build-review"]).map(request => request.input),
+    deriveChildItemId: (_input, context) => context.canonicalItemId,
+  });
+  const completed = task({ id: "read-result", contract: ReadOcrResult, replay: "checkpoint" }, [review, identities, signers],
+    ({ outputs }) => ({ review: outputs["build-review"], outcomes: [...outputs["lookup-identities"], ...outputs["lookup-signers"]] }));
   const approval = gate({ id: "approve-records", label: "Approve selected records", resolvedBy: "operator",
     result: OcrApprovalReferenceSchema, when: { kind: "equals", of: { from: "input", path: "approval" }, value: "release" } }, [completed]);
   return {
@@ -61,7 +71,8 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
       ...sourcePages.steps,
       [{ key: "page-readings", label: "Read document pages", system: "local" }, [pages]],
       [{ key: "review-records", label: "Group records for review", system: "local" }, [review]],
-      [{ key: "identity-lookups", label: "Look up proposed identities", system: "ucpath" }, [identities, completed]],
+      [{ key: "identity-lookups", label: "Look up proposed identities", system: "ucpath" }, [identities]],
+      [{ key: "signer-lookups", label: "Look up official signers", system: "i9" }, [signers, completed]],
       [{ key: "approval", label: "Approve selected records", system: "local" }, [approval]],
     ] as const, result: result(OcrWorkflowResultSchema, [completed, approval], ({ outputs }) => ({
       ...outputs["read-result"], approvedSnapshot: outputs["approve-records"] ?? null,

@@ -20,6 +20,8 @@ import { canonicalChildExecution } from "./canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "./run-executor-world.js";
 import { boundProfileAdmission } from "../synthetic-database-admission.js";
 import type { z } from "zod";
+import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import { unexpectedWorkbookSync } from "./workbook-sync.js";
 
 export function createOcrReviewWorld() {
   const world = createRunExecutorTestWorld();
@@ -44,6 +46,14 @@ export function createOcrReviewWorld() {
       const root = ocrModule;
       const harness = await world.executorHarness({ descriptor: root.descriptor, stores });
       const { database, path, clock } = harness.authority;
+      const workbooks = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
+      const roster = workbooks.create({ name: "OCR roster", themes: [], hasFormulas: false, sheets: [{
+        id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
+        columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" })),
+        rows: [{ id: "header", cells: [{ value: "EID" }, { value: "Name" }] }],
+      }] });
+      database.authority.workbooks.putType({ id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null });
+      workbooks.operatorOperation(roster.libraryId, "set-roster-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
       const admission = boundProfileAdmission(path);
       const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
       const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
@@ -68,7 +78,8 @@ export function createOcrReviewWorld() {
       const { reading, corrected } = first;
       const run = canonical.start(root.descriptor, OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
         formType: "emergency-contact", roster: null, approval: options.release === true ? "release" : "review-only",
-        reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } }), { dryRun: false });
+        reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } }), { dryRun: false,
+          workbooks, workbookReferences: [{ entry: 1, mode: "all", typeId: "ocr-roster", libraryId: roster.libraryId, expectedVersion: 2, fields: ["eid", "fullName"] }] });
       const result = await canonical.execute(run, new AbortController().signal);
       if (actorId === "local-operator") {
         const failures = result.outcomes.filter(outcome => outcome.state === "failed").map(outcome => {

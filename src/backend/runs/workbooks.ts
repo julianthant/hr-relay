@@ -6,7 +6,7 @@ import { CanonicalWorkerTransitionRequestSchema } from "../storage/sqlite/run-st
 import { parseCanonicalInputSnapshot } from "../../models/workflow/canonical-input.js";
 import { z } from "zod";
 import type { AuthorityDatabase, AuthorityRepositories } from "../storage/sqlite/authority-database.js";
-import { RunWorkbookReferenceSchema, type WorkbookOperationReceipt, type WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
+import { RunWorkbookSnapshotReferenceSchema, parseRunWorkbookReference, type WorkbookOperationReceipt, type WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
 import { NativeRunEventWireSchema, RunWorkbookWritesWireSchema, type RunWorkbookWritesWire } from "../../models/dashboard/run-detail.js";
 import { WorkbookReferenceWriteSchema } from "../../models/processing/workbooks/read-result.js";
 import { schemaBoundValueSchema, deriveSchemaHash, type SchemaBoundCanonicalValue } from "../../models/validation/schema-bound-value.js";
@@ -23,6 +23,8 @@ import { bindOnboardingRoster, onboardingRosterRow } from "../../rules/onboardin
 import { deriveGateResultCheckpointFingerprint, type GateResultRecord } from "../../models/workflow/gates.js";
 import { readContinuationGate, validateRunContinuation } from "../storage/sqlite/run-continuation.js";
 import { rejectCommandRequest } from "./commands/command-refusal.js";
+import { OcrCanonicalInput } from "../../models/workflows/ocr/input.js";
+import { bindOcrRoster } from "../../models/workflows/ocr/roster.js";
 
 const onboardingInputBinding = Object.freeze({
   assertSubmission(input: unknown) {
@@ -38,20 +40,36 @@ const onboardingInputBinding = Object.freeze({
     return { ...input, roster: bindOnboardingRoster(reference, email, capturedAt) };
   },
 });
-const workbookInputBindings: ReadonlyMap<object, typeof onboardingInputBinding> = new Map([[OnboardingCanonicalInput, onboardingInputBinding]]);
+const ocrInputBinding = Object.freeze({
+  assertSubmission(input: unknown) {
+    if (input !== null && typeof input === "object" && Reflect.get(input, "roster") != null) {
+      throw new Error("OCR roster values are captured by Relay; caller-supplied roster input is invalid");
+    }
+  },
+  bind(input: unknown, references: readonly SchemaBoundCanonicalValue[] | undefined, capturedAt: string) {
+    if (input === null || typeof input !== "object" || Array.isArray(input) || references?.length !== 1) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    return { ...input, roster: bindOcrRoster(references[0], capturedAt) };
+  },
+});
+interface WorkbookInputBinding {
+  assertSubmission(input: unknown): void;
+  bind(input: unknown, references: readonly SchemaBoundCanonicalValue[] | undefined, capturedAt: string): unknown;
+}
+const workbookInputBindings: ReadonlyMap<object, WorkbookInputBinding> = new Map<object, WorkbookInputBinding>([
+  [OnboardingCanonicalInput, onboardingInputBinding], [OcrCanonicalInput, ocrInputBinding],
+]);
 
 export function workbookInputBinding(canonicalInput: object) {
   return workbookInputBindings.get(canonicalInput);
 }
 
-type Reference = z.infer<typeof RunWorkbookReferenceSchema>;
+type Reference = z.infer<typeof RunWorkbookSnapshotReferenceSchema>;
 type ReferenceCommand = Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>;
 type RowCommand = Extract<CommandRequest, { type: "resolve-workbook-row" }>;
-const referenceHash = deriveSchemaHash(RunWorkbookReferenceSchema, "output");
 
 function references(run: RunRecord): readonly Readonly<{ value: Reference; digest: string; bound: SchemaBoundCanonicalValue }>[] {
   const parsed = (run.input.workbookReferences ?? []).map(bound => ({
-    value: schemaBoundValueSchema(RunWorkbookReferenceSchema, referenceHash).parse(bound).value,
+    value: parseRunWorkbookReference(bound),
     digest: sha256Hex(canonicalJsonStringify(bound)), bound,
   }));
   if (new Set(parsed.map(reference => reference.value.request.typeId)).size !== parsed.length) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
@@ -70,7 +88,7 @@ function referenceOfOperation(run: RunRecord, entry: WorkbookOperationRecord) {
     : references(run).find(reference => reference.digest === source.referenceDigest && reference.value.snapshot.libraryId === entry.libraryId);
   if (found === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   const change = entry.operation.change;
-  if ((change.kind !== "patch" && change.kind !== "add") || !found.value.request.keys.includes(change.key)
+  if ("mode" in found.value.request || (change.kind !== "patch" && change.kind !== "add") || !found.value.request.keys.includes(change.key)
     || Object.keys(change.values).some(field => !found.value.request.fields.includes(field))) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   return found;
 }
@@ -111,6 +129,7 @@ function hasResolution(entries: readonly WorkbookOperationRecord[], entry: Workb
 }
 
 function liveCandidates(repositories: AuthorityRepositories, reference: Reference, key: string) {
+  if ("mode" in reference.request) throw new WorkbookLibraryError("WORKBOOK_INVALID");
   const live = snapshotWorkbookReference(repositories.workbooks, { ...reference.request, libraryId: reference.snapshot.libraryId, keys: [key] });
   if (live.type.keyFieldId !== reference.snapshot.type.keyFieldId) throw new WorkbookLibraryError("WORKBOOK_INVALID");
   const sheets = new Set(reference.snapshot.worksheets.map(sheet => sheet.sheetId));
@@ -367,6 +386,7 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
           || Number(run.claimGeneration) !== Number(captured.claimGeneration)
           || canonicalJsonStringify(run.input) !== canonicalJsonStringify(captured.input)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
         const reference = referenceFor(run, command.typeId);
+        if ("mode" in reference.value.request) throw new WorkbookLibraryError("WORKBOOK_INVALID");
         const operationId = deriveStableUuid("run-workbook-write-request", canonicalJsonStringify({ runId: run.envelope.runId, writeId: command.writeId }));
         const previous = repositories.workbooks.runOperations(run.envelope.runId).find(entry => entry.operation.operationId === operationId);
         if (previous !== undefined && previous.libraryId !== reference.value.snapshot.libraryId) throw new WorkbookLibraryError("WORKBOOK_OPERATION_CONFLICT");

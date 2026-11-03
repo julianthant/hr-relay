@@ -29,7 +29,7 @@ import {
 } from "../../../models/run/start-plan.js";
 import type { PlannedRun, StartPlanRecord, StartRefusal } from "../../../models/run/start-plan.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { RunWorkbookReferenceSchema, WorkbookRunReferenceSelectionSchema } from "../../../models/dashboard/workbooks.js";
+import { bindRunWorkbookReference, WorkbookRunReferenceSelectionSchema } from "../../../models/dashboard/workbooks.js";
 import type { WorkbookLibraryService } from "../../workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -178,10 +178,8 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       const workbooks = deps.workbooks;
       if (workbooks === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); continue; }
       try {
-        workbookReferences = references.map(({ entry: _entry, ...reference }) => ({
-          schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output"),
-          value: JsonValueSchema.parse(RunWorkbookReferenceSchema.parse({ request: reference, snapshot: workbooks.snapshot(reference) })),
-        }));
+        workbookReferences = references.map(({ entry: _entry, ...reference }) =>
+          bindRunWorkbookReference(reference, workbooks.snapshot(reference)));
       } catch (error) {
         if (!(error instanceof WorkbookLibraryError)) throw error;
         refuse("capability-unavailable", error.message); continue;

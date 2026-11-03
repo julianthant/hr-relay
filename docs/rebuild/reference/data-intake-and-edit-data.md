@@ -136,15 +136,20 @@ manifest, original page, image and explicit reading invocation. Replay keeps tha
 a deliberate rereading uses a new invocation. Manual readings retain operator assertion provenance.
 The immutable review seed retains raw fields and absences, separate duplicate records, roster source
 evidence and match proposals, and explicit unresolved identity work. Source binding and review seeds
-support all three canonical forms. The unregistered definitions in
+support all three canonical forms. The child-only production definitions in
 `src/workflows/ocr/` and `src/workflows/ocr-page/` compose full-document rendering, subscription or
-manual page readings, all-settled page accounting and deduplicated Person Lookup children. Identity
-outcomes remain separate from the original review seed in a derived result checkpoint; neither grants
-approval. `worker/run-resources.ts` admits the retained run before OCR capabilities are issued;
-the checkpoint publisher verifies its exact claim, delegated page membership and operator start authority.
-`sourceRunId` is an optional assertion and must match the actual OCR run when supplied.
-The definitions and mini-stores are audited through a test-only inventory; neither public nor child
-production registries contain them. Page checkpoints publish immutable readings in their authority transaction.
+manual page readings and all-settled page accounting. Each form declares its lookup in the form
+registry: Emergency Contact and Oath use Person Lookup; I-9 uses the I-9 official-signer lookup.
+The generic descriptor has two sequential lookup edges; the form's unused edge emits an explicit
+empty join. Requests deduplicate identical search inputs while retaining every contributing record
+ID. Person and signer results retain their distinct output schemas. Neither grants approval.
+Page children are hidden unless failed; lookup children are inline. Record-group lineage remains
+the delegation owner's responsibility.
+
+`worker/run-resources.ts` admits the retained run before OCR capabilities are issued;
+the checkpoint publisher verifies its exact claim, delegated page and lookup membership and operator
+start authority. `sourceRunId` is an optional assertion and must match the actual OCR run when supplied.
+Page checkpoints publish immutable readings in their authority transaction.
 
 The native `artifacts` table stores `imported`, `extracted`, and `generated` rows. `AuthorityDatabase.authority.ocrExtractions.insert` accepts only a validated `OcrPageReading` and stores its exact source-bound `extractionId`, full page input and admitted extraction. Reusing the same reading identity and content returns `existing`; changing any content at that identity refuses with `ocr-extraction-replay-conflict`. A deliberate reread uses a new `readingId` and appends a separate extraction. `get(extractionId)` reads exactly that version. `findBySource(imageSha256)` returns every retained version in page/ID order, never a selected latest reading.
 
@@ -173,6 +178,16 @@ approval. Emergency Contact member recovery and live workflow activation still r
 owning graphs, freshness policies and operator acceptance.
 
 ### 4.5 Roster matching and contact advice
+
+OCR declares the `ocr-roster` workbook type with `eid` and `fullName` fields. Run planning captures
+all data rows from the explicitly selected library and CAS version. The run retains the full reference once; its canonical input binds the
+workbook identity, version, reference digest and ordered typed roster rows with worksheet/row IDs.
+Caller-supplied roster values refuse.
+Duplicate people remain separate rows, missing identities remain null, and invalid identity values
+refuse admission. Matching uses that captured snapshot, without SharePoint delegation or a later
+library read. Artifact roster provenance remains valid only inside retained review evidence; new
+canonical OCR inputs accept workbook provenance only. No retained correction, snapshot or digest
+is rewritten.
 
 `roster/match-spreadsheet` re-parses the roster through the shared grid edge. It verifies the mapping layout fingerprint and requires EID and full-name bindings. Its errors are `roster-unreadable`, `mapping-mismatch`, `no-eid-column`, and `no-name-column`.
 
@@ -316,6 +331,16 @@ IDs, a key field and an optional default workbook. A run's requested item keys r
 single immutable wire snapshot of the selected/default workbook, type and live revision. Dates in
 these snapshots are tagged ISO values. Workbook rows do not become run items through this API.
 Key matching retains nonempty strings exactly and compares finite numeric cells by their stable string value. It does not pad numeric keys or coerce booleans, dates, blanks or null. Numeric/string collisions stay ambiguous; snapshots retain original typed cell values.
+
+Full-roster reads use the adjacent explicit `mode: "all"` request with a library ID, expected CAS
+version and requested fields. They capture every data row in worksheet order, retaining stable
+worksheet/row identities, duplicates and original typed values. Header rows are excluded. A changed
+version refuses rather than selecting the new master. Full-row references have their own schema
+hash and are permanently read-only: they cannot authorize keyed patches or Onboarding row choices.
+Keyed requests retain their existing schema/hash and semantics, including an empty snapshot for
+`keys: []`. Planning and retained-reference readers select between these two active schemas by
+request mode and declared schema hash. The SQL layout and existing keyed payloads are unchanged;
+no migration or immutable evidence rewrite is required.
 
 The live `version` is a CAS revision. Named versions are explicit operator snapshots; saves, run
 patches and manual Sync do not create versions. Existing saved revisions retain their data with

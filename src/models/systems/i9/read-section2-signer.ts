@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
 import { ERROR_CATALOG } from "../../failures/error-catalog.js";
 import { defineTaskContract } from "../../task/task-contract.js";
@@ -10,6 +11,10 @@ export const I9LookupInputSchema = z.strictObject({
   ssn: CANONICAL_FIELDS.ssn.schema.optional(),
 });
 export type I9LookupInput = z.output<typeof I9LookupInputSchema>;
+
+export function i9LookupMatchKey(input: I9LookupInput): string {
+  return `i9:${sha256Hex(JSON.stringify([input.lastName.toLowerCase(), input.firstName.toLowerCase(), input.ssn]))}`;
+}
 
 export const I9RecordIdsSchema = z.strictObject({
   profileId: z.string().regex(/^[1-9]\d*$/u),

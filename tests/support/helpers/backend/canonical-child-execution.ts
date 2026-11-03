@@ -1,3 +1,6 @@
+import type { z } from "zod";
+import type { WorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
+import type { WorkbookRunReferenceSelectionSchema } from "../../../../src/models/dashboard/workbooks.js";
 import { boundProfileAdmission } from "../synthetic-database-admission.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import assert from "node:assert/strict";
@@ -97,15 +100,19 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   }
   return {
     kernel, lifecycle, childRuns, step,
-    start(descriptor: AnyWorkflowDescriptor, input: unknown, options: Readonly<{ dryRun: boolean; protectedSubmissionBindings?: readonly ProtectedInputBinding[] }>) {
+    start(descriptor: AnyWorkflowDescriptor, input: unknown, options: Readonly<{ dryRun: boolean; protectedSubmissionBindings?: readonly ProtectedInputBinding[];
+      workbooks?: WorkbookLibraryService;
+      workbookReferences?: readonly z.input<typeof WorkbookRunReferenceSelectionSchema>[] }>) {
       const active = database.authority.runtimeConfig.get();
       assert.ok(active);
       const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors: { resolve },
         clock, ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: LOCAL_OPERATOR_ACTOR_ID,
         configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId,
+        ...(options.workbooks === undefined ? {} : { workbooks: options.workbooks }),
         ...(options.protectedSubmissionBindings === undefined ? {} : { protectedSubmissionBindings: options.protectedSubmissionBindings }) });
       const plan = planner.plan({ workflowId: descriptor.id, submissions: [input], dryRun: options.dryRun,
-        selectedStepKeys: descriptor.timeline.map(step => step.key) });
+        selectedStepKeys: descriptor.timeline.map(step => step.key),
+        ...(options.workbookReferences === undefined ? {} : { workbookReferences: options.workbookReferences }) });
       assert.equal(plan.planned.length, 1);
       assert.equal(plan.refused.length, 0);
       const result = kernel.execute({ commandId: randomUUID(), family: "start", type: "start-run", source: "dashboard",

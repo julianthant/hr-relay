@@ -1,6 +1,23 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { EditableWorkbookSchema, EditableWorkbookWireSchema, SavedWorkbookSchema, decodeEditableWorkbook, encodeEditableWorkbook, decodeSavedWorkbook, encodeSavedWorkbook } from "../../../src/models/dashboard/workbooks.js";
+import { RunWorkbookReferenceSchema, RunWorkbookAllRowsReferenceSchema, bindRunWorkbookReference, parseRunWorkbookReference } from "../../../src/models/dashboard/workbooks.js";
+import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
+
+it("preserves the keyed reference schema hash and reads each active reference by its declared hash", () => {
+  assert.equal(deriveSchemaHash(RunWorkbookReferenceSchema, "output"), "bb13aafcb41e28b291bd51f4b9a803f6fabcbd71a6b92cf2a036a3d0c1cc6bac");
+  const snapshot = { libraryId: "library", version: 2, worksheets: [{ sheetId: "people", name: "People" }],
+    type: { id: "roster", name: "Roster", keyFieldId: "eid", fields: ["eid"], defaultWorkbookId: "library" }, rows: [] };
+  const keyed = bindRunWorkbookReference({ typeId: "roster", keys: [], fields: ["eid"] }, snapshot);
+  const all = bindRunWorkbookReference({ mode: "all", typeId: "roster", libraryId: "library", expectedVersion: 2, fields: ["eid"] }, snapshot);
+  assert.equal(keyed.schemaHash, deriveSchemaHash(RunWorkbookReferenceSchema, "output"));
+  assert.equal(all.schemaHash, deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output"));
+  assert.notEqual(keyed.schemaHash, all.schemaHash);
+  assert.deepEqual(parseRunWorkbookReference(keyed), { request: { typeId: "roster", keys: [], fields: ["eid"] }, snapshot });
+  assert.deepEqual(parseRunWorkbookReference(all).snapshot, snapshot);
+  assert.throws(() => parseRunWorkbookReference({ ...all, schemaHash: keyed.schemaHash }));
+  assert.throws(() => parseRunWorkbookReference({ ...keyed, schemaHash: all.schemaHash }));
+});
 
 it("roundtrips explicit Date cells while ISO-looking strings stay strings and provenance survives", () => {
   const workbook = EditableWorkbookSchema.parse({ name: "Dates.xlsx", libraryId: "library", themes: { theme1: "theme" }, hasFormulas: true,

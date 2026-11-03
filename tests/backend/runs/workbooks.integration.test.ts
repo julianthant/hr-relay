@@ -59,7 +59,7 @@ afterEach(async () => {
   }
 });
 
-async function fixture(duplicate = false) {
+async function fixture(duplicate = false, full = false) {
   const h = await world.createHarness(undefined, { descriptors: [descriptor] });
   const profile = world.profiles.at(-1); assert.ok(profile);
   const repository = h.database.authority.workbooks;
@@ -81,7 +81,8 @@ async function fixture(duplicate = false) {
   const planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: h.clock, ids: h.plannerIds,
     descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, workbooks: library, planTtlMs: 600_000,
     configFingerprint: config.configFingerprint, configSnapshotId: config.configSnapshotId, plannedBy: "local-operator" });
-  const selection = { entry: 1, typeId: patch.typeId, keys: [patch.key, "missing"], fields: ["roster.result", "roster.date", "roster.flag"] };
+  const selection = { entry: 1, typeId: patch.typeId, fields: ["roster.result", "roster.date", "roster.flag"],
+    ...(full ? { mode: "all" as const, libraryId: saved.libraryId, expectedVersion: 2 } : { keys: [patch.key, "missing"] }) };
   const request = { workflowId: descriptor.id, submissions: [{ eid: patch.key }], dryRun: false, workbookReferences: [selection] };
   const plan = () => {
     const wire = planner.plan(request), record = h.database.authority.startPlans.get(wire.startPlanId); assert.ok(record);
@@ -281,4 +282,12 @@ it("refuses a declared type key change and preserves its captured reference", as
   expect(f.library.read(f.id).workbook.sheets[0].rows[1].cells[1].value).toBeNull();
   expect(f.runs.write(run, patch)).toMatchObject({ state: "applied", version: 3 });
   expect(f.library.read(f.id).workbook.sheets[0].rows[1].cells[1].value).toBe("complete");
+});
+
+it("full roster snapshots grant no keyed workbook write authority", async () => {
+  const f = await fixture(false, true), run = f.running(f.start());
+  const before = f.library.read(f.id);
+  expect(() => f.runs.write(run, patch)).toThrow(expect.objectContaining({ code: "WORKBOOK_INVALID" }));
+  expect(f.repository.runOperations(run.envelope.runId)).toEqual([]);
+  expect(f.library.read(f.id)).toEqual(before);
 });

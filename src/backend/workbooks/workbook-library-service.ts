@@ -1,4 +1,4 @@
-import { EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookReferenceRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookReferenceSnapshotSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
+import { EditableWorkbookSchema, SavedWorkbookSchema, WorkbookIdSchema, WorkbookRevisionSchema, type SavedWorkbook, type WorkbookType, type WorkbookMetadata, type WorkbookOperationReceipt, WorkbookNamedVersionSchema, WorkbookSnapshotRequestSchema, WorkbookOperatorOperationRequestSchema, WorkbookReferenceSnapshotSchema, encodeSavedWorkbook } from "../../models/dashboard/workbooks.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { RunIdSchema } from "../../rules/identity/ids.js";
 import { randomUUID } from "node:crypto";
@@ -41,7 +41,7 @@ function input<T>(schema: z.ZodType<T>, value: unknown): T {
 }
 
 export function snapshotWorkbookReference(repository: WorkbookLibraryRepository, value: unknown) {
-  return deepFreeze(repository.snapshot(input(WorkbookReferenceRequestSchema, value)));
+  return deepFreeze(repository.snapshot(input(WorkbookSnapshotRequestSchema, value)));
 }
 
 export function writeRunWorkbook(repository: WorkbookLibraryRepository, clock: Clock,

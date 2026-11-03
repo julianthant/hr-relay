@@ -44,6 +44,8 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 `src/backend/runs/queries/run-detail/ucpath-findings.ts` verifies retained registered-task findings, their held-check acknowledgement and closed recovery activity for a parked termination. `runtime/writes/recovery-activity.ts` runs that read within the existing bounded session/capture owner. `src/models/dashboard/ucpath-findings.ts` owns the wire shape; `src/dashboard/surfaces/run-detail/logs/ucpath-found-model.ts` maps it into the existing table. Pending selector provenance grants no resolution authority.
 
+`src/models/ocr/review-record.ts` owns corrected record fields shared by review revisions and OCR commands; the leaf schema keeps workbook reference models independent of review graph initialization.
+
 `src/models/run/display-name.ts` owns the browser-safe run display-name schema; command and run records share that leaf.
 
 ## Source tree
