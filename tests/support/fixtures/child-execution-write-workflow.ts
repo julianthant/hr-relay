@@ -105,6 +105,23 @@ export const childReadPreviewRoot = compileWorkflow(defineWorkflow({ ...crashCom
       result: result(Plan1Input, [], ({ input }) => input) };
   } }), { manifest: childExecutionBuildManifest });
 
+export const childGateResumeRoot = compileWorkflow(defineWorkflow({ ...crashCommon,
+  id: "fixture-child-gate-resume-root", code: "fcgr", input: Plan1Input, canonicalInput: Plan1CanonicalInput,
+  identity: { matchKey: value => value.emplId }, steps: ({ delegate, gate, transaction, result }) => {
+    const lookup = delegate({ id: "lookup", target: { id: plan1Leaf.descriptor.id, input: Plan1Input, result: Plan1Output },
+      edgeId: "lookup", cardinality: "one", await: "terminal", join: "one", policy: { cascadeCancel: "cascade", onChildFailed: "fail-parent",
+        afterChildRetry: "resume-parent", visibility: "inline" } }, [],
+    { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+    const review = gate({ id: "review", label: "Review", statusKey: "awaitingReview", result: z.strictObject({ approved: z.boolean() }) }, []);
+    const write = transaction({ id: "write", label: "Write", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
+      dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 30_000 }, [lookup, review], {
+      prepareBind: ({ outputs }) => { if (outputs.lookup.state !== "done") throw new Error("lookup-not-done"); return { eid: outputs.lookup.output.eid }; },
+      commitBind: ({ outputs }) => { if (outputs.lookup.state !== "done") throw new Error("lookup-not-done"); return { eid: outputs.lookup.output.eid }; },
+    });
+    return { steps: [[{ key: "lookup", label: "Lookup" }, [lookup]], [{ key: "review", label: "Review" }, [review]], [{ key: "write", label: "Write" }, [write]]],
+      result: result(output, [write], ({ outputs }) => outputs.write.output) };
+  } }), { manifest: childExecutionBuildManifest });
+
 export const childUnsupportedPreviewTarget = compileWorkflow(defineWorkflow({ ...crashCommon,
   id: "fixture-child-unsupported-preview-target", code: "fcut", steps: ({ transaction, result }) => {
     const write = transaction({ id: "write", label: "Write", prepare: WriteFixturePrepare, commit: WriteFixtureCommit,
@@ -137,7 +154,7 @@ export function childPrerequisiteModules(world: WriteFixtureWorld) {
       .map(({ contract }) => ({ id: contract.id, effect: contract.effect })),
   });
   return { stores, modules: [composeWorkflowModule(childPrerequisiteRoot, stores.stores), composeWorkflowModule(plan1Leaf, stores.stores),
-    composeWorkflowModule(childExecutionNested, stores.stores), composeWorkflowModule(childReadPreviewRoot, stores.stores),
+    composeWorkflowModule(childExecutionNested, stores.stores), composeWorkflowModule(childReadPreviewRoot, stores.stores), composeWorkflowModule(childGateResumeRoot, stores.stores),
     composeWorkflowModule(childUnsupportedPreviewTarget, stores.stores), composeWorkflowModule(childUnsupportedPreviewRoot, stores.stores)] };
 }
 
