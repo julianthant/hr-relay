@@ -134,7 +134,7 @@ jobs:
               ...(selected.architecture ? jobs('architecture', 2) : []),
               ...(selected.integration ? jobs('integration', 14) : []),
             ];
-            const macos = [...(selected.parity ? jobs('parity', 3) : []), ...jobs('native', macosShards)];
+            const macos = release ? [...(selected.parity ? jobs('parity', 3) : []), ...jobs('native', macosShards)] : [];
             for (const suite of suites) core.setOutput(suite, String(selected[suite]));
             core.setOutput('ubuntu', JSON.stringify({ include: ubuntu }));
             core.setOutput('macos', JSON.stringify({ include: macos }));
@@ -340,13 +340,14 @@ jobs:
           FILTER_RESULT: ${{ needs.changes.result }}
           SELECTED: ${{ needs.changes.outputs.unit }}
           RUNNER_RESULTS: ${{ needs.ubuntu.result }} ${{ needs.macos.result }}
+          EXPECTED_RUNNER_RESULTS: ${{ needs.changes.outputs.macos == '{"include":[]}' && 'success skipped' || 'success success' }}
         run: |
           test "$FILTER_RESULT" = success
           if [ "$SELECTED" = false ]; then
             echo "Suite not selected for this pull request."
           else
             test "$SELECTED" = true
-            test "$RUNNER_RESULTS" = "success success"
+            test "$RUNNER_RESULTS" = "$EXPECTED_RUNNER_RESULTS"
           fi
 
   integration:
@@ -360,13 +361,14 @@ jobs:
           FILTER_RESULT: ${{ needs.changes.result }}
           SELECTED: ${{ needs.changes.outputs.integration }}
           RUNNER_RESULTS: ${{ needs.ubuntu.result }} ${{ needs.macos.result }}
+          EXPECTED_RUNNER_RESULTS: ${{ needs.changes.outputs.macos == '{"include":[]}' && 'success skipped' || 'success success' }}
         run: |
           test "$FILTER_RESULT" = success
           if [ "$SELECTED" = false ]; then
             echo "Suite not selected for this pull request."
           else
             test "$SELECTED" = true
-            test "$RUNNER_RESULTS" = "success success"
+            test "$RUNNER_RESULTS" = "$EXPECTED_RUNNER_RESULTS"
           fi
 
   architecture:
