@@ -57,7 +57,7 @@ it("renders the approved extension states and keeps card selection, guards and f
       }
     }
     assert.ok(calls.includes("STATE"));
-    assert.equal(document.querySelector(".relay-method-sync")?.textContent, "Same status as the Relay sign-up step. Updated every second.");
+    assert.equal(document.querySelector(".relay-method-sync")?.textContent, "Progress stays in sync with Relay.");
   } finally {
     window.dispatchEvent(new Event("pagehide"));
     document.body.replaceChildren(); vi.unstubAllGlobals(); vi.useRealTimers();

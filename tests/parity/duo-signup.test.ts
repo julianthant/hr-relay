@@ -15,10 +15,10 @@ test("Duo sign-up needs both verified methods and keeps virtual Touch ID separat
   await page.getByRole("button", { name: "Show setup browser", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-setup-browser-shown", "true");
   await page.goto(`${servers.server.baseUrl}/?fixture=duo-signup&state=virtual`);
-  await expect(page.getByText("Chromium supplies a virtual platform authenticator.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Touch ID on this computer, managed by Relay.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Add Security key", exact: true })).toBeEnabled();
   await page.goto(`${servers.server.baseUrl}/?fixture=duo-signup&state=touch-complete&platform=virtual`);
-  await expect(page.getByText("Verified · Chromium virtual authenticator.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Verified in Duo on this computer.", { exact: true })).toBeVisible();
   await expect(finish).toBeDisabled();
   await page.goto(`${servers.server.baseUrl}/?fixture=duo-signup&state=both-complete`);
   await expect(finish).toBeEnabled(); await finish.click();
