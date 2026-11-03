@@ -1,8 +1,12 @@
 import type { z } from "zod";
 import { I9CheckInput, I9RosterRowSchema, i9CheckMatchKey } from "../../models/workflows/i9-check/input.js";
-import { I9CheckPeopleSchema, I9CheckBatchRowsSchema, ReadI9CheckPeople, ReadI9CheckRequests, ReadI9CheckRows } from "../../models/workflows/i9-check/batch.js";
+import { I9CheckPeopleSchema, I9CheckBatchRowsSchema } from "../../models/workflows/i9-check/batch.js";
+import { ReadI9CheckPeople } from "../../models/workflows/i9-check-start/read-people.js";
+import { ReadI9CheckRequests } from "../../models/workflows/i9-check-start/read-requests.js";
+import { ReadI9CheckRows } from "../../models/workflows/i9-check-start/read-rows.js";
 import { I9_CHECK_REFERENCE } from "../../models/workflows/i9-check/start.js";
 import { deriveItemId } from "../identity/logical-item.js";
+import { deriveStableUuid } from "../identity/stable-uuid.js";
 import { parseUsOrIsoDate } from "../../models/fields/cell-coercion.js";
 
 type Person = z.output<typeof I9CheckPeopleSchema>["people"][number];
@@ -26,7 +30,7 @@ export function i9CheckApprovedPeople({ request, selection }: z.output<typeof Re
       if (firstName === undefined || lastName === undefined) throw new Error("i9-check-approved-name-unavailable");
       const sourcePage = { documentId: document.id, documentSha256: document.sha256, ocrRunId: snapshot.sourceRunId,
         snapshotId: snapshot.snapshotId, recordId: record.recordId, sourcePage: seed.sourcePage };
-      const candidate = I9CheckInput.parse({ ocrRunId: snapshot.sourceRunId, recordId: `i9-person:${record.assertedEid}`,
+      const candidate = I9CheckInput.parse({ ocrRunId: snapshot.sourceRunId, recordId: deriveStableUuid("i9-check-person", record.assertedEid),
         asOf: request.asOf, reviewerName: request.reviewerName, roster: { rows: [] }, person: {
           name: `${lastName}, ${firstName}`, firstName, lastName, sourcePages: [seed.sourcePage],
           ...(values.has("dateOfBirth") ? { dob: values.get("dateOfBirth") } : {}),

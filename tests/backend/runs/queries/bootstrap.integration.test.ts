@@ -200,7 +200,11 @@ it('serves the missing workflow backends as explicit start restrictions', async 
   const world = await makeWorld();
   try {
     const wire = buildBootstrap(depsOf(world));
-    for (const id of ['i9-check', 'onboarding', 'crm-doc-download']) {
+    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:i9-check-start')).toBe(false);
+    expect(wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'i9-check-start')?.start?.uploadRun?.pdfInput).toEqual({
+      documentsField: 'documents', asOfField: 'asOf', reviewerField: 'reviewerName',
+    });
+    for (const id of ['onboarding', 'crm-doc-download']) {
       const capability = wire.featureAvailability.find(feature => feature.feature === `workflow-start:${id}`)?.availability;
       expect(capability?.state).toBe('unavailable');
       if (capability?.state !== 'unavailable') throw new Error('missing workflow start refusal');

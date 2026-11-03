@@ -148,7 +148,7 @@ function contractSourceLink(
   const tail = taskPathTail(taskId);
   const namespace = tail.slice(0, tail.indexOf("/"));
   const owner = taskId.startsWith("workflow:") ? `workflows/${namespace}`
-    : ["extraction", "normalization", "ocr", "roster"].includes(namespace)
+    : ["extraction", "normalization", "ocr", "roster", "workbooks"].includes(namespace)
       ? `processing/${namespace}` : `systems/${namespace}`;
   const candidate = `src/models/${owner}/${tail.slice(namespace.length + 1)}.ts`;
   return closures.some((closure) => closure.has(candidate))
@@ -162,7 +162,7 @@ function implSourceLink(taskId: string, closure: ReadonlySet<string> | undefined
   const namespace = tail.slice(0, tail.indexOf("/"));
   const directories = taskId.startsWith("workflow:")
     ? [`src/workflows/${namespace}/tasks`]
-    : ["extraction", "normalization", "ocr", "roster"].includes(namespace)
+    : ["extraction", "normalization", "ocr", "roster", "workbooks"].includes(namespace)
       ? [`src/backend/processing/${namespace}/tasks`]
       : [`src/backend/systems/${namespace}/tasks`];
   if (closure === undefined) {

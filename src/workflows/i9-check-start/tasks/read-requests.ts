@@ -1,6 +1,6 @@
 import { defineTask } from "../../../workflow-kit/task.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { ReadI9CheckRequests } from "../../../models/workflows/i9-check/batch.js";
+import { ReadI9CheckRequests } from "../../../models/workflows/i9-check-start/read-requests.js";
 import { i9CheckPersonRequests } from "../../../rules/i9-check/batch.js";
 
 export const readI9CheckRequestsTask = defineTask(ReadI9CheckRequests, {

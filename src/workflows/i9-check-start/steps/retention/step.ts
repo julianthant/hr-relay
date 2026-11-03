@@ -1,7 +1,8 @@
 import { ReadWorkbookResult } from "../../../../models/processing/workbooks/read-result.js";
 import { ReadRetentionRow } from "../../../../models/workflows/i9-check/check.js";
 import { I9CheckInput } from "../../../../models/workflows/i9-check/input.js";
-import { ReadI9CheckRows, ReadI9CheckPublication } from "../../../../models/workflows/i9-check/batch.js";
+import { ReadI9CheckRows } from "../../../../models/workflows/i9-check-start/read-rows.js";
+import { ReadI9CheckPublication } from "../../../../models/workflows/i9-check-start/read-publication.js";
 import { I9CheckStartInput, i9CheckStartMatchKey } from "../../../../models/workflows/i9-check/start.js";
 import { FingerprintSchema, WorkflowIdSchema } from "../../../../rules/identity/ids.js";
 import { i9CheckWorkbookTable } from "../../../../rules/i9-check/workbook.js";

@@ -4,7 +4,7 @@ import { createWorkbookLibraryAdapter } from "../../../../src/backend/processing
 import type { WorkbookLibraryRepository } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { ReadWorkbookReference } from "../../../../src/models/processing/workbooks/read-reference.js";
-import { ReadI9CheckRequests } from "../../../../src/models/workflows/i9-check/batch.js";
+import { ReadI9CheckRequests } from "../../../../src/models/workflows/i9-check-start/read-requests.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 

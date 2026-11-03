@@ -1,5 +1,5 @@
 import { ReadApprovedOcrRecords } from "../../../../models/processing/ocr/read-approved-records.js";
-import { ReadI9CheckPeople } from "../../../../models/workflows/i9-check/batch.js";
+import { ReadI9CheckPeople } from "../../../../models/workflows/i9-check-start/read-people.js";
 import { I9CheckStartInput } from "../../../../models/workflows/i9-check/start.js";
 import { OcrInputSchema } from "../../../../models/workflows/ocr/input.js";
 import { OcrWorkflowResultSchema } from "../../../../models/workflows/ocr/result.js";

@@ -1,5 +1,5 @@
 import { ReadWorkbookReference } from "../../../../models/processing/workbooks/read-reference.js";
-import { ReadI9CheckRequests } from "../../../../models/workflows/i9-check/batch.js";
+import { ReadI9CheckRequests } from "../../../../models/workflows/i9-check-start/read-requests.js";
 import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../models/workflows/i9-check/start.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof } from "../../../../workflow-kit/workflow-definition.js";

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
 import { createOcrReviewAdapter } from "../../../../src/backend/processing/providers/ocr-review-adapter.js";
+import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
 import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { delegationEvidenceOutput } from "../../../../src/models/run/result.js";
 import { ReadApprovedOcrRecords } from "../../../../src/models/processing/ocr/read-approved-records.js";
@@ -42,7 +43,7 @@ it("ocr/approved-records — reads only the corrected, explicitly selected recor
   await f.canonical.execute(f.parentRun, new AbortController().signal);
   const run = f.database.authority.runs.get(f.parentRun.envelope.runId); assert.ok(run);
   const outcomes = ReadApprovedOcrRecords.input.shape.outcomes.parse(delegationEvidenceOutput(readDelegationEvidence(f.database.authority, run.envelope.runId, "read-documents"), OcrWorkflowResultSchema));
-  const adapter = createOcrReviewAdapter({ database: f.database, reader: f.canonical.lifecycle, run, clock: f.clock });
+  const adapter = createOcrReviewAdapter({ read: createApprovedOcrRecordReader({ database: f.database, reader: f.canonical.lifecycle, run }), clock: f.clock });
   const invoke = async (value: z.input<typeof ReadApprovedOcrRecords.input>) => adapter.invoke({ capability: "ocr.review",
     payload: { schemaHash: deriveSchemaHash(ReadApprovedOcrRecords.input, "output"), value: ReadApprovedOcrRecords.input.parse(value) } },
   { signal: new AbortController().signal, deadlineMonotonicMs: Infinity, requestId: "fixture" });

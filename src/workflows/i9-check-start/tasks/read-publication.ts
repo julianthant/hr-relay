@@ -1,6 +1,6 @@
 import { defineTask } from "../../../workflow-kit/task.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { ReadI9CheckPublication } from "../../../models/workflows/i9-check/batch.js";
+import { ReadI9CheckPublication } from "../../../models/workflows/i9-check-start/read-publication.js";
 
 export const readI9CheckPublicationTask = defineTask(ReadI9CheckPublication, {
   sessions: [], async run({ input, ctx }) {

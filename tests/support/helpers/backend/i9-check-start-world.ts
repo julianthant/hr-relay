@@ -4,6 +4,7 @@ import { i9CheckStartModule, CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY } from
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { composeWorkerArtifactProjector } from "../../../../src/backend/app/composition/worker/artifact-output.js";
 import { createOcrReviewAdapter } from "../../../../src/backend/processing/providers/ocr-review-adapter.js";
+import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
 import { createWorkbookLibraryAdapter } from "../../../../src/backend/processing/providers/workbook-library-adapter.js";
 import { createOcrCheckpointPublication } from "../../../../src/backend/runs/lifecycle/ocr-checkpoint-publication.js";
 import { createOcrSourceService } from "../../../../src/backend/runs/commands/ocr-source-service.js";
@@ -97,7 +98,7 @@ export function createI9CheckStartWorld() {
     const resolve = (id: string) => (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
     const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve, createOcrCheckpointPublication, { workbooks: library,
       resources: (reader, run) => ({ artifactProjector: projector, providers: { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
-        adapters: { "ocr.review": createOcrReviewAdapter({ database, reader, run, clock }),
+        adapters: { "ocr.review": createOcrReviewAdapter({ read: createApprovedOcrRecordReader({ database, reader, run }), clock }),
           "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
             publicationSource: () => { const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
               return { workflowId: descriptor.id, workflowLabel: descriptor.label, partitionDay: searchPartitionDay(new Date(run.envelope.enqueuedAt)) }; },

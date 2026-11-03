@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { i9CheckApprovedPeople, i9CheckPersonRequests, i9CheckBatchRows } from "../../../src/rules/i9-check/batch.js";
 import { I9CheckStartInput, i9CheckStartMatchKey } from "../../../src/models/workflows/i9-check/start.js";
-import { ReadI9CheckRows } from "../../../src/models/workflows/i9-check/batch.js";
+import { ReadI9CheckRows } from "../../../src/models/workflows/i9-check-start/read-rows.js";
 import { WorkbookReferenceFactsSchema } from "../../../src/models/processing/workbooks/read-reference.js";
 import { deriveItemId } from "../../../src/rules/identity/logical-item.js";
 import { i9CheckMatchKey } from "../../../src/models/workflows/i9-check/input.js";
@@ -27,6 +27,8 @@ function reference(f: ReturnType<typeof fixture>) {
 it("groups sections from multiple PDFs into one person each while retaining source coordinates and immutable version facts", () => {
   const f = fixture();
   expect(f.people.people).toHaveLength(2);
+  expect(new Set(f.people.people.map(person => person.recordId)).size).toBe(2);
+  for (const person of f.people.people) expect(person.recordId).not.toContain(person.eid);
   expect(f.people.people[0].person).toMatchObject({ name: "Example, Avery", dob: "2000-01-15", hireDate: "2020-06-01", useMatch: true, sourcePages: [1, 2] });
   expect(f.people.people[0].sources.map(source => source.sourcePage)).toEqual([1, 2]);
   expect(f.people.people[1].person.useMatch).toBe(false);

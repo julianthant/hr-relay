@@ -254,7 +254,10 @@ describe("task contract sealing architecture", () => {
       "src/models/systems/ucpath/verify-termination-filing-present.ts",
       "src/models/systems/ucpath/verify-termination.ts",
       "src/models/task/task-contract.ts",
-      "src/models/workflows/i9-check/batch.ts",
+      "src/models/workflows/i9-check-start/read-people.ts",
+      "src/models/workflows/i9-check-start/read-publication.ts",
+      "src/models/workflows/i9-check-start/read-requests.ts",
+      "src/models/workflows/i9-check-start/read-rows.ts",
       "src/models/workflows/i9-check/check.ts",
       "src/models/workflows/i9-lookup/read-result.ts",
 
