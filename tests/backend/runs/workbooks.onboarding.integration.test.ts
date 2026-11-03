@@ -1,3 +1,6 @@
+import { readRunCheckpoint } from "../../../src/backend/runtime/checkpoints/run-checkpoint-reader.js";
+import { continuationEvidenceDigest, validateRunContinuation } from "../../../src/backend/storage/sqlite/run-continuation.js";
+import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { readDelegationEvidence } from "../../../src/backend/storage/sqlite/delegation-authority.js";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { TimelineEventRecordSchema, type TimelineEventRecord } from "../../../src/models/events/timeline.js";
@@ -146,7 +149,7 @@ function foreignNative(record: TimelineEventRecord, runId: string) {
 
 type ExecutionFault = "gate-missing" | "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
 
-async function executionFixture() {
+async function executionFixture(corruptAssertedSubject = false) {
   const f = await fixture();
   const calls: { system: string; input: unknown }[] = [];
   const sessions = sessionFactoryHarness({
@@ -165,14 +168,17 @@ async function executionFixture() {
   managers.push(manager);
   const execution = canonicalChildExecution({ descriptor, stores: taskStoreRegistry, authority: f.database,
     lifecycle: testRunLifecycle(f.database, f.clock), sessions: manager, emitter: recordingTimelineEmitter(f.database, f.clock).emitter,
+    ...(corruptAssertedSubject ? { publishCheckpoint: () => {} } : {}),
     taskNotes: createNoteTimelineWriter({ repository: f.database.authority.timelineEvents, clock: f.clock }),
     clock: f.clock, ids: { uuid: randomUUID }, scheduler: new ManualScheduler(f.clock), taskDeadlineMs: 60_000,
     log: recordingLogger().log }, f.database, f.profilePath,
     id => id === descriptor.id ? descriptor : id === "i9-lookup" ? childWorkflowModuleOf("onboarding", "i9-lookup").descriptor : undefined);
   let fault: ExecutionFault | undefined;
+  let repositoryView: ((repositories: AuthorityRepositories) => AuthorityRepositories) | undefined;
   const transaction = f.database.withAuthorityTransaction.bind(f.database);
   f.database.withAuthorityTransaction = work => transaction(repositories => {
-    if (fault === undefined) return work(repositories);
+    if (repositoryView !== undefined) return work(repositoryView(repositories));
+    if (fault === undefined && !corruptAssertedSubject) return work(repositories);
     const corruptGate = (gate: ReturnType<AuthorityRepositories["gateResults"]["get"]>) => {
       if (gate === undefined || gate.gateId !== ONBOARDING_ROSTER_GATE_ID) return gate;
       if (fault === "gate-missing") return undefined;
@@ -186,6 +192,11 @@ async function executionFixture() {
       return { ...gate, result, checkpointFingerprint: FingerprintSchema.parse(deriveGateResultCheckpointFingerprint(result)) };
     };
     return work({ ...repositories,
+      runCheckpoints: { ...repositories.runCheckpoints, insert: input => {
+        const row = RunCheckpointRecordSchema.parse(input);
+        return repositories.runCheckpoints.insert(corruptAssertedSubject && row.nodeId === "hire-subject"
+          ? { ...row, assertion: { step: "ucpath-search", assertedAt: row.writtenAt } } : row);
+      } },
       gateResults: { ...repositories.gateResults, get: id => corruptGate(repositories.gateResults.get(id)),
         listByRun: id => repositories.gateResults.listByRun(id).flatMap(gate => {
           const retained = corruptGate(gate); return retained === undefined ? [] : [retained];
@@ -210,7 +221,8 @@ async function executionFixture() {
       } },
     });
   });
-  return { ...f, execution, calls, sessions, setFault: (value: ExecutionFault | undefined) => { fault = value; } };
+  return { ...f, execution, calls, sessions, setFault: (value: ExecutionFault | undefined) => { fault = value; },
+    setRepositoryView: (value: typeof repositoryView) => { repositoryView = value; } };
 }
 
 describe("Onboarding captured roster admission and row choice", () => {
@@ -538,6 +550,15 @@ describe("Onboarding captured roster admission and row choice", () => {
     const recoveredId = appliedRunIds(recoveredResult).find(id => id !== root.envelope.runId); assert.ok(recoveredId);
     const recovered = f.database.authority.runs.get(recoveredId); assert.ok(recovered?.envelope.continuation);
     assert.ok(recovered.envelope.continuation.gates.some(gate => gate.runId === root.envelope.runId && gate.nodeId === ONBOARDING_ROSTER_GATE_ID));
+    const subject = descriptorRuntimeNodes(descriptor).find(node => node.id === "hire-subject"); assert.ok(subject?.kind === "task");
+    assert.equal(subject.replay, "always-rerun");
+    const retainedSubject = readRunCheckpoint(f.database.authority, recovered.envelope, "hire-subject", true); assert.ok(retainedSubject);
+    assert.equal(retainedSubject.assertion, undefined); assert.equal(retainedSubject.runId, root.envelope.runId);
+    assert.notEqual(retainedSubject.runId, recoveredId);
+    const capturedSubject = recovered.envelope.continuation.checkpoints.find(row => row.nodeId === subject.id); assert.ok(capturedSubject);
+    assert.deepEqual(capturedSubject, { nodeId: retainedSubject.nodeId, runId: retainedSubject.runId,
+      attempt: retainedSubject.attempt, claimGeneration: retainedSubject.claimGeneration, digest: continuationEvidenceDigest(retainedSubject) });
+    validateRunContinuation(f.database.authority, recovered.envelope);
     const carried = f.section(recovered).referenceChoices?.[0]; assert.ok(carried);
     assert.equal(carried.resolution.state, "resolved"); assert.equal(carried.native.runId, recoveredId);
     const issuance = f.database.authority.timelineEvents.get(carried.native.eventId); assert.ok(issuance);
@@ -564,7 +585,45 @@ describe("Onboarding captured roster admission and row choice", () => {
           expectedVersion: held.version, claim, cause: "recovery" }).state, "applied");
       }
     } else {
+      let checkedContinuation = 0;
+      f.execution.lifecycle.admitDelegation = (context, plan) => {
+        if (checkedContinuation > 0) return admit(context, plan);
+        checkedContinuation++;
+        const variants = [undefined,
+          RunCheckpointRecordSchema.parse({ ...retainedSubject, nodeId: "hire-plan" }),
+          RunCheckpointRecordSchema.parse({ ...retainedSubject, runId: randomUUID() }),
+          RunCheckpointRecordSchema.parse({ ...retainedSubject, attempt: retainedSubject.attempt + 1 }),
+          RunCheckpointRecordSchema.parse({ ...retainedSubject, claimGeneration: retainedSubject.claimGeneration + 1 }),
+          RunCheckpointRecordSchema.parse({ ...retainedSubject, writtenAt: "2027-01-01T00:00:00.000Z" }),
+        ];
+        for (const changed of variants) {
+          const hooks = f.calls.length, generation = f.database.getMeta().authorityGeneration;
+          f.setRepositoryView(repositories => ({ ...repositories, runCheckpoints: { ...repositories.runCheckpoints,
+            get: (workflow, itemId, nodeId, attempt, claimGeneration) => nodeId === "hire-subject" ? changed
+              : repositories.runCheckpoints.get(workflow, itemId, nodeId, attempt, claimGeneration) } }));
+          try { assert.throws(() => admit(context, plan), /run-continuation-checkpoint-unavailable/u); }
+          finally { f.setRepositoryView(undefined); }
+          assert.equal(f.calls.length, hooks); assert.equal(f.database.getMeta().authorityGeneration, generation);
+          assert.deepEqual(f.database.authority.runs.listChildren(recoveredId), []);
+          assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(recoveredId), []);
+        }
+        for (const missing of [false, true]) {
+          f.setRepositoryView(repositories => ({ ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal,
+            findContinuationIssue: (runId, appliedVersion) => {
+              const issue = repositories.lifecycleJournal.findContinuationIssue(runId, appliedVersion);
+              if (issue === undefined || issue.result.kind !== "run" || issue.result.continuation === undefined) return issue;
+              return { ...issue, result: { ...issue.result, continuation: { ...issue.result.continuation,
+                checkpoints: issue.result.continuation.checkpoints.flatMap(row => row.nodeId !== "hire-subject" ? [row]
+                  : missing ? [] : [{ ...row, digest: FingerprintSchema.parse("b".repeat(64)) }]) } } };
+            } } }));
+          try { assert.throws(() => admit(context, plan), /run-continuation-issuance-unavailable/u); }
+          finally { f.setRepositoryView(undefined); }
+          assert.deepEqual(f.database.authority.runs.listChildren(recoveredId), []);
+        }
+        return admit(context, plan);
+      };
       const completed = await f.execution.execute(recovered, new AbortController().signal);
+      assert.equal(checkedContinuation, 1);
       assert.ok(completed.run?.lifecycle.state === "terminal" && completed.run.lifecycle.outcome === "done",
         JSON.stringify({ lifecycle: completed.run?.lifecycle.state, outcomes: completed.outcomes.map(value => value.state),
           failures: [recovered, ...f.database.authority.runs.listChildren(recoveredId)].flatMap(run =>
@@ -609,6 +668,61 @@ describe("Onboarding captured roster admission and row choice", () => {
       assert.throws(() => buildRunEvidenceReceipt({ ...input, run: altered }), /continued-gate-membership/u);
       assert.deepEqual(f.database.authority.gateResults.listByRun(recoveredId), []);
     }
+  });
+
+  it.each([false, true])("refuses a foreign always-rerun row without continuation, and an asserted row even when captured (%s)", async capturedAssertion => {
+    const f = await executionFixture(capturedAssertion), source = f.start();
+    assert.equal((await f.execution.step(source, new AbortController().signal)).outcome.state, "parked-gate");
+    assert.equal(f.kernel.execute(f.choice(source)).state, "applied");
+    const admit = f.execution.lifecycle.admitDelegation.bind(f.execution.lifecycle);
+    f.execution.lifecycle.admitDelegation = (context, plan) => {
+      f.setFault("legal-name");
+      try { return admit(context, plan); } finally { f.setFault(undefined); }
+    };
+    assert.equal((await f.execution.step(source, new AbortController().signal)).outcome.state, "failed");
+    f.execution.lifecycle.admitDelegation = admit;
+    const failed = f.database.authority.runs.get(source.envelope.runId); assert.ok(failed);
+    const row = f.database.authority.runCheckpoints.listByAttempt(descriptor.id, source.envelope.itemId, "hire-subject", source.envelope.attempt)
+      .find(row => row.runId === source.envelope.runId); assert.ok(row);
+    let candidate: RunRecord;
+    if (capturedAssertion) {
+      assert.ok(row.assertion);
+      const result = f.kernel.execute({ commandId: world.nextCommandId(), requestedAt: f.clock.now().toISOString(),
+        requestedBy: "local-operator", source: "run-detail", family: "run", type: "recover-run",
+        target: { runId: failed.envelope.runId, expectedVersion: failed.version } });
+      assert.equal(result.state, "applied");
+      const id = appliedRunIds(result).find(id => id !== source.envelope.runId); assert.ok(id);
+      const recovered = f.database.authority.runs.get(id); assert.ok(recovered?.envelope.continuation);
+      candidate = recovered;
+      validateRunContinuation(f.database.authority, candidate.envelope);
+      assert.deepEqual(readRunCheckpoint(f.database.authority, candidate.envelope, "hire-subject", true), row);
+      assert.ok(recovered.envelope.continuation.checkpoints.some(reference => reference.nodeId === row.nodeId
+        && reference.runId === row.runId && reference.attempt === row.attempt && reference.claimGeneration === row.claimGeneration
+        && reference.digest === continuationEvidenceDigest(row)));
+    } else {
+      assert.equal(row.assertion, undefined);
+      candidate = f.start();
+      assert.equal(candidate.envelope.continuation, undefined);
+      assert.equal((await f.execution.step(candidate, new AbortController().signal)).outcome.state, "parked-gate");
+      assert.equal(f.kernel.execute(f.choice(candidate)).state, "applied");
+    }
+    let refused = 0;
+    f.execution.lifecycle.admitDelegation = (context, plan) => {
+      refused++;
+      assert.notEqual(row.runId, context.run.envelope.runId);
+      f.setRepositoryView(repositories => ({ ...repositories, runCheckpoints: { ...repositories.runCheckpoints,
+        latest: (workflow, itemId, nodeId) => nodeId === "hire-subject" ? row : repositories.runCheckpoints.latest(workflow, itemId, nodeId),
+        listByAttempt: (workflow, itemId, nodeId, attempt) => repositories.runCheckpoints.listByAttempt(workflow, itemId, nodeId, attempt)
+          .filter(checkpoint => nodeId !== "hire-subject" || checkpoint.runId !== context.run.envelope.runId) } }));
+      try { return admit(context, plan); } finally { f.setRepositoryView(undefined); }
+    };
+    const outcome = await f.execution.step(candidate, new AbortController().signal);
+    assert.equal(outcome.outcome.state, "failed"); assert.equal(refused, 1);
+    assert.ok(f.database.authority.failures.listByRun(candidate.envelope.runId)
+      .some(failure => failure.summary.includes("delegation-scope-checkpoint-mismatch")));
+    assert.equal(f.calls.filter(call => call.system === "i9").length, 0);
+    assert.deepEqual(f.database.authority.runs.listChildren(candidate.envelope.runId), []);
+    assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(candidate.envelope.runId), []);
   });
 
 });

@@ -1,3 +1,4 @@
+import { continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
 import { authenticateOnboardingRosterChoice, authenticateOnboardingRosterExecution } from "../workbooks.js";
 import type { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor, workflowDryRunSupport, workflowPlanning, workflowProjections, workflowTerminalResultExecution } from "../../../workflow-kit/workflow.js";
@@ -147,7 +148,12 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, cont
           || value === undefined || checkpoint.runId === parent.envelope.runId && checkpoint.claimGeneration > parent.claimGeneration
           || canonicalJsonStringify(source.kind === "transaction" ? projectTransactionOutcome(source.commit.uses, checkpoint.output.value, "delegation prerequisite") : checkpoint.output.value) !== canonicalJsonStringify(value)) throw new Error("delegation-scope-checkpoint-mismatch");
         if (source.kind === "task") {
-          if (checkpoint.assertion !== undefined || checkpoint.runId !== parent.envelope.runId && source.replay !== "checkpoint") throw new Error("delegation-scope-checkpoint-mismatch");
+          const continued = parent.envelope.continuation?.checkpoints.some(reference => reference.nodeId === nodeId
+            && reference.nodeId === checkpoint.nodeId && reference.runId === checkpoint.runId
+            && reference.attempt === checkpoint.attempt && reference.claimGeneration === checkpoint.claimGeneration
+            && reference.digest === continuationEvidenceDigest(checkpoint)) === true;
+          if (checkpoint.assertion !== undefined
+            || checkpoint.runId !== parent.envelope.runId && source.replay !== "checkpoint" && !continued) throw new Error("delegation-scope-checkpoint-mismatch");
           const producer = repositories.runs.get(checkpoint.runId);
           if (producer === undefined || producer.envelope.workflow !== parent.envelope.workflow || producer.envelope.itemId !== parent.envelope.itemId
             || producer.envelope.attempt !== checkpoint.attempt || producer.envelope.contractFingerprint !== descriptor.contractFingerprint) throw new Error("delegation-scope-checkpoint-mismatch");
