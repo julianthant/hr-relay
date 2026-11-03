@@ -210,12 +210,21 @@ activation, and refusal/recovery stays visible inside the launcher.
 
 The shared layouts provide Input or Values, Options, optional Steps, and Confirm. The stage rail
 contains only reachable stages. Rerun shows source outcomes and retains lineage while creating a
-new attempt. Input methods follow declared workflow capability: typed identifiers, PDF documents,
-or parent-only delegation. Served spreadsheet intake uploads in the launcher before opening a
+new attempt. Input methods follow declared workflow capability: typed identifiers, saved workbook rows,
+PDF documents or parent-only delegation. Served spreadsheet intake uploads in the launcher before opening a
 real `intake` session route.
 
+`inputRun.workbookRows: {typeId, inputField}` declares saved-row selection in Input. The field must be
+emitted by the surface's parser. The launcher loads the chosen immutable named version and retains each
+selected physical sheet/row in workbook order. `typedInput.initialMode: null` leaves the mode unchosen
+until the operator selects one. Fresh Onboarding uses saved rows and one common **New hire** or **Rehire**
+choice, with no fresh text-entry alternative. [Run reference planning](frontend-backend-integration.md#run-reference-and-output-plans)
+owns entry admission, partial refusals and independent run creation.
+
 Rerun prefills safe source identity fields in Values, using the declared input parser. Protected
-values and identities that no longer satisfy the current input stay uncopied.
+values and identities that no longer satisfy the current input stay uncopied. Onboarding Rerun remains
+one source input with a fresh visible library/version lookup, without a selected-row picker or retained
+source selector. Its [trusted input projection](workflow-model.md#56-recovery-and-rerun) removes server-owned roster data.
 
 Options show Priority as Interactive or Bulk, Browser mode as Headed or Headless, Dry run where
 declared, a required-screenshots notice, and workflow-specific fields. New/reset dashboard
@@ -238,7 +247,9 @@ Confirm shows the exact accepted input/options/step plan and number of runs. Sta
 matching token and fingerprints. Raw-draft changes clear a settled plan; late settlements are
 ignored when their request identity moved. Omissions use the declaration's schema and parsed
 output, not copied validators. A server omission set mismatch disables Start and names both sets.
-Cancellation creates no new run. Uncertain dispatch checks the original attempt before resubmission.
+Catalog, named-version, client or profile identity changes invalidate unissued row plans. Stale rows stay
+visible and disabled. Cancellation creates no new run. An UNKNOWN dispatch retains its issued command
+envelope and checks that original attempt before any exact replay.
 
 Served Run and Rerun offer no worker choice. They use the workflow's live workers and start one when none
 is live. Only Sessions Add workers adds more.

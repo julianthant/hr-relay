@@ -206,8 +206,10 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         planned: record.planned.map((planned) => ({
           ...(planned.supersedeTargets === undefined ? {} : { supersedeTargets: planned.supersedeTargets }),
           ...(planned.workbookReferences === undefined ? {} : { workbookReferences: planned.workbookReferences.map(reference => {
-            const { libraryId, version, versionId, versionName, worksheets, type } = RunWorkbookReferenceSchema.parse(reference.value).snapshot;
-            return { libraryId, version, ...(versionId === undefined ? {} : { versionId }), ...(versionName === undefined ? {} : { versionName }), worksheets, type };
+            const retained = RunWorkbookReferenceSchema.parse(reference.value);
+            const { libraryId, version, versionId, versionName, worksheets, type } = retained.snapshot;
+            return { libraryId, version, ...(versionId === undefined ? {} : { versionId }), ...(versionName === undefined ? {} : { versionName }),
+              ...(retained.request.selectedRow === undefined ? {} : { selectedRow: retained.request.selectedRow }), worksheets, type };
           }) }),
           ...(planned.outputs === undefined ? {} : { outputs: planned.outputs }),
           logicalKey: planned.itemId,

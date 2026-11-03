@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import type { RefObject, ReactNode } from "react";
 import { Check, CheckCircle2, FlaskConical } from "lucide-react";
 import type { SurfaceField, InputRunSurface, TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { cn } from "../../lib/utils.js";
@@ -162,14 +162,14 @@ function PlanRowCard({ row }: { row: StartPlanResponse["planned"][number] }) {
 }
 
 /** Keep the server’s refusal code and sentence verbatim so the operator can act on both. */
-export function PlanRefusals({ refused }: { refused: StartPlanResponse["refused"] }) {
+export function PlanRefusals({ refused, sources }: { refused: StartPlanResponse["refused"]; sources?: RunInputPreview["entries"] }) {
   if (refused.length === 0) return null;
   return (
     <ul className="flex flex-col gap-[var(--ds-space-snug)]">
       {refused.map((entry) => (
         <li key={`${String(entry.entry)}-${entry.code}`}>
           <Refusal
-            title={`Entry ${String(entry.entry)} was not planned`}
+            title={`Entry ${String(entry.entry)}${sources?.find(source => source.index + 1 === entry.entry) ? ` (${sources.find(source => source.index + 1 === entry.entry)?.sourceText})` : ""} was not planned`}
             code={entry.code}
             outcome="nothing is enqueued for it"
           >
@@ -446,7 +446,9 @@ export function TypedInput({
   draft = {},
   onValue,
   presentation = "served",
+  rowInput,
 }: {
+  rowInput?: ReactNode;
   surface: InputRunSurface;
   workflowId: string;
   text: string;
@@ -467,12 +469,13 @@ export function TypedInput({
       onChange={event => onText(event.target.value)} />
   </Field>;
   const controls = declaration && <>
-    <SegmentedChoice label={declaration.modeLabel} value={mode?.value ?? declaration.initialMode}
+    <SegmentedChoice label={declaration.modeLabel} value={mode?.value ?? ""}
       options={declaration.modes.map(candidate => ({ value: candidate.value, label: candidate.label }))}
       onChange={value => onValue?.(declaration.modeField, value)} />
-    {declaration.controls.filter(control => control.placement === "input" && control.modes.includes(mode?.value ?? declaration.initialMode)).map(control =>
+    {declaration.controls.filter(control => control.placement === "input" && control.modes.includes(mode?.value ?? "")).map(control =>
       <Checkbox key={control.field} label={control.label} checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value === true)} />)}
   </>;
+  if (rowInput !== undefined) return <>{controls}{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>;
   if (presentation === "mock") return <>{controls}{field}
     {preview.entries.length > 0 && <ul aria-label="Parsed inputs" className="launch-parsed-input m-0 flex list-none flex-col gap-1 p-0">{preview.entries.map(entry => <li key={entry.index} className="flex items-center gap-2 rounded-md border border-ui-stroke px-2 text-body"><span className="text-ui-muted">{entry.index + 1}</span><span className="truncate">{entry.sourceText}</span></li>)}</ul>}
   </>;

@@ -30,6 +30,10 @@ import { readRunCheckpoint } from "../runtime/checkpoints/run-checkpoint-reader.
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../workflow-kit/validation/build-manifest.js";
 
 const onboardingInputBinding = Object.freeze({
+  sourceToIngress(source: unknown) {
+    const { roster: _roster, ...input } = OnboardingCanonicalValueSchema.parse(source);
+    return OnboardingInput.parse(input);
+  },
   assertSubmission(input: unknown) {
     if (input !== null && typeof input === "object" && Object.hasOwn(input, "roster")) {
       throw new Error("Onboarding roster values are captured by Relay; caller-supplied roster input is invalid");
@@ -40,7 +44,12 @@ const onboardingInputBinding = Object.freeze({
     const email = OnboardingInput.shape.email.parse(Reflect.get(input, "email"));
     const reference = references?.[0];
     if (reference === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-    return { ...input, roster: bindOnboardingRoster(reference, email, capturedAt) };
+    const retained = schemaBoundValueSchema(RunWorkbookReferenceSchema, referenceHash).parse(reference).value;
+    const selection = retained.request.selectedRow;
+    const selectedEmail = selection === undefined ? email : OnboardingInput.shape.email.parse(retained.snapshot.rows
+      .flatMap(row => row.matches).find(match => match.sheetId === selection.sheetId && match.rowId === selection.rowId)?.values.email);
+    if (selectedEmail !== email) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+    return { ...input, email: selectedEmail, roster: bindOnboardingRoster(reference, selectedEmail, capturedAt, selection) };
   },
 });
 const workbookInputBindings: ReadonlyMap<object, typeof onboardingInputBinding> = new Map([[OnboardingCanonicalInput, onboardingInputBinding]]);
@@ -138,7 +147,7 @@ function onboardingReference(run: RunRecord) {
   const roster = OnboardingCanonicalValueSchema.parse(input).roster;
   const reference = referenceFor(run, ONBOARDING_ROSTER_TYPE_ID);
   const binding = roster.state === "resolved" ? roster.row.binding : roster.binding;
-  if (canonicalJsonStringify(bindOnboardingRoster(reference.bound, input.email, binding.capturedAt))
+  if (canonicalJsonStringify(bindOnboardingRoster(reference.bound, input.email, binding.capturedAt, reference.value.request.selectedRow))
     !== canonicalJsonStringify(roster)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   return { roster, reference, binding };
 }

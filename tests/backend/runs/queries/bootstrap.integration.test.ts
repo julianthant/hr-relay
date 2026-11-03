@@ -132,7 +132,6 @@ describe("bootstrap start-surface block", () => {
           ...(descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: descriptor.surfaces.uploadRun }),
         });
       }
-      // Read-only Onboarding has no launch door while roster capture is pending.
       const doors = [...served.values()].map((start) => start?.inputRun !== undefined);
       expect(doors).toContain(true);
     } finally {
@@ -198,7 +197,7 @@ describe("bootstrap start-surface block", () => {
     }
   });
 });
-it('serves the missing workflow backends as explicit start restrictions', async () => {
+it('serves implemented saved-row starts while retaining missing workflow start restrictions', async () => {
   const world = await makeWorld();
   try {
     const wire = buildBootstrap(depsOf(world));
@@ -206,12 +205,15 @@ it('serves the missing workflow backends as explicit start restrictions', async 
     expect(wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'i9-check-start')?.start?.uploadRun?.pdfInput).toEqual({
       documentsField: 'documents', asOfField: 'asOf', reviewerField: 'reviewerName',
     });
-    for (const id of ['onboarding', 'crm-doc-download']) {
-      const capability = wire.featureAvailability.find(feature => feature.feature === `workflow-start:${id}`)?.availability;
-      expect(capability?.state).toBe('unavailable');
-      if (capability?.state !== 'unavailable') throw new Error('missing workflow start refusal');
-      expect(capability.reason).toMatch(/not available|not implemented/);
-    }
+    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:onboarding')).toBe(false);
+    const onboarding = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'onboarding');
+    expect(onboarding?.availability).toEqual({ state: 'available' });
+    expect(onboarding?.start?.inputRun?.workbookRows).toEqual({ typeId: 'onboarding-roster', inputField: 'email' });
+    expect(onboarding?.start?.inputRun?.typedInput?.initialMode).toBe(null);
+    const capability = wire.featureAvailability.find(feature => feature.feature === 'workflow-start:crm-doc-download')?.availability;
+    expect(capability?.state).toBe('unavailable');
+    if (capability?.state !== 'unavailable') throw new Error('missing workflow start refusal');
+    expect(capability.reason).toMatch(/not available|not implemented/);
   } finally { await world.dispose(); }
 });
 
