@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, it, vi } from "vitest";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { systemClock } from "../../../../src/rules/time/clock.js";
 import { COMMAND_FIXTURES, UUID_1 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const boundary = vi.hoisted(() => ({
@@ -54,11 +55,22 @@ it("creates a genuine pending profile only through initializeProfile and refuses
   const f = await createBoundProfileFixture({ pending: "storage" });
   try {
     assertAbsent(f.path);
+    assert.throws(() => AuthorityDatabase.withProfileOnboardingTimeline(f.admission, systemClock, () => assert.fail("missing database must not admit diagnostic writes")), /profile-database-binding-required/u);
+    assertAbsent(f.path);
     assert.throws(() => AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 250, migrationOwner: "existing-open-test" }), /profile-bound-authority-required/u);
     AuthorityDatabase.initializeProfile(f.admission);
     assert.equal(existsSync(f.path), true);
     assert.throws(() => AuthorityDatabase.initializeProfile(f.admission), /profile-database-initialization-already-exists/u);
 
+  } finally { await f.close(); }
+});
+
+it("refuses ordinary profile authority for the onboarding diagnostic writer", async () => {
+  const f = await createBoundProfileFixture();
+  try {
+    const before = readFileSync(f.path);
+    assert.throws(() => AuthorityDatabase.withProfileOnboardingTimeline(f.admission, systemClock, () => assert.fail("ready profile must not use draft diagnostic authority")), /profile-initialization-authority-required/u);
+    assert.deepEqual(readFileSync(f.path), before);
   } finally { await f.close(); }
 });
 
