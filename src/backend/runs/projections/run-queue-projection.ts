@@ -333,7 +333,7 @@ export class RunQueueProjection {
   readonly #workers = new Map<string, WorkerFold>();
   readonly #runLogs = new Map<string, ProjectedRunLogEntry[]>();
   readonly #listeners = new Set<(change: RunQueueProjectionChange) => void>();
-  readonly #notifiedStatus = new Map<string, string>();
+  readonly #notifiedRows = new Map<string, { status: string; surface: string }>();
 
   #timelineCursor = 0;
 
@@ -462,7 +462,7 @@ export class RunQueueProjection {
       this.#rows.clear();
       this.#workers.clear();
       this.#runLogs.clear();
-      this.#notifiedStatus.clear();
+      this.#notifiedRows.clear();
       this.#cursorValue = 0;
       for (const { event, line } of events) {
         this.#fold(event, line);
@@ -729,11 +729,12 @@ export class RunQueueProjection {
     for (const runId of affectedIds) {
       const row = this.#rows.get(runId);
       const authority = byId.get(runId);
-      const previousStatus = this.#notifiedStatus.get(runId);
+      const previous = this.#notifiedRows.get(runId);
+      const previousStatus = previous?.status;
 
       if (authority === undefined) {
         if (previousStatus !== undefined) {
-          this.#notifiedStatus.delete(runId);
+          this.#notifiedRows.delete(runId);
           snapshotNeeded = true;
         }
         continue;
@@ -751,7 +752,9 @@ export class RunQueueProjection {
       const countNeutral = replacement.surfaceKind === "member"
         ? previousStatus !== undefined
         : previousStatus === replacement.status;
-      this.#notifiedStatus.set(runId, replacement.status);
+      const surface = JSON.stringify(replacement);
+      this.#notifiedRows.set(runId, { status: replacement.status, surface });
+      if (!affected.runIds.includes(runId) && previous?.surface === surface) continue;
       if (!countNeutral) {
         snapshotNeeded = true;
         continue;
