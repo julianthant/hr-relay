@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { QueueSurfaceWire } from "../../../models/dashboard/projection.js";
-import { mockNeedsReview, mockWaitsForOcr, mockRunStatus, type MockRun } from "../workflows/mocks/workflow-mock-model.js";
 import { mockWorkflow } from "../workflows/mocks/workflow-mock-catalog.js";
+import { mockNeedsReview,mockRunStatus,mockWaitsForOcr,type MockRun } from "../workflows/mocks/workflow-mock-model.js";
 import { mockQueueSurfaces } from "../workflows/mocks/workflow-queue-model.js";
 import { reviewRecords } from "../workflows/mocks/workflow-review-model.js";
-import { notificationsSample } from "./notifications-fixture.js";
-import type { NotificationDestination, NotificationItem, NotificationsState } from "./notifications-view-model.js";
+import { notificationsSample,previewNotificationReads } from "./notifications-fixture.js";
+import type { NotificationDestination,NotificationItem,NotificationsState } from "./notifications-view-model.js";
 
 type PreviewInput = Readonly<{
   day: string; nowIso: string; anchorIso: string; rows?: readonly QueueSurfaceWire[]; runs: readonly MockRun[];
@@ -45,7 +45,7 @@ function runItem(row: QueueSurfaceWire, read: boolean, input: PreviewInput): Not
 }
 
 function mockItem(run: MockRun, read: boolean, input: PreviewInput): NotificationItem {
-  const records = run.workflowId === "ocr";
+  const records = run.records !== undefined;
   const waiting = mockNeedsReview(run);
   const count = records ? reviewRecords(run).length : 0;
   const row = mockQueueSurfaces([run], input.anchorIso, input.runs)[0];
@@ -65,11 +65,10 @@ export function notificationPreviewState(scenario: string, input: PreviewInput):
     && ["failed", "done", "awaiting-approval", "blocked", "partial"].includes(row.status));
   const failed = rows.find(row => row.status === "failed");
   const done = rows.find(row => row.status === "done");
-  const review = input.runs.find(run => run.workflowId === "ocr" && run.targetWorkflowId === "emergency-contact" && run.seeded);
   const items: NotificationItem[] = rows.map(row => runItem(row, row !== failed && row !== done, input));
   for (const run of input.runs) {
-    if ((run.seeded && run.workflowId !== "ocr") || (run.parentId && run.workflowId !== "ocr") || mockWaitsForOcr(run)) continue;
-    items.push(mockItem(run, run.seeded && run !== review, input));
+    if (((run.seeded || run.parentId) && run.records === undefined) || mockWaitsForOcr(run)) continue;
+    items.push(mockItem(run, previewNotificationReads[run.id] ?? run.seeded, input));
   }
   return { state: "ready", items, pinned: [] };
 }
@@ -79,6 +78,6 @@ export function notificationDestinationRefusal(destination: NotificationDestinat
   if (destination.day !== input.day) return "The notification's day is no longer open. Reopen the notification from that day.";
   if (destination.kind === "run") return input.rows?.some(row => row.runId === destination.runId) ? undefined : "This run is no longer available. Refresh the run list and try again.";
   const run = input.runs.find(item => item.id === destination.runId);
-  if (!run || (destination.records && run.workflowId !== "ocr")) return "The linked preview is unavailable. Reopen the notification list.";
+  if (!run || (destination.records && run.records === undefined)) return "The linked preview is unavailable. Reopen the notification list.";
   return undefined;
 }

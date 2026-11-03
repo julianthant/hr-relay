@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import ts from "typescript";
 
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
@@ -96,6 +98,30 @@ function corpusViolations(files: readonly ScenarioCorpusFile[]): string {
 }
 
 describe("scenario coverage", () => {
+  it("claims the seven registered OCR/contact scenarios from their actual integration source titles", () => {
+    const files = ["tests/backend/processing/providers/ocr-approved-snapshot-adapter.integration.test.ts",
+      "tests/workflows/emergency-contact-member/workflow.integration.test.ts"];
+    const actual = files.flatMap(file => {
+      const source = ts.createSourceFile(file, readFileSync(new URL(`../../../${file}`, import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
+      const claims: { file: string; scenarioId: string }[] = [];
+      function visit(node: ts.Node): void {
+        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "it") {
+          const title = node.arguments[0];
+          if (title !== undefined && ts.isStringLiteral(title)) {
+            const scenarioId = claimedScenarioId(title.text);
+            if (scenarioId !== undefined) claims.push({ file, scenarioId });
+          }
+        }
+        ts.forEachChild(node, visit);
+      }
+      visit(source);
+      return claims;
+    });
+    const expected = DECLARED_SCENARIO_MANIFEST.filter(row => files.includes(row.file)).map(({ file, scenarioId }) => ({ file, scenarioId: String(scenarioId) }));
+    assert.equal(expected.length, 7);
+    const order = (rows: readonly { file: string; scenarioId: string }[]) => [...rows].sort((a, b) => a.scenarioId.localeCompare(b.scenarioId));
+    assert.deepEqual(order(actual), order(expected));
+  });
   it("derives coverage points from the node tuple, not from a hand-maintained list", () => {
     const projections = workflowProjections(fixtureDescriptor);
     const derived = deriveGraphCoveragePoints(descriptorRuntimeNodes(fixtureDescriptor));

@@ -5,7 +5,7 @@ import { afterAll, afterEach, describe, it } from "vitest";
 import { createStartPlanService } from "../../../src/backend/runs/commands/start-plan-service.js";
 import { authenticateOnboardingRosterExecution } from "../../../src/backend/runs/workbooks.js";
 import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
-import { RunWorkbookReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
+import { RunWorkbookSelectedRowReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { OnboardingCanonicalValueSchema } from "../../../src/models/workflows/onboarding/input.js";
 import { ONBOARDING_ROSTER_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
@@ -97,7 +97,7 @@ describe("selected saved Onboarding row start authority", () => {
       assert.equal(input.roster.state, "resolved");
       if (input.roster.state !== "resolved") throw new Error("selected row not resolved");
       assert.equal(input.roster.row.references.legalName.firstName, ["First", "Second"][index]);
-      const reference = RunWorkbookReferenceSchema.parse(run.input.workbookReferences?.[0].value);
+      const reference = RunWorkbookSelectedRowReferenceSchema.parse(run.input.workbookReferences?.[0].value);
       assert.equal(reference.request.versionId, f.versionId);
       assert.deepEqual(reference.request.keys, [input.email]);
       assert.deepEqual(reference.request.fields, ONBOARDING_ROSTER_FIELDS);
@@ -111,8 +111,8 @@ describe("selected saved Onboarding row start authority", () => {
     const f = await fixture();
     const a = f.plan(), request = f.request(); request.workbookReferences = [f.selection(1, "archive", "archived")];
     const b = f.plan(request);
-    const aRef = RunWorkbookReferenceSchema.parse(a.record.planned[0].workbookReferences?.[0].value);
-    const bRef = RunWorkbookReferenceSchema.parse(b.record.planned[0].workbookReferences?.[0].value);
+    const aRef = RunWorkbookSelectedRowReferenceSchema.parse(a.record.planned[0].workbookReferences?.[0].value);
+    const bRef = RunWorkbookSelectedRowReferenceSchema.parse(b.record.planned[0].workbookReferences?.[0].value);
     assert.deepEqual(aRef.snapshot, bRef.snapshot);
     assert.equal(aRef.snapshot.rows[0].state, "ambiguous");
     assert.notEqual(a.record.inputFingerprint, b.record.inputFingerprint);

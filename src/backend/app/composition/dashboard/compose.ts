@@ -924,7 +924,7 @@ async function composeDashboardRuntimeStartup(
   });
 
   const startPlans = createStartPlanService({
-    workbooks: { snapshot: value => workbookLibrary.snapshot(value) },
+    workbooks: { snapshot: value => workbookLibrary.snapshot(value), catalog: () => workbookLibrary.catalog(), libraryVersion: (id, versionId) => workbookLibrary.libraryVersion(id, versionId) },
     preflight: runtimePreflight.admission,
     protectedSecrets,
     authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },

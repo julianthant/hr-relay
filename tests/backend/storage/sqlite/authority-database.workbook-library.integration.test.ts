@@ -6,6 +6,9 @@ import { createBoundProfileFixture } from "../../../support/helpers/admission-fi
 import { AuthorityDatabase, inspectAuthorityBackupReadOnly } from "../../../support/helpers/synthetic-storage-admission.js";
 import { createWorkbookLibraryService, WorkbookLibraryError } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { bindOcrRoster } from "../../../../src/models/workflows/ocr/roster.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { RunWorkbookAllRowsReferenceSchema } from "../../../../src/models/dashboard/workbooks.js";
 
 const profiles: Awaited<ReturnType<typeof createBoundProfileFixture>>[] = [];
 const clock = manualClock(new Date("2026-10-15T12:00:00.000Z"));
@@ -17,6 +20,40 @@ async function fixture() {
   return { path: profile.path, open };
 }
 afterEach(async () => { for (const profile of profiles.splice(0)) await profile.close(); });
+
+it("captures all roster data rows at the selected version and leaves keyed-empty references empty", async () => {
+  const f = await fixture(), database = f.open();
+  try {
+    const repository = database.authority.workbooks;
+    const service = createWorkbookLibraryService({ sync: unexpectedWorkbookSync, repository, clock });
+    const first = service.create({ name: "Roster", themes: [], hasFormulas: false, sheets: [{
+      id: "people", name: "People", width: 2, hidden: [], headerRow: 1,
+      columnBindings: ["eid", "fullName"].map((fieldId, index) => ({ id: fieldId, sourceColumn: index,
+        sourceHeader: fieldId, fieldId, basis: "manual" })),
+      rows: [
+        { id: "header", cells: [{ value: "EID" }, { value: "Name" }] },
+        { id: "one", cells: [{ value: "10000001" }, { value: "Example, Avery" }] },
+        { id: "two", cells: [{ value: "10000001" }, { value: "Example, Avery" }] },
+        { id: "missing", cells: [{ value: null }, { value: null }] },
+      ],
+    }] });
+    repository.putType({ id: "ocr-roster", name: "OCR roster", keyFieldId: "eid", fields: ["eid", "fullName"], defaultWorkbookId: null });
+    service.operatorOperation(first.libraryId, "set-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: "ocr-roster", sharePoint: null } });
+    const request = { mode: "all" as const, typeId: "ocr-roster", libraryId: first.libraryId, expectedVersion: 2,
+      fields: ["eid", "fullName"] };
+    const reference = RunWorkbookAllRowsReferenceSchema.parse({ request, snapshot: service.snapshot(request) });
+    const captured = bindOcrRoster({ schemaHash: deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output"), value: reference }, clock.now().toISOString());
+    assert.deepEqual(captured.rows.map(row => row.eid), ["10000001", "10000001", null]);
+    assert.deepEqual(reference.snapshot.rows.map(row => row.matches[0].rowId), ["one", "two", "missing"]);
+    assert.deepEqual(service.snapshot({ typeId: "ocr-roster", libraryId: first.libraryId, keys: [], fields: ["eid", "fullName"] }).rows, []);
+    const current = service.read(first.libraryId);
+    const changed = structuredClone(current.workbook); changed.sheets[0].rows[1].cells[1].value = "Example, Changed";
+    service.save(first.libraryId, 2, changed);
+    assert.throws(() => service.snapshot(request), { code: "WORKBOOK_VERSION_CONFLICT" });
+    assert.equal(captured.rows[0].name, "Example, Avery");
+    assert.equal(captured.workbookVersion, 2);
+  } finally { database.close(); }
+});
 
 it("accounts separately for durable admission and atomic master settlement, persists dates, and refuses stale saves", async () => {
   const f = await fixture();

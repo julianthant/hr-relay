@@ -16,7 +16,8 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { readDelegationScopeEvidence } from "../../storage/sqlite/delegation-authority.js";
-import { authenticateOcrOperator, OcrReviewRefusedError, readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
+import { authenticateOcrOperator, readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
+import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 
 type AuthenticatedGroup = ReturnType<AuthorityRepositories["dependencies"]["authenticateGroup"]>;

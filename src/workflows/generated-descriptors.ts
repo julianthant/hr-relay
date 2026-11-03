@@ -5,6 +5,7 @@ import { separationsWorkflow } from "./separations/workflow.js";
 import { onboardingWorkflow } from "./onboarding/workflow.js";
 import { i9CheckStartWorkflow } from "./i9-check-start/workflow.js";
 import { crmDocDownloadWorkflow } from "./crm-doc-download/workflow.js";
+import { emergencyContactWorkflow } from "./emergency-contact/workflow.js";
 
 export const WORKFLOW_DESCRIPTORS = Object.freeze([
   compileWorkflow(personLookupWorkflow).descriptor,
@@ -12,4 +13,5 @@ export const WORKFLOW_DESCRIPTORS = Object.freeze([
   compileWorkflow(onboardingWorkflow).descriptor,
   compileWorkflow(i9CheckStartWorkflow).descriptor,
   compileWorkflow(crmDocDownloadWorkflow).descriptor,
+  compileWorkflow(emergencyContactWorkflow).descriptor,
 ] as const);

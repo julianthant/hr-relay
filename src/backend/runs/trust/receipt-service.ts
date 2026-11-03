@@ -1,21 +1,22 @@
-import { authenticateWorkbookReferenceExecution } from "../workbooks.js";
-import { createFailureResolutionQuery } from "../queries/failure-resolution.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
+import { createFailureResolutionQuery } from "../queries/failure-resolution.js";
+import { authenticateWorkbookReferenceExecution } from "../workbooks.js";
 
-import {
-  ensureRunEvidenceReceipt,
-  type EnsureReceiptOutcome,
-  type EvidenceReceiptStore,
-  type ReceiptWriteEvidence,
-} from "../provenance/evidence-receipt.js";
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import type { FailureRecord } from "../../../models/trust/failure.js";
-import type { AuthorityDatabase } from "../../storage/sqlite/index.js";
-import { requireTrustRun, assertTrustEvidenceIdentity } from "./run-reader.js";
-import { authenticateOcrSnapshotApproval, OcrReviewRefusedError } from "../lifecycle/ocr-review-authority.js";
-import { readDelegationEvidence, retainedDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { descriptorRuntimeNodes,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
+import { readDelegationEvidence,retainedDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
 import { DelegationInvocationRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/index.js";
+import { authenticateOcrSnapshotApproval } from "../lifecycle/ocr-review-authority.js";
+import {
+ensureRunEvidenceReceipt,
+type EnsureReceiptOutcome,
+type EvidenceReceiptStore,
+type ReceiptWriteEvidence,
+} from "../provenance/evidence-receipt.js";
+import { assertTrustEvidenceIdentity,requireTrustRun } from "./run-reader.js";
 
 export interface ReceiptServiceDeps {
   readonly runReader?: Pick<RunRecordService, "read">;

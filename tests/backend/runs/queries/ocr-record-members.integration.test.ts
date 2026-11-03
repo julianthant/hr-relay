@@ -26,6 +26,7 @@ const world = createOcrReviewWorld();
 afterEach(world.cleanup);
 
 const parent = composeWorkflowModule(compileFixtureWorkflow(defineWorkflow({
+  requiredWorkbookTypeIds: ocrWorkflow.requiredWorkbookTypeIds, referenceLookups: ocrWorkflow.referenceLookups,
   id: "ocr-navigation-parent", version: 1, code: "onp", label: "Navigation parent", icon: "FileScan", category: "documents",
   input: OcrInputSchema, canonicalInput: defineCanonicalInput(OcrInputSchema, OcrCanonicalInputSchema, [OCR_INPUT_EXAMPLE]),
   inputSubject: "document", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
