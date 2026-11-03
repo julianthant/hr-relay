@@ -782,7 +782,7 @@ export const CANONICAL_FIELDS = Object.freeze({
   }),
   i9ProfileId: defineCanonicalField({
     id: "i9ProfileId", label: "I-9 Profile ID", schema: z.string().regex(/^[1-9]\d*$/u),
-    coerce: textCoercer("i9ProfileId"), aliases: ["I-9 Profile ID", "Tracker Profile ID", "I9 Profile"],
+    coerce: textCoercer("i9ProfileId"), aliases: ["I-9 Profile ID", "Tracker Profile ID", "I9 Profile", "I-9 profile", "I9 profile number", "I-9 profile number", "I9 ID"],
     examples: ["900001"], classification: "direct-identifier", redactTransform: "last4", evidence: "resolved",
   }),
   transactionApprovalStatus: defineCanonicalField({
