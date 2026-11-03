@@ -1,6 +1,6 @@
 import { defineTask } from "../../../../workflow-kit/task.js";
-import { CrmReadIdocs, CrmDownloadedPeopleSchema } from "../../../../models/systems/crm/document-tasks.js";
-import { CrmIdocsBytesSchema } from "../../../../models/systems/crm/read-idocs.js";
+import { CrmReadIdocs } from "../../../../models/systems/crm/read-idocs.js";
+import { CrmDownloadedPeopleSchema, CrmIdocsBytesSchema } from "../../../../models/systems/crm/documents.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { crmDocumentIndices, matchesCrmDocumentSubject } from "../../../../rules/crm-doc-download/documents.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";

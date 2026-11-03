@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CrmDocumentSubjectSchema } from "../../systems/crm/read-idocs.js";
+import { CrmDocumentSubjectSchema } from "../../systems/crm/documents.js";
 import { defineCanonicalInput } from "../../workflow/canonical-input.js";
 import { InputParserSpecSchema } from "../../workflow/ingress.js";
 

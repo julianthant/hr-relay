@@ -1,24 +1,22 @@
 import { z } from "zod";
-import { EidSchema } from "../../../rules/identity/ids.js";
-import { NamedArtifactFileNameSchema } from "../../artifacts/artifacts.js";
+import { defineTaskContract } from "../../task/task-contract.js";
+import { taskId } from "../../../rules/identity/ids.js";
+import { ArtifactRefSchema } from "../../artifacts/artifacts.js";
+import { CrmLocatedPersonSchema, CrmDocumentRecordsSchema, CrmDownloadedPeopleSchema } from "./documents.js";
 
-export const CrmDocumentSubjectSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("eid"), value: EidSchema }),
-  z.strictObject({ kind: z.literal("email"), value: z.email() }),
-]);
-export const CrmIdocsReadInputSchema = z.strictObject({
-  recordId: z.string().min(1), subject: CrmDocumentSubjectSchema,
-  docIndices: z.array(z.number().int().nonnegative()).min(1).optional(),
+const exampleRecord = CrmLocatedPersonSchema.parse({ subject: { kind: "email", value: "fixture@example.test" }, identity: {
+  recordId: "fixture-record", eid: null, workEmail: "fixture@example.test", personalEmail: null,
+} });
+
+export const CrmReadIdocs = defineTaskContract({
+  id: taskId("crm/read-idocs"), title: "Download verified CRM PDFs", effect: "read",
+  input: CrmDocumentRecordsSchema.extend({ docIndices: z.number().int().nonnegative().array().min(1).optional() }),
+  output: CrmDownloadedPeopleSchema, errorCodes: ["CRM_DOCUMENT_DOWNLOAD_FAILED"], artifacts: "content-addressed",
+  subject: { kind: "none", reason: "Each selected record is reopened and its displayed EID or email is verified before downloading that person's PDFs" },
+  freshness: { defaultMaxAgeMs: 0, defaultOverride: "forbidden" }, provenance: { default: "live" },
+  scenarios: ["crm-doc-download/worksheet-archives"],
+  example: { people: [{ ...exampleRecord, totalDocuments: 1,
+    documents: [{ index: 0, fileName: "Signed Offer Letter.pdf", artifact: ArtifactRefSchema.parse({
+      id: "11111111-1111-4111-8111-111111111111", sha256: "a".repeat(64), bytes: 10, mediaType: "application/pdf",
+    }) }] }] },
 });
-export const CrmDocumentIdentitySchema = z.strictObject({
-  recordId: z.string().min(1), eid: EidSchema.nullable(), workEmail: z.email().nullable(), personalEmail: z.email().nullable(),
-});
-export const CrmIdocsBytesSchema = z.strictObject({
-  identity: CrmDocumentIdentitySchema,
-  totalDocuments: z.number().int().positive(),
-  documents: z.array(z.strictObject({ index: z.number().int().nonnegative(), fileName: NamedArtifactFileNameSchema, bytes: z.instanceof(Uint8Array) })).min(1),
-});
-export type CrmDocumentSubject = z.infer<typeof CrmDocumentSubjectSchema>;
-export type CrmDocumentIdentity = z.infer<typeof CrmDocumentIdentitySchema>;
-export type CrmIdocsReadInput = z.infer<typeof CrmIdocsReadInputSchema>;
-export type CrmIdocsBytes = z.infer<typeof CrmIdocsBytesSchema>;

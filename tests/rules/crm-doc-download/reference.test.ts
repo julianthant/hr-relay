@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { CrmDownloadedPeopleSchema } from "../../../src/models/systems/crm/document-tasks.js";
+import { CrmDownloadedPeopleSchema } from "../../../src/models/systems/crm/documents.js";
 import { CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema } from "../../../src/models/workflows/crm-doc-download/read-document-rows.js";
 import { bindCrmWorksheetPeople, crmDocumentReferenceKeys, resolveCrmDocumentRows } from "../../../src/rules/crm-doc-download/reference.js";
 import { CRM_DOCUMENT_RECORDS_FIXTURE as records, crmDocumentReferenceFixture as reference } from "../../support/fixtures/crm-doc-download.js";

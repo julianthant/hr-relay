@@ -1,5 +1,5 @@
 import { RunWorkbookReferenceSchema, EditableWorkbookSchema } from "../../../src/models/dashboard/workbooks.js";
-import { CrmDocumentRecordsSchema } from "../../../src/models/systems/crm/document-tasks.js";
+import { CrmDocumentRecordsSchema } from "../../../src/models/systems/crm/documents.js";
 import { ONBOARDING_ROSTER_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
 
 export const CRM_DOCUMENT_RECORDS_FIXTURE = CrmDocumentRecordsSchema.parse({ records: [

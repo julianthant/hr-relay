@@ -1,6 +1,6 @@
 import type { Page, Frame } from "playwright";
 import { z } from "zod";
-import { CrmDocumentIdentitySchema, CrmDocumentSubjectSchema, CrmIdocsBytesSchema, CrmIdocsReadInputSchema } from "../../../../models/systems/crm/read-idocs.js";
+import { CrmDocumentIdentitySchema, CrmDocumentSubjectSchema, CrmIdocsBytesSchema, CrmIdocsReadInputSchema } from "../../../../models/systems/crm/documents.js";
 import { chooseLatestHireRecord, searchCrmOnboardingOfferRows } from "./hire-operation.js";
 import { crmDocumentFileName, crmDocumentIndices, matchesCrmDocumentSubject } from "../../../../rules/crm-doc-download/documents.js";
 

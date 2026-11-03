@@ -10,9 +10,15 @@ describe("CRM onboarding selector-backed driver", () => {
       searchOnboardingRecords: async () => [],
       verifyOnboardingRecord: async () => ({ state: "unused" }),
       readOnboardingRecord: async () => ({ state: "unused" }),
+      findDocumentRecord: async () => ({ state: "unused" }),
+      readIdocs: async () => ({ state: "unused" }),
       readOnboardingDates: async () => ({ state: "unused" }),
     };
     assert.equal(CrmOnboardingDriverSchema.safeParse(valid).success, true);
+    for (const method of ["findDocumentRecord", "readIdocs"]) {
+      const missing = Object.fromEntries(Object.entries(valid).filter(([key]) => key !== method));
+      assert.equal(CrmOnboardingDriverSchema.safeParse(missing).success, false);
+    }
     assert.equal(CrmOnboardingDriverSchema.safeParse({ ...valid, page: {} }).success, false);
     assert.equal(CrmOnboardingDriverSchema.safeParse({ ...valid, readOnboardingRecord: "raw" }).success, false);
     assert.equal(CrmOnboardingDriverSchema.safeParse({ ...valid, readHireData: "raw" }).success, false);

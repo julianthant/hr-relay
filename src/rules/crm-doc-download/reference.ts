@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import { RunWorkbookReferenceSchema } from "../../models/dashboard/workbooks.js";
-import { CrmDocumentRecordsSchema, CrmDownloadedPeopleSchema } from "../../models/systems/crm/document-tasks.js";
+import { CrmDocumentRecordsSchema, CrmDownloadedPeopleSchema } from "../../models/systems/crm/documents.js";
 import { CrmWorksheetPersonSchema } from "../../models/workflows/crm-doc-download/documents.js";
 import { CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema } from "../../models/workflows/crm-doc-download/read-document-rows.js";
 import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_TYPE_ID } from "../../models/workflows/onboarding/roster.js";

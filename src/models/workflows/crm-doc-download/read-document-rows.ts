@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { defineTaskContract } from "../../task/task-contract.js";
 import { RunWorkbookReferenceSchema, WorkbookCellValuesSchema } from "../../dashboard/workbooks.js";
-import { CrmDocumentRecordsSchema, CrmLocatedPersonSchema } from "../../systems/crm/document-tasks.js";
+import { CrmDocumentRecordsSchema, CrmLocatedPersonSchema } from "../../systems/crm/documents.js";
 import { FingerprintSchema, taskId } from "../../../rules/identity/ids.js";
 import { CrmWorksheetPersonSchema } from "./documents.js";
 

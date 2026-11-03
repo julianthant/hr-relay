@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { CrmHireData } from "../systems/crm/read-hire-data.js";
-import type { CrmDocumentIdentity, CrmDocumentSubject, CrmIdocsBytes, CrmIdocsReadInput } from "../systems/crm/read-idocs.js";
+import type { CrmDocumentIdentity, CrmDocumentSubject, CrmIdocsBytes, CrmIdocsReadInput } from "../systems/crm/documents.js";
 import type { CrmDiscoveredRecord } from "../systems/crm/search-onboarding-records.js";
 import {
   CrmReadOnboardingDates,

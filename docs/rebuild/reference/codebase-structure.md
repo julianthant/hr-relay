@@ -136,6 +136,8 @@ Paths in this table are relative to `src/backend/`.
 
 ### Workflow ownership and imports
 
+`src/models/systems/crm/documents.ts` owns CRM document shapes; the matching `search-document-records.ts`
+and `read-idocs.ts` files own their task contracts and Explorer source links.
 `src/workflows/crm-doc-download/` owns CRM document batches, retained worksheet row resolution and one ZIP per worksheet.
 Its `tasks/read-worksheet-archives.ts` verifies retained PDFs and creates the archive collection;
 `steps/package-worksheets/step.ts` binds that task and owns its proof. The workflow publishes

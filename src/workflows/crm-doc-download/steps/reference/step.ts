@@ -1,9 +1,13 @@
 import { CrmDocDownloadInput } from "../../../../models/workflows/crm-doc-download/input.js";
 import { ReadCrmDocumentRows, CrmDocumentRowsSchema, CrmDocumentRowChoiceSchema, CRM_DOCUMENT_ROW_CHOICE_GATE_ID } from "../../../../models/workflows/crm-doc-download/read-document-rows.js";
 import { decodeWorkbookReference } from "../../../../models/processing/workbooks/read-reference.js";
-import { defineStep, defineStepEntries, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep, defineStepEntries, reuseTask, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { readCrmWorkbookReference } from "../../tasks/read-reference.js";
+import type { z } from "zod";
+import { ReadWorkbookReference } from "../../../../models/processing/workbooks/read-reference.js";
+import { CrmDocumentRecordsSchema } from "../../../../models/systems/crm/documents.js";
+import { ONBOARDING_ROSTER_TYPE_ID } from "../../../../models/workflows/onboarding/roster.js";
+import { crmDocumentReferenceKeys } from "../../../../rules/crm-doc-download/reference.js";
 import { buildSearchRecords } from "../search-records/step.js";
 
 const group = Object.freeze({
@@ -17,7 +21,8 @@ const group = Object.freeze({
 const entries = defineStepEntries(group);
 
 export function buildReference(author: WorkflowAuthor<typeof CrmDocDownloadInput>, search: ReturnType<typeof buildSearchRecords>) {
-  const call = readCrmWorkbookReference(group);
+  const call = reuseTask(group, { id: "workbook-reference", contract: ReadWorkbookReference, replay: "checkpoint" },
+    (input: z.output<typeof CrmDocumentRecordsSchema>) => ({ typeId: ONBOARDING_ROSTER_TYPE_ID, keys: crmDocumentReferenceKeys(input) }));
   const reference = author.task(call.identity, [search.records], ({ outputs }) => call.bind({ input: outputs["document-records"] }));
   const rows = author.task(entries.task("document-rows", ReadCrmDocumentRows, { replay: "checkpoint" }), [search.records, reference], ({ outputs }) => ({
     records: outputs["document-records"], reference: ReadCrmDocumentRows.input.shape.reference.parse(decodeWorkbookReference(outputs["workbook-reference"].reference)),

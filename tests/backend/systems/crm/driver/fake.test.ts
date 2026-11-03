@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDeterministicCrmOnboardingDriver } from "../../../../../src/backend/systems/crm/driver/fake.js";
-import { CrmDocumentSubjectSchema, CrmIdocsBytesSchema } from "../../../../../src/models/systems/crm/read-idocs.js";
+import { CrmDocumentSubjectSchema, CrmIdocsBytesSchema } from "../../../../../src/models/systems/crm/documents.js";
 import { CrmReadOnboardingRecord } from "../../../../../src/models/systems/crm/read-onboarding-record.js";
 import { CrmReadOnboardingDates } from "../../../../../src/models/systems/crm/read-onboarding-dates.js";
 

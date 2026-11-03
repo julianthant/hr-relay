@@ -1,8 +1,8 @@
-import { CrmDocumentRecordsSchema } from "../../../../models/systems/crm/document-tasks.js";
-import { CrmDocDownloadInput } from "../../../../models/workflows/crm-doc-download/input.js";
-import { defineStep, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
+import { CrmDocumentRecordsSchema } from "../../../../models/systems/crm/documents.js";
+import { CrmDocDownloadInput, type CrmDocDownloadInputValue } from "../../../../models/workflows/crm-doc-download/input.js";
+import { defineStep, inheritStepProof, reuseTask, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { searchCrmDocumentRecords } from "../../tasks/search-records.js";
+import { CrmSearchDocumentRecords } from "../../../../models/systems/crm/search-document-records.js";
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "search-records", label: "Find latest CRM records" }), system: "crm",
@@ -15,7 +15,8 @@ const group = Object.freeze({
 } as const);
 
 export function buildSearchRecords(author: WorkflowAuthor<typeof CrmDocDownloadInput>) {
-  const call = searchCrmDocumentRecords(group);
+  const call = reuseTask(group, { id: "document-records", contract: CrmSearchDocumentRecords, replay: "checkpoint" },
+    (input: CrmDocDownloadInputValue) => ({ subjects: input.people }));
   const records = author.task(call.identity, [], call.bind);
   return { records, steps: [[group, [records]]] as const,
     result: author.result(CrmDocumentRecordsSchema, [records], ({ outputs }) => outputs["document-records"]) };

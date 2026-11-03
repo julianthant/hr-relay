@@ -1,6 +1,6 @@
 import { defineTask } from "../../../../workflow-kit/task.js";
-import { CrmSearchDocumentRecords, CrmDocumentRecordsSchema } from "../../../../models/systems/crm/document-tasks.js";
-import { CrmDocumentIdentitySchema } from "../../../../models/systems/crm/read-idocs.js";
+import { CrmSearchDocumentRecords } from "../../../../models/systems/crm/search-document-records.js";
+import { CrmDocumentRecordsSchema, CrmDocumentIdentitySchema } from "../../../../models/systems/crm/documents.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { matchesCrmDocumentSubject } from "../../../../rules/crm-doc-download/documents.js";
 import { crmDriver } from "../driver-declaration.js";

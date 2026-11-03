@@ -26,7 +26,7 @@ import type {
 import { CRM_UI_REGISTRY } from "./ui-registry.js";
 import { readCrmHireDataOnPage } from "./hire-operation.js";
 import { findCrmDocumentRecordOnPage, readCrmIdocsOnPage } from "./idocs-operation.js";
-import type { CrmDocumentSubject, CrmIdocsReadInput } from "../../../../models/systems/crm/read-idocs.js";
+import type { CrmDocumentSubject, CrmIdocsReadInput } from "../../../../models/systems/crm/documents.js";
 
 const CRM_HOST = "act-crm.my.site.com";
 const CRM_SEARCH_PATH = "/hr/ONB_SearchOnboardings";

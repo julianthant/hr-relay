@@ -1,5 +1,5 @@
 import type { CrmDiscoveredRecord } from "../../../../models/systems/crm/search-onboarding-records.js";
-import { CrmIdocsBytesSchema, type CrmIdocsBytes } from "../../../../models/systems/crm/read-idocs.js";
+import { CrmIdocsBytesSchema, type CrmIdocsBytes } from "../../../../models/systems/crm/documents.js";
 import { crmDocumentIndices, matchesCrmDocumentSubject } from "../../../../rules/crm-doc-download/documents.js";
 import { CrmHireDataSchema, type CrmHireData } from "../../../../models/systems/crm/read-hire-data.js";
 import {

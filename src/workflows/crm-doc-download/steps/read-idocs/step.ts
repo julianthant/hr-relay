@@ -1,8 +1,9 @@
-import { CrmDownloadedPeopleSchema } from "../../../../models/systems/crm/document-tasks.js";
+import type { z } from "zod";
+import { CrmDownloadedPeopleSchema, CrmDocumentRecordsSchema } from "../../../../models/systems/crm/documents.js";
 import { CrmDocDownloadInput } from "../../../../models/workflows/crm-doc-download/input.js";
-import { defineStep, inheritStepProof, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
+import { defineStep, inheritStepProof, reuseTask, type WorkflowAuthor, type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
-import { readCrmDocumentPdfs } from "../../tasks/read-idocs.js";
+import { CrmReadIdocs } from "../../../../models/systems/crm/read-idocs.js";
 import { buildSearchRecords } from "../search-records/step.js";
 import type { buildReference } from "../reference/step.js";
 
@@ -16,7 +17,8 @@ const group = Object.freeze({
 } as const);
 
 export function buildReadIdocs(author: WorkflowAuthor<typeof CrmDocDownloadInput>, search: ReturnType<typeof buildSearchRecords>, reference?: ReturnType<typeof buildReference>) {
-  const call = readCrmDocumentPdfs(group);
+  const call = reuseTask(group, { id: "document-pdfs", contract: CrmReadIdocs, replay: "checkpoint" },
+    (input: z.output<typeof CrmDocumentRecordsSchema>) => input);
   const dependencies = reference === undefined ? [search.records] as const : [search.records, reference.choice] as const;
   const documents = author.task(call.identity, dependencies, ({ outputs }) => call.bind({ input: outputs["document-records"] }));
   return { documents, steps: [[group, [documents]]] as const,

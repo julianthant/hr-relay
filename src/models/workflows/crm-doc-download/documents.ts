@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { ArtifactRefSchema, ArtifactRelativePathSchema, CollectionArtifactOutputSchema, NamedArtifactFileNameSchema } from "../../artifacts/artifacts.js";
-import { CrmRetainedDocumentSchema } from "../../systems/crm/document-tasks.js";
+import { CrmRetainedDocumentSchema, CrmDocumentIdentitySchema } from "../../systems/crm/documents.js";
 import { OnboardingRosterSnapshotRowSchema } from "../onboarding/roster.js";
-import { CrmDocumentIdentitySchema } from "../../systems/crm/read-idocs.js";
 
 export const CrmWorksheetPersonSchema = z.strictObject({
   identity: CrmDocumentIdentitySchema,
