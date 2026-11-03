@@ -2110,8 +2110,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   // The operator query is retained only in insert-only evidence; workbook cells exclude this possible identifier.
   { surface: "durable/run-search-index", path: "metadata.actor.value", origin: "captured-hr-value" },
   { surface: "durable/run-search-index", path: "metadata.subject.value", origin: "captured-hr-value" },
-  { surface: "durable/run-search-declaration", path: "subjectProjection.nodeId", origin: "repository-authored" },
-  { surface: "durable/run-search-declaration", path: "subjectProjection.fieldPath", origin: "repository-authored" },
   { surface: "durable/run-search-gram", path: "token", origin: "captured-hr-value" },
   { surface: "durable/run-search-actor-link", path: "sourceId", origin: "repository-authored" },
   { surface: "durable/operator-xlsx-export", path: "download.contentDisposition", origin: "repository-authored" },

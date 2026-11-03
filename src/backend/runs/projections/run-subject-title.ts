@@ -7,6 +7,7 @@ import { retainedRunProtectedBindings } from "../../../models/write-safety/prote
 import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import { ProjectionDegradedError } from "../commands/refusals.js";
 import { EidSchema } from "../../../rules/identity/ids.js";
+import { directIdentifierDisplay } from "../../../rules/redaction/redaction.js";
 
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
@@ -76,7 +77,7 @@ export function resolveSubjectTitle(
   if (subjectProjection.eidFieldPath === undefined) return name;
   const eid = leafAtPath(stored.output.value, subjectProjection.eidFieldPath);
   if (eid.kind === "absent") throw new ProjectionDegradedError("subject-title-eid-missing");
-  return `${titleCasePersonName(name)} · EID ${EidSchema.parse(eid.value)}`;
+  return `${titleCasePersonName(name)} · EID ${directIdentifierDisplay(EidSchema.parse(eid.value))}`;
 }
 
 export function allowsSubjectIdentity(run: RunRecord, descriptor: AnyWorkflowDescriptor): boolean {
@@ -109,5 +110,5 @@ export function resolveResultTitle(descriptor: AnyWorkflowDescriptor, run: RunRe
   const name = titleCasePersonName(value);
   if (descriptor.subtitleProjection === undefined) return name;
   const eid = verifiedResultDisplayValue(run, receipt, descriptor.subtitleProjection.fieldPath, "subtitle");
-  return eid === undefined || eid === null ? name : `${name} · EID ${EidSchema.parse(eid)}`;
+  return eid === undefined || eid === null ? name : `${name} · EID ${directIdentifierDisplay(EidSchema.parse(eid))}`;
 }
