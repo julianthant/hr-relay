@@ -31,7 +31,7 @@ export function createSettingsQueries(transport: DashboardTransport): SettingsQu
 
     async editableSettings(): Promise<EditableSettingsWire> {
       try { return EditableSettingsWireSchema.parse(await transport.requestJson("/api/v1/settings/editable")); }
-      catch { throw new DashboardClientError({ kind: "schema", code: "SETTINGS_READ_UNAVAILABLE", message: "GET /api/v1/settings/editable: settings could not be read or verified" }); }
+      catch (cause) { throw new DashboardClientError({ kind: "schema", code: "SETTINGS_READ_UNAVAILABLE", message: "GET /api/v1/settings/editable: settings could not be read or verified", cause }); }
     },
     async pickSettingsPath(request: NativePathPickerRequest): Promise<NativePathPickerResponse> {
       const parsedRequest = NativePathPickerRequestSchema.parse(request);

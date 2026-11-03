@@ -6,6 +6,17 @@ import { DashboardClientError } from "../../../src/dashboard/client/index.js";
 import { createDashboardTransport } from "../../../src/dashboard/client/transport.js";
 const HASH_D = "d".repeat(64);
 
+it("classifies binary body failures once without reporting body values", async () => {
+  const cause = new Error("PRIVATE_BINARY_BODY");
+  const failures: unknown[] = [];
+  const transport = createDashboardTransport({ baseUrl: "http://relay.test", onFailure: failure => { failures.push(failure); },
+    fetchImpl: async () => new Response(new ReadableStream({ start(controller) { controller.error(cause); } })) });
+  await assert.rejects(transport.requestBinary("/api/v1/exports/xlsx"),
+    error => error instanceof DashboardClientError && error.kind === "network" && error.cause === cause);
+  assert.equal(failures.length, 1);
+  assert.equal(JSON.stringify(failures).includes("PRIVATE_"), false);
+});
+
 async function tick(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }

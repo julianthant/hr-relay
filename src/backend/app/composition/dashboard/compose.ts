@@ -1,3 +1,4 @@
+import { createDebugEventWriter } from "../../../logs/debug-events.js";
 import { createApplicationLifecycle, type ApplicationUpdateHost } from "../../../runs/lifecycle/application-lifecycle.js";
 import { DeleteProfileAccountRequestSchema } from "../../../../models/profiles/public-profile.js";
 import { Hono, type Context } from "hono";
@@ -45,7 +46,8 @@ import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.
 import { assistantKnowledgeArtifact,loadProductionAssistantContext } from "../../../assistant/context.js";
 import { createAssistantService } from "../../../assistant/service.js";
 import { assistantSurfaceCoverage,createProductionAssistantTools } from "../../../assistant/tools.js";
-import { importEmergencyFaults,withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
+import { appendEmergencyFault,importEmergencyFaults,withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
+import { registerDebugResponses } from "../../../transports/http/routes/debug-responses.js";
 import { CHATGPT_OCR_MODEL,createChatGptOcrPageReader } from "../../../processing/providers/chatgpt-ocr-adapter.js";
 import type { ProfileOnboardingDuoProvider } from "../../../profiles/onboarding-duo.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
@@ -202,7 +204,7 @@ export const GATE_PARK_WATCH_MS = 5_000;
 const WORKER_BIRTH_POLL_MS = 250;
 
 // Launch through the secure environment bootstrap, never a parallel CLI path.
-export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.ProcessEnv): Readonly<{
+export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.ProcessEnv, development = false): Readonly<{
   command: string;
   environment: NodeJS.ProcessEnv;
   prefixArgs: readonly string[];
@@ -211,7 +213,7 @@ export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.Pr
   return Object.freeze({
     command: process.execPath,
     environment: workerBootstrapEnvironment(environment),
-    prefixArgs: Object.freeze(["--import", "tsx", join(repoRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli"]),
+    prefixArgs: Object.freeze([...(development ? ["--conditions=development"] : []), "--import", "tsx", join(repoRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli"]),
     cwd: repoRoot,
   });
 }
@@ -605,6 +607,7 @@ async function composeDashboardRuntimeStartup(
     databaseClosed = true;
   });
   importEmergencyFaults(stateRoot, database.authority.timelineEvents);
+  importEmergencyFaults(machineAdmission.stateRoot, database.authority.timelineEvents);
   database.sweepOrdinaryDiagnostics(clock.now().toISOString());
   const bootConfig = (() => {
     const persistedSettings = database.withAuthorityTransaction((repositories) => readBootSettings(repositories));
@@ -672,6 +675,7 @@ async function composeDashboardRuntimeStartup(
   };
 
   const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: appVersion });
+  const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: appVersion, development: frontend === "vite-dev" });
   const spanWriter = createTimelineEmitter({ repository: loggingRepository, clock });
   const descriptors = {
     resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
@@ -775,24 +779,17 @@ async function composeDashboardRuntimeStartup(
   startupCleanups.push(() => clearInterval(timelineTimer));
 
 
-  const supervisorFaultSink = input.workerProcess?.faultSink ?? ((line: string): void => {
-    process.stderr.write(`${line}\n`);
-  });
   const reportSupervisorFault = (error: Error): void => {
-    supervisorFaultSink(JSON.stringify({
-      ts: clock.now().toISOString(),
-      level: "error",
-      source: "worker-supervisor",
-      message: error.message,
-    }));
+    const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "supervisor",
+      code: "WORKER_SUPERVISOR_FAILED", reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "supervisor-failed" };
+    debugEvents.emit(event);
+    input.workerProcess?.faultSink?.(JSON.stringify(event));
   };
   const reportDashboardTransferFault = (error: Error): void => {
-    supervisorFaultSink(JSON.stringify({
-      ts: clock.now().toISOString(),
-      level: "error",
-      source: "dashboard-http",
-      message: error.message,
-    }));
+    const event = { category: "http", phase: "failed", correlationId: randomUUID(), area: "response-transfer",
+      code: "DASHBOARD_TRANSFER_FAILED", reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "transfer-failed" };
+    debugEvents.emit(event);
+    input.workerProcess?.faultSink?.(JSON.stringify(event));
   };
   const assertAssistantEffect = (commandId: string): void => {
     if (database.authority.assistantAuthorization.actionByCommand(commandId) === undefined) return;
@@ -807,7 +804,7 @@ async function composeDashboardRuntimeStartup(
     database,
     clock,
     scheduler: input.workerProcess?.scheduler ?? createTimeoutDeadlineScheduler(clock),
-    launch: input.workerProcess?.launch ?? productionWorkerLaunch(repoRoot, env),
+    launch: input.workerProcess?.launch ?? productionWorkerLaunch(repoRoot, env, frontend === "vite-dev"),
     spawn: input.workerProcess?.spawn ?? realWorkerProcessSpawner(input.lifetimeLock, nominatim),
     birth: input.workerProcess?.birth ?? { pollMs: WORKER_BIRTH_POLL_MS, timeoutMs: WORKER_BIRTH_TIMEOUT_MS },
     onFault: reportSupervisorFault,
@@ -965,13 +962,8 @@ async function composeDashboardRuntimeStartup(
   const workbookCommands = createCommandBrowserManager({ admission, leases: database.authority.duoCeremonyLeases,
     clock, scheduler: createTimeoutDeadlineScheduler(clock), recordEvidence: () => {
       assertCurrent();
-      const eventId = randomUUID(), now = clock.now();
-      loggingRepository.append({ schemaVersion: 1, eventId,
-        scope: { kind: "transport", connectionId: "workbook-sync" }, occurredAt: now.toISOString(),
-        recordedAt: now.toISOString(), retentionDate: localDatePart(now), source: { kind: "native" },
-        payload: { kind: "debug", event: { category: "session", phase: "acquired", correlationId: eventId,
-          code: "sharepoint-authenticated", message: "SharePoint verified the configured account and the absence of sign-in controls.",
-          build: appVersion, pid: process.pid, pinned: false } } });
+      debugEvents.emit({ category: "session", phase: "acquired", correlationId: randomUUID(), area: "workbook-sync",
+        code: "sharepoint-authenticated", reason: "account-verified" });
     } });
   profile.runtime.registerCommandActivity(profile.token, workbookCommands);
   startupCleanups.push(requiredClosure(async () => {
@@ -1034,6 +1026,7 @@ async function composeDashboardRuntimeStartup(
     return result.extraction;
   } });
   const app = createDashboardApp({
+    debugEvents,
     assistant,
     chatGptOcrTest,
     chatGptAccount: {
@@ -1173,6 +1166,13 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     return profile;
   })();
   const app = new Hono<{ Variables: { requestActorId: ReturnType<ReturnType<typeof createSoloRequestIdentityCheckpoint>["identify"]> } }>();
+  const appVersion = PackageVersionSchema.parse(JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"))).version;
+  const debugEvents = { emit(input: unknown) {
+    const failure = z.object({ code: z.string(), reason: z.string() }).parse(input);
+    appendEmergencyFault({ stateRoot: machine.stateRoot, build: appVersion, code: failure.code, area: "profile-request",
+      reason: failure.reason, error: new Error(failure.reason), now: clock.now() });
+  } };
+  registerDebugResponses(app, debugEvents);
   type Selection = { sessionId: string; token: string; profileId: string; epoch: number; runtime: DashboardRuntime };
   let selection: Selection | undefined;
   let onboardingSelection: { sessionId: string; token: string; operationId: string; profileId: string } | undefined;
@@ -1247,11 +1247,16 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     guarded.use("*", async (c, next) => {
       try { current(c.req.raw); } catch (error) {
         if (!(error instanceof ProfileSessionRefusedError)) throw error;
+        debugEvents.emit({ code: error.code, reason: "profile-session-refused" });
         return c.json(PublicProfileStateSchema.parse({ state: "refused", code: error.code }), 401);
       }
       return next();
     });
-    guarded.onError((error, c) => { const failure = publicFailure(error); return c.json(failure.body, failure.status); });
+    guarded.onError((error, c) => {
+      const failure = publicFailure(error);
+      debugEvents.emit({ ...failure.body, reason: "profile-request-failed" });
+      return c.json(failure.body, failure.status);
+    });
     let selectedApp: ReturnType<typeof createDashboardApp> | undefined;
     guarded.all("*", c => { if (selectedApp === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE"); return dispatchMountedRequest(selectedApp, c.req.raw); });
     const runtime = await composeDashboardRuntime({ ...input, requestApplicationQuit: resolveApplicationQuit, profile: { runtime: profileRuntime, token: result.token },

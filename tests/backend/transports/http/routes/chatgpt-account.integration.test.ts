@@ -3,25 +3,43 @@ import { getEventListeners } from "node:events";
 import { Hono } from "hono";
 import { it } from "vitest";
 import { chatGptFixture } from "../../../../support/helpers/chatgpt-account-fixtures.js";
-import { registerChatGptAccountRoutes } from "../../../../../src/backend/transports/http/routes/chatgpt-account.js";
+import { registerChatGptAccountRoutes, type ChatGptAccountRouteDeps } from "../../../../../src/backend/transports/http/routes/chatgpt-account.js";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { operatorMutationIngressGuard } from "../../../../../src/backend/transports/http/routes/operator-mutation-ingress.js";
 import { ChatGptSignInCompletionSchema, ChatGptSignInStartSchema } from "../../../../../src/models/dashboard/chatgpt-account.js";
 import { ChatGptResourceClosureUnprovedError } from "../../../../../src/backend/accounts/chatgpt-account-service.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
+import { WireErrorSchema } from "../../../../../src/models/dashboard/primitives.js";
 import type { ChatGptAuthorization } from "../../../../../src/backend/accounts/chatgpt-account-service.js";
 const path = "/api/v1/settings/chatgpt-account";
-async function setup() {
+async function setup(debugEvents?: ChatGptAccountRouteDeps["debugEvents"]) {
   const fixture = await chatGptFixture();
   let authorization: ChatGptAuthorization | undefined;
   const app: DashboardApp = new Hono();
   app.use("/api/v1/settings/chatgpt-account/sign-in", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-in/:attemptId/cancel", operatorMutationIngressGuard);
   app.use("/api/v1/settings/chatgpt-account/sign-out", operatorMutationIngressGuard);
-  registerChatGptAccountRoutes(app, { chatGptAccount: { ...fixture.service, signIn: async input => { authorization = await fixture.service.signIn(input); return authorization; } } });
+  registerChatGptAccountRoutes(app, { debugEvents, chatGptAccount: { ...fixture.service, signIn: async input => { authorization = await fixture.service.signIn(input); return authorization; } } });
   const request = (suffix = "", input?: unknown) => app.request(`http://127.0.0.1${path}${suffix}`, input === undefined ? undefined : { method: "POST", headers: { host: "127.0.0.1", origin: "http://127.0.0.1", "content-type": "application/json" }, body: JSON.stringify(input) });
   return { ...fixture, app, request, authorization: () => { assert.ok(authorization); return authorization; } };
 }
+it("retains asynchronous diagnostic failure for named readback without rejecting an unobserved completion", async () => {
+  let diagnosticAttempts = 0;
+  const f = await setup({ emit() { diagnosticAttempts++; throw new Error("PRIVATE_DIAGNOSTIC_CAUSE"); } });
+  try {
+    const started = ChatGptSignInStartSchema.parse(await (await f.request("/sign-in", { usePlan: true })).json());
+    await f.callback(f.authorization(), { error: "access_denied" });
+    await new Promise(resolve => setImmediate(resolve));
+    for (let read = 0; read < 2; read++) {
+      const response = await f.request(`/sign-in/${started.attemptId}`);
+      assert.equal(response.status, 500);
+      assert.deepEqual(WireErrorSchema.parse(await response.json()), { state: "error", code: "LOGGING_UNAVAILABLE",
+        message: ERROR_CATALOG.LOGGING_UNAVAILABLE.text, retryable: false });
+    }
+    assert.equal(diagnosticAttempts, 1);
+    assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });
+  } finally { await f.cleanup(); }
+});
 it("serves token-free account lifecycle with original PKCE, state and nonce binding", async () => {
   const f = await setup(); try {
     assert.deepEqual(await (await f.request()).json(), { state: "signed-out" });

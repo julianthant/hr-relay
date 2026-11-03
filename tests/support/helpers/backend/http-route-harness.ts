@@ -491,7 +491,7 @@ export function settingsAuthoritySnapshot(h: Harness, commandId: string) {
   };
 }
 
-export function faultAuthoritySnapshot(h: Harness) {
+export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot">) {
   const raw = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
   try {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all();
@@ -499,13 +499,15 @@ export function faultAuthoritySnapshot(h: Harness) {
       if (typeof row.name !== "string" || !/^[a-z_]+$/u.test(row.name)) throw new Error("fixture table identity invalid");
       return { table: row.name, rows: raw.prepare(`SELECT * FROM ${row.name} ORDER BY rowid`).all() };
     });
-    return { rows, generation: h.database.getMeta().authorityGeneration,
+    return { rows, schema: raw.prepare("SELECT type,name,tbl_name,sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name").all(),
+      generation: h.database.getMeta().authorityGeneration,
       timeline: h.database.authority.timelineEvents.page({ limit: 500 }) };
   } finally { raw.close(); }
 }
 
-export function assertHttpFaultOnly(h: Harness, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number) {
+export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number) {
   const after = faultAuthoritySnapshot(h);
+  assert.deepEqual(after.schema, before.schema, "HTTP refusal changes no table, index or trigger");
   assert.deepEqual(after.rows, before.rows, "HTTP refusal changes no HR, settings, command, audit or proof owner");
   assert.deepEqual(after.timeline.slice(0, before.timeline.length), before.timeline);
   const added = after.timeline.slice(before.timeline.length);
