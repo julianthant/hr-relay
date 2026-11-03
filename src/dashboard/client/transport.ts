@@ -1,7 +1,8 @@
 /** The ONE transport implementation (ref frontend-backend-integration ): nothing outside `src/dashboard/client/**` may call `fetch` or open an event stream.
  * The */
 import type { ErrorCatalogCode } from "../../models/failures/error-catalog.js";
-import { httpError,networkError } from "./errors.js";
+import { debugFailureOutcome, debugFailureOutcomes, diagnosticRequestRoute } from "../../models/events/debug-report.js";
+import { DashboardClientError, httpError,networkError,markDashboardErrorReported } from "./errors.js";
 import { CHATGPT_COMPLETION_READ_DEADLINE_MS,SETTINGS_READ_DEADLINE_MS,STORAGE_DOCTOR_DEADLINE_MS,readWithDeadline } from "./read-deadline.js";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -52,6 +53,7 @@ export interface DashboardTransport {
 export function createDashboardTransport(input: Readonly<{
   baseUrl: string;
   fetchImpl?: FetchLike;
+  onFailure?: (failure: NonNullable<ReturnType<typeof debugFailureOutcome>> & { route: string }) => void;
 }>): DashboardTransport {
   const baseUrl = input.baseUrl.replace(/\/$/, "");
   const baseOrigin = new URL(baseUrl).origin;
@@ -87,7 +89,7 @@ export function createDashboardTransport(input: Readonly<{
     return Object.freeze({ status: response.status, ok: response.ok, body });
   };
 
-  const send = (path: string, init?: RequestInit): Promise<JsonResponse> => {
+  const sendWithDeadline = (path: string, init?: RequestInit): Promise<JsonResponse> => {
     const method = init?.method?.toUpperCase() ?? "GET";
     const route = path.split("?")[0];
     const accountCompletion = method === "GET" && /^\/api\/v1\/settings\/chatgpt-account\/sign-in\/[^/]+$/u.test(route ?? "");
@@ -105,12 +107,29 @@ export function createDashboardTransport(input: Readonly<{
       });
   };
 
+  const reportFailure = (path: string, body: unknown, status = 200): void => {
+    if (path === "/api/v1/debug/errors") return;
+    for (const failure of debugFailureOutcomes(body, status)) input.onFailure?.({ ...failure, route: diagnosticRequestRoute(path) });
+  };
+  const send = async (path: string, init?: RequestInit): Promise<JsonResponse> => {
+    try {
+      const response = await sendWithDeadline(path, init);
+      reportFailure(path, response.body, response.ok ? response.status : Math.max(400, response.status));
+      return response;
+    } catch (error) {
+      if (!init?.signal?.aborted) { reportFailure(path, { state: "error" }); markDashboardErrorReported(error); }
+      throw error;
+    }
+  };
+
   return Object.freeze({
     async requestJson(path: string, init?: RequestInit): Promise<unknown> {
       const response = await send(path, init);
       // Typed command refusals use 409/422; other non-success responses follow the wire-error contract.
       if (!response.ok && !isTypedCommandResultStatus(path, response.status)) {
-        throw httpError(response.status, response.body);
+        const error = httpError(response.status, response.body);
+        markDashboardErrorReported(error);
+        throw error;
       }
       return response.body;
     },
@@ -118,6 +137,7 @@ export function createDashboardTransport(input: Readonly<{
     requestJsonResponse: send,
 
     async requestBinary(path: string, init?: RequestInit): Promise<BinaryResponse> {
+      try {
       let response: Response;
       try {
         response = await fetchImpl(`${baseUrl}${path}`, {
@@ -139,6 +159,11 @@ export function createDashboardTransport(input: Readonly<{
         throw httpError(response.status, body);
       }
       return Object.freeze({ headers: response.headers, bytes: await response.arrayBuffer() });
+      } catch (error) {
+        const failure = error instanceof DashboardClientError ? error : networkError(`${init?.method ?? "GET"} ${path}`, error);
+        if (!init?.signal?.aborted) { reportFailure(path, { state: "error", code: failure.code }); markDashboardErrorReported(failure); }
+        throw failure;
+      }
     },
 
     resolveUrl: (path: string): string => `${baseUrl}${path}`,
@@ -201,7 +226,10 @@ export function createDashboardTransport(input: Readonly<{
         } catch (error) {
           if (!controller.signal.aborted) throw networkError(`stream ${path}`, error);
         }
-      })();
+      })().catch((error: unknown) => {
+        if (!controller.signal.aborted) { reportFailure(path, { state: "error" }); markDashboardErrorReported(error); }
+        throw error;
+      });
       return Object.freeze({
         done,
         close: (): void => controller.abort(),

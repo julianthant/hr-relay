@@ -456,6 +456,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
+  const build = z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version;
   const write = input.write ?? ((line: string): void => {
     process.stdout.write(`${line}\n`);
   });
@@ -497,7 +498,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
           undefined, undefined, undefined, protectedAuthority)))(
           { path: authorityPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" }, clock);
       } catch (error) {
-        appendEmergencyFault({ stateRoot, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version,
+        appendEmergencyFault({ stateRoot, build, area: "worker-startup", reason: "database-unavailable",
           code: "DATABASE_WRITER_UNAVAILABLE", error: error instanceof Error ? error : new Error("Database writer unavailable"), now: clock.now() });
         throw error;
       }
@@ -535,11 +536,11 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   let ocrAccount: ReturnType<typeof createChatGptAccountService> | undefined;
   let accountClosureProven = true;
   let removeStopListeners: (() => void) | undefined;
+  const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build });
+  const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build });
 
   try {
   importEmergencyFaults(stateRoot, database.authority.timelineEvents);
-  const loggingRepository = withEmergencyTimelineWriter(database.authority.timelineEvents, { stateRoot, clock, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version });
-  const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build: z.object({ version: z.string() }).parse(JSON.parse(readBuildFile(join(repoRoot, "package.json"), "utf8"))).version });
   const taskNotes = createNoteTimelineWriter({ repository: loggingRepository, clock });
   const protectedSecrets = createCredentialSecretSource({ read: () => { assertCurrent(); return protectedAuthority.read(); } });
   const executionDescriptor = resolveDescriptor;
@@ -783,6 +784,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         heartbeatIntervalMs,
         idleRepollMs: resolved.config.daemon.idleRepollMs,
         log,
+        debugEvents,
         taskNotes,
         confirmedActionAppend: event => {
           const authority = database.authority.runs.get(event.action.runId);
@@ -899,6 +901,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         diagnostics,
         browserScreenshotCapture,
       });
+      runtimeReport = report;
     } catch (loopError) {
       await stopGateSources();
       maintenance.stop();
@@ -927,14 +930,24 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       report.closure === "unproved" ? new WorkerSessionClosureUnprovedError(workerId) : undefined,
       log,
     );
-    runtimeReport = report;
+    if (report.closure === "unproved") debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(),
+      area: "browser-session", code: "WORKER_SESSION_CLOSURE_UNPROVED", reason: "browser-closure-unproved" }, { kind: "worker", workerId });
   } catch (error) {
     runtimeError = error;
+    try {
+      debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-runtime",
+        code: "WORKER_RUNTIME_FAILED", reason: hasUncertainBrowserLaunch(error) ? "browser-closure-unproved" : "worker-failed" }, { kind: "worker", workerId });
+    } catch (loggingError) { cleanupErrors.push(loggingError); }
   } finally {
     try { await resources?.stop(); } catch (error) { cleanupErrors.push(error); }
     try { if (ocrAccount !== undefined) await ocrAccount.close(); accountClosureProven = true; }
     catch (error) { cleanupErrors.push(error); }
     removeStopListeners?.();
+  }
+  if (cleanupErrors.length > 0) {
+    try { debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-cleanup",
+      code: "WORKER_CLEANUP_FAILED", reason: "resource-closure-unproved" }, { kind: "worker", workerId }); }
+    catch (loggingError) { cleanupErrors.push(loggingError); }
   }
   let databaseClosureProven = false;
   try {

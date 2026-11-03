@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, it, vi } from "vitest";
 import { encodeEditableWorkbook, decodeSavedWorkbook } from "../../../../../src/models/dashboard/workbooks.js";
-import { disposeHttpRouteHarness, foreignOriginCases, harness } from "../../../../support/helpers/backend/http-route-harness.js";
+import { assertHttpFaultOnly,faultAuthoritySnapshot,disposeHttpRouteHarness, foreignOriginCases, harness } from "../../../../support/helpers/backend/http-route-harness.js";
 
 afterEach(disposeHttpRouteHarness);
 const headers = { host: "localhost", origin: "http://localhost", "content-type": "application/json" };
@@ -39,9 +39,9 @@ it('returns a named conflict and retains the master when formula metadata makes 
   assert.deepEqual(decodeSavedWorkbook(await (await h.app.request(path)).json()), first);
 });
 it.each(["/api/v1/workbooks", "/api/v1/workbooks/id/save", "/api/v1/workbooks/id/intake", "/api/v1/workbooks/types", "/api/v1/workbooks/id/operations", "/api/v1/workbooks/id/sync"])("requires JSON before effects for %s", async path => {
-  const h = await harness(), generation = h.database.getMeta().authorityGeneration;
+  const h = await harness(), beforeFault = faultAuthoritySnapshot(h);
   const response = await h.app.request(`http://localhost${path}`, { method: "POST", headers: { host: "localhost", origin: "http://localhost", "content-type": "text/plain" }, body: "{}" });
-  assert.equal(response.status, 415); assert.equal(h.database.getMeta().authorityGeneration, generation);
+  assert.equal(response.status, 415); assertHttpFaultOnly(h, beforeFault, 1);
 });
 it.each(foreignOriginCases())("rejects foreign workbook mutation %s before reading the body", async (_label, originHeaders) => {
   const h = await harness();
