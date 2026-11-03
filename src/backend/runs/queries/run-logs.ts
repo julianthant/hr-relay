@@ -1,5 +1,5 @@
 import { containsDryRunSample } from "../../../models/workflow/dry-run.js";
-import { descriptorRuntimeNodes } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../workflow-kit/workflow.js";
 import { readRunPreviewResult } from "../../../models/run/result.js";
 import { isLocalActionValueEligible } from "../../storage/events/note-timeline-writer.js";
 import { buildUiTaskLinks } from "../../systems/ui-task-links.js";
@@ -537,13 +537,14 @@ function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord) {
   if (!authority.envelope.dryRun) return undefined;
   if (deps.canonical === undefined) return DryRunPreviewWireSchema.parse({ state: "unavailable", reason: "preview-authority-unavailable" });
   const result = deps.canonical.database.authority.runResults.get(authority.envelope.runId);
-  if (result === undefined) {
+  const preview = result === undefined ? undefined : readRunPreviewResult(result);
+  const descriptor = deps.canonical.descriptors.resolve(authority.envelope.workflow);
+  if (result === undefined || preview === undefined) {
+    const support = descriptor?.contractFingerprint === authority.envelope.contractFingerprint ? workflowDryRunSupport(descriptor) : undefined;
+    if (authority.envelope.parent !== undefined && support?.state === "unsupported" && support.reason === "no-transaction-node") return undefined;
     return DryRunPreviewWireSchema.parse(authority.lifecycle.state !== "terminal" ? { state: "pending" }
       : { state: "unavailable", reason: authority.lifecycle.outcome === "done" ? "preview-result-unreadable" : "preview-not-completed" });
   }
-  const preview = readRunPreviewResult(result);
-  if (preview === undefined) return undefined;
-  const descriptor = deps.canonical.descriptors.resolve(authority.envelope.workflow);
   return DryRunPreviewWireSchema.parse({ state: "available", coverage: preview.coverage.state, stages: preview.steps.map((step, index) => {
     const node = descriptor?.contractFingerprint === result.contractFingerprint ? descriptorRuntimeNodes(descriptor).find(node => node.id === step.nodeId) : undefined;
     const label = node?.kind === "task" ? node.label ?? node.uses.title : node?.kind === "transaction" ? node.label ?? node.prepare.uses.title : String(step.nodeId);
