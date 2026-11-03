@@ -90,6 +90,7 @@ const DEFERRED_CAPABILITIES = [
 const RETENTION_CASES_MODULES = ["tests/support/processes/startup-upgrade-retention-cases.js", "tests/support/processes/browser-root-retention.js"];
 const RETENTION_CASES_OWNER = "tests/support/processes/credential-source-retention-worker.ts";
 const PROCESS_ENTRYPOINTS = [
+  { file: "debug-event-child.ts", consumers: ["tests/backend/logs/debug-events.integration.test.ts"] },
   { file: "command-custody-worker.ts", consumers: ["tests/backend/runtime/browser/command-browser.integration.test.ts"] },
   { file: "credential-source-retention-worker.ts", consumers: ["tests/support/helpers/credential-source-retention.ts"] },
   { file: "duo-credential-worker.ts", consumers: ["tests/backend/storage/configuration/canonical-credential-store.recovery.integration.test.ts"] },
