@@ -1,7 +1,7 @@
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
 import { RunContinuationRefusedError, readContinuationGate, validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../../../models/run/worker.js";
-import { DryRunSampleSchema, type DryRunStep, type DryRunBinding } from "../../../models/workflow/dry-run.js";
+import { DryRunSampleSchema, type DryRunBinding } from "../../../models/workflow/dry-run.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { SETTINGS_CATALOG } from "../../../models/config/catalog.js";
@@ -23,7 +23,7 @@ import { TaskError, taskErrorCause, wrapUnhandledTaskError } from "../../../work
 import type { ProviderClient } from "../../../workflow-kit/providers.js";
 import type { AnyTask, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
-import { descriptorRuntimeNodes, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowDryRunSupport, workflowPreviewDependencyIds, workflowTerminalResultExecution, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import { TransactionDryRunPreviewSchema, TransactionOutcomeSchema, type TransactionDryRunPreview } from "../../../rules/write-safety/write-safety-primitives.js";
@@ -64,7 +64,7 @@ import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-
 import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
 import { createTaskProvenanceCollector } from "../../runs/provenance/task-provenance.js";
-import { RunResultRecordSchema, delegationEvidenceOutput, singleDelegationResult, terminalGateDependencyRecord } from "../../../models/run/result.js";
+import { RunResultRecordSchema, RunPreviewStepSchema, delegationEvidenceOutput, resolveDelegationEvidenceOutput, type RunPreviewStep, singleDelegationResult, terminalGateDependencyRecord } from "../../../models/run/result.js";
 import { createDeclaredActionBinder } from "../writes/operation-action-binding.js";
 import { buildTerminalAuthorization } from "../../runs/lifecycle/terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
@@ -662,7 +662,7 @@ export async function executeClaimedRun(
     };
 
 
-    const dryRunSteps = new Map<string, DryRunStep>();
+    const dryRunSteps = new Map<string, RunPreviewStep>();
     const previewOnly = new Set<string>();
     const markUnavailable = (node: RuntimeFlowNode): void => {
       previewOnly.add(String(node.id));
@@ -751,7 +751,7 @@ export async function executeClaimedRun(
         || evidence.children.some(child => child.run.envelope.workflow !== node.target.id || child.run.envelope.dryRun !== envelope.dryRun)) {
         throw new RunContinuationRefusedError("run-gate-resume-child-authority-unavailable");
       }
-      delegationEvidenceOutput(evidence, node.target.result);
+      resolveDelegationEvidenceOutput(evidence, node.target.result);
       return evidence;
     };
 
@@ -2183,7 +2183,7 @@ export async function executeClaimedRun(
             requireOriginalClaim(getRun());
             const sourceEvidence = childSourceEvidence(node);
             let raw: unknown;
-            if (sourceEvidence !== undefined) raw = delegationEvidenceOutput(sourceEvidence, node.target.result);
+            if (sourceEvidence !== undefined) raw = resolveDelegationEvidenceOutput(sourceEvidence, node.target.result).output;
             else if (childBatchOutputs.has(node.id)) raw = childBatchOutputs.get(node.id);
             else {
               const leafIds = owner.kind === "child-run" ? [owner.id] : owner.branches.flatMap(branch => branch.nodes);
@@ -2230,10 +2230,16 @@ export async function executeClaimedRun(
               throw new RunContinuationRefusedError("run-gate-resume-child-authority-changed");
             }
             if (evidence === undefined) throw new Error("delegation-outcome-authority-unavailable");
-            const output = delegationEvidenceOutput(evidence, node.target.result);
-            if (canonicalJsonStringify(raw) !== canonicalJsonStringify(output)) throw new Error("delegation-outcome-value-mismatch");
-            outputs[String(node.id)] = JsonValueSchema.parse(output);
+            const resolution = resolveDelegationEvidenceOutput(evidence, node.target.result);
+            if (canonicalJsonStringify(raw) !== canonicalJsonStringify(resolution.output)) throw new Error("delegation-outcome-value-mismatch");
             childResultEvidence.set(String(node.id), evidence);
+            if (resolution.kind === "preview") {
+              if (!envelope.dryRun) throw new Error("delegation-preview-dry-run-required");
+              previewOnly.add(String(node.id));
+              dryRunSteps.set(String(node.id), { nodeId: node.id, state: "delegation-preview" });
+              continue;
+            }
+            outputs[String(node.id)] = JsonValueSchema.parse(resolution.output);
             const retainedResult = singleDelegationResult(evidence);
             if (retainedResult !== undefined) {
               for (const lineage of retainedResult.operationLineage ?? []) {
@@ -2265,12 +2271,13 @@ export async function executeClaimedRun(
       return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" });
     }
     if (envelope.dryRun) {
-      const first = nodes.find(node => node.kind === "transaction");
-      if (first !== undefined) return settleSuccess(getRun(), buildRunPreviewResult(descriptor, getRun(),
-        nodes.map(node => dryRunSteps.get(String(node.id))),
-        dependencyEvidenceFor([...new Set([...first.dependsOn,
-          ...nodes.filter(node => (node.kind === "task" || node.kind === "child-run") && dryRunSteps.get(String(node.id))?.state === "exercised").map(node => node.id)])], "dry-run preview"), clock));
-      if (envelope.parent === undefined) throw new Error("dry-run preview has no transaction boundary");
+      const support = workflowDryRunSupport(descriptor);
+      if (support.state === "supported") {
+        const steps = RunPreviewStepSchema.array().parse(nodes.map(node => dryRunSteps.get(String(node.id))));
+        return settleSuccess(getRun(), buildRunPreviewResult(descriptor, getRun(), steps,
+          dependencyEvidenceFor(workflowPreviewDependencyIds(descriptor, steps), "dry-run preview"), clock));
+      }
+      if (envelope.parent === undefined || support.reason !== "no-transaction-node") throw new Error("dry-run preview has no supported preparation boundary");
     }
     const terminal = workflowTerminalResultExecution(descriptor);
     const current = getRun();

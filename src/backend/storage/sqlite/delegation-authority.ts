@@ -5,7 +5,7 @@ import { z } from "zod";
 import type { WorkerResetBinding } from "../../../models/run/worker-control.js";
 import type { DependencyRecord } from "../../../rules/workflow/dependencies.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
-import { RunResultRecordSchema, RunDryRunPreviewResultSchema, terminalEvidenceResult, DelegationTerminalEvidenceSchema, delegationDependencyRecord } from "../../../models/run/result.js";
+import { RunResultRecordSchema, readRunPreviewResult, terminalEvidenceResult, DelegationTerminalEvidenceSchema, delegationDependencyRecord } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { delegationChildInputFingerprint } from "../../../models/workflow/delegation.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
@@ -95,8 +95,7 @@ export function authenticateDelegationGroup(repositories: AuthorityRepositories,
     const effective = resolveDelegationRetry(repositories, manifest, invocation, child, dependency.dependencyId);
     const terminal = childTerminalSettlement(effective.child, repositories);
     if (terminal?.state === "satisfied" && terminal.result.resultSchemaHash !== invocation.target.resultSchemaHash
-      && !(effective.child.envelope.dryRun && terminal.result.resultSchemaHash === deriveSchemaHash(RunDryRunPreviewResultSchema, "output")
-        && RunDryRunPreviewResultSchema.safeParse(terminal.result.result.value).success)) throw new Error("delegation-child-result-schema-mismatch");
+      && terminal.kind !== "preview") throw new Error("delegation-child-result-schema-mismatch");
     if (dependency.state !== "active" && terminal?.state !== dependency.state) throw new Error("delegation-dependency-evidence-mismatch");
     if (dependency.version !== 1 + 2 * (effective.history.length - 1) + (dependency.state === "active" ? 0 : 1)) throw new Error("delegation-dependency-version-authority-mismatch");
     if (dependency.state !== "active" && terminal !== undefined) {
@@ -116,10 +115,10 @@ export function authenticateDelegationGroup(repositories: AuthorityRepositories,
   return { parent, invocation, children };
 }
 
-export function childTerminalSettlement(child: RunRecord, repositories: AuthorityRepositories): Readonly<{
-  state: "satisfied" | "failed" | "cancelled";
-  result: z.infer<typeof RunResultRecordSchema>;
-}> | undefined {
+export function childTerminalSettlement(child: RunRecord, repositories: AuthorityRepositories):
+  | Readonly<{ state: "satisfied"; kind: "ordinary" | "preview"; result: z.infer<typeof RunResultRecordSchema> }>
+  | Readonly<{ state: "failed" | "cancelled"; kind: "terminal-evidence"; result: z.infer<typeof RunResultRecordSchema> }>
+  | undefined {
   if (child.lifecycle.state !== "terminal" || !["done", "failed", "cancelled"].includes(child.lifecycle.outcome)) return undefined;
   const stored = repositories.runResults.get(child.envelope.runId);
   if (stored === undefined) throw new Error("delegation-child-terminal-evidence-unavailable");
@@ -129,15 +128,17 @@ export function childTerminalSettlement(child: RunRecord, repositories: Authorit
     || result.configSnapshotId !== child.envelope.configSnapshotId || result.configFingerprint !== child.envelope.configFingerprint) throw new Error("delegation-child-terminal-evidence-mismatch");
   if (child.lifecycle.outcome === "done") {
     if (child.completion?.kind !== "done" || child.completion.resultDigest !== result.resultDigest || evidence !== undefined) throw new Error("delegation-child-terminal-evidence-mismatch");
-    return { state: "satisfied", result };
+    const preview = readRunPreviewResult(result);
+    if (preview !== undefined && !child.envelope.dryRun) throw new Error("delegation-child-result-schema-mismatch");
+    return { state: "satisfied", kind: preview === undefined ? "ordinary" : "preview", result };
   }
   if (child.lifecycle.outcome === "failed") {
     if (evidence?.kind !== "failed-evidence" || child.completion?.kind !== "failed"
       || evidence.authorization.failureId !== child.lifecycle.failureId) throw new Error("delegation-child-terminal-evidence-mismatch");
-    return { state: "failed", result };
+    return { state: "failed", kind: "terminal-evidence", result };
   }
   if (evidence?.kind !== "lifecycle-evidence" || evidence.outcome !== "cancelled") throw new Error("delegation-child-terminal-evidence-mismatch");
-  return { state: "cancelled", result };
+  return { state: "cancelled", kind: "terminal-evidence", result };
 }
 
 export function readDelegationEvidence(repositories: AuthorityRepositories, parentRunId: string, nodeId: string, scopePath = new Set<string>()) {
@@ -423,12 +424,6 @@ export function readDelegationReadiness(repositories: AuthorityRepositories, run
     collect(readiness);
     if (intent === "join" && manifest.join !== "none") {
       for (const member of group.children) {
-        const terminal = childTerminalSettlement(member.child, repositories);
-        if (terminal?.state === "satisfied" && member.child.envelope.dryRun
-          && terminal.result.resultSchemaHash === deriveSchemaHash(RunDryRunPreviewResultSchema, "output")) {
-          RunDryRunPreviewResultSchema.parse(terminal.result.result.value);
-          collect({ state: "blocked", childRunId: member.child.envelope.runId, reason: "child-preview", manifestId: manifest.manifestId, resultDigest: terminal.result.resultDigest });
-        }
         if (member.child.lifecycle.state === "terminal" && member.child.lifecycle.outcome === "cancelled"
           && delegationCancellationAvailability(repositories, member.child.envelope.runId).state === "unavailable") {
           collect({ state: "blocked", childRunId: member.child.envelope.runId, reason: "child-cancellation-unavailable" });

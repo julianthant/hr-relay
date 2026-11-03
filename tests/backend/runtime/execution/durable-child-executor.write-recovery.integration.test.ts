@@ -1,9 +1,9 @@
 import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
-import { buildRunPreviewResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
+import { buildRunPreviewResult, buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { afterAll } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
-import { childWriteRecoveryRoot as root, childPrerequisiteRoot, childPrerequisiteModules, childCrashWrite, parallelChildWriteRecoveryRoot, childReadPreviewRoot, childUnsupportedPreviewRoot, childUnsupportedPreviewTarget, childGateResumeRoot } from "../../../support/fixtures/child-execution-write-workflow.js";
+import { childWriteRecoveryRoot as root, childPrerequisiteRoot, childPrerequisiteModules, childCrashWrite, parallelChildWriteRecoveryRoot, childReadPreviewRoot, childUnsupportedPreviewRoot, childUnsupportedPreviewTarget, childGateResumeRoot, childPreviewPrerequisiteRoot, childPreviewDispatchRoot, childPreviewEmptyRoot, childPreviewNestedRoot } from "../../../support/fixtures/child-execution-write-workflow.js";
 import assert from "node:assert/strict";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -12,6 +12,7 @@ import { childExecutionBuildManifest } from "../../../support/fixtures/child-exe
 import { resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
+import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/descriptor-registry.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
@@ -28,8 +29,9 @@ import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
+import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 
-import { RunDryRunPreviewResultSchema, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../../src/models/run/result.js";
+import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, RunResultRecordSchema, deriveRunResultDigest, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../../src/models/run/result.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { Plan1Output, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
 
@@ -38,12 +40,17 @@ afterAll(() => profiles.close());
 const world = createRunExecutorTestWorld(profiles.create);
 afterEach(world.cleanup);
 
-async function fixture(mode: "single" | "prerequisites" | "parallel" | "read-preview" | "unsupported-preview" | "gate-resume" = "single", dryRun = false) {
+async function fixture(mode: "single" | "prerequisites" | "parallel" | "read-preview" | "unsupported-preview" | "gate-resume" | "delegated-prerequisite" | "dispatch-preview" | "empty-preview" | "nested-preview" = "single", dryRun = false) {
   const prerequisites = mode === "prerequisites", parallel = mode === "parallel", readPreview = mode === "read-preview", unsupportedPreview = mode === "unsupported-preview";
   const withReads = prerequisites || readPreview || unsupportedPreview || mode === "gate-resume";
-  const driver = createWriteFixtureWorld(), graph = withReads || parallel ? childPrerequisiteModules(driver) : undefined;
-  const selectedRoot = mode === "gate-resume" ? childGateResumeRoot : readPreview ? childReadPreviewRoot : unsupportedPreview ? childUnsupportedPreviewRoot
+  const delegatedPrerequisite = mode === "delegated-prerequisite" || mode === "dispatch-preview" || mode === "empty-preview" || mode === "nested-preview";
+  const driver = createWriteFixtureWorld(), graph = withReads || parallel || delegatedPrerequisite ? childPrerequisiteModules(driver) : undefined;
+  const selectedRoot = mode === "nested-preview" ? childPreviewNestedRoot : mode === "dispatch-preview" ? childPreviewDispatchRoot : mode === "empty-preview" ? childPreviewEmptyRoot
+    : delegatedPrerequisite ? childPreviewPrerequisiteRoot : mode === "gate-resume" ? childGateResumeRoot : readPreview ? childReadPreviewRoot : unsupportedPreview ? childUnsupportedPreviewRoot
     : parallel ? parallelChildWriteRecoveryRoot : prerequisites ? childPrerequisiteRoot : root;
+  if (parallel && dryRun) createWorkflowDescriptorRegistry([selectedRoot.descriptor], [plan1Leaf.descriptor, childCrashWrite.descriptor]);
+  if (delegatedPrerequisite) createWorkflowDescriptorRegistry([selectedRoot.descriptor], [childCrashWrite.descriptor,
+    ...(mode === "nested-preview" ? [childPreviewPrerequisiteRoot.descriptor] : [])]);
   const stores = graph?.stores ?? buildWriteFixtureRegistry(driver);
   const h = await world.executorHarness({ descriptor: selectedRoot.descriptor, stores, sessions: writeFixtureSessions(driver) });
   const { database, clock, stateRoot, path } = h.authority;
@@ -55,11 +62,12 @@ async function fixture(mode: "single" | "prerequisites" | "parallel" | "read-pre
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }).state, "applied");
   const sequencer = createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: database,
     sessions: h.manager, emitter: h.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: h.scheduler, taskDeadlineMs: 60_000,
-    operator: "local-operator", log: h.deps.log, resolveImplFingerprint: id => withReads || parallel ? resolveTaskImplFingerprint(childExecutionBuildManifest, id) : WRITE_FIXTURE_IMPL_FINGERPRINT });
+    operator: "local-operator", log: h.deps.log, resolveImplFingerprint: id => graph !== undefined ? resolveTaskImplFingerprint(childExecutionBuildManifest, id) : WRITE_FIXTURE_IMPL_FINGERPRINT });
   const execution = canonicalChildExecution({ ...h.deps, writeSequencer: sequencer,
-    ...(withReads || parallel ? { buildManifest: childExecutionBuildManifest } : {}) }, database, path,
+    ...(graph === undefined ? {} : { buildManifest: childExecutionBuildManifest }) }, database, path,
     workflow => graph === undefined ? workflow === root.descriptor.id ? root.descriptor : workflow === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined
-      : workflow === selectedRoot.descriptor.id ? selectedRoot.descriptor : parallel && workflow === childCrashWrite.descriptor.id ? childCrashWrite.descriptor
+      : workflow === selectedRoot.descriptor.id ? selectedRoot.descriptor : mode === "nested-preview" && workflow === childPreviewPrerequisiteRoot.descriptor.id ? childPreviewPrerequisiteRoot.descriptor
+      : (parallel || delegatedPrerequisite) && workflow === childCrashWrite.descriptor.id ? childCrashWrite.descriptor
       : graph.modules.find(module => module.descriptor.id === workflow)?.descriptor);
   const run = execution.start(selectedRoot.descriptor, withReads ? { emplId: WRITE_FIXTURE_EID, text: "same", mode: "ok" } : { eid: WRITE_FIXTURE_EID }, { dryRun });
   return { ...h.authority, driver, execution, run };
@@ -283,6 +291,155 @@ it("runs nested read-only delegated children with dryRun true and consumes their
   assert.equal(f.driver.events.filter(event => event === "prepare").length, 1);
   assert.equal(f.driver.events.some(event => event.startsWith("commit-click:")), false);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
+});
+
+it("joins ordinary read and prepared write branches into a preview without deriving an ordinary parent result, across replay and reopen", async () => {
+  const f = await fixture("parallel", true);
+  f.driver.probeResults.push(absentProbeEvidence(f.clock.now().toISOString()));
+  assert.deepEqual(workflowDryRunSupport(parallelChildWriteRecoveryRoot.descriptor), { state: "supported", firstDelegationNodeId: "write" });
+  const requeue = f.execution.lifecycle.requeue.bind(f.execution.lifecycle);
+  let releases = 0;
+  f.execution.lifecycle.requeue = request => { releases++; return requeue(request); };
+  assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "yielded-delegation");
+  const manifests = f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId);
+  assert.deepEqual(manifests.map(manifest => manifest.edgeId).sort(), ["read", "write"]);
+  assert.equal(f.database.authority.lifecycleJournal.listDelegationInvocations(f.run.envelope.runId).length, 2);
+  assert.equal(releases, 1);
+  const done = await f.execution.execute(f.run, world.SIGNAL);
+  assert.ok(done.run?.lifecycle.state === "terminal" && done.run.lifecycle.outcome === "done");
+  const children = f.database.authority.runs.listChildren(f.run.envelope.runId);
+  const read = children.find(child => child.envelope.workflow === plan1Leaf.descriptor.id);
+  const write = children.find(child => child.envelope.workflow === childCrashWrite.descriptor.id);
+  assert.ok(read && write);
+  const readResult = f.database.authority.runResults.get(read.envelope.runId);
+  const writeResult = f.database.authority.runResults.get(write.envelope.runId);
+  const parentResult = f.database.authority.runResults.get(f.run.envelope.runId);
+  assert.ok(readResult && writeResult && parentResult);
+  assert.deepEqual(Plan1Output.parse(readResult.result.value), { eid: WRITE_FIXTURE_EID, disposition: "parallel read/parallel read", providerState: "parallel read" });
+  assert.equal(readResult.resultSchemaHash, deriveSchemaHash(Plan1Output, "output"));
+  assert.equal(RunDryRunPreviewResultSchema.parse(writeResult.result.value).externalCommit, "none");
+  const preview = RunDelegatedDryRunPreviewResultSchema.parse(parentResult.result.value);
+  assert.deepEqual(preview.steps, [{ nodeId: "children", state: "exercised" }, { nodeId: "read", state: "exercised" }, { nodeId: "write", state: "delegation-preview" }]);
+  assert.deepEqual(preview.coverage, { state: "full" });
+  assert.equal(parentResult.operationLineage, undefined);
+  assert.equal(writeResult.operationLineage, undefined);
+  const evidence = ["read", "write"].map(nodeId => readDelegationEvidence(f.database.authority, f.run.envelope.runId, nodeId));
+  const { completion, ...retained } = done.run; assert.ok(completion?.kind === "done");
+  const running = { ...retained, lifecycle: { state: "running", workerId: WRITE_FIXTURE_WORKER_ID,
+    claimedAt: f.clock.now().toISOString(), heartbeatAt: f.clock.now().toISOString() } };
+  const generation = f.database.getMeta().authorityGeneration;
+  const rebuild = (input: unknown) => buildRunPreviewResult(parallelChildWriteRecoveryRoot.descriptor, running, preview.steps, input, f.clock);
+  assert.deepEqual(rebuild(evidence).record, parentResult);
+  assert.throws(() => buildRunResult(parallelChildWriteRecoveryRoot.descriptor, running, evidence, f.clock), /terminal-preview-is-not-workflow-output/);
+  assert.throws(() => rebuild(evidence.slice(0, 1)), /missing=write/);
+  assert.throws(() => rebuild(evidence.map(entry => ({ ...entry, parentRunId: read.envelope.runId }))), /terminal-delegation-dependency-identity-mismatch/);
+  assert.throws(() => buildRunPreviewResult(parallelChildWriteRecoveryRoot.descriptor,
+    { ...running, envelope: { ...running.envelope, dryRun: false } }, preview.steps, evidence, f.clock), /not a dry run/);
+  const repositories = f.database.authority;
+  const localPreview = RunDryRunPreviewResultSchema.parse(writeResult.result.value);
+  const changedValue = { ...writeResult.result, value: { ...localPreview, steps: [{ nodeId: "forged-preparation", state: "exercised" }] } };
+  const changedResult = RunResultRecordSchema.parse({ ...writeResult, result: changedValue, resultDigest: deriveRunResultDigest(changedValue) });
+  assert.ok(write.completion?.kind === "done");
+  const changedRun = { ...write, completion: { ...write.completion, resultDigest: changedResult.resultDigest } };
+  assert.throws(() => readDelegationEvidence({ ...repositories,
+    runs: { ...repositories.runs, get: id => id === write.envelope.runId ? changedRun : repositories.runs.get(id) },
+    runResults: { ...repositories.runResults, get: id => id === write.envelope.runId ? changedResult : repositories.runResults.get(id) },
+  }, f.run.envelope.runId, "write"), /delegation-settlement-authority-unavailable/);
+  assert.throws(() => readDelegationEvidence({ ...repositories,
+    runs: { ...repositories.runs, get: id => id === write.envelope.runId ? { ...write, envelope: { ...write.envelope, dryRun: false } } : repositories.runs.get(id) },
+  }, f.run.envelope.runId, "write"), /delegation-child-binding-mismatch/);
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  for (const run of [done.run, ...children]) {
+    assert.equal(run.envelope.dryRun, true);
+    assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    assert.deepEqual(f.database.authority.writeIntents.countDryRunEvidenceByRun(run.envelope.runId),
+      { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
+  }
+  for (const run of children) {
+    assert.throws(() => f.execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "retry", source: "dashboard",
+      requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: { runId: run.envelope.runId, expectedVersion: run.version } }),
+    /delegation-retry-source-unavailable/);
+  }
+  assert.equal(f.driver.events.filter(event => event === "prepare").length, 1);
+  assert.equal(f.driver.events.some(event => event.startsWith("commit-click:")), false);
+  const date = f.clock.now().toISOString().slice(0, 10);
+  assert.deepEqual(createTransactionHistory(f.database.authority).query({ from: date, to: date }).rows, []);
+  stopSyntheticDatabaseWorkers({ database: f.database, path: f.path });
+  const stoppedGeneration = f.database.getMeta().authorityGeneration;
+  f.closeDatabase();
+  const reopened = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "mixed-preview-reopen-test" }, f.clock);
+  try {
+    assert.equal(reopened.getMeta().authorityGeneration, stoppedGeneration);
+    assert.deepEqual(reopened.authority.runResults.get(f.run.envelope.runId), parentResult);
+    assert.deepEqual(reopened.authority.runResults.get(read.envelope.runId), readResult);
+    assert.deepEqual(reopened.authority.runResults.get(write.envelope.runId), writeResult);
+    assert.deepEqual(["read", "write"].map(nodeId => readDelegationEvidence(reopened.authority, f.run.envelope.runId, nodeId)), evidence);
+    assert.deepEqual(reopened.authority.delegationManifests.listByParentRun(f.run.envelope.runId), manifests);
+    assert.equal(reopened.authority.runs.listChildren(f.run.envelope.runId).length, 2);
+    assert.equal(reopened.getMeta().authorityGeneration, stoppedGeneration);
+  } finally { reopened.close(); }
+});
+
+it("retains unavailable intermediary tasks after a child preview without requiring their nonexistent checkpoints", async () => {
+  const f = await fixture("delegated-prerequisite", true);
+  f.driver.probeResults.push(absentProbeEvidence(f.clock.now().toISOString()));
+  const done = await f.execution.execute(f.run, world.SIGNAL);
+  assert.ok(done.run?.lifecycle.state === "terminal" && done.run.lifecycle.outcome === "done");
+  const result = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(result);
+  assert.deepEqual(RunDelegatedDryRunPreviewResultSchema.parse(result.result.value).steps, [
+    { nodeId: "child", state: "delegation-preview" },
+    { nodeId: "observe", state: "unavailable", reason: "requires-unsubmitted-output" },
+    { nodeId: "write", state: "unavailable", reason: "requires-unsubmitted-output" },
+  ]);
+  assert.deepEqual(result.dependencies.map(dependency => dependency.nodeId), ["child"]);
+  assert.deepEqual(f.database.authority.runCheckpoints.listByItem(f.run.envelope.workflow, f.run.envelope.itemId), []);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
+  assert.equal(f.driver.events.filter(event => event === "prepare").length, 1);
+  assert.equal(f.driver.events.some(event => event.startsWith("commit-click:")), false);
+});
+
+for (const mode of ["empty-preview", "dispatch-preview"] as const) {
+it(`accounts for ${mode} without claiming a prepared child`, async () => {
+  const f = await fixture(mode, true);
+  const done = await f.execution.step(f.run, world.SIGNAL);
+  assert.equal(done.outcome.state, "done");
+  const result = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(result);
+  const preview = RunDelegatedDryRunPreviewResultSchema.parse(result.result.value);
+  assert.deepEqual(preview.steps, [{ nodeId: "children", state: "exercised" }]);
+  assert.deepEqual(preview.coverage, mode === "empty-preview" ? { state: "full" }
+    : { state: "partial", boundaryNodeId: "children", reason: "descendant-not-awaited" });
+  const evidence = readDelegationEvidence(f.database.authority, f.run.envelope.runId, "children");
+  assert.deepEqual(evidence.children, []);
+  assert.equal(evidence.manifest.children.length, mode === "empty-preview" ? 0 : 1);
+  assert.equal(f.database.authority.runs.listChildren(f.run.envelope.runId).length, mode === "empty-preview" ? 0 : 1);
+  assert.equal(f.driver.events.includes("prepare"), false);
+  assert.equal(f.driver.events.some(event => event.startsWith("commit-click:")), false);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
+});
+}
+
+it("authenticates a delegated preview through every waiting ancestor on one home worker", async () => {
+  const f = await fixture("nested-preview", true);
+  f.driver.probeResults.push(absentProbeEvidence(f.clock.now().toISOString()));
+  const done = await f.execution.execute(f.run, world.SIGNAL);
+  assert.ok(done.run?.lifecycle.state === "terminal" && done.run.lifecycle.outcome === "done");
+  const [middle] = f.database.authority.runs.listChildren(f.run.envelope.runId); assert.ok(middle);
+  const [leaf] = f.database.authority.runs.listChildren(middle.envelope.runId); assert.ok(leaf);
+  for (const run of [done.run, middle, leaf]) {
+    assert.equal(run.envelope.dryRun, true);
+    assert.equal(run.envelope.attempt, 1);
+    const retained = f.database.authority.runs.get(run.envelope.runId); assert.ok(retained?.completion?.kind === "done");
+    const result = f.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
+    assert.equal(retained.completion.resultDigest, result.resultDigest);
+    assert.deepEqual(f.database.authority.writeIntents.countDryRunEvidenceByRun(run.envelope.runId),
+      { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
+    const preview = run.envelope.runId === leaf.envelope.runId ? RunDryRunPreviewResultSchema.parse(result.result.value)
+      : RunDelegatedDryRunPreviewResultSchema.parse(result.result.value);
+    assert.equal(preview.externalCommit, "none");
+    assert.equal(result.operationLineage, undefined);
+  }
+  assert.equal(f.driver.events.filter(event => event === "prepare").length, 1);
+  assert.equal(f.driver.events.some(event => event.startsWith("commit-click:")), false);
 });
 
 it("still refuses a delegated child whose transaction explicitly does not support a dry run", async () => {

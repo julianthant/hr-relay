@@ -73,7 +73,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
     listGateResultsByRun: (runId: string) => authority.gateResults.listByRun(runId),
     listDelegationsByRun: (runId: string) => {
       const run = requireTrustRun(deps.runReader, runId);
-      if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done" || run.envelope.dryRun) return [];
+      if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done") return [];
       const descriptor = byId.get(run.envelope.workflow);
       if (descriptor === undefined) throw new Error("receipt-delegation-descriptor-unavailable");
       const nodes = descriptorRuntimeNodes(descriptor).filter(node => node.kind === "child-run");
