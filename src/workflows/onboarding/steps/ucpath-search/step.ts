@@ -1,7 +1,7 @@
 import { OnboardingInput } from "../../../../models/workflows/onboarding/input.js";
 import { OnboardingMatchHireSubject } from "../../../../models/workflows/onboarding/match-hire-subject.js";
 import { SearchPersonMatch } from "../../../../models/systems/ucpath/search-person-match.js";
-import type { HireEmployee } from "../../../../models/workflows/onboarding/read-hire-plan.js";
+import type { HireEmployee } from "../../../../models/people/hire-employee.js";
 import type { WorkflowAuthor, WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries, inheritStepProof, reuseTask } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";

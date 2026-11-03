@@ -4,21 +4,10 @@ import { CANONICAL_FIELDS } from "../../fields/registry.js";
 import { CrmHireDataSchema } from "../../systems/crm/read-hire-data.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 import { UsDateSchema } from "../../config/schema.js";
+import { HireEmployeeSchema } from "../../people/hire-employee.js";
 import { OnboardingRosterBindingSchema, OnboardingRosterSnapshotRowSchema } from "./roster.js";
 
-export const OnboardingPostalCodeSchema = z.string().regex(/^\d{5}(?:-\d{4})?$/u);
-export const HireEmployeeSchema = z.strictObject({
-  firstName: z.string().min(1), lastName: z.string().min(1), middleName: z.string(),
-  preferredFirstName: z.string().min(1), preferredLastName: z.string().min(1), preferredMiddleName: z.string(),
-  ssn: CANONICAL_FIELDS.ssn.schema.nullable(), dob: CANONICAL_FIELDS.dob.schema,
-  address: z.string().min(1), addressLine2: z.string(), city: z.string().min(1),
-  state: CANONICAL_FIELDS.state.schema, postalCode: OnboardingPostalCodeSchema,
-  phone: z.string(), email: z.email(), positionNumber: z.string().min(1),
-  departmentNumber: z.string().regex(/^\d{4,6}$/u), recruitmentNumber: z.string(),
-  employeeClassification: z.string().regex(/^\d+$/u),
-  hourlyRateMinor: z.number().int().positive(), effectiveDate: UsDateSchema, expectedJobEndDate: UsDateSchema,
-});
-export type HireEmployee = z.infer<typeof HireEmployeeSchema>;
+export const OnboardingPostalCodeSchema = CANONICAL_FIELDS.postalCode.schema;
 
 export const HirePlanSchema = z.strictObject({
   recordId: z.string().min(1), roster: OnboardingRosterBindingSchema, employee: HireEmployeeSchema,

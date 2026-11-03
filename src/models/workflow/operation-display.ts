@@ -573,7 +573,7 @@ export interface WorkflowOperationContractProjection {
 export interface WorkflowOperationEntryProjection {
   readonly label?: string;
   readonly id: string;
-  readonly kind: "task" | "transaction" | "gate" | "parallel" | "delegate";
+  readonly kind: "task" | "transaction" | "gate" | "parallel" | "delegate" | "branch";
   readonly dependsOn: readonly string[];
   readonly contracts: readonly WorkflowOperationContractProjection[];
   readonly output?: z.ZodType;

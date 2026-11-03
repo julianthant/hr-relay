@@ -30,7 +30,7 @@ export const onboardingWorkflow = defineWorkflow({
       ],
     },
   } }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
-  role: defineWorkflowRole({ kind: "composition" }), scenarios: ["onboarding/crm-extraction"],
+  role: defineWorkflowRole({ kind: "composition" }), scenarios: ["onboarding/crm-extraction", "onboarding/write-transactions"],
   identity: { matchKey: input => input.email.toLowerCase() },
   presentation: { title: input => input.email, subtitle: () => "Read-only review · hire unavailable" },
   outcomeProjection: { fieldPath: "state", cases: [{ value: "implementation-incomplete", label: "Hire unavailable", tone: "warning" }] },

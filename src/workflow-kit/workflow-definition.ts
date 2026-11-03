@@ -53,7 +53,7 @@ import type {
 import { defineWorkflowDescriptor, parseRequiredWorkbookTypeIds } from "./workflow.js";
 
 /** The closed entry algebra. */
-export type WorkflowEntryKind = "task" | "parallel" | "delegate" | "gate" | "transaction";
+export type WorkflowEntryKind = "task" | "parallel" | "delegate" | "gate" | "transaction" | "branch";
 const GROUP_OWNER = Symbol("workflow-group-owner");
 
 export interface WorkflowTimelineGroup {
@@ -124,6 +124,15 @@ export interface TaskEntryIdentity<
   readonly label?: string;
   readonly replay: "checkpoint" | "always-rerun";
   readonly when?: NodeConditionSpec;
+}
+
+export interface BranchEntryIdentity<
+  Id extends string = string,
+  Cases extends Readonly<Record<string, readonly string[]>> = Readonly<Record<string, readonly string[]>>,
+> extends StepOwned {
+  readonly id: Id;
+  readonly label?: string;
+  readonly cases: Cases;
 }
 
 export interface GateEntryIdentity<
@@ -256,7 +265,15 @@ interface DelegateEntry<Id extends string, Output> extends WorkflowEntry<Id, Out
   readonly deriveChildItemId: (input: unknown, context: ChildRunIdentityContext) => ItemId;
 }
 
+interface BranchEntry extends WorkflowEntry<string, { readonly selected: string }, false> {
+  readonly kind: "branch";
+  readonly label?: string;
+  readonly cases: Readonly<Record<string, readonly string[]>>;
+  readonly choose: (scope: unknown) => string;
+}
+
 type RuntimeEntry =
+  | BranchEntry
   | TaskEntry<string, unknown, boolean>
   | TransactionEntry<string, unknown>
   | GateEntry<string, unknown, boolean>
@@ -286,6 +303,16 @@ export interface WorkflowAuthor<InputSchema extends z.ZodType> {
     step: WorkflowTimelineGroup,
     options: Readonly<{ omission: StepOmissionDeclaration }>,
   ): WorkflowTimelineGroup;
+
+  branch<
+    const Identity extends BranchEntryIdentity,
+    const References extends readonly AnyWorkflowEntry[],
+  >(
+    this: void,
+    identity: Identity,
+    references: References,
+    choose: (scope: WorkflowEntryScope<InputSchema, References>) => keyof Identity["cases"] & string,
+  ): WorkflowEntry<Identity["id"], { readonly selected: keyof Identity["cases"] & string }, false>;
 
   task<
     const Identity extends TaskEntryIdentity,
@@ -375,6 +402,19 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
         omission: options.omission,
         [GROUP_OWNER]: step,
       });
+    },
+    branch(
+      identity: BranchEntryIdentity,
+      references: readonly AnyWorkflowEntry[],
+      choose: (scope: never) => string,
+    ) {
+      const entry: BranchEntry = {
+        entryKind: "workflow-entry", kind: "branch", id: identity.id, ...withStep(identity),
+        references, contracts: Object.freeze([]), cases: identity.cases,
+        ...(identity.label === undefined ? {} : { label: identity.label }),
+        choose: scope => choose(scope as never),
+      };
+      return Object.freeze(entry);
     },
     task(
       identity: TaskEntryIdentity,
@@ -924,6 +964,12 @@ interface RuntimeFlowBuilder {
     when?: NodeConditionSpec;
     replay: "checkpoint" | "always-rerun";
   }>): RuntimeFlowBuilder;
+  branch(id: string, opts: Readonly<{
+    label?: string;
+    dependsOn: readonly string[];
+    cases: Readonly<Record<string, readonly string[]>>;
+    choose: (scope: unknown) => string;
+  }>): RuntimeFlowBuilder;
   transaction(id: string, pair: Readonly<{
     label?: string;
     dependsOn: readonly string[];
@@ -998,6 +1044,11 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
         ...(entry.when === undefined ? {} : { when: entry.when }),
         replay: entry.replay,
       });
+      continue;
+    }
+    if (entry.kind === "branch") {
+      builder.branch(entry.id, { dependsOn, cases: entry.cases, choose: entry.choose,
+        ...(entry.label === undefined ? {} : { label: entry.label }) });
       continue;
     }
     if (entry.kind === "transaction") {
@@ -1090,6 +1141,7 @@ function defaultEntryLabel(entry: RuntimeEntry): string | undefined {
     case "gate": return entry.label;
     case "parallel":
     case "delegate":
+    case "branch":
       return undefined;
   }
 }
@@ -1163,7 +1215,7 @@ function operationDisplayEntries(definition: AnyWorkflowDefinition): readonly Wo
     }
     return Object.freeze({
       ...base,
-      kind: "parallel" as const,
+      kind: entry.kind,
       contracts: Object.freeze([]),
     });
   }));

@@ -1,3 +1,4 @@
+import { refuseHireOperations } from "./hire-fake.js";
 import { EidSchema } from "../../../../rules/identity/ids.js";
 import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { SearchPersonOrgOutputSchema } from "../../../../models/systems/ucpath/search-person-org.js";
@@ -29,6 +30,7 @@ export function createDeterministicUcpathPersonOrgDriver(
   let screen: UcpathPersonOrgScreens = UCPATH_PERSON_ORG_SEARCH_SCREEN;
   let eid: ReturnType<typeof EidSchema.parse> | undefined;
   return {
+    ...refuseHireOperations(),
     ...deterministicContactOperations(contactPage),
     ...refuseUnimplementedSmartHrHalf("the Person Org fixture"),
     system: "ucpath",
