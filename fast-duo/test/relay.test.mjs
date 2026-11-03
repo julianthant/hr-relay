@@ -74,7 +74,7 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
   const send = (message, source) => new Promise(resolve => { receive(message, source, resolve); });
   const denied = async (message, source) => {
     const response = send(message, source);
-    if (source.id === w.api.runtime.id && source.url.startsWith(ORIGIN) && message.request?.rpId === 'duosecurity.com') {
+    if (source.id === w.api.runtime.id && new URL(source.url).origin === ORIGIN && message.request?.rpId === 'duosecurity.com') {
       const event = await owner.browserNext(); assert.equal(event.kind, 'event'); assert.equal(event.event.stage, 'refused');
       owner.browserReply(event.id, { ok: true, value: { observed: true } });
     }
