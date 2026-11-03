@@ -1,3 +1,4 @@
+import { authenticateOnboardingRosterExecution } from "../workbooks.js";
 import { assertRunRecoveryCommandScope, planRunRecovery } from "../start/recovery-plan.js";
 import { protectedSubjectDisplay } from "../start/protected-input.js";
 import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
@@ -691,6 +692,9 @@ export class RunRecordService {
           to: request.lifecycle.state, message: violation === undefined ? "worker transition cannot replace ownership or settle" : violation });
       }
       this.assertCurrentExecution({ runId: request.runId, claim: request.claim }, request.lifecycle.state === "parked-write");
+      if (request.lifecycle.state === "validating" || request.lifecycle.state === "running") {
+        authenticateOnboardingRosterExecution(repositories, current.run);
+      }
       const retainedLifetime = "workerLifetime" in current.run.lifecycle ? current.run.lifecycle.workerLifetime : undefined;
       const lifecycle = "workerId" in request.lifecycle && request.lifecycle.workerLifetime === undefined && retainedLifetime !== undefined
         ? { ...request.lifecycle, workerLifetime: retainedLifetime } : request.lifecycle;

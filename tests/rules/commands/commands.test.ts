@@ -127,6 +127,7 @@ describe("authority classification and command families", () => {
       "recheck-write": "external-submit",
       "resolve-write-absent": "external-submit",
       "resolve-workbook-row": "local-write",
+      "resolve-workbook-reference-row": "external-submit",
       "resolve-gate": "external-submit",
       "notification-read": "local-write",
       "notification-unread": "local-write",

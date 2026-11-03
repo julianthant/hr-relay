@@ -250,6 +250,12 @@ events order its existing Logs decision rows. Row choices carry the original rec
 workbook revision; confirmations send only worksheet/row identity through `resolve-workbook-row`.
 Readback requires both the resolved original receipt and the applied command-derived operation.
 Refused live revalidation refreshes the served choices without changing the retained write values.
+The same section's optional `referenceChoices` carries Onboarding read choices separately from write
+operations. `resolve-workbook-reference-row` binds `referenceTarget` to the run, gate, exact reference
+digest, type, key and live revision. Its payload contains only sheet and row identity. The server
+rebuilds typed chosen values, records the canonical gate result and resumes once; it creates no write
+receipt. An unavailable choice has zero candidates. Successful readback uses the resolved chosen
+evidence and native run version. Dashboard dispatch remains unavailable until its Logs wiring lands.
 
 Served Run and Rerun have no worker choice in the form, request, response or retained start plan. Starting
 uses the workflow's live workers and starts exactly one when none is live. Only Sessions Add workers

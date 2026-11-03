@@ -34,6 +34,7 @@ import type { WorkbookLibraryService } from "../../workbooks/workbook-library-se
 import { WorkbookLibraryError } from "../../workbooks/workbook-library-service.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import type { z } from "zod";
+import { workbookInputBinding } from "../workbooks.js";
 
 
 export interface StartPlannerDeps {
@@ -134,6 +135,7 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     }
   }
   const planning = workflowPlanning(descriptor);
+  const inputBinding = workbookInputBinding(descriptor.canonicalInput);
   const now = IsoInstantSchema.parse(deps.clock.now().toISOString());
   const ingressSchemaHash = deriveSchemaHash(descriptor.input, "input");
   const canonicalSchemaHash = deriveSchemaHash(descriptor.canonicalInput, "output");
@@ -158,33 +160,13 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     let canonicalInput: unknown;
     try {
       // This is the one and only ingress parse for this raw submission.
+      inputBinding?.assertSubmission(rawInput);
       parsed = planning.parseInput(admittedSubmissions[index].admitted);
-      canonicalInput = planning.parseCanonicalInput(parsed);
     } catch (error) {
       refuse("input-invalid", admittedSubmissions[index].bindings.length > 0 ? "workflow input is invalid" : errorText(error));
       continue;
     }
 
-    const bindings = admittedSubmissions[index].bindings;
-    const protectedSubject = hasProtectedSubject(bindings);
-    const matchKey = protectedSubject ? protectedSubjectMatchKey(bindings, canonicalInput) : planning.matchKey(parsed);
-    const itemId = deriveItemId(descriptor.id, matchKey);
-    if (seenItemIds.has(itemId)) {
-      refuse("active-run-exists", `entry ${String(entry)} repeats ${matchKey}, which is already in this plan`);
-      continue;
-    }
-
-    if (descriptor.enqueue === "reject-active") {
-      const active = deps.authority.authority.runs
-        .listByItem({ workflow: descriptor.id, itemId })
-        .filter((run) => !isTerminalRunState(run.lifecycle));
-      if (active.length > 0) {
-        refuse("active-run-exists", `${matchKey} already has an active run (${active[0].envelope.traceId})`);
-        continue;
-      }
-    }
-
-    const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(parsed), subtitle: planning.subtitle(parsed) }));
     const references = selections.filter(selection => selection.entry === entry);
     const requiredTypes = planning.requiredWorkbookTypeIds;
     if (references.length !== requiredTypes.length || new Set(references.map(reference => reference.typeId)).size !== references.length
@@ -205,6 +187,34 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
         refuse("capability-unavailable", error.message); continue;
       }
     }
+    try {
+      canonicalInput = planning.parseCanonicalInput(inputBinding === undefined
+        ? parsed : inputBinding.bind(parsed, workbookReferences, now));
+    } catch (error) {
+      refuse("input-invalid", admittedSubmissions[index].bindings.length > 0 ? "workflow input is invalid" : errorText(error));
+      continue;
+    }
+
+    const bindings = admittedSubmissions[index].bindings;
+    const protectedSubject = hasProtectedSubject(bindings);
+    const matchKey = protectedSubject ? protectedSubjectMatchKey(bindings, canonicalInput) : planning.matchKey(canonicalInput);
+    const itemId = deriveItemId(descriptor.id, matchKey);
+    if (seenItemIds.has(itemId)) {
+      refuse("active-run-exists", `entry ${String(entry)} repeats ${matchKey}, which is already in this plan`);
+      continue;
+    }
+
+    if (descriptor.enqueue === "reject-active") {
+      const active = deps.authority.authority.runs
+        .listByItem({ workflow: descriptor.id, itemId })
+        .filter((run) => !isTerminalRunState(run.lifecycle));
+      if (active.length > 0) {
+        refuse("active-run-exists", `${matchKey} already has an active run (${active[0].envelope.traceId})`);
+        continue;
+      }
+    }
+
+    const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(canonicalInput), subtitle: planning.subtitle(canonicalInput) }));
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
       ...(workbookReferences === undefined ? {} : { workbookReferences }),

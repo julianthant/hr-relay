@@ -1,7 +1,7 @@
 /** Server-authored action descriptors: the ONLY source a surface may render a run control from — a control the server did not describe is unreachable, not hidden. */
 import { z } from "zod";
 import { WriteIntentIdSchema, WriteAttemptIdSchema, FingerprintSchema } from "../../rules/identity/ids.js";
-import { ParkedWriteCheckTargetSchema, WorkbookRowChoiceTargetSchema } from "../../rules/commands/commands.js";
+import { ParkedWriteCheckTargetSchema, WorkbookRowChoiceTargetSchema, WorkbookReferenceRowChoiceTargetSchema } from "../../rules/commands/commands.js";
 
 export const ActionPlacementSchema = z.enum(["footer", "banner", "outcome", "menu", "data", "review"]);
 export const ActionIntentSchema = z.enum(["primary", "neutral", "destructive", "violet", "success", "info", "warning"]);
@@ -10,7 +10,7 @@ export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "archive",
 export const ActionCommandKeySchema = z.enum([
   "retry", "restart", "recover-run", "cancel", "bump", "rename", "archive", "delete", "resolve-gate",
   "recheck-write", "resolve-write-absent", "check-parked-write",
-  "resolve-workbook-row", "pause", "resume",
+  "resolve-workbook-row", "resolve-workbook-reference-row", "pause", "resume",
 ]);
 
 /** Parked-write actions bind the exact intent generation and original attempt. */
@@ -56,6 +56,7 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
     /** The idle worker and held run authority for `check-parked-write`. */
     checkTarget: ParkedWriteCheckTargetSchema.optional(),
     workbookTarget: WorkbookRowChoiceTargetSchema.optional(),
+    referenceTarget: WorkbookReferenceRowChoiceTargetSchema.optional(),
   }),
   z.strictObject({
     ...ActionBaseFields,
@@ -73,6 +74,9 @@ export const ActionDescriptorWireSchema = z.discriminatedUnion("kind", [
   }
   if ((action.command === "resolve-workbook-row") !== (action.workbookTarget !== undefined)) {
     context.addIssue({ code: "custom", path: ["workbookTarget"], message: "only a workbook row choice requires its retained receipt and live revision" });
+  }
+  if ((action.command === "resolve-workbook-reference-row") !== (action.referenceTarget !== undefined)) {
+    context.addIssue({ code: "custom", path: ["referenceTarget"], message: "a reference row choice requires its captured reference and live revision" });
   }
   // Every parked-write action requires an occurrence target.
   if (scoped && action.writeTarget === undefined) {
