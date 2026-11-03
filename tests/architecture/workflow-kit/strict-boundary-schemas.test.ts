@@ -1330,15 +1330,20 @@ describe("strict boundary schemas", () => {
     assert.deepEqual(invalid, []);
   });
 
-  it("rejects an unknown key at every exercised nested object boundary", () => {
-    for (const entry of BOUNDARY_SCHEMA_CATALOG) for (const fixture of entry.fixtures) {
-      const parsed = entry.schema.parse(fixture);
-      for (const path of objectPaths(parsed)) {
-        const text = pathText(path);
-        if (entry.openFixturePaths?.some((open) => text === open || text.startsWith(`${open}.`))) continue;
-        assert.equal(entry.schema.safeParse(addUnknown(parsed, path)).success, false,
-          `${entry.name} accepted unknown key at ${text || "$"}`);
-      }
+  const unknownKeyBatches = BOUNDARY_SCHEMA_CATALOG.flatMap(entry => entry.fixtures.flatMap((fixture, fixtureIndex) => {
+    const parsed = entry.schema.parse(fixture);
+    const paths = objectPaths(parsed).filter(path => {
+      const text = pathText(path);
+      return !entry.openFixturePaths?.some(open => text === open || text.startsWith(`${open}.`));
+    });
+    return Array.from({ length: Math.ceil(paths.length / 64) }, (_, batch) => ({
+      name: entry.name, fixtureIndex, batch, schema: entry.schema, parsed, paths: paths.slice(batch * 64, (batch + 1) * 64),
+    }));
+  }));
+  it.each(unknownKeyBatches)("rejects unknown keys at every nested boundary: $name fixture $fixtureIndex batch $batch", entry => {
+    for (const path of entry.paths) {
+      assert.equal(entry.schema.safeParse(addUnknown(entry.parsed, path)).success, false,
+        `${entry.name} accepted unknown key at ${pathText(path) || "$"}`);
     }
   });
 
