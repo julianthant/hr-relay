@@ -83,6 +83,53 @@ describe("Queue consumes the served day boundary", () => {
     assert.match(markup, new RegExp(`${operation.memberRollup.terminal} of ${operation.memberRollup.total} finished; ${operation.memberRollup.failed} failed`, "u"));
   });
 
+  it("selects the member from the whole line and retains its keyboard button", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const operation = rowWhere((row) => row.surfaceKind === "operation" && row.memberRunIds.length === 3);
+    assert.equal(operation.surfaceKind, "operation");
+    if (operation.surfaceKind !== "operation") throw new Error("operation fixture changed shape");
+    const members = operation.memberRunIds.map(runId => rowWhere(row => row.runId === runId));
+    const member = members[0];
+    assert.ok(member);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    const opened: string[] = [];
+    try {
+      await act(async () => root.render(createElement(QueuePanel, {
+        surfaces: [operation, ...members],
+        state: { nowIso: FIXTURE_NOW, selectedRunId: operation.runId, openWells: new Set<string>() },
+        handlers: { onSelect: runId => opened.push(runId) },
+        workflowLabelOf: () => "Fixture",
+        panelLabel: "Fixture",
+        day: FIXTURE_DAY,
+      })));
+      const line = host.querySelector<HTMLTableRowElement>(`tr[data-demo-row-id="${member.runId}"]`);
+      assert.ok(line);
+      const status = line.querySelector("td:last-child span");
+      assert.ok(status);
+      for (const target of [line, ...line.cells, status]) {
+        opened.length = 0;
+        await act(async () => { target.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+        assert.deepEqual(opened, [String(member.runId)]);
+      }
+      const name = line.querySelector<HTMLButtonElement>("button[aria-pressed]");
+      assert.ok(name);
+      assert.equal(name.tagName, "BUTTON");
+      assert.equal(name.type, "button");
+      assert.equal(name.tabIndex, 0);
+      name.focus();
+      assert.equal(document.activeElement, name);
+      opened.length = 0;
+      await act(async () => name.click());
+      assert.deepEqual(opened, [String(member.runId)]);
+    } finally {
+      await act(async () => root.unmount());
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("retains every row when bounded summary pages are assembled, then applies only the requested scope", async () => {
     const f = await summaryFixture();
     try {
