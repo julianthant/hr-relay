@@ -1,4 +1,4 @@
-import { readDelegationEvidence, readDelegationInvocationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
+import { readDelegationEvidence, readDelegationInvocationEvidence, readDelegationScopeEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { buildRunPreviewResult, buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { afterAll } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
@@ -31,7 +31,7 @@ import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 
-import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, RunResultRecordSchema, deriveRunResultDigest, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../../src/models/run/result.js";
+import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, RunResultRecordSchema, delegationDependencyRecord, deriveRunResultDigest, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../../src/models/run/result.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { Plan1Output, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
 
@@ -332,6 +332,12 @@ it("joins ordinary read and prepared write branches into a preview without deriv
     lifecycleJournal: { ...f.database.authority.lifecycleJournal,
       getCommand: id => id === first.invocationCommandId ? otherCommand : f.database.authority.lifecycleJournal.getCommand(id) },
   }, first.invocationCommandId), /delegation-invocation-binding-mismatch/);
+  const references = evidence.map(entry => ({ kind: "delegation" as const, nodeId: entry.nodeId, receipt: delegationDependencyRecord(entry) }));
+  const parent = done.run;
+  assert.deepEqual(readDelegationScopeEvidence(f.database.authority, parent, references), references.map(entry => ({ nodeId: entry.nodeId, delegation: entry.receipt })));
+  assert.throws(() => readDelegationScopeEvidence(f.database.authority, read, references), /delegation-scope-outcome-mismatch/);
+  assert.throws(() => readDelegationScopeEvidence(f.database.authority, parent,
+    references.map(entry => ({ ...entry, nodeId: entry.nodeId === first.nodeId ? other.nodeId : first.nodeId }))), /delegation-scope-outcome-mismatch/);
   const { completion, ...retained } = done.run; assert.ok(completion?.kind === "done");
   const running = { ...retained, lifecycle: { state: "running", workerId: WRITE_FIXTURE_WORKER_ID,
     claimedAt: f.clock.now().toISOString(), heartbeatAt: f.clock.now().toISOString() } };

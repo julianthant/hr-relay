@@ -452,7 +452,8 @@ export function readDelegationReadiness(repositories: AuthorityRepositories, run
 export function readDelegationScopeEvidence(repositories: AuthorityRepositories, parent: RunRecord, references: z.infer<typeof DelegationScopeEvidenceSchema>, scopePath = new Set<string>()) {
   return references.map(reference => {
     if (reference.kind === "delegation") {
-      const receipt = delegationDependencyRecord(readDelegationEvidence(repositories, parent.envelope.runId, reference.nodeId, scopePath));
+      if (reference.receipt.parentRunId !== parent.envelope.runId || reference.receipt.nodeId !== reference.nodeId) throw new Error("delegation-scope-outcome-mismatch");
+      const receipt = delegationDependencyRecord(readDelegationInvocationEvidence(repositories, reference.receipt.invocationCommandId, scopePath));
       if (canonicalJsonStringify(receipt) !== canonicalJsonStringify(reference.receipt)) throw new Error("delegation-scope-outcome-mismatch");
       return { nodeId: reference.nodeId, delegation: receipt };
     }
