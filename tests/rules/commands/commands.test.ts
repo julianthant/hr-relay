@@ -90,6 +90,7 @@ describe("authority classification and command families", () => {
       ["read", "local-write", "destructive", "external-submit"],
     );
     const expected = {
+      "correct-ocr-record": "local-write", "discard-ocr-record": "local-write", "restore-ocr-record": "local-write",
       "set-assistant-model-preference": "local-write",
       "annotate-failure": "local-write",
       "set-batch-grouping": "local-write",

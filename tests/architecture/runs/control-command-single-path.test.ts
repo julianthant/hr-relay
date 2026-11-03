@@ -187,75 +187,54 @@ function withoutWorkerControlAdmissions(content: string, kernelContent: string):
   return content;
 }
 
-type DelegationAuditRead = Readonly<{ owner: string; id: string; guards: readonly string[]; calls?: readonly string[]; bindings?: Readonly<Record<string, string>>; loops?: readonly string[]; updates?: readonly string[] }>;
+type DelegationAuditRead = Readonly<{ owner: string; id: string; guards: readonly string[]; calls?: readonly string[]; bindings?: Readonly<Record<string, string>> }>;
 const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRead[]>> = {
   "src/backend/storage/sqlite/command-record-row.ts": [
     { owner: "withCanonicalRunCommandScope", id: "request.commandId", guards: [
       'canonicalJsonStringify(repositories.commands.get(request.commandId))!==canonicalJsonStringify(request)',
       'repositories.commandAudits.findByCommand(request.commandId)!==undefined',
-      'activeRunCommand!==undefined', '!(request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel"))', '"then"inresult',
+      'activeRunCommand!==undefined', '!(request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel"))', '"then"inresult',
     ], calls: ["repositories.commands.assertIdentity(request,parentCommandId)"] },
   ],
   "src/backend/storage/sqlite/delegation-root-authority.ts": [
     {
-      "owner": "authenticateGateResume",
+      "owner": "authenticateRunGateResume",
       "id": "gate.commandId",
       "guards": [
-        "rows.some(row=>row.runId!==run.envelope.runId)||newSet(rows.map(row=>row.nodeId)).size!==rows.length",
-        "latest.length!==1||gate===undefined||!(\"commandId\"ingate)||!(\"resolvedBy\"ingate)||String(gate.nodeId)!==String(gate.gateId)||gate.expectedVersion<2||gate.expectedVersion>=run.version||gate.checkpointFingerprint!==deriveGateResultCheckpointFingerprint(gate.result)",
-        "source===undefined||source.commandId!==gate.commandId||!(source.family===\"gate\"&&source.type===\"resolve-gate\"||source.family===\"run\"&&source.type===\"resolve-workbook-reference-row\")||source.target.runId!==run.envelope.runId||source.target.gateId!==gate.gateId||source.target.expectedVersion!==gate.expectedVersion||source.requestedBy!==actorId||source.requestedBy!==gate.resolvedBy||source.type===\"resolve-gate\"&&!same(source.payload.result,gate.result)||audit?.result.state!==\"applied\"||!same(audit.request,source)||audit.completedAt!==gate.resolvedAt||audit.versionChanges.length!==1||audit.versionChanges[0]?.target.family!==\"gate\"||audit.versionChanges[0].target.runId!==run.envelope.runId||audit.versionChanges[0].target.gateId!==gate.gateId||Number(audit.versionChanges[0].before)!==Number(gate.expectedVersion)||audit.versionChanges[0].after!==gate.expectedVersion+1||audit.result.affectedTargets.length!==2||!audit.result.affectedTargets.some(target=>target.family===\"gate\"&&target.runId===run.envelope.runId&&target.gateId===gate.gateId)||!audit.result.affectedTargets.some(target=>target.family===\"run\"&&target.runId===run.envelope.runId)",
-        "command===undefined||!(\"kind\"incommand)||command.kind!==\"run-lifecycle\"||command.commandId!==commandId||command.operation!==\"transition\"||settled===undefined||!(\"kind\"insettled)||settled.kind!==\"run-lifecycle\"||!same(settled.request,command)||settled.result.kind!==\"run\"||settled.result.runId!==run.envelope.runId||settled.result.appliedVersion!==gate.expectedVersion+1||settled.result.appliedVersion>run.version||String(settled.auditId)!==String(commandId)||Date.parse(settled.completedAt)<Date.parse(gate.resolvedAt)",
-        "!same(CanonicalTransitionRequestSchema.parse(command.request),{commandId,runId:run.envelope.runId,expectedVersion:gate.expectedVersion,lifecycle:{state:\"queued\"}})",
-        "resolved?.source.kind!==\"native\"||resolved.eventId!==lifecycleCommandId(\"timeline-gate-resolved\",source.commandId)||resolved.scope.kind!==\"run\"||resolved.scope.runId!==run.envelope.runId||resolved.workflow!==run.envelope.workflow||resolved.occurredAt!==gate.resolvedAt||resolved.recordedAt!==gate.resolvedAt||event===undefined||event.runId!==run.envelope.runId||event.workflow!==run.envelope.workflow||event.traceId!==run.envelope.traceId||event.spanPath!==run.envelope.traceId||event.attempt>run.envelope.attempt||event.gate!==gate.gateId||event.ts!==gate.resolvedAt||event.resultHash!==sha256Hex(`hrauto:gate-resolved-span:v1\\0${canonicalJsonStringify(gate.result)}`)",
-        "page.length===0",
-        "record.cursor<=after||record.cursor>resolved.cursor||record.scope.kind!==\"run\"||record.scope.runId!==run.envelope.runId||record.workflow!==run.envelope.workflow",
-        "!same(history.at(-1),resolved)",
-        "opened===undefined||openedEvent===undefined||opened.cursor>=resolved.cursor||openedEvent.gate!==gate.gateId||openedEvent.runId!==run.envelope.runId||openedEvent.workflow!==run.envelope.workflow||openedEvent.traceId!==run.envelope.traceId||openedEvent.spanPath!==run.envelope.traceId||openedEvent.attempt!==event.attempt",
-        "claim===undefined||claim.claimGeneration===undefined||claim.claimGeneration>run.claimGeneration||claim.runId!==run.envelope.runId||claim.workflow!==run.envelope.workflow||claim.traceId!==run.envelope.traceId||claim.spanPath!==run.envelope.traceId||claim.attempt!==event.attempt",
-        "parked===undefined||!(\"kind\"inparked)||parked.kind!==\"run-lifecycle\"||parked.commandId!==parkId||parked.operation!==\"worker-transition\"||parkAudit===undefined||!(\"kind\"inparkAudit)||parkAudit.kind!==\"run-lifecycle\"||!same(parkAudit.request,parked)||parkAudit.result.kind!==\"run\"||parkAudit.result.runId!==run.envelope.runId||parkAudit.result.appliedVersion!==gate.expectedVersion||String(parkAudit.auditId)!==String(parkId)||opened.eventId!==lifecycleCommandId(\"timeline-lifecycle\",parkId)",
-        "request.runId!==run.envelope.runId||request.claim.workerId!==claim.workerId||request.claim.claimGeneration!==claim.claimGeneration||request.lifecycle.state!==\"parked-gate\"||request.lifecycle.gateId!==gate.gateId||request.lifecycle.resumeAt!==run.envelope.startAt||request.lifecycle.parkedAt!==openedEvent.ts||opened.occurredAt!==openedEvent.ts||Date.parse(parkAudit.completedAt)<Date.parse(openedEvent.ts)||Date.parse(parkAudit.completedAt)>Date.parse(gate.resolvedAt)"
+        "rows.some(gate=>gate.runId!==run.envelope.runId||gate.expectedVersion>=run.version)||newSet(rows.map(gate=>gate.nodeId)).size!==rows.length",
+        "gate===undefined||!(\"commandId\"ingate)||gate.runId!==run.envelope.runId||gates[1]?.expectedVersion===gate.expectedVersion||String(gate.nodeId)!==String(gate.gateId)||gate.resolvedBy!==actorId||gate.checkpointFingerprint!==deriveGateResultCheckpointFingerprint(gate.result)",
+        "command===undefined||!(command.family===\"gate\"&&command.type===\"resolve-gate\"||command.family===\"run\"&&command.type===\"resolve-workbook-reference-row\")||command.commandId!==gate.commandId||command.type===\"resolve-gate\"&&command.source!==\"dashboard\"||command.requestedBy!==actorId||command.requestedBy!==gate.resolvedBy||command.target.runId!==run.envelope.runId||command.target.gateId!==gate.gateId||command.target.expectedVersion!==gate.expectedVersion||command.type===\"resolve-gate\"&&!same(command.payload.result,gate.result)||audit?.result.state!==\"applied\"||audit.result.commandId!==command.commandId||!same(audit.request,command)||audit.completedAt!==gate.resolvedAt||audit.versionChanges.length!==1||!audit.versionChanges.some(change=>change.target.family===\"gate\"&&change.target.runId===run.envelope.runId&&change.target.gateId===gate.gateId&&Number(change.before)===Number(gate.expectedVersion)&&change.after===gate.expectedVersion+1)||audit.result.affectedTargets.length!==2||!audit.result.affectedTargets.some(target=>target.family===\"gate\"&&target.runId===run.envelope.runId&&target.gateId===gate.gateId)||!audit.result.affectedTargets.some(target=>target.family===\"run\"&&target.runId===run.envelope.runId)",
+        "resumed===undefined||!(\"kind\"inresumed)||resumed.kind!==\"run-lifecycle\"||resumed.operation!==\"transition\"||settled===undefined||!(\"kind\"insettled)||settled.kind!==\"run-lifecycle\"||!same(settled.request,resumed)||settled.result.kind!==\"run\"||settled.result.runId!==run.envelope.runId||settled.result.appliedVersion!==gate.expectedVersion+1||settled.completedAt<gate.resolvedAt",
+        "!same(CanonicalTransitionRequestSchema.parse(resumed.request),{commandId:resumeId,runId:run.envelope.runId,expectedVersion:gate.expectedVersion,lifecycle:{state:\"queued\"}})",
+        "resolved?.source.kind!==\"native\"||resolved.eventId!==lifecycleCommandId(\"timeline-gate-resolved\",command.commandId)||resolved.scope.kind!==\"run\"||resolved.scope.runId!==run.envelope.runId||resolved.workflow!==run.envelope.workflow||resolved.occurredAt!==gate.resolvedAt||resolved.recordedAt!==gate.resolvedAt||event===undefined||event.runId!==run.envelope.runId||event.workflow!==run.envelope.workflow||event.traceId!==run.envelope.traceId||event.spanPath!==run.envelope.traceId||event.attempt>run.envelope.attempt||event.gate!==gate.gateId||event.ts!==gate.resolvedAt||event.resultHash!==sha256Hex(`hrauto:gate-resolved-span:v1\\0${canonicalJsonStringify(gate.result)}`)",
+        "parked===undefined",
+        "parked.operation!==\"worker-transition\"||parkedAudit===undefined||!(\"kind\"inparkedAudit)||parkedAudit.kind!==\"run-lifecycle\"||!same(parkedAudit.request,parked)||parkedAudit.result.kind!==\"run\"||parkedAudit.result.runId!==run.envelope.runId||parkedAudit.result.appliedVersion>gate.expectedVersion||parkedAudit.completedAt>gate.resolvedAt",
+        "park.runId!==run.envelope.runId||park.lifecycle.state!==\"parked-gate\"||park.lifecycle.gateId!==gate.gateId||park.lifecycle.resumeAt!==run.envelope.startAt||park.claim.claimGeneration>run.claimGeneration||park.commandId!==lifecycleCommandId(\"executor-transition\",{runId:run.envelope.runId,generation:park.claim.claimGeneration,version:parkedAudit.result.appliedVersion-1})"
       ],
       "calls": [
-        "validateNativeLifecycleRequest(command)",
+        "validateNativeLifecycleRequest(resumed)",
         "validateNativeLifecycleRequest(parked)",
-        "repositories.timelineEvents.page({runId:run.envelope.runId,after,through:resolved.cursor,limit:1000})",
-        "history.push(record)"
+        "repositories.lifecycleJournal.findGatePark(run.envelope.runId,gate.gateId,gate.expectedVersion)"
       ],
       "bindings": {
         "rows": "repositories.gateResults.listByRun(run.envelope.runId)",
-        "issued": "rows.filter(row=>\"commandId\"inrow)",
-        "latestVersion": "Math.max(...issued.map(row=>row.expectedVersion))",
-        "latest": "issued.filter(row=>row.expectedVersion===latestVersion)",
-        "gate": "latest[0]",
-        "source": "repositories.commands.get(gate.commandId)",
+        "gates": "rows.toSorted((left,right)=>right.expectedVersion-left.expectedVersion)",
+        "gate": "gates[0]",
+        "command": "repositories.commands.get(gate.commandId)",
         "audit": "repositories.commandAudits.findByCommand(gate.commandId)",
-        "commandId": "lifecycleCommandId(\"operator-gate\",source.commandId)",
-        "command": "repositories.lifecycleJournal.getCommand(commandId)",
-        "settled": "repositories.lifecycleJournal.findAuditByCommand(commandId)",
-        "resolved": "repositories.timelineEvents.get(lifecycleCommandId(\"timeline-gate-resolved\",source.commandId))",
+        "resumeId": "lifecycleCommandId(\"operator-gate\",command.commandId)",
+        "resumed": "repositories.lifecycleJournal.getCommand(resumeId)",
+        "settled": "repositories.lifecycleJournal.findAuditByCommand(resumeId)",
+        "resolved": "repositories.timelineEvents.get(lifecycleCommandId(\"timeline-gate-resolved\",command.commandId))",
         "event": "resolved?.payload.kind===\"span\"&&resolved.payload.event.t===\"gate.resolved\"?resolved.payload.event:undefined",
-        "history": "[]",
-        "after": "0",
-        "page": "repositories.timelineEvents.page({runId:run.envelope.runId,after,through:resolved.cursor,limit:1000})",
-        "opened": "history.filter(record=>record.source.kind===\"native\"&&record.payload.kind===\"span\"&&record.payload.event.t===\"gate.opened\").at(-1)",
-        "openedEvent": "opened?.payload.kind===\"span\"&&opened.payload.event.t===\"gate.opened\"?opened.payload.event:undefined",
-        "claimed": "history.filter(record=>record.cursor<opened.cursor&&record.source.kind===\"native\"&&record.payload.kind===\"span\"&&record.payload.event.t===\"run.claimed\").at(-1)",
-        "claim": "claimed?.payload.kind===\"span\"&&claimed.payload.event.t===\"run.claimed\"?claimed.payload.event:undefined",
-        "parkId": "lifecycleCommandId(\"executor-transition\",{runId:run.envelope.runId,generation:claim.claimGeneration,version:gate.expectedVersion-1})",
-        "parked": "repositories.lifecycleJournal.getCommand(parkId)",
-        "parkAudit": "repositories.lifecycleJournal.findAuditByCommand(parkId)",
-        "request": "CanonicalWorkerTransitionRequestSchema.parse(parked.request)"
-      },
-      "loops": [
-        "after<resolved.cursor"
-      ],
-      "updates": [
-        "after=record.cursor"
-      ]
+        "parked": "repositories.lifecycleJournal.findGatePark(run.envelope.runId,gate.gateId,gate.expectedVersion)",
+        "parkedAudit": "repositories.lifecycleJournal.findAuditByCommand(parked.commandId)",
+        "park": "CanonicalWorkerTransitionRequestSchema.parse(parked.request)"
+      }
     },
     { owner: "authenticateRunPriority", id: "source.commandId", guards: ['audit?.result.state!=="applied"', "!same(audit.request,source)", "Number(changes[0].before)!==Number(source.target.expectedVersion)"], calls: ["validateNativeLifecycleRequest(command)"] },
-    { owner: "authenticateStartPlanRun", id: "plan.consumedBy.commandId", guards: ["audit===undefined", "!same(audit.request,command)", "command.target.expectedVersion!==plan.version-1"], calls: ["validateNativeLifecycleRequest(created)"] },
-    { owner: "authenticateRootRun", id: "request.sourceCommandId", guards: ['audit?.result.state!=="applied"', "!same(audit.request,source)", "source.target.expectedVersion!==request.expectedVersion"], calls: ["validateNativeLifecycleRequest(origin)"] },
+    { owner: "authenticateStartPlanRun", id: "plan.consumedBy.commandId", guards: ["audit===undefined", "!same(audit.request,command)", "command.target.expectedVersion!==plan.version-1"], calls: ["validateNativeLifecycleRequest(created)", "authenticateRunGateResume(repositories,run,command.requestedBy)"] },
+    { owner: "authenticateRootRun", id: "request.sourceCommandId", guards: ['audit?.result.state!=="applied"', "!same(audit.request,source)", "source.target.expectedVersion!==request.expectedVersion"], calls: ["validateNativeLifecycleRequest(origin)", "authenticateRunGateResume(repositories,run,source.requestedBy)"] },
   ],
   "src/backend/storage/sqlite/delegation-authority.ts": [
     { owner: "authenticateOperatorSource", id: "source.commandId", guards: ['audit.result.state!=="applied"', "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(source)", "source.requestedBy!==LOCAL_OPERATOR_ACTOR_ID"], calls: ["assertCanonicalRunCommandScope(repositories,source)"] },
@@ -297,6 +276,51 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
   "src/backend/runs/lifecycle/delegation-admission.ts": [
     { owner: "admitDelegation", id: "gate.commandId", guards: ['audit?.result.state!=="applied"', "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(command)", "command.target.expectedVersion!==gate.expectedVersion", "command.requestedBy!==gate.resolvedBy"] },
   ],
+  "src/backend/runs/lifecycle/ocr-review-authority.ts": [
+    { owner: "readOcrReviewAuthority", id: "record.origin.commandId", guards: [
+      'existence.state!=="present"', 'existence.disposition!=="live"', 'existence.run.envelope.workflow!=="ocr"',
+      'latest.sourceRunId!==runId', 'record===undefined', 'record.sourceRunId!==runId', 'record.revision!==revision', 'checkpoint===undefined', 'checkpoint.runId!==runId',
+      '!same(checkpoint.output.value,record.seed)', 'record.origin.digest!==sha256Hex(canonicalJsonStringify(checkpoint))',
+      '!same(record.origin.checkpoint,timelineCheckpointReference(checkpoint))', '!same(record.records,initialOcrReviewRecords(record.seed))',
+      'previous===undefined', 'request?.family!=="ocr-review"', 'request.commandId!==record.origin.commandId', 'request.requestedBy!=="local-operator"', 'request.source!=="dashboard"',
+      'audit?.result.state!=="applied"', 'audit.result.commandId!==request.commandId', '!same(audit.request,request)',
+      '!same(reviseOcrReview(previous,request,record.createdAt),record)',
+      'command===undefined', 'command.kind!=="run-lifecycle"', 'command.operation!=="transition"',
+      'settled===undefined', '!same(settled.request,command)', 'settled.result.runId!==runId',
+      'change===undefined', 'change.after!==Number(change.before)+1', 'change.after!==settled.result.appliedVersion',
+      'existence.run.version<change.after', 'audit.completedAt!==record.createdAt',
+      'mutation.sourceCommandId!==request.commandId', 'mutation.runId!==runId', 'mutation.ocrReviewRevision!==revision',
+      'Number(mutation.expectedVersion)!==Number(change.before)',
+    ], calls: ['authenticateOcrOperator(repositories,reader,existence.run)', 'CanonicalTransitionRequestSchema.parse(command.request)'] },
+    { owner: "readOcrSnapshotsAuthority", id: "snapshot.snapshotId", guards: [
+      'snapshot.sourceRunId!==review.run.envelope.runId', 'revision===undefined', 'snapshot.reviewDigest!==ocrReviewDigest(revision)',
+      '!snapshot.selectedRecordIds.every(id=>revision.records.some(record=>record.recordId===id))',
+      '!same(snapshot.records,snapshot.selectedRecordIds.map(id=>revision.records.find(record=>record.recordId===id)))',
+      'command?.family!=="gate"', 'command.commandId!==snapshot.snapshotId', 'command.target.runId!==snapshot.sourceRunId', 'String(command.target.gateId)!=="approve-records"',
+      'command.requestedBy!=="local-operator"', 'command.source!=="dashboard"', 'audit?.result.state!=="applied"',
+      'audit.result.commandId!==command.commandId', '!same(audit.request,command)',
+      'command.payload.ocrApproval?.expectedRevision!==snapshot.revision', 'command.payload.ocrApproval.reviewDigest!==snapshot.reviewDigest',
+      '!same(command.payload.ocrApproval.selectedRecordIds,snapshot.selectedRecordIds)',
+      'gate===undefined', 'gate.runId!==snapshot.sourceRunId', 'String(gate.nodeId)!=="approve-records"',
+      'String(gate.gateId)!=="approve-records"', 'gate.expectedVersion!==command.target.expectedVersion',
+      'gate.resolvedBy!==snapshot.approvedBy', 'gate.resolvedAt!==snapshot.approvedAt', 'audit.completedAt!==snapshot.approvedAt',
+      '!same(command.payload.result,gate.result)', '!same(gate.result.value,reference)',
+      'mutation===undefined', 'mutation.kind!=="run-lifecycle"', 'mutation.operation!=="transition"',
+      'settled===undefined', '!same(settled.request,mutation)', 'settled.result.runId!==snapshot.sourceRunId',
+      'settled.result.appliedVersion!==command.target.expectedVersion+1',
+      'queued.lifecycle.state!=="queued"', 'queued.runId!==snapshot.sourceRunId', 'queued.expectedVersion!==command.target.expectedVersion',
+    ], calls: ['CanonicalTransitionRequestSchema.parse(mutation.request)'] },
+  ],
+  "src/backend/runs/commands/ocr-source-service.ts": [
+    { owner: "readOcrCommandResult", id: "commandId", guards: [
+      'review===undefined', 'command===undefined', 'command.commandId!==commandId', 'command.family!=="ocr-review"&&command.family!=="gate"',
+      'command.target.runId!==runId', 'command.requestedBy!=="local-operator"', 'command.source!=="dashboard"',
+      'audit===undefined', 'canonicalJsonStringify(audit.request)!==canonicalJsonStringify(command)',
+      'audit.result.state!=="applied"', 'audit.result.commandId!==command.commandId',
+      'revision?.origin.kind!=="command"', 'revision.origin.commandId!==commandId',
+      '!readOcrSnapshotsAuthority(repositories,review).some(snapshot=>snapshot.snapshotId===commandId)',
+    ], calls: ['readOcrReviewAuthority(repositories,reader,runId)', 'CommandIdSchema.parse(commandId)'] },
+  ],
 };
 
 function withoutDelegationAuditReads(content: string, path: string, kernelContent: string): string {
@@ -306,7 +330,8 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
   const compact = (node: ts.Node): string => node.getText(source).replace(/\s+/gu, "");
   const importsRepository = source.statements.some(node => ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)
     && node.moduleSpecifier.text === (path === "src/backend/runs/workbooks.ts" ? "../storage/sqlite/authority-database.js"
-      : path.endsWith("/delegation-admission.ts") ? "../../storage/sqlite/authority-database.js" : "./authority-database.js")
+      : ["src/backend/runs/lifecycle/delegation-admission.ts", "src/backend/runs/lifecycle/ocr-review-authority.ts",
+        "src/backend/runs/commands/ocr-source-service.ts"].includes(path) ? "../../storage/sqlite/authority-database.js" : "./authority-database.js")
     && node.importClause?.namedBindings !== undefined && ts.isNamedImports(node.importClause.namedBindings)
     && node.importClause.namedBindings.elements.some(binding => binding.name.text === "AuthorityRepositories" && binding.propertyName === undefined));
   if (!importsRepository) return content;
@@ -331,10 +356,8 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     const use = candidates[0], method = use.parent, call = method.parent;
     if (compact(use.expression) !== "repositories" || !ts.isPropertyAccessExpression(method) || method.name.text !== "findByCommand"
       || !ts.isCallExpression(call) || call.expression !== method || call.arguments.length !== 1 || compact(call.arguments[0]) !== spec.id) return content;
-    const guards = new Set<string>(), calls = new Set<string>(), bindings = new Map<string, string>(), loops = new Set<string>(), updates = new Set<string>();
+    const guards = new Set<string>(), calls = new Set<string>(), bindings = new Map<string, string>();
     function facts(node: ts.Node): void {
-      if (ts.isWhileStatement(node)) loops.add(compact(node.expression));
-      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) updates.add(compact(node));
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined) bindings.set(node.name.text, compact(node.initializer));
       if (ts.isCallExpression(node)) calls.add(compact(node));
       if (ts.isIfStatement(node)) {
@@ -364,8 +387,7 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     }
     facts(owner.body);
     if (spec.guards.some(proof => !guards.has(proof)) || spec.calls?.some(proof => !calls.has(proof))
-      || Object.entries(spec.bindings ?? {}).some(([name, value]) => bindings.get(name) !== value)
-      || spec.loops?.some(proof => !loops.has(proof)) || spec.updates?.some(proof => !updates.has(proof))) return content;
+      || Object.entries(spec.bindings ?? {}).some(([name, value]) => bindings.get(name) !== value)) return content;
     if (spec.owner === "withCanonicalRunCommandScope") {
       const installed = owner.body.statements.some(statement => ts.isExpressionStatement(statement)
         && compact(statement) === "activeRunCommand={repositories,request:canonicalJsonStringify(request)};");
@@ -402,6 +424,9 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     find(kernel);
     if (calls.length !== 1 || calls[0].arguments.map(node => node.getText(kernel).replace(/\s+/gu, "")).join(",")
       !== "repositories,request,()=>dispatchActive(dependencies,repositories,request,now,auditId),parentCommandId") return content;
+    const selection = calls[0].parent;
+    if (!ts.isConditionalExpression(selection) || selection.whenTrue !== calls[0]
+      || selection.condition.getText(kernel).replace(/\s+/gu, "") !== 'request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel")') return content;
     let callback: ts.Node | undefined = calls[0].parent;
     while (callback !== undefined && !ts.isArrowFunction(callback)) callback = callback.parent;
     if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isCallExpression(callback.parent)
@@ -422,6 +447,22 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     if (!owned.includes("repositories.commands.assertIdentity(request,parentCommandId);")
       || !owned.includes("repositories.commands.insert(journalRequest,parentCommandId)")
       || !owned.includes('if(journal.state==="existing"){if(request.family==="assistant-model-preference")repositories.assistantModelPreference.get();returnreplay(dependencies,repositories,request,now);}')) return content;
+  }
+  if (path === "src/backend/runs/commands/ocr-source-service.ts") {
+    const owner = source.statements.filter(ts.isFunctionDeclaration).find(node => node.name?.text === "readOcrCommandResult");
+    if (owner === undefined || ts.getModifiers(owner)?.some(node => node.kind === ts.SyntaxKind.ExportKeyword) === true) return content;
+    const references: ts.Identifier[] = [];
+    function find(node: ts.Node): void {
+      if (ts.isIdentifier(node) && node.text === "readOcrCommandResult" && node !== owner?.name) references.push(node);
+      ts.forEachChild(node, find);
+    }
+    find(source);
+    if (references.length !== 1 || !ts.isCallExpression(references[0].parent) || references[0].parent.expression !== references[0]) return content;
+    const call = references[0].parent;
+    const statement = call.parent, callback = statement.parent;
+    if (!ts.isReturnStatement(statement) || !ts.isBlock(callback) || !ts.isArrowFunction(callback.parent)
+      || !ts.isCallExpression(callback.parent.parent) || compact(callback.parent.parent.expression) !== "input.database.withAuthorityReadSnapshot"
+      || compact(callback) !== "{input.assertCurrent();returnreadOcrCommandResult(input.database.authority,input.reader,runId,commandId);}") return content;
   }
   for (const use of admitted.sort((left, right) => right.name.getStart(source) - left.name.getStart(source))) {
     content = content.slice(0, use.name.getStart(source)) + "receiptReads" + content.slice(use.name.end);
@@ -454,12 +495,17 @@ describe("finite native delegation audit read ownership", () => {
       }
       for (const spec of specs) {
         for (const guard of spec.guards) {
-          const proof = expressions.find(expression => expression.getText(parsed).replace(/\s+/gu, "") === guard);
+          const proof = expressions.find(expression => {
+            let owner: ts.Node | undefined = expression.parent;
+            while (owner !== undefined && !ts.isFunctionDeclaration(owner)) owner = owner.parent;
+            return owner !== undefined && ts.isFunctionDeclaration(owner) && owner.name?.text === spec.owner
+              && expression.getText(parsed).replace(/\s+/gu, "") === guard;
+          });
           assert.ok(proof, `missing refusal guard ${guard}`);
           mutants.push(mutate(proof, "true"));
         }
       }
-      for (const spec of specs.filter(value => value.owner === "authenticateGateResume")) {
+      for (const spec of specs.filter(value => value.owner === "authenticateRunGateResume")) {
         const owner = parsed.statements.filter(ts.isFunctionDeclaration).find(fn => fn.name?.text === spec.owner); assert.ok(owner?.body);
         const proofNodes: ts.Node[] = [];
         function proofTree(node: ts.Node): void { proofNodes.push(node); ts.forEachChild(node, proofTree); }
@@ -477,10 +523,6 @@ describe("finite native delegation audit read ownership", () => {
         for (const name of Object.keys(spec.bindings ?? {})) {
           const binding = proofNodes.filter(ts.isVariableDeclaration).find(node => ts.isIdentifier(node.name) && node.name.text === name);
           assert.ok(binding?.initializer); mutants.push(mutate(binding.initializer, "undefined"));
-        }
-        for (const guard of [...(spec.loops ?? []), ...(spec.updates ?? [])]) {
-          const proof = proofNodes.find(node => node.getText(parsed).replace(/\s+/gu, "") === guard); assert.ok(proof);
-          mutants.push(mutate(proof, "false"));
         }
         for (const proof of spec.calls ?? []) {
           const call = proofNodes.filter(ts.isCallExpression).find(node => node.getText(parsed).replace(/\s+/gu, "") === proof); assert.ok(call);
@@ -513,15 +555,17 @@ describe("finite native delegation audit read ownership", () => {
         mutants.push(mutate(bindingCall, "foreignReference(run)"));
         mutants.push(source.replace("repositories.commandAudits.findByCommand(gate.commandId)", "aliasedAudits.findByCommand(gate.commandId)"));
       }
-      for (const mutant of mutants) {
+      for (const [index, mutant] of mutants.entries()) {
         assert.notEqual(mutant, source);
-        if (mutant.includes("commandAudits")) assert.ok(withoutDelegationAuditReads(mutant, path, kernel).includes("commandAudits"));
+        if (mutant.includes("commandAudits")) assert.ok(withoutDelegationAuditReads(mutant, path, kernel).includes("commandAudits"), `proof mutant ${index}`);
       }
       if (path.endsWith("command-record-row.ts")) {
         for (const mutant of [
           kernel.replace("withCanonicalRunCommandScope(repositories, request,", "withCanonicalRunCommandScope(repositories, otherRequest,"),
           kernel.replace("() => dispatchActive(dependencies, repositories, request, now, auditId), parentCommandId)", "() => arbitraryDispatch(dependencies, repositories, request, now, auditId), parentCommandId)"),
           kernel.replaceAll("dependencies.authority.withAuthorityTransaction", "dependencies.authority.withAuthorityReadSnapshot"),
+          kernel.replace('request.family === "ocr-review" || request.family === "start"', 'request.family === "settings" || request.family === "start"'),
+          kernel.replace('request.family === "ocr-review" || request.family === "start"', 'request.family === "start"'),
         ]) {
           assert.notEqual(mutant, kernel);
           assert.ok(withoutDelegationAuditReads(source, path, mutant).includes("commandAudits"));
@@ -529,6 +573,36 @@ describe("finite native delegation audit read ownership", () => {
         const revoked = source.replace("activeRunCommand = undefined;", "void activeRunCommand;");
         assert.notEqual(revoked, source);
         assert.ok(withoutDelegationAuditReads(revoked, path, kernel).includes("commandAudits"));
+      }
+      if (path.endsWith("delegation-root-authority.ts")) {
+        for (const proof of [
+          "authenticateRunGateResume(repositories, run, command.requestedBy);",
+          "authenticateRunGateResume(repositories, run, source.requestedBy);",
+          "validateNativeLifecycleRequest(resumed);",
+          "validateNativeLifecycleRequest(parked);",
+          "repositories.lifecycleJournal.findGatePark(run.envelope.runId, gate.gateId, gate.expectedVersion)",
+        ]) {
+          const mutant = source.replaceAll(proof, "undefined");
+          assert.notEqual(mutant, source);
+          assert.ok(withoutDelegationAuditReads(mutant, path, kernel).includes("commandAudits"));
+        }
+        const aliased = source.replace("repositories.commandAudits.findByCommand(gate.commandId)",
+          "Reflect.get(repositories, 'commandAudits').findByCommand(gate.commandId)");
+        assert.notEqual(aliased, source);
+        assert.ok(withoutDelegationAuditReads(aliased, path, kernel).includes("commandAudits"));
+      }
+      if (path.endsWith("ocr-source-service.ts")) {
+        const aliased = source.replace("repositories.commandAudits.findByCommand(commandId)", "Reflect.get(repositories, 'commandAudits').findByCommand(commandId)");
+        assert.notEqual(aliased, source);
+        assert.ok(withoutDelegationAuditReads(aliased, path, kernel).includes("commandAudits"));
+        for (const [from, to] of [
+          ["function readOcrCommandResult", "export function readOcrCommandResult"],
+          ["input.assertCurrent();", "void input;"],
+          ["input.database.withAuthorityReadSnapshot", "input.database.withAuthorityTransaction"],
+        ]) {
+          const mutant = source.replaceAll(from, to); assert.notEqual(mutant, source);
+          assert.ok(withoutDelegationAuditReads(mutant, path, kernel).includes("commandAudits"));
+        }
       }
     });
   }
@@ -596,6 +670,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
 /* ── the partition (ref dashboard-surfaces authority) ────────── */
 
 const EXPECTED_ACTIVE = {
+  "ocr-review": ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"],
   application: ["pause-all", "pause-all-and-quit"],
   "assistant-model-preference": ["set-assistant-model-preference"],
   "failure-resolution": ["annotate-failure"],

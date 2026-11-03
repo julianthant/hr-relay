@@ -3,6 +3,8 @@ import { assertRunRecoveryCommandScope, planRunRecovery } from "../start/recover
 import { protectedSubjectDisplay } from "../start/protected-input.js";
 import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
 import { captureRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
+import { assertOcrRecoverySnapshotCurrent, OcrReviewRefusedError } from "./ocr-review-authority.js";
+import { assertCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
 import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
 import { assertWorkerResetParkedWrite } from "../../storage/sqlite/worker-control.js";
@@ -365,6 +367,24 @@ export class RunRecordService {
       if (current.state !== "present") return current;
       if (current.run.version !== request.expectedVersion) {
         return refused({ reason: "conflict", currentVersion: current.run.version });
+      }
+      if ("ocrReviewRevision" in request) {
+        if (repositories.workerControls.resetForRun(request.runId) !== undefined) return refused({ reason: "policy-refused" });
+        const source = repositories.commands.get(request.sourceCommandId);
+        const revision = repositories.ocrReviews.latest(request.runId);
+        if (source?.family !== "ocr-review" || source.requestedBy !== "local-operator" || source.source !== "dashboard"
+          || source.target.runId !== request.runId || request.commandId !== lifecycleCommandId("operator-ocr-review", source.commandId)
+          || source.target.expectedRevision + 1 !== request.ocrReviewRevision || revision?.revision !== request.ocrReviewRevision
+          || revision.origin.kind !== "command" || revision.origin.commandId !== source.commandId
+          || current.run.envelope.workflow !== "ocr") throw new OcrReviewRefusedError();
+        assertCanonicalRunCommandScope(repositories, source);
+        if (runClaim(current.run) !== undefined || current.run.lifecycle.state === "parked-write"
+          || current.run.lifecycle.state === "terminal" && ["cancelled", "discarded", "superseded"].includes(current.run.lifecycle.outcome)) return refused({ reason: "invalid-state" });
+        const result = repositories.runs.advanceRevision({ runId: request.runId, expectedVersion: request.expectedVersion,
+          now: this.dependencies.clock.now().toISOString() });
+        if (result.state === "conflict") return refused({ reason: "conflict", currentVersion: result.currentVersion });
+        this.recordJournal(repositories, journal.command, journalRun(result.run), current.run.lifecycle);
+        return { state: "applied" as const, run: result.run };
       }
       const cancellationSource = "cancellationSource" in request ? request.cancellationSource : undefined;
       if (repositories.workerControls.resetForRun(request.runId) !== undefined && (cancellationSource === undefined || !("kind" in cancellationSource))) return refused({ reason: "policy-refused" });
@@ -1134,6 +1154,7 @@ export class RunRecordService {
       if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
       if (request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint) return refused({ reason: "runtime-stale" });
       const plan = planRunRecovery(repositories, descriptor, run, request.sourceCommandId);
+      assertOcrRecoverySnapshotCurrent(repositories, this, run);
       const continuation = plan.continuation;
       if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,

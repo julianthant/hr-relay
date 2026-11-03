@@ -8,7 +8,7 @@ export const readOcrReviewSeedTask = defineTask(ReadOcrReviewSeed, {
   async run({ input, ctx }) {
     let output;
     try {
-      output = buildOcrReviewSeed({ sourceRunId: input.sourceRunId, roster: input.roster,
+      output = buildOcrReviewSeed({ ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: input.roster,
         accounting: accountOcrPages(input.manifest, input.readingId, input.outcomes, input.formType) });
     } catch (error) {
       return ctx.fail("INCONSISTENT_INPUTS", "OCR child outcomes do not account for the original document.", { cause: error });

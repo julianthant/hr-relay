@@ -8,9 +8,11 @@ export function commitGeneratedCheckpoint(input:Readonly<{
  withTransaction<T>(work:(repositories:AuthorityRepositories)=>T):T;
  checkpoint:RunCheckpointRecord;
  updates:readonly unknown[];
+ publish?:(repositories:AuthorityRepositories, checkpoint:RunCheckpointRecord)=>void;
 }>):void {
  input.withTransaction(repositories=>{
   repositories.runCheckpoints.insert(input.checkpoint);
+  input.publish?.(repositories,input.checkpoint);
   for(const update of input.updates)repositories.artifactOutbox.insert(update);
  });
 }

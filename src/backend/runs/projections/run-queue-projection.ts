@@ -140,6 +140,7 @@ export interface RunQueueProjectionDeps {
   };
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
+    reviewAvailable?(runId: string): boolean;
     /** Durable inbox rows served by day. */
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
     latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
@@ -1218,6 +1219,7 @@ export class RunQueueProjection {
       panelKind: panelKindOf(shape),
       availableSections: [
         "logs",
+        ...(this.#deps.authority.reviewAvailable?.(queued.runId) === true ? ["review"] : []),
         "context-data",
         "context-attempts",
         ...(authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "failed" ? ["failure"] : []),

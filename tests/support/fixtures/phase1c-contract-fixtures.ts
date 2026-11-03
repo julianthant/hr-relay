@@ -84,6 +84,11 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "run", type: "resolve-workbook-reference-row", target: { runId: UUID_1, expectedVersion: 1,
     libraryId: UUID_2, typeId: "onboarding-roster", referenceDigest: HASH_A, key: "hire@example.test",
     workbookVersion: 2, gateId: "roster-choice" }, payload: { sheetId: "sheet-1", rowId: "row-1" } },
+  { ...BASE_COMMAND, family: "ocr-review", type: "correct-ocr-record", target: { runId: UUID_2, expectedRevision: 1 },
+    payload: { recordId: `${HASH_A}#emergency-contact#1`, assertedEid: null,
+      fields: { answers: [{ path: "employee.name", state: "absent", reason: "blank" }], blockingPaths: ["employee.name"], answersFingerprint: HASH_A } } },
+  ...["discard-ocr-record", "restore-ocr-record"].map(type => ({ ...BASE_COMMAND, family: "ocr-review", type,
+    target: { runId: UUID_2, expectedRevision: 1 }, payload: { recordId: `${HASH_A}#emergency-contact#1` } })),
 ];
 
 export const SUBJECT_EVIDENCE = {

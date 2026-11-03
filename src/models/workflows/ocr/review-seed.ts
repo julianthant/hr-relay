@@ -20,7 +20,7 @@ export const OcrRosterEvidenceSchema = z.strictObject({
 });
 
 export const OcrReviewSeedInputSchema = z.strictObject({
-  sourceRunId: RunIdSchema,
+  sourceRunId: RunIdSchema.optional(),
   accounting: OcrPageAccountingSchema,
   roster: OcrRosterEvidenceSchema.nullable(),
 });

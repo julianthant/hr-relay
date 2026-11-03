@@ -1,3 +1,6 @@
+import { CanonicalWorkerTransitionRequestSchema } from "../../../../src/backend/storage/sqlite/run-store-contracts.js";
+import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { z } from "zod";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
@@ -9,14 +12,14 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, it } from "vitest";
 import { assertCanonicalRunCommandScope, withCanonicalRunCommandScope } from "../../../../src/backend/storage/sqlite/command-record-row.js";
-import { CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
+import { CommandRequestSchema, CommandResultSchema, RunLifecycleCommandRecordSchema } from "../../../../src/rules/commands/commands.js";
 import { createCommandKernel } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { authenticateRootRun, authenticateStartPlanRun } from "../../../../src/backend/storage/sqlite/delegation-root-authority.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { FingerprintSchema, PositiveIntSchema, RunIdSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
+import { FingerprintSchema, PositiveIntSchema, RunIdSchema, IsoInstantSchema, GateIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
@@ -111,6 +114,7 @@ async function resumedRoot() {
     const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "gate", type: "resolve-gate",
       target: { runId: parked.envelope.runId, expectedVersion: parked.version, gateId },
       payload: { result: { schemaHash: deriveSchemaHash(approvalResult, "output"), value: { approved: true } } } });
+    assert.ok(command.family === "gate" && command.type === "resolve-gate");
     assert.equal(f.kernel.execute(command).state, "applied");
     const run = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(run); assert.equal(run.envelope.startAt, resumeAt);
     return { run, command };
@@ -284,7 +288,7 @@ describe("canonical synchronous run command custody", () => {
     f.database.withAuthorityTransaction(repositories => {
       authenticateStartPlanRun(repositories, second.run);
       assert.throws(() => authenticateStartPlanRun(repositories, RunRecordSchema.parse({ ...second.run,
-        envelope: { ...second.run.envelope, startAt: "resume-node" } })), /delegation-root-resume-authority-unavailable/u);
+        envelope: { ...second.run.envelope, startAt: "resume-node" } })), /delegation-gate-resume-authority-unavailable/u);
     });
   });
 
@@ -292,7 +296,7 @@ describe("canonical synchronous run command custody", () => {
     const f = await resumedRoot(), { run, command } = f.parkAndResolve("approval", "resume-node");
     const operatorId = lifecycleCommandId("operator-gate", command.commandId);
     f.database.withAuthorityTransaction(repositories => {
-      const rejects = (candidate: typeof repositories) => assert.throws(() => authenticateStartPlanRun(candidate, run), /delegation-root-resume-authority-unavailable|run-lifecycle-request-binding-mismatch/u);
+      const rejects = (candidate: typeof repositories) => assert.throws(() => authenticateStartPlanRun(candidate, run), /delegation-gate-resume-authority-unavailable|run-lifecycle-request-binding-mismatch/u);
       rejects({ ...repositories, gateResults: { ...repositories.gateResults, listByRun: () => [] } });
       rejects({ ...repositories, gateResults: { ...repositories.gateResults, listByRun: id => {
         const rows = repositories.gateResults.listByRun(id); return [...rows, ...rows];
@@ -301,10 +305,8 @@ describe("canonical synchronous run command custody", () => {
         .map(row => ({ ...row, runId: RunIdSchema.parse(randomUUID()) })) } });
       for (const missing of ["park-command", "park-audit", "operator-command", "operator-audit"] as const) {
         rejects({ ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal,
-          getCommand: id => id === operatorId && missing === "operator-command" ? undefined : (() => {
-            const value = repositories.lifecycleJournal.getCommand(id);
-            return missing === "park-command" && value !== undefined && "kind" in value && value.kind === "run-lifecycle" && value.operation === "worker-transition" ? undefined : value;
-          })(),
+          findGatePark: (runId, gateId, version) => missing === "park-command" ? undefined : repositories.lifecycleJournal.findGatePark(runId, gateId, version),
+          getCommand: id => id === operatorId && missing === "operator-command" ? undefined : repositories.lifecycleJournal.getCommand(id),
           findAuditByCommand: id => id === operatorId && missing === "operator-audit" ? undefined : (() => {
             const value = repositories.lifecycleJournal.findAuditByCommand(id);
             return missing === "park-audit" && value !== undefined && "kind" in value && value.kind === "run-lifecycle" && value.request.operation === "worker-transition" ? undefined : value;
@@ -319,27 +321,69 @@ describe("canonical synchronous run command custody", () => {
         const value = repositories.commandAudits.findByCommand(id); return id === command.commandId && value !== undefined
           ? { ...value, completedAt: IsoInstantSchema.parse("2026-01-01T00:00:00.000Z") } : value;
       } } });
+      for (const fault of ["removed-gate-target", "wrong-gate-target", "extra-affected-target", "extra-version-change", "foreign-version-change", "wrong-version-gate"] as const) {
+        rejects({ ...repositories, commandAudits: { ...repositories.commandAudits, findByCommand: id => {
+          const value = repositories.commandAudits.findByCommand(id);
+          if (id !== command.commandId || value === undefined) return value;
+          assert.ok(value.result.state === "applied");
+          const gateTarget = value.result.affectedTargets.find(target => target.family === "gate"); assert.ok(gateTarget);
+          const change = value.versionChanges[0]; assert.ok(change);
+          const foreignRunId = RunIdSchema.parse(randomUUID()), foreignGateId = GateIdSchema.parse("foreign-gate");
+          if (fault === "removed-gate-target") return { ...value, result: { ...value.result,
+            affectedTargets: value.result.affectedTargets.filter(target => target.family !== "gate") } };
+          if (fault === "wrong-gate-target") return { ...value, result: { ...value.result,
+            affectedTargets: value.result.affectedTargets.map(target => target.family === "gate" ? { ...target, gateId: foreignGateId } : target) } };
+          if (fault === "extra-affected-target") return { ...value, result: { ...value.result,
+            affectedTargets: [...value.result.affectedTargets, { ...gateTarget, runId: foreignRunId }] } };
+          if (fault === "extra-version-change") return { ...value, versionChanges: [...value.versionChanges,
+            { ...change, target: { ...gateTarget, runId: foreignRunId } }] };
+          return { ...value, versionChanges: [{ ...change, target: { ...gateTarget,
+            ...(fault === "foreign-version-change" ? { runId: foreignRunId } : { gateId: foreignGateId }) } }] };
+        } } });
+      }
       rejects({ ...repositories, timelineEvents: { ...repositories.timelineEvents, get: id => {
         const value = repositories.timelineEvents.get(id); return value?.payload.kind === "span" && value.payload.event.t === "gate.resolved"
           ? { ...value, payload: { ...value.payload, event: { ...value.payload.event, resultHash: "b".repeat(64) } } } : value;
       } } });
-      for (const fault of ["missing", "partial", "foreign-generation"] as const) rejects({ ...repositories,
-        timelineEvents: { ...repositories.timelineEvents, page: request => {
-          const rows = repositories.timelineEvents.page(request);
-          if (fault === "missing") return [];
-          if (fault === "partial") return rows.filter(row => row.payload.kind !== "span" || row.payload.event.t !== "gate.opened");
-          return rows.map(row => row.payload.kind === "span" && row.payload.event.t === "run.claimed" ? { ...row,
-            payload: { ...row.payload, event: { ...row.payload.event, claimGeneration: run.claimGeneration + 1 } } } : row);
-        } } });
+      rejects({ ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal, findGatePark: () => undefined } });
+      rejects({ ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal, findGatePark: (runId, gateId, version) => {
+        const value = repositories.lifecycleJournal.findGatePark(runId, gateId, version);
+        return value === undefined ? value : { ...value, requestFingerprint: FingerprintSchema.parse("b".repeat(64)) };
+      } } });
+      rejects({ ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal, findGatePark: (runId, gateId, version) => {
+        const value = repositories.lifecycleJournal.findGatePark(runId, gateId, version);
+        return value === undefined ? value : { ...value, commandId: CommandRequestSchema.parse(command).commandId };
+      } } });
+      const originalPark = repositories.lifecycleJournal.findGatePark(run.envelope.runId, "approval", command.target.expectedVersion); assert.ok(originalPark);
+      const originalRequest = CanonicalWorkerTransitionRequestSchema.parse(originalPark.request);
+      assert.ok(originalRequest.lifecycle.state === "parked-gate");
+      const parkedLifecycle = originalRequest.lifecycle;
+      for (const fault of ["foreign-generation", "foreign-run", "wrong-resume-node"] as const) {
+        const request = { ...originalRequest,
+          runId: fault === "foreign-run" ? RunIdSchema.parse(randomUUID()) : originalRequest.runId,
+          claim: { ...originalRequest.claim, claimGeneration: fault === "foreign-generation" ? run.claimGeneration + 1 : originalRequest.claim.claimGeneration },
+          lifecycle: { ...parkedLifecycle, resumeAt: fault === "wrong-resume-node" ? "forged-cursor" : parkedLifecycle.resumeAt } };
+        const altered = RunLifecycleCommandRecordSchema.parse({ ...originalPark, request, fence: { kind: "claim", ...request.claim },
+          requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0worker-transition\0${canonicalJsonStringify(request)}`) });
+        rejects({ ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal, findGatePark: () => altered,
+          findAuditByCommand: id => {
+            const audit = repositories.lifecycleJournal.findAuditByCommand(id);
+            return id === altered.commandId && audit !== undefined && "kind" in audit && audit.kind === "run-lifecycle" ? { ...audit, request: altered } : audit;
+          } } });
+      }
       assert.throws(() => authenticateStartPlanRun(repositories, RunRecordSchema.parse({ ...run,
-        envelope: { ...run.envelope, startAt: "forged-cursor" } })), /delegation-root-resume-authority-unavailable/u);
+        envelope: { ...run.envelope, startAt: "forged-cursor" } })), /delegation-gate-resume-authority-unavailable/u);
     });
   });
 
-  it("fails closed when an intervening control prevents exact park-version lookup", async () => {
+  it("authenticates the retained native park across an intervening operator control", async () => {
     const f = await resumedRoot(), { run } = f.parkAndResolve("approval", "resume-node", true);
     f.database.withAuthorityTransaction(repositories => {
-      assert.throws(() => authenticateStartPlanRun(repositories, run), /delegation-root-resume-authority-unavailable/u);
+      authenticateStartPlanRun(repositories, run);
+      const gate = repositories.gateResults.listByRun(run.envelope.runId)[0]; assert.ok(gate);
+      const park = repositories.lifecycleJournal.findGatePark(run.envelope.runId, gate.gateId, gate.expectedVersion); assert.ok(park);
+      const audit = repositories.lifecycleJournal.findAuditByCommand(park.commandId); assert.ok(audit && "kind" in audit && audit.kind === "run-lifecycle" && audit.result.kind === "run");
+      assert.ok(audit.result.appliedVersion < gate.expectedVersion);
     });
   });
 

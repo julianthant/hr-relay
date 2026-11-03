@@ -1,10 +1,11 @@
 import { failureCodeFromTaskCode } from "../failures/error-catalog.js";
+import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema } from "../ocr/review.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { StartPlanRequestSchema } from "./start-plan.js";
 import { ActionConfirmWireSchema } from "./actions.js";
 import { FailureCorrectionSchema } from "../workflow/failure-correction.js";
-import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema, WorkbookRowChoiceTargetSchema, WorkbookReferenceRowChoiceTargetSchema } from "../../rules/commands/commands.js";
+import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema, OcrReviewCommandRequestSchema, GateCommandRequestSchema, CommandResultSchema, WorkbookRowChoiceTargetSchema, WorkbookReferenceRowChoiceTargetSchema } from "../../rules/commands/commands.js";
 import { WorkbookOperationReceiptSchema, WorkbookCellValuesSchema } from "./workbooks.js";
 import { UcpathFindingsDetailSchema } from "./ucpath-findings.js";
 import { FailureDisplaySchema } from "./failure-display.js";
@@ -453,11 +454,19 @@ export const ReviewRecordWireSchema = z.strictObject({
 export const ReviewPageSchema = z.strictObject({
   runId: RunIdSchema,
   records: z.array(ReviewRecordWireSchema),
+  ocr: z.strictObject({ revision: OcrReviewRevisionSchema, digest: FingerprintSchema,
+    approvedSnapshots: z.array(OcrApprovedSnapshotSchema) }).optional(),
 }).superRefine((page, context) => {
   if (page.records.some(({ runId }) => runId !== page.runId)) context.addIssue({ code: "custom", path: ["records"], message: "review record run identities must match page" });
+  if (page.ocr !== undefined && page.ocr.revision.sourceRunId !== page.runId) context.addIssue({ code: "custom", message: "OCR review must belong to the requested run" });
   const ids = page.records.map(({ recordId }) => recordId);
   if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", path: ["records"], message: "review record ids must be unique" });
 });
+
+export const OcrCommandResultWireSchema = z.union([
+  z.strictObject({ state: z.literal("unavailable") }),
+  z.strictObject({ state: z.literal("recorded"), request: z.union([OcrReviewCommandRequestSchema, GateCommandRequestSchema]), result: CommandResultSchema }),
+]);
 
 export const PeopleMemberWireSchema = z.strictObject({
   runId: RunIdSchema,

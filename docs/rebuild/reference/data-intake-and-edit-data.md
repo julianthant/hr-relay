@@ -140,18 +140,37 @@ support all three canonical forms. The unregistered definitions in
 `src/workflows/ocr/` and `src/workflows/ocr-page/` compose full-document rendering, subscription or
 manual page readings, all-settled page accounting and deduplicated Person Lookup children. Identity
 outcomes remain separate from the original review seed in a derived result checkpoint; neither grants
-approval. Before registration,
-intake must bind `sourceRunId` to the actual run and manual assertions to the authenticated operator.
+approval. `worker/run-resources.ts` admits the retained run before OCR capabilities are issued;
+the checkpoint publisher verifies its exact claim, delegated page membership and operator start authority.
+`sourceRunId` is an optional assertion and must match the actual OCR run when supplied.
 The definitions and mini-stores are audited through a test-only inventory; neither public nor child
-production registries contain them. Their task outputs have no production persistence binding; review revisions are not persisted.
+production registries contain them. Page checkpoints publish immutable readings in their authority transaction.
 
 The native `artifacts` table stores `imported`, `extracted`, and `generated` rows. `AuthorityDatabase.authority.ocrExtractions.insert` accepts only a validated `OcrPageReading` and stores its exact source-bound `extractionId`, full page input and admitted extraction. Reusing the same reading identity and content returns `existing`; changing any content at that identity refuses with `ocr-extraction-replay-conflict`. A deliberate reread uses a new `readingId` and appends a separate extraction. `get(extractionId)` reads exactly that version. `findBySource(imageSha256)` returns every retained version in page/ID order, never a selected latest reading.
 
 `src/models/ocr/stored-extraction.ts` owns the current stored evidence union. `source-bound` retains original-PDF, rendered-image, manifest and reading identities. `unbound-source` preserves an extraction and its original artifact ID when those bindings were never recorded; it cannot supply missing PDF or reading provenance. New repository inserts cannot create unbound evidence. Migration 12 wraps existing extraction payloads in that explicit state without changing their extraction content or artifact identity. The stopped upgrade validates the source format and verifies a backup before conversion; ordinary readers accept only the current envelope.
 
-`src/backend/storage/sqlite/extracted-artifact-row.ts` checks every stored extraction against its native columns. `artifacts_extracted_immutable`, `artifacts_no_replace` and `artifacts_retained` protect updates, replacement and deletion. The existing artifact authority, inspection, backup and deletion inventories retain both evidence states. Storage does not publish task output to review or authenticate a production OCR caller.
+`src/backend/storage/sqlite/extracted-artifact-row.ts` checks every stored extraction against its native columns. `artifacts_extracted_immutable`, `artifacts_no_replace` and `artifacts_retained` protect updates, replacement and deletion. The existing artifact authority, inspection, backup and deletion inventories retain both evidence states.
 
-The `review` and `people` section names and review-record schemas exist. `buildRunSection` in `src/backend/runs/queries/run-sections.ts` currently throws `SectionUnavailableError` for them. There is no served OCR acceptance/correction/child-dispatch flow.
+`src/models/ocr/review.ts` owns PDF upload records, canonical review revisions and exact selected approval snapshots.
+The native OCR repository stores them in `ocr_source_uploads`, `ocr_review_revisions` and
+`ocr_approved_snapshots`. Uploads accept PDFs up to 25 MiB through the guarded typed client and
+the existing content-addressed writer. Source-page reads admit the current person, run, revision
+and original page before preparing a verified byte lease, then revalidate after preparation.
+
+The final OCR result checkpoint publishes revision 1 with the actual run identity. Corrections,
+discard and restore append immutable revisions with expected-revision CAS and command replay.
+The same transaction advances the canonical run version through its lifecycle service so existing
+Queue and selected-detail subscriptions replace their reads. The `review` section serves source
+pages, fields, provenance, issues, current revision and immutable snapshots; `people` remains unavailable.
+Read-only command-result queries reconcile an uncertain correction without replaying it.
+
+OCR defaults to review-only completion. Explicit release mode parks on its registered operator
+gate. `resolve-gate` verifies the exact current revision, digest and selected record IDs, freezes
+the snapshot and settles the gate in one authority transaction. Parent completion returns that
+snapshot reference. Later drafts cannot mutate it, and checkpoint recovery refuses a superseded
+approval. Emergency Contact member recovery and live workflow activation still require their
+owning graphs, freshness policies and operator acceptance.
 
 ### 4.5 Roster matching and contact advice
 

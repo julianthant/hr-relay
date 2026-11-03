@@ -61,6 +61,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
         deps.projection.ingestFromTimeline();
         return result;
       }
+      if (request.family === "ocr-review") deps.projection.refreshRun(request.target.runId);
 
       if (request.family === "run" && SPANLESS_RUN_TYPES.has(request.type)) {
         deps.projection.refreshRun(request.target.runId);

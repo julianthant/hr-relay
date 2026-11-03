@@ -267,6 +267,7 @@ export const CancellationSourceSchema = z.union([
 ]);
 
 export const CanonicalTransitionRequestSchema = z.union([
+  z.strictObject({ ...CanonicalVersionIdentityFields, ocrReviewRevision: PositiveIntSchema, sourceCommandId: CommandIdSchema }),
   CanonicalWriteResolutionTransitionRequestSchema,
   z.strictObject({ ...CanonicalVersionIdentityFields, lifecycle: RunLifecycleSchema,
     cancellationSource: CancellationSourceSchema.optional() }),

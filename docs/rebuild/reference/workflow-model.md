@@ -278,6 +278,10 @@ factory validates the child workflow, schema, run, parent edge, and retained res
 Other cardinalities and unawaited children cannot supply a single-child terminal dependency.
 A child result is not a parent checkpoint.
 
+A resolved gate supplies `gate-resolved` terminal evidence. The factory checks its node, run,
+resolution kind, result schema and checkpoint fingerprint. The terminal record retains its exact
+gate reference and record digest; native completion compares them with the retained gate row.
+
 #### 1.6.6 Action confirmation and step results
 
 `src/backend/runtime/writes/operation-action-binding.ts` binds action observations to frozen
@@ -411,6 +415,10 @@ closes sessions, and persists `parked-gate` with `gateId` and `resumeAt`. Resolu
 run; a fresh claim reacquires sessions. Neither park has an edge directly to `running`.
 `src/backend/runtime/gates/gate-source-runtime.ts` owns source binding for workflow and external
 gates. The workflow author currently produces operator gates.
+
+A same-run resume at a resolved final gate replays that result. Earlier completed terminal child
+joins pass through canonical child admission with their original input and native proofs. Their
+manifests, child runs and results remain unchanged; absent or changed proof refuses the resume.
 
 A `parked-write` records the exact intent generation and code: `unknown`, `ambiguous`,
 `present-proof-invalid`, `binding-invalid`, or `operator-required`. Write recovery owns its exits.

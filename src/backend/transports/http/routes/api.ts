@@ -12,6 +12,7 @@ import { registerExplorerRoutes } from "./explorer.js";
 import { registerActivityRoutes } from "./activity.js";
 import { registerQueueRoutes } from "./queue.js";
 import { registerIntakeRoutes } from "./intake.js";
+import { registerOcrRoutes } from "./ocr.js";
 import { registerCommandsRoutes } from "./commands.js";
 import { registerRunDetailRoutes } from "./run-detail.js";
 import type { DashboardApp, DashboardAppDeps } from "./api-types.js";
@@ -64,6 +65,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   app.use("/api/v1/rerun-warnings", operatorMutationIngressGuard);
   // Intake bytes use the file media type; Host/Origin admission still applies.
   app.use("/api/v1/intake/files", operatorOpaqueIngressGuard);
+  app.use("/api/v1/ocr/files", operatorOpaqueIngressGuard);
   app.use("/api/v1/workbooks", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/types", operatorMutationIngressGuard);
   app.use("/api/v1/workbooks/:libraryId/operations", operatorMutationIngressGuard);
@@ -114,6 +116,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerActivityRoutes(app, { activityPopulation: deps.activityPopulation, activity: deps.activity ?? { read: () => { throw new Error("activity-service-not-configured"); }, readSelected: () => { throw new Error("activity-service-not-configured"); } } });
   registerQueueRoutes(app, { startPlans: deps.startPlans, queue: { day: day => deps.projection.buildDashboardDayWire(day) } });
   registerIntakeRoutes(app, deps);
+  registerOcrRoutes(app, deps);
   registerWorkbookRoutes(app, deps);
   registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, commandJournal: deps.commandJournal,
     bulkCommandAcceptances: deps.bulkCommandAcceptances, protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,

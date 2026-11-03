@@ -1,5 +1,7 @@
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
 import { planRunRecovery } from "../start/recovery-plan.js";
+import { OcrReviewRefusedError, readOcrReviewAuthority, readOcrSnapshotsAuthority, reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
+import { OcrApprovedSnapshotSchema, ocrSnapshotDigest } from "../../../models/ocr/review.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { notificationMatchesCollection,type NotificationCollectionOperation,type NotificationRecord } from "../../../models/notifications/notifications.js";
@@ -68,6 +70,7 @@ import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
 /* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 
 const PHASE1_ACTIVE = {
+  "ocr-review": ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"],
   application: ["pause-all", "pause-all-and-quit"],
   'assistant-model-preference': ['set-assistant-model-preference'],
   "failure-resolution": ["annotate-failure"],
@@ -1644,6 +1647,21 @@ function executeResolveGate(
     );
   }
   verifyGateEvidenceCurrent(request, descriptor, node, evidenceScope, now);
+  if (current.envelope.workflow === "ocr" && String(node.id) === "approve-records") {
+    const approval = request.payload.ocrApproval;
+    if (approval === undefined || request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    const review = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
+    if (review === undefined || review.revision.revision !== approval.expectedRevision || review.digest !== approval.reviewDigest) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    const parsed = OcrApprovedSnapshotSchema.safeParse({ snapshotId: request.commandId, sourceRunId: request.target.runId,
+      revision: review.revision.revision, reviewDigest: review.digest, selectedRecordIds: approval.selectedRecordIds,
+      records: approval.selectedRecordIds.map(id => review.revision.records.find(record => record.recordId === id)),
+      approvedBy: request.requestedBy, approvedAt: now });
+    if (!parsed.success) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    const snapshot = parsed.data;
+    if (canonicalJsonStringify(parsedValue.data) !== canonicalJsonStringify({ snapshotId: snapshot.snapshotId,
+      sourceRunId: snapshot.sourceRunId, revision: snapshot.revision, digest: ocrSnapshotDigest(snapshot) })) reject(request, "schema-mismatch", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    repositories.ocrReviews.approve(snapshot);
+  } else if (request.payload.ocrApproval !== undefined) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
   const result = { schemaHash: expectedSchemaHash, value: parsedValue.data };
   const stored = repositories.gateResults.insert({
     nodeId: node.id,
@@ -2462,6 +2480,20 @@ function dispatchActive(
         repositories.runtimeConfig.requireSettingsCurrent();
       }
       return reject(request, "capability-unavailable", "Worker commands require the current asynchronous process owner.");
+    case "ocr-review": {
+      if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+      const current = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
+      if (current === undefined) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+      if (current.revision.revision !== request.target.expectedRevision) conflict(request, current.revision.revision, ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+      const revision = repositories.ocrReviews.append(reviseOcrReview(current.revision, request, now), current.revision.revision);
+      const updated = lifecycleRun(request, dependencies.lifecycle.transition({
+        commandId: lifecycleCommandId("operator-ocr-review", request.commandId), runId: request.target.runId,
+        expectedVersion: current.run.version, ocrReviewRevision: revision.revision, sourceCommandId: request.commandId,
+      }));
+      const target: TargetReference = { family: "ocr-review", runId: request.target.runId };
+      return applied(request, [target, runTarget(request.target.runId)], [{ target, before: current.revision.revision, after: revision.revision },
+        { target: runTarget(request.target.runId), before: current.run.version, after: updated.version }]);
+    }
     case "gate":
       return executeResolveGate(dependencies, repositories, request, now, "operator");
     case "run": {
@@ -2534,6 +2566,15 @@ function replay(
     );
   }
   if (request.family === "worker-browser" && audit.result.state === "rejected") return audit.result;
+  if (request.family === "ocr-review" || request.family === "gate" && request.payload.ocrApproval !== undefined) {
+    if (dependencies.lifecycle === undefined) throw new OcrReviewRefusedError();
+    const review = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
+    if (review === undefined) throw new OcrReviewRefusedError();
+    if (request.family === "ocr-review") {
+      const revision = repositories.ocrReviews.revision(request.target.runId, request.target.expectedRevision + 1);
+      if (revision?.origin.kind !== "command" || revision.origin.commandId !== request.commandId) throw new OcrReviewRefusedError();
+    } else if (!readOcrSnapshotsAuthority(repositories, review).some(snapshot => snapshot.snapshotId === request.commandId)) throw new OcrReviewRefusedError();
+  }
   if (audit.result.state !== "applied") {
     throw new Error(
       `command ${request.commandId} recorded outcome ${audit.result.state}; only applied commands are journaled`,
@@ -2757,7 +2798,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             return replay(dependencies, repositories, request, now);
           }
           const auditId = dependencies.ids.uuid();
-          const application = request.family === "start" || request.family === "run" && (request.type === "retry" || request.type === "recover-run" || request.type === "cancel")
+          const application = request.family === "ocr-review" || request.family === "start" || request.family === "run" && (request.type === "retry" || request.type === "recover-run" || request.type === "cancel")
             ? withCanonicalRunCommandScope(repositories, request,
               () => dispatchActive(dependencies, repositories, request, now, auditId), parentCommandId)
             : dispatchActive(dependencies, repositories, request, now, auditId);
@@ -2807,6 +2848,8 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
         });
         if (error instanceof PreflightAdmissionRefusal) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "capability-unavailable", message: error.message });
         if (error instanceof CommandRefusal) return error.result;
+        if (error instanceof OcrReviewRefusedError) return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
+          code: error.code, message: ERROR_CATALOG.OCR_REVIEW_REFUSED.text });
         throw error;
       }
   };
