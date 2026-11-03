@@ -25,10 +25,10 @@ export function SpreadsheetLibrary({ files, types, busy, loading, failed, pendin
   const visible = local.filter(file => (!typeId || file.type.id === typeId) && `${file.name} ${file.worksheets.map(sheet => sheet.name).join(' ')}`.toLowerCase().includes(query.toLowerCase().trim()));
   const outputs = files.filter(file => file.state.origin.kind === 'workflow');
   const disabled = busy || loading || failed || pendingImport || working;
-  const perform = async (work: () => Promise<LibraryChangeResult | void>) => {
+  const perform = async (work: () => Promise<LibraryChangeResult | void>): Promise<LibraryChangeResult> => {
     setWorking(true); setError('');
-    try { const result = await work(); if (result && result.state !== 'confirmed') { setError(result.message); return false; } return true; }
-    catch (error) { setError(error instanceof Error ? error.message : String(error)); return false; }
+    try { const result = await work(); if (result && result.state !== 'confirmed') setError(result.message); return result ?? { state: 'confirmed' }; }
+    catch (error) { const message = error instanceof Error ? error.message : String(error); setError(message); return { state: 'uncertain', message }; }
     finally { setWorking(false); }
   };
   const openDialog = (kind: NonNullable<typeof dialog>['kind'], entries: readonly WorkbookLibraryEntry[]) => { setDialog({ kind, files: entries }); setValue(kind === 'rename' ? entries[0].name : kind === 'type' ? entries[0].metadata.typeId : ''); setError(''); };
