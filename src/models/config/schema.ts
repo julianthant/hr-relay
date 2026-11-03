@@ -89,7 +89,7 @@ export const ProviderInvocationSettingsSchema = z.strictObject({
 export const PROVIDER_CAPABILITY_CONFIG_KEYS = deepFreeze({
   "geocode.census": "geocodeCensus",
   "geocode.nominatim": "geocodeNominatim",
-} as const satisfies Record<Exclude<ProviderCapabilityId, "ocr.extract" | "workbooks.library">, keyof z.output<typeof ProviderInvocationSettingsSchema>>);
+} as const satisfies Record<Exclude<ProviderCapabilityId, "ocr.extract" | "workbooks.library" | "ocr.approved-snapshot">, keyof z.output<typeof ProviderInvocationSettingsSchema>>);
 
 /** The absolute filesystem locations the runtime reads and writes — pure contract with no default, because a browser has no working directory to resolve against. */
 export const ConfigPathsSchema = z.strictObject({
@@ -224,7 +224,7 @@ export const ConfigSchema = z.strictObject({
 /** Resolve the current timeout for one connected capability. */
 export function providerInvocationConfig(
   config: { readonly providers: z.output<typeof ProviderInvocationSettingsSchema> },
-  capability: Exclude<ProviderCapabilityId, "ocr.extract" | "workbooks.library">,
+  capability: Exclude<ProviderCapabilityId, "ocr.extract" | "workbooks.library" | "ocr.approved-snapshot">,
 ): z.output<typeof ProviderInvocationConfigSchema> {
   const key = PROVIDER_CAPABILITY_CONFIG_KEYS[capability];
   return ProviderInvocationConfigSchema.parse(config.providers[key]);

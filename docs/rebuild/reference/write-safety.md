@@ -87,8 +87,16 @@ Natural keys remain private authority data. Public projections use digest refere
 | `ucpath/create-termination` | `ucpath:termination\|<emplId>\|<effectiveDate>` | `ucpath/match-existing-termination` | `ucpath/verify-termination` | `operator-only` |
 | `ucpath/delete-pending-terminations` | `ucpath:pending-terminations-clear:v2\|<emplId>\|<set-digest>` | `ucpath/match-pending-terminations` | `ucpath/verify-pending-terminations-cleared` | `operator-only` |
 | `kuali/save-separation-finalization` | `kuali:<documentNumber>\|finalization\|<transactionNumber>` | `kuali/match-separation-finalization` | `kuali/verify-separation-finalization` | `stabilized`: 30,000 ms after fence, two reads at least 5,000 ms apart, same source state |
+| `ucpath/save-emergency-contact` (preview only) | `ucpath:emergency-contact\|<emplId>\|<desired-effect-sha256>` | `ucpath/match-emergency-contact-plan` | `ucpath/verify-emergency-contact-plan` | `operator-only` |
 
-These declarations live in `src/models/systems/ucpath/{create-termination,delete-pending-terminations}.ts` and `src/models/systems/kuali/save-separation-finalization.ts`.
+These declarations live in `src/models/systems/ucpath/{create-termination,delete-pending-terminations,contact-tasks}.ts` and `src/models/systems/kuali/save-separation-finalization.ts`.
+
+Emergency Contact declares the full ordered demotion/addition plan under the OCR release. Its
+probe checks the complete persisted protected set, and its key validates the raw desired contact
+against the plan. Original and freshly read stable content must agree; observation timestamps do
+not become transaction identity. Real mode refuses before acquiring contacts, and its commit task
+always returns `CONTACT_SAVE_UNAVAILABLE`. No driver Save capability exists. Preview captures the
+original and final prepared sets and creates no write intent, attempt or confirmation.
 
 ### Explicit repetition
 

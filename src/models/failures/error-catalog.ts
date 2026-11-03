@@ -15,6 +15,7 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 export const ERROR_CATALOG = Object.freeze({
   OCR_SOURCE_REFUSED: catalogEntry("This PDF or source page could not be admitted for the current person and review. Reload the saved review or choose a valid PDF up to 25 MB.", EmptyParametersSchema),
   OCR_REVIEW_REFUSED: catalogEntry("The saved OCR review or selection changed or could not be authenticated. Reload the review before continuing.", EmptyParametersSchema),
+  OCR_APPROVAL_UNAVAILABLE: catalogEntry("The approved OCR record authority is unavailable. Reload the run before continuing.", EmptyParametersSchema),
   OCR_PUBLICATION_REFUSED: catalogEntry("The OCR reading could not be bound to its saved run, source page and operator. Preserve the run and review its evidence.", EmptyParametersSchema),
   ONBOARDING_CRM_READ_FAILED: catalogEntry("CRM hire data could not be verified. Review the record before starting a new run.", EmptyParametersSchema),
   ONBOARDING_DATA_INVALID: catalogEntry("CRM hire data failed validation. Review the source fields and run overrides.", EmptyParametersSchema),
@@ -36,6 +37,9 @@ export const ERROR_CATALOG = Object.freeze({
   BLANK_ROW_UNAVAILABLE: catalogEntry("UCPath did not provide exactly one blank row for this contact.", EmptyParametersSchema),
   CONTACT_NAME_LOST: catalogEntry("UCPath did not retain the staged contact name. No contact was saved.", EmptyParametersSchema),
   STAGED_EFFECT_MISMATCH: catalogEntry("UCPath did not retain the exact staged contact fields. No contact was saved.", EmptyParametersSchema),
+  CONTACT_SAVE_UNAVAILABLE: catalogEntry("Emergency Contact Save is unavailable. Use Dry Run to review the prepared contact plan.", EmptyParametersSchema),
+  CONTACT_APPROVED_PLAN_CONFLICT: catalogEntry("The approved selection contains conflicting primary contact plans for an employee. Select one intended contact per employee or correct the OCR records, then approve again.", EmptyParametersSchema),
+  CONTACT_APPROVED_FIELDS_INVALID: catalogEntry("The approved contact fields cannot form a complete UCPath contact plan. Correct and approve the OCR record again.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_BACKUP_FAILED: catalogEntry("The automatic shutdown backup could not be verified. Relay has not completed a clean shutdown.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_REPAIR_NOTICE_UNAVAILABLE: catalogEntry("The automatic repair notice could not be read. Stored repair evidence has been retained.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_REPAIR_REFUSED: catalogEntry("Relay could not safely repair saved person data. Your data and unresolved writes have been retained; startup cannot continue.", EmptyParametersSchema),

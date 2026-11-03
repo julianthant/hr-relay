@@ -155,9 +155,18 @@ tuple imports definitions directly, keeping those backend imports out of the das
 
 The child-only `src/workflows/ocr/` and `src/workflows/ocr-page/` folders use the same layout.
 Their indexes generate production child modules and task stores; OCR delegates page readings to
-OCR Page and identity lookups to Person Lookup. Only declared parent edges admit these children;
+OCR Page and form-specific identity lookups to Person Lookup or I-9 Lookup. Only declared parent edges admit these children;
 neither has a public start surface. Their retained proofs live at `ocr/steps/source-pages/step.ts`
 and `ocr-page/steps/read-page/step.ts` and enter the generated step-proof inventory.
+
+`src/workflows/ocr/steps/source-pages/step.ts` also owns the generic approved-record graph builder: one awaited
+OCR child, authenticated snapshot retrieval, then ordered member delegation. Target, selection
+policy and member mapping belong to each consuming workflow. `src/workflows/emergency-contact/`
+uses it for the PDF operation; `src/workflows/emergency-contact-member/` owns one employee's
+contact plan and transaction preview. Both retain step proofs and schema-owned results.
+`src/backend/processing/providers/ocr-approved-snapshot-adapter.ts` authenticates the current run,
+claim, task and native OCR/member lineage before reading a current immutable approval. Its local
+capability is issued by `worker/run-resources.ts`; it has no endpoint or configurable provider.
 
 `src/workflows/onboarding/` registers the read-only hire review; hire submission and I-9 profile creation remain unavailable.
 Its `index.ts` derives four retained proofs from step definitions: CRM data, UCPath duplicate search,
@@ -238,11 +247,14 @@ launch imports and content-addressed loading; `guards-and-tests.md` owns its cac
 New Kronos, and UCPath. The semantic registries name these fixtures; architecture tests and the UCPath
 registry test read or assert their paths.
 `src/backend/systems/ucpath/driver/contact-page.ts` adapts the standalone contact editor to the
-shared contact-set interpreter and the single UCPath driver. Candidate recipes live in
+shared contact-set interpreter and the single UCPath driver. Pure mapping, complete-set fingerprints,
+primary-plan decisions and exact presence rules live in `src/rules/ucpath/emergency-contact.ts`. Candidate recipes live in
 `UCPATH_PENDING_CONTACT_RECIPES` outside the verified UI registry; the synthetic contact HTML
 fixture proves adapter behavior, not live selector validity. Contact read, prepare and comparison
-contracts live in `src/models/systems/ucpath/contact-tasks.ts`; task implementations and registration
-await their owning workflow. The driver and comparison interpreter expose no contact Save capability.
+contracts live in `src/models/systems/ucpath/contact-tasks.ts`; their implementations live under
+`src/backend/systems/ucpath/tasks/`, one file per task ID. `contact-verdict.ts` owns the shared protected
+probe fold. Preparation can demote one uniquely bound primary and add the declared primary contact.
+The driver exposes no contact Save capability, and real-mode members refuse before acquisition.
 `tests/architecture/systems/fixtures/selector-evidence-bindings.json` owns selector-binding inputs.
 `tests/architecture/dashboard/fixtures/pending-wire-bindings.json` owns dashboard wire exceptions.
 

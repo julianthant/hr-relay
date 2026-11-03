@@ -1,3 +1,8 @@
+import { readEmergencyContactsTask } from "./tasks/read-emergency-contacts.js";
+import { stageEmergencyContactTask } from "./tasks/stage-emergency-contact.js";
+import { probeEmergencyContactTask } from "./tasks/match-emergency-contact-plan.js";
+import { verifyEmergencyContactTask } from "./tasks/verify-emergency-contact-plan.js";
+import { saveEmergencyContactTask } from "./tasks/save-emergency-contact.js";
 import { searchPersonMatchTask } from "./tasks/search-person-match.js";
 import { defineBrowserStore } from "../../../workflow-kit/task-registry.js";
 import { ucpathDriver } from "./driver-declaration.js";
@@ -22,6 +27,8 @@ export const ucpathStore = defineBrowserStore(
   ucpathDriver,
   ucpathSession,
   {
+    readEmergencyContacts: readEmergencyContactsTask, stageEmergencyContact: stageEmergencyContactTask,
+    probeEmergencyContact: probeEmergencyContactTask, verifyEmergencyContact: verifyEmergencyContactTask, saveEmergencyContact: saveEmergencyContactTask,
     searchPersonMatch: searchPersonMatchTask,
     searchPersonOrg: searchPersonOrgTask,
     readJobSummary: readJobSummaryTask,

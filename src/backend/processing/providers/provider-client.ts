@@ -61,7 +61,7 @@ export function createProviderClient<C extends ProviderCapabilityId>(capabilityI
       if (adapter === undefined) return publish(unavailable("adapter-unavailable", "Provider adapter is unavailable."));
       if (adapter.capability !== capability) throw new Error("provider-adapter-capability-mismatch");
       const deadlineMonotonicMs = deps.clock.monotonicMs() + (capability === "ocr.extract" ? z.number().int().positive().parse(ocrPolicy?.timeoutMs)
-        : capability === "workbooks.library" ? snapshot.config.timeouts.taskMs : providerInvocationConfig(snapshot.config, capability).timeoutMs);
+        : capability === "workbooks.library" || capability === "ocr.approved-snapshot" ? snapshot.config.timeouts.taskMs : providerInvocationConfig(snapshot.config, capability).timeoutMs);
       const controller = new AbortController();
       let interrupt: (code: "aborted" | "timeout") => void = () => { throw new Error("provider-interruption-uninitialized"); };
       const interrupted = new Promise<z.output<typeof ProviderResponseEnvelopeSchema>>(resolve => {

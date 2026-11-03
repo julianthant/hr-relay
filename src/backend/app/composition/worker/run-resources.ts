@@ -9,7 +9,7 @@ import type { CredentialStore } from "../../../../models/config/credential-store
 import type { Config } from "../../../../models/config/schema.js";
 import { StoredConfigSchema } from "../../../../models/config/snapshot.js";
 import { ConfigSnapshotRecordSchema } from "../../../../models/config/snapshot.js";
-import type { RunRecord } from "../../../../models/run/record.js";
+import { runClaim, type RunRecord } from "../../../../models/run/record.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { type BrowserSessionFactoryOptions, BrowserProfileAdmissionSchema, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError } from "../../../runtime/browser/browser-session-factory.js";
@@ -32,6 +32,8 @@ import { createRunWorkbookService } from "../../../runs/workbooks.js";
 import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
 import { searchPartitionDay } from "../../../../models/dashboard/search-calendar.js";
 import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
+import { createOcrApprovedSnapshotAdapter } from "../../../processing/providers/ocr-approved-snapshot-adapter.js";
+import type { AnyWorkflowDescriptor } from "../../../../workflow-kit/workflow.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
@@ -41,6 +43,7 @@ export function createRunResourcesFactory(input:Readonly<{
  authority:AuthorityRepositories;artifacts:ContentAddressedArtifactWriter;clock:Clock;ids:IdFactory;
  admission:RuntimeAdmission;database:AuthorityDatabase;
  runReader?:Pick<RunRecordService,"read">;
+ resolveDescriptor?:(workflowId:string)=>AnyWorkflowDescriptor|undefined;
  isolation:RuntimeIsolation;protectedSecrets:Pick<CredentialStore,"read">;scheduler:MonotonicDeadlineScheduler;
  environment:Readonly<Record<string,string|undefined>>;sessionFactory?:WorkerBrowserSessionFactory;duoCeremony?:DuoCeremonyGateFactory;
  assertProfileOwner:(workerId:WorkerId)=>void;
@@ -51,6 +54,8 @@ export function createRunResourcesFactory(input:Readonly<{
  if(input.sessionFactory!==undefined&&input.createSessionFactory!==undefined)throw new Error("browser-session-factory-owner-conflict");
  const profiles=createBrowserProfileAuthority(input);
  const runWorkbooks=createRunWorkbookService({database:input.database,clock:input.clock});
+ const descriptors=new Map([...WORKFLOW_MODULES,...CHILD_ONLY_WORKFLOW_MODULES].map(module=>[String(module.descriptor.id),module.descriptor]));
+ const resolveDescriptor=input.resolveDescriptor??((workflowId:string)=>descriptors.get(workflowId));
  const nominatim=input.nominatim;
  const compose=(config:Config)=>{
   input.assertBrowserRoot(config.paths.browserProfileRoot);
@@ -90,6 +95,11 @@ export function createRunResourcesFactory(input:Readonly<{
       return {workflowId:module.descriptor.id,workflowLabel:module.descriptor.label,partitionDay:searchPartitionDay(new Date(run.envelope.enqueuedAt))};
      },
       references:{runId:run.envelope.runId,write:command=>runWorkbooks.write(run,command)}}),
+    "ocr.approved-snapshot":createOcrApprovedSnapshotAdapter({database:input.database,run,clock:input.clock,resolveDescriptor,
+      ...(input.runReader===undefined?{}:{reader:input.runReader}),assertCurrent:()=>{
+        input.admission.assertProfileRuntime();const claim=runClaim(run);if(claim===undefined)throw new OcrPublicationRefusedError();
+        input.assertProfileOwner(claim.workerId);
+      }}),
    })},...(input.runReader===undefined?{}:{publishCheckpoint:createOcrCheckpointPublication(input.runReader,run)})});
    if(["ocr","ocr-page"].includes(run.envelope.workflow)&&resources.publishCheckpoint===undefined)throw new OcrPublicationRefusedError();
    runCache.set(key,resources);

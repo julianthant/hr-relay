@@ -157,6 +157,7 @@ export const ServiceSystemIdSchema = z.enum(["extraction", "normalization", "ocr
 export const SystemIdSchema = z.union([BrowserSystemIdSchema, ServiceSystemIdSchema]);
 export const ProviderCapabilityIdSchema = z.enum([
   "ocr.extract",
+  "ocr.approved-snapshot",
   "geocode.census",
   "geocode.nominatim",
   "workbooks.library",

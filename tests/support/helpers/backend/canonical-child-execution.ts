@@ -24,7 +24,8 @@ import { testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifec
 
 export function canonicalChildExecution(deps: RunExecutorDependencies, database: AuthorityDatabase, path: string,
   resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined,
-  checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>) {
+  checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>,
+  providersForRun?: (run: RunRecord, reader: Pick<RunRecordService, "read">) => NonNullable<RunExecutorDependencies["providers"]>) {
   const { clock } = deps;
   const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
   const lifecycle = new RunRecordService({ database, clock, ids: deps.ids, resolveDescriptor: resolve,
@@ -88,6 +89,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     stage = "execute";
     const outcome = await withBoundRunConfigFingerprint(deps.sessions, FingerprintSchema.parse(run.envelope.configFingerprint),
       () => executeClaimedRun({ ...deps, lifecycle: workerRunLifecyclePort(lifecycle), descriptor: execution, childRuns,
+        ...(providersForRun === undefined ? {} : { providers: providersForRun(run, lifecycle) }),
         ...(checkpointPublication === undefined ? {} : { publishCheckpoint: checkpointPublication(lifecycle, run) }) },
         { run, claim, signal }), run.envelope.browserMode, { runId: run.envelope.runId,
         descriptorFingerprint: run.envelope.contractFingerprint,

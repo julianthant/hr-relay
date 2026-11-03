@@ -494,7 +494,76 @@ function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
   return [...ocrReviewSeedLeaves(scope, "review."), ...ocrPrivateLeaves(scope, "identities")];
 }
 
+function approvedOcrReferenceLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrPrivateLeaves(scope, `${prefix}snapshotId`, `${prefix}sourceRunId`, `${prefix}digest`), ...open(scope, `${prefix}revision`)];
+}
+function approvedOcrSnapshotLeaves(scope: EvidenceValueScope): unknown[] {
+  return [...ocrPrivateLeaves(scope, "snapshot.snapshotId", "snapshot.sourceRunId", "snapshot.reviewDigest", "snapshot.selectedRecordIds", "snapshot.records"),
+    ...open(scope, "snapshot.revision", "snapshot.approvedBy", "snapshot.approvedAt")];
+}
+function approvedOcrRecordLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrPrivateLeaves(scope, `${prefix}recordId`, `${prefix}assertedEid`, `${prefix}fields.answers`, `${prefix}fields.blockingPaths`, `${prefix}fields.answersFingerprint`),
+    ...open(scope, `${prefix}discarded`)];
+}
+function contactSetLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrPrivateLeaves(scope, `${prefix}emplId`, `${prefix}displayedName`, `${prefix}rows`),
+    ...open(scope, ...["pageStateId", "observation", "viewAll", "rowCount", "observedAt"].map(path => `${prefix}${path}`))];
+}
+function contactAddressLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...open(scope, `${prefix}kind`), ...ocrPrivateLeaves(scope,
+    ...["address1", "address2", "city", "state", "postalCode", "country"].map(path => `${prefix}fields.${path}`))];
+}
+function contactInputLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrPrivateLeaves(scope, `${prefix}emplId`, `${prefix}expectedName`,
+    ...["name", "relationship", "primary", "cellPhone", "homePhone", "workPhone"].map(path => `${prefix}contact.${path}`)),
+    ...contactAddressLeaves(scope, `${prefix}contact.address.`)];
+}
+function contactEffectLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...ocrPrivateLeaves(scope, ...["name", "relationship", "primary", "phone"].map(path => `${prefix}${path}`)),
+    ...contactAddressLeaves(scope, `${prefix}address.`)];
+}
+function contactPlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...open(scope, `${prefix}state`, `${prefix}rowIndex`, `${prefix}demotion`, `${prefix}demotion.rowIndex`, `${prefix}target.kind`, `${prefix}target.rowIndex`),
+    ...ocrPrivateLeaves(scope, `${prefix}setFingerprint`), ...contactSetLeaves(scope, `${prefix}before.`),
+    ...contactEffectLeaves(scope, `${prefix}effect.`), ...contactEffectLeaves(scope, `${prefix}demotion.effect.`)];
+}
+function contactProofLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [...open(scope, `${prefix}kind`, `${prefix}source`), ...ocrPrivateLeaves(scope, `${prefix}emplId`, `${prefix}displayedName`),
+    ...contactEffectLeaves(scope, `${prefix}effect.`), ...contactSetLeaves(scope, `${prefix}contacts.`)];
+}
+function contactPlannedOutputLeaves(scope: EvidenceValueScope): unknown[] {
+  return [...contactInputLeaves(scope, "target."), ...contactPlanLeaves(scope, "target.plan."), ...ocrPrivateLeaves(scope, "changes", "demotionLine", "contactLine")];
+}
+
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...approvedOcrRecordLeaves(taskOutput("ocr/read-approved-record"), "record."),
+  ...approvedOcrSnapshotLeaves(taskOutput("ocr/read-approved-snapshot")),
+  ...approvedOcrSnapshotLeaves(workflowResult("emergency-contact-read-document")),
+  ...contactInputLeaves(taskOutput("workflow:emergency-contact-member/read-approved-contact"), ""),
+  ...contactPlannedOutputLeaves(taskOutput("workflow:emergency-contact-member/read-contact-plan")),
+  ...["ucpath/read-emergency-contacts", "ucpath/stage-emergency-contact"].flatMap(id => contactSetLeaves(taskOutput(id), "contacts.")),
+  ...["ucpath/match-emergency-contact-plan", "ucpath/verify-emergency-contact-plan"].flatMap(id => [
+    ...open(taskOutput(id), "state", "observedAt", "matches", "evidence.source", "evidence.sourceState", "evidence.observedAt"),
+    ...ocrPrivateLeaves(taskOutput(id), "reason", "queryDigest", "evidence", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"),
+    ...contactProofLeaves(taskOutput(id), "proof."),
+  ]),
+  ...open(taskOutput("ucpath/stage-emergency-contact"), "stagedPageState"),
+  ...contactProofLeaves(taskOutput("ucpath/save-emergency-contact"), "proof."),
+  ...contactProofLeaves(writeProof("ucpath/save-emergency-contact"), ""),
+  ...["emergency-contact-member", "emergency-contact-member-contact-plan", "emergency-contact-member-contact-preview"].flatMap(id => [
+    ...approvedOcrReferenceLeaves(workflowInput(id), "approval."), ...approvedOcrRecordLeaves(workflowInput(id), "record."),
+  ]),
+  ...["emergency-contact-member", "emergency-contact-member-contact-preview"].flatMap(id => [
+    ...open(workflowResult(id), "disposition"), ...contactProofLeaves(workflowResult(id), "proof."),
+  ]),
+  ...contactPlannedOutputLeaves(workflowResult("emergency-contact-member-contact-plan")),
+  ...["emergency-contact", "emergency-contact-read-document", "emergency-contact-members"].flatMap(id => [
+    ...ocrArtifactLeaves(workflowInput(id), "document."), ...ocrRosterLeaves(workflowInput(id), "roster."),
+    ...open(workflowInput(id), "reading.kind"), ...ocrPrivateLeaves(workflowInput(id), "readingId", "reading.actorId", "reading.assertions"),
+  ]),
+  ...[workflowResult("emergency-contact"), workflowResult("emergency-contact-members"), taskOutput("workflow:emergency-contact/read-result")].flatMap(scope => [
+    ...approvedOcrReferenceLeaves(scope, "approval."), ...ocrPrivateLeaves(scope, "members"),
+  ]),
   ...open(taskOutput("extraction/extract-pdf-pages"), "pageCount"),
   ...ocrPrivateLeaves(taskOutput("extraction/extract-pdf-pages"), "pages"),
   ...ocrManifestLeaves(taskOutput("workflow:ocr/read-source-pages"), "manifest."),

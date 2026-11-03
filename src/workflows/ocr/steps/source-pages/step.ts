@@ -1,3 +1,11 @@
+import type { z } from "zod";
+import { ReadApprovedOcrSnapshot } from "../../../../models/processing/ocr/read-approved-snapshot.js";
+import { ApprovedOcrRecordInputSchema } from "../../../../models/workflows/ocr/approved-record.js";
+import type { OcrApprovedSnapshot } from "../../../../models/ocr/review.js";
+import type { WorkflowRef } from "../../../../models/workflow/graph.js";
+import { EidSchema, type BrowserSystemId } from "../../../../rules/identity/ids.js";
+import { TaskError } from "../../../../workflow-kit/errors.js";
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { ExtractPdfPages } from "../../../../models/processing/extraction/extract-pdf-pages.js";
 import { OcrPageWorkflowInputSchema } from "../../../../models/workflows/ocr-page/input.js";
 import { OcrInputSchema } from "../../../../models/workflows/ocr/input.js";
@@ -89,3 +97,45 @@ export const ocrSourcePagesDefinition = defineStep({
     }),
   },
 });
+
+export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput extends z.ZodType, MemberResult extends z.ZodType>(
+  { delegate, task }: WorkflowAuthor<Input>, options: Readonly<{
+    ocrInput(input: z.output<Input>): z.input<typeof OcrInputSchema>;
+    target: WorkflowRef<MemberInput, MemberResult>;
+    memberSystem: BrowserSystemId;
+    memberLabel: string;
+    filter(record: OcrApprovedSnapshot["records"][number]): boolean;
+    validate(records: readonly OcrApprovedSnapshot["records"][number][]): void;
+    memberInput(input: z.output<Input>, approved: z.output<typeof ApprovedOcrRecordInputSchema>): z.input<MemberInput>;
+  }>,
+) {
+  const ocr = delegate({ id: "read-document", label: "Read and approve PDF",
+    target: { id: WorkflowIdSchema.parse("ocr"), input: OcrInputSchema, result: OcrWorkflowResultSchema },
+    edgeId: "document-ocr", cardinality: "one", await: "terminal", join: "one",
+    policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "manual-parent-resume", visibility: "linked" },
+  }, [], { bind: ({ input }) => ({ ...options.ocrInput(input), approval: "release" as const }), deriveChildItemId: (_input, context) => context.canonicalItemId });
+  const approved = task({ id: "approved-records", label: "Read approved records", contract: ReadApprovedOcrSnapshot, replay: "always-rerun" }, [ocr], ({ outputs }) => {
+    const child = outputs["read-document"];
+    if (child.state !== "done" || child.output.approvedSnapshot === null) throw new TaskError(ReadApprovedOcrSnapshot.id, "OCR_REVIEW_REFUSED", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    return child.output.approvedSnapshot;
+  });
+  const members = delegate({ id: "members", label: options.memberLabel, target: options.target,
+    edgeId: "approved-records", cardinality: "many", await: "terminal", join: "all-settled",
+    policy: { onChildFailed: "allow-partial", cascadeCancel: "cascade", afterChildRetry: "manual-parent-resume", visibility: "inline" },
+  }, [ocr, approved], { bind: ({ input, outputs }) => {
+    const reference = outputs["read-document"];
+    if (reference.state !== "done" || reference.output.approvedSnapshot === null) throw new TaskError(ReadApprovedOcrSnapshot.id, "OCR_REVIEW_REFUSED", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    const records = outputs["approved-records"].snapshot.records.filter(options.filter);
+    options.validate(records);
+    return records.map(record =>
+      options.memberInput(input, ApprovedOcrRecordInputSchema.parse({ approval: reference.output.approvedSnapshot, record })));
+  }, deriveChildItemId: (_input, context) => context.canonicalItemId });
+  return { ocr, approved, members, steps: [
+    [{ key: "read-document", label: "Read and approve PDF", system: "local" }, [ocr, approved]],
+    [{ key: "members", label: options.memberLabel, system: options.memberSystem }, [members]],
+  ] as const };
+}
+
+export function approvedRecordHasEid(record: OcrApprovedSnapshot["records"][number]): boolean {
+  return EidSchema.safeParse(record.assertedEid).success;
+}

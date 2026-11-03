@@ -24,6 +24,7 @@ import { deriveGateResultCheckpointFingerprint, type GateResultRecord } from "..
 import { readContinuationGate, validateRunContinuation } from "../storage/sqlite/run-continuation.js";
 import { rejectCommandRequest } from "./commands/command-refusal.js";
 import { OcrCanonicalInput } from "../../models/workflows/ocr/input.js";
+import { EmergencyContactCanonicalInput } from "../../models/workflows/emergency-contact/input.js";
 import { bindOcrRoster } from "../../models/workflows/ocr/roster.js";
 
 const onboardingInputBinding = Object.freeze({
@@ -56,7 +57,7 @@ interface WorkbookInputBinding {
   bind(input: unknown, references: readonly SchemaBoundCanonicalValue[] | undefined, capturedAt: string): unknown;
 }
 const workbookInputBindings: ReadonlyMap<object, WorkbookInputBinding> = new Map<object, WorkbookInputBinding>([
-  [OnboardingCanonicalInput, onboardingInputBinding], [OcrCanonicalInput, ocrInputBinding],
+  [OnboardingCanonicalInput, onboardingInputBinding], [OcrCanonicalInput, ocrInputBinding], [EmergencyContactCanonicalInput, ocrInputBinding],
 ]);
 
 export function workbookInputBinding(canonicalInput: object) {

@@ -180,13 +180,14 @@ OCR defaults to review-only completion. Explicit release mode parks on its regis
 gate. `resolve-gate` verifies the exact current revision, digest and selected record IDs, freezes
 the snapshot and settles the gate in one authority transaction. Parent completion returns that
 snapshot reference. Later drafts cannot mutate it, and checkpoint recovery refuses a superseded
-approval. Emergency Contact member recovery and live workflow activation still require their
-owning graphs, freshness policies and operator acceptance.
+approval. Workflow activation and live selector acceptance remain separate from retained approval
+authority.
 
 ### 4.5 Roster matching and contact advice
 
 OCR declares the `ocr-roster` workbook type with `eid` and `fullName` fields. Run planning captures
-all data rows from the explicitly selected library and CAS version. The run retains the full reference once; its canonical input binds the
+all data rows from the selected named library version; omission selects the current in-use version.
+The reference retains named-version identity separately from the captured current library CAS. The run retains the full reference once; its canonical input binds the
 workbook identity, version, reference digest and ordered typed roster rows with worksheet/row IDs.
 Caller-supplied roster values refuse.
 Duplicate people remain separate rows, missing identities remain null, and invalid identity values
@@ -202,6 +203,36 @@ keeps their original numeric type. Boolean, date, fractional and invalid EID val
 `src/rules/matching/roster-match.ts` owns scoring and mismatch decisions. A claimed EID is not replaced by a different name match. `name-eid-conflict` has confidence zero; distinct-EID top ties are `ambiguous`; `no-match` has `matchedEid: null`. `src/rules/matching/match-confidence.ts` owns tiers: high at 0.6, low below 0.4, otherwise medium. The task's default freshness limit is 24 hours. Matching returns records and performs no workbook writes.
 
 `normalization/read-contact-advice` applies deterministic relationship, phone, country, state, and ZIP rules. Optional geocoding uses Census before Nominatim for US-shaped addresses, otherwise Nominatim. It records city/state/ZIP advice and observation provenance; it does not offer street-line replacements. Its output includes `normalized`, `relationshipCanonical`, `changes`, and `complete`, `ambiguous`, or `advisory-unavailable` disposition. Ambiguity takes precedence when unresolved fields remain. No AI normalization arm exists. This read task does not approve or submit the advised values.
+
+#### Approved Emergency Contact consumption
+
+The Emergency Contact PDF operation awaits OCR release before reading or acquiring contacts.
+The local `ocr.approved-snapshot` capability authenticates the current run, attempt, claim and
+registered task, its exact native OCR child, and the reference returned by that child's terminal
+result. Member reads additionally authenticate native membership and exact canonical record/EID
+binding. Each call checks the current review revision and approval digest; foreign references,
+altered records and later drafts refuse. Snapshot records keep the operator's selected order.
+
+The shared graph builder lives in `src/workflows/ocr/workflow.ts`. The Emergency Contact consumer
+maps only approved contact fields, requests Primary, and keeps blank address fields null. It does
+not copy the employee's address or infer a country. Conflicting desired primary effects for one EID
+refuse before member admission. Equal effects retain every selected record and share the permanent
+desired-effect key.
+
+One OCR release covers the declared primary policy and ordered preparation plan. A different
+existing primary is bound by its unique full effect, row locator and original complete-set
+fingerprint. Preparation reopens the employee editor, verifies unchanged contact content, unchecks
+that primary, verifies the demotion, then adds the new primary and verifies the final protected set.
+Original observation evidence is retained while fresh read times may advance. Original and final
+full-set captures are required; capture failure fails the preview. A staged page cannot prove saved
+presence on a later read.
+
+Member previews use the ordinary protected sequencer and stop after preparation. Exact persisted
+presence skips preparation; an indeterminate probe or an attempting/parked permanent key refuses.
+The permanent key is employee plus canonical desired effect, independent of run and before-set.
+Real mode returns `CONTACT_SAVE_UNAVAILABLE` before contact acquisition. The driver has no Save
+method. Emergency Contact remains on its mock source; parent dry-run admission and aggregation of
+descendant previews require the delegation runtime's support before an operation preview is usable.
 
 ### 4.6 Artifact projections
 

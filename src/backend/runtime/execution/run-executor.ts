@@ -189,6 +189,7 @@ function admittedClientFor(
     case "geocode.census": return createProviderClient(capability, dependencies);
     case "geocode.nominatim": return createProviderClient(capability, dependencies);
     case "workbooks.library": return createProviderClient(capability, dependencies);
+    case "ocr.approved-snapshot": return createProviderClient(capability, dependencies);
   }
 }
 
@@ -1941,86 +1942,86 @@ export async function executeClaimedRun(
                 return bound;
               };
             };
-          const operationActionBinders = operationDisplaySnapshot === undefined || usesPreviewBinding
-            ? undefined
-            : {
-              prepare: confirmedRole("prepare", node.prepare.uses.id, node.prepare.bind(transactionScope))!.observingBinder,
-              commit: createDeclaredActionBinder({
-                snapshot: operationDisplaySnapshot,
-                runId,
-                attempt: envelope.attempt,
-                claimGeneration: claim.claimGeneration,
-                taskAttempt: 1,
-                nodeId: String(node.id),
-                taskId: node.commit.uses.id,
-                contractRole: "commit",
-                parsedInput: JsonValueSchema.parse(node.commit.bind(transactionScope)),
-                protectedBindings: retainedRunProtectedBindings(initial),
-                sources: actionSources, childSources,
-                ...(descriptor.operationDisplay?.capability === "complete" ? { transforms: descriptor.operationDisplay.transforms } : {}),
-                runInput: canonicalInput, outputs, configurationValues,
-                ...(envelope.parent === undefined
-                  ? {}
-                  : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
-              }),
-            };
-          const trackedBinders = operationActionBinders === undefined ? undefined : {
-            ...operationActionBinders,
-            commit: (note: BrowserAction): BrowserAction => {
-              const bound = operationActionBinders.commit(note);
-              if (bound.kind === "clicked" && bound.operation?.state === "completed") committedGestures.push(bound);
-              return bound;
-            },
-          };
-
-          const captureLog: Pick<TaskLogger, "warn"> = {
-            warn(message, fields) {
-              deps.log.warn(message, fields);
-              deps.taskNotes?.emitRunLog({ workflow: descriptor.id,
-                address: { runId, attempt: envelope.attempt, traceId: envelope.traceId,
-                  spanPath: `${envelope.traceId}/${String(node.id)}/commit` },
-                level: "warn", message, fields,
-              }, getRun());
-            },
-          };
-          if (envelope.dryRun) {
-            const samples = [...(previewBinding?.samples ?? [])];
-            for (const sample of samples) deps.taskNotes?.emitRunLog({ workflow: descriptor.id,
-              address: { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath: `${envelope.traceId}/${node.id}/prepare` },
-              level: "step", message: "dry-run sample", fields: { field: sample.field, value: canonicalJsonStringify(sample.value) },
-            }, getRun());
-            let preview: TransactionDryRunPreview;
-            try {
-              preview = TransactionDryRunPreviewSchema.parse(await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeDryRun({
-                descriptor, node, run: getRun(), claim,
-                scope: transactionScope,
-                dryRun: true, captureLog,
-                ...(previewBinding === undefined ? {} : { previewBinding }),
-                signal: input.signal,
-                confirmedForRole: (role, taskId, parsedInput) => confirmedRole(role, taskId, parsedInput)?.actions,
-                ...(trackedBinders === undefined ? {} : { operationActionBinders: trackedBinders }),
-                ...(operationReadBinder === undefined ? {} : { operationReadBinder }),
-              }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions.filter(action => action.kind !== "screenshot")),
-                action => { if (action.kind === "screenshot") drainBrowserActions(runSpanIdentity.spanPath, [action], node.commit.uses.id); }));
-            } catch (error) {
-              if (error instanceof RunAbandonedError) throw error;
-              return await failNode(node, node.commit.uses.id, error);
-            }
-            emit({
-              t: "transaction.previewed",
-              ...runSpanIdentity,
-              node: node.id,
-
-              subject: preview.outcome.state === "would-prepare"
-                ? preview.outcome.subject.state
-                : "not-observed",
-              externalCommit: "none",
-            });
-            dryRunSteps.set(String(node.id), { nodeId: node.id, state: "transaction-preview", preview, samples: preview.outcome.state === "would-prepare" ? samples : [] });
-            previewOnly.add(String(node.id));
-            continue;
-          }
           try {
+            const operationActionBinders = operationDisplaySnapshot === undefined || usesPreviewBinding
+              ? undefined
+              : {
+                prepare: confirmedRole("prepare", node.prepare.uses.id, node.prepare.bind(transactionScope))!.observingBinder,
+                commit: createDeclaredActionBinder({
+                  snapshot: operationDisplaySnapshot,
+                  runId,
+                  attempt: envelope.attempt,
+                  claimGeneration: claim.claimGeneration,
+                  taskAttempt: 1,
+                  nodeId: String(node.id),
+                  taskId: node.commit.uses.id,
+                  contractRole: "commit",
+                  parsedInput: JsonValueSchema.parse(node.commit.bind(transactionScope)),
+                  protectedBindings: retainedRunProtectedBindings(initial),
+                  sources: actionSources, childSources,
+                  ...(descriptor.operationDisplay?.capability === "complete" ? { transforms: descriptor.operationDisplay.transforms } : {}),
+                  runInput: canonicalInput, outputs, configurationValues,
+                  ...(envelope.parent === undefined
+                    ? {}
+                    : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
+                }),
+              };
+            const trackedBinders = operationActionBinders === undefined ? undefined : {
+              ...operationActionBinders,
+              commit: (note: BrowserAction): BrowserAction => {
+                const bound = operationActionBinders.commit(note);
+                if (bound.kind === "clicked" && bound.operation?.state === "completed") committedGestures.push(bound);
+                return bound;
+              },
+            };
+
+            const captureLog: Pick<TaskLogger, "warn"> = {
+              warn(message, fields) {
+                deps.log.warn(message, fields);
+                deps.taskNotes?.emitRunLog({ workflow: descriptor.id,
+                  address: { runId, attempt: envelope.attempt, traceId: envelope.traceId,
+                    spanPath: `${envelope.traceId}/${String(node.id)}/commit` },
+                  level: "warn", message, fields,
+                }, getRun());
+              },
+            };
+            if (envelope.dryRun) {
+              const samples = [...(previewBinding?.samples ?? [])];
+              for (const sample of samples) deps.taskNotes?.emitRunLog({ workflow: descriptor.id,
+                address: { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath: `${envelope.traceId}/${node.id}/prepare` },
+                level: "step", message: "dry-run sample", fields: { field: sample.field, value: canonicalJsonStringify(sample.value) },
+              }, getRun());
+              let preview: TransactionDryRunPreview;
+              try {
+                preview = TransactionDryRunPreviewSchema.parse(await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeDryRun({
+                  descriptor, node, run: getRun(), claim,
+                  scope: transactionScope,
+                  dryRun: true, captureLog,
+                  ...(previewBinding === undefined ? {} : { previewBinding }),
+                  signal: input.signal,
+                  confirmedForRole: (role, taskId, parsedInput) => confirmedRole(role, taskId, parsedInput)?.actions,
+                  ...(trackedBinders === undefined ? {} : { operationActionBinders: trackedBinders }),
+                  ...(operationReadBinder === undefined ? {} : { operationReadBinder }),
+                }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions.filter(action => action.kind !== "screenshot")),
+                  action => { if (action.kind === "screenshot") drainBrowserActions(runSpanIdentity.spanPath, [action], node.commit.uses.id); }));
+              } catch (error) {
+                if (error instanceof RunAbandonedError) throw error;
+                return await failNode(node, node.commit.uses.id, error);
+              }
+              emit({
+                t: "transaction.previewed",
+                ...runSpanIdentity,
+                node: node.id,
+
+                subject: preview.outcome.state === "would-prepare"
+                  ? preview.outcome.subject.state
+                  : "not-observed",
+                externalCommit: "none",
+              });
+              dryRunSteps.set(String(node.id), { nodeId: node.id, state: "transaction-preview", preview, samples: preview.outcome.state === "would-prepare" ? samples : [] });
+              previewOnly.add(String(node.id));
+              continue;
+            }
             let durableCommitProof: Readonly<{ writeIntentId: string; confirmedAt: string; proofDigest: string }> | undefined;
             let savedEffectProof: Readonly<{ proofDigest: string; verifiers: readonly BrowserAction[] }> | undefined;
             const raw = await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeTransaction({
