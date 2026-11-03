@@ -112,6 +112,7 @@ import { requireRuntimeAdmission } from "../../../storage/admission/admission-id
 import { RuntimeLifetimeLock } from "../../../storage/admission/lifetime-lock.js";
 import { createContentAddressedArtifactWriter } from "../../../storage/artifacts/content-addressed-artifact-writer.js";
 import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
+import { createOcrSourceService } from "../../../runs/commands/ocr-source-service.js";
 import { createNoteTimelineWriter,type NoteTimelineWriter } from "../../../storage/events/note-timeline-writer.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
 import { AuthorityDatabase,AuthorityHealthPreflightRunner,summarizeBackupHealth } from "../../../storage/sqlite/index.js";
@@ -1064,6 +1065,7 @@ async function composeDashboardRuntimeStartup(
     startPlans,
     applicationLifecycle,
     intake,
+    ocr: createOcrSourceService({ database, reader: lifecycle, clock, artifacts, artifactReader, assertCurrent }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
     ...settingsBoundary.routes,

@@ -6,6 +6,7 @@ import {
 } from "../../../storage/sqlite/index.js";
 
 import { createRunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
+import { readOcrReviewAuthority } from "../../../runs/lifecycle/ocr-review-authority.js";
 
 export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; ownsWorker?: (lease: WorkerLeaseRecord) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
@@ -18,6 +19,11 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
     ledger,
     reader: input.reader,
     authority: {
+      reviewAvailable: runId => database.withAuthorityReadSnapshot(() => {
+        const current = input.reader.read(runId);
+        return current.state === "present" && current.disposition === "live" && current.run.envelope.workflow === "ocr"
+          && readOcrReviewAuthority(database.authority, input.reader, runId) !== undefined;
+      }),
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
       latestNotificationSource: (notificationId) => database.authority.notificationPublications.latest(notificationId),
       listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),

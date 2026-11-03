@@ -45,7 +45,7 @@ import { BUILD_MANIFEST, resolveWorkflowFingerprint, resolveTaskImplFingerprint 
 import type { BuildManifest } from "../../../models/workflow/build-manifest.js";
 import { compileWorkflow, type WorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
-import { DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
+import { childWorkflowModuleOf, DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
 import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../../runtime/scheduling/deadline-scheduler.js";
 import { runWorkerLoop, type WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
 import type { DuoCeremonyGateFactory } from "../../runtime/gates/duo-ceremony-gate.js";
@@ -226,6 +226,7 @@ export interface WorkerComposeInput {
   readonly args: readonly string[];
   readonly executionRegistry?: Readonly<{
     resolve(workflowId: string): WorkflowModule | undefined;
+    resolveChild?(parentId: string, workflowId: string): WorkflowModule | undefined;
     stores: TaskStoreRegistry;
     manifest: BuildManifest;
   }>;
@@ -388,10 +389,15 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     ? parseWorkerArguments(input.args) : parseWorkerArgumentSyntax(input.args);
   const stores = input.executionRegistry?.stores ?? taskStoreRegistry;
   const buildManifest = input.executionRegistry?.manifest ?? BUILD_MANIFEST;
-  const selectedRegistry = input.executionRegistry ?? { resolve: (id: string) => SERVER_REGISTRY[id], stores };
+  const selectedRegistry = input.executionRegistry ?? {
+    resolve: (id: string) => SERVER_REGISTRY[id], resolveChild: childWorkflowModuleOf, stores,
+  };
   const modules = new Map<string, WorkflowModule>();
-  const resolveModule = (id: string): WorkflowModule | undefined => {
-    const module = selectedRegistry.resolve(id), previous = modules.get(id);
+  const parents = new Map<string, Set<string>>();
+  const resolveModule = (id: string, parentId?: string): WorkflowModule | undefined => {
+    const module = parentId === undefined || selectedRegistry.resolveChild === undefined
+      ? selectedRegistry.resolve(id) : selectedRegistry.resolveChild(parentId, id);
+    const previous = modules.get(id);
     if (module === undefined) {
       if (previous !== undefined) throw new Error("worker-execution-registry-changed");
       return undefined;
@@ -426,15 +432,24 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     if (ancestry.length >= 16 || ancestry.includes(producer.descriptor.id)) throw new Error("delegation-definition-cycle-or-depth");
     for (const node of descriptorRuntimeNodes(producer.descriptor)) {
       if (node.kind !== "child-run") continue;
-      const target = resolveModule(node.target.id);
+      const target = resolveModule(node.target.id, producer.descriptor.id);
       if (target === undefined || deriveSchemaHash(target.descriptor.input, "input") !== deriveSchemaHash(node.target.input, "input")
         || workflowTerminalResultExecution(target.descriptor).schemaHash !== deriveSchemaHash(node.target.result, "output")) throw new Error("delegation-target-descriptor-unavailable");
       for (const system of workflowProjections(target.descriptor).systems) systems.add(system);
+      const admitted = parents.get(node.target.id) ?? new Set<string>();
+      admitted.add(producer.descriptor.id);
+      parents.set(node.target.id, admitted);
       qualify(target, [...ancestry, producer.descriptor.id]);
     }
   };
   qualify(module, []);
-  const resolveDescriptor = (id: string) => resolveModule(id)?.descriptor;
+  const resolveDescriptor = (id: string) => {
+    if (id === workflowId) return resolveModule(id)?.descriptor;
+    const admitted = parents.get(id);
+    if (admitted === undefined) return undefined;
+    for (const parentId of admitted) resolveModule(id, parentId);
+    return modules.get(id)?.descriptor;
+  };
   const machine = requireRuntimeAdmission(input.admission);
   if (machine.lifetime !== input.lifetimeLock) throw new Error("runtime-lifetime-admission-mismatch");
   const selected = captureSelectedProfileStorage(machine);
@@ -600,7 +615,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   ocrAccount = createChatGptAccountService({ admission, stateRoot, clock });
   accountClosureProven = false;
   const ocr = createChatGptOcrAdapter({ account: ocrAccount, artifacts, clock, model: CHATGPT_OCR_MODEL, assertCurrent });
-  resources = createRunResourcesFactory({duo,ocr,nominatim:input.lifetimeLock instanceof RuntimeLifetimeLock ? createNominatimGeocodeAdapter({clock}) : createNominatimWorkerAdapter(clock),preflight:runtimePreflight,admission,database,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
+  resources = createRunResourcesFactory({runReader:runRecordService,duo,ocr,nominatim:input.lifetimeLock instanceof RuntimeLifetimeLock ? createNominatimGeocodeAdapter({clock}) : createNominatimWorkerAdapter(clock),preflight:runtimePreflight,admission,database,authority:database.authority,artifacts,clock,ids,isolation:input.isolation,protectedSecrets,scheduler,environment:env,
     assertBrowserRoot,
     onDebug: (category, debugWorkerId, event) => {
       debugEvents.emit({ category, ...event }, { kind: "worker", workerId: debugWorkerId });
