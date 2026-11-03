@@ -6,6 +6,7 @@ import { afterAll, afterEach, describe, it } from "vitest";
 import { createRunQueueProjectionTestWorld } from "../../../support/helpers/backend/run-queue-projection-world.js";
 import { FICTIONAL_PERSON, seedPersonLookupPresentation } from "../../../support/fixtures/person-lookup-presentation.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
+import { deriveEvidenceEntryId } from "../../../../src/models/trust/evidence-identity.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -14,13 +15,13 @@ const { world, queuedEventOf, cleanup } = createRunQueueProjectionTestWorld(prof
 afterEach(cleanup);
 describe("served Person Lookup identity presentation", () => {
   it.each([
-    { name: "found employee ID", input: { emplId: FICTIONAL_PERSON.eid }, state: "active", title: "Quillan, Petra A." },
-    { name: "found lower-case name", input: { name: "quillan, petra a." }, state: "active", title: "Quillan, Petra A." },
+    { name: "found employee ID", input: { emplId: FICTIONAL_PERSON.eid }, state: "active", title: "Quillan, Petra A. · EID 10000001" },
+    { name: "found lower-case name", input: { name: "quillan, petra a." }, state: "active", title: "Quillan, Petra A. · EID 10000001" },
     { name: "not-found employee ID", input: { emplId: FICTIONAL_PERSON.eid }, state: "not-found", title: FICTIONAL_PERSON.eid },
     { name: "not-found upper-case name", input: { name: "QUILLAN, PETRA A." }, state: "not-found", title: "Quillan, Petra A." },
     { name: "not-found protected test subject", input: { emplId: FICTIONAL_PERSON.eid }, state: "not-found", title: FICTIONAL_PERSON.eid, protectedInput: true },
-    { name: "found protected test subject", input: { emplId: FICTIONAL_PERSON.eid }, state: "active", title: "Quillan, Petra A.", protectedInput: true },
-    { name: "Match hides identifiers", input: { mode: "match", lastName: "QUILLAN", firstName: "PETRA A.", dob: "2/19/2030", ssn: "000112222" }, state: "found", title: "Quillan, Petra A." },
+    { name: "found protected test subject", input: { emplId: FICTIONAL_PERSON.eid }, state: "active", title: "Quillan, Petra A. · EID 10000001", protectedInput: true },
+    { name: "Match hides identifiers", input: { mode: "match", lastName: "QUILLAN", firstName: "PETRA A.", dob: "2/19/2030", ssn: "000112222" }, state: "found", title: "Quillan, Petra A. · EID 10000001" },
   ] as const)("uses the resolved name or typed search for $name", async options => {
     const { row } = seedPersonLookupPresentation(await world({ descriptors: { resolve: () => personLookupDescriptor } }), { ...options, input: PersonLookupInput.parse(options.input) });
     const surface = row(); assert.ok(surface);
@@ -47,7 +48,7 @@ it("keeps the served detail header equal to the resolved Queue title", async () 
   const { row, run } = seedPersonLookupPresentation(w, { protectedInput: true });
   const detail = buildRunDetail({ runReader: w.runReader, timeline: w.timeline, stateRoot: w.stateRoot,
     projection: w.projection, authority: w.authority, descriptors: { resolve: () => personLookupDescriptor } }, run.envelope.runId);
-  assert.equal(detail.header.title, "Quillan, Petra A.");
+  assert.equal(detail.header.title, "Quillan, Petra A. · EID 10000001");
   assert.equal(detail.header.title, row()?.title);
 });
 
@@ -88,4 +89,24 @@ it("preserves an operation group title when its workflow declares a person resul
   assert.ok(surface);
   assert.equal(surface.surfaceKind, "operation");
   assert.equal(surface.title, "Onboarding packet — 3 people");
+});
+
+it("keeps a verified name without promoting an unverified EID into the title", async () => {
+  const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
+  const { row, run } = seedPersonLookupPresentation(w);
+  const receipt = w.authority.receipts.get(run.envelope.runId); assert.ok(receipt);
+  const eidFact = deriveEvidenceEntryId(receipt.receiptId, "output", "activeStatus.details.eid");
+  receipt.output = receipt.output.filter(fact => fact.id !== eidFact);
+  assert.equal(row()?.title, "Quillan, Petra A.");
+  assert.equal(row()?.subtitle.state, "absent");
+});
+
+it("uses the same confirmed title for operation members and their parent preview", async () => {
+  const w = await world({ descriptors: { resolve: () => personLookupDescriptor } });
+  queuedEventOf(w, { seed: 1, shape: "operation", title: "Lookup group" });
+  const { row } = seedPersonLookupPresentation(w, { shape: "operation-member", parentSeed: 1 });
+  assert.equal(row()?.title, "Quillan, Petra A. · EID 10000001");
+  const parent = w.projection.buildDashboardDayWire("2026-08-03").queueSurfaces.find(surface => surface.surfaceKind === "operation");
+  assert.ok(parent?.surfaceKind === "operation");
+  assert.deepEqual(parent.memberPreview, { state: "present", value: "Quillan, Petra A. · EID 10000001" });
 });

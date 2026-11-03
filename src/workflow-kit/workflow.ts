@@ -135,6 +135,7 @@ export interface DetailProjectionSpec<S> {
 export interface SubjectProjectionSpec<S> {
   readonly nodeId: keyof S & string;
   readonly fieldPath: string;
+  readonly eidFieldPath?: string;
 }
 
 // Brands are enforced by parsing through the schema.
@@ -284,7 +285,7 @@ export interface AnyWorkflowDescriptor {
   readonly details: readonly z.input<typeof DetailProjectionSpecRuntimeSchema>[];
    /** Plain data, so it rides the BROAD view (unlike `presentation`, whose title/subtitle are
     * functions of the exact input type). The run/queue projection reads it. */
-  readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
+  readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string; eidFieldPath?: string }>;
   readonly titleProjection?: ResultTitleProjection;
   readonly subtitleProjection?: ResultSubtitleProjection;
   readonly outcomeProjection?: OutcomeProjection;
@@ -996,6 +997,9 @@ export function defineWorkflowDescriptor<
       "subject projection",
       "offers",
     );
+    if (spec.subjectProjection.eidFieldPath !== undefined) {
+      assertNodeFieldPath(id, nodes, spec.subjectProjection.nodeId, spec.subjectProjection.eidFieldPath, "subject EID projection", "offers");
+    }
   }
 
   const editData = spec.capabilities?.editData;
