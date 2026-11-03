@@ -1,7 +1,7 @@
 import { defineTask } from "../../../../workflow-kit/task.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { runHireOperation } from "../hire-task-error.js";
-import { UcpathStageHire } from "../../../../models/systems/ucpath/hire-tasks.js";
+import { UcpathStageHire } from "../../../../models/systems/ucpath/stage-hire.js";
 
 export const stageHireTask = defineTask(ucpathDriver, UcpathStageHire, {
   sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],

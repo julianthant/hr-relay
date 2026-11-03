@@ -1,6 +1,7 @@
 import { OnboardingReadI9ProfilePlan } from "../../../../src/models/workflows/onboarding/read-i9-profile-plan.js";
 import { OnboardingReadHirePlan } from "../../../../src/models/workflows/onboarding/read-hire-plan.js";
-import { UcpathStageHire, UcpathCreateHire } from "../../../../src/models/systems/ucpath/hire-tasks.js";
+import { UcpathStageHire } from "../../../../src/models/systems/ucpath/stage-hire.js";
+import { UcpathCreateHire } from "../../../../src/models/systems/ucpath/create-hire.js";
 import { UCPATH_HIRE_SUBJECT } from "../../../../src/models/ui/ucpath-hire.js";
 import { deterministicHireOperations } from "../../../../src/backend/systems/ucpath/driver/hire-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";

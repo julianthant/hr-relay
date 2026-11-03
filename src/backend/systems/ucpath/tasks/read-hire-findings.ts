@@ -1,7 +1,7 @@
 import { defineTask } from "../../../../workflow-kit/task.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { runHireOperation } from "../hire-task-error.js";
-import { UcpathReadHireFindings } from "../../../../models/systems/ucpath/hire-tasks.js";
+import { UcpathReadHireFindings } from "../../../../models/systems/ucpath/read-hire-findings.js";
 
 export const readHireFindingsTask = defineTask(ucpathDriver, UcpathReadHireFindings, {
   screenshots: "task",

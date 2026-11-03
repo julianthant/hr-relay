@@ -1,5 +1,5 @@
 import { defineTask } from "../../../../workflow-kit/task.js";
-import { UcpathReadHireReceipt } from "../../../../models/systems/ucpath/hire-tasks.js";
+import { UcpathReadHireReceipt } from "../../../../models/systems/ucpath/read-hire-receipt.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { runHireOperation } from "../hire-task-error.js";
 import { ucpathHireVerdict } from "../../../../rules/ucpath/hire-verdict.js";
