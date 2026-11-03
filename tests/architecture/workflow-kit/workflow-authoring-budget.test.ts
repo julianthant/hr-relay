@@ -910,6 +910,22 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
     }
   });
 
+  it("arm (c): unrelated declarations and line shifts preserve retained OCR sites", () => {
+    const sources = new Map(tree.sources);
+    const ids = auditedWorkflowSources().map(workflow => workflow.id);
+    assert.equal(RETAINED_OCR_SERVICE_SITES["src/backend/runs/queries/explorer.ts"], undefined);
+    for (const path of [...Object.keys(RETAINED_OCR_SERVICE_SITES), "src/backend/runs/queries/explorer.ts"]) {
+      const original = sources.get(path);
+      assert.ok(original !== undefined, `${path}: missing source owner`);
+      const shifted = `// Unrelated source header.\n\nconst unrelatedDeclaration = 1;\n\n${original}`;
+      sources.set(path, shifted);
+      if (RETAINED_OCR_SERVICE_SITES[path] !== undefined) {
+        assert.equal(retainedLiteralsMatch(path, parseSource(path, shifted), ids), true, path);
+      }
+    }
+    assert.deepEqual(auditWorkflowAuthoringBudget(repositoryInputs({ ...tree, sources })), []);
+  });
+
   it("arm (c): repurposing an admitted occurrence with the same literal count fails", () => {
     const path = "src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.ts";
     const sources = new Map(tree.sources);
