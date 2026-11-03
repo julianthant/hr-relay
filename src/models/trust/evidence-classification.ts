@@ -390,6 +390,11 @@ function i9CreationProofLeaves(scope: EvidenceValueScope, prefix: string, remote
       : ["profileId", "firstName", "lastName", "dob", "email", "departmentNumber"]).map(path => `${prefix}${path}`))];
 }
 
+function hireProofLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  return [...open(scope, ...["kind", "source", "action", "approvalStatus", "detailVerified"].map(path => `${prefix}${path}`)),
+    ...onboardingPrivateLeaves(scope, ...["transactionId", "displayedName", "emplId", "effectiveDate", "positionNumber", "email", "dob"].map(path => `${prefix}${path}`))];
+}
+
 function onboardingRosterLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [
     ...onboardingPrivateLeaves(scope, `${prefix}workbookId`, `${prefix}sheetId`, `${prefix}rowId`, `${prefix}rowKey.email`),
@@ -560,6 +565,18 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
           ...population(scope, "evidence"), ...i9CreationProofLeaves(scope, "proof.", remote)];
       }),
     ];
+  }),
+  ...hireProofLeaves(writeProof("ucpath/create-hire")),
+  ...hireProofLeaves(taskOutput("ucpath/create-hire"), "receipt."),
+  ...open(taskOutput("ucpath/read-hire-findings"), "state", "observedAt", "source"),
+  ...population(taskOutput("ucpath/read-hire-findings"), "rows"),
+  ...open(taskOutput("ucpath/stage-hire"), "stagedPageState", "template", "reason", "transactionIdDisplay"),
+  ...onboardingPrivateLeaves(taskOutput("ucpath/stage-hire"), "observedName"),
+  ...["match", "verify"].flatMap(verb => {
+    const scope = taskOutput(`ucpath/${verb}-hire`);
+    return [...open(scope, "state", "reason", "matches", "observedAt", "evidence.source", "evidence.sourceState", "evidence.observedAt"),
+      ...onboardingPrivateLeaves(scope, "queryDigest", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"),
+      ...population(scope, "evidence"), ...hireProofLeaves(scope, "proof.")];
   }),
   ...open(workflowResult("onboarding"), "state", "hireWrite.state", "hireWrite.owner", "rosterAccess.state", "rosterAccess.owner"),
   ...[

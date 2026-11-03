@@ -84,6 +84,7 @@ Natural keys remain private authority data. Public projections use digest refere
 
 | Contract | Natural key | Probe | Saved-effect verifier | Negative recovery |
 | --- | --- | --- | --- | --- |
+| `ucpath/create-hire` | `ucpath:hire\|<mode>\|<resolved-eid-or-email>\|<effectiveDate>\|<positionNumber>` | `ucpath/match-hire` | `ucpath/verify-hire` | `operator-only` |
 | `ucpath/create-termination` | `ucpath:termination\|<emplId>\|<effectiveDate>` | `ucpath/match-existing-termination` | `ucpath/verify-termination` | `operator-only` |
 | `ucpath/delete-pending-terminations` | `ucpath:pending-terminations-clear:v2\|<emplId>\|<set-digest>` | `ucpath/match-pending-terminations` | `ucpath/verify-pending-terminations-cleared` | `operator-only` |
 | `kuali/save-separation-finalization` | `kuali:<documentNumber>\|finalization\|<transactionNumber>` | `kuali/match-separation-finalization` | `kuali/verify-separation-finalization` | `stabilized`: 30,000 ms after fence, two reads at least 5,000 ms apart, same source state |
@@ -383,3 +384,5 @@ replacement keys. Ordinary credential erase/logout retains the key and authentic
 history. Cancelled unpublished sign-up removes metadata and then the OS entry under its durable
 abort intent; unproved deletion prevents completion. The [clock/config contract](clock-config-secrets.md)
 owns the exact migration and backup rules.
+
+UCPath hire filing proofs bind the independently read transaction, legal identity, date and position. Pending proves a filing awaiting approval; it does not mean the person has been hired. Denied, Error and Pushed Back cannot complete the write. New hires may have no assigned EID; a pre-assignment ID is never filled into the master. The entire new-hire or concurrent-hire wizard is staged and captured before fencing, and Save and Submit is clicked once.

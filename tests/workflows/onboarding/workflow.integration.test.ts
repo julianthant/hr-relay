@@ -1,4 +1,4 @@
-import { createI9WriteWorld } from "../../support/helpers/backend/i9-write-world.js";
+import { createOnboardingWriteWorld } from "../../support/helpers/backend/onboarding-write-world.js";
 import { RunDryRunPreviewResultSchema } from "../../../src/models/run/result.js";
 import { DRY_RUN_I9_PROFILE_ID } from "../../../src/models/workflow/dry-run.js";
 import { I9ProfileProofSchema, I9RemoteProofSchema, i9ProfileKey, i9RemoteKey } from "../../../src/models/ui/i9-creation.js";
@@ -188,7 +188,7 @@ describe("read-only onboarding workflow", () => {
   });
 });
 
-const { harness, cleanup } = createI9WriteWorld();
+const { harness, cleanup } = createOnboardingWriteWorld();
 afterEach(cleanup);
 
 it("onboarding/write-transactions — saves the profile and remote record through separate fenced, verified writes", async () => {
@@ -248,3 +248,43 @@ for (const role of ["profile", "remote"] as const) it(`parks an UNKNOWN ${role} 
   assert.equal(h.driver.events.filter(event => event.startsWith("commit:")).length, clicks);
   assert.equal(h.database.authority.writeIntents.findByPermanentKey("i9", key)?.generation, 1);
 });
+
+it("files the hire through the sequencer after both I-9 receipts and reuses all three saved effects", async () => {
+  const h = await harness({}, {}), run = await h.run();
+  assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done", JSON.stringify({ lifecycle: run.lifecycle, failures: h.database.authority.failures.listByRun(run.envelope.runId), intents: h.database.authority.writeIntents.listByRun(run.envelope.runId) }));
+  assert.equal(h.database.authority.writeIntents.listByRun(run.envelope.runId).length, 3);
+  assert.deepEqual(h.hire.events.filter(event => event === "commit:hire"), ["commit:hire"]);
+  assert.ok(h.captures.filter(value => value === "hire-create:step").length >= 30);
+  assert.ok(h.captures.includes("hire-create:before-submit") && h.captures.includes("hire-create:after-submit"));
+  const again = await h.run(); assert.ok(again.lifecycle.state === "terminal" && again.lifecycle.outcome === "done");
+  assert.equal(h.hire.events.filter(event => event === "commit:hire").length, 1);
+  assert.equal(h.hire.rows[0]?.approvalStatus, "Pending");
+});
+
+it("previews the entire three-write sequence with a labelled Tracker Profile ID and no authoritative sample probe", async () => {
+  const h = await harness({}, {}), run = await h.run(true);
+  assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
+  const result = h.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
+  const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
+  assert.deepEqual(preview.steps.map(step => step.state), ["transaction-preview", "transaction-preview", "transaction-preview"]);
+  const hire = preview.steps.find(step => step.nodeId === "hire-create"); assert.ok(hire?.state === "transaction-preview");
+  assert.equal(hire.samples[0]?.value, DRY_RUN_I9_PROFILE_ID);
+  assert.equal(hire.samples[0]?.field, "Tracker Profile ID");
+  assert.deepEqual(hire.preview.probe, { state: "not-required", reason: "preview-only-sample" });
+  assert.equal(h.hire.events.includes("probe:hire"), false); assert.equal(h.hire.events.includes("commit:hire"), false);
+  assert.deepEqual(h.hire.rows, []);
+  assert.deepEqual(h.database.authority.writeIntents.countDryRunEvidenceByRun(run.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
+  assert.deepEqual(h.database.authority.workbooks.runOperations(run.envelope.runId), []);
+});
+
+for (const fault of [{ submitFailure: new Error("synthetic lost hire response") }, { approvalStatus: "Denied" as const }]) {
+  it(`parks an unproved hire submission (${fault.approvalStatus ?? "lost response"}) without a second submit`, async () => {
+    const h = await harness({}, fault), run = await h.run();
+    assert.equal(run.lifecycle.state, "parked-write");
+    assert.equal(h.hire.events.filter(event => event === "commit:hire").length, 1);
+    const retry = await h.run(); assert.ok(retry.lifecycle.state === "terminal" && retry.lifecycle.outcome === "failed");
+    assert.equal(h.hire.events.filter(event => event === "commit:hire").length, 1);
+    const parked = h.database.authority.writeIntents.listByRun(run.envelope.runId).filter(intent => intent.status === "parked");
+    assert.equal(parked.length, 1); assert.equal(parked[0]?.generation, 1);
+  });
+}

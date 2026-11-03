@@ -1,3 +1,8 @@
+import { OnboardingReadHirePlan } from "../../../../src/models/workflows/onboarding/read-hire-plan.js";
+import { UcpathStageHire, UcpathCreateHire } from "../../../../src/models/systems/ucpath/hire-tasks.js";
+import { UCPATH_HIRE_SUBJECT } from "../../../../src/models/ui/ucpath-hire.js";
+import { deterministicHireOperations } from "../../../../src/backend/systems/ucpath/driver/hire-fake.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { I9RecordIdsSchema } from "../../../../src/models/systems/i9/read-section2-signer.js";
@@ -42,8 +47,7 @@ const descriptorBase = {
   surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [],
   identity: { matchKey: (input: typeof example) => input.email }, presentation: { title: (input: typeof example) => input.email }, scenarios: ["onboarding/write-transactions"],
 } as const;
-export const i9WriteDescriptor = defineWorkflowDescriptor({ ...descriptorBase,
-  flow: flow(Input).transaction("profile-create", {
+const i9Flow = () => flow(Input).transaction("profile-create", {
     dependsOn: [], prepare: { uses: I9StageProfile, bind: ({ input }) => profileTarget(input) },
     commit: { uses: I9CreateProfile, bind: ({ input }) => profileTarget(input) },
     dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000,
@@ -68,7 +72,28 @@ export const i9WriteDescriptor = defineWorkflowDescriptor({ ...descriptorBase,
       return { prepare: target, commit: target, samples: [] };
     },
     dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000,
-  }).build({ schema: I9CreateRemoteRecord.output, dependsOn: ["remote-create"], derive: ({ outputs }) => outputs["remote-create"].output }),
+  });
+export const i9WriteDescriptor = defineWorkflowDescriptor({ ...descriptorBase,
+  flow: i9Flow().build({ schema: I9CreateRemoteRecord.output, dependsOn: ["remote-create"], derive: ({ outputs }) => outputs["remote-create"].output }),
+});
+const hireTarget = (input: typeof example, profileId: string) => {
+  const { expectedName, ...person } = profileTarget(input);
+  return { mode: "new-hire" as const, emplId: null, profileId,
+    employee: { ...OnboardingReadHirePlan.example.employee, ...person, effectiveDate: input.startDate }, expectedName, comments: "Synthetic onboarding hire" };
+};
+const combinedDescriptor = defineWorkflowDescriptor({ ...descriptorBase, id: "onboarding-write-proof", code: "owp",
+  flow: i9Flow().transaction("hire-create", {
+    dependsOn: ["remote-create"], prepare: { uses: UcpathStageHire, bind: ({ input, outputs }) => hireTarget(input, outputs["remote-create"].output.receipt.profileId) },
+    commit: { uses: UcpathCreateHire, bind: ({ input, outputs }) => hireTarget(input, outputs["remote-create"].output.receipt.profileId) },
+    previewBind: ({ input, dryRun }) => {
+      const prior = dryRun?.transactions.find(step => step.nodeId === "remote-create");
+      if (prior?.preview.outcome.state !== "would-prepare") return undefined;
+      const target = hireTarget(input, DRY_RUN_I9_PROFILE_ID);
+      return { prepare: target, commit: target, samples: [{ label: "dry-run sample", sourceNodeId: NodeIdSchema.parse("remote-create"),
+        field: "Tracker Profile ID", value: DRY_RUN_I9_PROFILE_ID }] };
+    },
+    dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 120_000,
+  }).build({ schema: UcpathCreateHire.output, dependsOn: ["hire-create"], derive: ({ outputs }) => outputs["hire-create"].output }),
 });
 
 const remoteOnlyDescriptor = defineWorkflowDescriptor({
@@ -83,27 +108,31 @@ const remoteOnlyDescriptor = defineWorkflowDescriptor({
   }).build({ schema: I9CreateRemoteRecord.output, dependsOn: ["remote-create"], derive: ({ outputs }) => outputs["remote-create"].output }),
 });
 
-export function createI9WriteWorld() {
+export function createOnboardingWriteWorld() {
   const disposers: (() => Promise<void>)[] = [];
-  async function harness(options: Partial<Parameters<typeof createDeterministicI9Driver>[0]> = {}) {
+  async function harness(options: Partial<Parameters<typeof createDeterministicI9Driver>[0]> = {}, hireOptions?: Omit<Parameters<typeof deterministicHireOperations>[0], "now">) {
     const profile = await createBoundProfileFixture();
     const clock = manualClock(new Date(WRITE_FIXTURE_NOW));
     const database = AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "i9-write-proof" }, clock);
     disposers.push(async () => { database.close(); await profile.close(); });
     database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
     const driver = createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: WRITE_FIXTURE_NOW, ...options });
-    const sessions = sessionFactoryHarness({ i9: () => driver });
+    const hire = deterministicHireOperations({ now: WRITE_FIXTURE_NOW, ...hireOptions });
+    const baseUcpath = createDeterministicUcpathPersonOrgDriver();
+    const ucpath = { ...baseUcpath, ...hire, read: async (id: Parameters<typeof baseUcpath.read>[0]) =>
+      id === UCPATH_HIRE_SUBJECT ? hire.readHireSubject() : baseUcpath.read(id) };
+    const sessions = sessionFactoryHarness({ i9: () => driver, ucpath: () => ucpath });
     const scheduler = new ManualScheduler(clock), ids = sequentialIdFactory("c"), log = recordingLogger().log;
     const emitter = recordingTimelineEmitter(database, clock);
     const captures: string[] = [];
     async function run(dryRun = false, input = example) {
-      const descriptor = input.existingProfileId === undefined ? i9WriteDescriptor : remoteOnlyDescriptor;
+      const descriptor = input.existingProfileId !== undefined ? remoteOnlyDescriptor : hireOptions === undefined ? i9WriteDescriptor : combinedDescriptor;
       const runId = randomUUID(), itemId = randomUUID(), now = clock.now().toISOString();
       const ports = testWorkerPorts(database, clock, { path: profile.path, descriptor, poolIndex: 1 });
       const worker = database.authority.workerSlots.list(descriptor.id).find(row => row.poolIndex === 1); assert.ok(worker);
       const record = RunRecordSchema.parse({ envelope: { runId, itemId, workflow: descriptor.id, traceId: `iwp-120000-${runId.slice(0, 4)}`,
         descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
-        resolvedInstance: { i9: "prod" }, configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
+        resolvedInstance: { i9: "prod", ...(hireOptions === undefined ? {} : { ucpath: "prod" }) }, configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
         shape: "single", priority: "bulk", dryRun, attempt: 1, enqueuedAt: now },
         input: { raw: input, parsed: { schemaHash: deriveSchemaHash(canonicalInput, "output"), value: input, protectedBindings: [] },
           ingressSchemaHash: deriveSchemaHash(Input, "input") }, lifecycle: { state: "queued" }, claimGeneration: 0,
@@ -124,7 +153,7 @@ export function createI9WriteWorld() {
       const current = database.authority.runs.get(runId); assert.ok(current);
       return current;
     }
-    return { database, driver, captures, run, example };
+    return { database, driver, hire, captures, run, example };
   }
   return { harness, cleanup: async () => { for (const dispose of disposers.splice(0).reverse()) await dispose(); } };
 }
