@@ -23,7 +23,7 @@ export function buildWorkflowCatalog(served: readonly RunStartWorkflow[], includ
     const preview = MOCK_WORKFLOW_CATALOG.workflows.find(item => item.id === flow.workflowId);
     return { id: flow.workflowId, label: flow.label, categoryId: workflowRailCategory(flow.workflowId, flow.categoryId), role: flow.role,
       code: flow.code, source: "served", served: flow, preview,
-      launch: flow.inputRun.state === "present" ? { state: "served" }
+      launch: flow.inputRun.state === "present" || flow.uploadRun?.pdfInput !== undefined ? { state: "served" }
         : { state: "unavailable", label: "Unavailable", reason: flow.inputRun.reason } };
   });
   if (includePreviews) for (const preview of MOCK_WORKFLOW_CATALOG.workflows) {

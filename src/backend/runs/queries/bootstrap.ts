@@ -120,6 +120,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
         ...(descriptor.surfaces.inputRun === undefined
           ? {}
           : { inputRun: descriptor.surfaces.inputRun }),
+        ...(descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: descriptor.surfaces.uploadRun }),
 
         spreadsheetIntake: intake !== undefined,
       },

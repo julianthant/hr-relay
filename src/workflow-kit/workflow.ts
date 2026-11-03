@@ -860,6 +860,10 @@ function assertSurfaceFields(id: string, input: z.ZodType, surfaces: WorkflowSur
   }
   const uploadRun = surfaces.uploadRun;
   if (uploadRun !== undefined) {
+    if (uploadRun.pdfInput !== undefined) {
+      for (const field of Object.values(uploadRun.pdfInput)) assertSchemaOffersPath(input, field, `${id}: PDF input`);
+      if (uploadRun.accepts.some(accept => accept.mediaType !== "application/pdf")) throw new Error(`${id}: PDF input requires PDF files`);
+    }
     for (const field of uploadRun.fields) {
       assertSchemaOffersPath(input, field.field, `${id}: upload field`);
     }

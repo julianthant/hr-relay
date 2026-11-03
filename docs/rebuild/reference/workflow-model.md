@@ -22,6 +22,11 @@ The callback returns ordered `[WorkflowTimelineGroup, readonly AnyWorkflowEntry[
 terminal `result` declaration. Tuple order determines presentation. Typed entry references determine
 execution dependencies.
 
+Start surfaces declare typed input or an upload input. A PDF upload declaration names the document
+collection, as-of date and reviewer fields in the canonical input. Bootstrap carries this metadata
+to the existing PDF picker. Its authenticated uploads form one submission, with fresh reading IDs;
+the served operator/date facts and those IDs remain fixed while the plan is reviewed.
+
 An optional `outcomeProjection` maps a terminal-result field to declared `{ value, label, tone }`
 cases. `defineWorkflowDescriptor` requires a string, enum, or literal field and rejects case values
 outside its schema vocabulary. Person Lookup declares eight cases for `activeStatus.state`; the
@@ -48,7 +53,7 @@ requirements; production definitions declare an explicit array. It does not desc
 workbooks, spreadsheet intake, or delegated children's requirements. Retained step proofs inherit
 the parent declaration. The descriptor and its sealed planning and projections expose the same
 validated facts; workbook selection and reference snapshots belong to run planning. All current
-definitions declare an empty array.
+definitions declare their own required reference types; the I-9 PDF parent requires Action History.
 
 Start planning takes explicit entry-scoped `workbookReferences` (type, optional library, keys and
 fields), requires exactly the workflow's declared types, and snapshots the selected or default

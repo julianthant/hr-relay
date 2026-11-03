@@ -396,6 +396,7 @@ export const InputRunSurfaceSchema = z.strictObject({
 export type InputRunSurface = z.infer<typeof InputRunSurfaceSchema>;
 
 export const UploadRunSurfaceSchema = z.strictObject({
+  pdfInput: z.strictObject({ documentsField: InputFieldNameSchema, asOfField: InputFieldNameSchema, reviewerField: InputFieldNameSchema }).optional(),
   title: TextTemplateSchema,
   fields: z.array(UploadFieldSpecSchema),
   accepts: z.array(FileAcceptSpecSchema).min(1),

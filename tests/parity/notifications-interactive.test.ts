@@ -129,7 +129,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         ["multiple-oath.pdf", "mock:oath-upload:sample:ocr", 4],
         ["emergency-contacts.pdf", "mock:emergency-contact:sample:ocr", 3],
         ["detect-test.pdf", "mock:onbase:sample:ocr", 4],
-        ["i9.pdf", "mock:i9-check:sample:ocr", 2],
+        ["i9.pdf", "mock:i9-check-start:sample:ocr", 2],
       ] as const) {
         await bell.click();
         const item = inbox.locator(".notification-row").filter({ has: page.getByRole("button", { name: subject, exact: true }) });

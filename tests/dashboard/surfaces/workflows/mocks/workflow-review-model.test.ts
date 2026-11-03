@@ -47,7 +47,7 @@ describe("complete workflow presentation mocks", () => {
     expect(mockRunLog(discarded[1]).timeline.every(step => step.state === "cancelled")).toBe(true);
   });
   it("keeps records and approval exclusively in delegated OCR, including I-9 intake", () => {
-    const runs = mockRunsForDraft("i9-check", { ...initialMockDraft("i9-check"), files: [{ name: "i9.pdf", size: 1024, digest: "fixture" }] }, 2);
+    const runs = mockRunsForDraft("i9-check-start", { ...initialMockDraft("i9-check-start"), files: [{ name: "i9.pdf", size: 1024, digest: "fixture" }] }, 2);
     const ocr = runs[1]; expect(runs).toHaveLength(2); expect(ocr.workflowId).toBe("ocr"); expect(ocr.parentId).toBe(runs[0].id);
     const corrected = editReviewRecord(reviewRecords(ocr)[0], "firstName", "Sam");
     const updated = updateMockReview(runs, ocr.id, [corrected]);

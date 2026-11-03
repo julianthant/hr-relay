@@ -2,6 +2,7 @@
 import { compileWorkflow, composeWorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import { taskStoreRegistry } from "./task-registry.js";
 import { registration as i9CheckModuleRegistration } from "../../../workflows/i9-check/index.js";
+import { registration as i9CheckStartModuleRegistration } from "../../../workflows/i9-check-start/index.js";
 import { registration as i9LookupModuleRegistration } from "../../../workflows/i9-lookup/index.js";
 import { registration as ocrModuleRegistration } from "../../../workflows/ocr/index.js";
 import { registration as ocrPageModuleRegistration } from "../../../workflows/ocr-page/index.js";
@@ -31,6 +32,9 @@ export const onboardingI9SearchModule = composeWorkflowModule(compileWorkflow(on
 export const onboardingI9ProfileCreationModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[3].definition), taskStoreRegistry.stores);
 export const ocrSourcePagesModule = composeWorkflowModule(compileWorkflow(ocrModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
 export const ocrPageReadingModule = composeWorkflowModule(compileWorkflow(ocrPageModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
+export const i9CheckStartDocumentsModule = composeWorkflowModule(compileWorkflow(i9CheckStartModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
+export const i9CheckStartRosterReferenceModule = composeWorkflowModule(compileWorkflow(i9CheckStartModuleRegistration.proofs[1].definition), taskStoreRegistry.stores);
+export const i9CheckStartRetentionModule = composeWorkflowModule(compileWorkflow(i9CheckStartModuleRegistration.proofs[2].definition), taskStoreRegistry.stores);
 
 export const STEP_PROOF_MODULES = Object.freeze([
   separationsKronosTimecardModule,
@@ -54,4 +58,7 @@ export const STEP_PROOF_MODULES = Object.freeze([
   onboardingI9ProfileCreationModule,
   ocrSourcePagesModule,
   ocrPageReadingModule,
+  i9CheckStartDocumentsModule,
+  i9CheckStartRosterReferenceModule,
+  i9CheckStartRetentionModule,
 ] as const);

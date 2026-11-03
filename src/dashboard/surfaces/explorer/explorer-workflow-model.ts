@@ -21,7 +21,7 @@ export function workflowChoices(id: MockWorkflowId): readonly Choice[] {
     "fixture-onbase": [review, choice("keyset", "Employee Lookup keyset", [["found", "Employee found"], ["missing", "No match; required keywords missing"]]), rehearsal],
     "fixture-kronos-pay-rule": [choice("action", "Election decision", [["change", "Rule must change"], ["unchanged", "Current rule is correct"], ["missing", "Employee absent from tracker"]])],
     "fixture-ocr": [review, choice("form", "Form type", MOCK_FORM_TYPES.map(type => [type.value, type.label] as const))],
-    "fixture-i9-check": [choice("pair", "Packet identity", [["complete", "Section 1 and Section 2 paired"], ["missing", "Missing person identity"]])],
+    "fixture-i9-check-start": [choice("pair", "Packet identity", [["complete", "Section 1 and Section 2 paired"], ["missing", "Missing person identity"]])],
     "fixture-crm-doc-download": [choice("record", "CRM search result", [["found", "Record with attached PDFs"], ["empty", "Record without attachments"], ["missing", "No matching record"]])],
     "fixture-old-kronos-reports": [choice("pdf", "Report validation", [["valid", "PDF identity matches"], ["empty", "No data returned"], ["mismatch", "PDF identity mismatch"]])],
   };
@@ -68,7 +68,7 @@ export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): 
   let stopAfter: number | undefined;
   for (const [index, node] of nodes.entries()) {
     const number = index + 2;
-    const blocked = node.kind === "gate" && values.review !== "approved" || key === "fixture-oath-upload" && node.id === "Wait signatures" && values.signers !== "complete" || key === "fixture-onbase" && node.id === "Fill keywords" && values.keyset === "missing" || key === "fixture-kronos-pay-rule" && node.id === "CSV lookup" && values.action === "missing" || key === "fixture-crm-doc-download" && node.id === "Search record" && values.record === "missing" || key === "fixture-i9-check" && node.id === "OCR extraction" && values.pair === "missing" || key === "fixture-i9-lookup" && values.profile === "unavailable";
+    const blocked = node.kind === "gate" && values.review !== "approved" || key === "fixture-oath-upload" && node.id === "Wait signatures" && values.signers !== "complete" || key === "fixture-onbase" && node.id === "Fill keywords" && values.keyset === "missing" || key === "fixture-kronos-pay-rule" && node.id === "CSV lookup" && values.action === "missing" || key === "fixture-crm-doc-download" && node.id === "Search record" && values.record === "missing" || key === "fixture-i9-check-start" && node.id === "OCR extraction" && values.pair === "missing" || key === "fixture-i9-lookup" && values.profile === "unavailable";
     const skip = values.posture === "dry" && node.skippedInDryRun || key === "fixture-oath-signature" && node.id === "Sign oath" && values.existing === "present" || key === "fixture-kronos-pay-rule" && node.id === "Update pay rule" && values.action === "unchanged" || key === "fixture-crm-doc-download" && ["Download", "Archive"].includes(node.id) && values.record === "empty";
     const operation = operationStep(run, node);
     const blockedEvidence = key === "fixture-i9-lookup" && values.profile === "absent" || key === "fixture-old-kronos-reports" && values.pdf !== "valid";
@@ -96,7 +96,7 @@ export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): 
     });
     if (key === "fixture-ocr" && node.id === "Read forms") parts.push({ kind: "note", text: values.form === "i9" ? "Pair Section 1 and Section 2 identities for OCR review before downstream retention processing." : `Extract ${values.form === "oath" ? "printed name, Employee ID, signed date and signature flags" : "employee identity, contact name, relationship, phones and contact address"}. OCR owns corrections and approval; downstream workflows consume the approved record.` });
     if (key === "fixture-old-kronos-reports" && node.id === "Downloading") parts.push(action(values.pdf === "valid" ? "Retain the matching Time Detail PDF and append Done to the tracker." : "Delete the empty or mismatched PDF and append the explicit tracker outcome.", "read"));
-    steps.push({ number, title: node.id, system: node.delegatesTo === "fixture-ocr" || key === "fixture-ocr" && node.system === "i9" || key === "fixture-i9-check" && node.system === "i9" ? "OCR" : node.system ? systems[node.system] ?? "Local" : "Local", parts });
+    steps.push({ number, title: node.id, system: node.delegatesTo === "fixture-ocr" || key === "fixture-ocr" && node.system === "i9" || key === "fixture-i9-check-start" && node.system === "i9" ? "OCR" : node.system ? systems[node.system] ?? "Local" : "Local", parts });
     if (blocked && stopAfter === undefined) stopAfter = number;
   }
   return { steps, summary: graph.summary, path: { step: 1, control: controls.length ? `preview-workflow:${workflowChoices(id)[0].key}` : "explorer-step-1" }, stopAfter };

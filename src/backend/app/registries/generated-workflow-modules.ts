@@ -2,6 +2,7 @@
 import { compileWorkflow, composeWorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import { taskStoreRegistry } from "./task-registry.js";
 import { registration as i9CheckModuleRegistration } from "../../../workflows/i9-check/index.js";
+import { registration as i9CheckStartModuleRegistration } from "../../../workflows/i9-check-start/index.js";
 import { registration as i9LookupModuleRegistration } from "../../../workflows/i9-lookup/index.js";
 import { registration as ocrModuleRegistration } from "../../../workflows/ocr/index.js";
 import { registration as ocrPageModuleRegistration } from "../../../workflows/ocr-page/index.js";
@@ -11,6 +12,7 @@ import { registration as personLookupModuleRegistration } from "../../../workflo
 import { registration as separationsModuleRegistration } from "../../../workflows/separations/index.js";
 
 export const i9CheckModule = composeWorkflowModule(compileWorkflow(i9CheckModuleRegistration.definition), taskStoreRegistry.stores);
+export const i9CheckStartModule = composeWorkflowModule(compileWorkflow(i9CheckStartModuleRegistration.definition), taskStoreRegistry.stores);
 export const i9LookupModule = composeWorkflowModule(compileWorkflow(i9LookupModuleRegistration.definition), taskStoreRegistry.stores);
 export const ocrModule = composeWorkflowModule(compileWorkflow(ocrModuleRegistration.definition), taskStoreRegistry.stores);
 export const ocrPageModule = composeWorkflowModule(compileWorkflow(ocrPageModuleRegistration.definition), taskStoreRegistry.stores);
@@ -23,6 +25,7 @@ export const WORKFLOW_MODULES = Object.freeze([
   personLookupModule,
   separationsModule,
   onboardingModule,
+  i9CheckStartModule,
 ] as const);
 
 export const CHILD_ONLY_WORKFLOW_MODULES = Object.freeze([

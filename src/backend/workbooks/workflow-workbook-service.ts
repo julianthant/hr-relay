@@ -6,9 +6,11 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { WorkbookLibraryError, type WorkbookLibraryRepository } from "./workbook-library-service.js";
+import type { ReadWorkbookReference, WorkbookReferenceReadSchema } from "../../models/processing/workbooks/read-reference.js";
 
 export function createWorkflowWorkbookService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock;
-  references?: Readonly<{ runId: string; write(command: z.infer<typeof WorkbookReferenceWriteSchema>): WorkbookOperationReceipt }>;
+  references?: Readonly<{ runId: string; write(command: z.infer<typeof WorkbookReferenceWriteSchema>): WorkbookOperationReceipt;
+    read?(command: z.infer<typeof WorkbookReferenceReadSchema>): z.output<typeof ReadWorkbookReference.output> }>;
 }>) {
   return Object.freeze({
     async publish(runIdValue: unknown, commandValue: unknown, signal: AbortSignal): Promise<z.output<typeof WorkflowWorkbookResultSchema>> {

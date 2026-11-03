@@ -23,7 +23,7 @@ export function createRetainedDashboardMockFixtures() {
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-manual-model.ts": [
     "[\"separations\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"CallExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:formStepIsLocked\"],\"id===\\\"separations\\\"\"]",
-    "[\"i9-check\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"CallExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:formStepIsLocked\"],\"id===\\\"i9-check\\\"\"]",
+    "[\"i9-check-start\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"CallExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:formStepIsLocked\"],\"id===\\\"i9-check-start\\\"\"]",
     "[\"ocr\",[\"StringLiteral:\",\"ArrayLiteralExpression:\",\"PropertyAccessExpression:includes\",\"CallExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:manualReadFields\"],\"[\\\"ocr\\\",\\\"i9-lookup\\\"]\"]",
     "[\"i9-lookup\",[\"StringLiteral:\",\"ArrayLiteralExpression:\",\"PropertyAccessExpression:includes\",\"CallExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:manualReadFields\"],\"[\\\"ocr\\\",\\\"i9-lookup\\\"]\"]"
   ],
@@ -34,13 +34,13 @@ export function createRetainedDashboardMockFixtures() {
     "[\"i9-lookup\",[\"StringLiteral:\",\"PropertyAssignment:\\\"id\\\"\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:WORKFLOW_PREVIEW_DEFINITIONS\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"id\\\":\\\"i9-lookup\\\"\"]",
     "[\"ocr\",[\"StringLiteral:\",\"PropertyAssignment:\\\"id\\\"\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:WORKFLOW_PREVIEW_DEFINITIONS\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"id\\\":\\\"ocr\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"PropertyAssignment:\\\"id\\\"\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:WORKFLOW_PREVIEW_DEFINITIONS\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"id\\\":\\\"onbase\\\"\"]",
-    "[\"i9-check\",[\"StringLiteral:\",\"PropertyAssignment:\\\"id\\\"\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:WORKFLOW_PREVIEW_DEFINITIONS\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"id\\\":\\\"i9-check\\\"\"]",
+    "[\"i9-check-start\",[\"StringLiteral:\",\"PropertyAssignment:\\\"id\\\"\",\"ObjectLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:WORKFLOW_PREVIEW_DEFINITIONS\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"id\\\":\\\"i9-check-start\\\"\"]",
     "[\"person-lookup\",[\"StringLiteral:\",\"PropertyAssignment:\\\"person-lookup\\\"\",\"ObjectLiteralExpression:\",\"VariableDeclaration:contracts\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"person-lookup\\\":{typedInput:{modeField:\\\"mode\\\",modeLabel:\\\"Lookupmode\\\",initialMode:\\\"search\\\",description:\\\"Eachentrystartsonerun.\\\",modes:[{value:\\\"search\\\",label:\\\"Search\\\",inputLabel:\\\"EmployeeIDsornames\\\",hint:\\\"Separatepeoplewithasemicolonoranewline.\\\",placeholder:\\\"10000001;Lee,Jordan\\\",defaults:[{field:\\\"crmCheck\\\",value:{kind:\\\"boolean\\\",value:true}},{field:\\\"keepNonHdh\\\",value:{kind:\\\"boolean\\\",value:false}},{field:\\\"includeCrmDates\\\",value:{kind:\\\"boolean\\\",value:false}}],parser:{kind:\\\"entries\\\",spec:{split:{kind:\\\"delimited\\\",delimiters:[\\\";\\\",\\\"\\\\n\\\"]},rules:[{when:{kind:\\\"pattern\\\",pattern:\\\"eid\\\"},emit:\\\"emplId\\\"},{when:{kind:\\\"otherwise\\\"},emit:\\\"name\\\"}]}},display:{kind:\\\"first-present\\\",fields:[\\\"emplId\\\",\\\"name\\\"]},identityFields:[\\\"emplId\\\",\\\"name\\\"],},{value:\\\"match\\\",label:\\\"Match\\\",inputLabel:\\\"Name,DOBandSSN\\\",hint:\\\"Last,First,DOB,SSN.UsexforanunavailableDOBorSSN,butnotboth.Separatepeoplewithsemicolons.\\\",placeholder:\\\"Lee,Jordan,01/01/2000,x\\\",defaults:[{field:\\\"crmCheck\\\",value:{kind:\\\"boolean\\\",value:false}},{field:\\\"includeCrmDates\\\",value:{kind:\\\"boolean\\\",value:false}}],parser:{kind:\\\"name-tuple\\\",delimiter:\\\";\\\",familyName:\\\"lastName\\\",givenName:\\\"firstName\\\",identifiers:[{field:\\\"dob\\\",canonicalField:\\\"text\\\"},{field:\\\"ssn\\\",canonicalField:\\\"ssn\\\"}],missing:\\\"x\\\",missingIdentifiersCode:\\\"PERSON_LOOKUP_MATCH_INPUT_MISSING_IDENTIFIERS\\\"},display:{kind:\\\"tuple\\\",fields:[\\\"lastName\\\",\\\"firstName\\\",\\\"dob\\\",\\\"ssn\\\"],separator:\\\",\\\",missing:\\\"x\\\",masked:[\\\"ssn\\\"]},identityFields:[\\\"lastName\\\",\\\"firstName\\\",\\\"dob\\\",\\\"ssn\\\"],},],controls:[{field:\\\"crmCheck\\\",label:\\\"CRMcheck\\\",placement:\\\"input\\\",modes:[\\\"search\\\",\\\"match\\\"],requires:[]},{field:\\\"keepNonHdh\\\",label:\\\"Keepnon-HDHcandidates\\\",placement:\\\"hidden\\\",modes:[\\\"search\\\"],requires:[]},{field:\\\"includeCrmDates\\\",label:\\\"ReadCRMdates\\\",placement:\\\"step\\\",modes:[\\\"search\\\"],requires:[\\\"crmCheck\\\"]},],},sampleOutcomes:[{label:\\\"Active\\\",tone:\\\"success\\\",lookupMode:\\\"search\\\"},{label:\\\"Inactive\\\",tone:\\\"neutral\\\",lookupMode:\\\"search\\\"},{label:\\\"CRMonly\\\",tone:\\\"warning\\\",lookupMode:\\\"search\\\"},{label:\\\"Multiplematches\\\",tone:\\\"warning\\\",lookupMode:\\\"search\\\"},{label:\\\"Notfound\\\",tone:\\\"neutral\\\",lookupMode:\\\"search\\\"},{label:\\\"Undetermined\\\",tone:\\\"warning\\\",lookupMode:\\\"search\\\"},{label:\\\"Found\\\",tone:\\\"success\\\",lookupMode:\\\"match\\\"},{label:\\\"NotfoundinUCPath\\\",tone:\\\"neutral\\\",lookupMode:\\\"match\\\"},],runnable:true,methods:[\\\"typed\\\"],inputLabel:\\\"EmployeeIDsornames\\\",placeholder:\\\"10000001;Lee,Jordan\\\",example:\\\"10000001\\\",dryRun:false,roster:false,steps:[step(\\\"searching\\\",\\\"Searchforperson\\\",\\\"UCPath\\\",\\\"SearchPersonOrgSummarybyEmployeeIDorname;MatchusesHR-Taskspersonmatching.\\\"),step(\\\"cross-verification\\\",\\\"Cross-checkidentity\\\",\\\"CRM\\\",\\\"Cross-checkthenamematchagainstCRMwhenCRMcheckisenabled.\\\"),step(\\\"active-status\\\",\\\"Reademploymentstatus\\\",\\\"UCPath\\\",\\\"Readdepartment,HRstatusandemploymentdates.\\\"),step(\\\"crm-dates\\\",\\\"ReadCRMdates\\\",\\\"CRM\\\",\\\"Readfirstdayofserviceandoathdateonlywhenrequestedbyaparentworkflow.\\\"),],result:[[\\\"EmployeeID\\\",\\\"10000001\\\"],[\\\"Employee\\\",\\\"JordanLee\\\"],[\\\"Department\\\",\\\"HDH\\\"],[\\\"HRstatus\\\",\\\"Active\\\"]]}\"]",
     "[\"i9-lookup\",[\"StringLiteral:\",\"PropertyAssignment:\\\"i9-lookup\\\"\",\"ObjectLiteralExpression:\",\"VariableDeclaration:contracts\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"i9-lookup\\\":{runnable:false,methods:[\\\"delegated\\\"],inputLabel:\\\"Person\\\",placeholder:\\\"Lee,Jordan\\\",example:\\\"Lee,Jordan\\\",dryRun:false,roster:false,steps:[step(\\\"lookup\\\",\\\"ReadSection2signer\\\",\\\"I-9Complete\\\",\\\"Searchbylastandfirstname,optionallySSN,andreadtheauthorizedofficialsignerandI-9status.\\\"),],result:[[\\\"Authorizedofficialsigner\\\",\\\"JamieMorgan\\\"],[\\\"I-9status\\\",\\\"Section2complete\\\"]]}\"]",
-    "[\"i9-check\",[\"StringLiteral:\",\"PropertyAssignment:\\\"i9-check\\\"\",\"ObjectLiteralExpression:\",\"VariableDeclaration:contracts\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"i9-check\\\":{runnable:true,methods:[\\\"pdf\\\"],inputLabel:\\\"PDFs\\\",placeholder:\\\"\\\",example:\\\"i9-packet.pdf\\\",dryRun:false,roster:false,steps:[step(\\\"person-match\\\",\\\"MatchpersoninUCPath\\\",\\\"UCPath\\\",\\\"UsethepairedSection1/2identitytosearchUCPath.\\\"),step(\\\"employment-dates\\\",\\\"Reademploymentdates\\\",\\\"UCPath\\\",\\\"Readtheemploymentandseparationdates;noUCPathtransactionissubmitted.\\\"),step(\\\"roster-match\\\",\\\"Appendretentiontrackerrow\\\",undefined,\\\"MatchtheconfiguredActionHistoryrosterbyEmployeeIDandappendaretention-trackerrow.Arerunappendsagain.\\\"),],result:[[\\\"Employee\\\",\\\"JordanLee\\\"],[\\\"EmployeeID\\\",\\\"10000001\\\"],[\\\"PPSID\\\",\\\"DEMO-PPS-001\\\"],[\\\"Section1present\\\",\\\"Yes\\\"],[\\\"Section2present\\\",\\\"Yes\\\"],[\\\"FoundinUCPath?\\\",\\\"Yes\\\"]]}\"]"
+    "[\"i9-check-start\",[\"StringLiteral:\",\"PropertyAssignment:\\\"i9-check-start\\\"\",\"ObjectLiteralExpression:\",\"VariableDeclaration:contracts\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"i9-check-start\\\":{runnable:true,methods:[\\\"pdf\\\"],inputLabel:\\\"PDFs\\\",placeholder:\\\"\\\",example:\\\"i9-packet.pdf\\\",dryRun:false,roster:false,steps:[step(\\\"person-match\\\",\\\"MatchpersoninUCPath\\\",\\\"UCPath\\\",\\\"UsethepairedSection1/2identitytosearchUCPath.\\\"),step(\\\"employment-dates\\\",\\\"Reademploymentdates\\\",\\\"UCPath\\\",\\\"Readtheemploymentandseparationdates;noUCPathtransactionissubmitted.\\\"),step(\\\"roster-match\\\",\\\"Appendretentiontrackerrow\\\",undefined,\\\"MatchtheconfiguredActionHistoryrosterbyEmployeeIDandappendaretention-trackerrow.Arerunappendsagain.\\\"),],result:[[\\\"Employee\\\",\\\"JordanLee\\\"],[\\\"EmployeeID\\\",\\\"10000001\\\"],[\\\"PPSID\\\",\\\"DEMO-PPS-001\\\"],[\\\"Section1present\\\",\\\"Yes\\\"],[\\\"Section2present\\\",\\\"Yes\\\"],[\\\"FoundinUCPath?\\\",\\\"Yes\\\"]]}\"]"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-mock-model.ts": [
-    "[\"i9-check\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"PropertyAssignment:formType\",\"ObjectLiteralExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:initialMockDraft\"],\"id===\\\"i9-check\\\"\"]",
+    "[\"i9-check-start\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"PropertyAssignment:formType\",\"ObjectLiteralExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:initialMockDraft\"],\"id===\\\"i9-check-start\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"PropertyAssignment:formType\",\"ObjectLiteralExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:initialMockDraft\"],\"id===\\\"onbase\\\"\"]",
     "[\"person-lookup\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"CallExpression:\",\"PropertyAccessExpression:map\",\"CallExpression:\",\"PropertyAccessExpression:filter\",\"CallExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:mockInputEntries\"],\"id===\\\"person-lookup\\\"\"]",
     "[\"person-lookup\",[\"StringLiteral:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"ForOfStatement:\",\"Block:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockDraftInputError\"],\"id===\\\"person-lookup\\\"\"]",
@@ -50,7 +50,7 @@ export function createRetainedDashboardMockFixtures() {
     "[\"separations\",[\"StringLiteral:\",\"ArrayLiteralExpression:\",\"PropertyAccessExpression:includes\",\"CallExpression:\",\"PrefixUnaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"IfStatement:\",\"IfStatement:\",\"IfStatement:\",\"IfStatement:\",\"Block:\",\"ForOfStatement:\",\"Block:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockDraftInputError\"],\"[\\\"onboarding\\\",\\\"separations\\\",\\\"crm-doc-download\\\"]\"]",
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockDraftInputError\"],\"id===\\\"ocr\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockDraftInputError\"],\"id===\\\"onbase\\\"\"]",
-    "[\"i9-check\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:type\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockOcrReadSteps\"],\"id===\\\"i9-check\\\"\"]",
+    "[\"i9-check-start\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:type\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockOcrReadSteps\"],\"id===\\\"i9-check-start\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:type\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockOcrReadSteps\"],\"id===\\\"onbase\\\"\"]",
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockPipeline\"],\"id===\\\"ocr\\\"\"]",
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:mockNeedsReview\"],\"run.workflowId===\\\"ocr\\\"\"]",
@@ -65,9 +65,9 @@ export function createRetainedDashboardMockFixtures() {
     "[\"ocr\",[\"StringLiteral:\",\"PropertyAssignment:workflowId\",\"ObjectLiteralExpression:\",\"VariableDeclaration:ocr\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:delegateMockOcr\"],\"workflowId:\\\"ocr\\\"\"]",
     "[\"ocr\",[\"StringLiteral:\",\"PropertyAssignment:workflowId\",\"ObjectLiteralExpression:\",\"CallExpression:\",\"PropertyAssignment:records\",\"ObjectLiteralExpression:\",\"VariableDeclaration:ocr\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:delegateMockOcr\"],\"workflowId:\\\"ocr\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockRunsForDraft\"],\"id===\\\"onbase\\\"\"]",
-    "[\"i9-check\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockRunsForDraft\"],\"id===\\\"i9-check\\\"\"]",
+    "[\"i9-check-start\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockRunsForDraft\"],\"id===\\\"i9-check-start\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"PropertyAssignment:formType\",\"ObjectLiteralExpression:\",\"BinaryExpression:\",\"ExpressionStatement:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockRunsForDraft\"],\"id===\\\"onbase\\\"\"]",
-    "[\"i9-check\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"PropertyAssignment:formType\",\"ObjectLiteralExpression:\",\"BinaryExpression:\",\"ExpressionStatement:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockRunsForDraft\"],\"id===\\\"i9-check\\\"\"]",
+    "[\"i9-check-start\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"PropertyAssignment:formType\",\"ObjectLiteralExpression:\",\"BinaryExpression:\",\"ExpressionStatement:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:mockRunsForDraft\"],\"id===\\\"i9-check-start\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:subjects\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockRunsForDraft\"],\"id===\\\"onbase\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ParenthesizedExpression:\",\"SpreadAssignment:\",\"ObjectLiteralExpression:\",\"CallExpression:\",\"PropertyAssignment:draft\",\"ObjectLiteralExpression:\",\"ParenthesizedExpression:\",\"ArrowFunction:\",\"CallExpression:\",\"VariableDeclaration:created\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockRunsForDraft\"],\"id===\\\"onbase\\\"\"]",
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ParenthesizedExpression:\",\"SpreadAssignment:\",\"ObjectLiteralExpression:\",\"ParenthesizedExpression:\",\"ArrowFunction:\",\"CallExpression:\",\"VariableDeclaration:created\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockRunsForDraft\"],\"id===\\\"ocr\\\"\"]",
@@ -79,7 +79,7 @@ export function createRetainedDashboardMockFixtures() {
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:root\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockDeletionIds\"],\"target.workflowId===\\\"ocr\\\"\"]",
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:resultFields\"],\"run.workflowId===\\\"ocr\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ParenthesizedExpression:\",\"BinaryExpression:\",\"ParenthesizedExpression:\",\"BinaryExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"ArrowFunction:\",\"CallExpression:\",\"VariableDeclaration:fields\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:resultFields\"],\"run.workflowId===\\\"onbase\\\"\"]",
-    "[\"i9-check\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:resultFields\"],\"run.workflowId===\\\"i9-check\\\"\"]",
+    "[\"i9-check-start\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:resultFields\"],\"run.workflowId===\\\"i9-check-start\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:resultFields\"],\"run.workflowId===\\\"onbase\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:mockLaunchCount\"],\"id===\\\"onbase\\\"\"]",
     "[\"onboarding\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ParenthesizedExpression:\",\"SpreadElement:\",\"ArrayLiteralExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:mockConfirmationFacts\"],\"id===\\\"onboarding\\\"\"]",
@@ -90,7 +90,7 @@ export function createRetainedDashboardMockFixtures() {
   "src/dashboard/surfaces/workflows/mocks/workflow-operation-catalog.ts": [
     "[\"person-lookup\",[\"StringLiteral:\",\"PropertyAssignment:\\\"person-lookup\\\"\",\"ObjectLiteralExpression:\",\"VariableDeclaration:MOCK_OPERATION_CATALOG\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"person-lookup\\\":{searching:[fill(\\\"Searchcriteria\\\",[[\\\"EmployeeID\\\",\\\"$employeeId\\\"],[\\\"Name\\\",\\\"$name\\\"],[\\\"Campus\\\",\\\"SDCMP\\\"]]),click(\\\"SearchPersonOrganizationalSummary\\\"),read(\\\"UCPathperson\\\",[[\\\"EmployeeID\\\",\\\"$employeeId\\\"],[\\\"Name\\\",\\\"$name\\\"],[\\\"Department\\\",\\\"HDH\\\"],[\\\"Jobtitle\\\",\\\"Studentassistant\\\"],[\\\"Jobrecord\\\",\\\"0\\\"],[\\\"HRstatus\\\",\\\"Active\\\"]])],\\\"cross-verification\\\":[click(\\\"FindtheonboardingrecordinCRM\\\"),read(\\\"Identitycross-check\\\",[[\\\"UCPathname\\\",\\\"$name\\\"],[\\\"CRMname\\\",\\\"$name\\\"],[\\\"Campusemail\\\",\\\"$email\\\"],[\\\"Startdate\\\",\\\"08/03/2026\\\"],[\\\"Match\\\",\\\"Confirmed\\\"]])],\\\"active-status\\\":[click(\\\"OpenWorkforceJobSummary\\\"),read(\\\"Employmentstatus\\\",[[\\\"HRstatus\\\",\\\"Active\\\"],[\\\"Startdate\\\",\\\"08/03/2026\\\"],[\\\"Enddate\\\",\\\"—\\\"],[\\\"Terminationreason\\\",\\\"—\\\"],[\\\"FoundinUCPath\\\",\\\"Yes\\\"]])],\\\"crm-dates\\\":[read(\\\"Caller-requestedCRMdates\\\",[[\\\"Employmentdate\\\",\\\"08/03/2026\\\"],[\\\"Oathdate\\\",\\\"08/03/2026\\\"]])],}\"]",
     "[\"i9-lookup\",[\"StringLiteral:\",\"PropertyAssignment:\\\"i9-lookup\\\"\",\"ObjectLiteralExpression:\",\"VariableDeclaration:MOCK_OPERATION_CATALOG\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"i9-lookup\\\":{lookup:[fill(\\\"Portalpersonsearch\\\",[[\\\"Lastname\\\",\\\"$lastName\\\"],[\\\"Firstname\\\",\\\"$firstName\\\"],[\\\"SSN\\\",\\\"•••-••-0001\\\"]]),click(\\\"Searchandopenthematchingprofile\\\"),read(\\\"Section2\\\",[[\\\"I-9status\\\",\\\"Section2complete\\\"],[\\\"Authorizedofficialsigner\\\",\\\"AlexMorgan\\\"],[\\\"ProfileID\\\",\\\"DEMO-I9-001\\\"]])]}\"]",
-    "[\"i9-check\",[\"StringLiteral:\",\"PropertyAssignment:\\\"i9-check\\\"\",\"ObjectLiteralExpression:\",\"VariableDeclaration:MOCK_OPERATION_CATALOG\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"i9-check\\\":{\\\"person-match\\\":[read(\\\"PairedI-9identity\\\",[[\\\"Employee\\\",\\\"$name\\\"],[\\\"Section1page\\\",\\\"$section1\\\"],[\\\"Section2page\\\",\\\"$section2\\\"],[\\\"HiredatefromI-9\\\",\\\"08/03/2026\\\"]]),fill(\\\"UCPathpersonsearch\\\",[[\\\"Name\\\",\\\"$name\\\"],[\\\"EmployeeID\\\",\\\"$employeeId\\\"]]),read(\\\"Searchresult\\\",[[\\\"MatchedEmployeeID\\\",\\\"$employeeId\\\"],[\\\"Candidates\\\",\\\"1\\\"],[\\\"FoundinUCPath\\\",\\\"Yes\\\"]])],\\\"employment-dates\\\":[read(\\\"Employmentevidence\\\",[[\\\"EmployeeID\\\",\\\"$employeeId\\\"],[\\\"UCPathhiredate\\\",\\\"08/03/2026\\\"],[\\\"I-9hiredate\\\",\\\"08/03/2026\\\"],[\\\"Hiredatematch\\\",\\\"Confirmed\\\"]])],\\\"roster-match\\\":[read(\\\"ActionHistorymatch\\\",[[\\\"EmployeeID\\\",\\\"$employeeId\\\"],[\\\"PPSID\\\",\\\"DEMO-PPS-001\\\"],[\\\"Separationdate\\\",\\\"Notseparated\\\"]]),read(\\\"Retentiontrackerrow\\\",[[\\\"Employee\\\",\\\"$name\\\"],[\\\"EmployeeID\\\",\\\"$employeeId\\\"],[\\\"PPSID\\\",\\\"DEMO-PPS-001\\\"],[\\\"Section1present\\\",\\\"Yes\\\"],[\\\"Section2present\\\",\\\"Yes\\\"],[\\\"FoundinUCPath\\\",\\\"Yes\\\"]]),click(\\\"Appendretentiontrackerrow\\\",true)],}\"]"
+    "[\"i9-check-start\",[\"StringLiteral:\",\"PropertyAssignment:\\\"i9-check-start\\\"\",\"ObjectLiteralExpression:\",\"VariableDeclaration:MOCK_OPERATION_CATALOG\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"\\\"i9-check-start\\\":{\\\"person-match\\\":[read(\\\"PairedI-9identity\\\",[[\\\"Employee\\\",\\\"$name\\\"],[\\\"Section1page\\\",\\\"$section1\\\"],[\\\"Section2page\\\",\\\"$section2\\\"],[\\\"HiredatefromI-9\\\",\\\"08/03/2026\\\"]]),fill(\\\"UCPathpersonsearch\\\",[[\\\"Name\\\",\\\"$name\\\"],[\\\"EmployeeID\\\",\\\"$employeeId\\\"]]),read(\\\"Searchresult\\\",[[\\\"MatchedEmployeeID\\\",\\\"$employeeId\\\"],[\\\"Candidates\\\",\\\"1\\\"],[\\\"FoundinUCPath\\\",\\\"Yes\\\"]])],\\\"employment-dates\\\":[read(\\\"Employmentevidence\\\",[[\\\"EmployeeID\\\",\\\"$employeeId\\\"],[\\\"UCPathhiredate\\\",\\\"08/03/2026\\\"],[\\\"I-9hiredate\\\",\\\"08/03/2026\\\"],[\\\"Hiredatematch\\\",\\\"Confirmed\\\"]])],\\\"roster-match\\\":[read(\\\"ActionHistorymatch\\\",[[\\\"EmployeeID\\\",\\\"$employeeId\\\"],[\\\"PPSID\\\",\\\"DEMO-PPS-001\\\"],[\\\"Separationdate\\\",\\\"Notseparated\\\"]]),read(\\\"Retentiontrackerrow\\\",[[\\\"Employee\\\",\\\"$name\\\"],[\\\"EmployeeID\\\",\\\"$employeeId\\\"],[\\\"PPSID\\\",\\\"DEMO-PPS-001\\\"],[\\\"Section1present\\\",\\\"Yes\\\"],[\\\"Section2present\\\",\\\"Yes\\\"],[\\\"FoundinUCPath\\\",\\\"Yes\\\"]]),click(\\\"Appendretentiontrackerrow\\\",true)],}\"]"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-operation-model.ts": [
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:record\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:mockOperationValue\"],\"run.workflowId===\\\"ocr\\\"\"]",
@@ -103,7 +103,7 @@ export function createRetainedDashboardMockFixtures() {
     "[\"onboarding\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:stagesDryRunForm\"],\"run.workflowId===\\\"onboarding\\\"\"]"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-review-model.ts": [
-    "[\"i9-check\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:type\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:extractedReviewRecords\"],\"run.workflowId===\\\"i9-check\\\"\"]",
+    "[\"i9-check-start\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:type\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:extractedReviewRecords\"],\"run.workflowId===\\\"i9-check-start\\\"\"]",
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:type\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:extractedReviewRecords\"],\"run.workflowId===\\\"ocr\\\"\"]",
     "[\"onbase\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:type\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:extractedReviewRecords\"],\"run.workflowId===\\\"onbase\\\"\"]",
     "[\"separations\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:type\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:extractedReviewRecords\"],\"run.workflowId===\\\"separations\\\"\"]",
@@ -232,7 +232,7 @@ export function createRetainedDashboardMockFixtures() {
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-manual-model.ts": [
     "separations",
-    "i9-check",
+    "i9-check-start",
     "ocr",
     "i9-lookup"
   ],
@@ -243,13 +243,13 @@ export function createRetainedDashboardMockFixtures() {
     "i9-lookup",
     "ocr",
     "onbase",
-    "i9-check",
+    "i9-check-start",
     "person-lookup",
     "i9-lookup",
-    "i9-check"
+    "i9-check-start"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-mock-model.ts": [
-    "i9-check",
+    "i9-check-start",
     "onbase",
     "person-lookup",
     "person-lookup",
@@ -259,7 +259,7 @@ export function createRetainedDashboardMockFixtures() {
     "separations",
     "ocr",
     "onbase",
-    "i9-check",
+    "i9-check-start",
     "onbase",
     "ocr",
     "ocr",
@@ -274,9 +274,9 @@ export function createRetainedDashboardMockFixtures() {
     "ocr",
     "ocr",
     "onbase",
-    "i9-check",
+    "i9-check-start",
     "onbase",
-    "i9-check",
+    "i9-check-start",
     "onbase",
     "onbase",
     "ocr",
@@ -288,7 +288,7 @@ export function createRetainedDashboardMockFixtures() {
     "ocr",
     "ocr",
     "onbase",
-    "i9-check",
+    "i9-check-start",
     "onbase",
     "onbase",
     "onboarding",
@@ -299,7 +299,7 @@ export function createRetainedDashboardMockFixtures() {
   "src/dashboard/surfaces/workflows/mocks/workflow-operation-catalog.ts": [
     "person-lookup",
     "i9-lookup",
-    "i9-check"
+    "i9-check-start"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-operation-model.ts": [
     "ocr",
@@ -312,7 +312,7 @@ export function createRetainedDashboardMockFixtures() {
     "onboarding"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-review-model.ts": [
-    "i9-check",
+    "i9-check-start",
     "ocr",
     "onbase",
     "separations",

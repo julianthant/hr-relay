@@ -494,7 +494,28 @@ function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
   return [...ocrReviewSeedLeaves(scope, "review."), ...ocrPrivateLeaves(scope, "identities")];
 }
 
+function workbookReferenceLeaves(scope: EvidenceValueScope): unknown[] {
+  return ocrPrivateLeaves(scope, ...["libraryId", "version", "versionId", "versionName", "typeId", "keyFieldId", "worksheets", "rows"].map(field => `reference.${field}`));
+}
+
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...open(taskOutput("workbooks/read-reference"), "state", "code"),
+  ...workbookReferenceLeaves(taskOutput("workbooks/read-reference")),
+  ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-people"), "people"),
+  ...ocrPrivateLeaves(taskOutput("workflow:i9-check-start/read-requests"), "people", "children"),
+  ...workbookReferenceLeaves(taskOutput("workflow:i9-check-start/read-requests")),
+  ...[taskOutput("workflow:i9-check-start/read-rows"), taskOutput("workflow:i9-check-start/read-publication"),
+    workflowResult("i9-check-start"), workflowResult("i9-check-start-retention")].flatMap(scope => [
+    ...open(scope, "personCount"), ...ocrPrivateLeaves(scope, "batchKey", "tracker.rows", "people"), ...workbookReferenceLeaves(scope),
+  ]),
+  ...[taskOutput("workflow:i9-check-start/read-publication"), workflowResult("i9-check-start"), workflowResult("i9-check-start-retention")]
+    .flatMap(scope => [...ocrPrivateLeaves(scope, "workbook.libraryId", "workbook.operationId"), ...open(scope, "workbook.state", "workbook.version")]),
+  ...["i9-check-start", "i9-check-start-documents", "i9-check-start-roster-reference", "i9-check-start-retention"].flatMap(id => [
+    ...open(workflowInput(id), "asOf"), ...ocrPrivateLeaves(workflowInput(id), "documents", "reviewerName"),
+  ]),
+  ...ocrPrivateLeaves(workflowResult("i9-check-start-documents"), "people"),
+  ...ocrPrivateLeaves(workflowResult("i9-check-start-roster-reference"), "people", "children"),
+  ...workbookReferenceLeaves(workflowResult("i9-check-start-roster-reference")),
   ...open(taskOutput("ocr/read-approved-records"), "state", "code"),
   ...ocrPrivateLeaves(taskOutput("ocr/read-approved-records"), "sources"),
   ...open(taskOutput("extraction/extract-pdf-pages"), "pageCount"),

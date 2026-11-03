@@ -3,9 +3,11 @@ import { compileWorkflow } from "../workflow-kit/workflow-definition.js";
 import { personLookupWorkflow } from "./person-lookup/workflow.js";
 import { separationsWorkflow } from "./separations/workflow.js";
 import { onboardingWorkflow } from "./onboarding/workflow.js";
+import { i9CheckStartWorkflow } from "./i9-check-start/workflow.js";
 
 export const WORKFLOW_DESCRIPTORS = Object.freeze([
   compileWorkflow(personLookupWorkflow).descriptor,
   compileWorkflow(separationsWorkflow).descriptor,
   compileWorkflow(onboardingWorkflow).descriptor,
+  compileWorkflow(i9CheckStartWorkflow).descriptor,
 ] as const);

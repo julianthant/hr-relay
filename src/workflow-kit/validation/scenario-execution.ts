@@ -14,6 +14,8 @@ export const DASHBOARD_SCENARIO_FILE_PATTERN =
   /^tests\/scenario\/dashboard\/[a-z0-9-]+\/[a-z0-9-]+\.scenario\.test\.ts$/u;
 
 const INTEGRATION_SCENARIO_FILES = [
+  "tests/workflows/i9-check-start/workflow.integration.test.ts",
+  "tests/backend/processing/providers/workbook-library-adapter.test.ts",
   "tests/backend/processing/providers/ocr-review-adapter.integration.test.ts",
   "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts",
   "tests/workflows/i9-check/workflow.integration.test.ts",
@@ -48,6 +50,8 @@ const PERSON_LOOKUP_FILE = workflowStructuralScenarioPath("person-lookup", defin
 const I9_LOOKUP_FILE = workflowStructuralScenarioPath("i9-lookup", defineWorkflowRole({ kind: "standalone" }));
 
 export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
+  { scenarioId: "i9-check-start/pdfs", file: "tests/workflows/i9-check-start/workflow.integration.test.ts" },
+  { scenarioId: "workbooks/read-reference", file: "tests/backend/processing/providers/workbook-library-adapter.test.ts" },
   { scenarioId: "ocr/approved-records", file: "tests/backend/processing/providers/ocr-review-adapter.integration.test.ts" },
   { scenarioId: "onboarding/crm-extraction", file: "tests/workflows/onboarding/workflow.integration.test.ts" },
   { scenarioId: "workbooks/publish", file: "tests/backend/workbooks/workflow-workbook-service.integration.test.ts" },

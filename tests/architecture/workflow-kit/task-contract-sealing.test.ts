@@ -218,7 +218,9 @@ describe("task contract sealing architecture", () => {
       "src/models/processing/extraction/extract-spreadsheet.ts",
       "src/models/processing/normalization/normalize-contact.ts",
       "src/models/processing/ocr/extract-form-page.ts",
+      "src/models/processing/ocr/read-approved-records.ts",
       "src/models/processing/roster/match-spreadsheet.ts",
+      "src/models/processing/workbooks/read-reference.ts",
       "src/models/processing/workbooks/read-result.ts",
       "src/models/systems/crm/read-hire-data.ts",
       "src/models/systems/crm/read-onboarding-dates.ts",
@@ -252,6 +254,7 @@ describe("task contract sealing architecture", () => {
       "src/models/systems/ucpath/verify-termination-filing-present.ts",
       "src/models/systems/ucpath/verify-termination.ts",
       "src/models/task/task-contract.ts",
+      "src/models/workflows/i9-check/batch.ts",
       "src/models/workflows/i9-check/check.ts",
       "src/models/workflows/i9-lookup/read-result.ts",
 

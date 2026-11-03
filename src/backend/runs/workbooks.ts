@@ -3,6 +3,7 @@ import type { AuthorityDatabase, AuthorityRepositories } from "../storage/sqlite
 import { RunWorkbookReferenceSchema, type WorkbookOperationReceipt, type WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
 import { RunWorkbookWritesWireSchema, type RunWorkbookWritesWire } from "../../models/dashboard/run-detail.js";
 import { WorkbookReferenceWriteSchema } from "../../models/processing/workbooks/read-result.js";
+import { ReadWorkbookReference, WorkbookReferenceReadSchema } from "../../models/processing/workbooks/read-reference.js";
 import { schemaBoundValueSchema, deriveSchemaHash } from "../../models/validation/schema-bound-value.js";
 import type { RunRecord } from "../../models/run/record.js";
 import type { CommandRequest } from "../../rules/commands/commands.js";
@@ -123,6 +124,34 @@ export function buildRunWorkbookSection(repositories: AuthorityRepositories, run
 
 export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDatabase; clock: Clock }>) {
   return Object.freeze({
+    read(captured: RunRecord, value: z.infer<typeof WorkbookReferenceReadSchema>) {
+      const command = WorkbookReferenceReadSchema.parse(value);
+      return deps.database.withAuthorityReadSnapshot(() => {
+        const repositories = deps.database.authority, run = repositories.runs.get(captured.envelope.runId);
+        if (run?.lifecycle.state !== "running" || run.cancelRequested === true
+          || run.envelope.attempt !== captured.envelope.attempt || run.claimGeneration !== captured.claimGeneration
+          || canonicalJsonStringify(run.input) !== canonicalJsonStringify(captured.input)) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const reference = referenceFor(run, command.typeId).value;
+        if (canonicalJsonStringify(command.fields) !== canonicalJsonStringify(reference.request.fields)
+          || reference.snapshot.type.keyFieldId === null) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const versionId: unknown = Reflect.get(reference.snapshot, "versionId"), versionName: unknown = Reflect.get(reference.snapshot, "versionName");
+        const version = z.strictObject({ versionId: z.string().min(1), versionName: z.string().min(1) }).safeParse({ versionId, versionName });
+        if (!version.success) throw new WorkbookLibraryError("WORKBOOK_REVISION_UNAVAILABLE");
+        const snapshot = snapshotWorkbookReference(repositories.workbooks, { ...reference.request, libraryId: reference.snapshot.libraryId,
+          versionId: version.data.versionId, keys: command.keys, fields: command.fields });
+        if (Reflect.get(snapshot, "versionId") !== version.data.versionId
+          || snapshot.type.id !== reference.snapshot.type.id || snapshot.type.keyFieldId !== reference.snapshot.type.keyFieldId
+          || canonicalJsonStringify(snapshot.worksheets) !== canonicalJsonStringify(reference.snapshot.worksheets)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+        return ReadWorkbookReference.output.parse({ state: "read", reference: {
+          libraryId: reference.snapshot.libraryId, version: reference.snapshot.version,
+          ...version.data, typeId: reference.snapshot.type.id, keyFieldId: reference.snapshot.type.keyFieldId,
+          worksheets: snapshot.worksheets, rows: snapshot.rows.map(row => ({ ...row,
+            matches: row.matches.map(match => ({ sheetId: match.sheetId, rowId: match.rowId,
+              cells: Object.entries(match.values).map(([fieldId, value]) => ({ fieldId, value })) })),
+          })),
+        } });
+      });
+    },
     write(captured: RunRecord, value: z.infer<typeof WorkbookReferenceWriteSchema>): WorkbookOperationReceipt {
       const command = WorkbookReferenceWriteSchema.parse(value);
       return deps.database.withAuthorityTransaction(repositories => {

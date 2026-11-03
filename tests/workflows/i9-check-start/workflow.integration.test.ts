@@ -1,0 +1,82 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import readXlsxFile from "read-excel-file/node";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createI9CheckStartWorld } from "../../support/helpers/backend/i9-check-start-world.js";
+import { I9CheckStartResultSchema } from "../../../src/models/workflows/i9-check/batch.js";
+import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
+
+describe("one I-9 PDF Start through admitted children", () => {
+  const world = createI9CheckStartWorld();
+  let f: Awaited<ReturnType<typeof world.fixture>>;
+  beforeAll(async () => { f = await world.fixture(); });
+  afterAll(world.cleanup);
+
+  it("i9-check-start/pdfs — admits two original PDFs as children of one parent", async () => {
+    expect(f.input.documents).toHaveLength(2);
+    const first = await f.canonical.step(f.run, new AbortController().signal);
+    expect(first.outcome.state).toBe("yielded-delegation");
+    const documents = f.database.authority.runs.listChildren(f.run.envelope.runId);
+    expect(documents).toHaveLength(2);
+    expect(documents.every(child => child.envelope.workflow === "ocr" && child.lifecycle.state === "queued")).toBe(true);
+    expect(f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId)).toHaveLength(1);
+  });
+  it("admits each PDF's own page children before resolving any review", async () => {
+    for (let document = 0; document < 2; document += 1) {
+      const next = await f.canonical.step(f.run, new AbortController().signal);
+      expect(next.run.envelope.workflow).toBe("ocr");
+      expect(next.outcome.state).toBe("yielded-delegation");
+      const pages = f.database.authority.runs.listChildren(next.run.envelope.runId);
+      expect(pages).toHaveLength(2);
+      expect(pages.every(page => page.envelope.workflow === "ocr-page")).toBe(true);
+    }
+  });
+  it("reads the original pages and parks the first PDF for explicit review without publishing results", async () => {
+    const result = await f.canonical.execute(f.run, new AbortController().signal);
+    expect(result.run?.lifecycle.state, JSON.stringify(result.outcomes)).toBe("queued");
+    const documents = f.database.authority.runs.listChildren(f.run.envelope.runId);
+    expect(documents).toHaveLength(2);
+    expect(documents.every(child => child.envelope.workflow === "ocr")).toBe(true);
+    expect(documents.filter(child => child.lifecycle.state === "parked-gate")).toHaveLength(1);
+    expect(f.database.authority.workbooks.list().filter(workbook => workbook.libraryId.startsWith("workflow:"))).toHaveLength(0);
+  });
+  it("resumes the same parent after the first exact OCR approval and parks the next original PDF", async () => {
+    const first = f.approveNext();
+    const result = await f.canonical.execute(f.run, new AbortController().signal);
+    expect(result.run?.lifecycle.state).toBe("queued");
+    const documents = f.database.authority.runs.listChildren(f.run.envelope.runId);
+    expect(documents.find(child => child.envelope.runId === first)?.lifecycle).toMatchObject({ state: "terminal", outcome: "done" });
+    expect(documents.filter(child => child.lifecycle.state === "parked-gate")).toHaveLength(1);
+    expect(f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "i9-check")).toHaveLength(0);
+  });
+  it("checks both approved people and publishes one workbook and the configured tracker before completing", async () => {
+    f.approveNext();
+    const result = await f.canonical.execute(f.run, new AbortController().signal);
+    const failures = result.outcomes.filter(outcome => outcome.state === "failed").map(outcome => f.database.authority.failures.get(outcome.failureId)?.summary);
+    expect(result.run?.lifecycle, failures.join(", ")).toMatchObject({ state: "terminal", outcome: "done" });
+    const terminal = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(terminal);
+    const output = I9CheckStartResultSchema.parse(terminal.result.value);
+    expect(output.personCount).toBe(2);
+    expect(output.tracker.rows.map(row => [row.ucpathEmplId, row.action])).toEqual([["10000001", "Keep"], ["10000002", "Keep"]]);
+    expect(output.people.map(person => person.sources.length)).toEqual([2, 2]);
+    const workbooks = f.database.authority.workbooks.list().filter(workbook => workbook.libraryId.startsWith("workflow:"));
+    expect(workbooks).toHaveLength(1);
+    expect(workbooks[0].libraryId).toBe(output.workbook.libraryId);
+    expect(workbooks[0].workbook.sheets[0].rows).toHaveLength(3);
+    const config = f.database.authority.configSnapshots.get(f.run.envelope.configSnapshotId); assert.ok(config);
+    const sheets = await readXlsxFile(readFileSync(config.config.paths.i9CheckTrackerPath));
+    expect(sheets.find(sheet => sheet.sheet === "I-9 Check")?.data).toHaveLength(3);
+    expect(f.database.authority.artifactOutbox.listPending()).toHaveLength(0);
+    expect(f.database.readProfileResourceCustody().writeIntents).toHaveLength(0);
+    expect(f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "i9-check")).toHaveLength(2);
+    expect(f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId)).toHaveLength(2);
+  });
+  it("derives the unchanged receipt format from the completed native parent and replays it exactly", () => {
+    const service = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [f.root.descriptor] });
+    const receipt = service.ensureReceipt(f.run.envelope.runId);
+    expect(receipt.composition).toBe(5);
+    expect(receipt.runId).toBe(f.run.envelope.runId);
+    expect(receipt.output.find(fact => fact.field === "personCount")).toMatchObject({ state: "satisfied", value: { value: 2 } });
+    expect(service.ensureReceipt(f.run.envelope.runId)).toEqual(receipt);
+  });
+});

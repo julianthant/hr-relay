@@ -103,6 +103,7 @@ describe("bootstrap start-surface block", () => {
         "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "crm-dates": ["crm"] },
         separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "job-summary": ["ucpath"], "kronos-timecard": ["new-kronos"], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
         onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "i9-profile-creation": [] },
+        "i9-check-start": { documents: [], "roster-reference": [], retention: [] },
       };
       for (const descriptor of WORKFLOW_DESCRIPTORS) {
         expect(served.get(String(descriptor.id)), String(descriptor.id)).toEqual({
@@ -126,6 +127,7 @@ describe("bootstrap start-surface block", () => {
           ...(descriptor.surfaces.inputRun === undefined
             ? {}
             : { inputRun: descriptor.surfaces.inputRun }),
+          ...(descriptor.surfaces.uploadRun === undefined ? {} : { uploadRun: descriptor.surfaces.uploadRun }),
         });
       }
       // Read-only Onboarding has no launch door while roster capture is pending.

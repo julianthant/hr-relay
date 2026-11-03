@@ -63,6 +63,7 @@ export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[]
     role: entry.role, code: entry.code, ...(entry.start.summary === undefined ? {} : { summary: entry.start.summary }),
     enqueue: entry.start.enqueue, version: entry.start.version, steps: entry.start.steps,
     spreadsheetIntake: entry.start.spreadsheetIntake,
+    ...(entry.start.uploadRun === undefined ? {} : { uploadRun: entry.start.uploadRun }),
     inputRun: entry.start.inputRun === undefined ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
       : { state: "present", surface: entry.start.inputRun } }));
 }

@@ -47,6 +47,7 @@ import {
   inputRunValueNoun,
   type InputRunSurface,
   type TypedInputDraft,
+  type UploadRunSurface,
 } from "../../../models/workflow/ingress.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
@@ -93,12 +94,15 @@ import {
 } from "./run-start-timeline.js";
 import { versionTag } from "../shared/status/format.js";
 import type { StepOmissionForm } from "../../../models/workflow/step-omission.js";
+import { WorkflowPdfInput } from "../workflows/mocks/workflow-pdf-input.js";
+import { previewPdfRun, usePdfRunInput } from "./run-start-pdfs.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration ) */
 
 /** What the app composes from the descriptor and bootstrap projections. The
  * dialog reads exactly this and imports no workflow module. */
 export interface RunStartWorkflow {
+  readonly uploadRun?: UploadRunSurface;
   readonly workflowId: string;
   readonly label: string;
   /** the served category this workflow is filed under — the picker's grouping */
@@ -133,9 +137,8 @@ export interface RunStartWorkflow {
   readonly spreadsheetIntake: boolean;
 }
 
-/** startable IS "declares a typed-input surface" — there is no second gate */
 function isStartable(workflow: RunStartWorkflow): boolean {
-  return workflow.inputRun.state === "present";
+  return workflow.inputRun.state === "present" || workflow.uploadRun?.pdfInput !== undefined;
 }
 
 /** What the dialog reads when the served catalogue holds nothing to select. It
@@ -290,6 +293,8 @@ export function RunStartDialog({
   const [pickerQuery, setPickerQuery] = useState("");
   const client = useDashboardClient();
   const commandBinding = useDashboardCommandBinding();
+  const pdfInput = usePdfRunInput(client, commandBinding);
+  const resetPdfs = pdfInput.reset;
   const commandBindingRef = useRef(commandBinding);
   commandBindingRef.current = commandBinding;
   const launchService = useMemo(() => createRunLaunchService(client, actorId, { uuid: () => crypto.randomUUID(), now: () => {
@@ -340,6 +345,7 @@ export function RunStartDialog({
 
   /** Changing workflow clears its parser input and bound plan; another workflow cannot reuse either. */
   const selectWorkflow = useCallback((next: string, preserveStage = false) => {
+    resetPdfs();
     setWorkflowId(next);
     setText("");
     const nextInput = workflows.find(entry => entry.workflowId === next)?.inputRun;
@@ -358,13 +364,14 @@ export function RunStartDialog({
     setPriority("interactive");
     setDryRunRequested(false);
     setBrowserMode("headed");
-  }, [workflows, setCurrentStage, setCustomizeSteps, setWorkflowId]);
+  }, [workflows, setCurrentStage, setCustomizeSteps, setWorkflowId, resetPdfs]);
 
   // Opening lands on the panel you are standing in, every time — including the
   // second time, which is why this keys on `open` rather than running once.
   useEffect(() => {
     const instance = ++launchInstance.current;
     if (!open) return;
+    resetPdfs();
     if (!routed && !previewLaunch && selectedWorkflowRef.current !== defaultWorkflowId(workflows, panelWorkflowId)) selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId), true);
     if (!routed) setLocalPreviewSelection(previewLaunch);
     setPickerQuery("");
@@ -409,7 +416,7 @@ export function RunStartDialog({
       });
     }
     return () => { launchInstance.current = instance + 1; };
-  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, actorId, launchService, previewLaunch, routed, setCurrentStage, setCustomizeSteps, setWorkflowId]);
+  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, rerunInputText, actorId, launchService, previewLaunch, routed, setCurrentStage, setCustomizeSteps, setWorkflowId, resetPdfs]);
 
   const pickWorkflow = useCallback((id: string) => {
     if (selectedWorkflowRef.current === id || sending.current) return;
@@ -428,6 +435,7 @@ export function RunStartDialog({
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
 
   const inputRun = workflow?.inputRun ?? NO_WORKFLOW_SELECTED;
+  const pdfSurface = workflow?.uploadRun?.pdfInput === undefined ? undefined : workflow.uploadRun;
   const typedDeclaration = inputRun.state === "present" ? inputRun.surface.typedInput : undefined;
   const declaredInput = typedDeclaration !== undefined;
   const typedValues = useMemo(() => {
@@ -464,7 +472,7 @@ export function RunStartDialog({
     },
   ), [customizeSteps, steps, selectedStepKeys, stepDrafts]);
   const stepOmissions = useMemo(() => completeStepOmissions(omissionRows), [omissionRows]);
-  const requestFingerprint = canonicalJsonStringify([rerunSource ?? null, valueDrafts, copiedOmissions, typedValues, sourceInputUnchanged, startRequestFingerprint({
+  const requestFingerprint = canonicalJsonStringify([rerunSource ?? null, valueDrafts, copiedOmissions, typedValues, sourceInputUnchanged, pdfInput.draft, startRequestFingerprint({
     workflowId,
     text,
     dryRun,
@@ -496,10 +504,10 @@ export function RunStartDialog({
     typedInputRef.current?.focus();
   }, [currentStage]);
 
-  const preview = useMemo((): RunInputPreview => inputRun.state !== "present" ? { entries: [], submissions: [], problem: null }
+  const preview = useMemo((): RunInputPreview => pdfSurface !== undefined ? previewPdfRun(pdfSurface, pdfInput.draft) : inputRun.state !== "present" ? { entries: [], submissions: [], problem: null }
     : previewRunInput(inputRun.surface, text, typedValues,
       sourceInputUnchanged && snapshot?.source.runId === rerunSource?.runId && snapshot?.source.version === rerunSource?.expectedVersion && snapshot !== null ? rerunTypedSourceInput(inputRun.surface.typedInput, snapshot.sourceInput) : undefined),
-    [inputRun, text, typedValues, snapshot, rerunSource, sourceInputUnchanged]);
+    [inputRun, text, typedValues, snapshot, rerunSource, sourceInputUnchanged, pdfSurface, pdfInput.draft]);
 
 
 
@@ -512,7 +520,8 @@ export function RunStartDialog({
     setBusy(true);
     setError(null);
     try {
-      const values = snapshot === null ? null : rerunSubmission(snapshot, preview.submissions[0] ?? {}, valueDrafts);
+      const values = snapshot === null ? null : pdfSurface === undefined ? rerunSubmission(snapshot, preview.submissions[0] ?? {}, valueDrafts)
+        : { submission: preview.submissions[0], copiedFrom: [] };
       const copiedFrom = [...(values?.copiedFrom ?? []), ...Object.entries(copiedOmissions).flatMap(([index, copied]) => {
         const candidate = snapshot?.values[Number(index)];
         return copied && candidate?.state === "available" && candidate.targetStepKey !== undefined
@@ -546,7 +555,7 @@ export function RunStartDialog({
     } finally {
       if (launchInstance.current === instance) setBusy(false);
     }
-  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput]);
+  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput, pdfSurface]);
 
   const sendFinal = useCallback(async (command: LaunchFinalCommand, dispatchedFor: string): Promise<void> => {
     if (sending.current) return;
@@ -597,14 +606,14 @@ export function RunStartDialog({
 
   // already-applied confirms the same enqueue; its plan token is single-use.
   const applied = result !== null && settleCommandResult(result).kind === "applied";
-  const blockedReason = inputRun.state !== "present"
+  const blockedReason = pdfSurface !== undefined ? pdfInput.loading ? "Reading PDFs…" : pdfInput.error !== null ? "Fix the refused PDF selection first." : preview.entries.length === 0 ? "Choose at least one PDF." : null : inputRun.state !== "present"
     ? inputRun.reason
     : preview.problem !== null
       ? "Fix the refused entry first."
       : preview.entries.length === 0
         ? "Type at least one value."
         : null;
-  const rerunInputBlocked = preview.problem !== null || preview.entries.length > 1 || (declaredInput && preview.entries.length === 0);
+  const rerunInputBlocked = pdfSurface !== undefined ? blockedReason !== null : preview.problem !== null || preview.entries.length > 1 || (declaredInput && preview.entries.length === 0);
   /** Incomplete omitted-step facts block confirmation using the descriptor’s own schema refusal. */
   /** Omission facts describe one person; fan-out must not assert the same dates for multiple subjects. */
   const subjectCount = preview.entries.length;
@@ -717,6 +726,7 @@ export function RunStartDialog({
 
   /** Discard spent plans and stage state together; restore focus after settled controls unmount. */
   const returnToInput = useCallback(() => {
+    if (result !== null && settleCommandResult(result).kind === "applied") resetPdfs();
     if (recovery !== null && result !== null) {
       dismissLaunchRecovery(window.sessionStorage, recovery); setRecovery(null); finalRequest.current = null;
     }
@@ -725,7 +735,7 @@ export function RunStartDialog({
     setResult(null);
     setError(null);
     setCurrentStage(isRerun ? "Values" : "Input");
-  }, [recovery, result, isRerun, setCurrentStage]);
+  }, [recovery, result, isRerun, setCurrentStage, resetPdfs]);
 
   const closeAndReset = useCallback((next: boolean) => {
     onOpenChange(next);
@@ -811,7 +821,11 @@ export function RunStartDialog({
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
               {(currentStage === "Input" || currentStage === "Values") && (
                 <section aria-label={isRerun ? "Values" : "Input"} className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
-                  {inputRun.state === "present" ? (
+                  {pdfSurface !== undefined ? <>
+                    <WorkflowPdfInput files={pdfInput.draft?.files.map(file => ({ name: file.source.fileName, size: file.source.artifact.bytes })) ?? []}
+                      busy={busy || pdfInput.loading} onChoose={files => { void pdfInput.choose(pdfSurface, files); }} onRemove={pdfInput.remove} />
+                    {pdfInput.error !== null && <Banner tone="danger" title="PDF selection refused">{pdfInput.error}</Banner>}
+                  </> : inputRun.state === "present" ? (
                     !declaredInput && isRerun && rerunInputText === undefined && snapshot?.values.some(candidate => candidate.state === "available" && candidate.targetStepKey === undefined && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) ? null : <TypedInput
                       surface={inputRun.surface}
                       workflowId={workflowId}
@@ -839,7 +853,7 @@ export function RunStartDialog({
                       />
                     </Well>
                   )}
-                  {!declaredInput && isRerun && snapshot !== null && (
+                  {pdfSurface === undefined && !declaredInput && isRerun && snapshot !== null && (
                     <section aria-label="Previous values" className="flex flex-col gap-[var(--ds-space-cozy)]">
                       {snapshot.values.length === 0 && <p className={cn(dsText.body, dsFg.muted)}>No reusable values recorded.</p>}
                       <div className="launch-values-fields grid gap-[var(--ds-space-cozy)]">
@@ -947,7 +961,7 @@ export function RunStartDialog({
 
               {currentStage === "Confirm" && plan !== null && (
                 <RunConfirmLayout count={plan.planned.length} flags={<RunFlagChips dryRun={plan.dryRun} priority={plan.priority} />}
-                  description={isRerun ? "A new run linked to the source." : "One run for each accepted entry."}
+                  description={isRerun ? "A new run linked to the source." : pdfSurface !== undefined ? "One run for all attached PDFs." : "One run for each accepted entry."}
                   facts={[
                       { key: "Workflow", value: workflow === undefined ? plan.workflowId : `${workflow.label} · ${versionTag(workflow.version)}` },
                       { key: "Input", value: inputSummary || Object.values(valueDrafts).map(draft => draft.text).filter(Boolean).join(", ") },
