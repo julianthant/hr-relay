@@ -29,7 +29,7 @@ function fixture() {
     async open() { throw new Error("document acquisition must not read stored artifacts"); },
   };
   const ctx = { driver: createDeterministicCrmOnboardingDriver({ record: CrmReadOnboardingRecord.example, dates: CrmReadOnboardingDates.example,
-      documentRecord: located.identity, idocs }), signal: controller.signal, artifacts,
+      documents: [idocs] }), signal: controller.signal, artifacts,
     captureScreenshot: async () => { throw new Error("fixture has no capture surface"); },
     log: { debug() {}, info() {}, warn() {} },
     fail(this: void, code: string, message: string, options?: Readonly<{ cause?: unknown }>): never {
