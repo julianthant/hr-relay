@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EidSchema, IsoInstantSchema, RunIdSchema } from "../../../rules/identity/ids.js";
+import { EidSchema, IsoInstantSchema, FingerprintSchema, RunIdSchema } from "../../../rules/identity/ids.js";
 import { WorkbookIdSchema } from "../../dashboard/workbooks.js";
 import { UcpathApprovalStatusSchema, UcpathTransactionReceiptSchema } from "../../ui/ucpath-ss-smart-hr.js";
 
@@ -10,11 +10,20 @@ const RosterPersonNameSchema = z.strictObject({
 
 export const OnboardingRosterRowKeySchema = z.strictObject({ email: z.email() });
 
-export const OnboardingRosterBindingSchema = z.strictObject({
+export const OnboardingRosterReferenceBindingSchema = z.strictObject({
   workbookType: z.literal("onboarding-roster"), workbookId: WorkbookIdSchema,
-  snapshotId: z.string().min(1), runId: RunIdSchema, capturedAt: IsoInstantSchema,
+  referenceDigest: FingerprintSchema, workbookVersion: z.number().int().positive(), capturedAt: IsoInstantSchema,
   rowKey: OnboardingRosterRowKeySchema,
 });
+
+export const OnboardingRosterBindingSchema = OnboardingRosterReferenceBindingSchema.extend({
+  sheetId: z.string().min(1), rowId: z.string().min(1),
+});
+
+export const ONBOARDING_ROSTER_TYPE_ID = "onboarding-roster";
+export const ONBOARDING_ROSTER_GATE_ID = "roster-choice";
+export const ONBOARDING_ROSTER_FIELDS = ["email", "firstName", "lastName", "middleName",
+  "roster.livedFirstName", "roster.livedLastName", "roster.livedMiddleName"] as const;
 
 export const OnboardingRosterSnapshotRowSchema = z.strictObject({
   binding: OnboardingRosterBindingSchema,
@@ -28,7 +37,7 @@ export const OnboardingRosterReadInputSchema = z.strictObject({
 export const OnboardingRosterReadOutputSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("resolved"), row: OnboardingRosterSnapshotRowSchema }),
   z.strictObject({
-    state: z.literal("resolve-required"), binding: OnboardingRosterBindingSchema,
+    state: z.literal("resolve-required"), binding: OnboardingRosterReferenceBindingSchema,
     reason: z.enum(["row-missing", "row-ambiguous"]),
   }),
 ]);

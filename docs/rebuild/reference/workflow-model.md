@@ -47,14 +47,33 @@ IDs, and is copied and frozen by the definition and descriptor factories. Omissi
 requirements; production definitions declare an explicit array. It does not describe new output
 workbooks, spreadsheet intake, or delegated children's requirements. Retained step proofs inherit
 the parent declaration. The descriptor and its sealed planning and projections expose the same
-validated facts; workbook selection and reference snapshots belong to run planning. All current
-definitions declare an empty array.
+validated facts; workbook selection and reference snapshots belong to run planning. Onboarding
+requires `onboarding-roster`; the other current definitions declare an empty array.
 
 Start planning takes explicit entry-scoped `workbookReferences` (type, optional library, keys and
 fields), requires exactly the workflow's declared types, and snapshots the selected or default
 workbook. Schema-bound references retain exact cell values, revision and every worksheet's identity
 in the confirmation fingerprint and native run input. Later master edits or default changes do not
 replace them. No workflow-specific key or field mapping is inferred.
+
+Onboarding maps the exact requested email key and seven fields: `email`, `firstName`, `lastName`,
+`middleName`, `roster.livedFirstName`, `roster.livedLastName` and `roster.livedMiddleName`.
+All three lived-name cells must be null for explicit absence; otherwise all three must contain valid
+name strings. A single `livedName` cell is never split. The public planner refuses supplied roster
+values and builds required canonical roster input from the one captured reference. Native run
+membership supplies run identity; its reference digest, library revision and row membership remain
+immutable during execution.
+
+A missing or ambiguous match parks at `roster-choice` before the CRM read. The `workbook-writes`
+section serves separate `referenceChoices` with exact reference identity, typed field/value entries,
+and an available, unavailable or resolved state. A missing key has no candidates. Refresh may show
+current exact-key matches only in the original worksheet set. `resolve-workbook-reference-row`
+accepts sheet and row identity, rechecks the live revision, type, key and worksheet membership, and
+rebuilds typed values into a durable gate result before the canonical gate transition resumes the
+run. Direct `resolve-gate` cannot settle this gate. The original reference stays unchanged; subsequent
+execution and delegation authenticate retained chosen evidence, the applied command audit and the
+native gate-result hash without rereading the workbook.
+No workbook patch or write receipt is created by a read choice. Hire writes remain unavailable.
 
 The `workbooks/read-result` task accepts `patch-reference` with a stable run-local write ID and
 explicit field/value entries. Runs derives its target from the captured reference and journals the

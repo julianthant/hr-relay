@@ -26,7 +26,7 @@ import { readI9LookupTask } from "../../../src/workflows/onboarding/tasks/read-i
 import { TaskRefusal, createSeparationTaskFixtures } from "../../support/helpers/separation-task-fixtures.js";
 import { classifyEvidenceLeaf, evidenceLeaves, redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
 import { DataPointSchema } from "../../../src/rules/workflow/task-provenance.js";
-import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
+import { GateIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 
 const descriptor = compileWorkflow(onboardingWorkflow).descriptor;
 const nodes = descriptorRuntimeNodes(descriptor);
@@ -50,7 +50,7 @@ describe("read-only onboarding workflow", () => {
     const result = await readHirePlanTask.impl.run({ input: OnboardingReadHirePlan.input.parse(planNode.bind({ input: ONBOARDING_INPUT_EXAMPLE,
       outputs: { "crm-source": read } })), ctx: planContext.ctx });
     assert.deepEqual(result, plan);
-    assert.deepEqual(result.roster, ONBOARDING_INPUT_EXAMPLE.roster.binding);
+    assert.deepEqual(result.roster, ONBOARDING_INPUT_EXAMPLE.roster.row.binding);
   });
   it("has workflow-owned task calls, a harness for every timeline checkpoint and exact implementation bindings", () => {
     assert.deepEqual(registration.exposure, { kind: "public", order: 2 });
@@ -61,12 +61,12 @@ describe("read-only onboarding workflow", () => {
       .map(module => module.descriptor.id), registration.proofs.map(proof => proof.definition.id));
     assert.deepEqual(descriptor.timeline.map(step => step.key), ["crm-data", "ucpath-search", "i9-search", "i9-profile-creation"]);
     assert.deepEqual(onboardingWorkflow.steps.map(([, entries]) => entries.map(entry => entry.id)), [
-      ["crm-source", "hire-plan"], ["ucpath-source", "hire-subject"], ["i9-lookup-child", "i9-lookup"], ["i9-profile-plan"],
+      ["roster-choice", "crm-source", "hire-plan"], ["ucpath-source", "hire-subject"], ["i9-lookup-child", "i9-lookup"], ["i9-profile-plan"],
     ]);
     for (const [index, proof] of registration.proofs.entries()) {
       assert.deepEqual(proof.definition.role, { kind: "chunk-harness", of: "onboarding", step: descriptor.timeline[index]?.key });
     }
-    assert.equal(onboardingWorkflow.steps[0]?.[1][0]?.contracts[0], CrmReadHireData);
+    assert.equal(onboardingWorkflow.steps[0]?.[1][1]?.contracts[0], CrmReadHireData);
     assert.equal(onboardingWorkflow.steps[1]?.[1][0]?.contracts[0], SearchPersonMatch);
     assert.equal(crmStore.tasks.readHireData.contract.id, "crm/read-hire-data");
     assert.ok(nodes.every(node => node.kind !== "transaction"));
@@ -74,8 +74,9 @@ describe("read-only onboarding workflow", () => {
 
   it("preserves the read graph dependencies and exact task contracts", () => {
     assert.deepEqual(workflowExplorerDeclaration(onboardingWorkflow).flatMap(group => group.entries), [
-      { id: "crm-source", kind: "task", nodeIds: ["crm-source"], dependsOn: [], taskIds: ["crm/read-hire-data"] },
-      { id: "hire-plan", kind: "task", nodeIds: ["hire-plan"], dependsOn: ["crm-source"], taskIds: ["workflow:onboarding/read-hire-plan"] },
+      { id: "roster-choice", kind: "gate", nodeIds: ["roster-choice"], dependsOn: [], taskIds: [] },
+      { id: "crm-source", kind: "task", nodeIds: ["crm-source"], dependsOn: ["roster-choice"], taskIds: ["crm/read-hire-data"] },
+      { id: "hire-plan", kind: "task", nodeIds: ["hire-plan"], dependsOn: ["crm-source", "roster-choice"], taskIds: ["workflow:onboarding/read-hire-plan"] },
       { id: "ucpath-source", kind: "task", nodeIds: ["ucpath-source"], dependsOn: ["hire-plan"], taskIds: ["ucpath/search-person-match"] },
       { id: "hire-subject", kind: "task", nodeIds: ["hire-subject"], dependsOn: ["hire-plan", "ucpath-source"], taskIds: ["workflow:onboarding/match-hire-subject"] },
       { id: "i9-lookup-child", kind: "delegate", nodeIds: ["i9-lookup-child"], dependsOn: ["hire-plan", "hire-subject"], taskIds: [] },
@@ -90,8 +91,8 @@ describe("read-only onboarding workflow", () => {
       ["onboarding-crm-data", "onc", 15], ["onboarding-ucpath-search", "onu", 16],
       ["onboarding-i9-search", "onis", 17], ["onboarding-i9-profile-creation", "onip", 18],
     ]);
-    const entryIds = ["crm-source", "hire-plan", "ucpath-source", "hire-subject", "i9-lookup-child", "i9-lookup", "i9-profile-plan"];
-    const proofSizes = [2, 4, 6, 7];
+    const entryIds = ["roster-choice", "crm-source", "hire-plan", "ucpath-source", "hire-subject", "i9-lookup-child", "i9-lookup", "i9-profile-plan"];
+    const proofSizes = [3, 5, 7, 8];
     const targets = ["hire-plan", "hire-subject", "i9-lookup", "i9-profile-plan"];
     for (const [index, proof] of registration.proofs.entries()) {
       assert.equal(proof.definition.input, onboardingWorkflow.input);
@@ -128,7 +129,7 @@ describe("read-only onboarding workflow", () => {
     } }));
     assert.equal(result.state, "implementation-incomplete");
     assert.deepEqual(result.hireWrite, { state: "unimplemented", owner: "write-safety" });
-    assert.deepEqual(result.rosterAccess, { state: "unimplemented", owner: "spreadsheets" });
+    assert.deepEqual(result.rosterAccess, { state: "snapshot-bound", owner: "spreadsheets" });
     assert.equal(result.i9.state, "creation-required");
     assert.match(descriptor.summary ?? "", /Read-only.*not yet available/u);
     assert.deepEqual(descriptor.outcomeProjection, { fieldPath: "state", cases: [
@@ -139,6 +140,9 @@ describe("read-only onboarding workflow", () => {
 
   it("classifies registered inputs and every planning outcome without exposing SSNs in diagnostic evidence", () => {
     for (const proof of [{ definition: onboardingWorkflow }, ...registration.proofs]) {
+      for (const leaf of evidenceLeaves(ONBOARDING_INPUT_EXAMPLE.roster.row)) {
+        classifyEvidenceLeaf({ kind: "gate-result", workflowId: WorkflowIdSchema.parse(proof.definition.id), gateId: GateIdSchema.parse("roster-choice") }, leaf.path);
+      }
       for (const leaf of evidenceLeaves(ONBOARDING_INPUT_EXAMPLE)) {
         classifyEvidenceLeaf({ kind: "workflow-input", workflowId: WorkflowIdSchema.parse(proof.definition.id) }, leaf.path);
       }

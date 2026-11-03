@@ -1,3 +1,4 @@
+import { authenticateOnboardingRosterChoice } from "../workbooks.js";
 import type { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor, workflowDryRunSupport, workflowPlanning, workflowProjections, workflowTerminalResultExecution } from "../../../workflow-kit/workflow.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
@@ -128,7 +129,10 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, cont
           if (source.resolvedBy === "operator" || gate.source.attempt !== parent.envelope.attempt) throw new Error("delegation-approval-source-mismatch");
         } else {
           const command = repositories.commands.get(gate.commandId), audit = repositories.commandAudits.findByCommand(gate.commandId);
-          if (source.resolvedBy !== "operator" || command?.family !== "gate" || command.type !== "resolve-gate"
+          if (command?.family === "run" && command.type === "resolve-workbook-reference-row") {
+            if (source.resolvedBy !== "operator") throw new Error("delegation-approval-source-mismatch");
+            authenticateOnboardingRosterChoice(repositories, parent, gate);
+          } else if (source.resolvedBy !== "operator" || command?.family !== "gate" || command.type !== "resolve-gate"
             || command.target.runId !== parent.envelope.runId || String(command.target.gateId) !== String(nodeId) || command.target.expectedVersion !== gate.expectedVersion
             || command.requestedBy !== gate.resolvedBy || canonicalJsonStringify(command.payload.result) !== canonicalJsonStringify(gate.result)
             || audit?.result.state !== "applied" || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)) throw new Error("delegation-approval-source-mismatch");

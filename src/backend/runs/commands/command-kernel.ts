@@ -1,3 +1,5 @@
+import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
+import { ONBOARDING_ROSTER_GATE_ID } from "../../../models/workflows/onboarding/roster.js";
 import { planRunRecovery } from "../start/recovery-plan.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
@@ -276,7 +278,10 @@ export interface RunConfigIdentity {
 }
 
 export interface CommandKernelDependencies {
-  readonly workbookRows?: Readonly<{ resolve(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-row" }>): unknown }>;
+  readonly workbookRows?: Readonly<{
+    resolve(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-row" }>): unknown;
+    resolveReference?(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>, capturedAt: string): SchemaBoundCanonicalValue;
+  }>;
   readonly preflight?: PreflightAdmission;
   readonly applicationQuitAvailable?: boolean;
   readonly authority: CommandAuthority;
@@ -1565,6 +1570,7 @@ function executeResolveGate(
   repositories: AuthorityRepositories,
   request: Extract<CommandRequest, { family: "gate" }>,
   now: string,
+  source: "operator" | "workbook-reference" = "operator",
 ): CommandApplication {
   const current = requireRun(repositories, request, request.target.runId);
   if (current.version !== request.target.expectedVersion) {
@@ -1574,6 +1580,9 @@ function executeResolveGate(
       `run ${request.target.runId} is at version ${String(current.version)}, not `
       + `${String(request.target.expectedVersion)}; refresh before resolving the gate`,
     );
+  }
+  if (current.envelope.workflow === "onboarding" && request.target.gateId === ONBOARDING_ROSTER_GATE_ID && source !== "workbook-reference") {
+    reject(request, "policy-refused", "Roster row choices require live workbook validation through their served reference target.");
   }
   if (current.lifecycle.state !== "parked-gate") {
     reject(
@@ -2470,8 +2479,15 @@ function dispatchActive(
         case "delete": return executeDelete(dependencies, repositories, request, now);
         case "bump": return executeBump(dependencies, repositories, request, now);
         case "rename": return executePresentation(dependencies, repositories, request, now);
-        case "resolve-workbook-reference-row":
-          return reject(request, "capability-unavailable", "Workbook reference row choices are unavailable.");
+        case "resolve-workbook-reference-row": {
+          if (dependencies.workbookRows?.resolveReference === undefined) return reject(request, "capability-unavailable", "Workbook reference row choices are unavailable.");
+          const result = dependencies.workbookRows.resolveReference(repositories, request, now);
+          return executeResolveGate(dependencies, repositories, {
+            ...request, family: "gate", type: "resolve-gate",
+            target: { runId: request.target.runId, expectedVersion: request.target.expectedVersion, gateId: request.target.gateId },
+            payload: { result },
+          }, now, "workbook-reference");
+        }
         case "resolve-workbook-row": {
           requireRun(repositories, request, request.target.runId);
           if (dependencies.workbookRows === undefined) return reject(request, "capability-unavailable", "Workbook row choices are unavailable.");

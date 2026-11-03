@@ -57,7 +57,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
         return result;
       }
 
-      if (request.family === "gate") {
+      if (request.family === "gate" || request.family === "run" && request.type === "resolve-workbook-reference-row") {
         deps.projection.ingestFromTimeline();
         return result;
       }

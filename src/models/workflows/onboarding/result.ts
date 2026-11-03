@@ -7,5 +7,5 @@ export const OnboardingResultSchema = z.strictObject({
   state: z.literal("implementation-incomplete"), plan: HirePlanSchema, subject: HireSubjectSchema,
   i9: OnboardingI9ProfileSchema,
   hireWrite: z.strictObject({ state: z.literal("unimplemented"), owner: z.literal("write-safety") }),
-  rosterAccess: z.strictObject({ state: z.literal("unimplemented"), owner: z.literal("spreadsheets") }),
+  rosterAccess: z.strictObject({ state: z.literal("snapshot-bound"), owner: z.literal("spreadsheets") }),
 });
