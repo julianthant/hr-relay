@@ -72,9 +72,6 @@ function initialize(f:Awaited<ReturnType<typeof liveFixture>>){const database=Au
    restorePrePreferencesSettingsRows(raw);
    const repository=createTimelineRepository({database:raw,mutate,read:work=>work(),assertOwner:()=>{}});
    createDebugEventWriter({repository,clock,build:"test"}).emit({category:"http",phase:"failed",correlationId:"retained-history"});
-   raw.exec("DROP TRIGGER timeline_events_immutable");
-   raw.exec("UPDATE timeline_events SET payload_json=json_remove(payload_json,'$.payload.event.level') WHERE kind='debug'");
-   raw.exec("CREATE TRIGGER timeline_events_immutable BEFORE UPDATE ON timeline_events BEGIN SELECT RAISE(ABORT,'timeline-history-immutable'); END");
    assert.equal(inspectNativeAuthority(raw,version).schemaVersion,version);
   } finally {raw.close();}
   return f;
@@ -584,7 +581,7 @@ describe("stopped native upgrade admission",()=>{
   assert.deepEqual(await f.run(true),{state:"planned",fromSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,credentials:"unchanged"});
   assert.equal((await f.run()).state,"already-upgraded");assert.deepEqual(readFileSync(f.path),current);
  });
- it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1,CURRENT_AUTHORITY_SCHEMA_VERSION + 2,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
+ it.each([CURRENT_AUTHORITY_SCHEMA_VERSION + 1,19,46,999])("refuses unsupported schema %s without conversion or repair",async version=>{
   const f=await liveFixture();initialize(f);const raw=new DatabaseSync(f.path);
   try{raw.exec(`UPDATE database_states SET schema_version=${String(version)}; PRAGMA user_version=${String(version)}`);}finally{raw.close();}
   const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),error=>error instanceof AuthoritySchemaVersionError && error.code==="authority-schema-mismatch");assert.deepEqual(storageTree(f.root),before);

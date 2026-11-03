@@ -498,7 +498,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
           undefined, undefined, undefined, protectedAuthority)))(
           { path: authorityPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" }, clock);
       } catch (error) {
-        appendEmergencyFault({ stateRoot, build,
+        appendEmergencyFault({ stateRoot, build, area: "worker-startup", reason: "database-unavailable",
           code: "DATABASE_WRITER_UNAVAILABLE", error: error instanceof Error ? error : new Error("Database writer unavailable"), now: clock.now() });
         throw error;
       }

@@ -5,7 +5,6 @@ import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js
 import { DebugEventSchema, TimelineAppendSchema, timelineAppendContent, type TimelineRepository } from "../../models/events/timeline.js";
 import { sanitizeDebugText } from "../../rules/redaction/redaction.js";
 import { localDatePart } from "../../rules/time/clock.js";
-import { upgradeDebugEventLevel } from "../storage/sqlite/debug-level-migration.js";
 import { mirrorDebugEvent } from "./debug-events.js";
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -19,11 +18,11 @@ function faultPath(root: string): string {
 }
 
 /** Call only when database admission or the authoritative writer failed. */
-export function appendEmergencyFault(input: { stateRoot: string; build: string; code: string; error: Error; now: Date; area?: string; reason?: string }) {
+export function appendEmergencyFault(input: { stateRoot: string; build: string; code: string; error: Error; now: Date; area: string; reason: string }) {
   const path = faultPath(input.stateRoot);
   const eventId = randomUUID();
-  const event = DebugEventSchema.parse({ level: "error", category: "boot", phase: "failed", correlationId: eventId,
-    area: input.area ?? "boot", reason: input.reason ?? "authority-unavailable", code: input.code,
+  const event = DebugEventSchema.parse({ category: "boot", phase: "failed", correlationId: eventId,
+    area: input.area, reason: input.reason, code: input.code,
     message: sanitizeDebugText(input.error.message),
     ...(input.error.stack === undefined ? {} : { stack: sanitizeDebugText(input.error.stack) }),
     build: input.build, pid: process.pid, pinned: true });
@@ -39,13 +38,12 @@ export function appendEmergencyFault(input: { stateRoot: string; build: string; 
   mirrorDebugEvent({ ...record, event });
 }
 
-function parseEmergencyFaults(content: string, convert: (value: unknown) => unknown = value => value) {
+function parseEmergencyFaults(content: string) {
   if (!content.endsWith("\n")) throw new Error("boot-log-incomplete");
   const lines = content.trimEnd().split("\n");
   return lines.map(line => {
     let input: unknown;
     try { input = JSON.parse(line); } catch { throw new Error("boot-log-invalid"); }
-    try { input = convert(input); } catch { throw new Error("boot-log-invalid"); }
     const parsed = TimelineAppendSchema.safeParse(input);
     if (!parsed.success || parsed.data.payload.kind !== "debug" || parsed.data.payload.event.category !== "boot"
       || parsed.data.scope.kind !== "transport" || parsed.data.scope.connectionId !== "database-unavailable") throw new Error("boot-log-invalid");
@@ -87,7 +85,7 @@ export function importEmergencyFaults(stateRoot: string, repository: TimelineRep
   if (!existsSync(path)) return 0;
   if (lstatSync(path).size > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
   const content = readFileSync(path, "utf8");
-  const records = parseEmergencyFaults(content, value => TimelineAppendSchema.safeParse(value).success ? value : upgradeDebugEventLevel(value));
+  const records = parseEmergencyFaults(content);
   for (const record of records) {
     repository.append(record);
     const stored = repository.get(record.eventId);
@@ -103,7 +101,8 @@ export function withEmergencyTimelineWriter(repository: TimelineRepository, inpu
     try { return repository.append(value); }
     catch (error) {
       if (error instanceof Error && "code" in error && typeof error.code === "string" && (error.code.startsWith("ERR_SQLITE") || error.code === "ERR_INVALID_STATE")) {
-        appendEmergencyFault({ ...input, now: input.clock.now(), code: "DATABASE_WRITER_UNAVAILABLE", error });
+        appendEmergencyFault({ ...input, now: input.clock.now(), code: "DATABASE_WRITER_UNAVAILABLE", error,
+          area: "timeline-writer", reason: "database-unavailable" });
       }
       throw error;
     }

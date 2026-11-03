@@ -1256,7 +1256,7 @@ export async function executeClaimedRun(
             observe: event => {
               taskLogger.debug("provider request", { ...event, nodeId: String(node.id), taskId: contract.id });
               if (event.state !== "produced") deps.debugEvents?.emit({ category: "worker", phase: "failed", area: "provider",
-                code: "PROVIDER_CALL_FAILED", correlationId: event.requestId,
+                code: "PROVIDER_CALL_FAILED", correlationId: event.requestId ?? runId,
                 reason: event.state === "timeout" ? "provider-timeout" : event.state === "aborted" ? "provider-aborted"
                   : event.state === "invalid-response" ? "provider-response-invalid" : "provider-unavailable" }, { kind: "run", runId }, envelope.workflow);
             },

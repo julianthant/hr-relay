@@ -1,3 +1,4 @@
+import { debugEventLevel } from "../../../../../src/models/events/timeline.js";
 
 import assert from "node:assert/strict";
 import { afterEach, describe, it, vi } from "vitest";
@@ -162,7 +163,7 @@ it("logs population failure metadata without retaining the caught value and serv
   assert.ok(diagnostic);
   assert.equal(diagnostic.payload.kind, "debug");
   if (diagnostic.payload.kind !== "debug") throw new Error("debug event expected");
-  assert.equal(diagnostic.payload.event.level, "error");
+  assert.equal(debugEventLevel(diagnostic.payload.event), "error");
   assert.equal(diagnostic.payload.event.reason, "operation-failed");
   assert.equal(diagnostic.payload.event.route, "/api/v1/reports/activity/population");
   assert.equal(JSON.stringify(diagnostic).includes(detail), false);

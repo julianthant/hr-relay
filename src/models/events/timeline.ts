@@ -25,7 +25,6 @@ const { proof: _proof, ...ledgerFields } = LedgerEntryPayloadSchema.shape;
 const ConfirmedOperationFactsSchema = z.strictObject(ledgerFields);
 
 export const DebugEventSchema = z.strictObject({
-  level: z.enum(["error", "warn", "info"]),
   category: z.enum(["session", "duo", "worker", "http", "sse", "client", "boot"]),
   phase: z.enum(["started", "settled", "failed", "reset", "acquired", "renewed", "released", "expired"]),
   correlationId: z.string().min(1).max(128),
@@ -48,6 +47,13 @@ export const DebugEventSchema = z.strictObject({
   pinned: z.boolean().default(false),
 });
 export type DebugEvent = z.infer<typeof DebugEventSchema>;
+
+export function debugEventLevel(event: Pick<DebugEvent, "phase" | "reason" | "status">): "error" | "warn" | "info" {
+  if (event.reason === "outcome-unknown" || event.status !== undefined && event.status >= 500) return "error";
+  if (event.reason === "operation-refused" || event.reason === "remote-revocation-unconfirmed"
+    || event.phase === "expired" || event.phase === "reset" || event.status !== undefined && event.status >= 400) return "warn";
+  return event.phase === "failed" ? "error" : "info";
+}
 
 export const TimelinePayloadSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("workbook-write-recorded"), runId: RunIdSchema, workflow: WorkflowIdSchema,

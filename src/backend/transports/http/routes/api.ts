@@ -94,7 +94,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     if (!parsed.success) return c.json(wireError("DEBUG_REPORT_INVALID", "Dashboard error report fields are invalid.", false), 400);
     const report = parsed.data;
     debugEvents.emit({ category: "client", phase: "failed", correlationId: report.reportId,
-      area: "dashboard", level: report.level, reason: report.reason,
+      area: "dashboard", reason: report.reason,
       route: report.route, surface: report.surface, release: report.release, code: report.code, message: report.message, stack: report.stack }, { kind: "client", clientId: report.clientId });
     return c.json({ state: "recorded", reportId: report.reportId }, 201);
   });

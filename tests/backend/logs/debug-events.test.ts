@@ -5,9 +5,21 @@ import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.j
 import { debugTimelineFixture as fixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
+import { debugEventLevel } from "../../../src/models/events/timeline.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
 describe("bounded native debug events", () => {
-  it("persists levels and mirrors only inserted redacted metadata in development", () => {
+  it.each([
+    [{ phase: "failed" }, "error"],
+    [{ phase: "settled" }, "info"],
+    [{ phase: "expired" }, "warn"],
+    [{ phase: "failed", reason: "operation-refused" }, "warn"],
+    [{ phase: "settled", reason: "outcome-unknown" }, "error"],
+    [{ phase: "failed", reason: "operation-refused", status: 503 }, "error"],
+    [{ phase: "settled", status: 403 }, "warn"],
+  ] as const)("derives severity from retained metadata %j", (event, level) => {
+    assert.equal(debugEventLevel(event), level);
+  });
+  it("derives levels and mirrors only inserted redacted metadata in development", () => {
     const { records, repository } = fixture();
     const lines: string[] = [];
     const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test", development: true,
@@ -18,10 +30,14 @@ describe("bounded native debug events", () => {
     writer.emit(event);
     writer.emit({ category: "session", phase: "acquired", correlationId: "session" });
     writer.emit({ category: "sse", phase: "reset", correlationId: "stream" });
-    writer.emit({ category: "http", phase: "failed", level: "warn", correlationId: "refusal" });
+    writer.emit({ category: "http", phase: "failed", reason: "operation-refused", correlationId: "refusal" });
     assert.equal(lines.length, 4);
     const mirrors = lines.map(line => z.object({ level: z.enum(["error", "warn", "info"]), time: z.string(), correlationId: z.string() }).loose().parse(JSON.parse(line)));
     assert.deepEqual(mirrors.map(mirror => mirror.level), ["error", "info", "warn", "warn"]);
+    for (const record of records) {
+      assert.equal(record.payload.kind, "debug");
+      if (record.payload.kind === "debug") assert.equal("level" in record.payload.event, false);
+    }
     for (const [index, mirror] of mirrors.entries()) {
       const line = lines[index];
       assert.equal(line.split("\n").length, 2);

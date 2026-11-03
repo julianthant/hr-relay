@@ -491,7 +491,7 @@ export function settingsAuthoritySnapshot(h: Harness, commandId: string) {
   };
 }
 
-export function faultAuthoritySnapshot(h: Harness) {
+export function faultAuthoritySnapshot(h: Pick<Harness, "database" | "stateRoot">) {
   const raw = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
   try {
     const tables = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('database_states','timeline_events') ORDER BY name").all();
@@ -504,7 +504,7 @@ export function faultAuthoritySnapshot(h: Harness) {
   } finally { raw.close(); }
 }
 
-export function assertHttpFaultOnly(h: Harness, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number) {
+export function assertHttpFaultOnly(h: Pick<Harness, "database" | "stateRoot">, before: ReturnType<typeof faultAuthoritySnapshot>, expected: number) {
   const after = faultAuthoritySnapshot(h);
   assert.deepEqual(after.rows, before.rows, "HTTP refusal changes no HR, settings, command, audit or proof owner");
   assert.deepEqual(after.timeline.slice(0, before.timeline.length), before.timeline);

@@ -11,6 +11,14 @@ export const WIRE_ERROR_BODY = z.strictObject({
 
 export type DashboardClientErrorKind = "network" | "http" | "schema" | "protocol";
 
+const reportedErrors = new WeakSet<Error>();
+export function markDashboardErrorReported(error: unknown): void {
+  if (error instanceof Error) reportedErrors.add(error);
+}
+export function dashboardErrorReported(error: unknown): boolean {
+  return error instanceof Error && (reportedErrors.has(error) || error.cause instanceof Error && reportedErrors.has(error.cause));
+}
+
 export class DashboardClientError extends Error {
   readonly kind: DashboardClientErrorKind;
   readonly status?: number;

@@ -30,7 +30,7 @@ it("accepts the current library-capable authority baseline and refuses unsupport
     upgradeId: "fresh",
     phase: "baseline",
     fromSchemaVersion: 0,
-    toSchemaVersion: 19,
+    toSchemaVersion: 18,
     by: LOCAL_OPERATOR_ACTOR_ID,
     recordedAt: "2026-11-02T00:00:00.000Z",
   };
@@ -41,8 +41,7 @@ it("accepts the current library-capable authority baseline and refuses unsupport
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 15 }).success, true);
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 16 }).success, true);
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 17 }).success, true);
-  assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion: 18 }).success, true);
-  for (const toSchemaVersion of [0, 20, 16.5, 17.5, 18.5, 19.5]) {
+  for (const toSchemaVersion of [0, 19, 16.5, 17.5, 18.5]) {
     assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, toSchemaVersion }).success, false);
   }
   assert.equal(AuthorityUpgradeRecordSchema.safeParse({ ...baseline, fromSchemaVersion: 11 }).success, false);

@@ -21,7 +21,7 @@ export function registerDebugResponses(app: DashboardApp, writer: { emit(input: 
       for (const failure of failures) writer.emit({ category: "http", phase: "failed", area: "request",
         ...failure, correlationId: failure.correlationId ?? randomUUID(), method: c.req.method, route: c.req.routePath, status: c.res.status });
     } catch {
-      return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
+      c.res = c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
     }
   });
 }

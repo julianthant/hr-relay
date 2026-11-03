@@ -9,7 +9,7 @@ import {
   type DashboardDaySubscription,
   type DashboardDaySubscriptionDeps,
 } from "./subscriptions/subscription.js";
-import { WIRE_ERROR_BODY, DashboardClientError } from "./errors.js";
+import { WIRE_ERROR_BODY, DashboardClientError, dashboardErrorReported } from "./errors.js";
 import { createDashboardTransport, type FetchLike } from "./transport.js";
 import { OcrSourceUploadSchema } from "../../models/ocr/review.js";
 import { RunIdSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
@@ -62,7 +62,7 @@ export function createDashboardClient(input: Readonly<{
   const reportFailure = (failure: NonNullable<ReturnType<typeof debugFailureOutcome>> & { route: string }): void => {
     if (surface === undefined) return;
     void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard",
-      route: failure.route, surface: surface(), code: failure.code, level: failure.level, reason: failure.reason,
+      route: failure.route, surface: surface(), code: failure.code, reason: failure.reason,
       message: "Dashboard request did not complete successfully" })
       .catch(() => { console.error("DASHBOARD_ERROR_REPORT_UNAVAILABLE"); });
   };
@@ -162,10 +162,11 @@ export function createDashboardClient(input: Readonly<{
       subscribeDashboardDay({ ...subscriptionInput, transport }),
   };
   if (surface !== undefined) {
-    const reportSchemaFailure = (error: unknown): never => {
+    const reportSchemaFailure = (error: unknown, method: keyof DashboardClient): never => {
+      if (dashboardErrorReported(error)) throw error;
       if (!(error instanceof DashboardClientError) || error.kind === "schema" || error.kind === "protocol") {
         const failure = debugFailureOutcome({ state: "error", code: error instanceof DashboardClientError ? error.code : undefined });
-        if (failure !== undefined) reportFailure({ ...failure, route: "/api/v1" });
+        if (failure !== undefined) reportFailure({ ...failure, route: `client:${method}` });
       }
       throw error;
     };
@@ -176,8 +177,8 @@ export function createDashboardClient(input: Readonly<{
       Object.defineProperty(client, key, { value: (...args: unknown[]): unknown => {
         try {
           const result: unknown = Reflect.apply(method, client, args);
-          return result instanceof Promise ? result.catch(reportSchemaFailure) : result;
-        } catch (error) { return reportSchemaFailure(error); }
+          return result instanceof Promise ? result.catch(error => reportSchemaFailure(error, key)) : result;
+        } catch (error) { return reportSchemaFailure(error, key); }
       } });
     }
   }

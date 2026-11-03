@@ -273,4 +273,4 @@ Workflow execution uses the signed-in dashboard Run and its canonical start-plan
 
 `src/rules/spreadsheets/workbook-io.ts` owns shared library XLSX/CSV IO, structural admission, retained cell metadata and deterministic intake export through `@shbernal/ts-xlsx`. Imported formulas or metadata outside the editable model mark the workbook for named master-edit refusal. The dashboard editor owns editing/rendering behavior and consumes this browser-safe boundary.
 
-`storage/sqlite/debug-level-migration.ts` owns the stopped forward conversion of retained debug levels. `transports/http/routes/debug-responses.ts` observes terminal HTTP failure responses through the existing debug writer.
+`transports/http/routes/debug-responses.ts` observes terminal HTTP failure responses through the existing debug writer.

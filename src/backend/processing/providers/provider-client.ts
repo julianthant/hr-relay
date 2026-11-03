@@ -22,7 +22,7 @@ export interface ProviderClientDependencies {
   readonly clock: Clock;
   readonly idFactory: ProviderRequestIdFactory;
   readonly deadlineScheduler: { schedule(deadlineMonotonicMs: number, onDeadline: () => void): { cancel(): void } };
-  readonly observe?: (event: Readonly<{ requestId: string; capability: ProviderCapabilityId; state: string }>) => void;
+  readonly observe?: (event: Readonly<{ requestId?: string; capability: ProviderCapabilityId; state: string }>) => void;
 }
 
 export function createProviderClient<C extends ProviderCapabilityId>(capabilityInput: C, deps: ProviderClientDependencies): ProviderClient<C> {
@@ -45,6 +45,10 @@ export function createProviderClient<C extends ProviderCapabilityId>(capabilityI
       const request = ProviderRequestEnvelopeSchema.parse({ capability, payload });
       const unavailable = (code: "aborted" | "timeout" | "adapter-unavailable", message: string) =>
         ProviderResponseEnvelopeSchema.parse({ state: "unavailable", reason: { code, message } });
+      if (capability === "ocr.extract" && ocrPolicy === undefined) {
+        deps.observe?.({ capability, state: "adapter-unavailable" });
+        return unavailable("adapter-unavailable", "OCR provider not connected");
+      }
       const requestId = z.uuid().parse(deps.idFactory.next());
       if (usedIds.has(requestId)) throw new Error("provider-request-identity-reused");
       usedIds.add(requestId);
@@ -52,7 +56,6 @@ export function createProviderClient<C extends ProviderCapabilityId>(capabilityI
         deps.observe?.({ requestId, capability, state: response.state === "unavailable" ? response.reason.code : response.state });
         return response;
       };
-      if (capability === "ocr.extract" && ocrPolicy === undefined) return publish(unavailable("adapter-unavailable", "OCR provider not connected"));
       if (deps.runSignal.aborted) return publish(unavailable("aborted", "Provider call was cancelled before invocation."));
       const adapter = deps.adapters[capability];
       if (adapter === undefined) return publish(unavailable("adapter-unavailable", "Provider adapter is unavailable."));

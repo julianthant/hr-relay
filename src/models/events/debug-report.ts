@@ -5,7 +5,6 @@ export const DashboardErrorReportSchema = z.strictObject({
   reportId: z.uuid(), clientId: z.string().min(1).max(128), release: z.string().min(1).max(128),
   route: z.string().min(1).max(512), surface: z.string().min(1).max(128), code: z.string().min(1).max(128),
   message: z.string().max(32768), stack: z.string().max(32768).optional(),
-  level: z.enum(["error", "warn", "info"]).optional(),
   reason: z.string().min(1).max(128).regex(/^[a-z0-9-]+$/u).optional(),
 });
 export type DashboardErrorReport = z.infer<typeof DashboardErrorReportSchema>;
@@ -15,7 +14,7 @@ const TRANSPORT_CODES = new Set(["SCHEMA_INVALID", "INTERNAL_FAILURE", "REQUEST_
 
 export function debugFailureOutcome(value: unknown, status = 200) {
   if (z.object({ state: z.literal("signed-out"), remoteRevocation: z.literal("unconfirmed") }).safeParse(value).success) {
-    return { code: "CHATGPT_AUTH_UNAVAILABLE", level: "warn" as const, reason: "remote-revocation-unconfirmed" };
+    return { code: "CHATGPT_AUTH_UNAVAILABLE", reason: "remote-revocation-unconfirmed" };
   }
   const parsed = FailureOutcomeSchema.safeParse(value);
   if (!parsed.success && status < 400) return undefined;
@@ -24,8 +23,7 @@ export function debugFailureOutcome(value: unknown, status = 200) {
     && (Object.hasOwn(ERROR_CATALOG, parsed.data.code) || TRANSPORT_CODES.has(parsed.data.code) || CommandRejectionCodeSchema.safeParse(parsed.data.code).success)
     ? parsed.data.code : state === "conflict" ? "COMMAND_CONFLICT" : state === "rejected" || state === "refused" ? "COMMAND_REFUSED" : "DASHBOARD_READ_FAILED";
   const uncertain = state === "unknown" || state === "uncertain";
-  return { code, level: status >= 500 || uncertain || state === "error" || state === "failed" ? "error" as const : "warn" as const,
-    reason: uncertain ? "outcome-unknown" : state === "refused" || state === "rejected" || state === "conflict" ? "operation-refused" : "operation-failed" };
+  return { code, reason: uncertain ? "outcome-unknown" : state === "refused" || state === "rejected" || state === "conflict" ? "operation-refused" : "operation-failed" };
 }
 
 export function debugFailureOutcomes(value: unknown, status = 200): (NonNullable<ReturnType<typeof debugFailureOutcome>> & { correlationId?: string })[] {
