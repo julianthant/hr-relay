@@ -24,6 +24,7 @@
     - heading "Next, add Touch ID" [level=2]
     - paragraph: In the setup browser, follow Fast Duo’s Touch ID instructions. You can add the methods in either order.
   - status: Security key ready · Touch ID not added
+  - button "Cancel sign-up"
   - button "Show setup browser"
 - paragraph: UI mock. Browser handoff and Duo results are simulated. No details are sent or saved.
 - region "Notifications"
