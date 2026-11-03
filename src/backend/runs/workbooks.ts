@@ -1,3 +1,4 @@
+import { parseCanonicalInputSnapshot } from "../../models/workflow/canonical-input.js";
 import { z } from "zod";
 import type { AuthorityDatabase, AuthorityRepositories } from "../storage/sqlite/authority-database.js";
 import { RunWorkbookReferenceSchema, type WorkbookOperationReceipt, type WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
@@ -102,7 +103,7 @@ function liveCandidates(repositories: AuthorityRepositories, reference: Referenc
 
 function onboardingReference(run: RunRecord) {
   if (run.envelope.workflow !== "onboarding") throw new WorkbookLibraryError("WORKBOOK_INVALID");
-  const input = schemaBoundValueSchema(OnboardingCanonicalInput, deriveSchemaHash(OnboardingCanonicalInput, "output")).parse(run.input.parsed).value;
+  const input = parseCanonicalInputSnapshot(OnboardingCanonicalInput, run.input.parsed);
   const roster = OnboardingCanonicalValueSchema.parse(input).roster;
   const reference = referenceFor(run, ONBOARDING_ROSTER_TYPE_ID);
   const binding = roster.state === "resolved" ? roster.row.binding : roster.binding;

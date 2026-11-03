@@ -200,6 +200,7 @@ async function executionFixture() {
 describe("Onboarding captured roster admission and row choice", () => {
   it("binds the default or selected workbook exactly once and retains the immutable typed legal/lived row", async () => {
     const f = await fixture("unique"), run = f.start();
+    assert.deepEqual(run.input.parsed.protectedBindings, []);
     const input = OnboardingCanonicalValueSchema.parse(run.input.parsed.value);
     assert.equal(input.roster.state, "resolved"); if (input.roster.state !== "resolved") throw new Error("missing row");
     assert.deepEqual(input.roster.row.references, { legalName: { firstName: "Fixture", lastName: "Hire", middleName: "" }, livedName: null });
