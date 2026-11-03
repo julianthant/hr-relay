@@ -962,7 +962,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
       { surface, path: `${prefix}referenceTarget.libraryId`, origin: 'repository-authored' as const },
       ...['key', 'typeId'].map(field => ({ surface, path: `${prefix}referenceTarget.${field}`, origin: 'captured-hr-value' as const })),
     ]),
-    ...['libraryId', 'resolution.target.libraryId', 'resolution.action.confirm.body', 'resolution.action.confirm.confirmLabel',
+    ...['native.spanPath', 'libraryId', 'resolution.target.libraryId', 'resolution.action.confirm.body', 'resolution.action.confirm.confirmLabel',
       'resolution.action.confirm.title', 'resolution.action.detail', 'resolution.action.key', 'resolution.action.label',
       'resolution.action.navigate.runId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.referenceChoices[].${path}`, origin: 'repository-authored' as const })),
     ...['key', 'typeId', 'resolution.target.key', 'resolution.target.typeId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.referenceChoices[].${path}`, origin: 'captured-hr-value' as const })),

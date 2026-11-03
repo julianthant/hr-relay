@@ -12,13 +12,24 @@ const candidate = { sheetId: "people", rowId: "person", label: "People · Row 2"
 const action = { kind: "command", command: "resolve-workbook-reference-row", key: "roster-choice",
   label: "Choose a row", intent: "primary", placement: ["review"], expectedVersion: target.expectedVersion,
   referenceTarget: target };
-const choice = { libraryId: target.libraryId, typeId: target.typeId, referenceDigest: target.referenceDigest,
+const native = { eventId: UUID_3, order: 1, runId: UUID_1, attempt: 1, traceId: "onb-120000-0001", spanPath: "onb-120000-0001" };
+const choice = { native, libraryId: target.libraryId, typeId: target.typeId, referenceDigest: target.referenceDigest,
   key: target.key, reason: "row-ambiguous", resolution: { state: "available", target, action, candidates: [candidate] } };
 const section = { runId: UUID_1, operations: [], referenceChoices: [choice] };
 const command = { commandId: UUID_3, requestedAt: NOW, requestedBy: "local-operator", source: "dashboard",
   family: "run", type: "resolve-workbook-reference-row", target, payload: { sheetId: candidate.sheetId, rowId: candidate.rowId } };
 
 describe("workbook reference row-choice wire", () => {
+  it("requires an own-run native anchor for every choice state", () => {
+    for (const resolution of [choice.resolution,
+      { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] },
+      { state: "resolved", workbookVersion: 4, selected: candidate }]) {
+      for (const changed of [undefined, { ...native, runId: UUID_3 }, { ...native, eventId: "invalid" }, { ...native, order: 0 }]) {
+        assert.equal(RunWorkbookWritesWireSchema.safeParse({ ...section,
+          referenceChoices: [{ ...choice, resolution, native: changed }] }).success, false);
+      }
+    }
+  });
   it("admits an identity-only read choice without a write receipt", () => {
     assert.deepEqual(CommandRequestSchema.parse(command), command);
     assert.deepEqual(RunWorkbookWritesWireSchema.parse(section), section);

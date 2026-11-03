@@ -24,6 +24,7 @@ import {
 import { renameDraftProblem } from "../../surfaces/run-detail/identity/rename-draft.js";
 import type { RunWorkbookWritesWire } from "../../../models/dashboard/run-detail.js";
 import { deriveStableUuid } from "../../../rules/identity/stable-uuid.js";
+import { workbookReferenceMatchesReplay } from "../../surfaces/run-detail/logs/workbook-write-model.js";
 
 export type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
 
@@ -269,8 +270,7 @@ export async function verifyShellCommandEffect(
     if (section.section !== "workbook-writes" || section.payload.runId !== request.target.runId) return mismatch(section);
     const choice = section.payload.referenceChoices?.find(choice => choice.libraryId === request.target.libraryId && choice.typeId === request.target.typeId
       && choice.referenceDigest === request.target.referenceDigest && choice.key === request.target.key);
-    return choice?.resolution.state === "resolved" && choice.resolution.workbookVersion === request.target.workbookVersion
-      && choice.resolution.selected.sheetId === request.payload.sheetId && choice.resolution.selected.rowId === request.payload.rowId
+    return choice !== undefined && workbookReferenceMatchesReplay(choice, request, detail)
       ? { state: "matched", evidence: section } : mismatch(section);
   }
   if (request.family === "run" && request.type === "resolve-workbook-row") {

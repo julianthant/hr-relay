@@ -24,7 +24,7 @@ import { createIdentityCeremonyFixtures, identityApprovalAction } from "../../su
 import { separationsDescriptor } from "../../support/helpers/registered-workflows.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
 import { UcpathReadTransactionFindings } from "../../../src/models/systems/ucpath/read-transaction-findings.js";
-import { workbookReferenceChoice } from "../../support/fixtures/workbook-reference-choice.js";
+import { workbookReferenceChoice, workbookReferenceDetail } from "../../support/fixtures/workbook-reference-choice.js";
 import { workbookReferenceChoiceId, workbookReferenceLogActions, workbookRowChoiceId } from "../../../src/dashboard/surfaces/run-detail/logs/workbook-write-model.js";
 
 const RUN = "00000000-0000-4000-8000-000000000001";
@@ -33,12 +33,16 @@ const AT = "2026-08-03T12:00:00.000Z";
 const CONFIRM = { title: "Approve this identity", body: "Approving binds the rest of this separation to this person.", confirmLabel: "Approve", tone: "neutral" } as const;
 
 it("continues a reference choice inline and retains its exact uncertain command across remount", async () => {
-  const selected = selectionAt(3), f = workbookReferenceChoice(3, RUN), sent: CommandRequest[] = [];
+  const selected = selectionAt(3), f = workbookReferenceChoice(3, RUN, selected.row.traceId), sent: CommandRequest[] = [];
   let replay = false, resolved = false;
-  const section = () => RunDetailSectionResponseSchema.parse({ section: 'workbook-writes', payload: { runId: RUN, operations: [],
-    referenceChoices: [{ ...f.choice, ...(resolved ? { resolution: { state: 'resolved', workbookVersion: f.target.workbookVersion, selected: f.candidates[1] } } : {}) }] } });
+  const choice = () => ({ ...f.choice, native: NativeRunEventWireSchema.parse({ ...f.choice.native, order: resolved ? 11 : 10,
+    eventId: resolved ? '10000000-0000-4000-8000-000000000011' : f.choice.native.eventId }),
+    ...(resolved ? { resolution: { state: 'resolved' as const, workbookVersion: f.target.workbookVersion, selected: f.candidates[1] } } : {}) });
+  const section = () => RunDetailSectionResponseSchema.parse({ section: 'workbook-writes', payload: { runId: RUN, operations: [], referenceChoices: [choice()] } });
   const client = { artifactUrl: (id: string) => `/artifacts/${id}`,
     runDetail: async () => detailAt(selected, resolved ? 4 : 3, { availableSections: ['logs', 'workbook-writes'],
+      timeline: { steps: [...detailAt(selected, 3).timeline.steps!, ...workbookReferenceDetail(choice()).timeline.steps!],
+        events: workbookReferenceDetail(choice()).timeline.events.map(event => ({ ...event, at: AT })) },
       gate: { state: resolved ? 'resolved' : 'open', gateId: NOTE, nodeId: f.target.gateId, label: 'Choose roster row',
         ...(resolved ? { resolution: 'approved', resolvedBy: 'local-operator', resolvedAt: AT, revision: 2 } : { openedAt: AT, revision: 1 }) } }),
     runSection: async (_run: string, name: string) => name === 'logs' ? logs() : section(),

@@ -1,0 +1,146 @@
+# workbook-reference-logs-uncertain--graphite-warm--1024x1000
+# adapter: fixture
+# fixture: workbook-reference-logs.spec.ts:ordered roster reference Logs dark 1024
+# descriptorHash: cceb676f094222a89e591c158b0620ed92ae4908be2159c3ed3f381b89c40d1c
+# appVersion: 0.1.0
+# viewport: 1024x1000  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#dashboard-main-region"
+- complementary "Workspace":
+  - heading "Relay" [level=2]
+  - button "Notifications, 1 unread"
+  - button "Search runs"
+  - navigation "Workflows":
+    - heading "Search" [level=3]
+    - list:
+      - listitem:
+        - button "Person Lookup": Person Lookup 0 · 0
+      - listitem:
+        - button "I-9 Lookup": I-9 Lookup 0 · 1
+    - heading "Separations" [level=3]
+    - list:
+      - listitem:
+        - button "Separations": Separations 0 · 0
+      - listitem:
+        - button "I-9 Check": I-9 Check 1 · 1
+    - heading "Onboarding" [level=3]
+    - list:
+      - listitem:
+        - button "Onboarding": Onboarding 0 · 1
+      - listitem:
+        - button "Oath Signature": Oath Signature 1 · 1
+      - listitem:
+        - button "Oath Upload": Oath Upload 1 · 1
+      - listitem:
+        - button "Emergency Contact": Emergency Contact 1 · 1
+    - heading "Work Study" [level=3]
+    - list:
+      - listitem:
+        - button "Work-Study": Work-Study 0 · 1
+    - heading "Payroll" [level=3]
+    - list:
+      - listitem:
+        - button "Kronos Pay Rule": Kronos Pay Rule 0 · 1
+    - heading "Utils" [level=3]
+    - list:
+      - listitem:
+        - button "OCR": OCR 0 · 5
+      - listitem:
+        - button "CRM Doc Download": CRM Doc Download 0 · 1
+      - listitem:
+        - button "SharePoint Download": SharePoint Download 0 · 1
+    - heading "OnBase" [level=3]
+    - list:
+      - listitem:
+        - button "OnBase": OnBase 1 · 1
+    - heading "Timekeeping" [level=3]
+    - list:
+      - listitem:
+        - button "Old Kronos Reports": Old Kronos Reports 0 · 1
+- main:
+  - heading "Onboarding queue" [level=1]
+  - region "Queue":
+    - text: Needs you 1
+    - button "Example, Person — review · 72h 5m" [pressed]:
+      - text: Example, Person Review Waiting for a roster row 9:52 AM
+      - button "Attempts for Example, Person": "#1"
+      - text: ONB58832308 13m 0s
+  - region "Action panel":
+    - group "Action panel controls":
+      - button "Start a run"
+      - button "Filter queue by status"
+      - combobox "Sort the queue"
+      - button "Attention first" [pressed]
+      - button "Pause all runs" [disabled]
+    - group "Log date controls":
+      - text: Dashboard date*
+      - group "Dashboard date*":
+        - spinbutton "month, Dashboard date*": "08"
+        - spinbutton "day, Dashboard date*": "03"
+        - spinbutton "year, Dashboard date*": "2026"
+        - button "Choose date Dashboard date*"
+  - region "Selected run logs":
+    - heading "Example, Person" [level=2]
+    - button "Review"
+    - text: The command outcome is uncertain. Check its result before taking further action.
+    - button "Replay exact decision"
+    - navigation "Run timeline":
+      - list:
+        - listitem:
+          - button "Read reference · Completed · 10:00:00": Read reference
+        - listitem:
+          - button "Look up in roster · Waiting · 10:00:00": Look up in roster Waiting
+        - listitem:
+          - button "Run notes · Completed · 10:00:00": Run notes
+    - region "Run logs":
+      - region "Read reference":
+        - time: 10:00:00
+        - heading "Read reference" [level=3]
+        - time: 10:00:00
+        - paragraph: Read retained reference
+      - region "Look up in roster":
+        - time: 10:00:00
+        - heading "Look up in roster" [level=3]
+        - group "Look up in roster":
+          - time: 10:00:00
+          - article "Look up in roster":
+            - heading "Look up in roster" [level=4]
+            - text: Review
+            - paragraph: No unique roster row was found. Choose the matching row to continue.
+            - group "Which roster row belongs to this person?":
+              - text: Which roster row belongs to this person?
+              - 'radio "July 6 · Row 2 Email: example@example.edu · Legal name: Example, Person" [disabled]'
+              - strong: July 6 · Row 2
+              - text: "Email: example@example.edu · Legal name: Example, Person"
+              - 'radio "August 2 · Row 3 Email: example@example.edu · Legal name: Another, Person" [checked] [disabled]'
+              - strong: August 2 · Row 3
+              - text: "Email: example@example.edu · Legal name: Another, Person"
+            - text: Ready to continue
+            - button "Continue run" [disabled]
+      - region "Run notes":
+        - time: 10:00:00
+        - heading "Run notes" [level=3]
+        - time: 10:00:00
+        - paragraph: Retained run note
+    - group:
+      - searchbox "Search logs"
+    - status: 3 actions
+    - status
+    - button "Copy logs"
+    - button "Go to latest action"
+- button "Assistant"
+- status
+- region "Session Panel":
+  - group "Session actions":
+    - button "Sessions"
+    - text: 2 running 1 starting 1 idle
+    - button "Add workers"
+    - button "Settings"
+    - button "Log out"
+- region "Notifications":
+  - status "Command result":
+    - heading "Command result" [level=2]
+    - paragraph: The command outcome is uncertain. Check its result before taking further action.
+    - button "Dismiss"

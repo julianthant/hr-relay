@@ -1,4 +1,4 @@
-import type { RunWorkbookWritesWire } from "../../../../models/dashboard/run-detail.js";
+import type { RunDetailWire, RunWorkbookWritesWire } from "../../../../models/dashboard/run-detail.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { LogDecisionAction, LogDecision } from "./log-decision-model.js";
 import type { LogStep } from "./log-feed-model.js";
@@ -44,8 +44,22 @@ export type WorkbookReferenceChoice = NonNullable<RunWorkbookWritesWire['referen
 export function workbookReferenceChoiceId(choice: WorkbookReferenceChoice): string {
   return JSON.stringify(['reference', choice.libraryId, choice.typeId, choice.referenceDigest, choice.key]);
 }
-export function workbookReferenceMatchesReplay(choice: WorkbookReferenceChoice, command: CommandRequest): boolean {
+export function workbookReferenceTimelineEvent(choice: WorkbookReferenceChoice, detail: RunDetailWire): RunDetailWire['timeline']['events'][number] | undefined {
+  const anchor = choice.native;
+  return detail.timeline.events.find(event => {
+    const native = event.native;
+    return native !== undefined && native.eventId === anchor.eventId && native.order === anchor.order
+      && native.runId === anchor.runId && native.attempt === anchor.attempt && native.traceId === anchor.traceId
+      && native.spanPath === anchor.spanPath && (anchor.nodeId === undefined || native.nodeId === anchor.nodeId);
+  });
+}
+export function workbookReferenceMatchesReplay(choice: WorkbookReferenceChoice, command: CommandRequest, detail: RunDetailWire): boolean {
+  const event = workbookReferenceTimelineEvent(choice, detail);
   return command.family === 'run' && command.type === 'resolve-workbook-reference-row'
+    && detail.runId === command.target.runId && detail.rowRevision > command.target.expectedVersion
+    && choice.native.runId === detail.runId && choice.native.traceId === detail.header.traceId
+    && choice.native.spanPath === detail.header.traceId && choice.native.attempt === detail.header.attempt
+    && event?.state === 'done' && event.native?.nodeId?.valueOf() === command.target.gateId.valueOf()
     && choice.libraryId === command.target.libraryId && choice.typeId === command.target.typeId
     && choice.referenceDigest === command.target.referenceDigest && choice.key === command.target.key
     && choice.resolution.state === 'resolved' && choice.resolution.workbookVersion === command.target.workbookVersion

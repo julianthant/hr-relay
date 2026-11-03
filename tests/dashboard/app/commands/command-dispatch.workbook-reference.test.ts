@@ -3,7 +3,7 @@ import { it } from 'vitest';
 import { composeCommandRequest, verifyShellCommandEffect } from '../../../../src/dashboard/app/commands/command-dispatch.js';
 import { CommandRequestSchema, CommandResultSchema } from '../../../../src/rules/commands/commands.js';
 import type { DashboardClient } from '../../../../src/dashboard/client/index.js';
-import { workbookReferenceChoice } from '../../../support/fixtures/workbook-reference-choice.js';
+import { workbookReferenceChoice, workbookReferenceDetail } from '../../../support/fixtures/workbook-reference-choice.js';
 import { workbookReferenceMatchesReplay } from '../../../../src/dashboard/surfaces/run-detail/logs/workbook-write-model.js';
 const f = workbookReferenceChoice();
 const answer = { sheetId: f.candidates[0].sheetId, rowId: f.candidates[0].rowId };
@@ -22,10 +22,19 @@ it('requires the exact selected reference and row in authoritative readback', as
   const command = CommandRequestSchema.parse(composed.request);
   const reply = CommandResultSchema.parse({ state: 'applied', commandId: command.commandId, affectedTargets: [{ family: 'run', runId: f.target.runId }] });
   const resolved = { ...f.choice, resolution: { state: 'resolved' as const, workbookVersion: f.target.workbookVersion, selected: f.candidates[0] } };
-  assert.equal(workbookReferenceMatchesReplay(resolved, command), true);
+  const detail = workbookReferenceDetail(resolved, 5);
+  assert.equal(workbookReferenceMatchesReplay(resolved, command, detail), true);
   for (const [choice, expected] of [[f.choice, 'mismatch'], [resolved, 'matched'], [{ ...resolved, resolution: { ...resolved.resolution, selected: f.candidates[1] } }, 'mismatch'], [{ ...resolved, resolution: { ...resolved.resolution, workbookVersion: 9 } }, 'mismatch']] as const) {
-    const client = { runDetail: async () => ({ runId: f.target.runId, rowRevision: 5, availableSections: ['workbook-writes'] }),
+    const client = { runDetail: async () => detail,
       runSection: async () => ({ section: 'workbook-writes', payload: { runId: f.target.runId, operations: [], referenceChoices: [choice] } }) } as unknown as DashboardClient;
     assert.equal((await verifyShellCommandEffect(client, '2026-11-01', command, reply)).state, expected);
   }
+  for (const changed of [
+    { ...detail, rowRevision: f.target.expectedVersion },
+    { ...detail, timeline: { ...detail.timeline, events: [] } },
+    { ...detail, header: { ...detail.header, attempt: 2 } },
+    ...['order', 'runId', 'traceId', 'spanPath', 'nodeId'].map(field => ({ ...detail, timeline: { ...detail.timeline,
+      events: detail.timeline.events.map(event => ({ ...event, native: { ...event.native, [field]: field === 'order' ? 11 : 'foreign' } })) } })),
+  ]) assert.equal(workbookReferenceMatchesReplay(resolved, command, changed as typeof detail), false);
+  assert.equal(workbookReferenceMatchesReplay(resolved, command, workbookReferenceDetail(f.choice, 5)), false);
 });

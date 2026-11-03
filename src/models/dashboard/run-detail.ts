@@ -954,6 +954,7 @@ export const WorkbookReferenceRowCandidateWireSchema = z.strictObject({
   "reference candidate fields must be unique");
 
 export const RunWorkbookReferenceChoiceWireSchema = z.strictObject({
+  native: NativeRunEventWireSchema,
   libraryId: z.string().min(1), typeId: z.string().min(1), referenceDigest: FingerprintSchema,
   key: z.string().min(1), reason: z.enum(["row-missing", "row-ambiguous"]),
   resolution: z.discriminatedUnion("state", [
@@ -989,7 +990,8 @@ export const RunWorkbookWritesWireSchema = z.strictObject({ runId: RunIdSchema,
 })) }).superRefine((section, ctx) => {
   const references = section.referenceChoices ?? [];
   if (new Set(references.map(choice => choice.typeId)).size !== references.length
-    || references.some(choice => choice.resolution.state === "available" && choice.resolution.target.runId !== section.runId)) {
+    || references.some(choice => choice.native.runId !== section.runId
+      || choice.resolution.state === "available" && choice.resolution.target.runId !== section.runId)) {
     ctx.addIssue({ code: "custom", message: "reference choices must preserve exact run and type membership" });
   }
   const ids = new Set<string>();
