@@ -232,8 +232,9 @@ export async function createHistoricalIncompleteProfileFixture(options: { keyFor
   const head = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(keyPath, "utf8")));
   assert.equal(head.state, "active"); assert.deepEqual(head.counters, []); assert.deepEqual(head.retired, []);
   assert.equal(Entry, FakeKeyringEntry, "historical fixture requires the actual fake keychain before backend imports");
-  const entry = new FakeKeyringEntry("Relay", `${installationId}:${draft.profileId}`), secret = entry.getPassword();
-  assert.ok(secret); const key = Buffer.from(secret, "base64");
+  const account = `${installationId}:${draft.profileId}`, entry = new FakeKeyringEntry("Relay", account);
+  const nativeKey = FakeKeyringEntry.snapshot().find(([storedAccount]) => storedAccount === `Relay:${account}`);
+  assert.ok(nativeKey); const secret = nativeKey[1], key = Buffer.from(secret, "base64");
   assert.equal(key.length, 32); assert.equal(createHash("sha256").update(key).digest("hex"), head.key.keyDigest);
   admission.release(); await profile.close(); machine.release();
   assertClosedWorkspace(root);
