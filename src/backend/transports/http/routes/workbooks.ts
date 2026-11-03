@@ -3,6 +3,7 @@ import { WorkbookRevisionSchema, WorkbookOperatorOperationRequestSchema, Workboo
 import { WorkbookLibraryError, type WorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import type { createWorkbookIntakeBridge } from "../../../runs/commands/workbook-intake-service.js";
 import type { DashboardApp } from "./api-types.js";
+import { WorkbookLibraryActionSchema } from "../../../../models/dashboard/workbook-library.js";
 
 export interface WorkbooksRouteDeps {
   readonly workbooks?: Readonly<{ library: WorkbookLibraryService; intake: ReturnType<typeof createWorkbookIntakeBridge> }>;
@@ -18,6 +19,15 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
     return deps.workbooks;
   };
   app.get("/api/v1/workbooks/list", c => c.json(service().library.list().map(encodeSavedWorkbook)));
+  app.get("/api/v1/workbooks/catalog", c => c.json(service().library.catalog()));
+  app.post("/api/v1/workbooks/:libraryId/library-actions", async c => {
+    const request = workbookRequest(WorkbookLibraryActionSchema, await c.req.json());
+    return c.json(await service().library.libraryAction(c.req.param('libraryId'), request, c.req.raw.signal));
+  });
+  app.get("/api/v1/workbooks/:libraryId/library-actions/:operationId", c => {
+    const record = service().library.libraryActionRecord(c.req.param('libraryId'), c.req.param('operationId'));
+    return c.json(record === undefined ? { state: 'absent' as const } : { state: 'recorded' as const, record });
+  });
   app.post("/api/v1/workbooks", async c => {
     const request = workbookRequest(WorkbookCreateRequestSchema, await c.req.json());
     return c.json(encodeSavedWorkbook(service().library.create(decodeEditableWorkbook(request.workbook))), 201);
@@ -26,6 +36,7 @@ export function registerWorkbookRoutes(app: DashboardApp, deps: WorkbooksRouteDe
   app.post("/api/v1/workbooks/types", async c => c.json(service().library.putType(workbookRequest(WorkbookTypeSchema, await c.req.json()))));
   app.get("/api/v1/workbooks/:libraryId/metadata", c => c.json(service().library.metadata(c.req.param('libraryId'))));
   app.get("/api/v1/workbooks/:libraryId/versions", c => c.json(service().library.versions(c.req.param('libraryId'))));
+  app.get("/api/v1/workbooks/:libraryId/versions/:versionId", c => c.json(service().library.libraryVersion(c.req.param('libraryId'), c.req.param('versionId'))));
   app.get("/api/v1/workbooks/:libraryId/revisions/:version", c => c.json(encodeSavedWorkbook(service().library.revision(c.req.param('libraryId'), workbookRequest(WorkbookRevisionSchema, Number(c.req.param('version')))))));
   app.get("/api/v1/workbooks/:libraryId/changes", c => c.json(service().library.journal(c.req.param('libraryId'))));
   app.post("/api/v1/workbooks/:libraryId/operations", async c => {

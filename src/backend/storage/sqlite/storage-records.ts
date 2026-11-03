@@ -27,6 +27,7 @@ import { NotificationRecordSchema } from "../../../models/notifications/notifica
 import { RunRecordSchema } from "../../../models/run/record.js";
 import { RunResultRecordSchema } from "../../../models/run/result.js";
 import { StartPlanRecordSchema } from "../../../models/run/start-plan.js";
+import { WorkbookLibraryStateSchema, WorkbookLibraryActionRecordSchema, WorkbookLibrarySnapshotSchema } from "../../../models/dashboard/workbook-library.js";
 import { WorkerLeaseRecordSchema } from "../../../models/run/worker.js";
 import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
@@ -89,6 +90,9 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   workbook_operations: WorkbookOperationSchema,
   workbook_library: SavedWorkbookSchema,
   workbook_library_history: SavedWorkbookSchema,
+  workbook_library_state: WorkbookLibraryStateSchema,
+  workbook_library_actions: WorkbookLibraryActionRecordSchema,
+  workbook_library_snapshots: WorkbookLibrarySnapshotSchema,
 } satisfies Record<Exclude<AuthorityTableName, "database_states">, z.ZodType>);
 
 export type DiagnosticAttachmentStorageRecord = z.infer<typeof DiagnosticAttachmentStorageRecordSchema>;

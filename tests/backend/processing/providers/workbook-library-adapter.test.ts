@@ -11,7 +11,8 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 const forbidden = (): never => { throw new Error("Unexpected live workbook or write access"); };
 const repository: WorkbookLibraryRepository = { create: forbidden, read: forbidden, revision: forbidden, list: forbidden, save: forbidden,
   history: forbidden, creation: forbidden, versions: forbidden, types: forbidden, putType: forbidden, metadata: forbidden,
-  enqueue: forbidden, drain: forbidden, operation: forbidden, journal: forbidden, snapshot: forbidden, runOperations: forbidden };
+  enqueue: forbidden, drain: forbidden, operation: forbidden, journal: forbidden, snapshot: forbidden, runOperations: forbidden, catalog: forbidden, libraryState: forbidden, libraryVersion: forbidden,
+  libraryActionRecord: forbidden, libraryAction: forbidden };
 const runId = "00000000-0000-4000-8000-000000000001";
 const clock = manualClock(new Date("2026-11-01T00:00:00.000Z"));
 const command = ReadWorkbookReference.input.parse({ typeId: "action-history", keys: [ReadI9CheckRequests.example.people[0].eid], fields: ["eid"] });

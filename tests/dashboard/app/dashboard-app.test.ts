@@ -83,7 +83,7 @@ const APP_BOOTSTRAP = FrontendBootstrapWireSchema_m1.parse({
       enqueue: "reject-active",
       version: 1,
 
-      spreadsheetIntake: false,
+      spreadsheetIntake: false, requiredWorkbookTypeIds: [],
       steps: [{
         key: "fixture-step",
         label: "Fixture step",

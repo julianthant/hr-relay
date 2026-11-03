@@ -1,5 +1,5 @@
 import { removeSchema16PersonPreferences } from "./person-preferences-predecessor.js";
-import { removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "./historical-run-schema.js";
+import { removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "./historical-run-schema.js";
 import { restorePreReadingArtifactRetention } from "./pre-reading-artifact-retention.js";
 import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { restoreEmptyPreMasterWorkbookFixture } from "../../helpers/workbooks/pre-master-schema.js";
@@ -76,6 +76,7 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
   let failure: { error: unknown } | undefined;
   try {
     database.exec("PRAGMA foreign_keys=ON; BEGIN EXCLUSIVE");
+    removeEmptySchema18WorkbookCatalog(database);
     if (options.sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(database);
     if (options.sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(database);
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
@@ -231,8 +232,9 @@ export async function createHistoricalIncompleteProfileFixture(options: { keyFor
   const head = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(keyPath, "utf8")));
   assert.equal(head.state, "active"); assert.deepEqual(head.counters, []); assert.deepEqual(head.retired, []);
   assert.equal(Entry, FakeKeyringEntry, "historical fixture requires the actual fake keychain before backend imports");
-  const entry = new FakeKeyringEntry("Relay", `${installationId}:${draft.profileId}`), secret = entry.getPassword();
-  assert.ok(secret); const key = Buffer.from(secret, "base64");
+  const account = `${installationId}:${draft.profileId}`, entry = new FakeKeyringEntry("Relay", account);
+  const nativeKey = FakeKeyringEntry.snapshot().find(([storedAccount]) => storedAccount === `Relay:${account}`);
+  assert.ok(nativeKey); const secret = nativeKey[1], key = Buffer.from(secret, "base64");
   assert.equal(key.length, 32); assert.equal(createHash("sha256").update(key).digest("hex"), head.key.keyDigest);
   admission.release(); await profile.close(); machine.release();
   assertClosedWorkspace(root);

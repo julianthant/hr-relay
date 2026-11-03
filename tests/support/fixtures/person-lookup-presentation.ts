@@ -12,6 +12,7 @@ export const FICTIONAL_PERSON = { eid: "10000001", name: "QUILLAN, PETRA A.", de
 export function seedPersonLookupPresentation(world: DashboardWorld, options: {
   seed?: number; input?: PersonLookupInputValue; state?: "active" | "inactive" | "found" | "not-found" | "not-found-in-ucpath";
   protectedInput?: boolean; attempt?: number; enqueuedAt?: string; itemId?: string;
+  shape?: "single" | "operation-member"; parentSeed?: number;
 } = {}) {
   const seed = options.seed ?? 80;
   const input = PersonLookupInput.parse(options.input ?? { emplId: FICTIONAL_PERSON.eid });
@@ -29,8 +30,9 @@ export function seedPersonLookupPresentation(world: DashboardWorld, options: {
     } });
   const { queuedEventOf, runRecordOf } = createSeededDashboardWorld();
   queuedEventOf(world, { seed, descriptor: personLookupDescriptor, title: options.protectedInput ? "Protected test subject" : personLookupTitle(input),
-    attempt: options.attempt, enqueuedAt: options.enqueuedAt });
+    attempt: options.attempt, enqueuedAt: options.enqueuedAt, shape: options.shape, parentSeed: options.parentSeed });
   const base = runRecordOf({ seed, descriptor: personLookupDescriptor, attempt: options.attempt, enqueuedAt: options.enqueuedAt,
+    shape: options.shape, parentSeed: options.parentSeed,
     lifecycle: { state: "terminal", outcome: "done", endedAt: options.enqueuedAt === undefined ? instantOffsetOf(0, 60_000) : new Date(Date.parse(options.enqueuedAt) + 60_000).toISOString() } });
   const run = RunRecordSchema.parse({ ...base,
     envelope: { ...base.envelope, ...(options.itemId === undefined ? {} : { itemId: options.itemId }) },

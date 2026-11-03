@@ -4,7 +4,7 @@ import { WorkbookTableSchema } from "../../models/processing/workbooks/read-resu
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 
 export function i9CheckWorkbookTable(rows: readonly I9CheckRow[]) {
-  return WorkbookTableSchema.parse({ name: "I-9 Check", columns: [
+  return WorkbookTableSchema.parse({ name: "I-9 Check", rowSubject: "person", columns: [
     "Employee Name", "PPS EID", "UCPATH Employee ID", "Hire Date (from I-9)", "Separation Date",
     "Found in UCPath?", "Action", "Reviewer Name", "Notes",
   ], rows: rows.map(row => ({ id: row.recordId, values: [row.employeeName, row.ppsEid, row.ucpathEmplId,

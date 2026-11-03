@@ -134,7 +134,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
           ]
         },
 
-        spreadsheetIntake: personLookupModule.intake !== undefined,
+        spreadsheetIntake: personLookupModule.intake !== undefined, requiredWorkbookTypeIds: [...personLookupModule.descriptor.requiredWorkbookTypeIds],
       },
     }],
     systemInstances: [

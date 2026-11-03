@@ -2,6 +2,7 @@ import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 import { OnboardingInput, OnboardingCanonicalInput } from "../../models/workflows/onboarding/input.js";
+import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_TYPE_ID } from "../../models/workflows/onboarding/roster.js";
 import { onboardingCrmDataDefinition } from "./steps/crm-data/step.js";
 import { onboardingUcpathSearchDefinition } from "./steps/ucpath-search/step.js";
 import { onboardingI9SearchDefinition } from "./steps/i9-search/step.js";
@@ -10,6 +11,7 @@ import { onboardingI9ProfileCreationDefinition } from "./steps/i9-profile-creati
 export const onboardingWorkflow = defineWorkflow({
   id: "onboarding", version: 1, code: "on", label: "Onboarding", icon: "UserPlus", category: "onboarding",
   requiredWorkbookTypeIds: ["onboarding-roster"],
+  referenceLookups: input => [{ typeId: ONBOARDING_ROSTER_TYPE_ID, keys: [input.email], fields: [...ONBOARDING_ROSTER_FIELDS] }],
   summary: "Read-only hire review: CRM data, UCPath duplicate search and I-9 profile planning. Hire submission and I-9 profile creation are not yet available; roster names are retained from the selected library workbook.",
   input: OnboardingInput, canonicalInput: OnboardingCanonicalInput, inputSubject: "email",
   surface: { shape: "single" }, surfaces: {}, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,

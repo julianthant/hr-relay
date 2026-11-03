@@ -61,7 +61,7 @@ import {
   RunFlagChips,
   StepOmissionFactsForm,
 } from "./run-start-kit.js";
-import { useSpreadsheetMocks } from "../spreadsheets/spreadsheet-mock-model.js";
+import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import { SYSTEM_LABEL, type BrowserSystemId } from "../shared/status/system-chip-model.js";
 import {
   ENQUEUE_POLICY_MEANING,
@@ -74,6 +74,7 @@ import {
   startRequestFingerprint,
   toggleStepSelection,
   previewRunInput,
+  launchWorkbookReferences,
   typedInputDefaults,
   typedInputText,
   restoreTypedInput,
@@ -135,6 +136,7 @@ export interface RunStartWorkflow {
   /** Retained served intake capability. Spreadsheet registration lives in
  * Settings and is not a Run input method. */
   readonly spreadsheetIntake: boolean;
+  readonly requiredWorkbookTypeIds: readonly string[];
 }
 
 function isStartable(workflow: RunStartWorkflow): boolean {
@@ -320,8 +322,14 @@ export function RunStartDialog({
   const selectedWorkflowRef = useRef(previewSelection?.workflowId ?? workflowId);
   useEffect(() => { selectedWorkflowRef.current = previewSelection?.workflowId ?? workflowId; }, [previewSelection, workflowId]);
   const [currentStage, setCurrentStage] = useViewState("launchStage", "Input");
-  const [workbookId, setWorkbookId] = useState("");
-  const spreadsheetMocks = useSpreadsheetMocks();
+  const [referenceSelections, setReferenceSelections] = useState<Record<string, { libraryId: string; versionId: string }>>({});
+  const library = useSpreadsheetWiringAdapter(open && workflows.some(workflow => workflow.workflowId === workflowId && workflow.requiredWorkbookTypeIds.length > 0), null, true);
+  const requiredTypes = useMemo(() => workflows.find(workflow => workflow.workflowId === workflowId)?.requiredWorkbookTypeIds ?? [], [workflows, workflowId]);
+  const selectedReferences = Object.fromEntries(requiredTypes.map(typeId => {
+    const current = referenceSelections[typeId];
+    const entry = library.catalog.find(entry => entry.type.id === typeId && entry.state.origin.kind === 'local' && entry.libraryId === (current?.libraryId ?? library.types.find(type => type.id === typeId)?.defaultWorkbookId));
+    return [typeId, { libraryId: current?.libraryId ?? entry?.libraryId ?? '', versionId: current?.versionId ?? entry?.state.selectedVersionId ?? '' }];
+  }));
   const initialWorkflow = workflows.find((entry) => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId));
   const [customizeSteps, setCustomizeSteps] = useViewState("launchCustomize", false);
   const [selectedStepKeys, setSelectedStepKeys] = useState<string[]>(() =>
@@ -355,7 +363,7 @@ export function RunStartDialog({
     setError(null);
     if (!preserveStage) { setCurrentStage("Input"); setCustomizeSteps(false); }
     // Reset start method with workflow; unavailable spreadsheet declarations must not leave a selected hidden tab.
-    setWorkbookId("");
+    setReferenceSelections({});
     const nextWorkflow = workflows.find((entry) => entry.workflowId === next);
     setSelectedStepKeys(nextWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
     setStepDrafts({});
@@ -472,7 +480,7 @@ export function RunStartDialog({
     },
   ), [customizeSteps, steps, selectedStepKeys, stepDrafts]);
   const stepOmissions = useMemo(() => completeStepOmissions(omissionRows), [omissionRows]);
-  const requestFingerprint = canonicalJsonStringify([rerunSource ?? null, valueDrafts, copiedOmissions, typedValues, sourceInputUnchanged, pdfInput.draft, startRequestFingerprint({
+  const requestFingerprint = canonicalJsonStringify([selectedReferences, library.catalog.filter(entry => Object.values(selectedReferences).some(selection => selection.libraryId === entry.libraryId)).map(entry => [entry.libraryId, entry.state.revision]), rerunSource ?? null, valueDrafts, copiedOmissions, typedValues, sourceInputUnchanged, pdfInput.draft, startRequestFingerprint({
     workflowId,
     text,
     dryRun,
@@ -515,6 +523,7 @@ export function RunStartDialog({
     if (!isRerun && preview.entries.length === 0) return;
     if (isRerun && (snapshot === null || preview.entries.length > 1)) return;
     if (declaredInput && preview.submissions.length !== 1 && isRerun) return;
+    if (requiredTypes.length > 0 && (library.catalogLoading || library.catalogRefreshing || library.catalogError)) { setError('Reference data is unavailable. Refresh it before planning.'); return; }
     const dispatchedFor = requestFingerprint;
     const instance = launchInstance.current;
     setBusy(true);
@@ -537,6 +546,7 @@ export function RunStartDialog({
         browserMode,
         captureBrowserScreenshots,
         priority,
+        ...(requiredTypes.length ? { workbookReferences: launchWorkbookReferences(requiredTypes, library.catalog, selectedReferences, values === null ? preview.submissions.length : 1) } : {}),
         ...(customizeSteps || declaredInput ? { selectedStepKeys } : {}),
         // Send omission facts only after every declared form parses.
         ...(customizeSteps && stepOmissions !== null && stepOmissions.length > 0 ? { stepOmissions } : {}),
@@ -555,7 +565,7 @@ export function RunStartDialog({
     } finally {
       if (launchInstance.current === instance) setBusy(false);
     }
-  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput, pdfSurface]);
+  }, [isRerun, snapshot, valueDrafts, copiedOmissions, acknowledgment, browserMode, captureBrowserScreenshots, launchService, customizeSteps, dryRun, preview, priority, requestFingerprint, selectedStepKeys, stepOmissions, workflowId, setCurrentStage, declaredInput, pdfSurface, requiredTypes, library.catalog, library.catalogLoading, library.catalogRefreshing, library.catalogError, selectedReferences]);
 
   const sendFinal = useCallback(async (command: LaunchFinalCommand, dispatchedFor: string): Promise<void> => {
     if (sending.current) return;
@@ -764,6 +774,8 @@ export function RunStartDialog({
   };
 
   const picker = <RunWorkflowPicker catalog={catalog} value={previewSelection?.workflowId ?? workflowId} onChange={pickWorkflow} query={pickerQuery} onQuery={setPickerQuery} />;
+  const selectedLaunch = catalog.find(entry => entry.id === (previewSelection?.workflowId ?? workflowId))?.launch;
+  const launchRefusal = selectedLaunch?.state === 'unavailable' ? selectedLaunch.reason : undefined;
   const previewFlow = previewSelection ? mockWorkflow(previewSelection.workflowId) : undefined;
 
   return (
@@ -777,7 +789,7 @@ export function RunStartDialog({
       >
           {!previewSelection?.source && !isRerun && picker}
 
-          {previewSelection && onSubmitPreview && previewRuns ? <WorkflowMockRunForm key={`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`} workflowId={previewSelection.workflowId} source={previewSelection.source} runs={previewRuns} initialDraft={previewDrafts.current.get(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`)} onDraftChange={draft => previewDrafts.current.set(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`, draft)} onClose={() => closeAndReset(false)} onSubmit={onSubmitPreview} /> : <>
+          {launchRefusal ? <><DialogBody><EmptyState title="Workflow unavailable" description={launchRefusal} /></DialogBody><DialogFooter><Button onClick={() => closeAndReset(false)}>Close</Button></DialogFooter></> : previewSelection && onSubmitPreview && previewRuns ? <WorkflowMockRunForm key={`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`} workflowId={previewSelection.workflowId} source={previewSelection.source} runs={previewRuns} initialDraft={previewDrafts.current.get(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`)} onDraftChange={draft => previewDrafts.current.set(`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`, draft)} onClose={() => closeAndReset(false)} onSubmit={onSubmitPreview} /> : <>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ol aria-label="Run configuration path" className="launch-stagebar">
               {launchStages.map((stage, index) => {
@@ -791,7 +803,7 @@ export function RunStartDialog({
                 </li>;
               })}
             </ol>
-          <DialogBody className="launch-content @container">
+          <DialogBody key={currentStage} className="launch-content @container">
             {isRerun && snapshot === null && sourceError === null && <p role="status">Loading source…</p>}
             {sourceError !== null && <Banner tone="danger" title="Rerun unavailable">{sourceError}</Banner>}
             {recoveryError !== null && <Banner tone="danger" title="Submission recovery unavailable">{recoveryError}</Banner>}
@@ -906,11 +918,18 @@ export function RunStartDialog({
                     {supportsDryRun && <Switch checked={dryRun} onCheckedChange={next => setDryRunRequested(next === true)} label="Dry run" description="Fill and check every step without submitting." />}
                     <RequiredCaptureStatus state="required" />
                   </>}
+                  references={requiredTypes.length > 0 ? <>{library.catalogLoading ? <p role="status">Loading reference data…</p> : library.catalogError ? <Banner tone="danger" title="Reference data unavailable">{library.catalogError}<Button onClick={() => void library.adapter.refreshCatalog()}>Refresh</Button></Banner> : requiredTypes.map(typeId => {
+                    const selection = selectedReferences[typeId];
+                    const entries = library.catalog.filter(entry => entry.type.id === typeId && entry.state.origin.kind === 'local');
+                    const entry = entries.find(entry => entry.libraryId === selection.libraryId);
+                    const files = [{ value: '', label: 'Choose a spreadsheet' }, ...entries.map(entry => ({ value: entry.libraryId, label: entry.name }))];
+                    if (selection.libraryId && !entry) files.push({ value: selection.libraryId, label: 'Selected spreadsheet unavailable' });
+                    const versions: { value: string; label: string; description?: string }[] = entry?.state.versions.map(version => ({ value: version.id, label: version.name, description: version.id === entry.state.selectedVersionId ? 'In use' : undefined })) ?? [{ value: '', label: 'Choose a spreadsheet first' }];
+                    if (selection.versionId && !versions.some(version => version.value === selection.versionId)) versions.push({ value: selection.versionId, label: 'Selected version unavailable' });
+                    return <div key={typeId} className="launch-options-grid"><Field orientation="horizontal" label="Look up people in" description={`Required type: ${library.types.find(type => type.id === typeId)?.name ?? typeId}`}><ChoicePicker label="Reference spreadsheet" value={selection.libraryId} onChange={libraryId => { const entry = entries.find(entry => entry.libraryId === libraryId); setReferenceSelections(current => ({ ...current, [typeId]: { libraryId, versionId: entry?.state.selectedVersionId ?? '' } })); }} options={files} /></Field><Field orientation="horizontal" label="Version" description="The version in use is selected by default."><ChoicePicker label="Reference version" value={selection.versionId} onChange={versionId => setReferenceSelections(current => ({ ...current, [typeId]: { ...selection, versionId } }))} options={versions} /></Field></div>;
+                  })}</> : undefined}
                   fixedFacts={workflow && <><LockedFact label="Active policy" value={ENQUEUE_POLICY_MEANING[workflow.enqueue]} reason={ENQUEUE_POLICY_REASON} /><LockedFact label="Workflow version" value={versionTag(workflow.version)} reason="Fixed by the selected workflow." /></>}>
-                  <div>
-                    <ChoicePicker label="Workbook · Optional" value={workbookId} onChange={setWorkbookId} options={[{ value: "", label: "None" }, ...spreadsheetMocks.files.map(file => ({ value: file.id, label: file.name, description: "Mock spreadsheet" }))]} />
-                    <p className="mt-[5px] text-caption text-ui-muted">Choose an already imported workbook for reference or results.</p>
-                  </div>
+
                 </RunOptionsLayout>
               )}
 
@@ -960,7 +979,7 @@ export function RunStartDialog({
               )}
 
               {currentStage === "Confirm" && plan !== null && (
-                <RunConfirmLayout count={plan.planned.length} flags={<RunFlagChips dryRun={plan.dryRun} priority={plan.priority} />}
+                <RunConfirmLayout count={plan.planned.length} outputs={plan.planned.flatMap(planned => planned.outputs ?? [])} inputs={pdfSurface !== undefined ? pdfInput.draft?.files.map(file => ({ label: file.source.fileName, kind: "PDF" })) : preview.entries.length ? preview.entries.map(entry => ({ label: entry.sourceText, kind: inputRun.state === 'present' ? inputRunFieldLabel(inputRun.surface.parser) : 'Input' })) : undefined} flags={<RunFlagChips dryRun={plan.dryRun} priority={plan.priority} />}
                   description={isRerun ? "A new run linked to the source." : pdfSurface !== undefined ? "One run for all attached PDFs." : "One run for each accepted entry."}
                   facts={[
                       { key: "Workflow", value: workflow === undefined ? plan.workflowId : `${workflow.label} · ${versionTag(workflow.version)}` },
@@ -968,7 +987,7 @@ export function RunStartDialog({
                       ...(isRerun && snapshot ? [{ key: "Source", value: rerunSource?.traceId ?? snapshot.source.runId }] : []),
                       { key: "Steps", value: `${selectedStepKeys.length} / ${workflow?.steps.length ?? 0} included${omissionRows.length ? ` · Omitted: ${omissionRows.map(row => row.label).join(", ")}` : ""}` },
                       ...omissionRows.map(row => ({ key: row.form.fields.every(field => field.kind === "us-date") ? "Entered dates" : row.label, value: stepOmissionFactsSummary(row) })),
-                      ...(workbookId ? [{ key: "Workbook", value: `${spreadsheetMocks.files.find(file => file.id === workbookId)?.name ?? "Unavailable"}` }] : []),
+                      ...plan.planned.flatMap(planned => (planned.workbookReferences ?? []).map(reference => ({ key: `Reference · ${reference.type.name}`, value: `${library.catalog.find(entry => entry.libraryId === reference.libraryId)?.name ?? reference.libraryId} · ${reference.versionName ?? `Revision ${reference.version}`}` }))),
                       { key: "Queue", value: plan.priority === "interactive" ? "Interactive" : "Bulk" },
                       { key: "Browser", value: `${browserMode === "headed" ? "Headed" : "Headless"} · screenshots required` },
                       { key: "Dry run", value: plan.dryRun ? "On" : "Off" },

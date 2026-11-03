@@ -116,7 +116,7 @@ export function createI9CheckStartWorld() {
     }
     const input = I9CheckStartInput.parse({ documents, asOf: "2026-11-01", reviewerName: "Example Reviewer" });
     const run = canonical.start(root.descriptor, input, { dryRun: false, workbookReferences: [{ entry: 1, typeId: I9_CHECK_REFERENCE.typeId,
-      libraryId: saved.libraryId, keys: [], fields: columns }] });
+      libraryId: saved.libraryId }] });
     const approveNext = () => {
       const child = database.authority.runs.listChildren(run.envelope.runId).find(child => child.envelope.workflow === "ocr" && child.lifecycle.state === "parked-gate"); assert.ok(child);
       let review = database.authority.ocrReviews.latest(child.envelope.runId); assert.ok(review);

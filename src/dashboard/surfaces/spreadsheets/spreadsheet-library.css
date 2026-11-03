@@ -22,10 +22,8 @@
 .hub-sheets-label { font-size:13.5px; line-height:18px; font-weight:500; }
 .hub-sheets-note { display:block; color:var(--ui-muted); font-size:11.7px; line-height:17px; font-weight:400; margin-top:3px; }
 .hub-sheets-control { display:flex; gap:7px; justify-content:flex-end; align-items:center; min-width:0; }
-.hub-sheets-library .hub-sheets-field { width:100%; height:34px; padding:6px 10px; border:1px solid var(--ui-stroke-control); border-radius:8px; background:var(--ui-field); font-size:13px; line-height:19.5px; color:var(--ui-primary); box-shadow:none; }
 .hub-sheets-empty { padding:30px; text-align:center; color:var(--ui-muted); }
 .hub-sheets-library :is(button,a,select):focus-visible { background:var(--hub-focus-fill)!important; color:var(--hub-focus-ink)!important; outline:none!important; box-shadow:none!important; }
-.hub-sheets-library input:focus,.hub-sheets-library input:focus-visible { outline:none!important; box-shadow:none!important; border-color:var(--ui-stroke-control)!important; }
 html[data-motion=off] .hub-sheets-library *, html[data-motion=off] .hub-sheets-dialog * { transition:none!important; animation:none!important; transform:none!important; }
 @media (prefers-reduced-motion:reduce) { .hub-sheets-library *, .hub-sheets-dialog * { transition:none!important; animation:none!important; transform:none!important; } }
 .hub-sheets-dialog { width:520px; max-width:calc(100vw - 48px); max-height:calc(100dvh - 48px); padding:24px; border:1px solid var(--ui-stroke); border-radius:14px; background:var(--ui-panel); color:var(--ui-primary); box-shadow:0 20px 60px #0003; font-size:13px; overscroll-behavior:contain; inset:0; margin:auto; height:max-content; translate:none; transform:none; scale:none; transition:none; }
@@ -52,3 +50,20 @@ html[data-motion=off] :is(.hub-sheets-library,.hub-sheets-dialog) button { trans
 .hub-sheets-type-dialog .hub-sheets-field { line-height:19.5px; }
 .hub-sheets-type-dialog .hub-sheets-caption { font-size:13px; margin:0; }
 body>div[data-state=open]:has(+ .hub-sheets-dialog) { background:#0008; transition:none; }
+.hub-sheets-section { margin-top:28px; }
+.hub-sheets-data { width:100%; border-collapse:collapse; font-size:13px; line-height:20px; }
+.hub-sheets-data th { padding:10px 12px; text-align:left; font-size:12px; font-weight:500; color:var(--ui-muted); background:var(--ui-table); }
+.hub-sheets-data td { padding:12px; border-top:1px solid var(--ui-stroke); vertical-align:middle; }
+.hub-sheets-data th:first-child,.hub-sheets-data td:first-child { width:38px; }
+.hub-sheets-data td:nth-child(2) { min-width:160px; overflow-wrap:anywhere; }
+.hub-sheets-data td:nth-child(2)>button { max-width:100%; height:auto; padding:0; white-space:normal; text-align:left; justify-content:flex-start; }
+.hub-sheets-actions { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.hub-sheets-data td:last-child .hub-sheets-actions { justify-content:flex-end; flex-wrap:nowrap; }
+.hub-sheets-versions-body { padding:24px; overflow-y:auto; min-height:0; }
+.hub-sheets-versions h3 { font-size:14px; line-height:22px; font-weight:600; margin:0; }
+.hub-sheets-versions .hub-sheets-section:first-child { margin-top:0; }
+.hub-sheets-version-list { display:grid; gap:10px; }
+.hub-sheets-version-row { display:flex; justify-content:space-between; gap:16px; align-items:center; padding:14px; border:1px solid var(--ui-stroke); border-radius:10px; font-size:13px; line-height:20px; }
+.hub-sheets-version-row strong { font-weight:550; }
+.hub-sheets-version-row p { margin:4px 0 0; }
+.hub-sheets-version-row .hub-sheets-actions { margin-top:4px; }

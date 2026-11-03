@@ -11,6 +11,7 @@ import { createProviderClient } from "../../../src/backend/processing/providers/
 import { readWorkbookResultTask } from "../../../src/backend/processing/workbooks/tasks/read-result.js";
 import { ReadWorkbookResult, WorkbookReferenceWriteSchema } from "../../../src/models/processing/workbooks/read-result.js";
 import { encodeEditableWorkbook, RunWorkbookReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
+import { StartPlanRecordSchema } from "../../../src/models/run/start-plan.js";
 import { runClaim, RunRecordSchema, type RunRecord } from "../../../src/models/run/record.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
@@ -31,7 +32,10 @@ const patch = WorkbookReferenceWriteSchema.parse({ kind: "patch-reference", writ
 const descriptor = defineWorkflowDescriptor({ id: "workbook-consumer", code: "wc", version: 1, contractFingerprint: "a".repeat(64),
   label: "Workbook consumer", icon: "Search", category: "operations", canonicalInput: defineCanonicalInput(input, input, [{ eid: patch.key }]),
   inputSubject: "eid", surface: { shape: "single" }, enqueue: "allow-parallel", actions: STANDARD_WORKFLOW_ACTIONS,
-  surfaces: {}, details: [], requiredWorkbookTypeIds: [patch.typeId], identity: { matchKey: value => value.eid },
+  surfaces: {}, details: [], requiredWorkbookTypeIds: [patch.typeId],
+  referenceLookups: value => [{ typeId: patch.typeId, keys: [value.eid, 'missing'], fields: ['roster.result', 'roster.date', 'roster.flag'] }], identity: { matchKey: value => value.eid },
+  plannedOutputs: (_value, references) => [{ kind: 'workbook', name: 'Reference report.xlsx', rowSubject: 'record',
+    rows: { state: 'known', count: references.flatMap(reference => reference.snapshot.rows.flatMap(row => row.matches)).length } }],
   presentation: { title: value => value.eid }, scenarios: ["workbooks/publish"],
   flow: flow(input).step("write-reference", ReadWorkbookResult, { dependsOn: [], replay: "always-rerun", bind: () => patch })
     .build({ schema: ReadWorkbookResult.output, dependsOn: ["write-reference"], derive: ({ outputs }) => outputs["write-reference"] }),
@@ -81,7 +85,7 @@ async function fixture(duplicate = false) {
   const planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: h.clock, ids: h.plannerIds,
     descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, workbooks: library, planTtlMs: 600_000,
     configFingerprint: config.configFingerprint, configSnapshotId: config.configSnapshotId, plannedBy: "local-operator" });
-  const selection = { entry: 1, typeId: patch.typeId, keys: [patch.key, "missing"], fields: ["roster.result", "roster.date", "roster.flag"] };
+  const selection = { entry: 1, typeId: patch.typeId };
   const request = { workflowId: descriptor.id, submissions: [{ eid: patch.key }], dryRun: false, workbookReferences: [selection] };
   const plan = () => {
     const wire = planner.plan(request), record = h.database.authority.startPlans.get(wire.startPlanId); assert.ok(record);
@@ -281,4 +285,16 @@ it("refuses a declared type key change and preserves its captured reference", as
   expect(f.library.read(f.id).workbook.sheets[0].rows[1].cells[1].value).toBeNull();
   expect(f.runs.write(run, patch)).toMatchObject({ state: "applied", version: 3 });
   expect(f.library.read(f.id).workbook.sheets[0].rows[1].cells[1].value).toBe("complete");
+});
+
+it('refuses caller-authored lookup keys and fields instead of treating them as workflow authority', async () => {
+  const f = await fixture();
+  expect(() => f.planner.plan({ ...f.request, workbookReferences: [{ ...f.selection, keys: ['different'], fields: ['eid'] }] })).toThrow();
+});
+
+it('projects workflow-authored output facts and binds them into the retained plan fingerprint', async () => {
+  const f = await fixture(), wire = f.planner.plan(f.request);
+  expect(wire.planned[0].outputs).toEqual([{ kind: 'workbook', name: 'Reference report.xlsx', rowSubject: 'record', rows: { state: 'known', count: 1 } }]);
+  const plan = f.plan();
+  expect(() => StartPlanRecordSchema.parse({ ...plan, planned: plan.planned.map(run => ({ ...run, outputs: [{ kind: 'workbook', name: 'Different.xlsx', rowSubject: 'record', rows: { state: 'known', count: 99 } }] })) })).toThrow();
 });

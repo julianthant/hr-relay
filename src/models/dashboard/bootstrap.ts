@@ -47,6 +47,7 @@ export const WorkflowStartWireSchema = z.strictObject({
   inputRun: InputRunSurfaceSchema.optional(),
   uploadRun: UploadRunSurfaceSchema.optional(),
   spreadsheetIntake: z.boolean(),
+  requiredWorkbookTypeIds: z.array(z.string().min(1)).refine(ids => new Set(ids).size === ids.length),
   steps: z.array(z.strictObject({
     key: StepKeySchema,
     label: z.string().min(1),

@@ -30,6 +30,9 @@ import { createOcrCheckpointPublication, admitOcrRunResources, OcrPublicationRef
 import type { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import { createRunWorkbookService } from "../../../runs/workbooks.js";
 import { createOcrReviewAdapter } from "../../../processing/providers/ocr-review-adapter.js";
+import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
+import { searchPartitionDay } from "../../../../models/dashboard/search-calendar.js";
+import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
@@ -83,7 +86,12 @@ export function createRunResourcesFactory(input:Readonly<{
    const resources=runCache.get(key)??Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
     ...(input.runReader===undefined?{}:{"ocr.review":createOcrReviewAdapter({database:input.database,reader:input.runReader,run,clock:input.clock})}),
     "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock,
-      references:{runId:run.envelope.runId,read:command=>runWorkbooks.read(run,command),write:command=>runWorkbooks.write(run,command)}}),
+     publicationSource:()=>{
+      const module=[...WORKFLOW_MODULES,...CHILD_ONLY_WORKFLOW_MODULES].find(module=>module.descriptor.id===run.envelope.workflow);
+      if(module===undefined)throw new WorkbookLibraryError("WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE");
+      return {workflowId:module.descriptor.id,workflowLabel:module.descriptor.label,partitionDay:searchPartitionDay(new Date(run.envelope.enqueuedAt))};
+     },
+       references:{runId:run.envelope.runId,read:command=>runWorkbooks.read(run,command),write:command=>runWorkbooks.write(run,command)}}),
    })},...(input.runReader===undefined?{}:{publishCheckpoint:createOcrCheckpointPublication(input.runReader,run)})});
    if(["ocr","ocr-page"].includes(run.envelope.workflow)&&resources.publishCheckpoint===undefined)throw new OcrPublicationRefusedError();
    runCache.set(key,resources);
