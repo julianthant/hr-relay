@@ -194,6 +194,7 @@ function admittedClientFor(
 }
 
 export interface RunExecutorDependencies {
+  readonly debugEvents?: Pick<ReturnType<typeof import("../../logs/debug-events.js").createDebugEventWriter>, "emit">;
   readonly publishCheckpoint?: (repositories: AuthorityRepositories, checkpoint: RunCheckpointRecord) => void;
   readonly lifecycle: WorkerRunLifecyclePort;
   readonly descriptor: AnyWorkflowDescriptor;
@@ -1253,7 +1254,13 @@ export async function executeClaimedRun(
             configSnapshot: provider.storedSnapshot,
             runSignal: controller.signal,
             adapters: provider.wiring.adapters,
-            observe: event => taskLogger.debug("provider request", { ...event, nodeId: String(node.id), taskId: contract.id }),
+            observe: event => {
+              taskLogger.debug("provider request", { ...event, nodeId: String(node.id), taskId: contract.id });
+              if (event.state !== "produced") deps.debugEvents?.emit({ category: "worker", phase: "failed", area: "provider",
+                code: "PROVIDER_CALL_FAILED", correlationId: event.requestId ?? runId,
+                reason: event.state === "timeout" ? "provider-timeout" : event.state === "aborted" ? "provider-aborted"
+                  : event.state === "invalid-response" ? "provider-response-invalid" : "provider-unavailable" }, { kind: "run", runId }, envelope.workflow);
+            },
             clock,
             idFactory: provider.wiring.idFactory,
             deadlineScheduler: deps.scheduler,

@@ -86,6 +86,7 @@ export interface WorkerRunResources {
  readonly providers?: RunProviderWiring;
 }
 export interface WorkerLoopDependencies {
+  readonly debugEvents?: import("../execution/run-executor.js").RunExecutorDependencies["debugEvents"];
   readonly buildManifest?: import("../../../models/workflow/build-manifest.js").BuildManifest;
  readonly resourcesForRun?: (run:RunRecord)=>WorkerRunResources;
  readonly idleCadence?: ()=>number;
@@ -258,6 +259,8 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       : { browserScreenshotCapture: deps.browserScreenshotCapture }),
     ...(deps.browserActivity === undefined ? {} : { onActivity: deps.browserActivity }),
     ...(deps.browserObservation === undefined ? {} : { onObservation: deps.browserObservation }),
+    onFailure: failure => deps.debugEvents?.emit({ category: "session", phase: "failed", area: "browser-session",
+      code: "BROWSER_SESSION_FAILED", reason: failure.reason, correlationId: failure.sessionId ?? deps.ids.uuid() }, { kind: "worker", workerId }),
     onEvent: (event: WorkerSessionEvent): void => {
       const spanPath = browserSessionSpanPath(workflowId, workerId, event.system, event.sessionId);
       if (event.type === "browser-session:start") {
@@ -319,7 +322,11 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     if (current === undefined || canonicalJsonStringify(current) !== binding) return;
     if (resetSettlement?.binding !== binding) resetSettlement = { binding, operation: deps.resetControl?.(sessions, reset) ?? Promise.resolve() };
     try { await resetSettlement.operation; }
-    catch { await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal); }
+    catch {
+      deps.debugEvents?.emit({ category: "worker", phase: "failed", correlationId: reset.commandId, area: "worker-reset",
+        code: "WORKER_RESET_FAILED", reason: "reset-settlement-failed" }, { kind: "worker", workerId });
+      await boundedWait(deps.scheduler, clock, deps.idleRepollMs, deps.stopSignal);
+    }
   };
   const outcomes: RunExecutionOutcome[] = [];
   let closure: WorkerLoopReport["closure"] = "proved";
@@ -460,6 +467,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             scheduler: deps.scheduler,
             taskDeadlineMs,
             log: deps.log,
+            debugEvents: deps.debugEvents,
             confirmedActionPublisher,
             retainCallback,
             ...(deps.taskNotes === undefined ? {} : { taskNotes: deps.taskNotes }),

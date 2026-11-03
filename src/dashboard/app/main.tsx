@@ -2,8 +2,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createDashboardClient } from "../client/index.js";
+import { DashboardReportDeliveryError } from "../client/errors.js";
 import { DashboardClientProvider } from "../state/client-context.js";
 import { DashboardApp } from "./dashboard-app.js";
+import { activeTakeover, parseRoute, shellViewOf } from "./navigation/url-state.js";
 import "./index.css";
 
 const container = document.getElementById("root");
@@ -11,23 +13,21 @@ if (container === null) {
   throw new Error("the dashboard bundle requires a #root element; index.html did not provide one");
 }
 
-const client = createDashboardClient({ baseUrl: window.location.origin });
+const client = createDashboardClient({ baseUrl: window.location.origin,
+  surface: () => shellViewOf(activeTakeover(parseRoute(window.location.search))) });
 
 const clientId = crypto.randomUUID();
-const deliveryFailures = new WeakSet<Error>();
 const report = (error: unknown) => {
   const failure = error instanceof Error ? error : new Error("Dashboard rejected a non-Error value");
   void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard",
     route: window.location.pathname, surface: "app", code: "DASHBOARD_UNHANDLED_ERROR",
     message: failure.message, ...(failure.stack === undefined ? {} : { stack: failure.stack }) })
     .catch(() => {
-      const failure = new Error("Dashboard error report was not recorded");
-      deliveryFailures.add(failure);
-      window.reportError(failure);
+      window.reportError(new DashboardReportDeliveryError());
     });
 };
 const onError = (event: ErrorEvent) => {
-  if (event.error instanceof Error && deliveryFailures.has(event.error)) return;
+  if (event.error instanceof DashboardReportDeliveryError) return;
   report(event.error ?? new Error(event.message));
 };
 const onRejection = (event: PromiseRejectionEvent) => report(event.reason);

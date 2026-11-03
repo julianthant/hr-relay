@@ -113,6 +113,11 @@ npm install
 npm run dashboard
 ```
 
+For separate terminals, run `npm run backend` for the BFF and `npm run web` for Vite.
+Start the backend first, and restart Vite after restarting the backend to renew its ownership proof.
+Development debug events stay in the local profile database and also print redacted metadata to
+the backend terminal. Production builds do not mirror debug events to the terminal.
+
 ## License
 
 [MIT](LICENSE)

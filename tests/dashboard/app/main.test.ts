@@ -23,8 +23,12 @@ it("surfaces rejected error delivery once without recursively reporting it, and 
   vi.stubGlobal("window", browser);
   vi.stubGlobal("document", { getElementById: () => ({}) });
   report.mockRejectedValue(new Error("private delivery failure"));
+  const { DashboardReportDeliveryError } = await import("../../../src/dashboard/client/errors.js");
   await import("../../../src/dashboard/app/main.js");
   assert.equal(render.mock.calls.length, 1);
+
+  dispatchError(new DashboardReportDeliveryError());
+  assert.equal(report.mock.calls.length, 0);
 
   dispatchError(new Error("ordinary error"));
   await vi.waitFor(() => assert.equal(surfaced.length, 1));

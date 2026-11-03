@@ -10,6 +10,7 @@ import { CHATGPT_OCR_MODEL } from "../../../../../src/backend/processing/provide
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { chatGptFixture, completedOcrStream } from "../../../../support/helpers/chatgpt-account-fixtures.js";
+import { faultAuthoritySnapshot, assertHttpFaultOnly } from "../../../../support/helpers/backend/http-route-harness.js";
 
 it("the actual selected dashboard Test OCR uses its account, fixed page and shared reader without a workflow execution", async () => {
   const profile = await createBoundProfileFixture(), transport = await chatGptFixture(profile.admission);
@@ -63,27 +64,35 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
       };
       visit(""); return files;
     };
+    const context = runtime.selectedContext(active.token), metadata = context.database.getMeta(), generation = metadata.authorityGeneration;
+    const faultOwner = { database: context.database, stateRoot: profile.stateRoot };
+    const beforeFault = faultAuthoritySnapshot(faultOwner);
     const before = profileBytes();
-    const unchanged = () => {
+    const unchanged = (diagnostics: number) => {
       const after = profileBytes(); assert.deepEqual([...after.keys()], [...before.keys()]);
       for (const [path, value] of after) {
         const prior = before.get(path); assert.ok(prior);
         assert.equal(value.device, prior.device); assert.equal(value.inode, prior.inode); assert.equal(value.mode, prior.mode);
         assert.equal(value.bytes === undefined, prior.bytes === undefined);
-        if (value.bytes !== undefined) { assert.ok(prior.bytes); assert.equal(value.bytes.equals(prior.bytes), true); }
+        if (value.bytes !== undefined) {
+          assert.ok(prior.bytes);
+          if (!["state.db", "state.db-wal", "state.db-shm"].includes(path)) assert.equal(value.bytes.equals(prior.bytes), true);
+        }
       }
+      assertHttpFaultOnly(faultOwner, beforeFault, diagnostics);
+      assert.deepEqual(context.database.getMeta(), { ...metadata, authorityGeneration: Number(generation) + diagnostics });
     };
-    const context = runtime.selectedContext(active.token), generation = context.database.getMeta().authorityGeneration;
     assert.equal((await (await invoke('{"page":"foreign"}')).json() as { state: string }).state, "refused");
     assert.equal(transport.calls.filter(call => call.url.endsWith("/responses")).length, 0);
+    unchanged(1);
     const response = await invoke(); assert.deepEqual(await response.json(), { state: "completed", model: CHATGPT_OCR_MODEL });
-    assert.equal(transport.calls.filter(call => call.url.endsWith("/responses")).length, 1); unchanged();
+    assert.equal(transport.calls.filter(call => call.url.endsWith("/responses")).length, 1); unchanged(1);
     transport.setResponse(() => Response.json({ error: { code: "subscription_sharing_unsupported_capability" } }, { status: 400 }));
-    const failed = await invoke(); assert.equal((await failed.json() as { code: string }).code, "CHATGPT_OCR_INVALID"); unchanged();
+    const failed = await invoke(); assert.equal((await failed.json() as { code: string }).code, "CHATGPT_OCR_INVALID"); unchanged(2);
     const cancellation = new AbortController();
     transport.setResponse(() => { cancellation.abort(); return new Response(completedOcrStream("synthetic"), { headers: { "content-type": "text/event-stream" } }); });
-    const cancelled = await invoke("{}", cancellation.signal); assert.equal((await cancelled.json() as { code: string }).code, "CHATGPT_OCR_CANCELLED"); unchanged();
-    assert.equal(context.database.getMeta().authorityGeneration, generation);
+    const cancelled = await invoke("{}", cancellation.signal); assert.equal((await cancelled.json() as { code: string }).code, "CHATGPT_OCR_CANCELLED"); unchanged(3);
+    assert.equal(context.database.getMeta().authorityGeneration, Number(generation) + 3);
     assert.equal(factory.mock.calls[0]?.[0].admission, context.admission);
     assert.equal(factory.mock.calls[0]?.[0].stateRoot, profile.stateRoot);
   } finally { if (dashboard !== undefined) await dashboard.stop(); else await runtime.close(); factory.mockRestore(); await transport.cleanup(); await profile.close(); }

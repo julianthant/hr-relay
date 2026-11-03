@@ -2,9 +2,10 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, lstatSync, unlinkS
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import { TimelineAppendSchema, timelineAppendContent, type TimelineRepository } from "../../models/events/timeline.js";
+import { DebugEventSchema, TimelineAppendSchema, timelineAppendContent, type TimelineRepository } from "../../models/events/timeline.js";
 import { sanitizeDebugText } from "../../rules/redaction/redaction.js";
 import { localDatePart } from "../../rules/time/clock.js";
+import { mirrorDebugEvent } from "./debug-events.js";
 
 const MAX_BYTES = 5 * 1024 * 1024;
 function faultPath(root: string): string {
@@ -17,21 +18,24 @@ function faultPath(root: string): string {
 }
 
 /** Call only when database admission or the authoritative writer failed. */
-export function appendEmergencyFault(input: { stateRoot: string; build: string; code: string; error: Error; now: Date }) {
+export function appendEmergencyFault(input: { stateRoot: string; build: string; code: string; error: Error; now: Date; area: string; reason: string }) {
   const path = faultPath(input.stateRoot);
   const eventId = randomUUID();
+  const event = DebugEventSchema.parse({ category: "boot", phase: "failed", correlationId: eventId,
+    area: input.area, reason: input.reason, code: input.code,
+    message: sanitizeDebugText(input.error.message),
+    ...(input.error.stack === undefined ? {} : { stack: sanitizeDebugText(input.error.stack) }),
+    build: input.build, pid: process.pid, pinned: true });
   const record = TimelineAppendSchema.parse({ schemaVersion: 1, eventId,
     scope: { kind: "transport", connectionId: "database-unavailable" },
     occurredAt: input.now.toISOString(), recordedAt: input.now.toISOString(), retentionDate: localDatePart(input.now),
-    payload: { kind: "debug", event: { category: "boot", phase: "failed", correlationId: eventId,
-      code: input.code, message: sanitizeDebugText(input.error.message),
-      ...(input.error.stack === undefined ? {} : { stack: sanitizeDebugText(input.error.stack) }),
-      build: input.build, pid: process.pid, pinned: true } }, source: { kind: "native" } });
+    payload: { kind: "debug", event }, source: { kind: "native" } });
   const line = `${canonicalJsonStringify(record)}\n`;
   const size = existsSync(path) ? lstatSync(path).size : 0;
   if (size + Buffer.byteLength(line) > MAX_BYTES) throw new Error("boot-log-cap-exceeded");
   mkdirSync(join(input.stateRoot, "logs"), { recursive: true, mode: 0o700 });
   appendFileSync(path, line, { mode: 0o600, flush: true });
+  mirrorDebugEvent({ ...record, event });
 }
 
 function parseEmergencyFaults(content: string) {
@@ -97,7 +101,8 @@ export function withEmergencyTimelineWriter(repository: TimelineRepository, inpu
     try { return repository.append(value); }
     catch (error) {
       if (error instanceof Error && "code" in error && typeof error.code === "string" && (error.code.startsWith("ERR_SQLITE") || error.code === "ERR_INVALID_STATE")) {
-        appendEmergencyFault({ ...input, now: input.clock.now(), code: "DATABASE_WRITER_UNAVAILABLE", error });
+        appendEmergencyFault({ ...input, now: input.clock.now(), code: "DATABASE_WRITER_UNAVAILABLE", error,
+          area: "timeline-writer", reason: "database-unavailable" });
       }
       throw error;
     }
