@@ -25,6 +25,10 @@ import { readContinuationGate, validateRunContinuation } from "../storage/sqlite
 import { rejectCommandRequest } from "./commands/command-refusal.js";
 
 const onboardingInputBinding = Object.freeze({
+  sourceToIngress(source: unknown) {
+    const { roster: _roster, ...input } = OnboardingCanonicalValueSchema.parse(source);
+    return OnboardingInput.parse(input);
+  },
   assertSubmission(input: unknown) {
     if (input !== null && typeof input === "object" && Object.hasOwn(input, "roster")) {
       throw new Error("Onboarding roster values are captured by Relay; caller-supplied roster input is invalid");

@@ -32,6 +32,8 @@ import { sourceBoundReadContract, sourceBoundReadStores, failSourceBoundReadCall
 import { absentProbeEvidence, buildWriteFixtureRegistry, writeFixtureMemoDescriptor, WriteFixturePrepare, WriteFixtureCommit, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_OBSERVATION } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { RerunValuesResponseSchema } from "../../../../src/models/dashboard/rerun-values.js";
+import { ONBOARDING_INPUT_EXAMPLE, OnboardingCanonicalInput, OnboardingInput } from "../../../../src/models/workflows/onboarding/input.js";
+import { workbookInputBinding } from "../../../../src/backend/runs/workbooks.js";
 
 const disposers: (() => void | Promise<void>)[] = [];
 const profiles = createProfileFixtureSet();
@@ -111,6 +113,41 @@ function checkpointsDeps(h: Harness, rows: readonly RunCheckpointRecord[]) {
 function firstCheckpoint(h: Harness, run: RunRecord) { const cp = h.database.authority.runCheckpoints.listByItem(h.descriptor.id, run.envelope.itemId)[0]; assert.ok(cp); return cp; }
 
 describe("source-bound Rerun value read", () => {
+  it.each([false, true])("projects verified Onboarding source without roster after descriptor advance %s", async older => {
+    const h = await harness(); const source = await failed(h);
+    const descriptor = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "onboarding"); assert.ok(descriptor);
+    const value = { ...ONBOARDING_INPUT_EXAMPLE, mode: "rehire", postalCodeOverride: "92093" };
+    const { sessionId: _sessionId, ...withoutSession } = source;
+    const run = RunRecordSchema.parse({ ...withoutSession,
+      envelope: { ...source.envelope, workflow: descriptor.id, descriptorVersion: descriptor.version,
+        contractFingerprint: older ? "c".repeat(64) : descriptor.contractFingerprint },
+      lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() },
+      input: { ...source.input, parsed: { schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value } } });
+    const result = readRerunValues({ ...rerunValuesDeps(h), descriptors: { resolve: () => descriptor },
+      reader: { read: () => ({ state: "present", disposition: "live", run }) } }, request(run));
+    assert.ok(result.state === "available", JSON.stringify(result));
+    const expected = { email: value.email, mode: "rehire", postalCodeOverride: "92093", configuredJobEndDate: value.configuredJobEndDate };
+    assert.deepEqual(result.snapshot.sourceInput, { state: "available", value: expected });
+    assert.deepEqual(OnboardingInput.parse(expected), expected);
+    assert.deepEqual(run.input.parsed.value, value);
+    if (!older) {
+      const { mode: _mode, ...withoutMode } = value;
+      const changed = { ...run, input: { ...run.input, parsed: { ...run.input.parsed, value: withoutMode } } };
+      const malformed = readRerunValues({ ...rerunValuesDeps(h), descriptors: { resolve: () => descriptor },
+        reader: { read: () => ({ state: "present", disposition: "live", run: changed }) } }, request(changed));
+      assert.deepEqual(malformed, { state: "refused", code: "source-invalid" });
+    }
+  });
+
+  it("keeps caller roster refused and never invents a source mode", () => {
+    const binding = workbookInputBinding(OnboardingCanonicalInput); assert.ok(binding);
+    assert.throws(() => binding.assertSubmission(ONBOARDING_INPUT_EXAMPLE), /caller-supplied roster/u);
+    const { mode: _mode, ...missingMode } = ONBOARDING_INPUT_EXAMPLE;
+    for (const value of [missingMode, { ...ONBOARDING_INPUT_EXAMPLE, mode: "unknown" }]) {
+      assert.throws(() => binding.sourceToIngress(value));
+    }
+  });
+
   it("preserves available source input for an unprotected plain-input workflow", async () => {
     const h = await launchHarness(); disposers.push(h.dispose);
     assert.ok(h.descriptor.surfaces.inputRun);
