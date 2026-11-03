@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../phase1c-contract-fixtures.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -196,7 +197,7 @@ export function persistCorruptJournaledSettings(input: Readonly<{
     if (database.authority.runtimeConfig.get() === undefined) {
       const initial = resolveConfigWithProvenance(baseline.settings, hostConfigFacts({}), input.clock,
         { stateRoot: input.stateRoot, artifactRoot: input.admission.artifactRoot });
-      database.authority.runtimeConfig.initialize({ configSnapshotId: DEPENDENCY_ID, revision: baseline.revision,
+      database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: DEPENDENCY_ID, revision: baseline.revision,
         fingerprint: initial.fingerprint, config: initial.config, provenance: initial.provenance,
         capturedAt: command.requestedAt, capturedBy: "local-operator" });
     }
@@ -234,7 +235,7 @@ export function persistCorruptJournaledSettings(input: Readonly<{
       if (input.activateRuntime) {
         const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), input.clock,
           { stateRoot: input.stateRoot, artifactRoot: input.admission.artifactRoot });
-        repositories.configSnapshots.insert({
+        repositories.configSnapshots.insert({ ...PREFERENCES_SNAPSHOT,
           configSnapshotId: CONFIG_SNAPSHOT_ID,
           revision: record.revision,
           fingerprint: resolved.fingerprint,

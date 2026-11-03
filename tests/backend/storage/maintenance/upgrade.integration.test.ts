@@ -1,3 +1,4 @@
+import { restorePrePreferencesSettingsRows, prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { profileBrowserClosure } from "../../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { BrowserProfileStillClosingError } from "../../../../src/workflow-kit/session.js";
 import { inspectUnboundBackupFixture } from "../../../support/helpers/storage/backup-fixtures.js";
@@ -26,7 +27,7 @@ import { createTimelineRepository } from "../../../../src/backend/storage/sqlite
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { AuthorityDatabase, AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { AuthorityDatabase, AuthoritySchemaVersionError, inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityUpgradeRecordSchema } from "../../../../src/models/config/authority.js";
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
@@ -68,8 +69,10 @@ function initialize(f:Awaited<ReturnType<typeof liveFixture>>){const database=Au
     readRecord:()=>undefined});
    const resolved=resolveConfigWithProvenance({}, {primaryDisplay:null}, clock, {stateRoot:f.root,artifactRoot:f.admission.artifactRoot});
    settings.runtimeConfig.initialize({...CONFIG_SNAPSHOT,...resolved});
+   restorePrePreferencesSettingsRows(raw);
    const repository=createTimelineRepository({database:raw,mutate,read:work=>work(),assertOwner:()=>{}});
    createDebugEventWriter({repository,clock,build:"test"}).emit({category:"http",phase:"failed",correlationId:"retained-history"});
+   assert.equal(inspectNativeAuthority(raw,version).schemaVersion,version);
   } finally {raw.close();}
   return f;
  }
@@ -160,7 +163,7 @@ describe("stopped native upgrade admission",()=>{
    const row=stored.prepare("SELECT payload_json FROM database_upgrades WHERE phase='settled'").get();assert.ok(row);
    const record=AuthorityUpgradeRecordSchema.parse(JSON.parse(String(row.payload_json)));assert.ok(record.phase==="settled");
    const migrations=SQLITE_MIGRATIONS.filter(migration=>migration.version>version);
-   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5,6,7,8,9,10,11,12,13,14,15,16]:[5,6,7,8,9,10,11,12,13,14,15,16]);
+   assert.deepEqual(migrations.map(migration=>migration.version),version===3?[4,5,6,7,8,9,10,11,12,13,14,15,16,17]:[5,6,7,8,9,10,11,12,13,14,15,16,17]);
    assert.equal(record.planDigest,createHash("sha256").update(canonicalJsonStringify({fromSchemaVersion:version,toSchemaVersion:CURRENT_AUTHORITY_SCHEMA_VERSION,
     sourceContentFingerprint:source.authorityContentFingerprint,statements:migrations.flatMap(migration=>migration.statements)})).digest("hex"));
   }finally{stored.close();}
@@ -215,7 +218,7 @@ describe("stopped native upgrade admission",()=>{
   const f=await baselineFixture(3),before=readFileSync(f.path);
   const source=withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } });
   const raw=new DatabaseSync(f.path,{readOnly:true});
-  let retained:Record<string,unknown[]>;
+  let retained:Record<string,Record<string,unknown>[]>;
   try {retained=Object.fromEntries(source.tables.filter(table=>table.name!=="database_states"&&table.name!=="database_upgrades"&&table.name!=="explorer_overrides")
    .map(table=>[table.name,raw.prepare(`SELECT * FROM ${table.name} ORDER BY rowid`).all()]));}finally{raw.close();}
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-start"},clock),/profile-bound-authority-required/u);
@@ -237,7 +240,7 @@ describe("stopped native upgrade admission",()=>{
    assert.equal(current.prepare("SELECT COUNT(*) AS count FROM workbook_library").get()?.count,0);
   }finally{current.close();}
   const upgraded=new DatabaseSync(f.path,{readOnly:true});
-  try {for(const [table,rows] of Object.entries(retained))assert.deepEqual(upgraded.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),rows);
+  try {for(const [table,rows] of Object.entries(retained))assert.deepEqual(upgraded.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map(row=>prePreferencesSettingsRow(table,row)),rows.map(row=>({...row})));
    assert.equal(upgraded.prepare("SELECT name FROM sqlite_schema WHERE name='explorer_overrides'").get(),undefined);
    assert.deepEqual(upgraded.prepare("PRAGMA foreign_key_check").all(),[]);
   }finally{upgraded.close();}
@@ -269,7 +272,7 @@ describe("stopped native upgrade admission",()=>{
   assert.equal((await f.run()).state,"upgraded");
   const raw=new DatabaseSync(f.path,{enableForeignKeyConstraints:true});
   try {
-   for(const [table,rows] of Object.entries(f.retained))assert.deepEqual(raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all(),rows);
+   for(const [table,rows] of Object.entries(f.retained))assert.deepEqual(raw.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all().map(row=>prePreferencesSettingsRow(table,row)),rows.map(row=>({...row})));
    assert.deepEqual(raw.prepare("PRAGMA foreign_key_check").all(),[]);
    assert.equal(raw.prepare("PRAGMA foreign_keys").get()?.foreign_keys,1);
    assert.throws(()=>raw.exec("DELETE FROM worker_pools"),/worker-pools-retained/u);
@@ -384,9 +387,9 @@ describe("stopped native upgrade admission",()=>{
  it("forward upgrades a stopped baseline while preserving its settings and history",async()=>{
   const f=await baselineFixture();
   const raw=new DatabaseSync(f.path,{readOnly:true});
-  const retained: Record<string,unknown>={};
+  const retained: Record<string,Record<string,unknown>[]>={};
   try {for(const table of ["settings","settings_snapshots","commands","command_audits","timeline_events","database_upgrades"]) {
-   retained[table]=raw.prepare(`SELECT * FROM ${table}`).all();assert.ok((retained[table] as unknown[]).length>0);
+   const rows=raw.prepare(`SELECT * FROM ${table}`).all();retained[table]=rows;assert.ok(rows.length>0);
   }}finally{raw.close();}
   assert.throws(()=>AuthorityDatabase.open(f.admission,{path:f.path,busyTimeoutMs:250,migrationOwner:"ordinary-open"},clock),/profile-bound-authority-required/u);
   const before=storageTree(f.root);
@@ -400,7 +403,7 @@ describe("stopped native upgrade admission",()=>{
   }finally{current.close();}
   const stored=new DatabaseSync(f.path,{readOnly:true});
   try {
-   for(const [table,rows] of Object.entries(retained))assert.deepEqual(stored.prepare(`SELECT * FROM ${table}${table==="database_upgrades"?" WHERE phase='baseline'":""}`).all(),rows);
+   for(const [table,rows] of Object.entries(retained))assert.deepEqual(stored.prepare(`SELECT * FROM ${table}${table==="database_upgrades"?" WHERE phase='baseline'":""}`).all().map(row=>prePreferencesSettingsRow(table,row)),rows.map(row=>({...row})));
    assert.ok(stored.prepare("SELECT name FROM sqlite_schema WHERE name='timeline_confirmed_action_head_idx'").get());
   }finally{stored.close();}
   assert.equal((await f.run()).state,"already-upgraded");

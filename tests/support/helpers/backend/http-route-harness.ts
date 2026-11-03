@@ -292,9 +292,9 @@ export async function harness(options: {
         && persisted.settingsSchemaHash === activeSettingsIdentity.settingsSchemaHash
         && persisted.settingsFingerprint === activeSettingsIdentity.settingsFingerprint
       ) {
-        return { record, activeConfig: activeSettings.config, runtimeStatus: { state: "current" as const, identity: activeSettingsIdentity } };
+        return { record, activeConfig: activeSettings.config, activePreferences: activeSettings.preferences, runtimeStatus: { state: "current" as const, identity: activeSettingsIdentity } };
       }
-      return { record, activeConfig: activeSettings.config, runtimeStatus: { state: "restart-required" as const, active: activeSettingsIdentity, persisted } };
+      return { record, activeConfig: activeSettings.config, activePreferences: activeSettings.preferences, runtimeStatus: { state: "restart-required" as const, active: activeSettingsIdentity, persisted } };
     },
   };
   const kernel = createCommandKernel({

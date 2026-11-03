@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { linkSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,renameSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
@@ -143,7 +144,7 @@ it("records the exact saved default-browser rewrite with its ordinary command an
     preAuthorityGeneration: 3, preAuthorityContentFingerprint: "c".repeat(64), settingsRevision: 2, settingsFingerprint: derivePersistedSettingsFingerprint(settings),
     browserSnapshots: [], priorActive: { generation: 2, settingsRevision: 2, settingsFingerprint: derivePersistedSettingsFingerprint(settings), configSnapshotId: randomUUID(), configFingerprint: before.fingerprint, activatedAt: capturedAt },
     settingsUpdate: { commandId: randomUUID(), auditId: randomUUID(), previousBrowserRoot: settings.paths.browserProfileRoot, outputPaths: { downloadsDir } },
-    snapshot: { configSnapshotId: randomUUID(), revision: 3, fingerprint: after.fingerprint, config: after.config, provenance: after.provenance, capturedAt, capturedBy: "local-operator" } });
+    snapshot: { ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: 3, fingerprint: after.fingerprint, config: after.config, provenance: after.provenance, capturedAt, capturedBy: "local-operator" } });
   const update = fixedLayoutSettingsUpdate(intent, settings);
   assert.deepEqual(update.current.settings, { ...settings, paths: { ...settings.paths, downloadsDir, browserProfileRoot: join(targetRoot, "browsers") } });
   assert.deepEqual(authenticateSavedSettings(update.current, update.request, update.audit).result, update.audit.result);
@@ -179,7 +180,7 @@ it("clones browser configuration paths for the moved root while retaining histor
   const f = fixture(), external = join(f.root, "reports"), capturedAt = "2026-11-01T12:00:00.000Z";
   const resolved = resolveConfigWithProvenance({ actor: { label: "Retained" }, paths: { reportsDir: external } }, { primaryDisplay: null }, undefined,
     { stateRoot: f.source, artifactRoot: join(f.source, "artifacts") });
-  const source = ConfigSnapshotRecordSchema.parse({ configSnapshotId: randomUUID(), revision: 3, capturedAt, capturedBy: "local-operator",
+  const source = ConfigSnapshotRecordSchema.parse({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: 3, capturedAt, capturedBy: "local-operator",
     fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance });
   const before = JSON.stringify(source);
   const moved = fixedLayoutSnapshot(source, f.source, f.target, { configSnapshotId: randomUUID(), capturedAt, capturedBy: "local-operator" });

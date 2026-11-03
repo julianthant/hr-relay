@@ -1,3 +1,4 @@
+import { convertPersonPreferencesRow } from "./person-preferences-migration.js";
 import { readContinuationGate, validateRunContinuation } from "./run-continuation.js";
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
 import type { ChildProcess } from "node:child_process";
@@ -86,7 +87,7 @@ import { continuationDelegationGroups } from "./run-continuation-delegation.js";
 import { ApplicationAdmissionRequestSchema, CanonicalClaimNextRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerControlRequestSchema,WorkerLifecycleRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,WorkerStandingRecoveryRequestSchema,WorkerStartOutcomeSchema,WorkerStartRequestSchema,WorkerUpdateOutcomeSchema,WorkerVerificationAdmissionRequestSchema,WorkerVerificationRetirementRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type WorkerStartOutcome,type WorkerUpdateOutcome } from "./run-store-contracts.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
-import { readAppSettings } from "./settings-storage.js";
+import { readAppSettings, migratePersonPreferences } from "./settings-storage.js";
 import { TimelineRecordError,createTimelineRepository,timelineEventFromRow } from "./timeline-repository.js";
 import { RecoveryActivitySchema, recoveryActivitySpanPath } from "../../../models/run/recovery-activity.js";
 import { createTransactionHistory } from "./transaction-history.js";
@@ -1149,6 +1150,7 @@ function inspectionRunReader(expectedSchemaVersion: number): typeof runRecordFro
 
 function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION): number {
   const readRun = inspectionRunReader(expectedSchemaVersion);
+  const convertPreferences = expectedSchemaVersion < 16 ? convertPersonPreferencesRow : (_table: string, row: unknown) => row;
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
   for (const table of migrationTableNames(expectedSchemaVersion)) {
@@ -1164,7 +1166,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             ...(expectedSchemaVersion >= 7 ? { installation_id: z.uuid(), profile_id: z.uuid() } : {}) }).parse(raw);
           if (row.search_state === "ready" && row.search_generation !== row.authority_generation) throw new Error("search-generation-mismatch");
         } else if (table === "runs") readRun(raw);
-        else if (table === "commands") commandFromRow(raw);
+        else if (table === "commands") commandFromRow(convertPreferences(table, raw));
         else if (table === "run_search") {
           const id = z.object({run_id:z.string()}).parse(raw).run_id;
           const run = readTimelineRun(database,id,readRun);
@@ -1172,7 +1174,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
           runSearchIndexFromRow(raw,run,z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready");
         }
         else if (table === "deleted_runs") deletedRunFromRow(raw);
-        else if (table === "settings") readAppSettings(database);
+        else if (table === "settings") readAppSettings(database, convertPreferences);
         else if (table === "worker_slots") workerSlotFromRow(raw);
         else if (table === "worker_controls") workerControlFromRow(raw);
         else if (table === "browser_sessions") workerBrowserFromRow(raw);
@@ -1189,7 +1191,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
               extractionId: row.id, extraction }) });
           } else extractedArtifactFromRow(raw);
         } else if (isNativeOrdinaryTable(table)) {
-          let inspected = raw;
+          let inspected = convertPreferences(table, raw);
           if (table === "run_requests" && expectedSchemaVersion < 6) {
             const row = z.object({ payload_json: z.string() }).parse(raw);
             const payload = z.record(z.string(), z.unknown()).parse(JSON.parse(row.payload_json));
@@ -1222,8 +1224,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             const audit = NativeCommandAuditSchema.parse(record);
             authenticateStoredResolutionAudit(database,audit);
             const commandRow = database.prepare("SELECT * FROM commands WHERE id=?").get(audit.request.commandId);
-            if (commandRow === undefined || canonicalJsonStringify(commandFromRow(commandRow)) !== canonicalJsonStringify(audit.request)
-              || z.object({outcome_json:z.string()}).parse(commandRow).outcome_json !== canonicalJsonStringify(audit)) throw new Error("command-audit-settlement-mismatch");
+            if (commandRow === undefined || canonicalJsonStringify(commandFromRow(convertPreferences("commands", commandRow))) !== canonicalJsonStringify(audit.request)
+              || z.object({outcome_json:z.string()}).parse(convertPreferences("commands", commandRow)).outcome_json !== canonicalJsonStringify(audit)) throw new Error("command-audit-settlement-mismatch");
           }
         } else throw new Error("native row admission is undefined");
       } catch (error) { throw new Error(`authority table ${table} failed native record validation: ${errorMessage(error)}`,{cause:error}); }
@@ -1234,7 +1236,7 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
     && database.prepare("SELECT 1 FROM (SELECT json_extract(request_json,'$.payload.assistantPermission.mode') AS mode FROM commands WHERE state='succeeded' AND json_type(request_json,'$.payload.assistantPermission')='object' ORDER BY rowid DESC LIMIT 1) WHERE ?<11 OR mode IS NULL OR mode NOT IN ('before-submits','without-asking')").get(expectedSchemaVersion) !== undefined) throw new Error("assistant-grant-missing-with-history");
   if (expectedSchemaVersion >= 4) validated += validateWorkbookLibrary(database, expectedSchemaVersion >= 13);
   if (expectedSchemaVersion >= 9) createAssistantModelPreferenceRepository({ database, read: work => work(), mutate: () => { throw new Error("assistant-preference-readonly"); } }).get();
-  try{readAppSettings(database);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
+  try{readAppSettings(database, convertPreferences);}catch(error){throw new Error(`authority table settings failed native record validation: ${errorMessage(error)}`,{cause:error});}
   return validated;
 }
 
@@ -1505,6 +1507,7 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
             .run(binding.installationId, binding.profileId);
         }
         database.exec(statement);
+        if (migration.version === 16 && index === 2) migratePersonPreferences(database);
       }
     }
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
@@ -1526,13 +1529,14 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
   }
 }
 
-function browserProfileInventory(database: DatabaseSync) {
-  const settings = readAppSettings(database);
+function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion: number) {
+  const convert = inspectedSchemaVersion < 16 ? convertPersonPreferencesRow : (_table: string, row: unknown) => row;
+  const settings = readAppSettings(database, convert);
   const settingsAuthority = settings === undefined
     ? Object.freeze({ state: "never-initialized" as const })
     : Object.freeze({ state: "initialized" as const, record: settings });
   const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
-    .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
+    .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", convert("settings_snapshots", row))));
   const slots = database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all().map(workerSlotFromRow);
   const browsers = database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow);
   const controls = database.prepare("SELECT * FROM worker_controls ORDER BY command_id").all().map(row => {
@@ -1544,7 +1548,7 @@ function browserProfileInventory(database: DatabaseSync) {
 }
 
 function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>) {
-  const browserProfiles = browserProfileInventory(database);
+  const browserProfiles = browserProfileInventory(database, inspection.schemaVersion);
   const reservations = readWorkerReservationCustody(database, browserProfiles.slots, browserProfiles.controls);
   const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
   const runs = database.prepare("SELECT * FROM runs ORDER BY id").all().map(inspectionRunReader(inspection.schemaVersion));
@@ -2106,7 +2110,7 @@ export class AuthorityDatabase implements Disposable {
         || meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) {
         throw new Error("profile-maintenance-binding-mismatch");
       }
-      const custody = Object.freeze(browserProfileInventory(database));
+      const custody = Object.freeze(browserProfileInventory(database, version));
       assertHeld();
       return custody;
     });
@@ -2118,7 +2122,7 @@ export class AuthorityDatabase implements Disposable {
       const version = readIntPragma(database, "user_version"), meta = readMetaRow(database), binding = owner.profileBinding;
       if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11, 12, 13, 14, 15, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)
         || meta.schema_version !== version || meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) throw new Error("restore-candidate-binding-mismatch");
-      const facts = Object.freeze(browserProfileInventory(database));
+      const facts = Object.freeze(browserProfileInventory(database, version));
       owner.assertStoppedProfile(operation); return facts;
     });
   }
@@ -2131,7 +2135,7 @@ export class AuthorityDatabase implements Disposable {
       const inspection=inspectNativeAuthority(database,expected.schemaVersion);
       if(inspection.authorityGeneration!==expected.authorityGeneration||inspection.authorityContentFingerprint!==expected.authorityContentFingerprint)throw new Error("stopped-browser-source-changed");
       if(inspection.installationId!==undefined&&(inspection.installationId!==owner.profileBinding.installationId||inspection.profileId!==owner.profileBinding.profileId))throw new Error("profile-maintenance-binding-mismatch");
-      return Object.freeze(browserProfileInventory(database));
+      return Object.freeze(browserProfileInventory(database, inspection.schemaVersion));
     });
   }
 
@@ -2234,9 +2238,9 @@ export class AuthorityDatabase implements Disposable {
       if (database.prepare("PRAGMA foreign_key_check").all().length !== 0) throw new Error("flat-archive-integrity-refused");
       const meta = readMetaRow(database);
       if (meta.schema_version !== 6 || meta.installation_id !== undefined || meta.profile_id !== undefined) throw new Error("flat-backup-schema-refused");
-      const settings = readAppSettings(database);
+      const settings = readAppSettings(database, convertPersonPreferencesRow);
       const configSnapshots = database.prepare("SELECT * FROM settings_snapshots ORDER BY id").all()
-        .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", row)));
+        .map(row => ConfigSnapshotRecordSchema.parse(nativeOrdinaryRecordFromRow("settings_snapshots", convertPersonPreferencesRow("settings_snapshots", row))));
       const expectedPaths = { stateRoot: root, artifactRoot: join(root, "artifacts"), browserProfileRoot: join(root, "browsers"),
         duoCredential: join(root, "credentials", "duo-webauthn.json"), reportsDir: join(workspace, "data", "reports"),
         downloadsDir: join(workspace, "data", "downloads"), onboardingDocsDir: join(workspace, "data", "onboarding"),
@@ -2431,7 +2435,7 @@ export class AuthorityDatabase implements Disposable {
       if (record === undefined || !("startupLogout" in record) || record.startupLogout === undefined
         || canonicalJsonStringify(record.startupLogout.operation) !== canonicalJsonStringify(operation)) return undefined;
       const settlement = operation.settlement;
-      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11, 12, 13, 14, 15].includes(record.fromSchemaVersion)
+      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11, 12, 13, 14, 15, 16].includes(record.fromSchemaVersion)
         || settlement === undefined || record.startupLogout.postimage !== authorityContentFingerprint(database, record.recordKey)) throw new Error("profile-startup-logout-postimage-changed");
       const backup = verifyBackup(admission, record.backup.manifestPath);
       if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId

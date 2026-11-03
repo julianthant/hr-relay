@@ -9,7 +9,7 @@
 The neutral palette resolves through `--ui-canvas`, `--ui-panel`, `--ui-table`, `--ui-hover`,
 `--ui-primary`, `--ui-secondary`, `--ui-muted`, `--ui-stroke`, and `--ui-stroke-control`.
 The `--ds-*` aliases serve the shell, body, Settings, and overlays. Theme state uses
-`data-demo-theme`; `useDemoTheme` owns the browser preference.
+`data-demo-theme`; `useDemoTheme` consumes the current person’s canonical ordinary settings. Signed-out and preview defaults are neutral; browser storage is never adopted.
 
 | API | Use |
 | --- | --- |

@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { testProcessImport } from "../../compiled-process.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
@@ -98,7 +99,7 @@ async function diagnosticFoundation(options: { sharedMachine?: true }){
  const profile=await createBoundProfileFixture(options); held.profile = profile;const root=profile.stateRoot;const path=profile.path;const clock=manualClock(new Date(NOW));
  const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock); held.db = db;
  const config=ConfigSchema.parse({paths:defaultRuntimePaths()});
- const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:sha256Hex(canonicalJsonStringify(config)),capturedAt:NOW,capturedBy:"local-operator",config,provenance:{}});
+ const snapshot=ConfigSnapshotRecordSchema.parse({ ...PREFERENCES_SNAPSHOT,configSnapshotId:id(90),revision:1,fingerprint:sha256Hex(canonicalJsonStringify(config)),capturedAt:NOW,capturedBy:"local-operator",config,provenance:{}});
  db.authority.runtimeConfig.initialize(snapshot);
 
  const createRun=(runId:string)=>{

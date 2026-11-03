@@ -1,4 +1,6 @@
-import { removeEmptySchema16OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { removeSchema16PersonPreferences } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
@@ -34,7 +36,7 @@ import { boundProfileCredentials,createBoundProfileFixture,readAuthenticatedCred
 import { assertRuntimeLifetimeHeld } from "../../../support/helpers/backend/runtime-lifetime.js";
 
 const hostFacts = { primaryDisplay: null };
-async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 | 12 | 13 | 14 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION) {
+async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 | 12 | 13 | 14 | 15 | 16 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION) {
   const profile = await createBoundProfileFixture();
   const database = AuthorityDatabase.open(profile.admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "fixed-layout-fixture" }, systemClock,
     undefined, undefined, undefined, boundProfileCredentials(profile.admission));
@@ -43,7 +45,7 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 |
   try {
     database.withAuthorityTransaction(repositories => {
       const initial = resolve({});
-      repositories.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1, fingerprint: initial.fingerprint,
+      repositories.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: 1, fingerprint: initial.fingerprint,
         config: initial.config, provenance: initial.provenance, capturedAt: now, capturedBy: LOCAL_OPERATOR_ACTOR_ID });
       const settings = { actor: { label: "Retained layout operator" }, paths: { reportsDir: join(profile.workspace, "chosen-reports"),
         ...(explicitBrowserRoot ? { browserProfileRoot: join(profile.stateRoot, "browsers") } : {}) } };
@@ -55,7 +57,7 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 |
       const resolved = resolve(settings), configSnapshotId = randomUUID(), settingsFingerprint = derivePersistedSettingsFingerprint(settings), auditId = randomUUID();
       const target = { family: "settings", revision: 2 };
       repositories.commands.insert(request);
-      repositories.configSnapshots.insert({ configSnapshotId, revision: 2, fingerprint: resolved.fingerprint, config: resolved.config,
+      repositories.configSnapshots.insert({ ...PREFERENCES_SNAPSHOT, configSnapshotId, revision: 2, fingerprint: resolved.fingerprint, config: resolved.config,
         provenance: resolved.provenance, capturedAt: now, capturedBy: LOCAL_OPERATOR_ACTOR_ID });
       repositories.runtimeConfig.activate({ settingsRevision: 2, settingsFingerprint, configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: now });
       repositories.commandAudits.insert({ auditId, request, completedAt: now, result: { state: "applied", commandId: request.commandId,
@@ -82,8 +84,9 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 |
       const native = new DatabaseSync(profile.path);
       try {
         native.exec("BEGIN EXCLUSIVE");
-        removeEmptySchema16OcrReview(native);
-        removeSchema15RunPause(native);
+        removeEmptySchema17OcrReview(native);
+        if (sourceVersion < 16) removeSchema16PersonPreferences(native);
+        if (sourceVersion < 15) removeSchema15RunPause(native);
         if (sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(native);
         if (sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(native);
         if (sourceVersion < 12) restorePreReadingArtifactRetention(native);
@@ -96,7 +99,7 @@ async function predecessor(explicitBrowserRoot = false, sourceVersion: 10 | 11 |
   } catch (error) { database.close(); await profile.close(); throw error; }
 }
 
-it.each([[false, CURRENT_AUTHORITY_SCHEMA_VERSION], [true, CURRENT_AUTHORITY_SCHEMA_VERSION], [false, 11], [true, 11], [false, 10], [false, 12], [false, 13], [true, 13], [false, 14], [true, 14]] as const)("converts the stopped default layout, retains identities/settings/key inodes, and keeps one listener (saved browser: %s, schema: %s)", async (explicitBrowser, sourceVersion) => {
+it.each([[false, CURRENT_AUTHORITY_SCHEMA_VERSION], [true, CURRENT_AUTHORITY_SCHEMA_VERSION], [false, 11], [true, 11], [false, 10], [false, 12], [false, 13], [true, 13], [false, 14], [true, 14], [false, 15], [false, 16]] as const)("converts the stopped default layout, retains identities/settings/key inodes, and keeps one listener (saved browser: %s, schema: %s)", async (explicitBrowser, sourceVersion) => {
   const f = await predecessor(explicitBrowser, sourceVersion), target = realpathSync(mkdtempSync(join(tmpdir(), "relay-fixed-target-")));
   const lifetime = await RuntimeLifetimeLock.acquire(0), port = lifetime.port;
   const activate = AuthorityDatabase.publishFixedLayoutActivation.bind(AuthorityDatabase);
@@ -237,7 +240,8 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     const source = new DatabaseSync(profile.path);
     try {
       source.exec("BEGIN EXCLUSIVE");
-      removeEmptySchema16OcrReview(source);
+      removeEmptySchema17OcrReview(source);
+      removeSchema16PersonPreferences(source);
       removeSchema15RunPause(source);
       removeEmptyExclusiveSessionLeaseFixture(source);
       restoreEmptyPreMasterWorkbookFixture(source);

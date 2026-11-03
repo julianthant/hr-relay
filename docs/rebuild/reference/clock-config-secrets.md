@@ -60,7 +60,7 @@ existing value does not read the host clock.
 ## Configuration resolution
 
 `resolveConfigWithProvenance(settingsInput, hostFacts, clock = systemClock, runtimeStoragePair?)`
-returns `{ config, provenance, fingerprint }`. It has no environment override parameter.
+returns `{ config, provenance, fingerprint, preferences, preferencesFingerprint }`. It has no environment override parameter.
 `SettingsOverrideInputSchema` parses a sparse ordinary settings object, defaulting an omitted input
 to `{}`. `HostConfigFactsSchema` accepts only `{ primaryDisplay: { screenWidth, screenHeight } | null }`.
 The resolver supplies runtime paths and host display defaults, merges ordinary settings, then parses
@@ -70,7 +70,15 @@ Ordinary settings take precedence over defaults. `ConfigProvenanceSchema` contai
 and `default`; provenance describes values and does not control runtime decisions. The resolver
 compares the populated config leaf paths with provenance keys and throws
 `config provenance is not bidirectionally complete` if they differ.
-`fingerprint` is SHA-256 over `canonicalJsonStringify(config)`.
+`fingerprint` is SHA-256 over `canonicalJsonStringify(config)`. Person appearance and shell settings live in the
+strict `preferences` sibling of each canonical snapshot, authenticated by `preferencesFingerprint`.
+Execution configuration, accepted snapshot IDs and run fingerprints do not change when preferences
+change. `person-preferences.ts` owns theme, animations, workflow panel mode/selection and keyboard
+bindings. Sparse `preferences.*` overrides are ordinary person settings with the same command,
+revision and backup coupling as other saved values. The stopped schema-16 conversion adds neutral
+preferences to accepted snapshots and updates initialization schema identities and their exact
+command/audit digests; ordinary snapshot readers require the current fields. No browser preference
+is imported.
 
 `ConfigSchema` has fourteen groups: `actor`, `urls`, `timeouts`, `paths`, `annualDates`, `display`,
 `performance`, `ocr`, `browserHealth`, `browser`, `concurrency`, `daemon`, `features`, and `providers`.
@@ -78,7 +86,7 @@ Every group except `paths` has contract defaults. `ConfigPathsSchema` requires n
 The browser-safe schema imports no Node filesystem implementation. Runtime defaults belong to
 `runtime-paths.ts`, rather than a browser stub or polyfill.
 
-`SETTINGS_CATALOG` is a parsed, recursively frozen 65-row registry. Each row names its `key`,
+`SETTINGS_CATALOG` is a parsed, recursively frozen 74-row registry. Each row names its `key`,
 `schema`, `defaultKind`, `editability`, `sensitivity`, `restartScope`, `sourceClass`, and consumers.
 The active source classes are `ordinary-settings`, `protected-store`, `derived-host`, and
 `runtime-isolation`. The catalog validates source and sensitivity pairings, unique keys, and the
@@ -382,25 +390,25 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-The current schema is 15. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
+The current schema is 17. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
 
 
 Fresh workbook storage contains one General type seed. Incomplete-profile inventory reports that row and treats only its exact initial payload as pristine, alongside either bare authority or authenticated Settings initialization. Extra or edited types and workbook masters, creations, operations or named versions remain activity that blocks withdrawal.
 
-The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14 and 15. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
+The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15 and 16. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 16` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 17` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
 ordinary startup. Ordinary writable opens and stopped upgrades use SQLite existing-only mode,
 including when a source disappears during opening. Only `initializeProfile`, after its issued setup
 admission check, creates the absent canonical profile database and its current baseline.
-Schemas 1 through 15 are inspected only under stopped upgrade or maintenance authority; ordinary readers
+Schemas 1 through 16 are inspected only under stopped upgrade or maintenance authority; ordinary readers
 use the current layout. Stopped inspection projects the absent pre-v15 pause column as null only
 after validating the predecessor's registered schema, including run/search/timeline/result owners.
-The native layout includes the pause scalar and its JSON-equality triggers. The forward v16 migration adds immutable OCR source uploads, review revisions and approved snapshots under the same verified-backup upgrade boundary.
+The native layout includes the pause scalar and its JSON-equality triggers. The forward v17 migration adds immutable OCR source uploads, review revisions and approved snapshots under the same verified-backup upgrade boundary.
 
 Assistant grants, chats and once-consumable actions use three profile-owned authority tables.
 An explicit operator `apply-settings` command may carry `assistantPermission` with the expected

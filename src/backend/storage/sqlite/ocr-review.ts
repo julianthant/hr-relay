@@ -3,7 +3,7 @@ import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, OcrSourceUploadSche
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { z } from "zod";
 
-export const OCR_REVIEW_MIGRATION = Object.freeze({ version: 16, statements: Object.freeze([
+export const OCR_REVIEW_MIGRATION = Object.freeze({ version: 17, statements: Object.freeze([
   `CREATE TABLE ocr_source_uploads (id TEXT PRIMARY KEY, payload_json TEXT NOT NULL CHECK(json_valid(payload_json)), created_at TEXT NOT NULL) STRICT`,
   `CREATE TABLE ocr_review_revisions (
     id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), revision INTEGER NOT NULL CHECK(revision>0),

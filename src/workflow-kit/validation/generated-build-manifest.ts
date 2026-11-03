@@ -9,7 +9,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "3776ed5a8599c079882c54349a6601460f6ea84b3930b6c148ad5724d398575f",
+      "fingerprint": "d5d12e3eb503e5f724bce0da329848885d8cbb64534580f3d7d2841ab0b154f2",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -17,7 +17,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -25,7 +29,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -543,7 +547,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-check"
     },
     {
-      "fingerprint": "9a7bc640309a9b3b2bf0fe713504281e86dbbe14e6e3feeab105ccc07f35322f",
+      "fingerprint": "82403f00407d5f9eda8901548c714c8eeef9428c86de4caa518929b8729d8324",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -551,7 +555,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -559,7 +567,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -1077,7 +1085,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-check-person-lookup"
     },
     {
-      "fingerprint": "1f3c4b992792066b0d71f31eddf11c9b905524ef8bf6ad83bb4917d180c7cde0",
+      "fingerprint": "a2cbc4f27cd0b3bb6bbc907e31aba5f377f13d9c83e64f96fc8d16273d25e3f6",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1085,7 +1093,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -1093,7 +1105,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -1611,7 +1623,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-check-person-match"
     },
     {
-      "fingerprint": "67c4b035cd3704a67accfdc764b900e16c038dab2c06693224cffd7202e18512",
+      "fingerprint": "239463059491c0a11401faeecc37435aa2de2a4ff2b04fc78eca4f435f8cf624",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1619,7 +1631,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -1627,7 +1643,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -2145,7 +2161,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-check-roster-match"
     },
     {
-      "fingerprint": "ef377562cfe584660659cbf017d9afca7875f792de50ed52aa0226c0330edd60",
+      "fingerprint": "4bae007e11bd475c0725a59feaf5f8f3680bee06de0ce9488b59e94794013847",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -2153,7 +2169,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -2161,7 +2181,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -2663,7 +2683,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-lookup"
     },
     {
-      "fingerprint": "bd80b2e86b961bd3d3daf9bb8d57696f9a646634f23764ee00342ec2d0f5d3f5",
+      "fingerprint": "8aa16f634d72fe79777afca926daa895057b8738a07639144affa83ebc984414",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -2671,7 +2691,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -2679,7 +2703,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -3181,7 +3205,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-lookup-lookup"
     },
     {
-      "fingerprint": "c7b51a1d3d5be02463fe59201309524ea12c374e424c4f358da833f320e4f428",
+      "fingerprint": "928cf7a1f9ce61ba0aaed3e881f1a5de8b0ddbcb64624768c2f375b97fffddbf",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -3189,7 +3213,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -3197,7 +3225,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -3711,7 +3739,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr"
     },
     {
-      "fingerprint": "094e0c5028134b8a1642db4dd74f0ed392a68c7771bddf4e359e114264550eeb",
+      "fingerprint": "54c5b4afa5cecbdcf6eaf279b8def9f61ac7095f97f0019c2f823210115bbf0e",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -3719,7 +3747,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -3727,7 +3759,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -4237,7 +4269,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr-page"
     },
     {
-      "fingerprint": "bf450dc152729207b9a2f69f475f865cdd135a9e2913edd918c137c498f9ff9d",
+      "fingerprint": "45e6ddf302b360b7a2f63e7c906162b5fe1f8cca4e0a330c359ea04f0c334c87",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -4245,7 +4277,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -4253,7 +4289,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -4763,7 +4799,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr-page-reading"
     },
     {
-      "fingerprint": "94817e60279d94f66d5cd0bdf787e897bced1e7b05749b8eca62dad74148893a",
+      "fingerprint": "c8775174f3b6bd4fa99c30eb380ac7b27d9c344d5a4975c70938df2e51c0f1a1",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -4771,7 +4807,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -4779,7 +4819,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -5293,7 +5333,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr-source-pages"
     },
     {
-      "fingerprint": "e9d97740b8efb3c38a006b1b01402c5afb0e2a4b8a79388d025a5744b3ee695a",
+      "fingerprint": "e92a773d8ad398e5ce6bb970f1b0458e2aceb5acfa307ce165a9026dc9896bee",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -5301,7 +5341,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -5309,7 +5353,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -5815,7 +5859,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onbase"
     },
     {
-      "fingerprint": "e0dfbe4cedc6692798e291f4a3b92be03b7a5c171323efb1d1821c4b39c2742d",
+      "fingerprint": "2917938a865d9a17f54430ba06d5a3dbcc75c87e6514e95b52d006bf69f6267c",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -5823,7 +5867,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -5831,7 +5879,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -6337,7 +6385,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onbase-import-document"
     },
     {
-      "fingerprint": "7cb52e9a8a1e2a2f6277859dda98878f8932b82a38cef3b046959315b3ff395d",
+      "fingerprint": "a8996cd34594b972a0cfb95c37eb4e88cd1205115143b1c7ee3d311b4a1cb65f",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -6345,7 +6393,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -6353,7 +6405,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -6859,7 +6911,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onbase-source-page"
     },
     {
-      "fingerprint": "97b49f2895ba303a09e085f9bb6b58af45d12e69e821466bbe236b17e60c19e0",
+      "fingerprint": "94a94fd866d0cec1533da758ecafaa94b0d3bdef52e3981006f23f17982c82b9",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -6867,7 +6919,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -6875,7 +6931,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -7433,7 +7489,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding"
     },
     {
-      "fingerprint": "325800ef01a43c8df28ccf8757f28f0704e1d88214ec4f603dd15afa3c9f927d",
+      "fingerprint": "e02c7f78ec9f7cbdaf1198fc54565bc3c24fd841972cfab637297b0f4cc64efd",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -7441,7 +7497,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -7449,7 +7509,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -8007,7 +8067,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding-crm-data"
     },
     {
-      "fingerprint": "ea2b0d6aec8c641a01e50c62de4f5fc067efabbefdcded9cb8a2a61e23012121",
+      "fingerprint": "73241f4af764c51835accf70e2dab7ea6e3194f9bdcc5e939c7fae46e8c6c41c",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -8015,7 +8075,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -8023,7 +8087,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -8581,7 +8645,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding-i9-profile-creation"
     },
     {
-      "fingerprint": "90ca4e980caf88ab5b4e882836ff03ca60128591a658b0489c5bb4d96f01e562",
+      "fingerprint": "d80dbe3c1362f513e15a660c0f76fe4200e5d56c4905e995d5fd2523f7229c10",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -8589,7 +8653,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -8597,7 +8665,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -9155,7 +9223,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding-i9-search"
     },
     {
-      "fingerprint": "57196f4d4dbd44ed6cc4b24b2c5fc0c06c741e763956444d511bb2383532d9c6",
+      "fingerprint": "cb2f802acffb1d2f2d79fab8c706c18f180cae2ad2402029fd9653c0a18857c6",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -9163,7 +9231,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -9171,7 +9243,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -9729,7 +9801,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding-ucpath-search"
     },
     {
-      "fingerprint": "70041bf22ba9a2253271fa7a3367ffa3e85dd6a0ceb8ec132a8680bb04bee8c4",
+      "fingerprint": "3c0e809232f287035ff5b1b88c6fda7697ab76e0d924fe417e52ac8e98b67e15",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -9737,7 +9809,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -9745,7 +9821,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -10271,7 +10347,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "57d9931655dc62b86df0052dac9f56817d3cad49bdbe051fcb95a30fc86877ba",
+      "fingerprint": "89bc8e770942cb7f2079b21cb41875f5c32a3326cbac2a55bff995e48730c83f",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -10279,7 +10355,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -10287,7 +10367,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -10813,7 +10893,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-active-status"
     },
     {
-      "fingerprint": "322ca554a3a6655c156b5b14f3950b48781022ad89a9c06ef98e6001245d754d",
+      "fingerprint": "25929884a80478b36ac9b9e432c8c45067d8cf4120c4dbf48d71958ba51d05ee",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -10821,7 +10901,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -10829,7 +10913,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -11355,7 +11439,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-crm-dates"
     },
     {
-      "fingerprint": "d87e06e518a0858684cede88ab0849bd1b9169aa47ad4a4b4380064b0fdc2ff8",
+      "fingerprint": "a8693e2f8f80bb3a894a354b0b03be5e031c1c55d8e709b8e290abc193ae5993",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -11363,7 +11447,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -11371,7 +11459,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -11897,7 +11985,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-cross-verify"
     },
     {
-      "fingerprint": "e4988880debfda39b4ccafc20980ba2bb99216d82da8dff16f0c0600622b81b1",
+      "fingerprint": "0b02f8668066c7428e262efaa8f1368273bd1c4c26a6376f7e51f89f0e7ec09f",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -11905,7 +11993,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -11913,7 +12005,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -12439,7 +12531,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-searching"
     },
     {
-      "fingerprint": "8a42562f3176c60fce1b6b2b4f70f3c433ceedfd6e4884b91cd0a01bd4e938eb",
+      "fingerprint": "b34914a06a36c6352a95e65f8596d400597f75d78b7e6aa5348a57da13b9d072",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -12447,7 +12539,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -12455,7 +12551,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -13145,7 +13241,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations"
     },
     {
-      "fingerprint": "c2902f6e5cdb75adc289738abc695c7f9c0b428c5fd8aa69fc005f90b98cfe3f",
+      "fingerprint": "810588efffb748e66a154018ab077623f2f92fea591640e12025e844ca9d96ed",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -13153,7 +13249,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -13161,7 +13261,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -13851,7 +13951,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-identity-check"
     },
     {
-      "fingerprint": "a22d1a6362eef892689bc7f9943680eebb0a396b598d7b84d8c06fe887d116a7",
+      "fingerprint": "91d2c1c44e969ebaf1e2ea8ccb8280b148c65cd2bdb5301907845a3d081325f7",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -13859,7 +13959,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -13867,7 +13971,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -14557,7 +14661,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "67078604e1fa40e748674a88d3108c25ed1f904c23432f6e3a7fbf2a3b55e726",
+      "fingerprint": "4409f0c49cee95cd787bbed97ebee03fdd12e588f090aa09bef3f16cb8763a1a",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -14565,7 +14669,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -14573,7 +14681,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -15263,7 +15371,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-finalization"
     },
     {
-      "fingerprint": "a2e000e12a732c0be13345a1bbdae61a6216f578b086f0e6a3cd473c07ce9715",
+      "fingerprint": "2d0936d9dd9ecaba1ead4c28923ca2c3c49d82434ed0e15bd97ea489cd2d2e89",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -15271,7 +15379,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -15279,7 +15391,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -15969,7 +16081,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "efaca6b1fe3224aac4b006eb9f65f7dea9b768e386d45596bd046924366034f5",
+      "fingerprint": "e719f1eb48801053d2cae58c6441de670779b049e98453de4e961a23cc174038",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -15977,7 +16089,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -15985,7 +16101,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -29207,7 +29323,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination-filing-present"
     },
     {
-      "fingerprint": "00fc56538fa2b61959ef962ec69a47b80ee20adf20fa6256cab18d1c739aed57",
+      "fingerprint": "39941e7e81036dcc351097f851c86b8f47027c504be981891fdaf4b91057be69",
       "sources": [
         {
           "path": "src/backend/processing/workbooks/tasks/read-result.ts",
@@ -29219,7 +29335,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -29227,7 +29347,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -32087,7 +32207,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:onboarding/match-hire-subject"
     },
     {
-      "fingerprint": "d0ccb28b72d9192c59bc8d0187b841a2d997db0a1360252d690d321f4de9a59a",
+      "fingerprint": "2244f85a716a742347b51b71b3af28601014ac341cc6ef86458ce33ed6625f90",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -32095,7 +32215,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -32103,7 +32227,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -32545,7 +32669,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:onboarding/read-hire-plan"
     },
     {
-      "fingerprint": "05b1039e602e87133a794afc1768505e68e0a189260c80a04e3aabef04848e68",
+      "fingerprint": "d95b4395a20dbc5e1b3870a36ff08dff42d97da1a1516a0e7bc7c2aeed0c7b2d",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -32553,7 +32677,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -32561,7 +32689,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",
@@ -33019,7 +33147,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:onboarding/read-i9-lookup"
     },
     {
-      "fingerprint": "a165be259927fce854171537d652c2b97f56276fa9465e416f77debfac659688",
+      "fingerprint": "ceed288c4aeff23b3a8312725bf029e65e062f311b3b31727f2cc91931bac6a9",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -33027,7 +33155,11 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/catalog.ts",
-          "sha256": "7c34aba4ca1e626435afb5593864f2ca13d82716cadecbc2a6253dc94b827a13"
+          "sha256": "46c9cfe23d4d1387953c3da1de7551f3530b611a28340e2f11a3f9e757c97c19"
+        },
+        {
+          "path": "src/models/config/person-preferences.ts",
+          "sha256": "faf9cee3e9bce14785e603b5b68e78caba88434eff1a36e66c2b7d0fdb19dc93"
         },
         {
           "path": "src/models/config/protected-settings.ts",
@@ -33035,7 +33167,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/models/config/schema.ts",
-          "sha256": "567b8cd565e23375202f1886e0277452f62ff6244e3c41df63092dae2c9d9f31"
+          "sha256": "3b2ae60f3a80a2b536bbb8aeda377a34cdb076ebc2c929c24c665591df712b1a"
         },
         {
           "path": "src/models/config/secret-names.ts",

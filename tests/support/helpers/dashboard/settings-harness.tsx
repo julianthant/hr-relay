@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { FixtureCommandBinding } from "./command-binding.js";
 import type { SettingsSaveNotice, SettingsSaveProblem } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { randomUUID } from "node:crypto";
@@ -31,7 +32,7 @@ export async function syntheticSettingsAuthority(profileFixture: () => Promise<B
   const hostFacts = hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080" });
   const resolveConfigured = (settings: unknown) => resolveConfigWithProvenance(settings, hostFacts, clock);
   const resolved = resolveConfigured({});
-  database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
+  database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: 1,
     fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
     capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
   const composition = composeSettings({ database, clock, hostFacts, active: activeSettingsRuntimeIdentity,

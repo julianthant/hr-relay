@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { withStoppedProfileMaintenanceSync, createBoundProfileFixture, readAuthenticatedCredentialFixture, rewriteAuthenticatedCredentialFixture } from "../../../support/helpers/admission-fixture.js";
 import { createSettingsAuthorityTestWorld } from "../../../support/helpers/backend/settings-authority-world.js";
 import { default as assert } from "node:assert/strict";
@@ -38,7 +39,7 @@ function activate(database: AuthorityDatabase_m0, record: SettingsFileRecord, cl
   const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
   database.withAuthorityTransaction((repositories) => {
     const configSnapshotId = randomUUID();
-    const snapshot = { configSnapshotId, revision: 1, fingerprint: resolved.fingerprint,
+    const snapshot = { ...PREFERENCES_SNAPSHOT, configSnapshotId, revision: 1, fingerprint: resolved.fingerprint,
       capturedAt: clock.now().toISOString(), capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance };
     if (repositories.runtimeConfig.get() === undefined) {
       repositories.runtimeConfig.initialize(snapshot);
@@ -87,7 +88,7 @@ afterEach(_afterEachFixture0);
     const resolved = resolveConfigWithProvenance(f.initial.settings, hostConfigFacts({}), f.clock, pair);
     f.database.withAuthorityTransaction((repositories) => {
       const configSnapshotId = randomUUID();
-      repositories.configSnapshots.insert({ configSnapshotId, revision: 1, fingerprint: resolved.fingerprint,
+      repositories.configSnapshots.insert({ ...PREFERENCES_SNAPSHOT, configSnapshotId, revision: 1, fingerprint: resolved.fingerprint,
         capturedAt: f.clock.now().toISOString(), capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
       repositories.runtimeConfig.activate({ settingsRevision: f.initial.revision, settingsFingerprint: f.initial.settingsFingerprint,
         configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: f.clock.now().toISOString() });
@@ -109,7 +110,7 @@ afterEach(_afterEachFixture0);
       assert.equal(editor.settingsFingerprint, f.initial.settingsFingerprint);
       assert.deepEqual(editor.runtimeStatus, { state: "current", identity: f.active });
       const leaves = editor.sections.flatMap((section) => section.leaves);
-      assert.equal(leaves.length, 51);
+      assert.equal(leaves.length, 61);
       assert.equal(leaves.some(leaf => leaf.path === "paths.browserProfileRoot" || leaf.path === "paths.duoCredential"), false);
     }
     assert.equal(existsSync(join_m0(f.root, "settings")), false);
@@ -371,6 +372,29 @@ try {
 } finally {
 await _afterEachFixture0();
 }
+});
+it("persists each person's appearance and shell settings across a database reopen without changing retained runs", async () => {
+  try {
+    const a = await fixture(); const b = await fixture();
+    const run = a.create(); const original = selectActiveRunSettings(a.database.authority);
+    const result = a.save({ "preferences.theme": { set: "light" }, "preferences.animations": { set: false },
+      "preferences.workflowPanelMode": { set: "sidebar" }, "preferences.selectedWorkflowId": { set: "separations" },
+      "preferences.shortcuts.bindings.search": { set: ["g"] } });
+    assert.equal(result.state, "applied");
+    const accepted = selectActiveRunSettings(a.database.authority);
+    assert.equal(accepted.fingerprint, original.fingerprint); assert.notEqual(accepted.preferencesFingerprint, original.preferencesFingerprint);
+    assert.equal(selectActiveRunSettings(b.database.authority).preferences.theme, "dark");
+    assert.deepEqual(readSettings(b.database.authority).settings, {});
+    a.closeDatabase();
+    const reopened = AuthorityDatabase_m0.open({ path: a.path, busyTimeoutMs: 10, migrationOwner: "preference-reopen" }, a.clock);
+    try {
+      assert.deepEqual(selectActiveRunSettings(reopened.authority), accepted);
+      assert.equal(readSettings(reopened.authority).settings.preferences?.theme, "light");
+      assert.deepEqual(selectActiveRunSettings(reopened.authority).preferences.shortcuts.bindings.search, ["g"]);
+      assert.deepEqual(reopened.authority.configSnapshots.get(original.configSnapshotId), original);
+      assert.deepEqual(reopened.authority.runs.get(run.envelope.runId), run);
+    } finally { reopened.close(); }
+  } finally { await _afterEachFixture0(); }
 });
 it("clears overrides to host defaults and survives a real authority reopen with historical references", async () => {
 try {

@@ -33,7 +33,7 @@ for (const theme of ["light", "dark"]) {
     try {
       await installFrozenMonotonic(page);
       await page.setViewportSize({ width: 1440, height: 900 });
-      await page.addInitScript(value => { localStorage.setItem("rebuild-demo.theme", value); localStorage.setItem("relay.animations", "off"); }, theme);
+      await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); Reflect.set(window, "relayParityMotion", false); }, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       await expect(page.locator(".hub-assistant-slot")).toBeVisible();
       await expect(page.getByRole("region", { name: "Relay assistant", exact: true })).toBeVisible();
@@ -76,7 +76,7 @@ for (const theme of ["light", "dark"]) {
     try {
       await installFrozenMonotonic(page);
       await page.setViewportSize({ width: 1440, height: 900 });
-      await page.addInitScript(value => { localStorage.setItem("rebuild-demo.theme", value); localStorage.setItem("relay.animations", "off"); }, theme);
+      await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); Reflect.set(window, "relayParityMotion", false); }, theme);
       await page.goto(`${server.baseUrl}/?onboarding=ready`);
       await expect(page.getByRole("heading", { name: "Start with your details", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Log in", exact: true }).click();
@@ -138,7 +138,7 @@ for (const theme of ["light", "dark"]) {
     try {
       await installFrozenMonotonic(page);
       await page.setViewportSize({ width: 1440, height: 900 });
-      await page.addInitScript(value => localStorage.setItem("rebuild-demo.theme", value), theme);
+      await page.addInitScript(value => Reflect.set(window, "relayParityTheme", value), theme);
       await page.goto(`${server.baseUrl}/?settings=general`);
       const animations = page.getByRole("switch", { name: /^Animations / });
       await expect(animations).toBeChecked(); await page.locator('[data-settings-path="appearance.animations"] .ds-switch-control').click();

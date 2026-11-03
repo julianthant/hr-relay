@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach,describe,it } from "vitest";
@@ -31,7 +32,7 @@ function currentConfig() {
 async function databaseWithSnapshotMissing(removed: string): Promise<string> {
   const path = await databasePath();
   const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "generation-test" }, CLOCK);
-  database.authority.configSnapshots.insert({
+  database.authority.configSnapshots.insert({ ...PREFERENCES_SNAPSHOT,
     configSnapshotId: SNAPSHOT_ID,
     revision: 1,
     fingerprint: sha256Hex(canonicalJsonStringify(currentConfig())),
@@ -70,7 +71,7 @@ describe("strict current config snapshots", () => {
   }
   it("preserves exact current snapshot bytes and refuses overwriting immutable evidence", async () => {
     const path = await databasePath(); const database = AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "snapshot-test" }, CLOCK);
-    const snapshot = { configSnapshotId: SNAPSHOT_ID, revision: 1, fingerprint: sha256Hex(canonicalJsonStringify(currentConfig())), capturedAt: NOW, capturedBy: "local-operator", config: currentConfig(), provenance: {} };
+    const snapshot = { ...PREFERENCES_SNAPSHOT, configSnapshotId: SNAPSHOT_ID, revision: 1, fingerprint: sha256Hex(canonicalJsonStringify(currentConfig())), capturedAt: NOW, capturedBy: "local-operator", config: currentConfig(), provenance: {} };
     try {
       database.authority.configSnapshots.insert(snapshot);
       assert.deepEqual(database.authority.configSnapshots.get(SNAPSHOT_ID), snapshot);

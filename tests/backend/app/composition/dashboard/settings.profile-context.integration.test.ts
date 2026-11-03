@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, symlinkSync } from "node:fs";
@@ -30,7 +31,7 @@ it("preserves supported authenticated retained saved-but-inactive Settings acros
   try {
     const initial = database.withAuthorityReadSnapshot(() => readSettings(database.authority));
     const resolved = resolveConfigWithProvenance(initial.settings, hostFacts, clock, runtimeStoragePair);
-    database.withAuthorityTransaction(repositories => repositories.runtimeConfig.initialize({
+    database.withAuthorityTransaction(repositories => repositories.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT,
       configSnapshotId: randomUUID(), revision: initial.revision, fingerprint: resolved.fingerprint,
       capturedAt: clock.now().toISOString(), capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance,
     }));

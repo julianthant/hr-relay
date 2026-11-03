@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { boundProfileCredentials, createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -153,7 +154,7 @@ async function fixture() {
   const admission=profile.admission,credentials=boundProfileCredentials(admission),clock=capturedInstantClock(NOW);
   const resolved=resolveConfigWithProvenance(initialSettingsFileRecord().settings,hostConfigFacts({}),clock,
     {stateRoot,artifactRoot:profile.admission.artifactRoot});
-  const snapshot={configSnapshotId:UUID_1,revision:1,fingerprint:resolved.fingerprint,capturedAt:NOW,capturedBy:"local-operator",config:resolved.config,provenance:resolved.provenance};
+  const snapshot={ ...PREFERENCES_SNAPSHOT,configSnapshotId:UUID_1,revision:1,fingerprint:resolved.fingerprint,capturedAt:NOW,capturedBy:"local-operator",config:resolved.config,provenance:resolved.provenance};
   const options={path,busyTimeoutMs:5000,migrationOwner:"native-snapshot-proof"};
   const database=AuthorityDatabase.open(admission,options,clock,undefined,undefined,undefined,credentials);
   try{database.authority.runtimeConfig.initialize(snapshot);}finally{database.close();}
