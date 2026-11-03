@@ -1,3 +1,4 @@
+import { scaledMs } from "../../../support/time-scale.js";
 import { childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
@@ -303,4 +304,4 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
   }
   const date = f.clock.now().toISOString().slice(0, 10);
   assert.deepEqual(createTransactionHistory(f.database.authority).query({ from: date, to: date }).rows, []);
-});
+}, scaledMs(60_000));
