@@ -11,6 +11,35 @@ import { isDirectExecution } from "./scope-files.js";
 const projects = ["--project", "unit", "--project", "integration", "--project", "architecture"];
 const macosFiles = new Set([...MACOS_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES]);
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
+export const pcDurationScript = "process.stdout.write(String(Number(process.hrtime.bigint() - BigInt(process.argv[1])) / 1e6))";
+
+const timingSchema = z.object({
+  phase: z.enum(["listing", "admission", "source-sync", "request-sync", "install", "build", "test", "cleanup", "lease-release"]),
+  startedAt: z.iso.datetime(),
+  durationMs: z.number().finite().nonnegative(),
+  outcome: z.enum(["completed", "failed", "skipped"]),
+}).strict();
+type PcTiming = z.infer<typeof timingSchema>;
+
+export async function measurePcPhase<T>(phase: PcTiming["phase"], record: (timing: PcTiming) => void, operation: () => Promise<T>): Promise<T> {
+  const startedAt = new Date().toISOString();
+  const started = performance.now();
+  let outcome: PcTiming["outcome"] = "failed";
+  try {
+    const value = await operation();
+    outcome = typeof value === "number" && value !== 0 ? "failed" : "completed";
+    return value;
+  } finally {
+    record({ phase, startedAt, durationMs: performance.now() - started, outcome });
+  }
+}
+
+export function readPcTiming(line: string, runId: string): PcTiming | undefined {
+  if (!line.startsWith("RELAY_PC_TIMING=")) return undefined;
+  const event = z.object({ runId: z.uuid(), timing: timingSchema }).strict().parse(JSON.parse(line.slice("RELAY_PC_TIMING=".length)));
+  if (event.runId !== runId) throw new Error("PC timing invocation mismatch");
+  return event.timing;
+}
 
 export function selectPcFiles(listed: readonly string[], patterns: readonly string[]) {
   const normalized = listed.map(file => file.replaceAll("\\", "/").replace(/^\.\//u, ""));
@@ -46,11 +75,12 @@ async function checked(program: string, args: string[], cwd: string, log?: strin
   if (code !== 0) throw new Error(`${program} exited ${code}`);
 }
 
-const requestSchema = z.object({ files: z.array(z.string().startsWith("tests/")).min(1), tracked: z.string() });
+const requestSchema = z.object({ runId: z.uuid(), files: z.array(z.string().startsWith("tests/")).min(1), tracked: z.string() });
 
 async function remote(slot: string): Promise<number> {
   const cwd = process.cwd();
   const request = requestSchema.parse(JSON.parse(readFileSync(join(slot, "request.json"), "utf8")));
+  const record = (timing: PcTiming) => process.stdout.write(`RELAY_PC_TIMING=${JSON.stringify({ runId: request.runId, timing })}\n`);
   const manifest = z.object({ engines: z.object({ node: z.string() }) }).parse(JSON.parse(readFileSync("package.json", "utf8")));
   const required = /^>=(\d+)\.0\.0$/u.exec(manifest.engines.node);
   if (!required || Number(process.versions.node.split(".")[0]) < Number(required[1])) {
@@ -69,17 +99,28 @@ async function remote(slot: string): Promise<number> {
   try {
     await checked("git", ["init", "--quiet"], cwd);
     execFileSync("git", ["update-index", "--info-only", "-z", "--index-info"], { input: Buffer.from(request.tracked, "base64") });
-    if (request.files.some(file => file.endsWith(".integration.test.ts"))) await checked("npm", ["run", "web:build"], cwd);
+    if (request.files.some(file => file.endsWith(".integration.test.ts"))) {
+      await measurePcPhase("build", record, () => checked("npm", ["run", "web:build"], cwd));
+    } else record({ phase: "build", startedAt: new Date().toISOString(), durationMs: 0, outcome: "skipped" });
     process.stdout.write(`test:pc slot=${slot} files=${request.files.length} node=${process.versions.node} tmpfs=${temp}\n`);
-    return await command("npx", ["--no-install", "vitest", "run", ...projects, "--maxWorkers=2", "--passWithNoTests=false", ...request.files], cwd);
+    return await measurePcPhase("test", record, () => command("npx", ["--no-install", "vitest", "run", ...projects, "--maxWorkers=2", "--passWithNoTests=false", ...request.files], cwd));
   } finally {
-    await checked("rm", ["-rf", "--", temp], cwd);
+    await measurePcPhase("cleanup", record, () => checked("rm", ["-rf", "--", temp], cwd));
     writeFileSync(join(slot, "completed"), "done\n");
   }
 }
 
 const leaseScript = `set -eu
 umask 077
+run_id="$1"
+phase_start() {
+  phase_clock=$(node -e 'process.stdout.write(process.hrtime.bigint().toString() + " " + new Date().toISOString())')
+  read -r phase_ns phase_at <<< "$phase_clock"
+}
+phase_end() {
+  duration=$(node -e ${quote(pcDurationScript)} "$phase_ns")
+  printf 'RELAY_PC_TIMING={"runId":"%s","timing":{"phase":"%s","startedAt":"%s","durationMs":%s,"outcome":"%s"}}\\n' "$run_id" "$1" "$phase_at" "$duration" "$2"
+}
 root="$HOME/.cache/relay-test-pc"
 mkdir -p "$root"
 slots=3
@@ -99,16 +140,25 @@ while :; do
       [ "$ready" = synced ]
       cd "$slot/work"
       hash=$(sha256sum package-lock.json | cut -d' ' -f1)
+      phase_start
       if [ ! -f node_modules/.package-lock.json ] || [ ! -f "$slot/lockfile.sha256" ] || [ "$(cat "$slot/lockfile.sha256")" != "$hash" ]; then
-        npm ci
-        npx --no-install playwright install chromium
+        set +e
+        npm ci && npx --no-install playwright install chromium
+        install_status=$?
+        set -e
+        if [ "$install_status" -ne 0 ]; then phase_end install failed; exit "$install_status"; fi
         printf '%s' "$hash" > "$slot/lockfile.sha256"
+        phase_end install completed
+      else
+        phase_end install skipped
       fi
       set +e
       node --import tsx scripts/test/pc.ts --remote "$slot"
       status=$?
-      if [ ! -f "$slot/completed" ]; then echo "Interrupted run: retained lease $slot/lease" >&2; exit 1; fi
-      rmdir "$slot/lease" || exit 1
+      phase_start
+      if [ ! -f "$slot/completed" ]; then phase_end lease-release failed; echo "Interrupted run: retained lease $slot/lease" >&2; exit 1; fi
+      if ! rmdir "$slot/lease"; then phase_end lease-release failed; exit 1; fi
+      phase_end lease-release completed
       exit "$status"
     fi
     exec 9>&-
@@ -123,16 +173,18 @@ async function mac(patterns: string[]): Promise<number> {
   if (!host || !/^(?:[a-zA-Z0-9_.-]+@)?[a-zA-Z0-9][a-zA-Z0-9.-]*$/u.test(host)) {
     throw new Error("Set RELAY_TEST_HOST to your tailnet SSH host (optionally user@host).");
   }
-  const run = join(resolve(git(["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim(), ".."), ".work/test-pc", randomUUID());
+  const runId = randomUUID();
+  const run = join(resolve(git(["rev-parse", "--path-format=absolute", "--git-common-dir"]).trim(), ".."), ".work/test-pc", runId);
   mkdirSync(run, { recursive: true, mode: 0o700 });
   const log = join(run, "output.log");
   const started = Date.now();
-  const result: { exitCode: number; slot?: string; files?: string[]; error?: string } = { exitCode: 1 };
+  const result: { exitCode: number; slot?: string; files?: string[]; error?: string; runId: string; timings: PcTiming[]; timingErrors: string[] } = { exitCode: 1, runId, timings: [], timingErrors: [] };
+  const record = (timing: PcTiming) => { result.timings.push(timing); };
   process.stdout.write(`test:pc result: ${join(run, "result.json")}\n`);
   try {
     const listing = join(run, "listed.json");
-    await checked(process.execPath, ["node_modules/vitest/vitest.mjs", "list", ...projects, "--filesOnly", `--json=${listing}`,
-      ...(patterns.length === 0 ? ["--changed=origin/staging"] : [])], root, log);
+    await measurePcPhase("listing", record, () => checked(process.execPath, ["node_modules/vitest/vitest.mjs", "list", ...projects, "--filesOnly", `--json=${listing}`,
+      ...(patterns.length === 0 ? ["--changed=origin/staging"] : [])], root, log));
     const listed = z.array(z.object({ file: z.string() })).parse(JSON.parse(readFileSync(listing, "utf8")))
       .map(({ file }) => relative(root, file).replaceAll("\\", "/"));
     const selected = selectPcFiles(listed, patterns.map(pattern => isAbsolute(pattern) ? relative(root, pattern) : pattern.replace(/^\.\//u, "")));
@@ -145,9 +197,9 @@ async function mac(patterns: string[]): Promise<number> {
     }
     const files = pcSyncFiles(git(["ls-files", "--cached", "--others", "--exclude-standard", "-z"]).split("\0").filter(file => file && existsSync(join(root, file))));
     writeFileSync(join(run, "sync-files"), files.join("\0") + "\0");
-    writeFileSync(join(run, "request.json"), JSON.stringify({ files: selected.files, tracked: Buffer.from(git(["ls-files", "--stage", "-z"])).toString("base64") }));
+    writeFileSync(join(run, "request.json"), JSON.stringify({ runId, files: selected.files, tracked: Buffer.from(git(["ls-files", "--stage", "-z"])).toString("base64") }));
     const sshArgs = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3"];
-    const child = spawn("ssh", [...sshArgs, host, `bash -c ${quote(leaseScript)}`], { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn("ssh", [...sshArgs, host, `bash -c ${quote(leaseScript)} -- ${quote(runId)}`], { stdio: ["pipe", "pipe", "pipe"] });
     const closed = new Promise<number>((resolveExit, reject) => {
       child.once("error", reject);
       child.once("close", code => resolveExit(code ?? 1));
@@ -155,15 +207,23 @@ async function mac(patterns: string[]): Promise<number> {
     const lines = createInterface({ input: child.stdout });
     const ready = new Promise<string>(resolveSlot => lines.on("line", line => {
       if (line.startsWith("RELAY_PC_SLOT=")) resolveSlot(line.slice("RELAY_PC_SLOT=".length));
+      try {
+        const timing = readPcTiming(line, runId);
+        if (timing) record(timing);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        result.timingErrors.push(message);
+        process.stderr.write(`test:pc telemetry: ${message}\n`);
+      }
     }));
     child.stdout.on("data", (chunk: Buffer) => { process.stdout.write(chunk); appendFileSync(log, chunk); });
     child.stderr.on("data", (chunk: Buffer) => { process.stderr.write(chunk); appendFileSync(log, chunk); });
     try {
-      const slot = await Promise.race([ready, closed.then(code => { throw new Error(`SSH exited ${code} before acquiring a slot`); })]);
+      const slot = await measurePcPhase("admission", record, () => Promise.race([ready, closed.then(code => { throw new Error(`SSH exited ${code} before acquiring a slot`); })]));
       if (!/^\/home\/[a-zA-Z0-9_.-]+\/\.cache\/relay-test-pc\/slot-\d+$/u.test(slot)) throw new Error("Unexpected remote slot path");
       result.slot = slot;
-      await checked("rsync", ["-rlpt", "--safe-links", "--from0", `--files-from=${join(run, "sync-files")}`, "-e", "ssh " + sshArgs.join(" "), root + "/", `${host}:${slot}/work/`], root, log);
-      await checked("rsync", ["-t", "-e", "ssh " + sshArgs.join(" "), join(run, "request.json"), `${host}:${slot}/request.json`], root, log);
+      await measurePcPhase("source-sync", record, () => checked("rsync", ["-rlpt", "--safe-links", "--from0", `--files-from=${join(run, "sync-files")}`, "-e", "ssh " + sshArgs.join(" "), root + "/", `${host}:${slot}/work/`], root, log));
+      await measurePcPhase("request-sync", record, () => checked("rsync", ["-t", "-e", "ssh " + sshArgs.join(" "), join(run, "request.json"), `${host}:${slot}/request.json`], root, log));
       child.stdin.end("synced\n");
       result.exitCode = await closed;
       return result.exitCode;
