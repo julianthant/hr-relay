@@ -656,6 +656,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   WORKBOOK_OPERATION_CONFLICT: catalogEntry("This workbook operation ID was already used with different input.", EmptyParametersSchema),
+  WORKBOOK_ROW_CHOICE_UNAVAILABLE: catalogEntry("No matching row is available in this run's captured worksheets. Review the workbook before choosing again.", EmptyParametersSchema),
   WORKBOOK_REVISION_UNAVAILABLE: catalogEntry("This saved workbook revision cannot be reconstructed from its retained evidence.", EmptyParametersSchema),
   WORKBOOK_SYNC_LINK_REQUIRED: catalogEntry("Link a SharePoint workbook before syncing.", EmptyParametersSchema),
   WORKBOOK_SYNC_CONTEXT_CHANGED: catalogEntry("The profile, settings or credentials changed during Sync. Start a new Sync command.", EmptyParametersSchema),

@@ -822,7 +822,7 @@ const WORKBOOK_VALUE_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrig
 ];
 const LIBRARY_TYPE_ORIGINS = ['id', 'name', 'keyFieldId', 'fields[]', 'defaultWorkbookId'] as const;
 const LIBRARY_METADATA_ORIGINS = ['typeId'] as const;
-const LIBRARY_CHANGE_ORIGINS = ['key', 'values', 'sheetId', 'rowId', 'selection.sheetId', 'selection.rowId', 'name', 'metadata.typeId'] as const;
+const LIBRARY_CHANGE_ORIGINS = ['key', 'values', 'sheetId', 'rowId', 'selection.sheetId', 'selection.rowId', 'name', 'metadata.typeId', 'resolves.operationId'] as const;
 const LIBRARY_RECEIPT_ORIGINS = ['operationId', 'libraryId', 'key', 'candidates[].sheetId', 'candidates[].rowId',
   'changes[].sheetId', 'changes[].rowId', 'changes[].fieldId', 'changes[].key', 'changes[].oldValue', 'changes[].newValue',
   'source.runId', 'source.syncId'] as const;
@@ -890,6 +890,27 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/ocr-command-result", path: "request.reason", origin: "operator-authored" },
   { surface: "wire/ocr-command-result", path: "result.entries", origin: "protected-value" },
   { surface: "wire/ocr-command-result", path: "result.message", origin: "captured-hr-value" },
+    ...[
+      ['wire/action-descriptor', ''],
+      ['wire/dashboard-day', 'queueSurfaces[].actions[].'],
+      ['wire/queue-surface', 'actions[].'],
+      ['wire/stream-envelope', 'payload.queueSurfaces[].actions[].'],
+      ['wire/stream-envelope', 'payload.replacement.actions[].'],
+      ['wire/run-logs-stream', 'envelope.payload.queueSurfaces[].actions[].'],
+      ['wire/run-logs-stream', 'envelope.payload.replacement.actions[].'],
+      ['wire/run-detail-section', 'payload.actions[].'],
+      ['wire/run-detail-section', 'payload.value.actions[].'],
+      ['wire/run-detail-section', 'payload.value.recovery.retry.'],
+      ['wire/run-detail-section', 'payload.operations[].resolution.action.'],
+    ].flatMap(([surface, prefix]) => ['libraryId', 'operationId'].map(field => ({ surface, path: `${prefix}workbookTarget.${field}`, origin: 'repository-authored' as const }))),
+    ...LIBRARY_RECEIPT_ORIGINS.map(path => ({ surface: 'wire/run-detail-section', path: `payload.operations[].receipt.${path}`, origin: 'captured-hr-value' as const })),
+    ...['native.spanPath', 'resolution.action.confirm.body', 'resolution.action.confirm.confirmLabel', 'resolution.action.confirm.title',
+      'resolution.action.detail', 'resolution.action.key', 'resolution.action.label', 'resolution.action.navigate.runId',
+      'resolution.target.libraryId', 'resolution.target.operationId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.operations[].${path}`, origin: 'repository-authored' as const })),
+    ...['label', 'sheetId', 'rowId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.operations[].resolution.candidates[].${path}`, origin: 'captured-hr-value' as const })),
+    ...['fields[]', 'keys[]', 'libraryId', 'typeId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.value.recovery.request.workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
+    ...['name', 'sheetId'].map(path => ({ surface: 'wire/workbook-reference', path: `worksheets[].${path}`, origin: 'captured-hr-value' as const })),
+    ...['action', 'displayedName'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.ucpathFindings.findings.rows[].${path}`, origin: 'captured-hr-value' as const })),
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.attemptHistory[].endedAt.reason", "origin": "repository-authored"},
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.dryRunPreview.stages[].detail", "origin": "repository-authored"},
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.dryRunPreview.stages[].label", "origin": "repository-authored"},
@@ -2062,6 +2083,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/primitives.ts", state: "audited", reason: "shared wire primitives are carried by the surfaces that embed them" },
     { module: "src/models/dashboard/projection.ts", state: "audited", reason: "the queue row and day projection are the operator's main surface" },
     { module: "src/models/dashboard/run-detail.ts", state: "audited", reason: "run detail and its sections carry everything one run touched" },
+    { module: "src/models/dashboard/ucpath-findings.ts", state: "no-surface", reason: "Retained findings are audited through their containing run-detail section on operator loopback." },
     { module: "src/models/dashboard/calendar.ts", state: "audited", reason: "bounded dates, counts and generation only; no run or person data" },
     { module: "src/models/dashboard/activity-selection.ts", state: "audited", reason: "The served Activity report embeds a signed range/generation/digest token; strings are authored tokens only." },
     { module: "src/models/dashboard/search-calendar.ts", state: "audited", reason: "Pure local-day arithmetic with no new wire or stored values." },

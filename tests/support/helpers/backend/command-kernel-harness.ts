@@ -28,6 +28,7 @@ import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { AuthorityDatabase, createCredentialStore, type AuthorityRepositories } from "../synthetic-storage-admission.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { planStart } from "../../../../src/backend/runs/start/plan.js";
+import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
 import { CommandRequestSchema, type CommandRequest } from "../../../../src/rules/commands/commands.js";
 
 type RepositoryWrap = (repositories: AuthorityRepositories) => AuthorityRepositories;
@@ -228,6 +229,7 @@ export function createCommandKernelTestWorld(profileFixture: () => Promise<Bound
         resolve: (workflowId) => descriptors.find((descriptor) => String(descriptor.id) === workflowId),
       },
       writeResolution: requeueingWriteResolution(writeCalls, database, clock),
+      workbookRows: createRunWorkbookService({ database, clock }),
       workerRuntime: acceptingWorkerRuntime(workerCalls, database),
       settings: settingsOverride ?? createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, { primaryDisplay: null }, clock), credentials),
     });

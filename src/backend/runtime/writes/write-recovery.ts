@@ -1,4 +1,6 @@
-import { executeRecoveryProbe, RecoveryActivityError } from "./recovery-activity.js";
+import { executeRecoveryFindings, executeRecoveryProbe, RecoveryActivityError } from "./recovery-activity.js";
+import { UcpathReadTransactionFindings } from "../../../models/systems/ucpath/read-transaction-findings.js";
+import { UcpathTerminationTargetSchema } from "../../../models/ui/ucpath-smart-hr-termination.js";
 import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
 import { WorkerSessionClosureUnprovedError } from "../workers/worker-sessions.js";
 import { BrowserSessionClosureUnprovedError } from "../../../workflow-kit/session.js";
@@ -19,6 +21,7 @@ import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import {
   ActorIdSchema,
   IsoInstantSchema,
+  PositiveIntSchema,
   WriteIntentIdSchema,
 } from "../../../rules/identity/ids.js";
 import type { Fingerprint, TaskId } from "../../../rules/identity/ids.js";
@@ -102,25 +105,42 @@ export async function checkParkedWrite(input: Readonly<{
   const supported = (intent.taskId === "ucpath/create-termination" && probeId === "ucpath/match-existing-termination")
     || (intent.taskId === "ucpath/delete-pending-terminations" && probeId === "ucpath/match-pending-terminations")
     || (intent.taskId === "kuali/save-separation-finalization" && probeId === "kuali/match-separation-finalization");
-  const task = input.probe.stores.stores.flatMap(store => Object.values(store.tasks)).find(value => value.contract.id === probeId);
+  const findingsTarget = intent.taskId === "ucpath/create-termination" ? UcpathTerminationTargetSchema.parse(commitInput) : undefined;
+  const readTaskId = findingsTarget === undefined ? probeId : UcpathReadTransactionFindings.id;
+  const readInput = findingsTarget === undefined ? commitInput : { emplId: findingsTarget.emplId, expectedName: findingsTarget.expectedName };
+  const task = input.probe.stores.stores.flatMap(store => Object.values(store.tasks)).find(value => value.contract.id === readTaskId);
   const instance = run.envelope.resolvedInstance[intent.system];
   let evidence: Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>["evidence"];
+  let findingsIdentity: Extract<WorkerEffectAcknowledgement, { kind: "parked-write-check" }>["findingsIdentity"];
+  let observedTaskId = probeId;
   let state: ParkedWriteCheckResult["state"] = "unavailable";
   let code: ParkedWriteCheckResult["code"] = "PARKED_CHECK_UNAVAILABLE";
   if (supported && intent.bindingProof.kind === "subject-match" && instance !== undefined
     && task?.contract.effect === "read" && task.impl.sessions.length === 1 && task.impl.sessions[0]?.access === "read"
-    && task.impl.sessions[0].system === intent.system && task.contract.input.safeParse(commitInput).success) {
+    && task.impl.sessions[0].system === intent.system && task.contract.input.safeParse(readInput).success) {
     try {
       if (input.descriptor === undefined) throw new WorkerControlRefusal("PARKED_CHECK_UNAVAILABLE");
-      const verdict = await executeRecoveryProbe({ operation: "parked-write-check", repositories: input.repositories,
+      const activity = { operation: "parked-write-check" as const, repositories: input.repositories,
         run, intent, node, descriptor: input.descriptor, commitInput, signal: input.signal,
         probe: { ...input.probe, sessions: input.sessions }, sessions: input.sessions,
-        configureRun: () => input.configureRun(run) });
-      input.signal.throwIfAborted();
-      evidence = { schemaHash: deriveSchemaHash(task.contract.output, "output"), value: JsonValueSchema.parse(verdict) };
-      state = verdict.state === "present" ? "ambiguous" : verdict.state;
-      code = verdict.state === "present" ? "PARKED_CHECK_OCCURRENCE_UNPROVED"
-        : verdict.state === "absent" ? "PARKED_CHECK_ABSENT" : verdict.state === "ambiguous" ? "PARKED_CHECK_AMBIGUOUS" : "PARKED_CHECK_UNKNOWN";
+        configureRun: () => input.configureRun(run) };
+      if (intent.taskId === "ucpath/create-termination") {
+        const implFingerprint = resolveTaskImplFingerprint(BUILD_MANIFEST, UcpathReadTransactionFindings.id);
+        const findings = await executeRecoveryFindings(activity);
+        evidence = { schemaHash: deriveSchemaHash(UcpathReadTransactionFindings.output, "output"), value: JsonValueSchema.parse(findings.output) };
+        findingsIdentity = { activityId: findings.activityId, descriptorVersion: run.envelope.descriptorVersion,
+          contractFingerprint: run.envelope.contractFingerprint, claimGeneration: PositiveIntSchema.parse(run.claimGeneration),
+          implFingerprint };
+        observedTaskId = UcpathReadTransactionFindings.id;
+        state = "unknown"; code = "PARKED_CHECK_UNKNOWN";
+      } else {
+        const verdict = await executeRecoveryProbe(activity);
+        input.signal.throwIfAborted();
+        evidence = { schemaHash: deriveSchemaHash(task.contract.output, "output"), value: JsonValueSchema.parse(verdict) };
+        state = verdict.state === "present" ? "ambiguous" : verdict.state;
+        code = verdict.state === "present" ? "PARKED_CHECK_OCCURRENCE_UNPROVED"
+          : verdict.state === "absent" ? "PARKED_CHECK_ABSENT" : verdict.state === "ambiguous" ? "PARKED_CHECK_AMBIGUOUS" : "PARKED_CHECK_UNKNOWN";
+      }
     } catch (error) {
       if (error instanceof RecoveryActivityError || error instanceof WorkerSessionClosureUnprovedError
         || error instanceof BrowserSessionClosureUnprovedError || error instanceof DuoCeremonyReleaseFailedError) throw error;
@@ -132,9 +152,11 @@ export async function checkParkedWrite(input: Readonly<{
   requireParkedWriteCheckTarget(input.repositories, input.target, input.descriptor);
   const result = ParkedWriteCheckResultSchema.parse({ commandId: input.commandId, requestedBy: input.requestedBy, target: input.target,
     observedAt: input.probe.clock.now().toISOString(), held: true, provenance: evidence === undefined ? "not-observed" : "system-probe", state, code,
-    ...(evidence === undefined ? {} : { probeTaskId: probeId }),
-    evidenceDigest: sha256Hex(canonicalJsonStringify({ target: input.target, state, code, evidence: evidence ?? null })) });
-  return { kind: "parked-write-check", result, ...(evidence === undefined ? {} : { evidence }) };
+    ...(evidence === undefined ? {} : { probeTaskId: observedTaskId }),
+    evidenceDigest: sha256Hex(canonicalJsonStringify({ target: input.target, state, code, evidence: evidence ?? null,
+      ...(findingsIdentity === undefined ? {} : { findingsIdentity }) })) });
+  return { kind: "parked-write-check", result, ...(evidence === undefined ? {} : { evidence }),
+    ...(findingsIdentity === undefined ? {} : { findingsIdentity }) };
 }
 
 /* ── the typed recovery decision ─────────────────────────────────────────── */

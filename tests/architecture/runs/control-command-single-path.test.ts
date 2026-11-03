@@ -475,6 +475,9 @@ const ASSISTANT_PREFERENCE_PROFILE = "11111111-1111-4111-8111-111111111111";
 
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
   ...COMMAND_FIXTURES,
+  { commandId: "67676767-6767-4676-8676-676767676767", requestedAt: NOW, requestedBy: "local-operator", source: "run-detail",
+    family: "run", type: "resolve-workbook-row", target: { runId: UUID_2, expectedVersion: 1, libraryId: "workbook-fixture",
+      operationId: "operation-fixture", receiptDigest: HASH_B, workbookVersion: 1 }, payload: { sheetId: "sheet-1", rowId: "row-1" } },
   ...["remove-worker", "retry-worker"].map((type, index) => ({
     commandId: index === 0 ? "10101010-1010-4010-8010-101010101010" : "20202020-2020-4020-8020-202020202020",
     requestedAt: NOW, requestedBy: "local-operator", source: "dashboard", family: "worker-browser", type,
@@ -549,7 +552,7 @@ const EXPECTED_ACTIVE = {
     "cancel", "bump", "rename",
 
     "delete",
-    "recheck-write", "resolve-write-absent",
+    "recheck-write", "resolve-write-absent", "resolve-workbook-row",
 
   ],
   gate: ["resolve-gate"],

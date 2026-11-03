@@ -28,6 +28,7 @@ import { selectRunSettings } from "../../../runs/settings/run-settings.js";
 import { createWorkbookLibraryAdapter } from "../../../processing/providers/workbook-library-adapter.js";
 import { createOcrCheckpointPublication, admitOcrRunResources, OcrPublicationRefusedError } from "../../../runs/lifecycle/ocr-checkpoint-publication.js";
 import type { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
+import { createRunWorkbookService } from "../../../runs/workbooks.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
@@ -46,6 +47,7 @@ export function createRunResourcesFactory(input:Readonly<{
 }>) {
  if(input.sessionFactory!==undefined&&input.createSessionFactory!==undefined)throw new Error("browser-session-factory-owner-conflict");
  const profiles=createBrowserProfileAuthority(input);
+ const runWorkbooks=createRunWorkbookService({database:input.database,clock:input.clock});
  const nominatim=input.nominatim;
  const compose=(config:Config)=>{
   input.assertBrowserRoot(config.paths.browserProfileRoot);
@@ -76,9 +78,10 @@ export function createRunResourcesFactory(input:Readonly<{
    if(sha256Hex(canonicalJsonStringify(snapshot.config))!==snapshot.fingerprint)throw new Error("run-resources-retained-snapshot-unavailable");
    const previous=cache.get(snapshot.fingerprint);
    const baseline=previous??compose(StoredConfigSchema.parse(snapshot.config));cache.set(snapshot.fingerprint,baseline);
-   const key=`${run.envelope.runId}:${run.claimGeneration}:${snapshot.fingerprint}`;
+   const key=`${run.envelope.runId}:${run.envelope.attempt}:${run.claimGeneration}:${snapshot.fingerprint}`;
    const resources=runCache.get(key)??Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
-    "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock}),
+    "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock,
+      references:{runId:run.envelope.runId,write:command=>runWorkbooks.write(run,command)}}),
    })},...(input.runReader===undefined?{}:{publishCheckpoint:createOcrCheckpointPublication(input.runReader,run)})});
    if(["ocr","ocr-page"].includes(run.envelope.workflow)&&resources.publishCheckpoint===undefined)throw new OcrPublicationRefusedError();
    runCache.set(key,resources);

@@ -47,6 +47,9 @@ export const DebugEventSchema = z.strictObject({
 export type DebugEvent = z.infer<typeof DebugEventSchema>;
 
 export const TimelinePayloadSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("workbook-write-recorded"), runId: RunIdSchema, workflow: WorkflowIdSchema,
+    attempt: PositiveIntSchema, traceId: TraceIdSchema, claimGeneration: PositiveIntSchema, libraryId: z.string().min(1),
+    operationId: z.string().min(1), receiptDigest: FingerprintSchema, at: IsoInstantSchema, resolvedBy: CommandIdSchema.optional() }),
   RecoveryActivitySchema.extend({ kind: z.literal("recovery-activity-started") }),
   RecoveryActivitySchema.extend({ kind: z.literal("recovery-activity-ended"), endedAt: IsoInstantSchema }),
   z.strictObject({

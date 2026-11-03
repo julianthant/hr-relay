@@ -38,6 +38,8 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 
 `src/backend/systems/ucpath/driver/transaction-findings-operation.ts` owns the shared Smart HR result-list/detail read and its complete-only operational projection. `src/models/ui/ucpath-transaction-findings.ts` owns findings, displayed Requested time and population accounting. The UCPath UI registry keeps candidate findings recipes outside its verified registry until live match counts and visibility are confirmed.
 
+`src/backend/runs/queries/run-detail/ucpath-findings.ts` verifies retained registered-task findings, their held-check acknowledgement and closed recovery activity for a parked termination. `runtime/writes/recovery-activity.ts` runs that read within the existing bounded session/capture owner. `src/models/dashboard/ucpath-findings.ts` owns the wire shape; `src/dashboard/surfaces/run-detail/logs/ucpath-found-model.ts` maps it into the existing table. Pending selector provenance grants no resolution authority.
+
 `src/models/run/display-name.ts` owns the browser-safe run display-name schema; command and run records share that leaf.
 
 ## Source tree
@@ -95,7 +97,8 @@ Paths in this table are relative to `src/backend/`.
 | `systems/sharepoint/driver/interpreter.ts` | Canonical workbook URLs, account authentication and GUID-pinned workbook reads through an owned command browser. The workbook composition injects its bounded browser transport. |
 | `systems/browser-shared/command-session.ts` | Command input, browser scope and callback contracts shared by runtime acquisition and workbook composition. The runtime retains native custody and private Duo cleanup handles. |
 | `processing/providers/sharepoint-browser-transport.ts` | Serializable same-origin Fetch streaming for SharePoint JSON proofs and workbook bytes, with exact response checks, byte bounds and reader cleanup. |
-| `workbooks/workflow-workbook-service.ts` | Creates one new table workbook per run through the admitted library repository. The `workbooks.library` provider is composed in `app/composition/worker/run-resources.ts`; the original saved record supplies replay proof. |
+| `workbooks/workflow-workbook-service.ts` | Creates a table workbook or patches a captured reference through the admitted library provider, composed in `app/composition/worker/run-resources.ts`. Original records and operation receipts supply replay proof. |
+| `runs/workbooks.ts` | Authenticates captured workbook references, run-bound patches, native receipt events, Logs row choices and live-revalidated resolution commands. |
 
 ### Dashboard and shared packages
 
@@ -117,6 +120,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/events/` | Timeline, confirmed action, declared step result, and confirmation-proof schemas. |
 | `src/models/trust/` | Failure, diagnostic, receipt, and scenario schemas. |
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |
+| `src/rules/identity/stable-uuid.ts` | Browser-safe deterministic UUID derivation shared with the runtime `identifiers.ts` entry; native and browser callers use the same digest and UUID bits. |
 | `src/rules/` | Pure decisions and validation, including identity, clocks, normalization, ledger derivation, redaction, and write safety. |
 | `src/workflow-kit/` | Root-level TypeScript modules for task and workflow declaration, flow construction, compilation, sessions, providers, artifacts, and capabilities. |
 | `src/workflow-kit/workflow-definition.ts` | `defineWorkflow` and `compileWorkflow`. |
@@ -155,7 +159,7 @@ and proofs through the production registries. Legal/lived names
 arrive through the declared run-start roster snapshot input. I-9 profile creation and UCPath hire
 submission remain unimplemented writes; roster access remains a shared Spreadsheets dependency.
 
-`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Each UCPath call has a typed workflow-owned task call under `tasks/`; all three timeline groups have retained proofs under `steps/<key>/step.ts` using the same typed authors. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. The shared task creates a new Spreadsheets-library workbook per run; linked writes and SharePoint imports are not exposed.
+`src/workflows/i9-check/` is child-only: it reads UCPath for an OCR-derived person and returns a retention row. It has no public start surface until its OCR parent is served. Each UCPath call has a typed workflow-owned task call under `tasks/`; all three timeline groups have retained proofs under `steps/<key>/step.ts` using the same typed authors. Shared workbook publication lives outside this workflow; its task/command contract is `src/models/processing/workbooks/read-result.ts`. The shared task creates a new Spreadsheets-library workbook per run. Generic captured-reference writes require an explicit planning declaration; current workflows declare none. SharePoint imports remain unexposed.
 `src/workflows/i9-lookup/workflow.ts` is child-only; Onboarding declares its parent edge in the registered read-only definition. It uses
 the I-9 system store, then retains its typed result through `tasks/read-result.ts` in the workflow
 store. Its one `lookup` timeline checkpoint groups both tasks. The registered harness at

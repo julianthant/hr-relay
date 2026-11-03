@@ -60,6 +60,7 @@ afterAll(async () => {
 const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
 
 const SECTION_DESCRIPTOR_PRODUCER = "src/backend/runs/queries/run-detail/gate-park.ts";
+const WORKBOOK_DESCRIPTOR_PRODUCER = "src/backend/runs/workbooks.ts";
 const API_ROUTES_FILE = "src/backend/transports/http/routes/api.ts";
 const CLIENT_ROOTS = ["src/dashboard/client"];
 
@@ -256,7 +257,6 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "resume-worker": "worker-browser commands target the worker pool, not a run row",
   "refresh-browser": "worker-browser commands target the worker pool, not a run row",
   "reopen-browser": "worker-browser commands target the worker pool, not a run row",
-  "check-parked-write": "the parked-write probe is a worker-browser command bound to an idle worker lease; run rows project recheck-write and resolve-write-absent, not this verb",
   "apply-settings": "the Settings surface owns the whole payload; a row control cannot express it",
   "apply-protected-settings": "the Settings surface owns its write-only protected payload; row actions cannot express it",
   "inspect-intake": "the intake surface drives the whole session; its targets are intake sessions, not runs",
@@ -376,6 +376,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     const projected = new Set<string>([
       ...projectedRowCommands(),
       ...projectedCommandKeys(readFileSync(join(REPO_ROOT, SECTION_DESCRIPTOR_PRODUCER), "utf8")),
+      ...projectedCommandKeys(readFileSync(join(REPO_ROOT, WORKBOOK_DESCRIPTOR_PRODUCER), "utf8")),
     ]);
     assert.ok(projected.size > 3, "the descriptor-producer read under-ran; the scan or the row sweep is stale");
     for (const key of RETAINED_UNPROJECTED_ACTIONS) {
@@ -432,6 +433,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     const projected = new Set<string>([
       ...projectedRowCommands(),
       ...projectedCommandKeys(readFileSync(join(REPO_ROOT, SECTION_DESCRIPTOR_PRODUCER), "utf8")),
+      ...projectedCommandKeys(readFileSync(join(REPO_ROOT, WORKBOOK_DESCRIPTOR_PRODUCER), "utf8")),
     ]);
     assert.ok(projected.has("rename"), "the readers missed a verb the row demonstrably serves");
     assert.ok(!projected.has("unhide"));

@@ -243,6 +243,12 @@ schema and send parsed output. The raw-draft fingerprint invalidates plans even 
 edits; each async settlement retains its dispatch fingerprint. Confirmed cancellation creates no
 new run. Rerun creates a new attempt with explicit lineage, never overwrites the original.
 
+Runs with captured workbook references advertise the lazy `workbook-writes` section. Native receipt
+events order its existing Logs decision rows. Row choices carry the original receipt digest and live
+workbook revision; confirmations send only worksheet/row identity through `resolve-workbook-row`.
+Readback requires both the resolved original receipt and the applied command-derived operation.
+Refused live revalidation refreshes the served choices without changing the retained write values.
+
 Served Run and Rerun have no worker choice in the form, request, response or retained start plan. Starting
 uses the workflow's live workers and starts exactly one when none is live. Only Sessions Add workers
 adds more. The start command consumes the accepted plan without a worker field.
