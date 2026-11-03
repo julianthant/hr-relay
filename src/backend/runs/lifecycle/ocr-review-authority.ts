@@ -22,21 +22,26 @@ import { BUILD_MANIFEST, resolveWorkflowFingerprint } from "../../../workflow-ki
 function same(left: unknown, right: unknown): boolean { return canonicalJsonStringify(left) === canonicalJsonStringify(right); }
 export class OcrReviewRefusedError extends Error {
   readonly code = "OCR_REVIEW_REFUSED";
-  constructor() { super("OCR_REVIEW_REFUSED"); this.name = "OcrReviewRefusedError"; }
+  constructor(options?: ErrorOptions) { super("OCR_REVIEW_REFUSED", options); this.name = "OcrReviewRefusedError"; }
 }
 export function authenticateOcrOperator(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, run: RunRecord): "local-operator" {
-  let root = run;
-  const visited = new Set<string>();
-  while (root.envelope.parent !== undefined) {
-    if (visited.size >= 16 || visited.has(root.envelope.runId)) throw new OcrReviewRefusedError();
-    visited.add(root.envelope.runId);
-    const parent = reader.read(root.envelope.parent.runId);
-    if (parent.state !== "present" || parent.disposition !== "live") throw new OcrReviewRefusedError();
-    root = parent.run;
+  try {
+    let root = run;
+    const visited = new Set<string>();
+    while (root.envelope.parent !== undefined) {
+      if (visited.size >= 16 || visited.has(root.envelope.runId)) throw new OcrReviewRefusedError();
+      visited.add(root.envelope.runId);
+      const parent = reader.read(root.envelope.parent.runId);
+      if (parent.state !== "present" || parent.disposition !== "live") throw new OcrReviewRefusedError();
+      root = parent.run;
+    }
+    if (!authenticateDescendantHome(repositories, run, root.envelope.workflow)
+      || authenticateRootRun(repositories, root).command.requestedBy !== "local-operator") throw new OcrReviewRefusedError();
+    return "local-operator";
+  } catch (cause) {
+    if (cause instanceof OcrReviewRefusedError) throw cause;
+    throw new OcrReviewRefusedError({ cause });
   }
-  if (!authenticateDescendantHome(repositories, run, root.envelope.workflow)
-    || authenticateRootRun(repositories, root).command.requestedBy !== "local-operator") throw new OcrReviewRefusedError();
-  return "local-operator";
 }
 
 export function publishOcrReview(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,

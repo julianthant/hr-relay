@@ -4,12 +4,65 @@ import type { RunRecord } from "../../../models/run/record.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
+import { deriveGateResultCheckpointFingerprint } from "../../../models/workflow/gates.js";
 import type { AuthorityRepositories } from "./authority-database.js";
 import { validateNativeLifecycleRequest } from "./native-lifecycle-request.js";
-import { CanonicalCreateRunRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalRecoverRunRequestSchema, CanonicalTransitionRequestSchema } from "./run-store-contracts.js";
+import { CanonicalCreateRunRequestSchema, CanonicalRetrySourceRequestSchema, CanonicalRecoverRunRequestSchema, CanonicalTransitionRequestSchema, CanonicalWorkerTransitionRequestSchema } from "./run-store-contracts.js";
 
 function same(left: unknown, right: unknown): boolean {
   return canonicalJsonStringify(left ?? null) === canonicalJsonStringify(right ?? null);
+}
+
+function authenticateRunGateResume(repositories: AuthorityRepositories, run: RunRecord, actorId: string): void {
+  if (run.envelope.startAt === undefined) return;
+  const gates = repositories.gateResults.listByRun(run.envelope.runId)
+    .filter(gate => gate.expectedVersion < run.version).toSorted((left, right) => right.expectedVersion - left.expectedVersion);
+  const gate = gates[0];
+  if (gate === undefined || !("commandId" in gate) || gate.runId !== run.envelope.runId
+    || gates[1]?.expectedVersion === gate.expectedVersion || String(gate.nodeId) !== String(gate.gateId) || gate.resolvedBy !== actorId
+    || gate.checkpointFingerprint !== deriveGateResultCheckpointFingerprint(gate.result)) {
+    throw new Error("delegation-gate-resume-authority-unavailable");
+  }
+  const command = repositories.commands.get(gate.commandId);
+  const audit = repositories.commandAudits.findByCommand(gate.commandId);
+  if (command?.family !== "gate" || command.type !== "resolve-gate" || command.commandId !== gate.commandId
+    || command.source !== "dashboard" || command.requestedBy !== actorId || command.requestedBy !== gate.resolvedBy
+    || command.target.runId !== run.envelope.runId || command.target.gateId !== gate.gateId
+    || command.target.expectedVersion !== gate.expectedVersion || !same(command.payload.result, gate.result)
+    || audit?.result.state !== "applied" || audit.result.commandId !== command.commandId || !same(audit.request, command)
+    || audit.completedAt !== gate.resolvedAt
+    || !audit.versionChanges.some(change => change.target.family === "gate" && change.target.runId === run.envelope.runId
+      && change.target.gateId === gate.gateId && Number(change.before) === Number(gate.expectedVersion) && change.after === gate.expectedVersion + 1)
+    || !audit.result.affectedTargets.some(target => target.family === "run" && target.runId === run.envelope.runId)) {
+    throw new Error("delegation-gate-resume-authority-unavailable");
+  }
+  const resumeId = lifecycleCommandId("operator-gate", command.commandId);
+  const resumed = repositories.lifecycleJournal.getCommand(resumeId), settled = repositories.lifecycleJournal.findAuditByCommand(resumeId);
+  if (resumed === undefined || !("kind" in resumed) || resumed.kind !== "run-lifecycle" || resumed.operation !== "transition"
+    || settled === undefined || !("kind" in settled) || settled.kind !== "run-lifecycle" || !same(settled.request, resumed)
+    || settled.result.kind !== "run" || settled.result.runId !== run.envelope.runId
+    || settled.result.appliedVersion !== gate.expectedVersion + 1 || settled.completedAt < gate.resolvedAt) {
+    throw new Error("delegation-gate-resume-authority-unavailable");
+  }
+  validateNativeLifecycleRequest(resumed);
+  if (!same(CanonicalTransitionRequestSchema.parse(resumed.request), { commandId: resumeId, runId: run.envelope.runId,
+    expectedVersion: gate.expectedVersion, lifecycle: { state: "queued" } })) throw new Error("delegation-gate-resume-authority-unavailable");
+  const parked = repositories.lifecycleJournal.findGatePark(run.envelope.runId, gate.gateId, gate.expectedVersion);
+  const parkedAudit = parked === undefined ? undefined : repositories.lifecycleJournal.findAuditByCommand(parked.commandId);
+  if (parked === undefined || parked.operation !== "worker-transition" || parkedAudit === undefined || !("kind" in parkedAudit)
+    || parkedAudit.kind !== "run-lifecycle" || !same(parkedAudit.request, parked) || parkedAudit.result.kind !== "run"
+    || parkedAudit.result.runId !== run.envelope.runId || parkedAudit.result.appliedVersion > gate.expectedVersion
+    || parkedAudit.completedAt > gate.resolvedAt) {
+    throw new Error("delegation-gate-resume-authority-unavailable");
+  }
+  validateNativeLifecycleRequest(parked);
+  const park = CanonicalWorkerTransitionRequestSchema.parse(parked.request);
+  if (park.runId !== run.envelope.runId || park.lifecycle.state !== "parked-gate" || park.lifecycle.gateId !== gate.gateId
+    || park.lifecycle.resumeAt !== run.envelope.startAt || park.claim.claimGeneration > run.claimGeneration
+    || park.commandId !== lifecycleCommandId("executor-transition", { runId: run.envelope.runId,
+      generation: park.claim.claimGeneration, version: parkedAudit.result.appliedVersion - 1 })) {
+    throw new Error("delegation-gate-resume-authority-unavailable");
+  }
 }
 
 export function authenticateRunPriority(repositories: AuthorityRepositories, run: RunRecord,
@@ -99,10 +152,11 @@ export function authenticateStartPlanRun(repositories: AuthorityRepositories, ru
     || !same(request.input, valueFreeProtectedData(run.input, retainedRunProtectedBindings(run)))
     || request.matchKey !== entry.matchKey || request.retryOf !== expectedRetry
     || envelope.retryOf !== expectedRetry || request.appVersion !== run.appVersion
-    || envelope.startAt !== undefined || envelope.injected !== undefined || envelope.freshnessOverride !== undefined) {
+    || envelope.injected !== undefined || envelope.freshnessOverride !== undefined) {
     throw new Error("delegation-root-create-binding-mismatch");
   }
   authenticateRunPriority(repositories, run, request.priority, command.requestedBy);
+  authenticateRunGateResume(repositories, run, command.requestedBy);
   if (request.priority !== plan.priority) throw new Error("delegation-root-create-binding-mismatch");
   const fields = ["workflow", "descriptorVersion", "contractFingerprint", "operationDisplayCapability", "operationDisplaySnapshot",
     "requestedInstance", "resolvedInstance", "configFingerprint", "configSnapshotId", "shape", "dryRun",
@@ -160,13 +214,14 @@ export function authenticateRootRun(repositories: AuthorityRepositories, candida
       || fields.some(field => !same(run.envelope[field], previous.envelope[field]))
       || !same(valueFreeProtectedData(run.input, retainedRunProtectedBindings(run)), valueFreeProtectedData(previous.input, retainedRunProtectedBindings(previous)))
       || !same(run.envelope.recovery, origin.operation === "restart" ? "restart-from-start" : undefined)
-      || run.envelope.startAt !== undefined || run.envelope.injected !== undefined || run.envelope.freshnessOverride !== undefined
+      || run.envelope.injected !== undefined || run.envelope.freshnessOverride !== undefined
       || run.envelope.sourceBound !== undefined || request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint
       || snapshot === undefined
       || snapshot.fingerprint !== run.envelope.configFingerprint || sha256Hex(canonicalJsonStringify(snapshot.config)) !== snapshot.fingerprint) {
       throw new Error("delegation-root-retry-binding-mismatch");
     }
     actors.push(source.requestedBy);
+    authenticateRunGateResume(repositories, run, source.requestedBy);
     current = previous;
   }
 }

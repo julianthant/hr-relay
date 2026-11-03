@@ -196,9 +196,87 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
     ], calls: ["repositories.commands.assertIdentity(request,parentCommandId)"] },
   ],
   "src/backend/storage/sqlite/delegation-root-authority.ts": [
+    {
+      "owner": "authenticateRunGateResume",
+      "id": "gate.commandId",
+      "guards": [
+        "gate===undefined",
+        "!(\"commandId\"ingate)",
+        "\"commandId\"ingate",
+        "gate.runId!==run.envelope.runId",
+        "gates[1]?.expectedVersion===gate.expectedVersion",
+        "String(gate.nodeId)!==String(gate.gateId)",
+        "gate.resolvedBy!==actorId",
+        "gate.checkpointFingerprint!==deriveGateResultCheckpointFingerprint(gate.result)",
+        "command?.family!==\"gate\"",
+        "command.type!==\"resolve-gate\"",
+        "command.commandId!==gate.commandId",
+        "command.source!==\"dashboard\"",
+        "command.requestedBy!==actorId",
+        "command.requestedBy!==gate.resolvedBy",
+        "command.target.runId!==run.envelope.runId",
+        "command.target.gateId!==gate.gateId",
+        "command.target.expectedVersion!==gate.expectedVersion",
+        "!same(command.payload.result,gate.result)",
+        "audit?.result.state!==\"applied\"",
+        "audit.result.commandId!==command.commandId",
+        "!same(audit.request,command)",
+        "audit.completedAt!==gate.resolvedAt",
+        "!audit.versionChanges.some(change=>change.target.family===\"gate\"&&change.target.runId===run.envelope.runId&&change.target.gateId===gate.gateId&&Number(change.before)===Number(gate.expectedVersion)&&change.after===gate.expectedVersion+1)",
+        "change.target.family===\"gate\"",
+        "change.target.runId===run.envelope.runId",
+        "change.target.gateId===gate.gateId",
+        "Number(change.before)===Number(gate.expectedVersion)",
+        "change.after===gate.expectedVersion+1",
+        "gate.expectedVersion+1",
+        "!audit.result.affectedTargets.some(target=>target.family===\"run\"&&target.runId===run.envelope.runId)",
+        "target.family===\"run\"",
+        "target.runId===run.envelope.runId",
+        "resumed===undefined",
+        "!(\"kind\"inresumed)",
+        "\"kind\"inresumed",
+        "resumed.kind!==\"run-lifecycle\"",
+        "resumed.operation!==\"transition\"",
+        "settled===undefined",
+        "!(\"kind\"insettled)",
+        "\"kind\"insettled",
+        "settled.kind!==\"run-lifecycle\"",
+        "!same(settled.request,resumed)",
+        "settled.result.kind!==\"run\"",
+        "settled.result.runId!==run.envelope.runId",
+        "settled.result.appliedVersion!==gate.expectedVersion+1",
+        "settled.completedAt<gate.resolvedAt",
+        "!same(CanonicalTransitionRequestSchema.parse(resumed.request),{commandId:resumeId,runId:run.envelope.runId,expectedVersion:gate.expectedVersion,lifecycle:{state:\"queued\"}})",
+        "parked===undefined",
+        "parked.operation!==\"worker-transition\"",
+        "parkedAudit===undefined",
+        "!(\"kind\"inparkedAudit)",
+        "\"kind\"inparkedAudit",
+        "parkedAudit.kind!==\"run-lifecycle\"",
+        "!same(parkedAudit.request,parked)",
+        "parkedAudit.result.kind!==\"run\"",
+        "parkedAudit.result.runId!==run.envelope.runId",
+        "parkedAudit.result.appliedVersion>gate.expectedVersion",
+        "parkedAudit.completedAt>gate.resolvedAt",
+        "park.runId!==run.envelope.runId",
+        "park.lifecycle.state!==\"parked-gate\"",
+        "park.lifecycle.gateId!==gate.gateId",
+        "park.lifecycle.resumeAt!==run.envelope.startAt",
+        "park.claim.claimGeneration>run.claimGeneration",
+        "park.commandId!==lifecycleCommandId(\"executor-transition\",{runId:run.envelope.runId,generation:park.claim.claimGeneration,version:parkedAudit.result.appliedVersion-1})",
+        "parkedAudit.result.appliedVersion-1"
+      ],
+      "calls": [
+        "validateNativeLifecycleRequest(resumed)",
+        "validateNativeLifecycleRequest(parked)",
+        "CanonicalTransitionRequestSchema.parse(resumed.request)",
+        "CanonicalWorkerTransitionRequestSchema.parse(parked.request)",
+        "repositories.lifecycleJournal.findGatePark(run.envelope.runId,gate.gateId,gate.expectedVersion)"
+      ]
+    },
     { owner: "authenticateRunPriority", id: "source.commandId", guards: ['audit?.result.state!=="applied"', "!same(audit.request,source)", "Number(changes[0].before)!==Number(source.target.expectedVersion)"], calls: ["validateNativeLifecycleRequest(command)"] },
-    { owner: "authenticateStartPlanRun", id: "plan.consumedBy.commandId", guards: ["audit===undefined", "!same(audit.request,command)", "command.target.expectedVersion!==plan.version-1"], calls: ["validateNativeLifecycleRequest(created)"] },
-    { owner: "authenticateRootRun", id: "request.sourceCommandId", guards: ['audit?.result.state!=="applied"', "!same(audit.request,source)", "source.target.expectedVersion!==request.expectedVersion"], calls: ["validateNativeLifecycleRequest(origin)"] },
+    { owner: "authenticateStartPlanRun", id: "plan.consumedBy.commandId", guards: ["audit===undefined", "!same(audit.request,command)", "command.target.expectedVersion!==plan.version-1"], calls: ["validateNativeLifecycleRequest(created)", "authenticateRunGateResume(repositories,run,command.requestedBy)"] },
+    { owner: "authenticateRootRun", id: "request.sourceCommandId", guards: ['audit?.result.state!=="applied"', "!same(audit.request,source)", "source.target.expectedVersion!==request.expectedVersion"], calls: ["validateNativeLifecycleRequest(origin)", "authenticateRunGateResume(repositories,run,source.requestedBy)"] },
   ],
   "src/backend/storage/sqlite/delegation-authority.ts": [
     { owner: "authenticateOperatorSource", id: "source.commandId", guards: ['audit.result.state!=="applied"', "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(source)", "source.requestedBy!==LOCAL_OPERATOR_ACTOR_ID"], calls: ["assertCanonicalRunCommandScope(repositories,source)"] },
@@ -453,6 +531,23 @@ describe("finite native delegation audit read ownership", () => {
         const revoked = source.replace("activeRunCommand = undefined;", "void activeRunCommand;");
         assert.notEqual(revoked, source);
         assert.ok(withoutDelegationAuditReads(revoked, path, kernel).includes("commandAudits"));
+      }
+      if (path.endsWith("delegation-root-authority.ts")) {
+        for (const proof of [
+          "authenticateRunGateResume(repositories, run, command.requestedBy);",
+          "authenticateRunGateResume(repositories, run, source.requestedBy);",
+          "validateNativeLifecycleRequest(resumed);",
+          "validateNativeLifecycleRequest(parked);",
+          "repositories.lifecycleJournal.findGatePark(run.envelope.runId, gate.gateId, gate.expectedVersion)",
+        ]) {
+          const mutant = source.replaceAll(proof, "undefined");
+          assert.notEqual(mutant, source);
+          assert.ok(withoutDelegationAuditReads(mutant, path, kernel).includes("commandAudits"));
+        }
+        const aliased = source.replace("repositories.commandAudits.findByCommand(gate.commandId)",
+          "Reflect.get(repositories, 'commandAudits').findByCommand(gate.commandId)");
+        assert.notEqual(aliased, source);
+        assert.ok(withoutDelegationAuditReads(aliased, path, kernel).includes("commandAudits"));
       }
       if (path.endsWith("ocr-source-service.ts")) {
         const aliased = source.replace("repositories.commandAudits.findByCommand(commandId)", "Reflect.get(repositories, 'commandAudits').findByCommand(commandId)");
