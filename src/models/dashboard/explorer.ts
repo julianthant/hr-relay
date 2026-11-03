@@ -333,7 +333,7 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
         operatorFields: z.array(WorkflowOperatorFieldSchema).optional(),
         entries: z.array(z.strictObject({
           id: NodeIdSchema,
-          kind: z.enum(["task", "parallel", "delegate", "gate", "transaction"]),
+          kind: z.enum(["task", "parallel", "delegate", "gate", "transaction", "branch"]),
           nodeIds: z.array(NodeIdSchema).min(1),
           dependsOn: z.array(NodeIdSchema),
           taskIds: z.array(TaskIdSchema),

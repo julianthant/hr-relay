@@ -69,6 +69,28 @@ describe("compiled Explorer declaration binding", () => {
     }
   });
 
+  it("links every served hire contract to its canonical fingerprinted source owner", () => {
+    const tasks = allTasks();
+    for (const name of ["read-hire-findings", "read-hire-receipt", "stage-hire", "create-hire"]) {
+      const task = tasks.find(task => task.taskId === `ucpath/${name}`); assert.ok(task, name);
+      assert.deepEqual(task.contractSource, { state: "resolved", path: `src/models/systems/ucpath/${name}.ts` });
+    }
+  });
+
+  it("retains the authored onboarding branch in the strict definition preview and graph", () => {
+    const workflow = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH)).workflows.find(workflow => workflow.id === "onboarding");
+    assert.ok(workflow?.definitionPreview.state === "compiled");
+    const entry = workflow.definitionPreview.groups.flatMap(group => group.entries).find(entry => entry.id === "i9-route");
+    assert.deepEqual(entry, { id: "i9-route", kind: "branch", nodeIds: ["i9-route"], dependsOn: ["write-plan"], taskIds: [] });
+    const node = workflow.nodes.find(node => node.id === "i9-route");
+    assert.deepEqual(node?.shape, { kind: "branch", cases: [
+      { name: "create", nodes: ["i9-profile-save", "i9-remote-create", "hire-create", "hire-receipt", "master-results"] },
+      { name: "existing", nodes: ["i9-profile-plan", "concurrent-hire-create", "concurrent-hire-receipt", "concurrent-master-results"] },
+    ] });
+    assert.equal(ExplorerWorkflowWireSchema.safeParse({ ...workflow, definitionPreview: { ...workflow.definitionPreview,
+      groups: [{ ...workflow.definitionPreview.groups[0], entries: [{ ...entry, kind: "unsupported" }] }] } }).success, false);
+  });
+
   it("preserves the empty-string literals in registered I-9 contracts", () => {
     const task = allTasks().find(task => task.taskId === "workflow:onboarding/read-i9-lookup");
     assert.ok(task);
@@ -503,7 +525,7 @@ describe("the workflow explorer projection", () => {
           )
           .map(({ id }) => `${String(workflow.id)}:${String(id)}`),
       ),
-      ["onboarding:i9-lookup-child", "i9-check-start:read-documents", "i9-check-start:check-people"],
+      ["onboarding:i9-lookup-child", "onboarding:i9-route", "i9-check-start:read-documents", "i9-check-start:check-people"],
     );
     for (const module of WORKFLOW_MODULES) {
       const projected = wire.workflows.find(
