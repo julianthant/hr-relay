@@ -1,30 +1,36 @@
-import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { outermostOperationProof, type OperationProof } from "./credential-safe-file.js";
 
 const SCRYPT_KEY_BYTES = 32;
 const SCRYPT_OPTIONS = { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 } as const;
-const operationDerivations = new WeakMap<OperationProof, Map<string, Buffer>>();
+type PasswordDerivation = Readonly<{ password: Buffer; salt: Buffer; derived: Buffer }>;
+const operationDerivations = new WeakMap<OperationProof, PasswordDerivation[]>();
 
 function derivePassword(password: string, salt: Buffer): Buffer {
   const proof = outermostOperationProof();
   if (proof === undefined) return scryptSync(password, salt, SCRYPT_KEY_BYTES, SCRYPT_OPTIONS);
   let derivations = operationDerivations.get(proof);
   if (derivations === undefined) {
-    const owned = new Map<string, Buffer>();
+    const owned: PasswordDerivation[] = [];
     derivations = owned;
     operationDerivations.set(proof, owned);
     proof.release.push(() => {
-      for (const bytes of owned.values()) bytes.fill(0);
-      owned.clear();
+      for (const entry of owned) {
+        entry.password.fill(0); entry.salt.fill(0); entry.derived.fill(0);
+      }
+      owned.length = 0;
       operationDerivations.delete(proof);
     });
   }
-  const key = createHash("sha256").update(JSON.stringify([password, salt.toString("hex")])).digest("hex");
-  const existing = derivations.get(key);
-  if (existing !== undefined) return existing;
-  const derived = scryptSync(password, salt, SCRYPT_KEY_BYTES, SCRYPT_OPTIONS);
-  derivations.set(key, derived);
-  return derived;
+  const input = Buffer.from(password, "utf8");
+  try {
+    const existing = derivations.find(entry => entry.salt.equals(salt) && entry.password.byteLength === input.byteLength
+      && timingSafeEqual(entry.password, input));
+    if (existing !== undefined) return existing.derived;
+    const derived = scryptSync(password, salt, SCRYPT_KEY_BYTES, SCRYPT_OPTIONS);
+    derivations.push({ password: Buffer.from(input), salt: Buffer.from(salt), derived });
+    return derived;
+  } finally { input.fill(0); }
 }
 
 export interface SyntheticVerifier {

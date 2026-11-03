@@ -7,6 +7,8 @@ import { createSyntheticVerifier, passwordMatches } from "../../../../src/backen
 
 it("reuses password derivation within one operation and still checks each verifier", () => {
   const scrypt = vi.spyOn(crypto, "scryptSync");
+  const hash = vi.spyOn(crypto, "createHash");
+  const compare = vi.spyOn(crypto, "timingSafeEqual");
   syncBuiltinESMExports();
   try {
     const verifier = withOperationProof(() => {
@@ -15,7 +17,7 @@ it("reuses password derivation within one operation and still checks each verifi
       assert.equal(scrypt.mock.calls.length, 1);
       assert.equal(passwordMatches("fixture-password", { ...created, passwordVerifier: "00".repeat(32) }), false);
       assert.equal(passwordMatches("fixture-password", { ...created, passwordVerifier: "00" }), false);
-      assert.equal(passwordMatches("different-password", created), false);
+      assert.equal(passwordMatches("fixture-passw0rd", created), false);
       assert.equal(scrypt.mock.calls.length, 2);
       assert.equal(passwordMatches("fixture-password", { ...created, salt: "00".repeat(16) }), false);
       assert.equal(scrypt.mock.calls.length, 3);
@@ -34,7 +36,14 @@ it("reuses password derivation within one operation and still checks each verifi
       assert.deepEqual(result.value, Buffer.alloc(32));
     }
     for (const call of scrypt.mock.calls) assert.deepEqual(call.slice(2), [32, { N: 2 ** 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }]);
-  } finally { scrypt.mockRestore(); syncBuiltinESMExports(); }
+    assert.equal(hash.mock.calls.length, 0, "password cache must not create a fast password fingerprint");
+    const passwordComparisons = compare.mock.calls.filter(([left]) => left.byteLength === Buffer.byteLength("fixture-password"));
+    assert.notEqual(passwordComparisons.length, 0);
+    for (const [left, right] of passwordComparisons) {
+      assert.deepEqual(left, Buffer.alloc(left.byteLength));
+      assert.deepEqual(right, Buffer.alloc(right.byteLength));
+    }
+  } finally { scrypt.mockRestore(); hash.mockRestore(); compare.mockRestore(); syncBuiltinESMExports(); }
 });
 
 it("discards derivations after failed asynchronous operations", async () => {
