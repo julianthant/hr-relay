@@ -547,7 +547,9 @@ async function offlineCanonicalPredecessor() {
   const browser = BrowserRootsSchema.parse(JSON.parse(readFileSync(join(seed.machineRoot, "browser-roots.json"), "utf8")));
   assert.deepEqual(browser.roots, []); assert.equal(browser.nextGeneration, 1);
   const seedBefore = storageTree(seed.workspace), workspace = nativeFs.realpathSync(nativeFs.mkdtempSync(join(tmpdir(), "offline-canonical-predecessor-")));
-  nativeFs.cpSync(seed.workspace, workspace, { recursive: true });
+  const previousUmask = process.umask(0o077);
+  try { nativeFs.cpSync(seed.workspace, workspace, { recursive: true }); }
+  finally { process.umask(previousUmask); }
   const target = (path: string) => join(workspace, relative(seed.workspace, path));
   const stateRoot = target(seed.stateRoot), machineRoot = target(seed.machineRoot);
   const controlRoot = join(workspace, ".tracker", "control"), backupRoot = join(controlRoot, "profile-control-upgrades");
