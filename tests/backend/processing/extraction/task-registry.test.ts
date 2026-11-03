@@ -3,6 +3,7 @@ import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
 import { describe,it } from "vitest";
 import { extractPdfPagesTask,extractSpreadsheetTask } from "../../../../src/backend/processing/extraction/task-registry.js";
+import { redactObservedDataPoints } from "../../../../src/backend/logs/observed-data.js";
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 import { ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import {
@@ -112,7 +113,8 @@ async function runPdf(
   const provenance = createTaskProvenanceCollector({ descriptor,
     execution: { runId: "11111111-2222-4333-8444-555555555555", traceId: "oc-000000-1111", attempt: 1,
       workflowId: descriptor.id, nodeId: node.id, taskId: node.uses.id },
-    upstreamEvidence: { checkpoints: [] }, clock: manualClock(new Date("2026-11-02T00:00:00.000Z")), onRecord: () => {},
+    upstreamEvidence: { checkpoints: [] }, clock: manualClock(new Date("2026-11-02T00:00:00.000Z")),
+    onRecord: batch => { redactObservedDataPoints(extractPdfPagesTask.contract.id, batch.points); },
   });
   const writes: { bytes: Buffer; mediaType: string }[] = [];
   const facts: unknown[] = [];

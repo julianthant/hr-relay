@@ -426,7 +426,109 @@ function onboardingProfileLeaves(scope: EvidenceValueScope, prefix = ""): unknow
   ];
 }
 
+function ocrPrivateLeaves(scope: EvidenceValueScope, ...paths: readonly string[]): unknown[] {
+  return paths.map(path => ({ scope, path, classification: "sensitive-hr", transform: "drop" }));
+}
+
+function ocrArtifactLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...ocrPrivateLeaves(scope, `${prefix}id`, `${prefix}sha256`),
+    ...open(scope, `${prefix}bytes`, `${prefix}mediaType`),
+  ];
+}
+
+function ocrManifestLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...ocrArtifactLeaves(scope, `${prefix}document.`),
+    ...open(scope, `${prefix}pageCount`),
+    ...ocrPrivateLeaves(scope, `${prefix}fingerprint`, `${prefix}pages`),
+  ];
+}
+
+function ocrPageInputLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...ocrArtifactLeaves(scope, `${prefix}document.`),
+    ...ocrArtifactLeaves(scope, `${prefix}image.`),
+    ...open(scope, `${prefix}formType`, `${prefix}sourcePage`),
+    ...ocrPrivateLeaves(scope, `${prefix}manifestFingerprint`, `${prefix}readingId`),
+  ];
+}
+
+function ocrExtractionLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...open(scope, ...["formType", "sourcePage", "pageKind", "readAt", "source.kind"].map(path => `${prefix}${path}`)),
+    ...ocrPrivateLeaves(scope, ...["pageFingerprint", "sourceSha256", "source.actorId", "source.providerId", "source.modelId", "source.agentId", "source.invocation",
+      "record", "record.answers", "record.answersFingerprint"].map(path => `${prefix}${path}`)),
+    ...population(scope, `${prefix}record.blockingPaths`),
+  ];
+}
+
+function ocrPageReadingLeaves(scope: EvidenceValueScope): unknown[] {
+  return [
+    ...ocrPageInputLeaves(scope, "input."),
+    ...ocrPrivateLeaves(scope, "extractionId"),
+    ...ocrExtractionLeaves(scope, "extraction."),
+  ];
+}
+
+function ocrRosterLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...ocrPrivateLeaves(scope, prefix.slice(0, -1), `${prefix}rows`),
+    ...ocrArtifactLeaves(scope, `${prefix}artifact.`),
+    ...open(scope, `${prefix}readAt`),
+  ];
+}
+
+function ocrReviewSeedLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
+  return [
+    ...ocrManifestLeaves(scope, `${prefix}accounting.manifest.`),
+    ...ocrRosterLeaves(scope, `${prefix}roster.`),
+    ...open(scope, ...["formType", "accounting.formType", "pages", "grouping.formType",
+      "grouping.unidentified", "grouping.otherForms", "grouping.dataless"].map(path => `${prefix}${path}`)),
+    ...ocrPrivateLeaves(scope, ...["sourceRunId", "accounting.readingId", "accounting.outcomes",
+      "grouping.subjects", "records"].map(path => `${prefix}${path}`)),
+  ];
+}
+
+function ocrResultLeaves(scope: EvidenceValueScope): unknown[] {
+  return [...ocrReviewSeedLeaves(scope, "review."), ...ocrPrivateLeaves(scope, "identities")];
+}
+
+function ocrApprovalLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  return [
+    ...open(scope, `${prefix}revision`),
+    ...ocrPrivateLeaves(scope, `${prefix}snapshotId`, `${prefix}sourceRunId`, `${prefix}digest`),
+  ];
+}
+
 export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassification[] = Object.freeze([
+  ...open(taskOutput("extraction/extract-pdf-pages"), "pageCount"),
+  ...ocrPrivateLeaves(taskOutput("extraction/extract-pdf-pages"), "pages"),
+  ...[taskOutput("workflow:ocr/read-source-pages"), workflowResult("ocr-source-pages")].flatMap(scope => [
+    ...ocrManifestLeaves(scope, "manifest."), ...ocrPrivateLeaves(scope, "pages"),
+  ]),
+  ...[taskOutput("workflow:ocr-page/read-page-reading"), taskOutput("workflow:ocr-page/read-manual-reading"),
+    workflowResult("ocr-page"), workflowResult("ocr-page-reading")].flatMap(ocrPageReadingLeaves),
+  ...ocrReviewSeedLeaves(taskOutput("workflow:ocr/read-review-seed"), ""),
+  ...[taskOutput("workflow:ocr/read-result"), workflowResult("ocr")].flatMap(ocrResultLeaves),
+  ...ocrPrivateLeaves(workflowResult("ocr"), "approvedSnapshot"),
+  ...ocrApprovalLeaves(workflowResult("ocr"), "approvedSnapshot."),
+  ...ocrApprovalLeaves(gateResult("ocr", "approve-records")),
+  ...["ocr", "ocr-source-pages"].flatMap(id => {
+    const scope = workflowInput(id);
+    return [
+      ...ocrArtifactLeaves(scope, "document."), ...ocrRosterLeaves(scope, "roster."),
+      ...open(scope, "approval", "formType", "reading.kind"),
+      ...ocrPrivateLeaves(scope, "sourceRunId", "readingId", "reading.actorId", "reading.assertions"),
+    ];
+  }),
+  ...["ocr-page", "ocr-page-reading"].flatMap(id => {
+    const scope = workflowInput(id);
+    return [
+      ...ocrPageInputLeaves(scope, "page."), ...ocrExtractionLeaves(scope, "reading.extraction."),
+      ...open(scope, "reading.kind"), ...ocrPrivateLeaves(scope, "reading.actorId"),
+    ];
+  }),
   ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-i9-profile-creation"].flatMap(id => [
     ...open(workflowInput(id), "mode", "configuredJobEndDate"),
     ...onboardingPrivateLeaves(workflowInput(id), "email", "postalCodeOverride", "roster.references.livedName",
