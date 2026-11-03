@@ -5,8 +5,8 @@ import { sha256Hex } from "../../rules/validation/sha256.js";
 import { StartPlanRequestSchema } from "./start-plan.js";
 import { ActionConfirmWireSchema } from "./actions.js";
 import { FailureCorrectionSchema } from "../workflow/failure-correction.js";
-import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema, OcrReviewCommandRequestSchema, GateCommandRequestSchema, CommandResultSchema, WorkbookRowChoiceTargetSchema } from "../../rules/commands/commands.js";
-import { WorkbookOperationReceiptSchema } from "./workbooks.js";
+import { ParkedWriteCheckTargetSchema, ParkedWriteCheckResultSchema, OcrReviewCommandRequestSchema, GateCommandRequestSchema, CommandResultSchema, WorkbookRowChoiceTargetSchema, WorkbookReferenceRowChoiceTargetSchema } from "../../rules/commands/commands.js";
+import { WorkbookOperationReceiptSchema, WorkbookCellValuesSchema } from "./workbooks.js";
 import { UcpathFindingsDetailSchema } from "./ucpath-findings.js";
 import { FailureDisplaySchema } from "./failure-display.js";
 import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
@@ -947,7 +947,39 @@ export const IdentityGateDetailWireSchema = z.strictObject({
 });
 export type IdentityGateDetailWire = z.infer<typeof IdentityGateDetailWireSchema>;
 
-export const RunWorkbookWritesWireSchema = z.strictObject({ runId: RunIdSchema, operations: z.array(z.strictObject({
+export const WorkbookReferenceRowCandidateWireSchema = z.strictObject({
+  sheetId: z.string().min(1), rowId: z.string().min(1), label: z.string().min(1),
+  values: z.array(z.strictObject({ fieldId: WorkbookCellValuesSchema.keyType, value: WorkbookCellValuesSchema.valueType })).min(1),
+}).refine(candidate => new Set(candidate.values.map(cell => cell.fieldId)).size === candidate.values.length,
+  "reference candidate fields must be unique");
+
+export const RunWorkbookReferenceChoiceWireSchema = z.strictObject({
+  native: NativeRunEventWireSchema,
+  libraryId: z.string().min(1), typeId: z.string().min(1), referenceDigest: FingerprintSchema,
+  key: z.string().min(1), reason: z.enum(["row-missing", "row-ambiguous"]),
+  resolution: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("unavailable"), code: z.literal("WORKBOOK_ROW_CHOICE_UNAVAILABLE"), candidates: z.tuple([]) }),
+    z.strictObject({ state: z.literal("available"), target: WorkbookReferenceRowChoiceTargetSchema,
+      action: ActionDescriptorWireSchema, candidates: z.array(WorkbookReferenceRowCandidateWireSchema).min(1) }),
+    z.strictObject({ state: z.literal("resolved"), workbookVersion: z.number().int().positive(),
+      selected: WorkbookReferenceRowCandidateWireSchema }),
+  ]),
+}).superRefine((choice, ctx) => {
+  const resolution = choice.resolution;
+  if (resolution.state !== "available") return;
+  const { target, action, candidates } = resolution;
+  if (target.libraryId !== choice.libraryId || target.typeId !== choice.typeId || target.referenceDigest !== choice.referenceDigest
+    || target.key !== choice.key || action.kind !== "command" || action.command !== "resolve-workbook-reference-row"
+    || action.expectedVersion !== target.expectedVersion || action.referenceTarget === undefined
+    || canonicalJsonStringify(action.referenceTarget) !== canonicalJsonStringify(target)
+    || new Set(candidates.map(candidate => JSON.stringify([candidate.sheetId, candidate.rowId]))).size !== candidates.length) {
+    ctx.addIssue({ code: "custom", message: "reference choices must preserve exact captured reference, target and candidate membership" });
+  }
+});
+export type RunWorkbookReferenceChoiceWire = z.infer<typeof RunWorkbookReferenceChoiceWireSchema>;
+
+export const RunWorkbookWritesWireSchema = z.strictObject({ runId: RunIdSchema,
+  referenceChoices: z.array(RunWorkbookReferenceChoiceWireSchema).optional(), operations: z.array(z.strictObject({
   receipt: WorkbookOperationReceiptSchema, native: NativeRunEventWireSchema,
   resolution: z.discriminatedUnion("state", [
     z.strictObject({ state: z.enum(["not-required", "resolved"]) }),
@@ -956,6 +988,12 @@ export const RunWorkbookWritesWireSchema = z.strictObject({ runId: RunIdSchema, 
       candidates: z.array(z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1), label: z.string().min(1) })).min(1) }),
   ]),
 })) }).superRefine((section, ctx) => {
+  const references = section.referenceChoices ?? [];
+  if (new Set(references.map(choice => choice.typeId)).size !== references.length
+    || references.some(choice => choice.native.runId !== section.runId
+      || choice.resolution.state === "available" && choice.resolution.target.runId !== section.runId)) {
+    ctx.addIssue({ code: "custom", message: "reference choices must preserve exact run and type membership" });
+  }
   const ids = new Set<string>();
   for (const operation of section.operations) {
     const { receipt, native, resolution } = operation;

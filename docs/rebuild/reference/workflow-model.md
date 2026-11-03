@@ -52,14 +52,49 @@ IDs, and is copied and frozen by the definition and descriptor factories. Omissi
 requirements; production definitions declare an explicit array. It does not describe new output
 workbooks, spreadsheet intake, or delegated children's requirements. Retained step proofs inherit
 the parent declaration. The descriptor and its sealed planning and projections expose the same
-validated facts; workbook selection and reference snapshots belong to run planning. All current
-definitions declare their own required reference types; the I-9 PDF parent requires Action History.
+validated facts; workbook selection and reference snapshots belong to run planning. Onboarding
+requires `onboarding-roster`; the I-9 PDF parent requires Action History.
 
 Start planning takes explicit entry-scoped `workbookReferences` (type, optional library, keys and
 fields), requires exactly the workflow's declared types, and snapshots the selected or default
 workbook. Schema-bound references retain exact cell values, revision and every worksheet's identity
 in the confirmation fingerprint and native run input. Later master edits or default changes do not
 replace them. No workflow-specific key or field mapping is inferred.
+
+Onboarding maps the exact requested email key and seven fields: `email`, `firstName`, `lastName`,
+`middleName`, `roster.livedFirstName`, `roster.livedLastName` and `roster.livedMiddleName`.
+All three lived-name cells must be null for explicit absence; otherwise all three must contain valid
+name strings. A single `livedName` cell is never split. The public planner refuses supplied roster
+values and builds required canonical roster input from the one captured reference. Native run
+membership supplies run identity; its reference digest, library revision and row membership remain
+immutable during execution.
+
+A missing or ambiguous match parks at `roster-choice` before the CRM read. The `workbook-writes`
+section serves separate `referenceChoices` with exact reference identity, typed field/value entries,
+and an available, unavailable or resolved state. Every choice carries an own-run `native` event
+anchor: queued issuance before review, the parked gate's opening during review, the authenticated
+resolution after selection, or the terminal run span when unresolved. A continued selection uses the
+current run's queued issuance after authenticating the original choice and continuation; it does not
+claim another human selection. Missing, foreign or ambiguous native evidence refuses projection. A missing key has no candidates. Refresh may show
+current exact-key matches only in the original worksheet set. `resolve-workbook-reference-row`
+accepts sheet and row identity, rechecks the live revision, type, key and worksheet membership, and
+rebuilds typed values into a durable `{ decision: "selected", row }` gate result before the canonical
+gate transition resumes the run. Every Onboarding descriptor and retained proof declares this
+selection as a `taken` receipt decision bound to `row.binding.referenceDigest`. Its gate decision
+declaration requires the workbook-reference resolution source and binds the pending canonical input
+digest; ordinary operator gates declare their operator source and retain checkpoint evidence checks.
+Direct `resolve-gate` cannot settle this gate. The original reference stays unchanged; subsequent
+execution and delegation authenticate retained chosen evidence, the applied command audit and the
+native gate-result hash without rereading the workbook. Runs checks this proof at the worker
+validating/running transition before executor replay or task admission and again at actual child
+admission. Continued runs authenticate the original source run and require identical canonical input
+and workbook references; Logs can show that retained source choice as resolved.
+Lazy receipt reads authenticate this authority before derivation and before returning an existing
+receipt. A completed run with pending canonical roster input requires an effective authenticated
+choice. Continued gate rows enter receipt derivation separately from own-run rows, bound to the
+exact native continuation tuple and row digest. Their `continued-gate-result` observations retain the
+original `sourceRunId`, command, operator and resolution time; the decision names the original run.
+No workbook patch or write receipt is created by a read choice. Hire writes remain unavailable.
 
 The `workbooks/read-result` task accepts `patch-reference` with a stable run-local write ID and
 explicit field/value entries. Runs derives its target from the captured reference and journals the
