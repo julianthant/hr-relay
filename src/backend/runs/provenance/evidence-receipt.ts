@@ -1,88 +1,87 @@
-import { ONBOARDING_ROSTER_GATE_ID, OnboardingRosterChoiceSchema } from "../../../models/workflows/onboarding/roster.js";
+import { ONBOARDING_ROSTER_GATE_ID,OnboardingRosterChoiceSchema } from "../../../models/workflows/onboarding/roster.js";
+import { publicTransactionKeyDigest,retainedRunProtectedBindings,valueFreeProtectedInput } from "../../../models/write-safety/protected-input.js";
 import { continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
-import { retainedRunProtectedBindings, publicTransactionKeyDigest } from "../../../models/write-safety/protected-input.js";
-import { valueFreeProtectedInput } from "../../../models/write-safety/protected-input.js";
 
 import { z } from "zod";
-import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
+import { OcrApprovedSnapshotSchema,ocrSnapshotDigest,type OcrApprovedSnapshot } from "../../../models/ocr/review.js";
+import { RunRecordSchema,type RunRecord } from "../../../models/run/record.js";
 import {
-  idempotencyKeyDigestReference,
-} from "../../../rules/redaction/redaction.js";
-import {
-  descriptorRuntimeNodes,
-  workflowTerminalResultExecution,
-  type AnyWorkflowDescriptor,
-} from "../../../workflow-kit/workflow.js";
-import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import {
-  ErrorCodeSchema,
-  FingerprintSchema,
-  type EvidenceEntryId,
-} from "../../../rules/identity/ids.js";
-import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
-import {
-  RunDryRunPreviewResultSchema,
-  RunResultRecordSchema,
-  terminalEvidenceResult,
-  deriveTerminalFailureDigest,
-  deriveCheckpointOutputDigest,
-  deriveTerminalDependencyDigest,
-  DelegationTerminalEvidenceSchema,
-  type RunResultRecord,
-  type TerminalNotRunReason,
+DelegationTerminalEvidenceSchema,
+RunDryRunPreviewResultSchema,
+RunResultRecordSchema,
+deriveCheckpointOutputDigest,
+deriveTerminalDependencyDigest,
+deriveTerminalFailureDigest,
+terminalEvidenceResult,
+type RunResultRecord,
+type TerminalNotRunReason,
 } from "../../../models/run/result.js";
-import { SchemaBoundCanonicalValueSchema, deriveSchemaHash, schemaBoundValueSchema } from "../../../models/validation/schema-bound-value.js";
-import { sha256Hex } from "../../../rules/validation/sha256.js";
+import type { AnyCommitTaskContract,AnyTaskContract } from "../../../models/task/task-contract.js";
 import {
-  evidenceLeaves,
-  redactEvidenceLeaf,
-  type EvidenceLeaf,
-  type EvidenceValueScope,
+evidenceLeaves,
+redactEvidenceLeaf,
+type EvidenceLeaf,
+type EvidenceValueScope,
 } from "../../../models/trust/evidence-classification.js";
 import {
-  deriveEvidenceEntryId,
-  deriveEvidenceReceiptId,
-  evidenceEntryRef,
+deriveEvidenceEntryId,
+deriveEvidenceReceiptId,
+evidenceEntryRef,
 } from "../../../models/trust/evidence-identity.js";
 import {
-  findSnapshotApprovalDecision,
-  gateDecisionArm,
-  gateDecisionFor,
-} from "../../../models/trust/gate-decisions.js";
-import { GateResultRecordSchema, type GateResultRecord, type OperatorGateResultRecord } from "../../../models/workflow/gates.js";
-import { OcrApprovedSnapshotSchema, ocrSnapshotDigest, type OcrApprovedSnapshot } from "../../../models/ocr/review.js";
-import { OcrReviewRefusedError } from "../lifecycle/ocr-review-authority.js";
-import {
-  obligationsFor,
-  type EvidenceObligation,
-  type EvidenceObligationSource,
+obligationsFor,
+type EvidenceObligation,
+type EvidenceObligationSource,
 } from "../../../models/trust/evidence-obligations.js";
 import {
-  ActionWriteProofSchema,
-  RunEvidenceReceiptSchema,
-  type ActionWriteProof,
-  type RunEvidenceReceipt,
+ActionWriteProofSchema,
+RunEvidenceReceiptSchema,
+type ActionWriteProof,
+type RunEvidenceReceipt,
 } from "../../../models/trust/evidence.js";
+import { FailureRecordSchema,type FailureRecord } from "../../../models/trust/failure.js";
 import {
-  evaluateReceiptDerivationBinding,
-  evaluateReceiptRederivation,
-  type ReceiptBindingCheckResult,
-} from "../../runtime/writes/receipt-derivation-binding.js";
-import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
-import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
+findSnapshotApprovalDecision,
+gateDecisionArm,
+gateDecisionFor,
+} from "../../../models/trust/gate-decisions.js";
+import { SchemaBoundCanonicalValueSchema,deriveSchemaHash,schemaBoundValueSchema } from "../../../models/validation/schema-bound-value.js";
 import {
-  RunCheckpointRecordSchema,
-  type FactProvenance,
-  type RunCheckpointRecord,
+RunCheckpointRecordSchema,
+type FactProvenance,
+type RunCheckpointRecord,
 } from "../../../models/workflow/checkpoint.js";
+import { GateResultRecordSchema,type GateResultRecord,type OperatorGateResultRecord } from "../../../models/workflow/gates.js";
+import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
+import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import {
-  TransactionOutcomeSchema,
-  WriteAttemptRecordSchema,
-  WriteIntentRecordSchema,
-  type WriteAttemptRecord,
-  type WriteIntentRecord,
+ErrorCodeSchema,
+FingerprintSchema,
+type EvidenceEntryId,
+} from "../../../rules/identity/ids.js";
+import {
+idempotencyKeyDigestReference,
+} from "../../../rules/redaction/redaction.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import {
+TransactionOutcomeSchema,
+WriteAttemptRecordSchema,
+WriteIntentRecordSchema,
+type WriteAttemptRecord,
+type WriteIntentRecord,
 } from "../../../rules/write-safety/write-safety.js";
-import type { AnyCommitTaskContract, AnyTaskContract } from "../../../models/task/task-contract.js";
+import {
+descriptorRuntimeNodes,
+workflowTerminalResultExecution,
+type AnyWorkflowDescriptor,
+} from "../../../workflow-kit/workflow.js";
+import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
+import {
+evaluateReceiptDerivationBinding,
+evaluateReceiptRederivation,
+type ReceiptBindingCheckResult,
+} from "../../runtime/writes/receipt-derivation-binding.js";
 
 /* ── inputs ──────────────────────────────────────────────────────────────── */
 

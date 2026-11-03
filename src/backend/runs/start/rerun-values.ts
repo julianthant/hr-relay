@@ -293,10 +293,10 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       }
       if (sourceInput.state === "available") {
         const binding = workbookInputBinding(descriptor.canonicalInput);
-        if (binding !== undefined) {
+        if (binding?.sourceToIngress !== undefined) {
           const canonical = descriptor.canonicalInput.safeParse(sourceInput.value);
           if (canonical.success && canonicalJsonStringify(canonical.data) === canonicalJsonStringify(sourceInput.value))
-            sourceInput = { state: "available", value: binding.sourceToIngress(canonical.data) };
+            sourceInput = { state: "available", value: JsonValueSchema.parse(binding.sourceToIngress(canonical.data)) };
         }
       }
       return RerunValuesResponseSchema.parse({ state: "available", snapshot: {

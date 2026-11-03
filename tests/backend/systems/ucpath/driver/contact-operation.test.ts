@@ -1,19 +1,24 @@
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
-import fixture from "../../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
-import {
-  contactEffect, contactSetFingerprint, compareSavedContactAddition, decideContactAddition,
-  interpretContactPage, readContactSetWithPort, stageContactAdditionWithPort,
-} from "../../../../../src/backend/systems/ucpath/driver/contact-operation.js";
+import { describe,it } from "vitest";
 import { createDeterministicUcpathContactPage } from "../../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import {
-  UcpathContactDecisionSchema, UcpathContactRefusedError, UcpathContactRefusalCodeSchema,
-  UcpathEmergencyContactInputSchema,
-} from "../../../../../src/models/systems/ucpath/emergency-contacts.js";
+interpretContactPage,readContactSetWithPort,stageContactAdditionWithPort,
+stageContactPlanWithPort,
+} from "../../../../../src/backend/systems/ucpath/driver/contact-operation.js";
+import { emergencyContactIdempotencyKey } from "../../../../../src/models/systems/ucpath/contact-contract.js";
 import type { UcpathContactRefusalCode } from "../../../../../src/models/systems/ucpath/emergency-contacts.js";
-import { UcpathContactPageRowSchema, UcpathContactPageSnapshotSchema } from "../../../../../src/models/ui/ucpath-emergency-contact.js";
+import {
+UcpathContactDecisionSchema,
+UcpathContactRefusalCodeSchema,
+UcpathContactRefusedError,
+UcpathEmergencyContactInputSchema,
+} from "../../../../../src/models/systems/ucpath/emergency-contacts.js";
 import type { UcpathContactPageSnapshot } from "../../../../../src/models/ui/ucpath-emergency-contact.js";
-import { EidSchema } from "../../../../../src/rules/identity/ids.js";
+import { UcpathContactPageRowSchema,UcpathContactPageSnapshotSchema } from "../../../../../src/models/ui/ucpath-emergency-contact.js";
+import { EidSchema,IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
+import { manualClock } from "../../../../../src/rules/time/clock.js";
+import { compareSavedContactAddition,contactEffect,contactPlanChanges,contactPlanPresent,contactSetFingerprint,decideContactAddition,planEmergencyContact } from "../../../../../src/rules/ucpath/emergency-contact.js";
+import fixture from "../../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 
 const input = UcpathEmergencyContactInputSchema.parse(fixture.input);
 const effect = contactEffect(input);
@@ -37,6 +42,78 @@ function isRefusal(code: UcpathContactRefusalCode) {
 }
 
 describe("UCPath contact contracts and sanitized page operations", () => {
+  it("keys one employee and desired effect independently of observed set and refuses a forged plan effect", () => {
+    const target = { ...input, plan: planEmergencyContact(before, effect) };
+    const changed = { ...before, observedAt: IsoInstantSchema.parse("2026-11-01T12:02:00.000Z"), rows: before.rows.map(row => row.kind === "contact" ? { ...row, effect: { ...row.effect, phone: "2025550199" } } : row) };
+    assert.equal(emergencyContactIdempotencyKey(target), emergencyContactIdempotencyKey({ ...input, plan: planEmergencyContact(changed, effect) }));
+    const other = { ...input, emplId: EidSchema.parse("10000002") };
+    assert.notEqual(emergencyContactIdempotencyKey(target), emergencyContactIdempotencyKey({ ...other, plan: planEmergencyContact({ ...before, emplId: other.emplId }, effect) }));
+    const desired = { ...effect, name: "Another Contact" };
+    const replacement = { ...input, contact: { ...input.contact, name: desired.name } };
+    assert.notEqual(emergencyContactIdempotencyKey(target), emergencyContactIdempotencyKey({ ...replacement, plan: planEmergencyContact(before, desired) }));
+    assert.throws(() => emergencyContactIdempotencyKey({ ...target, plan: { ...target.plan, effect: desired } }), isRefusal("contact-plan-refused"));
+  });
+  it("accepts advancing read times for unchanged approved content and refuses changed or forged content", async () => {
+    const primaryInput = { ...input, contact: { ...input.contact, primary: true } };
+    function advancing(changed = false) {
+      const port = createDeterministicUcpathContactPage({ initial: page });
+      const clock = manualClock(new Date(page.observedAt)); let reads = 0;
+      return { ...port, async snapshot() {
+        clock.advanceWall(1000); reads++;
+        const snapshot = await port.snapshot();
+        return UcpathContactPageSnapshotSchema.parse({ ...snapshot, observedAt: clock.now().toISOString(),
+          rows: changed && reads > 1 ? snapshot.rows.map(row => row.rowIndex === 0 ? { ...row, phone: "2025550101" } : row) : snapshot.rows });
+      } };
+    }
+    const port = advancing(), before = await readContactSetWithPort(port, primaryInput);
+    const plan = planEmergencyContact(before, contactEffect(primaryInput));
+    const staged = await stageContactPlanWithPort(port, primaryInput, plan);
+    assert.ok(Date.parse(staged.observedAt) > Date.parse(plan.before.observedAt));
+    assert.equal(plan.before.observedAt, before.observedAt);
+    assert.deepEqual(staged.rows.map(row => row.kind === "contact" ? row.effect.primary : null), [false, true]);
+    const changed = advancing(true), observed = await readContactSetWithPort(changed, primaryInput);
+    await assert.rejects(stageContactPlanWithPort(changed, primaryInput, planEmergencyContact(observed, contactEffect(primaryInput))), isRefusal("contact-plan-refused"));
+    assert.ok(!changed.actions.some(action => /^(demote|fill|add)/u.test(action)));
+    const clean = advancing(), forged = { ...plan, before: { ...plan.before, rows: plan.before.rows.map(row => row.kind === "contact" ? { ...row, effect: { ...row.effect, phone: "2025550101" } } : row) } };
+    await assert.rejects(stageContactPlanWithPort(clean, primaryInput, forged), isRefusal("contact-plan-refused"));
+    assert.ok(!clean.actions.some(action => /^(demote|fill|add)/u.test(action)));
+  });
+
+  it("declares and prepares one unique primary demotion before the addition, preserving other rows", async () => {
+    const primaryInput = { ...input, contact: { ...input.contact, primary: true } };
+    const desired = contactEffect(primaryInput), plan = planEmergencyContact(before, desired);
+    assert.equal(plan.state, "prepare");
+    assert.deepEqual(contactPlanChanges(plan), ["Uncheck Primary on row 1 (Taylor Sample)", "Add Morgan Example as Primary"]);
+    const port = createDeterministicUcpathContactPage({ initial: page });
+    const staged = await stageContactPlanWithPort(port, primaryInput, plan);
+    assert.equal(staged.observation, "staged");
+    assert.deepEqual(staged.rows.map(row => row.kind === "contact" ? row.effect.primary : null), [false, true]);
+    assert.ok(port.actions.indexOf("demote-primary:0") < port.actions.indexOf("fill-fields:1"));
+    assert.ok(port.actions.indexOf("fill-fields:1") < port.actions.indexOf("fill-name:1"));
+    assert.equal(contactPlanPresent(plan, staged), false);
+    assert.equal(contactPlanPresent(plan, { ...staged, observation: "persisted" }), true);
+    assert.equal(contactPlanPresent(plan, { ...staged, observation: "persisted", rows: staged.rows.map(row => row.rowIndex === 0 && row.kind === "contact"
+      ? { ...row, effect: { ...row.effect, phone: "2025550198" } } : row) }), false);
+    await assert.rejects(stageContactPlanWithPort(port, primaryInput, plan), isRefusal("contact-plan-refused"));
+  });
+
+  it("refuses ambiguous primaries, changed full effects and forged primary plans before mutation", async () => {
+    const primaryInput = { ...input, contact: { ...input.contact, primary: true } }, desired = contactEffect(primaryInput);
+    const plan = planEmergencyContact(before, desired);
+    assert.throws(() => planEmergencyContact(setFromRows([page.rows[0], { ...savedRow, primary: true }]), desired), isRefusal("contact-plan-refused"));
+    assert.equal(plan.state, "prepare");
+    assert.ok(plan.demotion !== null);
+    for (const candidate of [
+      { ...plan, demotion: null },
+      { ...plan, demotion: { ...plan.demotion, rowIndex: 1 } },
+      { ...plan, demotion: { ...plan.demotion, effect: { ...plan.demotion.effect, phone: "2025550198" } } },
+    ]) {
+      const port = createDeterministicUcpathContactPage({ initial: page });
+      await assert.rejects(stageContactPlanWithPort(port, primaryInput, candidate), isRefusal("contact-plan-refused"));
+      assert.ok(!port.actions.some(action => /^(demote|fill|add)/u.test(action)));
+    }
+  });
+
   it("expands View All and retains the complete contact set and independent header identity", async () => {
     const port = createDeterministicUcpathContactPage({
       initial: { ...page, view: "paged", rows: page.rows.slice(0, 1) }, expanded: page,

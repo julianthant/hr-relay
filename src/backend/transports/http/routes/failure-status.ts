@@ -1,19 +1,19 @@
 import { ERROR_CATALOG,createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
 import { AssistantAuthorizationError } from "../../../assistant/authorization.js";
+import { OcrReviewRefusedError } from "../../../processing/ocr/review-authority.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
+import { OcrSourceRefusedError } from "../../../runs/commands/ocr-source-service.js";
 import { StartupCrashRecoveryRefusedError } from "../../../runs/lifecycle/startup-crash-recovery.js";
 import { ActivityPopulationError } from "../../../runs/queries/activity-population.js";
 import { ActivitySnapshotError } from "../../../runs/queries/activity-selection.js";
 import { ProtectedSubjectDisplayRefusedError } from "../../../runs/start/protected-input.js";
 import { RerunRefusedError } from "../../../runs/start/rerun.js";
+import { CommandBrowserClosureError,CommandBrowserError } from "../../../runtime/browser/command-browser.js";
 import { ProfileBrowserRootRefusalError } from "../../../storage/admission/admission-identity.js";
-import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
-import { OcrSourceRefusedError } from "../../../runs/commands/ocr-source-service.js";
-import { OcrReviewRefusedError } from "../../../runs/lifecycle/ocr-review-authority.js";
-import { SharePointDownloadError } from "../../../systems/sharepoint/driver/interpreter.js";
 import { browserLoginFailure } from "../../../systems/browser-shared/login-contract.js";
-import { CommandBrowserError, CommandBrowserClosureError } from "../../../runtime/browser/command-browser.js";
+import { SharePointDownloadError } from "../../../systems/sharepoint/driver/interpreter.js";
+import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
 
 import { z } from "zod";
 import { WireErrorSchema } from "../../../../models/dashboard/primitives.js";

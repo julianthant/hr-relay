@@ -1,3 +1,4 @@
+import { assertContactSubject } from "../../../../rules/ucpath/emergency-contact.js";
 import type { Locator, Page } from "playwright";
 import type { Clock } from "../../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
@@ -5,7 +6,7 @@ import { UcpathContactAddressFieldsSchema, UcpathContactRefusedError } from "../
 import type { UcpathEmergencyContactInput } from "../../../../models/systems/ucpath/emergency-contacts.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../models/ui/ucpath-emergency-contact.js";
 import type { UcpathContactPageSnapshot } from "../../../../models/ui/ucpath-emergency-contact.js";
-import { readContactSetWithPort, stageContactAdditionWithPort, contactEffect, decideContactAddition, assertContactSubject } from "./contact-operation.js";
+import { readContactSetWithPort, stageContactPlanWithPort, interpretContactPage } from "./contact-operation.js";
 import type { UcpathContactPagePort } from "./contact-operation.js";
 import { UCPATH_PENDING_CONTACT_RECIPES as recipes } from "./ui-registry.js";
 import type { UcpathEmergencyContactDriver } from "../../../../models/ui/ucpath-emergency-contact.js";
@@ -108,8 +109,7 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
       return address.data;
     }
 
-    return {
-      async snapshot() {
+    async function snapshot() {
         const before = await core();
         assertContactSubject({ ...before, pageStateId: "ucpath.emergency-contact.editor-ready" }, subject);
         const rows = [];
@@ -126,6 +126,16 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
         if (!parsed.success) throw new UcpathContactRefusedError("unreadable-contact-row", { cause: parsed.error });
         baseline = before;
         return parsed.data;
+    }
+    return {
+      snapshot,
+      async demotePrimary(index, expected) {
+        const before = interpretContactPage(await snapshot(), subject);
+        const matches = before.rows.filter(row => row.kind === "contact" && canonicalJsonStringify(row.effect) === canonicalJsonStringify(expected));
+        if (!expected.primary || matches.length !== 1 || matches[0]?.rowIndex !== index) throw new UcpathContactRefusedError("contact-set-changed");
+        observation = "staged";
+        await current(() => rowField("primary", index).setChecked(false));
+        await settle();
       },
       async viewAll() {
         await current(() => page.locator(recipes.viewToggle).click());
@@ -191,12 +201,8 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
     async readEmergencyContacts(input) {
       return readContactSetWithPort(await open(input), input);
     },
-    async stageEmergencyContact(input, before) {
-      const decision = decideContactAddition(before, contactEffect(input));
-      if (before.observation !== "persisted" || before.emplId !== input.emplId || decision.state !== "add") {
-        throw new UcpathContactRefusedError("contact-plan-refused");
-      }
-      return stageContactAdditionWithPort(await open(input), input, decision);
+    async stageEmergencyContact(input, plan) {
+      return stageContactPlanWithPort(await open(input), input, plan);
     },
   };
 }

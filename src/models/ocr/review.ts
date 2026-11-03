@@ -1,5 +1,6 @@
+import { OcrReviewRecordSchema } from "./review-record.js";
 import { z } from "zod";
-import { AdmittedRecordSchema, admitOcrExtraction } from "./extraction.js";
+import { admitOcrExtraction } from "./extraction.js";
 import { OcrResultSchema } from "../workflows/ocr/result.js";
 import { CommandIdSchema, EidSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, StableRecordIdSchema } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -13,17 +14,11 @@ export const OcrSourceUploadSchema = z.strictObject({
   fileName: z.string().min(1).max(255), uploadedAt: IsoInstantSchema, uploadedBy: z.literal("local-operator"),
 });
 
-export const OcrReviewRecordSchema = z.strictObject({
-  recordId: StableRecordIdSchema,
-  fields: AdmittedRecordSchema,
-  assertedEid: EidSchema.nullable(),
-  discarded: z.boolean(),
-});
 export function initialOcrReviewRecords(seed: z.output<typeof OcrResultSchema>) {
   return seed.review.records.map(record => {
     const identities = seed.identities.filter(identity => identity.recordIds.includes(record.recordId));
     const outcome = identities.length === 1 ? identities[0]?.outcome : undefined;
-    const status = outcome?.state === "done" ? outcome.output.activeStatus : undefined;
+    const status = outcome?.state === "done" && "activeStatus" in outcome.output ? outcome.output.activeStatus : undefined;
     const documentName = record.subjectName === null ? null : personMatchKey(record.subjectName);
     const observedName = status?.details.name == null ? null : personMatchKey(status.details.name);
     const observed = status?.ucpathSelection === "resolved" && status.details.ucpath === "Found"

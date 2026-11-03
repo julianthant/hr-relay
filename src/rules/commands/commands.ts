@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { OcrReviewRecordSchema } from "../../models/ocr/review.js";
+import { OcrReviewRecordSchema } from "../../models/ocr/review-record.js";
 import { AssistantModelPreferenceSchema } from "../../models/config/assistant-model-preference.js";
 import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
 import { StoredAssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";

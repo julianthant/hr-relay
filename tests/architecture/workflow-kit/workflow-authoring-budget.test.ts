@@ -877,11 +877,11 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
   });
 
   it("arm (c): retained mock literals stay exact and served or sibling additions remain forbidden", () => {
-    assert.equal(Object.values(RETAINED_MOCK_LITERALS).flat().length, 140);
+    assert.equal(Object.values(RETAINED_MOCK_LITERALS).flat().length, 151);
 
     assert.deepEqual(auditWorkflowAuthoringBudget(repositoryInputs(tree)), []);
     for (const path of ["src/dashboard/client/queries/day-queries.ts", "src/dashboard/surfaces/workflows/mocks/new-sibling.ts", "src/dashboard/surfaces/workflows/mocks/workflow-mock-run.tsx", "src/backend/runs/queries/explorer.ts", ...Object.keys(RETAINED_MOCK_LITERALS)]) {
-      for (const workflowId of ["person-lookup", "onboarding", "ocr", "ocr-page", "crm-doc-download"]) {
+      for (const workflowId of ["person-lookup", "onboarding", "ocr", "ocr-page", "crm-doc-download", "emergency-contact"]) {
         const sources = new Map(tree.sources);
         sources.set(path, `${sources.get(path) ?? ""}\nconst injected = (id: string) => id === "${workflowId}";`);
         assert.ok(auditWorkflowAuthoringBudget(repositoryInputs({ ...tree, sources })).some(issue => issue.startsWith(`${path}:`)), `${path}:${workflowId}`);
@@ -931,6 +931,17 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
     const sources = new Map(tree.sources);
     sources.set(path, sources.get(path)!.replace('"separations"', '(unknownId === "separations" ? unknownId : unknownId)'));
     assert.ok(auditWorkflowAuthoringBudget(repositoryInputs({ ...tree, sources })).some(issue => issue.startsWith(`${path}:`)));
+  });
+
+  it("arm (c): retained contact sites refuse removal and same-count repurposing", () => {
+    for (const path of ["src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.ts", "src/dashboard/surfaces/workflows/mocks/workflow-mock-model.ts", "src/dashboard/surfaces/workflows/mocks/workflow-operation-catalog.ts", "src/dashboard/surfaces/workflows/mocks/workflow-operation-model.ts", "src/dashboard/surfaces/workflows/mocks/workflow-review-model.ts"]) {
+      const original = tree.sources.get(path)!;
+      for (const changed of [original.replace('"emergency-contact"', '(unknownId === "emergency-contact" ? unknownId : unknownId)'),
+        original.replace('"emergency-contact"', '"unregistered-contact"')]) {
+        const sources = new Map(tree.sources); sources.set(path, changed);
+        assert.ok(auditWorkflowAuthoringBudget(repositoryInputs({ ...tree, sources })).some(issue => issue.startsWith(`${path}:`)), path);
+      }
+    }
   });
 
   it("arm (a): the seam's comment prose and the unrelated login-recipe seam both stay legal", () => {

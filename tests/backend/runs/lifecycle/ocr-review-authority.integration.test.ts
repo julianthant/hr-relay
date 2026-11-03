@@ -5,17 +5,23 @@ import { afterEach, it } from "vitest";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { assertOcrRecoverySnapshotCurrent, requireCurrentOcrSnapshot, readOcrReviewAuthority, readOcrSnapshotsAuthority } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
 import { OcrApprovedSnapshotSchema, ocrReviewDigest } from "../../../../src/models/ocr/review.js";
-import { OcrWorkflowResultSchema } from "../../../../src/models/workflows/ocr/result.js";
+import { OcrWorkflowResultSchema, OcrResultSchema } from "../../../../src/models/workflows/ocr/result.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { CommandAuditRecordSchema, CommandRequestSchema, RunLifecycleCommandAuditRecordSchema } from "../../../../src/rules/commands/commands.js";
 import { OcrReviewRevisionSchema } from "../../../../src/models/ocr/review.js";
-import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
-import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
+import { deriveStableUuid, lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
+import { ActorIdSchema, FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { replaceOcrAuditRead, replaceOcrCommandRead } from "../../../support/helpers/backend/ocr-proof-reads.js";
 import { terminalGateDependencyRecord } from "../../../../src/models/run/result.js";
+import { RetainedOcrResultSchema } from "../../../support/fixtures/ocr/retained-review-producer.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
+import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
+import { checkpointRecordKey } from "../../../../src/models/workflow/checkpoint.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -23,6 +29,64 @@ type Fixture = Awaited<ReturnType<typeof world.fixture>>;
 function approval(f: Fixture, selectedRecordIds?: readonly string[]) {
   return f.approval(selectedRecordIds);
 }
+
+it("reads an original-schema produced review and approval after reopening, and retains its protected checkpoint authority", async () => {
+  const f = await world.fixture({ record: true, release: true, retainedProducer: true });
+  assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
+  const request = approval(f);
+  assert.equal(f.canonical.kernel.execute(request).state, "applied");
+  const completed = await f.canonical.execute(f.run, new AbortController().signal);
+  assert.ok(completed.run?.lifecycle.state === "terminal" && completed.run.lifecycle.outcome === "done");
+  const original = f.database.authority.ocrReviews.revision(f.run.envelope.runId, 1); assert.ok(original?.origin.kind === "checkpoint");
+  const checkpoint = f.database.authority.runCheckpoints.listByAttempt("ocr", f.run.envelope.itemId, "read-result", 1)[0]; assert.ok(checkpoint);
+  assert.equal(checkpoint.output.schemaHash, deriveSchemaHash(RetainedOcrResultSchema, "output"));
+  assert.equal(checkpoint.output.schemaHash, "40c74ca822894496cea565cc81c0e89264a3aaf290ec98b32b20415bae77014e");
+  assert.notEqual(checkpoint.output.schemaHash, deriveSchemaHash(OcrResultSchema, "output"));
+  const before = canonicalJsonStringify(f.database.authority.ocrReviews.snapshots(f.run.envelope.runId));
+  const publicationId = deriveStableUuid("timeline-checkpoint-recorded", checkpointRecordKey(checkpoint));
+  const publication = f.database.authority.timelineEvents.get(publicationId); assert.ok(publication);
+  assert.throws(() => f.database.withAuthorityTransaction(repositories => {
+    repositories.timelineEvents.pruneBefore("2099-01-01");
+    assert.deepEqual(repositories.timelineEvents.get(publicationId), publication);
+    throw new Error("restore-ordinary-gate-evidence");
+  }), /restore-ordinary-gate-evidence/u);
+  const reviewed = readOcrReviewAuthority(f.database.authority, f.canonical.lifecycle, f.run.envelope.runId); assert.ok(reviewed);
+  assert.equal(canonicalJsonStringify(readOcrSnapshotsAuthority(f.database.authority, reviewed)), before);
+  for (const mutation of ["schemaHash", "value", "origin", "event-missing", "event-digest"] as const) {
+    const altered = { ...checkpoint, output: { ...checkpoint.output,
+      ...(mutation === "schemaHash" ? { schemaHash: FingerprintSchema.parse("a".repeat(64)) } : {}),
+      ...(mutation === "value" ? { value: {} } : {}),
+    } };
+    const origin = mutation === "schemaHash" ? { ...original.origin, digest: sha256Hex(canonicalJsonStringify(altered)), checkpoint: timelineCheckpointReference(altered) }
+      : mutation === "origin" ? { ...original.origin, digest: "a".repeat(64) } : original.origin;
+    const repositories = f.database.authority;
+    const tampered: AuthorityRepositories = { ...repositories,
+      runCheckpoints: { ...repositories.runCheckpoints, listByAttempt: (...args) => repositories.runCheckpoints.listByAttempt(...args)
+        .map(row => row === checkpoint || row.nodeId === "read-result" && row.runId === checkpoint.runId ? altered : row) },
+      ocrReviews: { ...repositories.ocrReviews, revision: (runId, revision) => {
+        const row = repositories.ocrReviews.revision(runId, revision);
+        return row?.id === original.id ? OcrReviewRevisionSchema.parse({ ...row, origin }) : row;
+      } },
+      timelineEvents: { ...repositories.timelineEvents, get: id => {
+        const row = repositories.timelineEvents.get(id);
+        if (row?.payload.kind !== "checkpoint-recorded" || row.payload.checkpoint.nodeId !== "read-result") return row;
+        if (mutation === "event-missing") return undefined;
+        return mutation === "event-digest" ? { ...row, payload: { ...row.payload, checkpoint: { ...row.payload.checkpoint,
+          outputDigest: FingerprintSchema.parse("a".repeat(64)) } } } : row;
+      } },
+    };
+    assert.throws(() => readOcrReviewAuthority(tampered, f.canonical.lifecycle, f.run.envelope.runId), /OCR_REVIEW_REFUSED/u);
+  }
+  await f.harness.manager.closeAll("worker-stop"); f.database.close();
+  const reopened = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 500, migrationOwner: "retained-ocr-read" }, f.clock,
+    undefined, undefined, undefined, boundProfileCredentials(f.admission));
+  f.harness.authority.replaceClosedDatabase(reopened);
+  const reader = new RunRecordService({ database: reopened, clock: f.clock, ids: { uuid: randomUUID }, resolveDescriptor: f.resolve,
+    publishQueued: () => { throw new Error("retained-review-read-is-readonly"); } });
+  const read = readOcrReviewAuthority(reopened.authority, reader, f.run.envelope.runId); assert.ok(read);
+  assert.equal(canonicalJsonStringify(readOcrSnapshotsAuthority(reopened.authority, read)), before);
+  assert.deepEqual(reopened.authority.ocrReviews.revision(f.run.envelope.runId, 1), original);
+});
 
 it("appends journal-bound corrections, discards and restores with revision CAS and exact command replay", async () => {
   const f = await world.fixture({ record: true });

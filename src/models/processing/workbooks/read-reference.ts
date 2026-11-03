@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RunWorkbookReferenceSchema, WorkbookIdSchema, WorkbookCellValuesSchema } from "../../dashboard/workbooks.js";
+import { RunWorkbookNamedReferenceSchema, WorkbookIdSchema, WorkbookCellValuesSchema } from "../../dashboard/workbooks.js";
 import { FingerprintSchema, taskId } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 import { WorkbookRefusalSchema } from "./read-result.js";
@@ -8,9 +8,9 @@ export const WorkbookReferenceReadRequestSchema = z.strictObject({
   typeId: WorkbookIdSchema, keys: z.string().min(1).array().min(1)
     .refine(keys => new Set(keys).size === keys.length, "reference keys must be unique"),
 });
-const snapshot = RunWorkbookReferenceSchema.shape.snapshot;
+const snapshot = RunWorkbookNamedReferenceSchema.shape.snapshot;
 const row = snapshot.shape.rows.element, match = row.shape.matches.element;
-const referenceShape = z.strictObject({ ...RunWorkbookReferenceSchema.shape, snapshot: z.strictObject({ ...snapshot.shape,
+const referenceShape = z.strictObject({ ...RunWorkbookNamedReferenceSchema.shape, snapshot: z.strictObject({ ...snapshot.shape,
   versionId: WorkbookIdSchema, versionName: z.string().min(1),
   rows: z.strictObject({ ...row.shape, matches: z.strictObject({ ...match.shape,
     values: z.strictObject({ fieldId: WorkbookCellValuesSchema.keyType, value: WorkbookCellValuesSchema.valueType }).array()
@@ -18,7 +18,7 @@ const referenceShape = z.strictObject({ ...RunWorkbookReferenceSchema.shape, sna
   }).array() }).array(),
 }) });
 const retainedReference = referenceShape.superRefine((reference, ctx) => {
-  if (!RunWorkbookReferenceSchema.safeParse(referenceRecord(reference)).success) ctx.addIssue({ code: "custom", message: "reference must retain exact keys, fields and row membership" });
+  if (!RunWorkbookNamedReferenceSchema.safeParse(referenceRecord(reference)).success) ctx.addIssue({ code: "custom", message: "reference must retain exact keys, fields and row membership" });
 });
 function referenceRecord(reference: z.input<typeof referenceShape>) {
   return { ...reference, snapshot: { ...reference.snapshot, rows: reference.snapshot.rows.map(row => ({ ...row,
@@ -28,14 +28,14 @@ function referenceRecord(reference: z.input<typeof referenceShape>) {
 export const WorkbookReferenceReadSchema = z.strictObject({ state: z.literal("read"), referenceDigest: FingerprintSchema, reference: retainedReference });
 export const WorkbookReferenceReadResponseSchema = z.discriminatedUnion("state", [WorkbookReferenceReadSchema, WorkbookRefusalSchema]);
 
-export function encodeWorkbookReference(referenceValue: z.input<typeof RunWorkbookReferenceSchema>) {
-  const reference = RunWorkbookReferenceSchema.parse(referenceValue);
+export function encodeWorkbookReference(referenceValue: z.input<typeof RunWorkbookNamedReferenceSchema>) {
+  const reference = RunWorkbookNamedReferenceSchema.parse(referenceValue);
   return retainedReference.parse({ ...reference, snapshot: { ...reference.snapshot, rows: reference.snapshot.rows.map(row => ({ ...row,
     matches: row.matches.map(match => ({ ...match, values: Object.entries(match.values).map(([fieldId, value]) => ({ fieldId, value })) })),
   })) } });
 }
 export function decodeWorkbookReference(referenceValue: z.input<typeof retainedReference>) {
-  return RunWorkbookReferenceSchema.parse(referenceRecord(retainedReference.parse(referenceValue)));
+  return RunWorkbookNamedReferenceSchema.parse(referenceRecord(retainedReference.parse(referenceValue)));
 }
 
 export const ReadWorkbookReference = defineTaskContract({

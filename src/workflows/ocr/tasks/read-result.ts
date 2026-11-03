@@ -7,7 +7,7 @@ export const readOcrResultTask = defineTask(ReadOcrResult, {
   async run({ input, ctx }) {
     let output;
     try {
-      output = { review: input.review, identities: bindOcrLookupOutcomes(input.review, input.outcomes) };
+      output = ReadOcrResult.output.parse({ review: input.review, identities: bindOcrLookupOutcomes(input.review, input.outcomes) });
     } catch (error) {
       return ctx.fail("INCONSISTENT_INPUTS", "OCR lookup outcomes do not match the reviewed records.", { cause: error });
     }

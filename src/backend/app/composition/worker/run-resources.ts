@@ -9,7 +9,7 @@ import type { CredentialStore } from "../../../../models/config/credential-store
 import type { Config } from "../../../../models/config/schema.js";
 import { StoredConfigSchema } from "../../../../models/config/snapshot.js";
 import { ConfigSnapshotRecordSchema } from "../../../../models/config/snapshot.js";
-import type { RunRecord } from "../../../../models/run/record.js";
+import { runClaim, type RunRecord } from "../../../../models/run/record.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../rules/validation/sha256.js";
 import { type BrowserSessionFactoryOptions, BrowserProfileAdmissionSchema, PlaywrightWorkerSessionFactory, ProfileCustodyUnavailableError } from "../../../runtime/browser/browser-session-factory.js";
@@ -34,6 +34,8 @@ import { createApprovedOcrRecordReader } from "../../../runs/lifecycle/approved-
 import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
 import { searchPartitionDay } from "../../../../models/dashboard/search-calendar.js";
 import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
+import { createOcrApprovedSnapshotAdapter } from "../../../processing/providers/ocr-approved-snapshot-adapter.js";
+import type { AnyWorkflowDescriptor } from "../../../../workflow-kit/workflow.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
@@ -43,6 +45,7 @@ export function createRunResourcesFactory(input:Readonly<{
  authority:AuthorityRepositories;artifacts:ContentAddressedArtifactWriter;clock:Clock;ids:IdFactory;
  admission:RuntimeAdmission;database:AuthorityDatabase;
  runReader?:Pick<RunRecordService,"read">;
+ resolveDescriptor?:(workflowId:string)=>AnyWorkflowDescriptor|undefined;
  isolation:RuntimeIsolation;protectedSecrets:Pick<CredentialStore,"read">;scheduler:MonotonicDeadlineScheduler;
  environment:Readonly<Record<string,string|undefined>>;sessionFactory?:WorkerBrowserSessionFactory;duoCeremony?:DuoCeremonyGateFactory;
  assertProfileOwner:(workerId:WorkerId)=>void;
@@ -53,6 +56,8 @@ export function createRunResourcesFactory(input:Readonly<{
  if(input.sessionFactory!==undefined&&input.createSessionFactory!==undefined)throw new Error("browser-session-factory-owner-conflict");
  const profiles=createBrowserProfileAuthority(input);
  const runWorkbooks=createRunWorkbookService({database:input.database,clock:input.clock});
+ const descriptors=new Map([...WORKFLOW_MODULES,...CHILD_ONLY_WORKFLOW_MODULES].map(module=>[String(module.descriptor.id),module.descriptor]));
+ const resolveDescriptor=input.resolveDescriptor??((workflowId:string)=>descriptors.get(workflowId));
  const nominatim=input.nominatim;
  const compose=(config:Config)=>{
   input.assertBrowserRoot(config.paths.browserProfileRoot);
@@ -84,15 +89,20 @@ export function createRunResourcesFactory(input:Readonly<{
    const previous=cache.get(snapshot.fingerprint);
    const baseline=previous??compose(StoredConfigSchema.parse(snapshot.config));cache.set(snapshot.fingerprint,baseline);
    const key=`${run.envelope.runId}:${run.envelope.attempt}:${run.claimGeneration}:${snapshot.fingerprint}`;
+   const approvedOcr=input.runReader===undefined?undefined:createApprovedOcrRecordReader({database:input.database,reader:input.runReader,run,resolveDescriptor,assertCurrent:()=>{
+    input.admission.assertProfileRuntime();const claim=runClaim(run);if(claim===undefined)throw new OcrPublicationRefusedError();
+    input.assertProfileOwner(claim.workerId);
+   }});
    const resources=runCache.get(key)??Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
-    ...(input.runReader===undefined?{}:{"ocr.review":createOcrReviewAdapter({read:createApprovedOcrRecordReader({database:input.database,reader:input.runReader,run}),clock:input.clock})}),
+    ...(approvedOcr===undefined?{}:{"ocr.review":createOcrReviewAdapter({reader:approvedOcr,clock:input.clock})}),
     "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock,
      publicationSource:()=>{
       const module=[...WORKFLOW_MODULES,...CHILD_ONLY_WORKFLOW_MODULES].find(module=>module.descriptor.id===run.envelope.workflow);
       if(module===undefined)throw new WorkbookLibraryError("WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE");
       return {workflowId:module.descriptor.id,workflowLabel:module.descriptor.label,partitionDay:searchPartitionDay(new Date(run.envelope.enqueuedAt))};
      },
-       references:{runId:run.envelope.runId,read:command=>runWorkbooks.read(run,command),write:command=>runWorkbooks.write(run,command)}}),
+      references:{runId:run.envelope.runId,read:command=>runWorkbooks.read(run,command),write:command=>runWorkbooks.write(run,command)}}),
+    "ocr.approved-snapshot":createOcrApprovedSnapshotAdapter({clock:input.clock,...(approvedOcr===undefined?{}:{reader:approvedOcr})}),
    })},...(input.runReader===undefined?{}:{publishCheckpoint:createOcrCheckpointPublication(input.runReader,run)})});
    if(["ocr","ocr-page"].includes(run.envelope.workflow)&&resources.publishCheckpoint===undefined)throw new OcrPublicationRefusedError();
    runCache.set(key,resources);
