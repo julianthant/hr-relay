@@ -103,7 +103,8 @@ describe("bootstrap start-surface block", () => {
         "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "crm-dates": ["crm"] },
         separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "job-summary": ["ucpath"], "kronos-timecard": ["new-kronos"], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
         "crm-doc-download": { "search-records": ["crm"], reference: [], "read-idocs": ["crm"], "package-worksheets": [] },
-        onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "i9-profile-creation": [] },
+        onboarding: { "crm-data": ["crm"], "ucpath-search": ["ucpath"], "i9-search": [], "hire-review": ["ucpath"],
+          "i9-creation": ["i9"], "ucpath-hire": ["ucpath"], "master-results": [] },
         "i9-check-start": { documents: [], "roster-reference": [], retention: [] },
       };
       for (const descriptor of WORKFLOW_DESCRIPTORS) {
