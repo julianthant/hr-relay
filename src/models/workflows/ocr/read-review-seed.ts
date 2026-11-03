@@ -16,7 +16,7 @@ export const ReadOcrReviewSeed = defineTaskContract({
   output: OcrReviewSeedSchema, errorCodes: ["INCONSISTENT_INPUTS"],
   subject: { kind: "none", reason: "retains source evidence and identity proposals without confirming a person" },
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: [],
-  example: buildOcrReviewSeed({ sourceRunId: OCR_INPUT_EXAMPLE.sourceRunId, roster: null,
+  example: buildOcrReviewSeed({ roster: null,
     accounting: accountOcrPages(manifest, OCR_INPUT_EXAMPLE.readingId, [OcrPageOutcomeSchema.parse({ state: "failed",
       runId: "00000000-0000-4000-8000-000000000301", itemId: ocrExtractionItemId(ocrPageInputs(manifest, OCR_INPUT_EXAMPLE.readingId)[0]),
       failureId: "00000000-0000-4000-8000-000000000777" })]) }),

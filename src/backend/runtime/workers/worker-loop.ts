@@ -77,6 +77,7 @@ type WorkerClaimRequest = Readonly<{
 }>;
 
 export interface WorkerRunResources {
+ readonly publishCheckpoint?: import("../execution/run-executor.js").RunExecutorDependencies["publishCheckpoint"];
  readonly sessionFactory: WorkerBrowserSessionFactory;
  readonly duoCeremony: DuoCeremonyGateFactory;
  readonly taskDeadlineMs: number;
@@ -467,6 +468,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             ...(deps.gateSources === undefined ? {} : { gateSources: deps.gateSources }),
             ...(deps.diagnostics === undefined ? {} : { diagnostics: deps.diagnostics }),
             ...(providers === undefined ? {} : { providers }),
+            ...(resources?.publishCheckpoint === undefined ? {} : { publishCheckpoint: resources.publishCheckpoint }),
             ...(deps.artifacts === undefined ? {} : { artifacts: deps.artifacts }),
             ...(deps.artifactProjector === undefined ? {} : { artifactProjector: deps.artifactProjector }),
           }, { run, claim, signal: runController.signal }),

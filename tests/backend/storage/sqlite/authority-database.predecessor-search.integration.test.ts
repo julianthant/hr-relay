@@ -1,6 +1,6 @@
 import { removeSchema16PersonPreferences } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { restoreEmptyPreMasterWorkbookFixture } from "../../../support/helpers/workbooks/pre-master-schema.js";
-import { removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
+import { removeEmptySchema17OcrReview, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -23,7 +23,7 @@ it.each([[12, "published"], [12, "building"], [13, "published"], [13, "building"
   const database = new DatabaseSync(":memory:");
   try {
     database.exec("PRAGMA foreign_keys=ON");
-    for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) database.exec(statement);
+    for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= CURRENT_AUTHORITY_SCHEMA_VERSION)) for (const statement of migration.statements) database.exec(statement);
     database.prepare("INSERT INTO settings_snapshots(id,revision,fingerprint,payload_json,captured_at) VALUES(?,?,?,?,?)")
       .run(CONFIG_SNAPSHOT.configSnapshotId, CONFIG_SNAPSHOT.revision, CONFIG_SNAPSHOT.fingerprint, JSON.stringify(CONFIG_SNAPSHOT), CONFIG_SNAPSHOT.capturedAt);
     database.prepare("INSERT INTO database_states VALUES(?,?,?,?,?,?,?,?)").run(1, CURRENT_AUTHORITY_SCHEMA_VERSION, 0, QUEUED_RUN.createdAt, 0, "ready",
@@ -49,6 +49,7 @@ it.each([[12, "published"], [12, "building"], [13, "published"], [13, "building"
     assert.equal(index.publication().state, "published");
     assert.equal(database.prepare("SELECT count(*) AS count FROM run_search").get()?.count, 1);
     database.exec(`PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}`);
+    removeEmptySchema17OcrReview(database);
     removeSchema16PersonPreferences(database);
     database.exec("DROP TRIGGER run_pause_insert; DROP TRIGGER run_pause_update; ALTER TABLE runs DROP COLUMN pause_state");
     if (version < 14) removeEmptyExclusiveSessionLeaseFixture(database);

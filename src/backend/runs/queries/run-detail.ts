@@ -3,6 +3,7 @@ import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import type { NativeRunEventWire } from "../../../models/dashboard/run-detail.js";
 import { availableSections, buildRunGate } from "./run-trust.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
+import { readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
 import {
   RunDetailWireSchema,
   TimelineStepWireSchema,
@@ -390,7 +391,9 @@ export function buildRunDetail(
     ...(captures === undefined ? {} : { captures }),
 
     ...(omittedSteps.length === 0 ? {} : { omittedSteps }),
-    availableSections: availableSections(row, authority, deps.trust, captures),
+    availableSections: availableSections(row, authority, deps.trust, captures, authority.envelope.workflow === "ocr"
+      && deps.canonical !== undefined && deps.canonical.database.withAuthorityReadSnapshot(() =>
+        readOcrReviewAuthority(deps.canonical!.database.authority, deps.canonical!.reader, runId) !== undefined)),
   });
 }
 

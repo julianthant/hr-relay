@@ -6,7 +6,8 @@ import { OcrRosterEvidenceSchema } from "./review-seed.js";
 import { ManualOcrAssertionSchema, OCR_PAGE_EXAMPLE } from "../ocr-page/input.js";
 
 export const OcrInputSchema = z.strictObject({
-  sourceRunId: RunIdSchema,
+  sourceRunId: RunIdSchema.optional(),
+  approval: z.enum(["review-only", "release"]).default("review-only"),
   document: OcrPageInputSchema.shape.document,
   readingId: ItemIdSchema,
   formType: OcrFormTypeSchema,
@@ -16,6 +17,7 @@ export const OcrInputSchema = z.strictObject({
     z.strictObject({ kind: z.literal("manual"), actorId: z.string().min(1), assertions: z.array(ManualOcrAssertionSchema).min(1) }),
   ]),
 });
-export const OCR_INPUT_EXAMPLE = OcrInputSchema.parse({ sourceRunId: "00000000-0000-4000-8000-000000000102",
+export const OcrCanonicalInputSchema = OcrInputSchema.extend({ approval: OcrInputSchema.shape.approval.removeDefault() });
+export const OCR_INPUT_EXAMPLE = OcrInputSchema.parse({
   document: OCR_PAGE_EXAMPLE.page.document, readingId: OCR_PAGE_EXAMPLE.page.readingId,
   formType: "emergency-contact", roster: null, reading: { kind: "subscription" } });

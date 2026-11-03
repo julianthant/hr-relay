@@ -83,7 +83,7 @@ export const extractPdfPagesTask = defineTask(ExtractPdfPages, {
 
     ctx.recordData([
       { direction: "read", field: "pageCount", value: pageCount },
-      { direction: "read", field: "renderedPages", value: pages.length },
+      { direction: "read", field: "pages", value: pages },
     ]);
 
     return ExtractPdfPagesOutputSchema.parse({ pageCount, pages });
