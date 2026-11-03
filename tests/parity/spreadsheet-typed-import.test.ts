@@ -21,7 +21,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920, 
       const dialog = page.getByRole('dialog', { name: 'Choose spreadsheet columns', exact: true });
       await expect(dialog).toBeVisible();
       await expect(dialog.getByRole('combobox', { name: 'Header row', exact: true })).toHaveAttribute('data-value', '3');
-      for (const [letter, value] of [['A', 'fullName'], ['B', 'eid'], ['C', 'personalEmail'], ['D', 'transactionNumber'], ['E', 'roster.i9ProfileId']]) await expect(dialog.getByRole('combobox', { name: `Dashboard field for ${letter}`, exact: true })).toHaveAttribute('data-value', value);
+      for (const [letter, value] of [['A', 'fullName'], ['B', 'eid'], ['C', 'personalEmail'], ['D', 'transactionNumber'], ['E', 'i9ProfileId']]) await expect(dialog.getByRole('combobox', { name: `Dashboard field for ${letter}`, exact: true })).toHaveAttribute('data-value', value);
       await expect(dialog.getByRole('textbox', { name: /^Label for/ })).toHaveCount(0);
       const submit = dialog.getByRole('button', { name: 'Import selected columns', exact: true });
       await expect(submit).toBeEnabled();
@@ -50,9 +50,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1280, 1440, 1920, 
       await expect(eid).toHaveAttribute('data-value', 'eid'); await expect(dialog.getByRole('combobox', { name: 'Header row', exact: true })).toHaveAttribute('data-value', '1');
       await submit.click();
       await editor.getByRole('button', { name: 'Spreadsheets', exact: true }).click();
-      const library = page.getByRole('table', { name: 'Registered spreadsheets', exact: true });
-      await expect(library.getByRole('button', { name: 'Fictional roster.csv', exact: true })).toHaveCount(1);
-      await library.getByRole('button', { name: 'Fictional roster.csv', exact: true }).click();
+      const library = page.getByRole('table', { name: 'Your spreadsheets', exact: true });
+      await expect(library.getByRole('button', { name: 'Open Fictional roster.csv', exact: true })).toHaveCount(1);
+      await library.getByRole('button', { name: 'Open Fictional roster.csv', exact: true }).click();
       await expect(editor.getByRole('textbox', { name: 'E2', exact: true })).toHaveValue('123456');
       await page.goBack(); await expect(library).toBeVisible();
       await page.goForward(); await expect(editor).toBeVisible();
