@@ -25,6 +25,7 @@ export function deriveRunSummary(source: RunSummarySource, sourceGeneration: num
     sourceCursor:source.cursor,sessionId:run.sessionId??null,children:source.children,dependencyRunIds:source.dependencyRunIds,
     completionClass:run.lifecycle.state === "terminal" ? run.lifecycle.outcome : null,failureTransient:failure?.transient??null,
     createdAt: run.createdAt, updatedAt: run.updatedAt, lifecycle: run.lifecycle,
+    delegationWait: source.delegationWait,
     priority: run.envelope.priority, shape: run.envelope.shape, parentRunId: run.envelope.parent?.runId ?? null,
     attempt: run.envelope.attempt, sourceGeneration, sourceDigest: "0".repeat(64),
     warningCount: projectedReceipt?.state === "available" ? projectedReceipt.value.warnings.length : null, receiptResult: receipt?.result ?? null,

@@ -107,6 +107,12 @@ keep their known input title. Operator names remain separate from the system sub
 Escape exits selection. A row's `#N` footer is its attempt, followed by plain trace text and duration.
 The footer is one line. Delete confirms with the title, selected run, buttons, and the footer’s short run ID plus revision, without a description. Creation provenance belongs in the information disclosure.
 
+A run released into delegation keeps the same row, attempt, position and elapsed-time origin. It
+reads Running at its current step while children execute, including when a child owns an approval
+gate. Only that child reads Review. A `block-parent` hold reads Blocked on every waiting ancestor.
+Waiting parents are excluded from queued-work filters and counts. Manual child retry uses the
+parent's existing Paused/Resume control after the current retry has settled.
+
 `QueuePanel` accepts `QueueSurfaceWire[]`, `QueueViewState`, `QueueHandlers`, action descriptors,
 workflow labels, parent identity, and filter scope. Its model distinguishes standalone,
 operation-group, operation-member, and linked shapes. Group counts and explanatory summaries

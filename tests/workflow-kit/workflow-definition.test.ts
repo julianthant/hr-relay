@@ -285,6 +285,37 @@ describe("workflow definition compiler", () => {
 });
 
 describe("workflow definition entry algebra", () => {
+  const delegateLeaf = (author: Author, id: string, references: readonly AnyWorkflowEntry[] = []) => author.delegate({
+    id, target: { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: z.strictObject({ value: z.string() }) }, edgeId: id,
+    cardinality: "one", await: "terminal", join: "one",
+    policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" },
+  }, references, { bind: ({ input }) => input, deriveChildItemId: () => ItemIdSchema.parse("00000000-0000-4000-8000-000000000fe1") });
+
+  it("orders every delegate branch's external prerequisite before admitting the cohort", () => {
+    const definition = fixtureWorkflow("parallel-delegate-prerequisites", author => {
+      const prepare = author.task({ id: "prepare", contract: SearchPersonOrg, replay: "checkpoint" }, [], lookupInput);
+      const left = delegateLeaf(author, "left"), right = delegateLeaf(author, "right", [prepare]);
+      const lookups = author.parallel({ id: "lookups", join: "all", failure: "fail-fast" }, [
+        { id: "left", leaves: [left] }, { id: "right", leaves: [right] },
+      ]);
+      return { steps: [[{ key: "lookups", label: "Lookups" }, [lookups]], [{ key: "prepare", label: "Prepare" }, [prepare]]],
+        result: author.result(z.strictObject({ value: z.string() }), [], () => ({ value: "done" })) };
+    });
+    const nodes = descriptorRuntimeNodes(compileFixtureWorkflow(definition).descriptor);
+    expect(nodes.map(node => node.id)).toEqual(["prepare", "lookups", "left", "right"]);
+    expect(nodes.find(node => node.id === "lookups")?.dependsOn).toEqual(["prepare"]);
+  });
+
+  it("refuses a delegate cohort whose fan-out needs a sibling's result", () => {
+    expect(() => fixtureWorkflow("parallel-delegate-sibling", author => {
+      const left = delegateLeaf(author, "left"), right = delegateLeaf(author, "right", [left]);
+      const lookups = author.parallel({ id: "lookups", join: "all", failure: "fail-fast" }, [
+        { id: "left", leaves: [left] }, { id: "right", leaves: [right] },
+      ]);
+      return { steps: [[{ key: "lookups", label: "Lookups" }, [lookups]]], result: author.result(z.strictObject({ value: z.string() }), [], () => ({ value: "done" })) };
+    })).toThrow(/parallel entry "lookups" with delegates cannot depend on a sibling leaf/u);
+  });
+
   it("compiles every explicit entry kind into its existing node kind with the author's exact policies", () => {
     const compiled = compileFixtureWorkflow(everyEntryKindWorkflow);
     expect(workflowEntryKinds(everyEntryKindWorkflow).toSorted())
@@ -377,7 +408,7 @@ describe("workflow definition entry algebra", () => {
         { id: "b", leaves: [review] },
       ]);
       return { steps: [[{ key: "fan", label: "Fan" }, [fan]]], result: author.result(z.string(), [], () => "done") };
-    })).toThrow(/leaf "review" is a gate entry; a parallel leaf is a task entry with its own checkpoint/u);
+    })).toThrow(/leaf "review" is a gate entry; a parallel leaf is a task or delegate entry with its own evidence/u);
 
     const target = { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: z.strictObject({}) };
     const policy = {

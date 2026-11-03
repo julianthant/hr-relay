@@ -17,8 +17,8 @@ for (const mutation of ["missing-proof", "foreign-parent", "altered-schema", "ch
     const manifests = f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId);
     const children = manifests.flatMap(manifest => manifest.children.map(child => f.database.authority.runs.get(child.childRunId)));
     let childCalls = 0, reads = 0;
-    const execute = f.canonical.childRuns.executeChildRun.bind(f.canonical.childRuns);
-    f.canonical.childRuns.executeChildRun = context => { childCalls += 1; return execute(context); };
+    const execute = f.canonical.childRuns.executeChildRuns.bind(f.canonical.childRuns);
+    f.canonical.childRuns.executeChildRuns = context => { childCalls += 1; return execute(context); };
     const transact = f.database.withAuthorityTransaction.bind(f.database);
     f.database.withAuthorityTransaction = work => transact(repositories => work({ ...repositories,
       ...(mutation === "missing-proof" ? {
@@ -46,7 +46,7 @@ for (const mutation of ["missing-proof", "foreign-parent", "altered-schema", "ch
       assert.equal(childCalls, 0);
       const result = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(result);
       assert.equal(terminalEvidenceResult(result)?.kind, "failed-evidence");
-    } finally { f.database.withAuthorityTransaction = transact; f.canonical.childRuns.executeChildRun = execute; }
+    } finally { f.database.withAuthorityTransaction = transact; f.canonical.childRuns.executeChildRuns = execute; }
     assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId), manifests);
     assert.deepEqual(manifests.flatMap(manifest => manifest.children.map(child => f.database.authority.runs.get(child.childRunId))), children);
     assert.deepEqual(f.database.authority.ocrReviews.snapshot(approval.commandId), snapshot);

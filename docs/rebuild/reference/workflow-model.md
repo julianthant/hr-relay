@@ -289,13 +289,15 @@ browser stores first, and returns `descriptor`, `stores`, `role`, `intake`, `def
 | Author entry | Compiled node | Current limit |
 | --- | --- | --- |
 | `task` | `task` | Read contract with explicit `checkpoint` or `always-rerun` replay |
-| `parallel` | `parallel` and task leaves | `join: "all"`, `failure: "fail-fast"`; at least two nonempty branches |
+| `parallel` | `parallel` and task or child-run leaves | `join: "all"`, `failure: "fail-fast"`; at least two nonempty branches |
 | `delegate` | `child-run` | Typed target and explicit cardinality, await, join, and policy |
 | `gate` | `gate` | Author produces operator gates with typed results |
 | `transaction` | `transaction` | Prepare and commit contracts, stable binds, dry-run and probe policy |
 
-The compiler refuses `parallel` with `join: "all-settled"`. Parallel leaves must be task entries and
-cannot be shared across branches. The low-level graph vocabulary also contains `branch`; the
+The compiler refuses `parallel` with `join: "all-settled"`. Parallel leaves are tasks or delegates
+and cannot be shared across branches. A delegate cohort admits every fan-out before yielding;
+its leaves cannot depend on sibling results. The compiler orders all external prerequisites before
+the cohort. Task-only parallel entries retain their independent checkpoint replay. The low-level graph vocabulary also contains `branch`; the
 workflow author does not expose a separate branch entry.
 
 #### 1.6.4 Operation display
@@ -363,13 +365,18 @@ wrong-attempt freshness overrides, duplicate patches, and a patch aimed at the e
 authority-supplied attempt greater than the current attempt.
 
 `dryRun` is envelope state, not workflow input. `workflowDryRunSupport` derives support from all
-transaction nodes. A graph with no transaction refuses preview as `no-transaction-node`; a graph
+transaction nodes. A standalone graph with no transaction refuses preview as `no-transaction-node`; a graph
 with an unsupported transaction refuses as `node-declares-unsupported`. Otherwise `firstTransactionNodeId` names
 the first preparation boundary. `supportsDryRun` on an input-run surface is derived and cannot be authored.
 
+A delegated child with no transaction inherits `dryRun: true` and executes its normal read-only
+graph, including its gates and nested delegation. It returns the normal typed observational result
+and receipt for its parent to consume. A child with an unsupported transaction still refuses; child
+and parent dry-run flags must match. This exception does not offer standalone read-only previews.
+
 ### 2.1 Preview terminal result
 
-`executeClaimedRun` traverses the declared graph and stores `RunDryRunPreviewResult`, independently
+For a transaction preview, `executeClaimedRun` traverses the declared graph and stores `RunDryRunPreviewResult`, independently
 of the authored terminal derive. Every node has exercised, transaction-preview, unavailable or
 not-run accounting. Each transaction prepares, verifies and captures without invoking commit.
 Existing completion may be observed at the durable lookup or read probe without restaging a form.
@@ -437,7 +444,33 @@ root start plan, retained invocation, declared edge and complete child membershi
 keeps its home slot while a fresh canonical claim identifies the executing descendant. The parent
 releases its claim while awaiting children and resumes through a fresh claim. Missing child capacity
 refuses explicitly; uncertain writes are never retried. A direct executor without this port refuses
-`capability-unavailable`. Neither registered workflow declares a child-run node.
+`capability-unavailable`. OCR delegates page reads to `ocr-page`; Onboarding delegates I-9 search
+to `i9-lookup`. OCR also delegates proposed identity checks to `person-lookup`.
+
+A delegation wait keeps the parent run, attempt, enqueue instant and queue row. Its served status
+is `running` at the owning step until it can continue. A `block-parent` failure appears as `blocked`
+on every waiting ancestor, including when another branch is still active. A child's approval gate
+appears only on that child; waiting ancestors remain `running`. Queue status filtering happens
+before pagination, so released parents are never counted or selected as queued work. Queue, Logs
+and Activity use the same authenticated wait facts.
+
+`resume-parent` makes a completed retry eligible for joining. `manual-parent-resume` pauses the
+waiting parent through its existing pause control while the replacement child can execute. Resume
+requires terminal evidence for every current manual retry and binds its native command identity to the exact dependency, child,
+attempt and result digest. A later retry needs its own acknowledgement. Resume keeps the parent's
+run and attempt; it cannot release an unresolved or UNKNOWN write.
+
+A parallel step can contain several child-run leaves. One admission transaction authenticates every
+leaf and records their ordered membership before releasing the parent once. Each leaf keeps its own
+invocation, manifest, dependencies, child results and retry history. Ready or unawaited-only cohorts
+do not yield. A resumed parent authenticates each branch again; completed continuation branches
+reuse their retained evidence. A cancelled cascading branch does not cancel an independent sibling.
+An UNKNOWN write in any awaited branch prevents the parent from joining or being retried.
+
+Each leaf retains its existing admission receipt. The running transition identifies the cohort
+owner; registered leaves, retained invocations and continuation evidence prove complete branch
+membership. All admissions share the held claim and parent version, and exactly one requeue receipt
+proves the release. These facts derive the wait without changing stored record shapes.
 
 ### 3.3 Conditions
 
