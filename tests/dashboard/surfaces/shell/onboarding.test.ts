@@ -262,7 +262,7 @@ it("selects Fast Duo cards through the device selector and blocks selection whil
     assert.equal(select.value, "touch");
     await act(async () => { select.value = "key"; select.dispatchEvent(new Event("change", { bubbles: true })); });
     assert.equal(cards()[0].getAttribute("aria-pressed"), "true");
-    await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "Open duo.ucpath.edu")!.click());
+    await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "Open duo.ucsd.edu")!.click());
     assert.ok(cards().every(card => card.disabled)); assert.equal(select.disabled, true);
     await act(async () => settle(draft));
     assert.ok(cards().every(card => !card.disabled));

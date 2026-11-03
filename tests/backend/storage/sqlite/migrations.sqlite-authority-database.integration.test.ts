@@ -138,6 +138,9 @@ describe("authority generation accounting", () => {
           sheets: [{ id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [{ id: "row", cells: [{ value: "retained" }] }] }],
         });
         library.operatorOperation(record.libraryId, 'retained-version', { kind: 'version', expectedVersion: 1, name: 'Retained' });
+        const state = database.authority.workbooks.libraryState(record.libraryId);
+        await library.libraryAction(record.libraryId, { operationId: 'retained-library-action', expectedVersion: record.version,
+          expectedRevision: state.revision, change: { kind: 'rename-version', versionId: state.selectedVersionId, name: 'Reviewed original' } }, new AbortController().signal);
       } else if (trigger.tableName !== "database_upgrades") {
         mutation = cases.find(({ table }) => table === trigger.tableName);
         assert.ok(mutation, `${trigger.name} needs a current owner fixture`);

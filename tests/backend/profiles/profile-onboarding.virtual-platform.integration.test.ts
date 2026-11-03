@@ -56,7 +56,7 @@ for (const custody of ["ready", "retained", "missing"] as const) it(`requires ${
     assert.equal(ready.step, "ready"); assert.equal(ready.methods.touch.platformAuthenticator, "chromium-platform");
     if (custody === "retained") {
       assert.ok(virtualCapability);
-      await virtualCapability.retainUnknown();
+      await virtualCapability.retainUnknown({ kind: "unknown", causeTag: "browser-lifetime" });
       assert.equal(session.readOnboarding(draft.token, draft.operationId).methods.touch.state, "complete");
     }
     const active = await session.completeOnboarding(draft.token, draft.operationId); assert.equal(active.state, "active");

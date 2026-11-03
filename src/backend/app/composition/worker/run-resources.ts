@@ -29,6 +29,9 @@ import { createWorkbookLibraryAdapter } from "../../../processing/providers/work
 import { createOcrCheckpointPublication, admitOcrRunResources, OcrPublicationRefusedError } from "../../../runs/lifecycle/ocr-checkpoint-publication.js";
 import type { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import { createRunWorkbookService } from "../../../runs/workbooks.js";
+import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
+import { searchPartitionDay } from "../../../../models/dashboard/search-calendar.js";
+import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
@@ -81,6 +84,11 @@ export function createRunResourcesFactory(input:Readonly<{
    const key=`${run.envelope.runId}:${run.envelope.attempt}:${run.claimGeneration}:${snapshot.fingerprint}`;
    const resources=runCache.get(key)??Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
     "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock,
+     publicationSource:()=>{
+      const module=[...WORKFLOW_MODULES,...CHILD_ONLY_WORKFLOW_MODULES].find(module=>module.descriptor.id===run.envelope.workflow);
+      if(module===undefined)throw new WorkbookLibraryError("WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE");
+      return {workflowId:module.descriptor.id,workflowLabel:module.descriptor.label,partitionDay:searchPartitionDay(new Date(run.envelope.enqueuedAt))};
+     },
       references:{runId:run.envelope.runId,write:command=>runWorkbooks.write(run,command)}}),
    })},...(input.runReader===undefined?{}:{publishCheckpoint:createOcrCheckpointPublication(input.runReader,run)})});
    if(["ocr","ocr-page"].includes(run.envelope.workflow)&&resources.publishCheckpoint===undefined)throw new OcrPublicationRefusedError();

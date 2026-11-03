@@ -1,3 +1,5 @@
+import { WorkbookReferenceLookupSchema, type WorkbookReferenceLookup, type RunWorkbookReference } from "../models/dashboard/workbooks.js";
+import { PlannedRunOutputSchema, type PlannedRunOutput } from "../models/dashboard/run-outputs.js";
 import type { RunContinuation } from "../models/run/continuation.js";
 import { DryRunStepSchema } from "../models/workflow/dry-run.js";
 import { WorkbookIdSchema } from "../models/dashboard/workbooks.js";
@@ -135,6 +137,7 @@ export interface DetailProjectionSpec<S> {
 export interface SubjectProjectionSpec<S> {
   readonly nodeId: keyof S & string;
   readonly fieldPath: string;
+  readonly eidFieldPath?: string;
 }
 
 // Brands are enforced by parsing through the schema.
@@ -206,6 +209,8 @@ export interface WorkflowDescriptor<
   readonly contractFingerprint: Fingerprint;
   /** Existing references or linked masters this workflow directly needs. */
   readonly requiredWorkbookTypeIds: readonly string[];
+  readonly referenceLookups?: (input: z.output<InputSchema>) => readonly WorkbookReferenceLookup[];
+  readonly plannedOutputs?: (input: z.output<InputSchema>, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
   readonly code: string;
   readonly label: string;
   readonly sessionLabel?: string;
@@ -263,6 +268,8 @@ export interface AnyWorkflowDescriptor {
   readonly version: number;
   readonly contractFingerprint: Fingerprint;
   readonly requiredWorkbookTypeIds: readonly string[];
+  readonly referenceLookups?: (input: never) => readonly WorkbookReferenceLookup[];
+  readonly plannedOutputs?: (input: never, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
   readonly code: string;
   readonly label: string;
   readonly sessionLabel?: string;
@@ -284,7 +291,7 @@ export interface AnyWorkflowDescriptor {
   readonly details: readonly z.input<typeof DetailProjectionSpecRuntimeSchema>[];
    /** Plain data, so it rides the BROAD view (unlike `presentation`, whose title/subtitle are
     * functions of the exact input type). The run/queue projection reads it. */
-  readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string }>;
+  readonly subjectProjection?: Readonly<{ nodeId: string; fieldPath: string; eidFieldPath?: string }>;
   readonly titleProjection?: ResultTitleProjection;
   readonly subtitleProjection?: ResultSubtitleProjection;
   readonly outcomeProjection?: OutcomeProjection;
@@ -405,10 +412,11 @@ export function workflowDryRunSupport(descriptor: AnyWorkflowDescriptor): Workfl
   return workflowProjections(descriptor).dryRun;
 }
 
-// Re-parses through the canonical schema before handing to authored callbacks.
+// Lookups use ingress; run callbacks use bound canonical input.
 export interface WorkflowPlanning {
   readonly requiredWorkbookTypeIds: readonly string[];
-  readonly parseInput: (raw: unknown) => unknown;
+  readonly plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
+  readonly parseInput: (raw: unknown) => Readonly<{ input: unknown; lookups: readonly WorkbookReferenceLookup[] }>;
   readonly parseCanonicalInput: (value: unknown) => unknown;
   readonly matchKey: (parsed: unknown) => string;
   readonly title: (parsed: unknown) => string;
@@ -996,6 +1004,9 @@ export function defineWorkflowDescriptor<
       "subject projection",
       "offers",
     );
+    if (spec.subjectProjection.eidFieldPath !== undefined) {
+      assertNodeFieldPath(id, nodes, spec.subjectProjection.nodeId, spec.subjectProjection.eidFieldPath, "subject EID projection", "offers");
+    }
   }
 
   const editData = spec.capabilities?.editData;
@@ -1168,7 +1179,11 @@ export function defineWorkflowDescriptor<
   }));
   PLANNING.set(descriptor, Object.freeze({
     requiredWorkbookTypeIds,
-    parseInput: (raw: unknown) => spec.flow.input.parse(raw),
+    plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => PlannedRunOutputSchema.array().parse(spec.plannedOutputs?.(spec.canonicalInput.parse(parsed), references) ?? []),
+    parseInput: (raw: unknown) => {
+      const input = spec.flow.input.parse(raw);
+      return { input, lookups: WorkbookReferenceLookupSchema.array().parse(spec.referenceLookups?.(input) ?? []) };
+    },
     parseCanonicalInput: (value: unknown) => spec.canonicalInput.parse(value),
     matchKey: (parsed: unknown) => spec.identity.matchKey(spec.canonicalInput.parse(parsed)),
     title: (parsed: unknown) => spec.presentation.title(spec.canonicalInput.parse(parsed)),

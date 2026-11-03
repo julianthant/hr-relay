@@ -30,7 +30,7 @@ async function fixture() {
   const raw = { emplId: "10873698" }, planning = workflowPlanning(personLookupDescriptor);
   const run = f.create({ dryRun: false, input: { raw, ingressSchemaHash: deriveSchemaHash(personLookupDescriptor.input, "input"),
     parsed: { schemaHash: deriveSchemaHash(personLookupDescriptor.canonicalInput, "output"), protectedBindings: [],
-      value: JsonValueSchema.parse(planning.parseCanonicalInput(planning.parseInput(raw))) } } });
+      value: JsonValueSchema.parse(planning.parseCanonicalInput(planning.parseInput(raw).input)) } } });
   const descriptors = { resolve: (id: string) => id === personLookupDescriptor.id ? personLookupDescriptor : undefined };
   const settings = createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, f.host, f.clock), createCredentialStore({ stateRoot: f.root }));
   const profileId = f.database.getMeta().profileId;

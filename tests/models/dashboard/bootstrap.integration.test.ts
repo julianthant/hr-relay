@@ -16,7 +16,7 @@ describe("bootstrap start-surface block", () => {
       },
     };
     expect(WorkflowStartWireSchema.safeParse({
-      enqueue: "reject-active", version: 1, spreadsheetIntake: false, steps: [step],
+      enqueue: "reject-active", version: 1, spreadsheetIntake: false, requiredWorkbookTypeIds: [], steps: [step],
     }).success).toBe(false);
   });
 

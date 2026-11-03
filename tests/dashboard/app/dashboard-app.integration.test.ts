@@ -167,7 +167,15 @@ try {
   assert_m0.equal(document.querySelectorAll('[role="dialog"]').length, 0);
   assert_m0.deepEqual(registeredFiles.map(file => file.id), before);
   assert_m0.equal(starts, 0);
-  assert_m0.equal(document.activeElement, button(dismissal === "Cancel" ? "Import spreadsheet" : "Review import"));
+  const trigger = button(dismissal === "Cancel" ? "Import spreadsheet" : "Review import");
+  assert_m0.equal(trigger.disabled, false, "the import can be opened after dismissal");
+  assert_m0.ok(document.activeElement === trigger, `focus returned to ${document.activeElement?.tagName}, not ${trigger.textContent}`);
+  if (dismissal !== "Cancel") {
+    await click(trigger);
+    assert_m0.ok(document.querySelector('[role="dialog"]'), "the retained import can be reviewed again");
+    assert_m0.deepEqual(registeredFiles.map(file => file.id), before);
+    assert_m0.equal(starts, 0);
+  }
   assert_m0.equal(new URLSearchParams(location.search).has("intake"), false);
 
 } finally {
