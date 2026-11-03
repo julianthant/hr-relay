@@ -4,7 +4,7 @@ import { composeCommandRequest, verifyShellCommandEffect } from "../../../../src
 import { workbookRowChoiceId, workbookWriteLogActions, workbookWriteLogStep, workbookWriteMatchesReplay } from "../../../../src/dashboard/surfaces/run-detail/logs/workbook-write-model.js";
 import { RunWorkbookWritesWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
-import { deriveStableUuid } from "../../../../src/rules/identity/identifiers.js";
+import { deriveStableUuid } from "../../../../src/rules/identity/stable-uuid.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";

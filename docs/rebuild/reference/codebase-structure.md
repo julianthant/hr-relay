@@ -120,6 +120,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/events/` | Timeline, confirmed action, declared step result, and confirmation-proof schemas. |
 | `src/models/trust/` | Failure, diagnostic, receipt, and scenario schemas. |
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |
+| `src/rules/identity/stable-uuid.ts` | Browser-safe deterministic UUID derivation shared with the runtime `identifiers.ts` entry; native and browser callers use the same digest and UUID bits. |
 | `src/rules/` | Pure decisions and validation, including identity, clocks, normalization, ledger derivation, redaction, and write safety. |
 | `src/workflow-kit/` | Root-level TypeScript modules for task and workflow declaration, flow construction, compilation, sessions, providers, artifacts, and capabilities. |
 | `src/workflow-kit/workflow-definition.ts` | `defineWorkflow` and `compileWorkflow`. |

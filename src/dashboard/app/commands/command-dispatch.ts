@@ -22,7 +22,7 @@ import {
 } from "../../surfaces/run-detail/identity/identity-ceremony.js";
 import { renameDraftProblem } from "../../surfaces/run-detail/identity/rename-draft.js";
 import type { RunWorkbookWritesWire } from "../../../models/dashboard/run-detail.js";
-import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
+import { deriveStableUuid } from "../../../rules/identity/stable-uuid.js";
 
 export type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
 
