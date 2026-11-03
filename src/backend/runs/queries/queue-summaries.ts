@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { RunSummaryQuerySchema } from "../../storage/sqlite/run-summaries.js";
-import { deriveRunStatus } from "../lifecycle/run-status.js";
+import { deriveRunStatus } from "../../../rules/runs/run-status.js";
 export const QueueSummaryQuerySchema = z.strictObject({...RunSummaryQuerySchema.shape,workflow:z.string().min(1).optional()}).refine(query=>query.fromDay===undefined||query.toDay===undefined||query.fromDay<=query.toDay,{message:"run-summary-range-invalid"});
 /** Public-safe bounded Queue facts. V owns route composition and action authorization. */
 export function queryQueueSummaries(database:AuthorityDatabase,input:z.input<typeof QueueSummaryQuerySchema>) {

@@ -41,6 +41,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
       listRunBatches: () => database.authority.runSessions.list(),
       getRunBatch: (id) => database.authority.runSessions.get(id),
       getFailure: (failureId) => database.authority.failures.get(failureId),
+      delegationWait: runId => database.authority.dependencies.waitState(runId),
       getReceipt: (runId) => database.authority.evidenceReceipts.findByRun(runId),
       canonicalPerson: (runId) => database.canonicalPerson(runId),
       // Ref dashboard-surfaces: the one stored node output a queue row reads — the

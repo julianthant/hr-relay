@@ -1,5 +1,7 @@
 import { assertCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
+import { prepareDelegationRetry } from "../../storage/sqlite/delegation-authority.js";
+import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { CanonicalRecoverRunRequestSchema, CanonicalRetrySourceRequestSchema } from "../../storage/sqlite/run-store-contracts.js";
 import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
@@ -42,11 +44,30 @@ export function assertRunRecoveryCommandScope(repositories: AuthorityRepositorie
 
 export function planRunRecovery(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord, sourceCommandId?: string) {
   assertRunRecoveryCommandScope(repositories, sourceCommandId);
+  return planCheckpointContinuation(repositories, descriptor, run, "recover");
+}
+
+export function planDelegatedRetry(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord, sourceCommandId: string | undefined,
+  continuationOwner?: NonNullable<Parameters<typeof prepareDelegationRetry>[2]["continuationOwner"]>) {
+  if (sourceCommandId === undefined) throw new RunContinuationRefusedError("delegation-retry-source-unavailable");
+  if (continuationOwner !== undefined) {
+    prepareDelegationRetry(repositories, run, { sourceCommandId, continuationOwner,
+      commandId: lifecycleCommandId("continuation-child-retry", { ownerRunId: continuationOwner.runId, previousRunId: run.envelope.runId }) });
+    return planCheckpointContinuation(repositories, descriptor, run, "recover");
+  }
+  const source = repositories.commands.get(sourceCommandId);
+  if (run.envelope.parent === undefined || source?.family !== "run" || source.type !== "retry"
+    || source.target.runId !== run.envelope.runId || source.target.expectedVersion !== run.version) throw new RunContinuationRefusedError("delegation-retry-source-unavailable");
+  assertCanonicalRunCommandScope(repositories, source);
+  return planCheckpointContinuation(repositories, descriptor, run, "delegated-retry");
+}
+
+function planCheckpointContinuation(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord, intent: "recover" | "delegated-retry") {
   const current = repositories.runs.get(run.envelope.runId);
   if (current === undefined || repositories.deletedRuns.get(run.envelope.runId) !== undefined
     || canonicalJsonStringify(current) !== canonicalJsonStringify(run))
     throw new RerunRefusedError("source-stale", "Checkpoint recovery source authority changed.");
-  if (run.lifecycle.state !== "terminal" || !["failed", "interrupted"].includes(run.lifecycle.outcome))
+  if (run.lifecycle.state !== "terminal" || !["failed", "interrupted", ...(intent === "delegated-retry" ? ["cancelled"] : [])].includes(run.lifecycle.outcome))
     throw new RerunRefusedError("invalid-state", "Checkpoint recovery requires a failed or interrupted source.");
   if (run.envelope.workflow !== descriptor.id || run.envelope.descriptorVersion !== descriptor.version
     || run.envelope.contractFingerprint !== descriptor.contractFingerprint)
