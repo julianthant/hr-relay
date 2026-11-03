@@ -295,8 +295,9 @@ reusable check call through the shared job-level `ci-runners` FIFO, `queue: max`
 inside that callee; no callee reacquires admission. Merge train follows the six top summaries
 outside the admitted call; the standalone staging-push train is unchanged.
 
-Each callee's final `unit` checks all mandatory proofs and timing publication, including
-failure/cancellation/missing outcomes. In releases it also checks the selected batch, after
+Each callee's final `unit` runs unless cancelled and checks all mandatory proofs and timing
+publication, rejecting failed or missing outcomes. Cancellation stops its checkout/install work.
+In releases it also checks the selected batch, after
 `unit-proofs` allows batch execution without a cycle. The required outer `unit` always validates
 both the complete call result and inner unit output as success. Train is excluded from the inner
 fence because it runs downstream. Staging's required parity is plain successful omission; release

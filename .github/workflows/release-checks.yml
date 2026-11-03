@@ -513,7 +513,7 @@ jobs:
   unit:
     name: unit
     needs: [changes, static, privacy, ubuntu, integration, architecture, parity, macos, windows, unit-proofs, release-batch, timings]
-    if: ${{ always() }}
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

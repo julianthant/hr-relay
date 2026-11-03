@@ -89,8 +89,9 @@ inside parent per-PR supersession. The standalone staging-push train remains sep
 repair pushes to avoid redundant CI work.
 
 `scripts/test/ci-plan.ts` owns typed selection/proof/timing-history policy. Both timed callees
-retain explicit test budgets. Their final `unit` validates every mandatory proof, selected batch
-and timing publication, excluding downstream train to avoid a cycle. The always-running outer
+retain explicit test budgets. Their final `unit` runs unless cancelled and validates every mandatory
+proof, selected batch and timing publication, excluding downstream train to avoid a cycle.
+Cancellation stops that inner checkout/install work. The always-running outer
 required `unit` additionally requires the called pipeline and its inner unit output to succeed,
 so cancelled, skipped, failed or missing results cannot merge. Required names stay `static`,
 `privacy`, `unit`, `integration`, `architecture` and `parity` on staging, plus `release` on main.

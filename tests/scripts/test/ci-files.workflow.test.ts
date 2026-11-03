@@ -157,7 +157,7 @@ describe("separate event and admitted proof workflows", () => {
       expect(workflow).toContain('RELAY_TEST_RAM_MB: "2048"');
       expect(workflow).toContain('RELAY_TEST_TIME_SCALE: "2.5"');
       expect(job(workflow, "changes")).toContain("scripts/test/ci-plan.ts', 'plan'");
-      expect(job(workflow, "unit")).toContain("always()");
+      expect(job(workflow, "unit")).toContain("!cancelled()");
       expect(job(workflow, "unit")).not.toContain("train");
       expect(job(workflow, "timings")).toContain("!cancelled()");
       expect(job(workflow, "timings")).toContain('scripts/test/ci-plan.ts proofs "$PLAN" "$RESULTS"');
@@ -334,5 +334,27 @@ describe("per-PR cancellation with complete FIFO pipelines", () => {
       for (const name of ["macos", "windows", "unit-proofs", "release-batch"]) expect(covered).toContain(name);
       expect(job(callee, "unit")).toContain("release-batch, timings]");
     }
+  });
+});
+
+describe("cancelled admitted source work", () => {
+  it.each([[ci, portable], [release, full]])("stops inner checkout work while the outer fence rejects cancellation", (entry, callee) => {
+    const inner = job(callee, "unit");
+    const outer = job(entry, "unit");
+    const condition = (body: string, cancelled: boolean) => {
+      const code = body.match(/^ {4}if: \$\{\{ (.+) \}\}$/mu)?.[1];
+      assert.ok(code);
+      return Boolean(runInNewContext(code, { cancelled: () => cancelled, always: () => true }));
+    };
+    expect(inner).toContain("uses: actions/checkout@v4");
+    expect(inner).toContain("run: npm ci");
+    expect(outer).not.toContain("actions/checkout");
+    expect(outer).not.toContain("npm ci");
+    expect(condition(inner, false)).toBe(true);
+    expect(condition(inner, true)).toBe(false);
+    expect(condition(outer, true)).toBe(true);
+    expect(summary(entry, "unit", planFor(entry === ci ? "portable" : "release"), {
+      checks: { result: "cancelled", outputs: { unit: "skipped" } },
+    })).toBe("failure");
   });
 });
