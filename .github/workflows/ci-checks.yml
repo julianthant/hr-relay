@@ -149,6 +149,7 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
+      - run: npm run build:manifest:prepare
       - run: npm run typecheck
       - run: npm run lint
       - run: npm ci
@@ -177,6 +178,7 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
+      - run: npm run build:manifest:prepare
       - uses: actions/download-artifact@v4
         with:
           name: ci-balancing
@@ -226,6 +228,7 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
+      - run: npm run build:manifest:prepare
       - uses: actions/download-artifact@v4
         with:
           name: ci-balancing
@@ -430,6 +433,7 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
+      - run: npm run build:manifest:prepare
       - uses: actions/cache@v4
         id: browsers
         with:

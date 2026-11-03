@@ -4,15 +4,16 @@ import { clearGeneratedSection, GENERATED_OUTPUTS, generatedOnlyConflicts } from
 import { workflowRegistrySources } from "../../../scripts/build/generate-workflow-registries.js";
 
 describe("generated conflict classification", () => {
-  const manifest = "src/workflow-kit/validation/generated-build-manifest.ts";
+  const registryPath = "src/workflows/generated-descriptors.ts";
   it("accepts only nonempty sets of registered generated outputs", () => {
-    assert.equal(generatedOnlyConflicts([manifest]), true);
+    assert.equal(generatedOnlyConflicts([registryPath]), true);
     assert.equal(generatedOnlyConflicts(GENERATED_OUTPUTS.flatMap(output => [...output.paths])), true);
-    assert.equal(generatedOnlyConflicts([manifest, "src/models/failures/error-catalog.ts"]), false);
+    assert.equal(generatedOnlyConflicts([registryPath, "src/models/failures/error-catalog.ts"]), false);
     assert.equal(generatedOnlyConflicts(["src/workflows/unknown/generated.ts"]), false);
     assert.equal(generatedOnlyConflicts([]), false);
-    const registry = GENERATED_OUTPUTS.find(output => output.script === "build:manifest");
-    assert.deepEqual(registry?.paths.filter(path => path !== manifest).toSorted(), [...workflowRegistrySources(process.cwd()).keys()].toSorted());
+    assert.equal(generatedOnlyConflicts(["src/workflow-kit/validation/generated-build-manifest.ts"]), false);
+    const registry = GENERATED_OUTPUTS.find(output => output.script === "build:registries");
+    assert.deepEqual(registry?.paths.toSorted(), [...workflowRegistrySources(process.cwd()).keys()].toSorted());
   });
 
   const section = { start: "<!-- store-catalog:start -->", end: "<!-- store-catalog:end -->" };

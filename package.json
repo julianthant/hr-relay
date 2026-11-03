@@ -37,7 +37,16 @@
     "test:watch": "vitest --project unit --project integration --project architecture --project perf",
     "perf:dashboard": "TZ=UTC tsx tests/perf/dashboard-benchmark.ts",
     "test:parity": "tsx scripts/verify-parity-json.ts assert",
-    "test:parity:update": "tsx scripts/verify-parity-json.ts update"
+    "test:parity:update": "tsx scripts/verify-parity-json.ts update",
+    "build:manifest:prepare": "tsx scripts/build/generate-workflow-manifest.ts",
+    "precli": "npm run build:manifest:prepare",
+    "predashboard": "npm run build:manifest:prepare",
+    "predashboard:prod": "npm run build:manifest:prepare",
+    "presmoke:test-target-document-number": "npm run build:manifest:prepare",
+    "pretypecheck": "npm run build:manifest:prepare",
+    "prelint": "npm run build:manifest:prepare",
+    "preperf:dashboard": "npm run build:manifest:prepare",
+    "prestores:catalog": "npm run build:manifest:prepare"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

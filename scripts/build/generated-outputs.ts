@@ -1,12 +1,11 @@
 export const GENERATED_OUTPUTS = [
   {
-    script: "build:manifest",
+    script: "build:registries",
     paths: [
       "src/workflows/generated-descriptors.ts",
       "src/backend/app/registries/generated-workflow-stores.ts",
       "src/backend/app/registries/generated-workflow-modules.ts",
       "src/backend/app/registries/generated-step-proof-modules.ts",
-      "src/workflow-kit/validation/generated-build-manifest.ts",
     ],
   },
   {
