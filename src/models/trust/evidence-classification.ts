@@ -554,7 +554,6 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...[false, true].flatMap(remote => {
     const suffix = remote ? "remote-record" : "profile";
     return [
-      ...i9CreationProofLeaves(writeProof(`i9/create-${suffix}`), "", remote),
       ...i9CreationProofLeaves(taskOutput(`i9/create-${suffix}`), "receipt.", remote),
       ...open(taskOutput(`i9/stage-${suffix}`), "stagedPageState"),
       ...onboardingPrivateLeaves(taskOutput(`i9/stage-${suffix}`), "observedName"),
@@ -566,7 +565,6 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
       }),
     ];
   }),
-  ...hireProofLeaves(writeProof("ucpath/create-hire")),
   ...hireProofLeaves(taskOutput("ucpath/create-hire"), "receipt."),
   ...open(taskOutput("ucpath/read-hire-findings"), "state", "observedAt", "source"),
   ...population(taskOutput("ucpath/read-hire-findings"), "rows"),
