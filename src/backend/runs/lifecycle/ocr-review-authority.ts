@@ -18,6 +18,7 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { CanonicalTransitionRequestSchema } from "../../storage/sqlite/run-store-contracts.js";
 import { BUILD_MANIFEST, resolveWorkflowFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
+import type { OperatorGateResultRecord } from "../../../models/workflow/gates.js";
 
 function same(left: unknown, right: unknown): boolean { return canonicalJsonStringify(left) === canonicalJsonStringify(right); }
 export class OcrReviewRefusedError extends Error {
@@ -169,6 +170,17 @@ export function requireCurrentOcrSnapshot(repositories: AuthorityRepositories, r
     || review.run.envelope.contractFingerprint !== resolveWorkflowFingerprint(BUILD_MANIFEST, review.run.envelope.workflow)) throw new OcrReviewRefusedError();
   const snapshot = readOcrSnapshotsAuthority(repositories, review).find(snapshot => snapshot.snapshotId === reference.snapshotId);
   if (snapshot === undefined || snapshot.reviewDigest !== review.digest || ocrSnapshotDigest(snapshot) !== reference.digest) throw new OcrReviewRefusedError();
+  return snapshot;
+}
+
+export function authenticateOcrSnapshotApproval(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, gate: OperatorGateResultRecord) {
+  const retained = repositories.gateResults.get(`${gate.runId}:${gate.gateId}`);
+  if (retained === undefined || !same(retained, gate) || gate.nodeId !== "approve-records" || gate.gateId !== "approve-records"
+    || gate.resolvedBy !== "local-operator" || gate.result.schemaHash !== deriveSchemaHash(OcrApprovalReferenceSchema, "output")) throw new OcrReviewRefusedError();
+  const reference = OcrApprovalReferenceSchema.parse(gate.result.value);
+  if (reference.sourceRunId !== gate.runId || reference.snapshotId !== gate.commandId) throw new OcrReviewRefusedError();
+  const snapshot = requireCurrentOcrSnapshot(repositories, reader, reference);
+  if (snapshot.approvedBy !== gate.resolvedBy || snapshot.approvedAt !== gate.resolvedAt) throw new OcrReviewRefusedError();
   return snapshot;
 }
 

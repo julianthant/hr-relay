@@ -71,7 +71,7 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
 export const ocrSourcePagesDefinition = defineStep({
   group: OCR_SOURCE_PAGES_STEP, build: buildOcr,
   proof: {
-    id: "ocr-source-pages", order: 0,
+    id: "ocr-source-pages", order: 19,
     build: (parent: WorkflowDefinition<typeof OcrInputSchema>) => ({
       ...inheritStepProof(parent),
       code: "os", label: "OCR source pages", summary: "Proves complete source-page rendering and manual source bindings.", steps: buildSourcePages,

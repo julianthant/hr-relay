@@ -25,6 +25,7 @@ import {
   deriveTerminalFailureDigest,
   deriveCheckpointOutputDigest,
   deriveTerminalDependencyDigest,
+  DelegationTerminalEvidenceSchema,
   type RunResultRecord,
   type TerminalNotRunReason,
 } from "../../../models/run/result.js";
@@ -42,10 +43,13 @@ import {
   evidenceEntryRef,
 } from "../../../models/trust/evidence-identity.js";
 import {
+  findSnapshotApprovalDecision,
   gateDecisionArm,
   gateDecisionFor,
 } from "../../../models/trust/gate-decisions.js";
-import { GateResultRecordSchema, type GateResultRecord } from "../../../models/workflow/gates.js";
+import { GateResultRecordSchema, type GateResultRecord, type OperatorGateResultRecord } from "../../../models/workflow/gates.js";
+import { OcrApprovedSnapshotSchema, ocrSnapshotDigest, type OcrApprovedSnapshot } from "../../../models/ocr/review.js";
+import { OcrReviewRefusedError } from "../lifecycle/ocr-review-authority.js";
 import {
   obligationsFor,
   type EvidenceObligation,
@@ -99,6 +103,8 @@ export interface ReceiptBuildInput {
   readonly writes?: readonly ReceiptWriteEvidence[];
 
   readonly gateResults?: readonly unknown[];
+  readonly delegations?: readonly unknown[];
+  readonly authenticateSnapshotApproval?: (gate: OperatorGateResultRecord) => OcrApprovedSnapshot;
 }
 
 /* ── node helpers ────────────────────────────────────────────────────────── */
@@ -361,6 +367,7 @@ export function deriveRunEvidenceReceipt(
   }
   const gateResultsByNode = new Map<string, GateResultRecord>();
   for (const row of gateResults) gateResultsByNode.set(String(row.gateId), row);
+  const delegations = (input.delegations ?? []).map(row => DelegationTerminalEvidenceSchema.parse(row));
 
 
   const binding = evaluateReceiptDerivationBinding({
@@ -370,6 +377,7 @@ export function deriveRunEvidenceReceipt(
     checkpoints,
     writes: writes.map((entry) => entry.intent),
     gateResults,
+    delegations,
   });
   if (binding.state === "incompatible") throw new Error(binding.message);
 
@@ -527,9 +535,11 @@ export function deriveRunEvidenceReceipt(
           decisions,
           verification,
           composition,
+          ...(input.authenticateSnapshotApproval === undefined ? {} : { authenticateSnapshotApproval: input.authenticateSnapshotApproval }),
         });
         continue;
       }
+      if (lifecycle.outcome === "done" && findSnapshotApprovalDecision(descriptor.id, id) !== undefined) throw new OcrReviewRefusedError();
     }
 
     if (record === undefined) {
@@ -988,6 +998,8 @@ export interface EvidenceReceiptStore {
   listWritesByRun(runId: string): readonly ReceiptWriteEvidence[];
 
   listGateResultsByRun(runId: string): readonly unknown[];
+  readonly listDelegationsByRun?: (runId: string) => readonly unknown[];
+  readonly authenticateSnapshotApproval?: ReceiptBuildInput["authenticateSnapshotApproval"];
   findReceiptByRun(runId: string): unknown;
   insertReceipt(receipt: unknown): Readonly<{ state: "inserted" | "existing"; record: RunEvidenceReceipt }>;
 }
@@ -1022,6 +1034,8 @@ export function ensureRunEvidenceReceipt(
     checkpoints: store.listCheckpointsByRun(runId),
     writes: store.listWritesByRun(runId),
     gateResults: store.listGateResultsByRun(runId),
+    ...(store.listDelegationsByRun === undefined ? {} : { delegations: store.listDelegationsByRun(runId) }),
+    ...(store.authenticateSnapshotApproval === undefined ? {} : { authenticateSnapshotApproval: store.authenticateSnapshotApproval }),
   }, composition);
   if (existing !== undefined) {
     const rederivation = evaluateReceiptRederivation({
@@ -1055,11 +1069,41 @@ interface GateEvidenceInput {
   readonly decisions: Decision[];
   readonly verification: Verification[];
   readonly composition: ReceiptComposition;
+  readonly authenticateSnapshotApproval?: ReceiptBuildInput["authenticateSnapshotApproval"];
 }
 
 
 function emitGateEvidence(input: GateEvidenceInput): void {
   const { stored, nodeId, entryId, evidence } = input;
+  const snapshotDecision = findSnapshotApprovalDecision(input.workflowId, nodeId);
+  if (snapshotDecision !== undefined) {
+    if ("source" in stored || input.authenticateSnapshotApproval === undefined) throw new OcrReviewRefusedError();
+    const reference = snapshotDecision.result.safeParse(stored.result.value);
+    if (!reference.success || stored.nodeId !== nodeId || stored.gateId !== snapshotDecision.gateId
+      || stored.result.schemaHash !== deriveSchemaHash(snapshotDecision.result, "output")
+      || stored.runId !== reference.data.sourceRunId || stored.commandId !== reference.data.snapshotId
+      || stored.resolvedBy !== "local-operator") throw new OcrReviewRefusedError();
+    const snapshot = OcrApprovedSnapshotSchema.parse(input.authenticateSnapshotApproval(stored));
+    if (snapshot.snapshotId !== reference.data.snapshotId || snapshot.sourceRunId !== reference.data.sourceRunId
+      || snapshot.revision !== reference.data.revision || ocrSnapshotDigest(snapshot) !== reference.data.digest
+      || snapshot.approvedBy !== stored.resolvedBy || snapshot.approvedAt !== stored.resolvedAt) throw new OcrReviewRefusedError();
+    const scope: EvidenceValueScope = { kind: "gate-result", workflowId: input.workflowId, gateId: stored.gateId };
+    for (const leaf of evidenceLeaves(stored.result.value)) {
+      const factId = entryId("observation", `${nodeId}.${leaf.path}`);
+      evidence.factIds.set(leaf.path, factId);
+      evidence.values.set(leaf.path, leaf.value);
+      input.observations.push({ id: factId, field: leaf.field, mandatory: input.declaredDetails.has(`${nodeId}\u0000${leaf.path}`),
+        source: { kind: "gate-result", gateId: stored.gateId, resolvedBy: stored.resolvedBy, resolvedAt: stored.resolvedAt },
+        state: "satisfied", value: redactEvidenceLeaf(scope, leaf) });
+    }
+    const refs = [...evidence.factIds.values()].map(evidenceEntryRef);
+    input.decisions.push({ id: entryId("decision", `gate.${nodeId}`), kind: "gate", outcome: "approved",
+      reason: `An authenticated operator approved the selected OCR records at ${stored.resolvedAt}; the retained command, current snapshot and exact digest were verified.`,
+      evidence: [evidenceEntryRef(input.verificationId), ...refs] });
+    input.verification.push({ id: input.verificationId, obligation: `node.${nodeId}`, mandatory: input.mandatory,
+      verdict: "verified", evidence: refs });
+    return;
+  }
   if ("source" in stored) {
     const factId = entryId("observation", `${nodeId}.sourceEvent`);
     input.observations.push({

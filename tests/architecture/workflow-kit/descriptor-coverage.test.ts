@@ -1,5 +1,3 @@
-import { UNREGISTERED_OCR_MODULES, UNREGISTERED_OCR_STORES } from "../../support/fixtures/ocr/unregistered-workflows.js";
-
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -351,7 +349,7 @@ describe("descriptor coverage", () => {
   });
 
   it("keeps every descriptor module's value-import closure bundle-safe", () => {
-    for (const module of [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...UNREGISTERED_OCR_MODULES]) {
+    for (const module of [...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES, ...STEP_PROOF_MODULES]) {
 
       const entry = workflowSourcePath(String(module.descriptor.id), module.role);
       assert.deepEqual(bundleViolations(entry), [], entry);
@@ -396,7 +394,7 @@ describe("descriptor coverage", () => {
   it("keeps the checked-in build manifest current", () => {
     const regenerated = computeCurrentBuildManifest();
     assert.deepEqual(regenerated, BUILD_MANIFEST, "run `npm run build:manifest` and commit the result");
-    for (const descriptor of [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...UNREGISTERED_OCR_MODULES.map(module => module.descriptor)]) {
+    for (const descriptor of [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor), ...STEP_PROOF_MODULES.map(module => module.descriptor)]) {
       const entry = regenerated.workflows.find(({ id }) => id === descriptor.id);
       assert.ok(entry, `${String(descriptor.id)} has no manifest entry`);
       assert.equal(entry.fingerprint, descriptor.contractFingerprint);
@@ -404,7 +402,7 @@ describe("descriptor coverage", () => {
     }
     assert.deepEqual(
       regenerated.tasks.map(({ id }) => String(id)).sort(),
-      [...taskStoreRegistry.stores, ...UNREGISTERED_OCR_STORES]
+      taskStoreRegistry.stores
         .flatMap((store) => Object.values(store.tasks).map((task) => String(task.contract.id)))
         .sort(),
       "every bound task must have exactly one implementation fingerprint",

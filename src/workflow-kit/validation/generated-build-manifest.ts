@@ -3205,7 +3205,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-lookup-lookup"
     },
     {
-      "fingerprint": "16639cfaa379df67aebef6cb2a960423bf3debf633261448d2c6accbf163c96b",
+      "fingerprint": "b40ba06237e335b26265f0cce5cd939aee58417471c258799b7d6c366023c89b",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -3729,7 +3729,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/ocr/steps/source-pages/step.ts",
-          "sha256": "e74bbbe01aba2d2f4a0032f2bea20c173022c0f55347109dfdbbaebc027c1d0f"
+          "sha256": "3a0a0eb4b14232070fe73b7d8fc95ec9392010cec4bd9b7be14607eb40123c49"
         },
         {
           "path": "src/workflows/ocr/workflow.ts",
@@ -3739,7 +3739,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr"
     },
     {
-      "fingerprint": "a741f2fb21bdd997623b0de7317094dc15ddf8c0b5b631b3f355db758641c1d9",
+      "fingerprint": "c34da13c1ad9e13b3fd59ffb11d7963cce33356c9e8219d0b1aa47762a019ff1",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -4259,7 +4259,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/ocr-page/steps/read-page/step.ts",
-          "sha256": "1fd7330b13f120cd9a2ada0a98bdd1e6da9acf1ea1fd81af6bc08aea7c5d919a"
+          "sha256": "2f515c34c283b8fc7fcd4591296beae6151ffb63cbd5685dae166b3e73f45f56"
         },
         {
           "path": "src/workflows/ocr-page/workflow.ts",
@@ -4269,7 +4269,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr-page"
     },
     {
-      "fingerprint": "bbb958a2245195fc7b0b9e7e57d505975665cd3cf2477e0c461cec3902553935",
+      "fingerprint": "5e28844292725af9eb2a37299db21a9b32234d2fff938aa17bda52c968c85b98",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -4789,7 +4789,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/ocr-page/steps/read-page/step.ts",
-          "sha256": "1fd7330b13f120cd9a2ada0a98bdd1e6da9acf1ea1fd81af6bc08aea7c5d919a"
+          "sha256": "2f515c34c283b8fc7fcd4591296beae6151ffb63cbd5685dae166b3e73f45f56"
         },
         {
           "path": "src/workflows/ocr-page/workflow.ts",
@@ -4799,7 +4799,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr-page-reading"
     },
     {
-      "fingerprint": "da0b73be64b2ea4edf08c17c67a75c3f6f56a8fe6586df0069f53714de9963ec",
+      "fingerprint": "03c1e36d4fb687ba425f9d1de042df7e42d24ad41725829b47bc7afde94dbc86",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -5323,7 +5323,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflows/ocr/steps/source-pages/step.ts",
-          "sha256": "e74bbbe01aba2d2f4a0032f2bea20c173022c0f55347109dfdbbaebc027c1d0f"
+          "sha256": "3a0a0eb4b14232070fe73b7d8fc95ec9392010cec4bd9b7be14607eb40123c49"
         },
         {
           "path": "src/workflows/ocr/workflow.ts",

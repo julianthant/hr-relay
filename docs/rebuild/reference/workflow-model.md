@@ -89,9 +89,11 @@ that browser-safe tuple; `src/backend/app/registries/workflow-registry.ts` admit
 modules against the shared task-store inventory. The manifest build and check include registry generation
 and freshness respectively.
 
-`WORKFLOW_MODULES` contains `person-lookup` and `separations`. It derives `DESCRIPTORS`,
+`WORKFLOW_MODULES` contains public workflows. It derives `DESCRIPTORS`,
 `SERVER_REGISTRY`, `WORKFLOW_DEFINITIONS`, `INTAKE_PROJECTIONS`, and `WORKFLOW_ROLES`.
-`workflowModuleOf` refuses an unregistered workflow.
+`workflowModuleOf` refuses child-only and unregistered workflows. `CHILD_ONLY_WORKFLOW_MODULES`
+admits children through declared parent edges using `childWorkflowModuleOf`; the worker uses that
+resolver to qualify every descendant before runtime admission.
 
 #### 1.2.1 Module roles
 
@@ -119,10 +121,26 @@ They remain outside the operator registry. Separations retains
 harnesses for `identity-check`, `kronos-timecard`, `kuali-extraction`, `kuali-finalization`, and
 `ucpath-transaction`. Its `job-summary` group has no harness folder.
 The `workflow-layout` guard in `tests/architecture/workflow-kit/workflow-layout.test.ts` checks
-registered and retained modules against their role, owning composition, and declared groups. The
-test-only OCR inventory includes its unregistered definitions and retained harnesses in these source
-audits without admitting them to production.
+registered and retained modules against their role, owning composition, and declared groups.
+The generated child-only inventory includes OCR and OCR Page; the generated step-proof inventory
+includes their retained harnesses. These source audits cover both inventories without exposing
+children or proofs as public starts.
 Scenario-path helpers derive potential addresses; they do not prove scenario files or execution.
+
+The workflow-ID boundary audits public, child-only and proof inventories. Retained dashboard mock
+literals and OCR service literals have exact AST references in
+`tests/support/helpers/retained-dashboard-mock-fixtures.ts`. The OCR service references cover review
+admission, source-bound resources, approval publication, the OCR CLI command, deferred-feature text
+and task-namespace source links. Added, removed or repurposed occurrences fail the boundary checks.
+These references admit no new workflow dispatch or public start.
+
+Success receipts authenticate the complete native delegation inventory and compare each child
+proof and the full terminal-dependency set exactly. Many-child fan-outs remain outside terminal
+value dependencies. OCR's snapshot-approval receipt declaration is separate from fixed-choice gate
+decisions. Receipt derivation authenticates the retained operator command, gate row, current review
+and approved snapshot digest through the OCR authority reader. Missing, foreign, altered or stale
+approval evidence refuses derivation. Snapshot references and HR content declare sensitive-HR/drop classifications; local receipts
+retain complete classified values under the existing local-evidence policy. Receipts keep composition 5 and the existing stored schema.
 
 ### 1.3 Projections
 
