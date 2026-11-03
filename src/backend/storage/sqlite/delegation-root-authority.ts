@@ -48,8 +48,9 @@ function authenticateRunGateResume(repositories: AuthorityRepositories, run: Run
   if (!same(CanonicalTransitionRequestSchema.parse(resumed.request), { commandId: resumeId, runId: run.envelope.runId,
     expectedVersion: gate.expectedVersion, lifecycle: { state: "queued" } })) throw new Error("delegation-gate-resume-authority-unavailable");
   const parked = repositories.lifecycleJournal.findGatePark(run.envelope.runId, gate.gateId, gate.expectedVersion);
-  const parkedAudit = parked === undefined ? undefined : repositories.lifecycleJournal.findAuditByCommand(parked.commandId);
-  if (parked === undefined || parked.operation !== "worker-transition" || parkedAudit === undefined || !("kind" in parkedAudit)
+  if (parked === undefined) throw new Error("delegation-gate-resume-authority-unavailable");
+  const parkedAudit = repositories.lifecycleJournal.findAuditByCommand(parked.commandId);
+  if (parked.operation !== "worker-transition" || parkedAudit === undefined || !("kind" in parkedAudit)
     || parkedAudit.kind !== "run-lifecycle" || !same(parkedAudit.request, parked) || parkedAudit.result.kind !== "run"
     || parkedAudit.result.runId !== run.envelope.runId || parkedAudit.result.appliedVersion > gate.expectedVersion
     || parkedAudit.completedAt > gate.resolvedAt) {
