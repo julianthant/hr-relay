@@ -76,6 +76,28 @@ describe("redaction surface scan — the declaration audit", () => {
     assert.deepEqual(violations, [], `redaction surface audit:\n  ${violations.join("\n  ")}`);
   });
 
+  for (const id of ["wire/run-logs-stream", "wire/run-detail-section", "wire/stream-envelope", "wire/ocr-command-result"]) {
+    it(`reviews every OCR leaf and refuses missing origins or foreign egress (${id})`, () => {
+      const origins = SURFACE_LEAF_ORIGINS.filter(entry => entry.surface === id && (entry.path.includes(".ocr.") || id === "wire/ocr-command-result"));
+      assert.equal(origins.length, id === "wire/ocr-command-result" ? 8 : 45);
+      const surface = REDACTION_SURFACES.find(surface => surface.id === id); assert.ok(surface);
+      assert.equal(surface.egress, "operator-loopback");
+      const sameSurfaceOrigins = SURFACE_LEAF_ORIGINS.filter(candidate => candidate.surface === id);
+      assert.deepEqual(auditSurfaceOrigins([surface], sameSurfaceOrigins), []);
+      for (const entry of origins) {
+        const missing = auditSurfaceOrigins([surface], sameSurfaceOrigins.filter(candidate => candidate !== entry));
+        assert.equal(missing.length, 1);
+        assert.ok(missing[0]?.includes(entry.path));
+      }
+      for (const egress of ["process-egress", "os-notification"] as const) {
+        const foreign = auditSurfaceOrigins([{ ...surface, egress }], sameSurfaceOrigins);
+        for (const entry of origins.filter(entry => entry.origin !== "repository-authored")) {
+          assert.ok(foreign.some(problem => problem.includes(entry.path) && problem.includes("may not carry at all")));
+        }
+      }
+    });
+  }
+
   it("pins each current provenance and display origin and refuses captured addresses outside local custody", () => {
     const reviewed: { surface: string; path: string; origin: string }[] = [];
     for (const [surface, prefix] of [
