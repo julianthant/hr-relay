@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { EditableWorkbookWireSchema, WorkbookTypeSchema, type EditableWorkbookWire } from "../../../../src/models/dashboard/workbooks.js";
-import { workbookRowChoices, resolveWorkbookRowSelection } from "../../../../src/dashboard/surfaces/run-start/run-workbook-rows-model.js";
+import { InputRunSurfaceSchema, type TypedInputDraft } from "../../../../src/models/workflow/ingress.js";
+import { workbookRowChoices, resolveWorkbookRowSelection, previewWorkbookRows } from "../../../../src/dashboard/surfaces/run-start/run-workbook-rows-model.js";
 
 const type = WorkbookTypeSchema.parse({ id: "sample-roster", name: "Sample roster", keyFieldId: "email", fields: ["email"], defaultWorkbookId: null });
 const binding = { id: "email-column", sourceColumn: 9, sourceHeader: "Email", fieldId: "email", basis: "manual" as const };
@@ -73,4 +74,83 @@ describe("saved workbook row choices", () => {
     expect(() => resolveWorkbookRowSelection(choices, [{ sheetId: "first", rowId: "header" }])).toThrow("RUN_WORKBOOK_ROW_SELECTION_UNKNOWN");
     expect(() => resolveWorkbookRowSelection(choices, [choices[0], { sheetId: "first", rowId: "same-row" }])).toThrow("RUN_WORKBOOK_ROW_SELECTION_DUPLICATE");
   });
+});
+
+const parser = { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "email" }, emit: "email" }] };
+const rowSurface = InputRunSurfaceSchema.parse({ placeholder: "Emails", parser, workbookRows: { typeId: type.id, inputField: "email" }, typedInput: {
+  modeField: "mode", modeLabel: "Hire mode", initialMode: "new-hire", description: "Choose hire mode", controls: [], modes: ["new-hire", "rehire"].map(value => ({
+    value, label: value, inputLabel: "Email", hint: "One email", placeholder: "Email", defaults: [{ field: "postalCodeOverride", value: { kind: "text", text: "" } }],
+    parser: { kind: "entries", spec: parser }, display: { kind: "first-present", fields: ["email"] }, identityFields: ["email"],
+  })),
+} });
+
+describe("selected physical row preview", () => {
+  it("parses each physical row separately and repeats explicit mode/options without deduplicating keys", () => {
+    const choices = workbookRowChoices(workbook(), type);
+    const preview = previewWorkbookRows(rowSurface, choices, [choices[2], choices[0]], { mode: "rehire", postalCodeOverride: "92093" });
+    expect(preview.problem).toBeNull();
+    expect(preview.submissions).toEqual(Array.from({ length: 2 }, () => ({ email: "duplicate@example.test", mode: "rehire", postalCodeOverride: "92093" })));
+    expect(preview.entries).toEqual([
+      { index: 0, sourceText: "First sheet · Row 19: duplicate@example.test" }, { index: 1, sourceText: "Second sheet · Row 2: duplicate@example.test" },
+    ]);
+  });
+
+  it("requires an explicit declared mode and never adopts initialMode for saved rows", () => {
+    const choices = workbookRowChoices(workbook(), type);
+    const drafts: readonly TypedInputDraft[] = [{}, { mode: "unknown" }, { mode: true }];
+    for (const draft of drafts) {
+      const preview = previewWorkbookRows(rowSurface, choices, [choices[0]], draft);
+      expect(preview.problem).toContain("Choose Hire mode");
+      expect(preview.submissions).toEqual([]);
+      expect(preview.entries).toHaveLength(1);
+    }
+    expect(previewWorkbookRows(rowSurface, choices, [])).toEqual({ entries: [], submissions: [], problem: null });
+  });
+
+  it.each([null, "bad-email", "first@example.test;second@example.test", "first@example.test\nsecond@example.test", " duplicate@example.test "])("blocks every submission and attributes an unavailable or changed key %j", value => {
+    const input = workbook();
+    input.sheets[0].rows[3].cells[0].value = value;
+    const choices = workbookRowChoices(input, type);
+    const preview = previewWorkbookRows(rowSurface, choices, [choices[0], choices[1]], { mode: "new-hire" });
+    expect(preview.submissions).toEqual([]);
+    expect(preview.problem).toContain("First sheet · Row 4:");
+    expect(preview.entries).toHaveLength(2);
+    expect(preview.entries[1].sourceText).toContain("First sheet · Row 4:");
+  });
+
+  it("uses exactly the declared inputField and refuses a mode parser emitting a different field", () => {
+    const choices = workbookRowChoices(workbook(), type);
+    const surface = structuredClone(rowSurface);
+    surface.workbookRows = { typeId: type.id, inputField: "lookupEmail" };
+    surface.parser.rules[0].emit = "lookupEmail";
+    expect(previewWorkbookRows(surface, choices, [choices[0]], { mode: "new-hire" }).problem).toContain("preserve the saved row key exactly");
+    delete surface.typedInput;
+    expect(previewWorkbookRows(surface, choices, [choices[0]]).submissions).toEqual([{ lookupEmail: "duplicate@example.test" }]);
+  });
+
+  it("requires the declared workbook row capability before producing submissions", () => {
+    const surface = structuredClone(rowSurface);
+    delete surface.workbookRows;
+    const choices = workbookRowChoices(workbook(), type);
+    expect(previewWorkbookRows(surface, choices, [choices[0]], { mode: "new-hire" })).toMatchObject({ submissions: [], problem: "Saved-row input is unavailable for this workflow." });
+  });
+});
+
+
+it("uses operator-facing validation text in both selected entries and problems", () => {
+  const choices = workbookRowChoices(workbook(), type);
+  const reasons = ["key-field-missing", "key-binding-missing", "key-binding-ambiguous", "key-missing", "key-not-text", "key-blank"] as const;
+  const messages = [
+    "The spreadsheet type has no lookup key.", "The lookup key column is not mapped.",
+    "The lookup key column has an ambiguous mapping.", "This row has no lookup key.",
+    "The lookup key must be text.", "The lookup key is blank.",
+  ];
+  for (const [index, reason] of reasons.entries()) {
+    const choice = { ...choices[0], key: { state: "unavailable" as const, reason } };
+    const preview = previewWorkbookRows(rowSurface, [choice], [choice], { mode: "new-hire" });
+    const expected = `First sheet · Row 19: ${messages[index]}`;
+    expect(preview.entries).toEqual([{ index: 0, sourceText: expected }]);
+    expect(preview.problem).toBe(expected);
+    expect(preview.submissions).toEqual([]);
+  }
 });
