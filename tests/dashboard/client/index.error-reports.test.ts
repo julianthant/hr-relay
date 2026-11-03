@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it, vi } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
+import { DashboardReportDeliveryError } from "../../../src/dashboard/client/errors.js";
 
 describe("handled dashboard failure reports", () => {
   it.each(["http", "network", "refused", "schema", "settings-network", "preflight-http"])("reports %s with metadata and preserves the original settlement", async kind => {
@@ -28,15 +29,18 @@ describe("handled dashboard failure reports", () => {
     assert.equal(Object.isFrozen(client), true);
   });
   it("surfaces report delivery failure once without recursively reporting it", async () => {
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const surfaced: Error[] = [];
+    vi.stubGlobal("window", { reportError: (error: Error) => { surfaced.push(error); } });
     const requests: string[] = [];
     try {
       const client = createDashboardClient({ baseUrl: "http://relay.test", surface: () => "settings",
         fetchImpl: async url => { requests.push(url); throw new Error("PRIVATE_CREDENTIAL"); } });
       await assert.rejects(client.readProfileSession());
-      await vi.waitFor(() => assert.equal(error.mock.calls.length, 1));
-      assert.deepEqual(error.mock.calls, [["DASHBOARD_ERROR_REPORT_UNAVAILABLE"]]);
+      await vi.waitFor(() => assert.equal(surfaced.length, 1));
+      assert.ok(surfaced[0] instanceof DashboardReportDeliveryError);
+      assert.equal(surfaced[0].code, "DASHBOARD_ERROR_REPORT_UNAVAILABLE");
+      assert.equal(surfaced[0].message, "Dashboard error report was not recorded");
       assert.equal(requests.length, 2);
-    } finally { error.mockRestore(); }
+    } finally { vi.unstubAllGlobals(); }
   });
 });

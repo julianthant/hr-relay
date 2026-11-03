@@ -5,6 +5,7 @@ import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixture
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 
 import assert from "node:assert/strict";
+import { z } from "zod";
 import { mkdtempSync,lstatSync,readFileSync,readdirSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -72,11 +73,15 @@ describe("explain run", () => {
     const sourceBytes = inventory.filter(name => lstatSync(join(root, name)).isFile()).map(name => [name, readFileSync(join(root, name))] as const);
     const output = composeExplainRuntime({ admission, isolation: rebuildRuntimeIsolation, args: ["diagnostics", "--limit", "2", "--json"] });
     assert.match(output, /nextCursor/u);
-    assert.match(output, /"level": "error"/u);
     let after = 0; const categories = new Set<string>();
     for (;;) {
       const page = AuthorityDatabase.inspectTimelinePageReadOnly(admission, path, { after, limit: 2 });
       assert.ok(page.records.length <= 2);
+      const rendered = composeExplainRuntime({ admission, isolation: rebuildRuntimeIsolation,
+        args: ["diagnostics", "--after", String(after), "--limit", "2", "--json"] });
+      const view = z.object({ records: z.array(z.object({ eventId: z.string(),
+        payload: z.object({ kind: z.literal("debug"), event: z.object({ level: z.literal("error") }) }) })) }).parse(JSON.parse(rendered));
+      assert.deepEqual(view.records.map(record => record.eventId), page.records.map(record => record.eventId));
       for (const record of page.records) if (record.payload.kind === "debug") {
         categories.add(record.payload.event.category);
         assert.equal("level" in record.payload.event, false);

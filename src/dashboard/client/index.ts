@@ -9,7 +9,7 @@ import {
   type DashboardDaySubscription,
   type DashboardDaySubscriptionDeps,
 } from "./subscriptions/subscription.js";
-import { WIRE_ERROR_BODY, DashboardClientError, dashboardErrorReported } from "./errors.js";
+import { WIRE_ERROR_BODY, DashboardClientError, DashboardReportDeliveryError, dashboardErrorReported } from "./errors.js";
 import { createDashboardTransport, type FetchLike } from "./transport.js";
 import { OcrSourceUploadSchema } from "../../models/ocr/review.js";
 import { RunIdSchema, PositiveIntSchema } from "../../rules/identity/ids.js";
@@ -64,7 +64,7 @@ export function createDashboardClient(input: Readonly<{
     void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard",
       route: failure.route, surface: surface(), code: failure.code, reason: failure.reason,
       message: "Dashboard request did not complete successfully" })
-      .catch(() => { console.error("DASHBOARD_ERROR_REPORT_UNAVAILABLE"); });
+      .catch(() => { window.reportError(new DashboardReportDeliveryError()); });
   };
   const transport = createDashboardTransport({ ...input, ...(surface === undefined ? {} : { onFailure: reportFailure }) });
   const queries = createDashboardQueries(transport);

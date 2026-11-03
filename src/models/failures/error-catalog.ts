@@ -368,6 +368,10 @@ export const ERROR_CATALOG = Object.freeze({
     "Debug logging is unavailable; inspect the local emergency fault log.",
     EmptyParametersSchema,
   ),
+  DASHBOARD_ERROR_REPORT_UNAVAILABLE: catalogEntry(
+    "Dashboard error report was not recorded",
+    EmptyParametersSchema,
+  ),
   DASHBOARD_READ_FAILED: catalogEntry(
     "The dashboard could not load this from the local service. Try again.",
     EmptyParametersSchema,
