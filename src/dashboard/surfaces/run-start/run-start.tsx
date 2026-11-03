@@ -322,7 +322,7 @@ export function RunStartDialog({
   const requiredTypes = useMemo(() => workflows.find(workflow => workflow.workflowId === workflowId)?.requiredWorkbookTypeIds ?? [], [workflows, workflowId]);
   const selectedReferences = Object.fromEntries(requiredTypes.map(typeId => {
     const current = referenceSelections[typeId];
-    const entry = library.catalog.find(entry => entry.type.id === typeId && entry.libraryId === (current?.libraryId ?? library.types.find(type => type.id === typeId)?.defaultWorkbookId));
+    const entry = library.catalog.find(entry => entry.type.id === typeId && entry.state.origin.kind === 'local' && entry.libraryId === (current?.libraryId ?? library.types.find(type => type.id === typeId)?.defaultWorkbookId));
     return [typeId, { libraryId: current?.libraryId ?? entry?.libraryId ?? '', versionId: current?.versionId ?? entry?.state.selectedVersionId ?? '' }];
   }));
   const initialWorkflow = workflows.find((entry) => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId));
@@ -793,7 +793,7 @@ export function RunStartDialog({
                 </li>;
               })}
             </ol>
-          <DialogBody className="launch-content @container">
+          <DialogBody key={currentStage} className="launch-content @container">
             {isRerun && snapshot === null && sourceError === null && <p role="status">Loading source…</p>}
             {sourceError !== null && <Banner tone="danger" title="Rerun unavailable">{sourceError}</Banner>}
             {recoveryError !== null && <Banner tone="danger" title="Submission recovery unavailable">{recoveryError}</Banner>}
@@ -905,8 +905,14 @@ export function RunStartDialog({
                     <RequiredCaptureStatus state="required" />
                   </>}
                   references={requiredTypes.length > 0 ? <>{library.catalogLoading ? <p role="status">Loading reference data…</p> : library.catalogError ? <Banner tone="danger" title="Reference data unavailable">{library.catalogError}<Button onClick={() => void library.adapter.refreshCatalog()}>Refresh</Button></Banner> : requiredTypes.map(typeId => {
-                    const selection = selectedReferences[typeId], entry = library.catalog.find(entry => entry.libraryId === selection.libraryId && entry.type.id === typeId);
-                    return <div key={typeId} className="launch-options-grid"><Field orientation="horizontal" label="Look up people in" description={`Required type: ${library.types.find(type => type.id === typeId)?.name ?? typeId}`}><ChoicePicker label="Reference spreadsheet" value={selection.libraryId} onChange={libraryId => { const entry = library.catalog.find(entry => entry.libraryId === libraryId); setReferenceSelections(current => ({ ...current, [typeId]: { libraryId, versionId: entry?.state.selectedVersionId ?? '' } })); }} options={[{ value: '', label: 'Choose a spreadsheet' }, ...library.catalog.filter(entry => entry.type.id === typeId && entry.state.origin.kind === 'local').map(entry => ({ value: entry.libraryId, label: entry.name }))]} /></Field><Field orientation="horizontal" label="Version" description="The version in use is selected by default."><ChoicePicker label="Reference version" value={selection.versionId} onChange={versionId => setReferenceSelections(current => ({ ...current, [typeId]: { ...selection, versionId } }))} options={entry?.state.versions.map(version => ({ value: version.id, label: version.name, description: version.id === entry.state.selectedVersionId ? 'In use' : undefined })) ?? [{ value: '', label: 'Choose a spreadsheet first' }]} /></Field></div>;
+                    const selection = selectedReferences[typeId];
+                    const entries = library.catalog.filter(entry => entry.type.id === typeId && entry.state.origin.kind === 'local');
+                    const entry = entries.find(entry => entry.libraryId === selection.libraryId);
+                    const files = [{ value: '', label: 'Choose a spreadsheet' }, ...entries.map(entry => ({ value: entry.libraryId, label: entry.name }))];
+                    if (selection.libraryId && !entry) files.push({ value: selection.libraryId, label: 'Selected spreadsheet unavailable' });
+                    const versions: { value: string; label: string; description?: string }[] = entry?.state.versions.map(version => ({ value: version.id, label: version.name, description: version.id === entry.state.selectedVersionId ? 'In use' : undefined })) ?? [{ value: '', label: 'Choose a spreadsheet first' }];
+                    if (selection.versionId && !versions.some(version => version.value === selection.versionId)) versions.push({ value: selection.versionId, label: 'Selected version unavailable' });
+                    return <div key={typeId} className="launch-options-grid"><Field orientation="horizontal" label="Look up people in" description={`Required type: ${library.types.find(type => type.id === typeId)?.name ?? typeId}`}><ChoicePicker label="Reference spreadsheet" value={selection.libraryId} onChange={libraryId => { const entry = entries.find(entry => entry.libraryId === libraryId); setReferenceSelections(current => ({ ...current, [typeId]: { libraryId, versionId: entry?.state.selectedVersionId ?? '' } })); }} options={files} /></Field><Field orientation="horizontal" label="Version" description="The version in use is selected by default."><ChoicePicker label="Reference version" value={selection.versionId} onChange={versionId => setReferenceSelections(current => ({ ...current, [typeId]: { ...selection, versionId } }))} options={versions} /></Field></div>;
                   })}</> : undefined}
                   fixedFacts={workflow && <><LockedFact label="Active policy" value={ENQUEUE_POLICY_MEANING[workflow.enqueue]} reason={ENQUEUE_POLICY_REASON} /><LockedFact label="Workflow version" value={versionTag(workflow.version)} reason="Fixed by the selected workflow." /></>}>
 

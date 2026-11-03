@@ -191,7 +191,7 @@
 .launch-dialog .launch-picker .workflow-rail h3 { @apply text-body; }
 .launch-dialog .launch-picker .workflow-rail button { @apply h-8 rounded-[10px] font-normal; }
 
-.launch-dialog { display: grid; grid-template-columns: 190px minmax(0, 1fr); grid-template-rows: 73px minmax(0, 1fr) 57px; }
+.launch-dialog { display: grid; overflow: clip; grid-template-columns: 190px minmax(0, 1fr); grid-template-rows: 73px minmax(0, 1fr) 57px; }
 .launch-dialog.launch-rerun { grid-template-columns: minmax(0, 1fr); }
 .launch-dialog > header, .launch-dialog > footer { grid-column: 1 / -1; }
 

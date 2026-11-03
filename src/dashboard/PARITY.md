@@ -87,6 +87,7 @@ current corpus.
 - Standalone OCR has no downstream approval; delegated OCR holds downstream outcomes until approval.
 - The launcher shares Input/Values, Options, Steps, and Confirm layouts without adding empty stages.
 - Run and Rerun Options use card rows; Dry run starts off, browser mode is Headed, and Screenshots is locked Always on.
+- Required reference types add spreadsheet and named-version rows. Confirm frames Plan, Input and declared Output groups; each stage starts at the top, and body scrolling keeps the header and footer in place.
 - Reading steps allow typed manual values while form actions and required sign-in steps remain included.
 - Settings uses a stationary rail/Navbar and body-scoped content, search, guarded exit, and child breadcrumbs.
 - Settings places General/Credentials under Personal and Paths/Routes under Advanced; Performance remains reachable through Settings search.

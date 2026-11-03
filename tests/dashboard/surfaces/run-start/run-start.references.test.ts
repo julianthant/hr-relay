@@ -15,5 +15,7 @@ it('sends the exact named version, selection identity for each parsed input', ()
 });
 it('refuses missing reference identities, unavailable named versions', () => {
   expect(() => launchWorkbookReferences(['missing'], [entry], selections, 1)).toThrow();
+  expect(() => launchWorkbookReferences(['roster-type'], [], selections, 1)).toThrow();
   expect(() => launchWorkbookReferences(['roster-type'], [entry], { 'roster-type': { libraryId: 'roster', versionId: 'deleted' } }, 1)).toThrow();
+  expect(() => launchWorkbookReferences(['roster-type'], [{ ...entry, state: { ...entry.state, origin: { kind: 'unavailable', code: 'WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE' } } }], selections, 1)).toThrow();
 });

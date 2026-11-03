@@ -442,7 +442,7 @@ export function launchWorkbookReferences(requiredTypes: readonly string[], catal
   return Array.from({ length: submissionCount }, (_, index) => requiredTypes.map(typeId => {
     const selection = selections[typeId];
     const entry = catalog.find(entry => entry.type.id === typeId && entry.libraryId === selection?.libraryId);
-    if (!entry || !entry.state.versions.some(version => version.id === selection.versionId)) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
+    if (!entry || entry.state.origin.kind !== 'local' || !entry.state.versions.some(version => version.id === selection.versionId)) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
     return WorkbookRunReferenceSelectionSchema.parse({ entry: index + 1, typeId, libraryId: entry.libraryId, versionId: selection.versionId });
   })).flat();
 }

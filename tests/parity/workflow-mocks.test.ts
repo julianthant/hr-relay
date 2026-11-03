@@ -195,7 +195,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await expect(dialog.getByRole("region", { name: "Confirm", exact: true })).toBeVisible();
         const confirmation = dialog.getByRole("region", { name: "Confirm", exact: true });
         await expect(confirmation.getByRole("heading", { name: "1 run ready to queue", exact: true })).toBeVisible();
-        const summaryGap = await confirmation.evaluate(el => getComputedStyle(el).getPropertyValue("--ds-space-cozy").trim());
+        const summaryGap = await confirmation.evaluate(el => getComputedStyle(el).getPropertyValue("--ds-space-section").trim());
         await expect(confirmation).toHaveCSS("gap", summaryGap);
         await expect(confirmation).toContainText("Bulk");
         await expect(confirmation).toContainText("Headless · screenshots required");
