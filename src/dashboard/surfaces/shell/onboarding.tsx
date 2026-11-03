@@ -27,6 +27,7 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
   const [completionUnknown, setCompletionUnknown] = useState(false);
   const submitted = useRef(0);
   const cancelInFlight = useRef(false);
+  const cancelTrigger = useRef<HTMLElement | null>(null);
   const [cancelTarget, setCancelTarget] = useState<{ next: "login" | "signup"; operationId?: string; authority: object }>();
   const cancelAuthority = port.source === "served" ? port.authorityScope ?? port : port;
   const currentCancelAuthority = useRef(cancelAuthority); currentCancelAuthority.current = cancelAuthority;
@@ -59,10 +60,14 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
     if (step === "login" || step === "signup") setSeconds(0);
     setErrors({}); setLoginError(""); setShowPassword(false);
   }, [step]);
+  const requestCancellation = (next: "login" | "signup", trigger: Element | null = document.activeElement) => {
+    cancelTrigger.current = trigger instanceof HTMLElement ? trigger : null;
+    setCancelTarget({ next, ...(draft === undefined ? {} : { operationId: draft.operationId }), authority: cancelAuthority });
+  };
   const navigate = async (next: OnboardingStep, confirmed = false) => {
     if (submitting || completionUnknown || cancelInFlight.current) return;
     if (port.source === "served" && draft && (next === "signup" || next === "login")) {
-      if (!confirmed) { setCancelTarget({ next, operationId: draft.operationId, authority: cancelAuthority }); return; }
+      if (!confirmed) { requestCancellation(next); return; }
       cancelInFlight.current = true;
       const request = ++submitted.current; setSubmitting(true); setLoginError("");
       try {
@@ -149,7 +154,7 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
           {!signup && port.source === "mock" && <p className="field-help">Demo: alex.rivera@ucsd.edu / Relay-demo-42</p>}</> : step === "duo" ? <>
           <div className="method-summary" aria-label="Duo method status">{(["key", "touch"] as const).map(method => <span className="method-chip" key={method}>{method === "key" ? <KeyRound className="icon" aria-hidden /> : <Fingerprint className="icon" aria-hidden />}{method === "key" ? "Security key" : "Touch ID"}<DuoMethodPill state={draft?.methods[method].state ?? (methods[method] ? "complete" : "idle")} /></span>)}</div>
           <section className="focus-task" aria-label="Next action">{both ? <CircleCheck className="icon" /> : launching ? <Monitor className="icon" /> : closed ? <PanelTopClose className="icon" /> : failed ? <RefreshCw className="icon" /> : methods.key ? <Fingerprint className="icon" /> : <KeyRound className="icon" />}<h2>{both ? "Ready to finish" : uncertainMethod ? "Unknown" : waitingMethod ? "Pending" : unavailableMethod ? "Unavailable" : launching ? "Preparing Fast Duo" : closed || failed ? `${methods.key ? "Touch ID" : "Security key"} is next` : methods.key ? "Next, add Touch ID" : methods.touch ? "Next, add a security key" : "Start with a security key"}</h2><p>{both ? "Both methods are registered in Duo." : uncertainMethod ? "Review your Duo devices without repeating this attempt. Showing the browser does not start another attempt." : waitingMethod ? "Continue the current enrollment in Duo. Showing the browser does not start another attempt." : unavailableMethod ? "No method is marked ready until Relay can verify it." : launching ? "The setup page opens in a browser with the Fast Duo extension ready." : closed || failed ? `Reopen the browser, then add ${methods.key ? "Touch ID" : "a security key"}. Your completed methods stay confirmed.` : `In the setup browser, follow Fast Duo’s ${methods.key ? "Touch ID" : "security key"} instructions. You can add the methods in either order.`}</p></section>
-          <p className="readiness" role="status">{port.source === "served" && (loginError || problem) || duoSummary(methods, draft)}</p><footer className="actions"><div className="buttons"><Button variant="ghost" size="sm" disabled={submitting || completionUnknown || port.source === "served" && (draft === undefined || port.unavailable)} onClick={() => setCancelTarget({ next: "login", ...(draft === undefined ? {} : { operationId: draft.operationId }), authority: cancelAuthority })}>{submitting ? "Cancelling…" : "Cancel sign-up"}</Button><button tabIndex={0} className="btn primary" type="button" disabled={submitting || completionUnknown} onClick={() => both ? navigate("ready") : browser.open()}>{both ? "Finish setup" : closed || failed ? "Reopen browser" : "Show setup browser"}</button></div></footer>
+          <p className="readiness" role="status">{port.source === "served" && (loginError || problem) || duoSummary(methods, draft)}</p><footer className="actions"><div className="buttons"><Button variant="ghost" size="sm" disabled={submitting || completionUnknown || port.source === "served" && (draft === undefined || port.unavailable)} onClick={event => requestCancellation("login", event.currentTarget)}>{submitting ? "Cancelling…" : "Cancel sign-up"}</Button><button tabIndex={0} className="btn primary" type="button" disabled={submitting || completionUnknown} onClick={() => both ? navigate("ready") : browser.open()}>{both ? "Finish setup" : closed || failed ? "Reopen browser" : "Show setup browser"}</button></div></footer>
         </> : <>{port.source === "served" && (loginError || problem) && <p className="form-error" role="alert">{loginError || problem}</p>}<ul className="ready-list">{["Your details saved", "Security key confirmed", "Touch ID confirmed"].map(text => <li key={text}><Check className="icon" />{text}</li>)}</ul><button tabIndex={0} className="btn primary" type="button" disabled={!detailsDone || !both || submitting || completionUnknown || port.source === "served" && port.unavailable} onClick={async () => {
           if (port.source === "mock") { onDashboard(); return; }
           if (submitting || completionUnknown || draft?.step !== "ready") return;
@@ -163,7 +168,10 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
           finally { if (request === submitted.current) setSubmitting(false); }
         }}>Go to dashboard</button></>}
       </div></div></main>
-    <Dialog open={cancelCurrent} onOpenChange={open => { if (!open) setCancelTarget(undefined); }}><DialogContent size="sm" title="Cancel sign-up?" description="Your unfinished profile and the credentials you entered are removed from this Mac. Devices you added stay in Duo device management."><DialogFooter><Button variant="secondary" autoFocus onClick={() => setCancelTarget(undefined)}>Keep setting up</Button><Button variant="danger" onClick={() => {
+    <Dialog open={cancelCurrent} onOpenChange={open => { if (!open) setCancelTarget(undefined); }}><DialogContent size="sm" title="Cancel sign-up?" description="Your unfinished profile and the credentials you entered are removed from this Mac. Devices you added stay in Duo device management." onCloseAutoFocus={event => {
+      event.preventDefault();
+      (cancelTrigger.current?.isConnected && !cancelTrigger.current.hasAttribute("disabled") ? cancelTrigger.current : heading.current)?.focus();
+    }}><DialogFooter><Button variant="secondary" autoFocus onClick={() => setCancelTarget(undefined)}>Keep setting up</Button><Button variant="danger" onClick={() => {
       if (!cancelCurrent || cancelTarget === undefined) return;
       const next = cancelTarget.next; setCancelTarget(undefined); void navigate(next, true);
     }}>Cancel sign-up</Button></DialogFooter></DialogContent></Dialog>

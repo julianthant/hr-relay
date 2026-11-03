@@ -5,7 +5,7 @@ import { OnboardingSetup } from "../../../../src/dashboard/surfaces/shell/onboar
 import assert from "node:assert/strict";
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { it } from "vitest";
+import { it, vi } from "vitest";
 import { Onboarding } from "../../../../src/dashboard/surfaces/shell/onboarding.js";
 import { createServedOnboardingPort, mockOnboardingPort, type ServedOnboardingPort, type OnboardingStep } from "../../../../src/dashboard/surfaces/shell/onboarding-model.js";
 
@@ -319,6 +319,7 @@ it("cancels sign-up from its footer only after confirmation and never repeats an
     assert.equal(cancellations, 0);
     await act(async () => button(document, "Keep setting up").click());
     assert.equal(cancellations, 0);
+    await vi.waitFor(() => assert.equal(document.activeElement, cancel));
     await act(async () => cancel.click());
     await act(async () => button(document.querySelector('[role="dialog"]')!, "Cancel sign-up").click());
     assert.equal(cancellations, 1); assert.equal(cancel.disabled, true);
