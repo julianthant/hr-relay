@@ -1,7 +1,7 @@
 /** Hashes canonical (path, content) tuples plus the installed toolchain so any checkout matches; type-only imports count because a type change is a contract change, and the generated module is excluded so the hash reaches a fixed point. */
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import ts from "typescript";
 import { z } from "zod";
 import type { BuildManifest, SourceHash } from "../../src/models/workflow/build-manifest.js";
@@ -51,11 +51,12 @@ function relativeSpecifiers(sourcePath: string, content: string): readonly strin
   return specifiers.filter((specifier) => specifier.startsWith("."));
 }
 
-function resolveSource(fromFile: string, specifier: string): string {
+function resolveSource(fromFile: string, specifier: string, manifestModule: string): string | undefined {
   const base = resolve(fromFile, "..", specifier);
   const candidates = specifier.endsWith(".js")
     ? [`${base.slice(0, -3)}.ts`, `${base.slice(0, -3)}.tsx`]
     : [`${base}.ts`, `${base}.tsx`, join(base, "index.ts")];
+  if (candidates.includes(manifestModule)) return undefined;
   const found = candidates.find((candidate) => existsSync(candidate));
   if (found === undefined) {
     throw new Error(`build manifest cannot resolve "${specifier}" from ${fromFile}`);
@@ -83,7 +84,8 @@ export function collectSourceClosure(repoRoot: string, entry: string): readonly 
     }
     sources.push({ path: posix(relative(repoRoot, file)), sha256: cached.sha256 });
     for (const specifier of cached.specifiers) {
-      pending.push(resolveSource(file, specifier));
+      const dependency = resolveSource(file, specifier, manifestModule);
+      if (dependency !== undefined) pending.push(dependency);
     }
   }
   return sources.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
@@ -296,7 +298,21 @@ export function auditBuildManifestBytes(
   const rendered = renderBuildManifestModule(manifest);
   if (current === rendered) return [];
   return [
-    `${BUILD_MANIFEST_PATH} is stale on disk (${String(current.length)} bytes checked in, `
-    + `${String(rendered.length)} bytes generated) — run \`npm run build:manifest\` and commit the result`,
+    `${BUILD_MANIFEST_PATH} is stale on disk (${String(current.length)} bytes on disk, `
+    + `${String(rendered.length)} bytes generated) — run \`npm run build:manifest\` before launching source tools`,
   ];
+}
+
+export function prepareBuildManifest(repoRoot: string): void {
+  const target = resolve(repoRoot, BUILD_MANIFEST_PATH);
+  const rendered = renderBuildManifestModule(computeBuildManifest(repoRoot));
+  if (existsSync(target) && readFileSync(target, "utf8") === rendered) return;
+  mkdirSync(dirname(target), { recursive: true });
+  const temporary = `${target}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporary, rendered, { encoding: "utf8", flag: "wx" });
+    renameSync(temporary, target);
+  } finally {
+    if (existsSync(temporary)) unlinkSync(temporary);
+  }
 }
