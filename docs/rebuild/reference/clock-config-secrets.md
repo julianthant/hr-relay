@@ -644,6 +644,12 @@ startup, reporting, UNKNOWN retention and callbacks settle within its closure de
 same owned browser's complete context, page, process and callback closure plus profile deletion
 can then supersede that stop failure. Other failures refuse replacement; reopening never retries
 or confirms an enrollment.
+Show and Open focus the selected page and its owned Chromium window, restoring a minimized
+window. Failed attempt initialization must settle before closure; it is retained as a failure
+without preventing proved worker and browser cleanup. Reopening never rearms the failed attempt.
+The first attempt failure retains only its closed `kind` and `causeTag` values. The existing debug
+event writer records the same facts as a pinned Duo failure correlated to that attempt in the
+draft profile timeline. Raw exception messages, stacks, credentials and account values are excluded.
 The extension UI receives public draft status and exact attempt commands, never login credentials.
 Before enrollment capture is armed, verified native Duo documents may query capability support or
 pass a sign-in request to the captured browser implementation. This path exposes no software key,

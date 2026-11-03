@@ -33,6 +33,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let lostActiveStopAck = false, blockedPump = false;
   let startupHold: Promise<void> | undefined, releaseStartup: (() => void) | undefined, startupEntered: (() => void) | undefined;
   const replies = new Map<string, (value: unknown) => void>();
+  let windowFocusCount = 0, failInstall = false;
   let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
   let launchCount = 0, nativeProbes = 0, nativeBusy = false, revokeDuringProbe = false, mutateOwnerDuringProbe = false;
   let profile = "";
@@ -51,7 +52,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     url: () => "chrome-extension://owned-extension/src/relay-background.js",
     async evaluate(_callback: unknown, input: { method: string; args: unknown[] }) {
       workerCalls.push(input.method);
-      if (input.method === "install") { startupEntered?.(); await startupHold; return; }
+      if (input.method === "install") { startupEntered?.(); await startupHold; if (failInstall) throw new Error("synthetic arm initialization failed"); return; }
+      if (input.method === "browserFocus") { windowFocusCount++; return; }
       if (input.method === "browserInstall") return;
       if (input.method === "browserNext") return new Promise(resolve => { browserWaiter = resolve; });
       if (input.method === "browserStop") { if (lostStopAck) throw new Error("synthetic worker already closed"); browserWaiter?.(null); browserWaiter = undefined; return; }
@@ -144,7 +146,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     return result;
   }
   return { sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
-    loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, launches: () => launchCount, profile: () => profile,
+    loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, windowFocuses: () => windowFocusCount, failInstall: () => { failInstall = true; }, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
     loseActiveStopAck: () => { lostActiveStopAck = true; }, blockPump: () => { blockedPump = true; },
     releasePump: () => { blockedPump = false; waiter?.(null); waiter = undefined; },
@@ -190,7 +192,7 @@ describe("draft Duo provider", () => {
       assert.deepEqual(await w.rawProvider.closeBrowser(w.owner),{state:"closed"});assert.equal(existsSync(directory),false);assert.equal(w.nativeProbes(),2);
       await w.rawProvider.showBrowser(w.owner);assert.equal(w.nativeProbes(),2);assert.equal(w.launches(),2);
       assert.deepEqual(await w.rawProvider.closeBrowser(w.owner),{state:"closed"});assert.equal(existsSync(directory),false);assert.equal(w.nativeProbes(),3);
-      assert.deepEqual(w.workerCalls,["browserInstall","browserNext","browserStop","browserInstall","browserNext","browserStop"]);
+      assert.deepEqual(w.workerCalls,["browserInstall","browserNext","browserFocus","browserStop","browserInstall","browserNext","browserFocus","browserStop"]);
       assert.deepEqual(w.calls,[]);
     }finally{await w.closeBrowser();await w.cleanup();}
   });
@@ -299,12 +301,36 @@ describe("draft Duo provider", () => {
     } finally { await w.cleanup(); }
   });
 
+  it("focuses both the setup page and its OS window on the first opening", async () => {
+    const w = world();
+    try {
+      await w.provider.showBrowser(w.owner);
+      assert.equal(w.focuses(), 1); assert.equal(w.windowFocuses(), 1);
+      assert.equal(w.launches(), 1); assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
+
+  it("reopening after an unknown arm failure focuses the owned window without another attempt", async () => {
+    const w = world();
+    try {
+      await w.provider.showBrowser(w.owner); w.failInstall();
+      await assert.rejects(w.rawProvider.start(w.attempt, w.bind, w.reportFailure));
+      assert.equal(w.failures.length, 1);
+      const failure = w.failures[0]; assert.ok(failure instanceof ProfileOnboardingDuoProviderError); assert.equal(failure.kind, "unknown");
+      await w.closeBrowser();
+      await w.provider.showBrowser(w.owner);
+      assert.equal(w.focuses(), 2); assert.equal(w.windowFocuses(), 2);
+      assert.equal(w.launches(), 2); assert.equal(w.workerCalls.filter(call => call === "install").length, 1);
+      assert.equal(w.portalPages(), 0); assert.deepEqual(w.calls, []);
+    } finally { await w.closeBrowser(); await w.cleanup(); }
+  });
+
   it("focuses an existing setup and waits for proved closed-browser settlement before reopening", async () => {
     const w = world();
     try {
       await w.provider.showBrowser(w.owner);
       await w.provider.showBrowser(w.owner);
-      assert.equal(w.focuses(), 1); assert.equal(w.launches(), 1);
+      assert.equal(w.focuses(), 2); assert.equal(w.windowFocuses(), 2); assert.equal(w.launches(), 1);
       await w.closeBrowser();
       await w.provider.showBrowser(w.owner);
       assert.equal(w.launches(), 2);
@@ -366,6 +392,18 @@ describe("draft Duo provider", () => {
       await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
       assert.equal(w.launches(), 1);
       assert.ok(existsSync(w.profile()));
+    } finally { await w.closeBrowser(); await w.cleanup(); }
+  });
+
+  it("retains the named scope cause when a bound attempt becomes Unknown", async () => {
+    const w = world();
+    try {
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      await w.send("bind", BIND);
+      assert.deepEqual(await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId: randomUUID() }), { ok: false });
+      const failure = w.failures[0]; assert.ok(failure instanceof ProfileOnboardingDuoProviderError);
+      assert.equal(failure.kind, "unknown"); assert.equal(failure.reason, "scope");
+      assert.ok(w.calls.includes("unknown"));
     } finally { await w.closeBrowser(); await w.cleanup(); }
   });
 

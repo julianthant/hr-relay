@@ -54,7 +54,7 @@ export interface OnboardingDuoProviderOptions {
 }
 
 
-async function workerCall(worker: Worker, method: "install" | "next" | "reply" | "stop" | "assertContext" | "browserInstall" | "browserNext" | "browserReply" | "browserStop", args: readonly unknown[] = []): Promise<unknown> {
+async function workerCall(worker: Worker, method: "install" | "next" | "reply" | "stop" | "assertContext" | "browserInstall" | "browserFocus" | "browserNext" | "browserReply" | "browserStop", args: readonly unknown[] = []): Promise<unknown> {
   return worker.evaluate(async input => {
     const owner: unknown = Reflect.get(globalThis, "relayOnboarding");
     if (typeof owner !== "object" || owner === null) throw new Error("ONBOARDING_DUO_WORKER_UNAVAILABLE");
@@ -158,12 +158,13 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     if (session.reporting) return session.reporting;
     session.revoked = true;
     clearTimeout(session.expiry);
-    const failure = error instanceof ProfileOnboardingDuoProviderError && !session.capability
-      ? error : new ProfileOnboardingDuoProviderError("unknown", "provider", error);
+    const failure = error instanceof ProfileOnboardingDuoProviderError
+      ? session.capability && error.kind !== "unknown" ? new ProfileOnboardingDuoProviderError("unknown", error.reason, error) : error
+      : new ProfileOnboardingDuoProviderError("unknown", "provider", error);
     session.failure = failure;
     session.reporting = (async () => {
       try {
-        if (session.capability) await session.capability.retainUnknown();
+        if (session.capability) await session.capability.retainUnknown({ kind: failure.kind, causeTag: failure.reason });
         await session.reportFailure(failure);
       } catch (retentionError) {
         session.retentionFailed = true;
@@ -182,12 +183,12 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       let stopFailure: ProfileOnboardingDuoProviderError | undefined;
       try {
         await Promise.race([(async () => {
-          await session.startup;
+          await Promise.allSettled([session.startup]);
           clearTimeout(session.expiry);
           if (expired) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
           await session.reporting;
           if (session.retentionFailed) throw session.failure ?? new ProfileOnboardingDuoProviderError("unknown", "provider");
-          if (session.capability && session.credentialId && !session.accepted) await session.capability.retainUnknown();
+          if (session.capability && session.credentialId && !session.accepted) await session.capability.retainUnknown({ kind: "unknown", causeTag: "browser-lifetime" });
           if (expired) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
           if (!session.worker) throw new ProfileOnboardingDuoProviderError("unknown", "worker");
           if (!browser?.contextClosed) {
@@ -281,8 +282,14 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       || !(url.hostname === "a5.ucsd.edu" && url.pathname.startsWith("/tritON/")
         || url.hostname === "duo.ucsd.edu"
         || url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com"))) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-    await page.bringToFront(); browserCurrent(session);
+    await focusPage(session, page);
     if (page.url() !== url.href) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+  }
+  async function focusPage(session: OwnedBrowser, page: Page): Promise<void> {
+    browserCurrent(session);
+    await page.bringToFront(); browserCurrent(session);
+    if (!session.worker) throw new ProfileOnboardingDuoProviderError("unavailable", "worker");
+    await workerCall(session.worker, "browserFocus"); browserCurrent(session);
   }
   async function showBrowser(owner: DraftDuoBrowserOwner): Promise<void> {
     owner.assertCurrent();
@@ -308,7 +315,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         previous.setupOpening = undefined;
       }
       if (previous.setup.url() !== setupUrl) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-      await previous.setup.bringToFront(); browserCurrent(previous);
+      await focusPage(previous, previous.setup);
       if (previous.setup.url() !== setupUrl) throw new ProfileOnboardingDuoProviderError("refused", "scope");
       return;
     }
@@ -398,7 +405,11 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       await session.setup.goto(new URL("options.html", worker.url()).href, { waitUntil: "domcontentloaded" });
       browserCurrent(session);
     })();
-    try { await session.startup; }
+    try {
+      await session.startup;
+      if (!session.setup) throw new ProfileOnboardingDuoProviderError("unavailable", "provider");
+      await focusPage(session, session.setup);
+    }
     catch (error) { await closeBrowser(session); throw error; }
   }
 
@@ -480,7 +491,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       try { await session.startup; }
       catch (error) {
         await reportFailure(session, error instanceof ProfileOnboardingDuoProviderError ? error
-          : new ProfileOnboardingDuoProviderError(session.launchStarted ? "unknown" : "unavailable", "provider", error));
+          : new ProfileOnboardingDuoProviderError(session.launchStarted ? "unknown" : "unavailable", "worker", error));
         await close(session);
         throw session.failure ?? new ProfileOnboardingDuoProviderError("unknown", "provider", error);
       }
