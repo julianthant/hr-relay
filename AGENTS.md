@@ -107,7 +107,7 @@ The repository holds only the current version. No compatibility readers, old mig
   requests into `staging`. Run platform-native proofs and parity only on release pull requests into
   `main` or manual dispatches. Fix a red release by a pull request into `staging`. Run the tests related
   to your change locally before pushing, and parity when the change touches a dashboard screen.
-- A test file that needs macOS goes in `MACOS_FILES` in `scripts/test/ci-files.ts`. When CI jobs'
+- A test file that needs native platform proofs goes in `NATIVE_FILES` in `scripts/test/ci-files.ts`. When CI jobs'
   end times spread more than a minute, refresh `scripts/test/ci-durations.json` (see
   `docs/rebuild/reference/guards-and-tests.md`).
 - A pull request bundles a good amount of related work, so CI runs once per batch rather than after

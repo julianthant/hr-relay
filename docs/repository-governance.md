@@ -49,17 +49,21 @@ session runs, red PRs wait; nothing red merges. The operator watches only `needs
 
 CI takes Node from `package.json` engines and caches npm. Run portable suites on Ubuntu for staging
 pull requests. Run platform-native proofs and Desktop parity only on release pull requests into
-`main` and manual dispatches. Keep macOS-only files out of Ubuntu shards. Native proofs and the
+`main` and manual dispatches. Keep native files out of Ubuntu shards. Native proofs and the
 padded-receipt storage upgrade run in separate single-worker invocations, preserving their
 existing deadlines under duration-based assignment. Native integration jobs first verify the
-cached full-Chromium installation by opening a blank page and observing the owned browser process
-exit. This one-time setup has no retries; timed proofs still use fresh profiles and their existing
+full-Chromium installation through `scripts/test/chromium-preflight.ts` by opening a blank page
+and observing the owned browser process exit. This one-time setup has no retries; timed proofs still use fresh profiles and their existing
 deadlines. A full staging run uses two
 Ubuntu unit shards, two architecture shards and fourteen integration shards, plus static and
 privacy, within twenty Ubuntu runners. On release PRs and manual dispatches, use all five macOS
 runners for native files when parity is omitted. When parity is selected, use three macOS runners
 for parity and two for native files. The release runner starts after
-the routine suites finish. Windows jobs are not enabled.
+the routine suites finish. Windows native files use five `windows-latest` runners, or one for
+unit-only selection, with the
+same serial/storage separation and native membership. Windows uses explicit Bash with native
+Windows Node/npm, the runner temp directory and Windows Chromium installation. Before checkout,
+it disables Git automatic line-ending conversion to preserve fixture bytes and shell scripts.
 
 `ci.yml` retains per-PR or per-dispatch-branch cancellation, and queues its reusable `ci-checks.yml`
 job in the shared `ci-runners` concurrency group with `queue: max`. GitHub admits one pipeline at
@@ -84,7 +88,9 @@ Markdown-only release PRs omit coverage and perf.
 Every admitted run downloads the latest successful run's retained `ci-timings` artifact before
 selecting files. Its immutable `ci-balancing` artifact gives every shard identical duration inputs.
 After successful runner groups, CI merges their per-file reports into those inherited timings and
-publishes `ci-timings` for the next run, retaining measurements for suites not selected this time.
+publishes `ci-timings` for the next run. Report names include the runner OS and selection group;
+when both platforms report one file, the slower duration wins independently of artifact order.
+Measurements for omitted suites remain intact.
 Without a retained artifact, CI explicitly uses the committed `scripts/test/ci-durations.json` seed;
 unmeasured files use the positive measured median, or one second without measurements. Invalid
 reports or failed downloads fail CI. Every later CI fix must preserve this automatic timing feedback
@@ -92,9 +98,10 @@ and refresh the committed seed when shard end times spread more than a minute. T
 [test reference](rebuild/reference/guards-and-tests.md#2-vitest-selection-and-commands) owns file
 membership and selection details.
 
-Playwright browser caches use `~/Library/Caches/ms-playwright`, keyed by runner OS, architecture,
-macOS image, browser set and `package-lock.json` digest. An exact hit skips installation; a miss
-installs the required browsers. There are no partial-key restores. Desktop parity uses headless
+Playwright browser caches use `~/Library/Caches/ms-playwright` on macOS and
+`~/AppData/Local/ms-playwright` on Windows, keyed by runner OS, architecture, browser set and
+`package-lock.json` digest (plus the image on macOS). An exact macOS hit skips installation;
+Windows checks installation on every native integration job. A miss installs the required browsers. There are no partial-key restores. Desktop parity uses headless
 Chromium and existing references; CI never updates references or uploads HR evidence.
 
 ## Privacy check

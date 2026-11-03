@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { MACOS_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
+import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES, selectCiFiles } from "../../../scripts/test/ci-files.js";
 
 const checks = readFileSync(new URL("../../../.github/workflows/ci-checks.yml", import.meta.url), "utf8");
 const ci = readFileSync(new URL("../../../.github/workflows/ci.yml", import.meta.url), "utf8");
@@ -61,8 +61,8 @@ function summary(workflow: string, suite: Suite, needs: Record<string, Need>): R
   return result.status === 0 ? "success" : "failure";
 }
 
-function aggregate(suite: Suite, outputs: Record<string, string>, ubuntu: Result, macos: Result, changes: Result = "success") {
-  return summary(checks, suite, { changes: { result: changes, outputs }, ubuntu: { result: ubuntu }, macos: { result: macos } });
+function aggregate(suite: Suite, outputs: Record<string, string>, ubuntu: Result, macos: Result, changes: Result = "success", windows: Result = outputs.windows === '{"include":[]}' ? "skipped" : "success") {
+  return summary(checks, suite, { changes: { result: changes, outputs }, ubuntu: { result: ubuntu }, macos: { result: macos }, windows: { result: windows } });
 }
 
 describe("CI workflow selection and required summaries", () => {
@@ -112,7 +112,45 @@ describe("CI workflow selection and required summaries", () => {
     const filters = { shared: "false", [filter]: "true" };
     const outputs = select("main", filters, "pull_request", draft);
     expect(JSON.parse(outputs.macos)).toEqual({ include: Array.from({ length: shards }, (_, i) => ({ suite: "native", shard: i + 1, shards })) });
+    expect(JSON.parse(outputs.windows)).toEqual({ include: Array.from({ length: shards }, (_, i) => ({ suite: "native", shard: i + 1, shards })) });
+    expect(select("staging", filters, "pull_request", draft).windows).toBe('{"include":[]}');
     expect(select("staging", filters, "pull_request", draft).macos).toBe('{"include":[]}');
+  });
+
+  it("selects Windows native shards only for release and manual runs", () => {
+    expect(select().windows).toBe('{"include":[]}');
+    expect(select("main", { shared: "false" }).windows).toBe('{"include":[]}');
+    for (const event of ["pull_request", "workflow_dispatch"]) {
+      const outputs = select(event === "pull_request" ? "main" : "staging", { shared: "true" }, event);
+      expect(JSON.parse(outputs.windows)).toEqual({ include: Array.from({ length: 5 }, (_, i) => ({ suite: "native", shard: i + 1, shards: 5 })) });
+    }
+    const windows = job(checks, "windows");
+    expect(windows).toContain("runs-on: windows-latest");
+    expect(windows).toContain("shell: bash");
+    expect(windows.indexOf("git config --global core.autocrlf false")).toBeLessThan(windows.indexOf("uses: actions/checkout@v4"));
+    expect(windows).toContain("git config --global core.autocrlf false");
+    expect(windows).not.toMatch(/ram-tmp|mdutil|sysctl|memory_pressure|continue-on-error/u);
+    expect(windows).toContain("run: npx tsx scripts/test/chromium-preflight.ts");
+    expect(job(checks, "macos")).toContain("npx tsx scripts/test/chromium-preflight.ts");
+    expect(windows).toContain("npx playwright install chromium");
+    for (const command of ["integration serial", "integration storage", "unit native", "integration native"]) {
+      expect(windows).toContain(`scripts/test/ci-run.sh ${command} "$SLICE"`);
+    }
+    const testSteps = windows.split(/\n {6}- /u).filter(step => step.includes("scripts/test/ci-run.sh"));
+    expect(testSteps).toHaveLength(4);
+    for (const step of testSteps) expect(step).toContain("!cancelled()");
+  });
+
+  it("requires every selected Windows outcome and rejects an unexpected staging run", () => {
+    for (const suite of ["unit", "integration"] as const) {
+      for (const result of ["success", "failure", "cancelled", "skipped"] as const) {
+        const needs = { changes: { result: "success" as const, outputs: select("main") },
+          ubuntu: { result: "success" as const }, macos: { result: "success" as const }, windows: { result } };
+        expect(summary(checks, suite, needs)).toBe(result === "success" ? "success" : "failure");
+      }
+      expect(summary(checks, suite, { changes: { result: "success", outputs: select() },
+        ubuntu: { result: "success" }, macos: { result: "skipped" }, windows: { result: "success" } })).toBe("failure");
+    }
   });
 
   it("exports every required summary through the reusable workflow", () => {
@@ -121,19 +159,21 @@ describe("CI workflow selection and required summaries", () => {
   });
 
   it("keeps every native-only file on release shards and out of staging Ubuntu shards", () => {
-    const nativeFiles = [...new Set([...MACOS_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])];
-    const release = matrixSchema.parse(JSON.parse(select("main").macos));
-    const native = release.include.filter(entry => entry.suite === "native");
-    for (const project of ["unit", "integration"] as const) {
-      const listed = [`tests/portable${project === "integration" ? ".integration" : ""}.test.ts`,
-        ...nativeFiles.filter(file => file.endsWith(".integration.test.ts") === (project === "integration"))];
-      expect(selectCiFiles(listed, project, "ubuntu", 1, 1, {})).toEqual([listed[0]]);
-      const selected = native.flatMap(({ shard, shards }) => (["macos", "serial", "storage"] as const).flatMap(runner =>
-        selectCiFiles(listed, project, runner, shard, shards, {})));
-      expect(selected.sort()).toEqual(listed.slice(1).sort());
+    const nativeFiles = [...new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])];
+    for (const platform of ["macos", "windows"]) {
+      const release = matrixSchema.parse(JSON.parse(select("main")[platform]));
+      const native = release.include.filter(entry => entry.suite === "native");
+      for (const project of ["unit", "integration"] as const) {
+        const listed = [`tests/portable${project === "integration" ? ".integration" : ""}.test.ts`,
+          ...nativeFiles.filter(file => file.endsWith(".integration.test.ts") === (project === "integration"))];
+        expect(selectCiFiles(listed, project, "ubuntu", 1, 1, {})).toEqual([listed[0]]);
+        const selected = native.flatMap(({ shard, shards }) => (["native", "serial", "storage"] as const).flatMap(runner =>
+          selectCiFiles(listed, project, runner, shard, shards, {})));
+        expect(selected.sort(), platform).toEqual(listed.slice(1).sort());
+      }
     }
     const macosJob = job(checks, "macos");
-    for (const command of ["integration serial", "integration storage", "unit macos", "integration macos"]) {
+    for (const command of ["integration serial", "integration storage", "unit native", "integration native"]) {
       expect(macosJob).toContain(`scripts/test/ci-run.sh ${command} "$SLICE"`);
     }
   });

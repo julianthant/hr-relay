@@ -138,8 +138,8 @@ Project/file/suite and full behavior or refusal titles remain visible. Short uni
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
 Run portable CI suites on Ubuntu for pull requests into `staging`. Run platform-native proofs only
 on release pull requests into `main` and manual dispatches. Keep native-only files out of Ubuntu
-shards. `scripts/test/ci-files.ts` names the macOS
-files: `MACOS_FILES` (storage closure, backup and restore proofs that refuse off macOS, unit and
+shards. `scripts/test/ci-files.ts` names the native
+files: `NATIVE_FILES` (storage closure, backup and restore proofs requiring native runners, unit and
 integration) and `SERIAL_FILES` (native browser process proofs that require file isolation). `scripts/test/ci-run.sh` lists a project through
 Vitest, selects the job's files with that script and passes the paths explicitly; Vitest 4.1.11's
 CLI exclusions do not reach these named projects. Selection refuses when a named file is no longer
@@ -150,25 +150,29 @@ Zero-rounded measurements still receive positive work. Native proofs and `SERIAL
 count their full time and run in separate single-worker invocations. The padded-receipt upgrade
 and startup-upgrade fixture run in the storage group: their stopped backups and real native
 closure probes require isolation from competing storage files within their existing budgets.
-Other macOS files count half because two workers share them.
+Other native files count half because two workers share them.
 
 | Job | Runner | Jobs | Contents |
 | --- | --- | --- | --- |
-| unit | Ubuntu | 2 (3 without integration) | unit files except `MACOS_FILES` |
+| unit | Ubuntu | 2 (3 without integration) | unit files except `NATIVE_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
-| integration | Ubuntu | 14 | integration files except `MACOS_FILES` and `SERIAL_FILES` |
-| native | macOS, release PRs and manual dispatches only | 5 (2 when parity runs) | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then macOS unit and other integration files |
+| integration | Ubuntu | 14 | integration files except `NATIVE_FILES` and `SERIAL_FILES` |
+| native | macOS, release PRs and manual dispatches only | 5 (2 when parity runs) | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
+| native | Windows, release PRs and manual dispatches only | 5 (1 for unit only) | The same native membership and isolated serial/storage groups |
 | parity | macOS, release PRs and manual dispatches only | 3 shards | Desktop parity |
 
 With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The runner-free FIFO
 admission and draft policy are described in [repository governance](../../repository-governance.md).
 Each shard downloads the same `ci-balancing` input and uploads Vitest JSON reports as `durations-*`.
-CI merges successful groups into inherited timings and publishes `ci-timings` for the next run;
+Report basenames include the runner OS and selection group, so merged artifacts preserve both platforms.
+For a file reported by both platforms, the shared timing map retains the slower observation regardless
+of report order. CI merges successful groups into inherited timings and publishes `ci-timings` for the next run;
 omitted suites retain their prior measurements. When shard end times spread more than a minute,
 also refresh the committed seed from a successful run:
 `gh run download <run-id> -n ci-timings -D <dir>` then copy its generated `ci-durations.json` to
 `scripts/test/ci-durations.json`. Corrupt reports and download failures fail CI.
-A new test file that needs macOS fails on Ubuntu with the darwin refusal; add it to `MACOS_FILES`.
+A new test file requiring native platform proofs belongs in `NATIVE_FILES`, outside Ubuntu shards.
+Both platforms select from this one list; platform refusals remain failures until their proof is implemented.
 
 ### Pre-push tests on the PC
 
@@ -186,7 +190,7 @@ satisfying `package.json`, Git, flock, and Chromium's libraries installed with
 `npx playwright install --with-deps chromium`. Keep its private host in local configuration.
 Normal SSH host verification applies.
 
-Vitest selects the files; the runner subtracts `MACOS_FILES`, `SERIAL_FILES` and
+Vitest selects the files; the runner subtracts `NATIVE_FILES`, `SERIAL_FILES` and
 `SERIAL_STORAGE_FILES` with one skip note. Those files run in GitHub CI. Each leased slot fetches
 `origin/staging`'s pinned commit directly from the public GitHub repository. The Mac verifies that
 base is advertised by origin before sending a binary Git patch of the allowed candidate tree.
