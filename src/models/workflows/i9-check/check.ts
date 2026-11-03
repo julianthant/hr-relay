@@ -20,6 +20,7 @@ export const I9CheckRowSchema = z.strictObject({
   action: z.enum(["", "Keep", "Shred"]), reviewerName: z.string().min(1), notes: z.string(),
 });
 export type I9CheckRow = z.output<typeof I9CheckRowSchema>;
+export const I9CheckRowsSchema = z.strictObject({ rows: z.array(I9CheckRowSchema).min(1) });
 
 const policy = {
   effect: "read", errorCodes: ["I9_CHECK_DATA_INVALID"],

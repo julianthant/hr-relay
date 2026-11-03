@@ -1,3 +1,4 @@
+import { workflowReferenceId } from "./helpers/workflow-reference-id.js";
 import { createHash } from "node:crypto";
 import { expect, type Page, type TestInfo } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
@@ -41,12 +42,12 @@ async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (
     await expect(logs).toBeVisible();
     await expect(logs.getByRole("heading", { level: 2 })).toHaveText(seedMockRuns().find(run => run.workflowId === flow.id)!.subject);
     await expect(page.getByRole("heading", { level: 1, name: `${flow.label} queue`, exact: true })).toBeVisible();
-    await attachPresentationReference(page, info, `workflow-queue-logs-${flow.id}.png`);
-    if (["ocr", "oath-signature", "oath-upload", "emergency-contact", "i9-check", "onbase"].includes(flow.id)) {
+    await attachPresentationReference(page, info, `workflow-queue-logs-${workflowReferenceId(flow.id)}.png`);
+    if (["ocr", "oath-signature", "oath-upload", "emergency-contact", "i9-check-start", "onbase"].includes(flow.id)) {
       if (flow.id !== "ocr") await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       await expect(logs.getByRole("region", { name: "OCR records", exact: true })).toBeVisible();
-      await attachPresentationReference(page, info, `workflow-records-${flow.id}.png`);
+      await attachPresentationReference(page, info, `workflow-records-${workflowReferenceId(flow.id)}.png`);
     }
   }
 }
@@ -92,7 +93,7 @@ for (const theme of PARITY_THEMES) {
         await expect(picker).toHaveAttribute("data-value", option.value);
         await expect(explorer.getByRole("list", { name: "Workflow steps" })).toBeVisible();
         await expect(page.getByRole("listbox")).toHaveCount(0);
-        await attachPresentationReference(page, info, `explorer-${option.value}-${theme.attribute}.png`);
+        await attachPresentationReference(page, info, `explorer-${workflowReferenceId(option.value)}-${theme.attribute}.png`);
       }
       await witness(page, info, "baseline-workflows.a11y.yml");
       expect(errors).toEqual([]); expect(writes).toEqual([]);

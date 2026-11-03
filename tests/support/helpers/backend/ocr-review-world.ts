@@ -20,12 +20,13 @@ import { canonicalChildExecution } from "./canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "./run-executor-world.js";
 import { boundProfileAdmission } from "../synthetic-database-admission.js";
 import type { z } from "zod";
+import type { WorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 
 export function createOcrReviewWorld() {
   const world = createRunExecutorTestWorld();
   return {
     cleanup: world.cleanup,
-    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number }> = {}) {
+    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; parent?: WorkflowModule }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       const rendered: { value?: z.output<typeof ExtractPdfPagesOutputSchema> } = {};
       const render = defineTask(ExtractPdfPages, { sessions: [], async run({ ctx }) {
@@ -41,13 +42,14 @@ export function createOcrReviewWorld() {
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
         tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
-      const root = ocrModule;
+      const root = options.parent ?? ocrModule;
       const harness = await world.executorHarness({ descriptor: root.descriptor, stores });
       const { database, path, clock } = harness.authority;
       const admission = boundProfileAdmission(path);
       const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
       const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
-      const resolve = (id: string) => (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
+      const resolve = (id: string) => id === root.descriptor.id ? root.descriptor
+        : (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
       const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve, createOcrCheckpointPublication);
       const sources = createOcrSourceService({ database, reader: canonical.lifecycle, clock, artifacts, artifactReader,
         assertCurrent: () => admission.assertProfileRuntime() });
@@ -66,10 +68,13 @@ export function createOcrReviewWorld() {
       });
       const first = readings[0]; assert.ok(first);
       const { reading, corrected } = first;
-      const run = canonical.start(root.descriptor, OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
+      const parentRun = canonical.start(root.descriptor, OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
         formType: "emergency-contact", roster: null, approval: options.release === true ? "release" : "review-only",
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } }), { dryRun: false });
-      const result = await canonical.execute(run, new AbortController().signal);
+      const result = await canonical.execute(parentRun, new AbortController().signal);
+      const run = options.parent === undefined ? parentRun
+        : database.authority.runs.listChildren(parentRun.envelope.runId).find(child => child.envelope.workflow === "ocr");
+      assert.ok(run);
       if (actorId === "local-operator") {
         const failures = result.outcomes.filter(outcome => outcome.state === "failed").map(outcome => {
           const failure = database.authority.failures.get(outcome.failureId); assert.ok(failure);
@@ -79,7 +84,7 @@ export function createOcrReviewWorld() {
               .map(match => match[0]).slice(0, 8) };
         });
         assert.deepEqual(failures, [], `OCR fixture execution failed: ${JSON.stringify(failures)}`);
-        const lifecycle = result.run?.lifecycle;
+        const lifecycle = options.parent === undefined ? result.run?.lifecycle : database.authority.runs.get(run.envelope.runId)?.lifecycle;
         assert.ok(options.release === true ? lifecycle?.state === "parked-gate"
           : lifecycle?.state === "terminal" && lifecycle.outcome === "done",
         `OCR fixture stopped before review: ${JSON.stringify(result.outcomes.map(outcome => ({ state: outcome.state })))}`);
@@ -105,7 +110,7 @@ export function createOcrReviewWorld() {
             snapshotId: commandId, sourceRunId: current.envelope.runId, revision: review.revision, digest: ocrSnapshotDigest(snapshot),
           } }, ocrApproval: { expectedRevision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: snapshot.selectedRecordIds } } };
       };
-      return { harness, database, path, clock, admission, artifacts, artifactReader, sources, canonical, run, result, approval,
+      return { harness, database, path, clock, admission, artifacts, artifactReader, sources, canonical, run, parentRun, result, approval,
         reading, corrected, pageBytes, command, root, resolve, readResult: () => {
           const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
             "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);

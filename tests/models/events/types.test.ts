@@ -22,6 +22,8 @@ import { ContractFieldPathSchema } from "../../../src/models/task/task-contract.
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../src/models/trust/failure.js";
 import { BrowserSystemIdSchema } from "../../../src/rules/identity/ids.js";
 import { TaskIdSchema } from "../../../src/rules/identity/ids.js";
+import { ServiceSystemIdSchema } from "../../../src/rules/identity/ids.js";
+import { z } from "zod";
 import { DataClassificationSchema } from "../../../src/rules/redaction/redaction.js";
 import { redactValue } from "../../../src/rules/redaction/redaction.js";
 
@@ -54,6 +56,17 @@ const QUEUED = {
 } as const;
 
 describe("span wire leaf parity with the domain vocabulary", () => {
+  it("accepts exactly the canonical task grammar, including every store namespace", () => {
+    assert.deepEqual(z.toJSONSchema(SpanTaskIdSchema), z.toJSONSchema(TaskIdSchema));
+    for (const namespace of [...BrowserSystemIdSchema.options, ...ServiceSystemIdSchema.options, "workflow:i9-check-start"]) {
+      const task = `${namespace}/read-result`;
+      assert.equal(SpanTaskIdSchema.parse(task), TaskIdSchema.parse(task));
+    }
+    for (const task of ["unknown/read-result", "workbooks/Read-result", "workbooks", "workflow:/read-result", "workbooks/read/result"]) {
+      assert.equal(TaskIdSchema.safeParse(task).success, false);
+      assert.equal(SpanTaskIdSchema.safeParse(task).success, false);
+    }
+  });
   it("pins the leaf's restated enums to their domain owners", () => {
     assert.deepEqual(SpanBrowserSystemSchema.options, BrowserSystemIdSchema.options);
     assert.deepEqual(SpanRequeueCauseSchema.options, RequeueCauseSchema.options);

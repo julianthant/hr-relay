@@ -3,6 +3,7 @@ import { compileWorkflow, composeWorkflowModule } from "../../../workflow-kit/wo
 import { taskStoreRegistry } from "./task-registry.js";
 import { registration as crmDocDownloadModuleRegistration } from "../../../workflows/crm-doc-download/index.js";
 import { registration as i9CheckModuleRegistration } from "../../../workflows/i9-check/index.js";
+import { registration as i9CheckStartModuleRegistration } from "../../../workflows/i9-check-start/index.js";
 import { registration as i9LookupModuleRegistration } from "../../../workflows/i9-lookup/index.js";
 import { registration as ocrModuleRegistration } from "../../../workflows/ocr/index.js";
 import { registration as ocrPageModuleRegistration } from "../../../workflows/ocr-page/index.js";
@@ -36,6 +37,9 @@ export const crmDocumentSearchRecordsModule = composeWorkflowModule(compileWorkf
 export const crmDocumentReferenceModule = composeWorkflowModule(compileWorkflow(crmDocDownloadModuleRegistration.proofs[1].definition), taskStoreRegistry.stores);
 export const crmDocumentReadIdocsModule = composeWorkflowModule(compileWorkflow(crmDocDownloadModuleRegistration.proofs[2].definition), taskStoreRegistry.stores);
 export const crmDocumentPackageWorksheetsModule = composeWorkflowModule(compileWorkflow(crmDocDownloadModuleRegistration.proofs[3].definition), taskStoreRegistry.stores);
+export const i9CheckStartDocumentsModule = composeWorkflowModule(compileWorkflow(i9CheckStartModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
+export const i9CheckStartRosterReferenceModule = composeWorkflowModule(compileWorkflow(i9CheckStartModuleRegistration.proofs[1].definition), taskStoreRegistry.stores);
+export const i9CheckStartRetentionModule = composeWorkflowModule(compileWorkflow(i9CheckStartModuleRegistration.proofs[2].definition), taskStoreRegistry.stores);
 
 export const STEP_PROOF_MODULES = Object.freeze([
   separationsKronosTimecardModule,
@@ -63,4 +67,7 @@ export const STEP_PROOF_MODULES = Object.freeze([
   crmDocumentReferenceModule,
   crmDocumentReadIdocsModule,
   crmDocumentPackageWorksheetsModule,
+  i9CheckStartDocumentsModule,
+  i9CheckStartRosterReferenceModule,
+  i9CheckStartRetentionModule,
 ] as const);
