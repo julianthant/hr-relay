@@ -147,6 +147,8 @@ export function composeCommandRequest(
     source: context.source,
   };
   switch (action.command) {
+    case "resolve-workbook-reference-row":
+      return { state: "refused", reason: "Roster row choice is unavailable in this dashboard" };
     case "resolve-workbook-row": {
       const choice = context.workbookWrite?.resolution;
       const answer = context.workbookAnswer;

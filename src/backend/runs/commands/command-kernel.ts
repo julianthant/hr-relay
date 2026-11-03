@@ -98,6 +98,7 @@ const PHASE1_ACTIVE = {
     "recheck-write",
     "resolve-write-absent",
     "resolve-workbook-row",
+    "resolve-workbook-reference-row",
   ],
   gate: ["resolve-gate"],
 
@@ -2469,6 +2470,8 @@ function dispatchActive(
         case "delete": return executeDelete(dependencies, repositories, request, now);
         case "bump": return executeBump(dependencies, repositories, request, now);
         case "rename": return executePresentation(dependencies, repositories, request, now);
+        case "resolve-workbook-reference-row":
+          return reject(request, "capability-unavailable", "Workbook reference row choices are unavailable.");
         case "resolve-workbook-row": {
           requireRun(repositories, request, request.target.runId);
           if (dependencies.workbookRows === undefined) return reject(request, "capability-unavailable", "Workbook row choices are unavailable.");
