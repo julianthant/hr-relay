@@ -199,10 +199,6 @@ export function createRetainedDashboardMockFixtures() {
   "src/backend/runs/queries/bootstrap.ts": [
     "[\"ocr\",[\"StringLiteral:\",\"ArrayLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:DEFERRED_FEATURES\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"[\\\"ocr\\\",\\\"OCRreviewsurfaceslandin2h\\\"]\"]"
   ],
-  "src/backend/runs/queries/explorer.ts": [
-    "[\"ocr\",[\"StringLiteral:\",\"ArrayLiteralExpression:\",\"PropertyAccessExpression:includes\",\"CallExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:owner\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:contractSourceLink\"],\"[\\\"extraction\\\",\\\"normalization\\\",\\\"ocr\\\",\\\"roster\\\"]\"]",
-    "[\"ocr\",[\"StringLiteral:\",\"ArrayLiteralExpression:\",\"PropertyAccessExpression:includes\",\"CallExpression:\",\"ConditionalExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:directories\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:implSourceLink\"],\"[\\\"extraction\\\",\\\"normalization\\\",\\\"ocr\\\",\\\"roster\\\"]\"]"
-  ],
   "src/backend/runs/queries/run-detail.ts": [
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"CallExpression:\",\"PropertyAssignment:availableSections\",\"ObjectLiteralExpression:\",\"CallExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:buildRunDetail\"],\"authority.envelope.workflow===\\\"ocr\\\"\"]"
   ]
