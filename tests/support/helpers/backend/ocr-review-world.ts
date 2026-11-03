@@ -71,6 +71,18 @@ export function createOcrReviewWorld() {
         formType: "emergency-contact", roster: null, approval: options.release === true ? "release" : "review-only",
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } }), { dryRun: false });
       const result = await canonical.execute(run, new AbortController().signal);
+      if (actorId === "local-operator") {
+        const failures = result.outcomes.filter(outcome => outcome.state === "failed").map(outcome => {
+          const failure = database.authority.failures.get(outcome.failureId); assert.ok(failure);
+          return { nodeId: failure.nodeId, taskId: failure.taskId, code: failure.code,
+            causes: failure.causeChain.map(cause => cause.code) };
+        });
+        assert.deepEqual(failures, [], `OCR fixture execution failed: ${JSON.stringify(failures)}`);
+        const lifecycle = result.run?.lifecycle;
+        assert.ok(options.release === true ? lifecycle?.state === "parked-gate"
+          : lifecycle?.state === "terminal" && lifecycle.outcome === "done",
+        `OCR fixture stopped before review: ${JSON.stringify(result.outcomes.map(outcome => ({ state: outcome.state })))}`);
+      }
       const command = (type: "correct-ocr-record" | "discard-ocr-record" | "restore-ocr-record", expectedRevision: number, recordIndex = 0) => {
         const review = database.authority.ocrReviews.latest(run.envelope.runId); assert.ok(review);
         const record = review.records[recordIndex]; assert.ok(record && corrected);
