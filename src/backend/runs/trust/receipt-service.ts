@@ -1,4 +1,4 @@
-import { authenticateOnboardingRosterExecution } from "../workbooks.js";
+import { authenticateWorkbookReferenceExecution } from "../workbooks.js";
 import { createFailureResolutionQuery } from "../queries/failure-resolution.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 
@@ -109,7 +109,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
 
   const ensure = (runId: string): EnsureReceiptOutcome => deps.database.withAuthorityTransaction(repositories => {
     const run = requireTrustRun(deps.runReader, runId);
-    const choice = authenticateOnboardingRosterExecution(repositories, run);
+    const choice = authenticateWorkbookReferenceExecution(repositories, run);
     const continued = choice === undefined || choice.gate.runId === runId ? [] : [choice.gate];
     if (run.lifecycle.state === "terminal" && run.lifecycle.failureId !== undefined) {
       const failure = store.getFailure(run.lifecycle.failureId) as FailureRecord;

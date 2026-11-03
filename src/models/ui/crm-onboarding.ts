@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { CrmHireData } from "../systems/crm/read-hire-data.js";
+import type { CrmDocumentIdentity, CrmDocumentSubject, CrmIdocsBytes, CrmIdocsReadInput } from "../systems/crm/documents.js";
 import type { CrmDiscoveredRecord } from "../systems/crm/search-onboarding-records.js";
 import {
   CrmReadOnboardingDates,
@@ -100,6 +101,8 @@ const ReadOnboardingDatesOperationSchema = z.custom<(
 /** CRM's task-facing semantic surface. */
 export const CrmOnboardingDriverSchema = z.strictObject({
   system: z.literal("crm"),
+  findDocumentRecord: z.custom<(input: CrmDocumentSubject) => Promise<CrmDocumentIdentity>>((value) => typeof value === "function"),
+  readIdocs: z.custom<(input: CrmIdocsReadInput) => Promise<CrmIdocsBytes>>((value) => typeof value === "function"),
   readHireData: z.custom<(input: Readonly<{ email: string }>) => Promise<CrmHireData>>((value) => typeof value === "function"),
   searchOnboardingRecords: z.custom<(input: Readonly<{ name?: string; eid?: string }>) => Promise<CrmDiscoveredRecord[]>>((value) => typeof value === "function"),
   verifyOnboardingRecord: z.custom<(input: CrmDiscoveredRecord) => Promise<CrmDiscoveredRecord>>((value) => typeof value === "function"),
