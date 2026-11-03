@@ -39,7 +39,7 @@ import {
 } from "../../../rules/identity/ids.js";
 import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import type { RunSummary } from "../../../models/run/summary.js";
+import type { RunSummary, DelegationWaitState } from "../../../models/run/summary.js";
 import {
   projectReceiptForOperator,
   type OperatorReceiptProjection,
@@ -61,7 +61,7 @@ import type { TimelineLine } from "../../storage/events/timeline-reader.js";
 import type { TimelineRepository } from "../../../models/events/timeline.js";
 import { readTimelineRecords, timelineSpanLocation } from "../../storage/events/timeline-reader.js";
 import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
-import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type TaskExecutionState } from "../lifecycle/run-status.js";
+import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type TaskExecutionState } from "../../../rules/runs/run-status.js";
 import { ProjectionDegradedError } from "../commands/refusals.js";
 
 /* ── the in-memory evidence fold shape ─ */
@@ -140,6 +140,7 @@ export interface RunQueueProjectionDeps {
   };
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
+    delegationWait?(runId: string): DelegationWaitState | null;
     reviewAvailable?(runId: string): boolean;
     /** Durable inbox rows served by day. */
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
@@ -208,13 +209,6 @@ interface CanonicalProjectionSnapshot {
   readonly byId: ReadonlyMap<string, RunRecord>;
   readonly children: ReadonlyMap<string, readonly RunRecord[]>;
 }
-
-/** A synchronous operation can render several rows from one canonical membership read. */
-export interface RunQueueReadSnapshot {
-  readonly runs: readonly RunRecord[];
-  surfaces(runIds: readonly string[]): readonly QueueSurfaceWire[];
-}
-
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 
@@ -500,24 +494,20 @@ export class RunQueueProjection {
 
 
   queueSurface(runId: string): QueueSurfaceWire | undefined {
-    const existence = this.#deps.reader.read(runId);
-    if (existence.state !== "present" || existence.disposition !== "live") return undefined;
     return this.queueSurfaces([runId])[0];
   }
 
-  /** Bulk frozen-member reads share one canonical enumeration. */
   queueSurfaces(runIds: readonly string[]): readonly QueueSurfaceWire[] {
-    return this.captureQueueSnapshot().surfaces(runIds);
-  }
-
-  captureQueueSnapshot(selectedRuns?: readonly RunRecord[]): RunQueueReadSnapshot {
-    const snapshot = selectedRuns === undefined ? this.#canonicalSnapshot() : { runs: selectedRuns, byId: new Map(selectedRuns.map(run => [run.envelope.runId, run])), children: canonicalRunChildren(selectedRuns) };
-    return Object.freeze({
-      runs: snapshot.runs,
-      surfaces: (runIds: readonly string[]) => runIds.flatMap((runId) => {
-        const run = snapshot.byId.get(runId);
-        return run === undefined ? [] : [this.#surface(this.#rows.get(runId), run, snapshot.children.get(runId) ?? [])];
-      }),
+    const present = [...new Set(runIds)].filter(runId => {
+      const existence = this.#deps.reader.read(runId);
+      return existence.state === "present" && existence.disposition === "live";
+    });
+    return this.#deps.reader.withRunTreeSnapshot(present, runs => {
+      const byId = new Map<string, RunRecord>(runs.map(run => [run.envelope.runId, run])), children = canonicalRunChildren(runs);
+      return runIds.flatMap(runId => {
+        const run = byId.get(runId);
+        return run === undefined ? [] : [this.#surface(this.#rows.get(runId), run, children.get(runId) ?? [])];
+      });
     });
   }
 
@@ -725,7 +715,18 @@ export class RunQueueProjection {
     let snapshotNeeded = affected.workerChanged;
     let batchPresentationChanged = false;
     const { byId, children } = snapshot;
+    const affectedIds = new Set(affected.runIds);
     for (const runId of affected.runIds) {
+      const path = new Set<string>();
+      let current = byId.get(runId);
+      while (current?.envelope.parent !== undefined) {
+        if (path.has(current.envelope.runId)) throw new ProjectionDegradedError("delegation-ancestry-cycle");
+        path.add(current.envelope.runId);
+        affectedIds.add(current.envelope.parent.runId);
+        current = byId.get(current.envelope.parent.runId);
+      }
+    }
+    for (const runId of affectedIds) {
       const row = this.#rows.get(runId);
       const authority = byId.get(runId);
       const previousStatus = this.#notifiedStatus.get(runId);
@@ -824,8 +825,8 @@ export class RunQueueProjection {
 
   /* ── the authority join ────────────────────────────────────────────────── */
 
-  #status(authority: RunRecord): z.infer<typeof QueueSurfaceWireSchema>["status"] {
-    return deriveRunStatus(authority);
+  #status(authority: RunRecord, delegationWait = this.#deps.authority.delegationWait?.(authority.envelope.runId)): z.infer<typeof QueueSurfaceWireSchema>["status"] {
+    return deriveRunStatus({ ...authority, delegationWait });
   }
 
 
@@ -953,7 +954,7 @@ export class RunQueueProjection {
     return { label: outcome.label, tone: outcome.tone };
   }
 
-  #pipeline(row: RunFoldRecord | undefined, workflow: string, runTerminal: boolean): QueueSurfaceWire["pipeline"] {
+  #pipeline(row: RunFoldRecord | undefined, workflow: string, runTerminal: boolean, wait?: DelegationWaitState | null): QueueSurfaceWire["pipeline"] {
     if (row === undefined) return [];
     const descriptor = this.#deps.descriptors.resolve(workflow);
     const spanByNode = new Map<string, z.infer<typeof TaskSpanFoldSchema>>();
@@ -1023,7 +1024,8 @@ export class RunQueueProjection {
       return {
         id: String(category.key),
         label: category.label,
-        state: foldCategoryState(states, runTerminal),
+        state: wait !== null && wait !== undefined && (String(category.key) === wait.nodeId || category.nodes.some(node => String(node.id) === wait.nodeId))
+          ? wait.state === "blocked" ? "blocked" : "active" : foldCategoryState(states, runTerminal),
         ...(measured.length > 0 ? { durationSec: Math.round(durationMs / 1000) } : {}),
         ...(executions === undefined ? {} : { executions }),
       };
@@ -1146,7 +1148,8 @@ export class RunQueueProjection {
   #surfaceFold(row: RunFoldRecord | undefined, authority: RunRecord, children: readonly RunRecord[]): SurfaceFold {
     const queued = authority.envelope;
     const shape = queued.shape;
-    const status = this.#status(authority);
+    const delegationWait = this.#deps.authority.delegationWait?.(queued.runId);
+    const status = this.#status(authority, delegationWait);
     // Nonterminal rows read no receipt; terminal facts and warnings share one read.
     const storedReceipt = TERMINAL_QUEUE_STATUSES.has(status)
       ? this.#deps.authority.getReceipt(queued.runId)
@@ -1215,7 +1218,7 @@ export class RunQueueProjection {
       liveMessage: pauseControl.state === "pause-pending" ? { state: "present", value: "Pauses after this step finishes" }
         : pauseControl.state === "paused" ? { state: "present", value: "Pause recorded. Resume to continue." } : this.#liveMessage(authority, status),
       warnings: this.#warnings(warningVerdict),
-      pipeline: this.#pipeline(row, queued.workflow, authority.lifecycle.state === "terminal"),
+      pipeline: this.#pipeline(row, queued.workflow, authority.lifecycle.state === "terminal", delegationWait),
       panelKind: panelKindOf(shape),
       availableSections: [
         "logs",

@@ -277,6 +277,12 @@ lookup declares only that delegate. Keep a dependency on another leaf's result s
 cohorts refuse sibling-result dependencies. External task, gate or child prerequisites execute
 before the cohort. Replay, cancellation, retries and UNKNOWN-write fences remain per delegate.
 
+Choose `resume-parent` when a completed child retry may join automatically. Choose
+`manual-parent-resume` when the operator must release the parent with its existing Paused/Resume
+control after the retry settles. That acknowledgement binds the exact child attempt and result;
+another retry requires another Resume. `block-parent` holds the same parent row and propagates its
+block through waiting ancestors. Approval gates remain visible only on their owning run.
+
 ## 9 · Add a task only when needed
 
 Follow Person Lookup's `ReadActiveStatus` fold:

@@ -1,5 +1,5 @@
 import { authenticateOnboardingRosterExecution } from "../workbooks.js";
-import { assertRunRecoveryCommandScope, planRunRecovery } from "../start/recovery-plan.js";
+import { assertRunRecoveryCommandScope, planRunRecovery, planDelegatedRetry } from "../start/recovery-plan.js";
 import { protectedSubjectDisplay } from "../start/protected-input.js";
 import { continuationDelegationGroups } from "../../storage/sqlite/run-continuation-delegation.js";
 import { captureRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
@@ -65,7 +65,7 @@ import {
   CanonicalWorkerTransitionRequestSchema,
 } from "../../storage/sqlite/run-store-contracts.js";
 import type { AuthorityDatabase, AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { authenticateCancellationSource, assertResetCancellationAdmission, prepareDelegationRetry } from "../../storage/sqlite/delegation-authority.js";
+import { authenticateCancellationSource, assertResetCancellationAdmission, captureDelegationResume, authenticateDelegationResume, prepareDelegationRetry } from "../../storage/sqlite/delegation-authority.js";
 import { DelegationRetryRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
 import { admitDelegation } from "./delegation-admission.js";
 import type { ChildRunBatchContext } from "../../runtime/execution/run-executor.js";
@@ -639,6 +639,8 @@ export class RunRecordService {
         this.recordJournal(repositories, journal.command, journalRun(current));
         return { state: "applied" as const, run: current };
       }
+      const delegationResumed = operation === "resume" ? captureDelegationResume(repositories, request.runId) : [];
+      if (delegationResumed === undefined || delegationResumed.length > 0 && !authenticateDelegationResume(repositories, request, delegationResumed)) return refused({ reason: "policy-refused" });
       const now = this.dependencies.clock.now().toISOString();
       const result = repositories.runs.setPause({ runId: request.runId, expectedVersion: request.expectedVersion, now,
         ...(operation === "resume" ? { continuation: captureRunContinuation(repositories, current) } : {}),
@@ -1069,6 +1071,7 @@ export class RunRecordService {
         return refused({ reason: "schema-mismatch", digest: run.envelope.contractFingerprint });
       }
       if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
+      const continuation = delegation === undefined ? undefined : planDelegatedRetry(repositories, descriptor, run, delegation.source.commandId).continuation;
       if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,
       }).some((entry) => entry.lifecycle.state !== "terminal")) return refused({ reason: "policy-refused" });
@@ -1083,8 +1086,9 @@ export class RunRecordService {
       delete envelope.sourceBound;
       delete envelope.continuation;
       const next = RunRecordSchema.parse({
-        envelope: { ...selectNewRunIdentity(repositories, envelope), runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
+        envelope: { ...(delegation === undefined ? selectNewRunIdentity(repositories, envelope) : envelope), runId, traceId: deriveTraceId(descriptor.code, runId, this.dependencies.clock),
           retryOf: run.envelope.runId, enqueuedAt: now,
+          ...(continuation === undefined ? {} : { continuation }),
           ...(restart ? { recovery: "restart-from-start" } : {}),
         },
         input: run.input, lifecycle: { state: "queued" }, claimGeneration: 0,
@@ -1095,6 +1099,7 @@ export class RunRecordService {
       });
       this.dependencies.admitQueuedRun?.(next);
       repositories.runs.enqueue(next);
+      this.recordJournal(repositories, journal.command, journalRun(next));
       if (delegation !== undefined) {
         const retryRequest = DelegationRetryRequestSchema.parse({ commandId: lifecycleCommandId("delegation-retry", {
           dependencyId: delegation.child.dependency.dependencyId, previousRunId: run.envelope.runId }),
@@ -1109,8 +1114,8 @@ export class RunRecordService {
         if (retryJournal.state !== "new") throw new Error("delegation-retry-replay-divergent");
         repositories.dependencies.activateRetry(retryRequest, now);
         this.recordJournal(repositories, retryJournal.command, journalRun(next));
+        this.holdParentAfterChildRetry(delegation, retryRequest);
       }
-      this.recordJournal(repositories, journal.command, journalRun(next));
       this.dependencies.publishQueued(next, publication);
       return { state: "applied", run: next };
     });
@@ -1121,11 +1126,13 @@ export class RunRecordService {
     const request = CanonicalRecoverRunRequestSchema.parse(input);
     descriptorRuntimeNodes(descriptor);
     const outcome = this.dependencies.database.withAuthorityTransaction((repositories): RunMutationOutcome | RunExistence => {
-      const command = assertRunRecoveryCommandScope(repositories, request.sourceCommandId);
-      if (request.continuationOwner === undefined && (command.target.runId !== request.runId
+      if (request.continuationOwner === undefined) {
+        const command = assertRunRecoveryCommandScope(repositories, request.sourceCommandId);
+        if (command.target.runId !== request.runId
         || command.target.expectedVersion !== request.expectedVersion
-        || request.commandId !== lifecycleCommandId("operator-recover-run", command.commandId)))
-        throw new RunContinuationRefusedError("run-recovery-command-binding-mismatch");
+        || request.commandId !== lifecycleCommandId("operator-recover-run", command.commandId))
+          throw new RunContinuationRefusedError("run-recovery-command-binding-mismatch");
+      }
       const journal = this.inspectJournal(repositories, "recover", request, {
         kind: "version",
         expectedVersion: request.expectedVersion,
@@ -1153,7 +1160,8 @@ export class RunRecordService {
       }
       if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
       if (request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint) return refused({ reason: "runtime-stale" });
-      const plan = planRunRecovery(repositories, descriptor, run, request.sourceCommandId);
+      const plan = request.continuationOwner === undefined ? planRunRecovery(repositories, descriptor, run, request.sourceCommandId)
+        : planDelegatedRetry(repositories, descriptor, run, request.sourceCommandId, request.continuationOwner);
       assertOcrRecoverySnapshotCurrent(repositories, this, run);
       const continuation = plan.continuation;
       if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
@@ -1197,11 +1205,22 @@ export class RunRecordService {
         if (retryJournal.state !== "new") throw new Error("delegation-retry-replay-divergent");
         repositories.dependencies.activateRetry(retryRequest, now);
         this.recordJournal(repositories, retryJournal.command, journalRun(next));
+        this.holdParentAfterChildRetry(delegation, retryRequest);
       }
       this.dependencies.publishQueued(next, publication);
       return { state: "applied", run: next };
     });
     return outcome;
+  }
+
+  private holdParentAfterChildRetry(delegation: ReturnType<typeof prepareDelegationRetry>, retry: z.infer<typeof DelegationRetryRequestSchema>) {
+    if (delegation.group.manifest.join === "none" || delegation.group.manifest.policy.afterChildRetry !== "manual-parent-resume") return;
+    const ownerId = retry.continuationOwner?.runId ?? delegation.parent.envelope.runId;
+    const owner = this.read(ownerId);
+    if (owner.state !== "present") throw new RunContinuationRefusedError("delegation-parent-unavailable");
+    if (owner.run.lifecycle.state === "terminal") return;
+    requireLifecycleApplied(this.pause({ commandId: lifecycleCommandId("delegation-manual-pause", retry.commandId),
+      runId: ownerId, expectedVersion: owner.run.version }));
   }
 
   continueDelegations(parent: RunRecord, sourceCommandId: string): readonly RunRecord[] {

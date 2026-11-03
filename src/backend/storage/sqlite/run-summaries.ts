@@ -6,7 +6,8 @@ import { z } from "zod";
 import { CalendarQuerySchema, CalendarWireSchema } from "../../../models/dashboard/calendar.js";
 import { QueueStatusSchema } from "../../../models/dashboard/projection.js";
 import { RunStateSchema, type RunRecord } from "../../../models/run/record.js";
-import { RunSummarySourceSchema, SummaryQuerySchema } from "../../../models/run/summary.js";
+import { RunSummarySourceSchema, SummaryQuerySchema, type DelegationWaitState } from "../../../models/run/summary.js";
+import { deriveRunStatus } from "../../../rules/runs/run-status.js";
 import { DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
 import { deriveRunSummary } from "../../../rules/runs/summary-derivation.js";
 import { runRecordFromRow } from "./run-record-row.js";
@@ -18,8 +19,8 @@ export const RunSummaryQuerySchema = SummaryQuerySchema.extend({
   { message: "run-summary-range-invalid" });
 export type RunSummaryQuery = z.infer<typeof RunSummaryQuerySchema>;
 
-export function createRunSummaries(database: DatabaseSync) {
-  const snapshot = (sourceGeneration: number, selected?: readonly RunRecord[]) => {
+export function createRunSummaries(database: DatabaseSync, waitState: (run: RunRecord) => DelegationWaitState | null) {
+  const snapshot = (sourceGeneration: number, selected?: readonly RunRecord[], waits?: ReadonlyMap<string, DelegationWaitState | null>) => {
     const runs = selected ?? database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow);
     const ids = JSON.stringify(runs.map(run => run.envelope.runId));
     const selectSources = (table: string, key: string, suffix: string) => selected === undefined
@@ -78,6 +79,7 @@ export function createRunSummaries(database: DatabaseSync) {
     const summaries = runs.map(run => {
       const id = run.envelope.runId, event = events.get(id);
       return { ...deriveRunSummary(RunSummarySourceSchema.parse({ run,
+        delegationWait: waits?.has(id) === true ? waits.get(id) : waitState(run),
         cursor: event?.cursor ?? 0,
         startedAt: event?.startedAt ?? ("claimedAt" in run.lifecycle ? run.lifecycle.claimedAt : null),
         queueTitle: event?.queueTitle ?? null, children: children.get(id) ?? [], dependencyRunIds: dependencies.get(id) ?? [],
@@ -109,15 +111,31 @@ export function createRunSummaries(database: DatabaseSync) {
       if (query.state !== undefined) add("state=?", query.state);
       if (query.status === "done" || query.status === "failed") add("state='terminal' AND outcome=?", query.status);
       else if (query.status === "cancelled") add("state='terminal' AND outcome IN ('cancelled','discarded','superseded')");
-      else if (query.status === "blocked") add("(state='parked-write' OR (state='terminal' AND outcome='interrupted'))");
+      else if (query.status === "blocked") add("(state IN ('queued','parked-write') OR (state='terminal' AND outcome='interrupted'))");
       else if (query.status === "queued") add("state='queued'");
       else if (query.status === "awaiting-approval") add("state='parked-gate'");
       else if (query.status === "partial") add("0");
-      else if (query.status !== undefined) add("state IN ('claimed','validating','running') AND COALESCE(json_extract(lifecycle_json,'$.cancelRequested'),0)=?", Number(query.status === "cancelling"));
-      if (query.after !== undefined) add("(local_day>? OR (local_day=? AND id>?))", query.after.localDay, query.after.localDay, query.after.runId);
-      const selected = database.prepare(`SELECT * FROM runs INDEXED BY runs_day_idx WHERE ${clauses.join(" AND ")}
-        ORDER BY local_day,id LIMIT ?`).all(...values, query.limit + 1).map(runRecordFromRow);
-      const rows = snapshot(sourceGeneration, selected);
+      else if (query.status !== undefined) add("state IN ('queued','claimed','validating','running')");
+      const selected: RunRecord[] = [], waits = new Map<string, DelegationWaitState | null>();
+      let after = query.after;
+      for (;;) {
+        const cursorClause = after === undefined ? "" : " AND (local_day>? OR (local_day=? AND id>?))";
+        const cursorValues = after === undefined ? [] : [after.localDay, after.localDay, after.runId];
+        const candidates = database.prepare(`SELECT * FROM runs INDEXED BY runs_day_idx WHERE ${clauses.join(" AND ")}${cursorClause}
+          ORDER BY local_day,id LIMIT ?`).all(...values, ...cursorValues, query.limit + 1).map(runRecordFromRow);
+        for (const run of candidates) {
+          const delegationWait = waitState(run);
+          if (query.status !== undefined && deriveRunStatus({ ...run, delegationWait }) !== query.status) continue;
+          waits.set(run.envelope.runId, delegationWait);
+          selected.push(run);
+          if (selected.length > query.limit) break;
+        }
+        const last = candidates.at(-1);
+        if (selected.length > query.limit || candidates.length <= query.limit || last === undefined) break;
+        const day = z.object({ local_day: z.string() }).parse(database.prepare("SELECT local_day FROM runs WHERE id=?").get(last.envelope.runId));
+        after = { localDay: day.local_day, runId: last.envelope.runId };
+      }
+      const rows = snapshot(sourceGeneration, selected, waits);
       const items = rows.slice(0, query.limit), last = items.at(-1);
       return { items, next: rows.length > query.limit && last !== undefined ? { localDay: last.localDay, runId: last.runId } : null };
     },

@@ -311,30 +311,35 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
     if (parent === undefined || canonicalJsonStringify(parent) !== canonicalJsonStringify(batch.run)) throw new Error("delegation-parent-claim-stale");
     repositories.dependencies.reconcile(parent.envelope.runId, dependencies.clock.now().toISOString());
     const ready = repositories.dependencies.readiness(parent.envelope.runId, "join").state === "ready";
-    const first = admitted[0];
-    if (first === undefined) throw new Error("delegation-owner-membership-mismatch");
-    const request = DelegationAdmissionRequestSchema.parse({
-      commandId: batch.owner.kind === "child-run" && first.state === "admitted"
-        ? lifecycleCommandId("delegation-admission", { invocationCommandId: first.member.invocationCommandId, claimGeneration: batch.claim.claimGeneration, version: parent.version })
-        : lifecycleCommandId("parallel-delegation-admission", { runId: parent.envelope.runId, nodeId: batch.owner.id,
+    const admissions = admitted.flatMap(entry => {
+      if (entry.state === "reused") return [];
+      const request = DelegationAdmissionRequestSchema.parse({
+        commandId: lifecycleCommandId("delegation-admission", { invocationCommandId: entry.member.invocationCommandId,
           claimGeneration: batch.claim.claimGeneration, version: parent.version }),
-      runId: parent.envelope.runId, expectedVersion: parent.version, claim: batch.claim, nodeId: batch.owner.id,
-      members: admitted.map((member, index) => member.state === "reused"
-        ? { state: "reused", nodeId: batch.leaves[index]?.node.id, receipt: delegationDependencyRecord(member.evidence) } : member.member),
+        runId: parent.envelope.runId, expectedVersion: parent.version, claim: batch.claim,
+        invocationCommandId: entry.member.invocationCommandId, scopeEvidence: entry.member.scopeEvidence,
+        observedScopeDigest: entry.member.observedScopeDigest,
+      });
+      const admission = lifecycle.inspectJournal(repositories, "delegation-admission", request,
+        { kind: "terminal", expectedVersion: parent.version, ...batch.claim });
+      if (admission.state === "divergent") throw new Error("delegation-replay-divergent");
+      return [{ request, admission }];
     });
-    const admission = lifecycle.inspectJournal(repositories, "delegation-admission", request,
-      { kind: "terminal", expectedVersion: parent.version, ...batch.claim });
-    if (admission.state === "divergent") throw new Error("delegation-replay-divergent");
-    const releaseId = request.commandId;
+    const entries = admitted.map(member => member.state === "reused" ? member : { state: "admitted" as const, manifest: member.manifest });
+    const anchor = admissions[0];
+    if (!ready && anchor === undefined) throw new Error("delegation-release-anchor-unavailable");
     const released = ready ? parent : (() => {
-      const outcome = lifecycle.release({ commandId: lifecycleCommandId("delegation-release", releaseId), runId: parent.envelope.runId,
+      if (anchor === undefined) throw new Error("delegation-release-anchor-unavailable");
+      const outcome = lifecycle.release({ commandId: lifecycleCommandId("delegation-release", anchor.request.commandId), runId: parent.envelope.runId,
         expectedVersion: parent.version, claim: batch.claim, cause: "recovery" });
       if (outcome.state !== "applied" || outcome.run.lifecycle.state !== "queued" || runClaim(outcome.run) !== undefined) throw new Error("delegation-release-refused");
       return outcome.run;
     })();
     const result = { kind: "run" as const, runId: released.envelope.runId, appliedVersion: released.version };
-    if (admission.state === "new") lifecycle.recordJournal(repositories, admission.command, result);
-    return { state: ready ? "ready" as const : "released" as const, entries: admitted.map(member => member.state === "reused" ? member : { state: "admitted" as const, manifest: member.manifest }), admissionCommandId: releaseId };
+    for (const { admission } of admissions) if (admission.state === "new") lifecycle.recordJournal(repositories, admission.command, result);
+    if (ready) return { state: "ready" as const, entries };
+    if (anchor === undefined) throw new Error("delegation-release-anchor-unavailable");
+    return { state: "released" as const, entries, admissionCommandId: anchor.request.commandId };
   });
 }
 

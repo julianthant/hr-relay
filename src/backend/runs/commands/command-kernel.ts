@@ -17,7 +17,7 @@ import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { ASSISTANT_INPUT_PROJECTION_VERSION,assistantKnowledgeArtifact } from "../../assistant/context.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
-import { retainedDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { retainedDelegationManifests, captureDelegationResume, delegationResumeCommandId } from "../../storage/sqlite/delegation-authority.js";
 import { admitWorkerLifecycle,admitWorkerReset } from "../../storage/sqlite/worker-control.js";
 import { admitWorkerPoolRoster,requireWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
 import { executeFailureResolution,failureResolutionCapability } from "../lifecycle/failure-resolution.js";
@@ -690,14 +690,24 @@ function executeRetry(
   const planning = workflowPlanning(descriptor);
   const value = current.input.parsed?.value;
   if (value === undefined) throw new Error("retry source lacks canonical input");
-  const record = lifecycleRun(request, dependencies.lifecycle[request.type === "restart" ? "restart" : "retry"]({
-    commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
-    runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
-    runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
-    sourceCommandId: request.commandId,
-  }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({ title: planning.title(value), subtitle: planning.subtitle(value) })), actorId: request.requestedBy }));
-  return applied(request, [runTarget(record.envelope.runId), runTarget(request.target.runId)], [
+  let record: RunRecord;
+  let children: readonly RunRecord[] = [];
+  try {
+    record = lifecycleRun(request, dependencies.lifecycle[request.type === "restart" ? "restart" : "retry"]({
+      commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
+      runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
+      runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
+      sourceCommandId: request.commandId,
+    }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({ title: planning.title(value), subtitle: planning.subtitle(value) })), actorId: request.requestedBy }));
+    if (current.envelope.parent !== undefined) children = dependencies.lifecycle.continueDelegations(record, request.commandId);
+  } catch (error) {
+    if (current.envelope.parent !== undefined && (error instanceof RerunRefusedError || error instanceof RunContinuationRefusedError))
+      reject(request, "RUN_CONTINUATION_REFUSED", ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);
+    throw error;
+  }
+  return applied(request, [runTarget(record.envelope.runId), runTarget(request.target.runId), ...children.map(child => runTarget(child.envelope.runId))], [
     { target: runTarget(record.envelope.runId), before: 0, after: record.version },
+    ...children.map(child => ({ target: runTarget(child.envelope.runId), before: 0, after: child.version })),
   ]);
 
 }
@@ -2502,8 +2512,11 @@ function dispatchActive(
         case "pause":
         case "resume": {
           const current = requireRun(repositories, request, request.target.runId);
+          const resumeEvidence = request.type === "resume" ? captureDelegationResume(repositories, current.envelope.runId) : [];
+          if (resumeEvidence === undefined) reject(request, "policy-refused", "Child retries must settle before resuming their parent.");
           const next = lifecycleRun(request, dependencies.lifecycle[request.type === "pause" ? "pause" : "resumePaused"]({
-            commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
+            commandId: request.type === "resume" ? delegationResumeCommandId(request.commandId, resumeEvidence)
+              : lifecycleCommandId("operator-pause", request.commandId),
             ...request.target,
           }));
           return applied(request, [runTarget(next.envelope.runId)], [{ target: runTarget(next.envelope.runId), before: current.version, after: next.version }]);
@@ -2799,7 +2812,7 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
             return replay(dependencies, repositories, request, now);
           }
           const auditId = dependencies.ids.uuid();
-          const application = request.family === "ocr-review" || request.family === "start" || request.family === "run" && (request.type === "retry" || request.type === "recover-run" || request.type === "cancel")
+          const application = request.family === "ocr-review" || request.family === "start" || request.family === "run" && (request.type === "retry" || request.type === "recover-run" || request.type === "cancel" || request.type === "resume")
             ? withCanonicalRunCommandScope(repositories, request,
               () => dispatchActive(dependencies, repositories, request, now, auditId), parentCommandId)
             : dispatchActive(dependencies, repositories, request, now, auditId);

@@ -24,10 +24,8 @@ export const DelegationPendingSchema = z.strictObject({
 /** The canonical lifecycle owner atomically admits or replays the fan-out and releases an awaited parent with unresolved children. */
 export interface DelegationAdmission {
   admitAndRelease(context: ChildRunBatchContext, plans: readonly DelegationPlan<AnyWorkflowRef>[]): Readonly<{
-    state: "released" | "ready";
     entries: readonly (Readonly<{ state: "admitted"; manifest: DelegationManifest }> | Readonly<{ state: "reused"; evidence: DelegationTerminalEvidence }>)[];
-    admissionCommandId: string;
-  }>;
+  } & ({ state: "ready" } | { state: "released"; admissionCommandId: string })>;
 }
 
 export interface DelegationAuthority {

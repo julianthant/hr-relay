@@ -31,7 +31,6 @@ export const MACOS_FILES: readonly string[] = [
   "tests/backend/storage/sqlite/authority-database.incomplete-inventory.integration.test.ts",
   "tests/backend/storage/sqlite/authority-database.storage-restore-drill.integration.test.ts",
   "tests/backend/storage/sqlite/backup-inspection.integration.test.ts",
-  "tests/backend/storage/sqlite/delegation-admission-migration.integration.test.ts",
   "tests/backend/storage/sqlite/backup-service.test.ts",
   "tests/backend/storage/sqlite/migrations.native-baseline.integration.test.ts",
   "tests/backend/storage/sqlite/offline-restore.browser-inventory.integration.test.ts",

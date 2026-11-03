@@ -16,11 +16,12 @@ import {
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import type { SubjectCheckpointSource } from "../projections/run-subject-title.js";
 import type { RunRecord } from "../../../models/run/record.js";
+import type { DelegationWaitState } from "../../../models/run/summary.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import type { RunFoldRecord } from "../projections/run-queue-projection.js";
 import { resolveSubjectTitle } from "../projections/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../lifecycle/support.js";
-import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type TaskSpanOutcome } from "../lifecycle/run-status.js";
+import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type TaskSpanOutcome } from "../../../rules/runs/run-status.js";
 import {
   ProjectionDegradedError,
   LogIdentityRefusedError,
@@ -112,6 +113,7 @@ function buildTimelineSteps(
   row: RunFoldRecord,
   runTerminal: boolean,
   replaySource: (nodeId: string) => { attempt: number; claimGeneration?: number } | undefined,
+  wait: DelegationWaitState | null | undefined,
 ): TimelineStepWire[] {
   type SpanFold = RunFoldRecord["taskSpans"][number];
   const spansByNode = new Map<string, SpanFold[]>();
@@ -182,7 +184,8 @@ function buildTimelineSteps(
       key: category.key,
       label: category.label,
       ...(category.system === undefined ? {} : { system: category.system }),
-      state: foldCategoryState(members.map((member) => member.state), runTerminal),
+      state: wait != null && (category.key === wait.nodeId || category.nodes.some(node => node.id === wait.nodeId))
+        ? wait.state === "blocked" ? "blocked" : "active" : foldCategoryState(members.map((member) => member.state), runTerminal),
       ...(measured.length > 0 ? { durationSec: Math.round(totalMs / 1000) } : {}),
       ...(maxExecutions >= 2 ? { executions: maxExecutions } : {}),
       members: members.map((member) => ({
@@ -204,7 +207,8 @@ export function buildRunDetail(
   captures?: RunCaptureAvailabilityWire,
 ): RunDetailWire {
   const { row, authority } = requireCanonicalRun(deps, runId);
-  const status = deriveRunStatus(authority);
+  const delegationWait = deps.authority.delegationWait?.(runId);
+  const status = deriveRunStatus({ ...authority, delegationWait });
   const descriptorView = deps.descriptors.resolve(authority.envelope.workflow);
   let retainedCheckpoints: readonly RunCheckpointRecord[] | undefined;
   const readCheckpoints = () => retainedCheckpoints ??= deps.authority.listCheckpoints(authority.envelope.workflow, authority.envelope.itemId);
@@ -376,6 +380,7 @@ export function buildRunDetail(
             row,
             authority.lifecycle.state === "terminal",
             (nodeId) => replaySourceOf(checkpoints, authority, nodeId),
+            delegationWait,
           ),
         }),
     },

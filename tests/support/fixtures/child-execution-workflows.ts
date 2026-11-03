@@ -1,4 +1,5 @@
 import { EidSchema } from "../../../src/rules/identity/ids.js";
+import { z } from "zod";
 import { compileWorkflow, composeWorkflowModule, defineWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
@@ -125,3 +126,33 @@ export const childMixedPolicyRoot = compileWorkflow(defineWorkflow({ ...common, 
   } }), { manifest });
 export const childMixedPolicyModules = [composeWorkflowModule(plan1Leaf, plan1Stores.stores),
   composeWorkflowModule(childMixedPolicyRoot, plan1Stores.stores)];
+
+const childWaitGateLeaf = compileWorkflow(defineWorkflow({ ...common, id: "fixture-child-wait-gate-leaf", code: "fwg",
+  steps: ({ gate, result }) => {
+    const approval = gate({ id: "review", label: "Review", statusKey: "awaitingReview", result: z.strictObject({ approved: z.boolean() }) }, []);
+    return { steps: [[{ key: "review", label: "Review" }, [approval]]], result: result(Plan1Output, [], ({ input }) => ({
+      eid: input.emplId, disposition: input.text, providerState: input.text,
+    })) };
+  } }), { manifest });
+
+export function childWaitModules(mode: "gate" | "blocked" | "manual" | "manual-recovery") {
+  const middle = compileWorkflow(defineWorkflow({ ...common, id: `fixture-child-wait-${mode}-middle`, code: "fwm",
+    steps: ({ delegate, result }) => {
+      const child = delegate({ id: "child", target: mode === "gate"
+        ? { id: childWaitGateLeaf.descriptor.id, input: Plan1Input, result: Plan1Output } : leaf,
+        edgeId: "child", cardinality: "one", await: "terminal", join: "one",
+        policy: { ...policy, onChildFailed: mode === "manual-recovery" ? "fail-parent" : "block-parent", afterChildRetry: mode.startsWith("manual") ? "manual-parent-resume" : "resume-parent" } }, [],
+      { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+      return { steps: [[{ key: "child", label: "Child" }, [child]]], result: result(Plan1Input, [], ({ input }) => input) };
+    } }), { manifest });
+  const root = compileWorkflow(defineWorkflow({ ...common, id: `fixture-child-wait-${mode}-root`, code: "fwr",
+    steps: ({ delegate, result }) => {
+      const child = delegate({ id: "child", target: { id: middle.descriptor.id, input: Plan1Input, result: Plan1Input },
+        edgeId: "child", cardinality: "one", await: "terminal", join: "one", policy }, [],
+      { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+      return { steps: [[{ key: "child", label: "Child" }, [child]]], result: result(Plan1Input, [], ({ input }) => input) };
+    } }), { manifest });
+  return { root, middle, leaf: mode === "gate" ? childWaitGateLeaf : plan1Leaf,
+    modules: [composeWorkflowModule(plan1Leaf, plan1Stores.stores), composeWorkflowModule(childWaitGateLeaf, plan1Stores.stores),
+      composeWorkflowModule(middle, plan1Stores.stores), composeWorkflowModule(root, plan1Stores.stores)] };
+}

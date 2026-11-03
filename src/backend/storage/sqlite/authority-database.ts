@@ -1,4 +1,3 @@
-import { convertDelegationAdmissionRow, migrateDelegationAdmissions } from "./delegation-admission-migration.js";
 import { convertPersonPreferencesRow } from "./person-preferences-migration.js";
 import { readContinuationGate, validateRunContinuation } from "./run-continuation.js";
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
@@ -112,8 +111,8 @@ import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeas
 import { assertWorkflowRunResultAuthorization,descriptorRuntimeNodes,workflowProjections,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
 import type { VerifiedBackup } from "./backup-service.js";
-import { assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationReadiness,readDelegationWait,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
-import { DelegationAdmissionRequestSchema,DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
+import { assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationReadiness,readDelegationWait,readDelegationWaitState,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
+import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { AUTHORITY_APPLICATION_ID,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
@@ -197,6 +196,7 @@ type CommandRepository = Readonly<{
   get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
   getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
   findProtectedSettingsCommandIdByWriteId(input: unknown): string | undefined;
+  listRunResumes(runId: string, expectedVersion: number): readonly z.infer<typeof CommandRequestSchema>[];
   listRunBumpCommands(runId: string): readonly z.infer<typeof CommandRequestSchema>[];
 }>;
 type CommandAuditRepository = Readonly<{
@@ -217,7 +217,8 @@ type RunLifecycleJournalRepository = Readonly<{
   findCancellation(runId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   listDelegationInvocations(parentRunId: string): readonly z.infer<typeof RunLifecycleCommandRecordSchema>[];
   findDelegationInvocation(manifestId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
-  findDelegationAdmission(runId: string, claimGeneration: number): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
+  listDelegationAdmissions(runId: string, claimGeneration: number): readonly z.infer<typeof RunLifecycleCommandRecordSchema>[];
+  findDelegationOwner(runId: string, claimGeneration: number, throughVersion: number): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
 }>;
 
 type RuntimeConfigRepository = Readonly<{
@@ -249,13 +250,16 @@ type DependencyRepository = Readonly<{
   settle(input: unknown): z.infer<typeof DependencyRecordSchema>;
   reconcile(parentRunId: string, now: string): void;
   members(manifestId: string): ReturnType<typeof authenticateDelegationGroup>["children"];
+  groups(parentRunId: string): ReturnType<typeof continuationDelegationGroups>;
   childHistory(dependencyId: string): readonly string[];
   lifecycleEdgeForChild(parentRunId: string, childRunId: string): z.infer<typeof DependencyRecordSchema> | undefined;
   edgeForChild(parentRunId: string, childRunId: string): z.infer<typeof DependencyRecordSchema>;
   resetSnapshot(reset: WorkerResetBinding, childRunId: string): z.infer<typeof DependencyRecordSchema>;
   cancellationOutcome(runId: string): ReturnType<typeof readDelegationCancellation>;
   evidence(parentRunId: string, nodeId: string): ReturnType<typeof readDelegationEvidence>;
+  continuedEvidence(parentRunId: string, nodeId: string, edgeId: string): ReturnType<AuthenticatedRunContinuation["delegation"]>;
   readiness(parentRunId: string, intent: "join" | "cancel"): DelegationReadiness;
+  waitState(parentRunId: string): ReturnType<typeof readDelegationWaitState>;
   wait(parentRunId: string, descriptor: AnyWorkflowDescriptor): ReturnType<typeof readDelegationWait>;
 }>;
 
@@ -1154,8 +1158,7 @@ function inspectionRunReader(expectedSchemaVersion: number): typeof runRecordFro
 function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch = true, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION): number {
   const readRun = inspectionRunReader(expectedSchemaVersion);
   const convertPreferences = (table: string, row: unknown) => {
-    const preferences = expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
-    return expectedSchemaVersion < 19 ? convertDelegationAdmissionRow(database, table, preferences) : preferences;
+    return expectedSchemaVersion < 16 ? convertPersonPreferencesRow(table, row) : row;
   };
   let validated = 0;
   const searchReady = z.object({search_state:z.string()}).parse(database.prepare("SELECT search_state FROM database_states WHERE id=1").get()).search_state === "ready";
@@ -1514,7 +1517,6 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
         }
         database.exec(statement);
         if (migration.version === 16 && index === 2) migratePersonPreferences(database);
-        if (migration.version === 19 && index === 1) migrateDelegationAdmissions(database);
       }
     }
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
@@ -3139,19 +3141,19 @@ export class AuthorityDatabase implements Disposable {
   }
 
   summaryWorkflows() {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database).workflows(this.getMeta().authorityGeneration) });
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId)).workflows(this.getMeta().authorityGeneration) });
   }
 
   queryRunSummaries(query: Parameters<ReturnType<typeof createRunSummaries>["query"]>[1]) {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database).query(this.getMeta().authorityGeneration,query) });
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId)).query(this.getMeta().authorityGeneration,query) });
   }
 
   queryRunCalendar(query: Parameters<ReturnType<typeof createRunSummaries>["calendar"]>[1]) {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database).calendar(this.getMeta().authorityGeneration, query) });
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId)).calendar(this.getMeta().authorityGeneration, query) });
   }
 
   readRunSummaries() {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database).read(this.getMeta().authorityGeneration) });
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId)).read(this.getMeta().authorityGeneration) });
   }
 
   registerRunSearchDeclarations(input: unknown): void {
@@ -4870,6 +4872,10 @@ export class AuthorityDatabase implements Disposable {
       }) }),
       runSessions: this.#buildRunSessionRepository(),
       commands: Object.freeze({
+        listRunResumes: (runId: string, expectedVersion: number) => this.#database.prepare(`SELECT * FROM commands WHERE family='run'
+          AND json_extract(request_json,'$.type')='resume' AND json_extract(request_json,'$.target.runId')=?
+          AND json_extract(request_json,'$.target.expectedVersion')=? ORDER BY id`).all(RunIdSchema.parse(runId), expectedVersion)
+          .map(row => CommandRequestSchema.parse(commandFromRow(row))),
         listRunBumpCommands: (runId: string) => this.#database.prepare(`SELECT * FROM commands WHERE family='run'
           AND json_extract(request_json,'$.type')='bump' AND json_extract(request_json,'$.target.runId')=? ORDER BY id`)
           .all(RunIdSchema.parse(runId)).map(row => CommandRequestSchema.parse(commandFromRow(row))),
@@ -5026,15 +5032,20 @@ export class AuthorityDatabase implements Disposable {
           if (rows.length > 1) throw new Error("delegation-invocation-ambiguous");
           return rows[0] === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
         },
-        findDelegationAdmission: (runId: string, claimGeneration: number) => {
-          const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle' AND target_id=?
-            AND json_extract(request_json,'$.operation')='delegation-admission'
+        listDelegationAdmissions: (runId: string, claimGeneration: number) => this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle' AND target_id=?
+          AND json_extract(request_json,'$.operation')='delegation-admission'
+          AND json_extract(request_json,'$.request.claim.claimGeneration')=?
+          ORDER BY json_extract(request_json,'$.request.expectedVersion') DESC,id`).all(runId, claimGeneration)
+          .map(row => RunLifecycleCommandRecordSchema.parse(commandFromRow(row))),
+        findDelegationOwner: (runId: string, claimGeneration: number, throughVersion: number) => {
+          const row = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle' AND target_id=?
+            AND json_extract(request_json,'$.operation')='worker-transition'
             AND json_extract(request_json,'$.request.claim.claimGeneration')=?
-            ORDER BY json_extract(request_json,'$.request.expectedVersion') DESC,id LIMIT 2`).all(runId, claimGeneration)
-            .map(row => RunLifecycleCommandRecordSchema.parse(commandFromRow(row)));
-          if (rows.length === 2 && DelegationAdmissionRequestSchema.parse(rows[0]?.request).expectedVersion
-            === DelegationAdmissionRequestSchema.parse(rows[1]?.request).expectedVersion) throw new Error("delegation-admission-ambiguous");
-          return rows[0];
+            AND json_extract(request_json,'$.request.lifecycle.state')='running'
+            AND json_type(request_json,'$.request.lifecycle.currentNodeId')='text'
+            AND json_extract(outcome_json,'$.result.appliedVersion')<=?
+            ORDER BY json_extract(outcome_json,'$.result.appliedVersion') DESC LIMIT 1`).get(runId, claimGeneration, throughVersion);
+          return row === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(row));
         },
         insertCommand: (input: unknown) => {
           const record = RunLifecycleCommandRecordSchema.parse(input);
@@ -5104,6 +5115,21 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       dependencies: Object.freeze({
+        groups: (parentRunId: string) => {
+          const parent = this.authority.runs.get(parentRunId);
+          if (parent === undefined) throw new Error("delegation-parent-unavailable");
+          const own = retainedDelegationManifests(this.authority, parentRunId)
+            .map(manifest => ({ manifest, group: authenticateDelegationGroup(this.authority, manifest) }));
+          const keys = new Set(own.map(({ group }) => `${group.invocation.nodeId}/${group.invocation.edgeId}`));
+          return [...own, ...continuationDelegationGroups(this.authority, parent.envelope)
+            .filter(({ group }) => !keys.has(`${group.invocation.nodeId}/${group.invocation.edgeId}`))];
+        },
+        continuedEvidence: (parentRunId: string, nodeId: string, edgeId: string) => {
+          const parent = this.authority.runs.get(parentRunId);
+          if (parent === undefined) throw new Error("delegation-parent-unavailable");
+          return AuthenticatedRunContinuation.authenticate(this.authority, parent.envelope).delegation(nodeId, edgeId);
+        },
+        waitState: (parentRunId: string) => readDelegationWaitState(this.authority, parentRunId),
         wait: (parentRunId: string, descriptor: AnyWorkflowDescriptor) => {
           const parent = this.authority.runs.get(parentRunId);
           if (parent === undefined) throw new Error("delegation-parent-unavailable");

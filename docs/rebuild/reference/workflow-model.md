@@ -418,7 +418,20 @@ keeps its home slot while a fresh canonical claim identifies the executing desce
 releases its claim while awaiting children and resumes through a fresh claim. Missing child capacity
 refuses explicitly; uncertain writes are never retried. A direct executor without this port refuses
 `capability-unavailable`. OCR delegates page reads to `ocr-page`; Onboarding delegates I-9 search
-to `i9-lookup`.
+to `i9-lookup`. OCR also delegates proposed identity checks to `person-lookup`.
+
+A delegation wait keeps the parent run, attempt, enqueue instant and queue row. Its served status
+is `running` at the owning step until it can continue. A `block-parent` failure appears as `blocked`
+on every waiting ancestor, including when another branch is still active. A child's approval gate
+appears only on that child; waiting ancestors remain `running`. Queue status filtering happens
+before pagination, so released parents are never counted or selected as queued work. Queue, Logs
+and Activity use the same authenticated wait facts.
+
+`resume-parent` makes a completed retry eligible for joining. `manual-parent-resume` pauses the
+waiting parent through its existing pause control while the replacement child can execute. Resume
+requires terminal evidence for every current manual retry and binds its native command identity to the exact dependency, child,
+attempt and result digest. A later retry needs its own acknowledgement. Resume keeps the parent's
+run and attempt; it cannot release an unresolved or UNKNOWN write.
 
 A parallel step can contain several child-run leaves. One admission transaction authenticates every
 leaf and records their ordered membership before releasing the parent once. Each leaf keeps its own
@@ -427,9 +440,10 @@ do not yield. A resumed parent authenticates each branch again; completed contin
 reuse their retained evidence. A cancelled cascading branch does not cancel an independent sibling.
 An UNKNOWN write in any awaited branch prevents the parent from joining or being retried.
 
-The current lifecycle admission request names its owning node and ordered admitted or reused
-members. Stopped schema upgrades convert singleton admission commands and both retained audit
-copies, preserving command and release identities. Ordinary readers accept only the current shape.
+Each leaf retains its existing admission receipt. The running transition identifies the cohort
+owner; registered leaves, retained invocations and continuation evidence prove complete branch
+membership. All admissions share the held claim and parent version, and exactly one requeue receipt
+proves the release. These facts derive the wait without changing stored record shapes.
 
 ### 3.3 Conditions
 
