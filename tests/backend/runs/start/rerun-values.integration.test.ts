@@ -34,6 +34,7 @@ import { protectedSecretSource } from "../../../support/helpers/protected-secret
 import { RerunValuesResponseSchema } from "../../../../src/models/dashboard/rerun-values.js";
 import { ONBOARDING_INPUT_EXAMPLE, OnboardingCanonicalInput, OnboardingInput } from "../../../../src/models/workflows/onboarding/input.js";
 import { workbookInputBinding } from "../../../../src/backend/runs/workbooks.js";
+import { InputRunSurfaceSchema } from "../../../../src/models/workflow/ingress.js";
 
 const disposers: (() => void | Promise<void>)[] = [];
 const profiles = createProfileFixtureSet();
@@ -113,6 +114,51 @@ function checkpointsDeps(h: Harness, rows: readonly RunCheckpointRecord[]) {
 function firstCheckpoint(h: Harness, run: RunRecord) { const cp = h.database.authority.runCheckpoints.listByItem(h.descriptor.id, run.envelope.itemId)[0]; assert.ok(cp); return cp; }
 
 describe("source-bound Rerun value read", () => {
+  it("offers supported pre-roster Onboarding values through the trusted reader without rewriting retained input", async () => {
+    const h = await harness(); const source = await failed(h);
+    const current = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "onboarding"); assert.ok(current);
+    const parser = { split: { kind: "whole-text" }, rules: [{ when: { kind: "pattern", pattern: "email" }, emit: "email" }] };
+    const descriptor = { ...current, surfaces: { ...current.surfaces, inputRun: InputRunSurfaceSchema.parse({
+      placeholder: "Email", parser, typedInput: { modeField: "mode", modeLabel: "Hire mode", initialMode: "new-hire",
+        description: "Read retained hire input", controls: [], modes: ["new-hire", "rehire"].map(value => ({
+          value, label: value, inputLabel: "Email", hint: "Saved email", placeholder: "Email",
+          defaults: [{ field: "postalCodeOverride", value: { kind: "text", text: "92093" } },
+            { field: "configuredJobEndDate", value: { kind: "text", text: "06/30/2027" } }],
+          parser: { kind: "entries", spec: parser }, display: { kind: "first-present", fields: ["email"] }, identityFields: ["email"],
+        })) },
+    }) } };
+    const retainedSchema = z.strictObject({ email: OnboardingInput.shape.email, mode: OnboardingInput.shape.mode,
+      postalCodeOverride: OnboardingInput.shape.postalCodeOverride, configuredJobEndDate: OnboardingInput.shape.configuredJobEndDate });
+    const value = retainedSchema.parse({ email: ONBOARDING_INPUT_EXAMPLE.email, mode: "rehire",
+      postalCodeOverride: "92093", configuredJobEndDate: "06/30/2027" });
+    const { sessionId: _sessionId, ...withoutSession } = source;
+    const run = RunRecordSchema.parse({ ...withoutSession,
+      envelope: { ...source.envelope, workflow: descriptor.id, contractFingerprint: "c".repeat(64) },
+      lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() },
+      input: { ...source.input, parsed: { ...source.input.parsed, schemaHash: deriveSchemaHash(retainedSchema, "output"), value } } });
+    const before = canonicalJsonStringify(run);
+    const result = readRerunValues({ ...rerunValuesDeps(h), descriptors: { resolve: () => descriptor },
+      reader: { read: () => ({ state: "present", disposition: "live", run }) } }, request(run));
+    assert.ok(result.state === "available", JSON.stringify(result));
+    assert.deepEqual(result.snapshot.sourceInput, { state: "partial", value, identityCopied: true });
+    assert.ok(result.snapshot.steps.every(step => step.state === "unfinished"));
+    assert.deepEqual(run.input.parsed.protectedBindings, source.input.parsed.protectedBindings);
+    assert.equal(canonicalJsonStringify(run), before);
+  });
+
+  it("refuses retained input missing protected bindings when the trusted reader decodes it", async () => {
+    const h = await harness(); const source = await failed(h);
+    const { protectedBindings: _protectedBindings, ...withoutBindings } = source.input.parsed;
+    let reads = 0;
+    const result = readRerunValues({ ...rerunValuesDeps(h), reader: { read: () => {
+      reads++;
+      return { state: "present", disposition: "live", run: RunRecordSchema.parse({ ...source,
+        input: { ...source.input, parsed: withoutBindings } }) };
+    } } }, request(source));
+    assert.equal(reads, 1);
+    assert.deepEqual(result, { state: "refused", code: "source-invalid" });
+  });
+
   it.each([false, true])("projects verified Onboarding source without roster after descriptor advance %s", async older => {
     const h = await harness(); const source = await failed(h);
     const descriptor = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "onboarding"); assert.ok(descriptor);
@@ -122,7 +168,7 @@ describe("source-bound Rerun value read", () => {
       envelope: { ...source.envelope, workflow: descriptor.id, descriptorVersion: descriptor.version,
         contractFingerprint: older ? "c".repeat(64) : descriptor.contractFingerprint },
       lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() },
-      input: { ...source.input, parsed: { schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value } } });
+      input: { ...source.input, parsed: { ...source.input.parsed, schemaHash: deriveSchemaHash(descriptor.canonicalInput, "output"), value } } });
     const result = readRerunValues({ ...rerunValuesDeps(h), descriptors: { resolve: () => descriptor },
       reader: { read: () => ({ state: "present", disposition: "live", run }) } }, request(run));
     assert.ok(result.state === "available", JSON.stringify(result));
