@@ -41,7 +41,7 @@ The completion union contains three kinds:
 - `save-verify` invokes its declared read verifier after the commit callback settles.
 - `upload-verify` invokes its declared read verifier. Its optional `unverifiableByPage` declaration requires `policy: "always-park"`, a reason, and an `operatorAttestationExample`. That path parks after the click instead of reporting automatic completion.
 
-`REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` currently has no admitted contracts. All three current commit contracts use `save-verify`.
+`REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` currently has no admitted contracts. All current commit contracts use `save-verify`.
 
 `idempotency` declares a read `probe`, a pure `key(input)`, and `recoveryAbsence`. Optional `retiredKeys` identify immutable keys that cannot be interpreted under the current contract. Before a real or dry-run probe, the sequencer rejects duplicate current/retired key material and refuses if any retired key has an intent. It does not rewrite the old row or use it as current proof.
 
@@ -87,8 +87,16 @@ Natural keys remain private authority data. Public projections use digest refere
 | `ucpath/create-termination` | `ucpath:termination\|<emplId>\|<effectiveDate>` | `ucpath/match-existing-termination` | `ucpath/verify-termination` | `operator-only` |
 | `ucpath/delete-pending-terminations` | `ucpath:pending-terminations-clear:v2\|<emplId>\|<set-digest>` | `ucpath/match-pending-terminations` | `ucpath/verify-pending-terminations-cleared` | `operator-only` |
 | `kuali/save-separation-finalization` | `kuali:<documentNumber>\|finalization\|<transactionNumber>` | `kuali/match-separation-finalization` | `kuali/verify-separation-finalization` | `stabilized`: 30,000 ms after fence, two reads at least 5,000 ms apart, same source state |
+| `i9/create-profile` | `i9:profile\|<email-lower>\|<first-name-lower>\|<last-name-lower>\|<dob>` | `i9/match-profile` | `i9/verify-profile` | `operator-only` |
+| `i9/create-remote-record` | `i9:remote\|<profile-id>\|<start-date>` | `i9/match-remote-record` | `i9/verify-remote-record` | `operator-only` |
 
 These declarations live in `src/models/systems/ucpath/{create-termination,delete-pending-terminations}.ts` and `src/models/systems/kuali/save-separation-finalization.ts`.
+
+I-9 declarations live in `src/models/systems/i9/{create-profile,create-remote-record}.ts`.
+Profile save and remote-record creation have separate intents and proofs. A saved profile cannot
+prove remote-record creation. Both proof schemas reject reserved preview values; remote submission
+also refuses a staged preview profile before clicking. A duplicate dialog is an uncertain save
+outcome, never authority to choose its first row or repeat the save.
 
 ### Explicit repetition
 

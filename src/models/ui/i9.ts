@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { I9LookupInputSchema, I9RecordIdsSchema, type I9LookupInput, type I9SignerOutput } from "../systems/i9/read-section2-signer.js";
+import type { I9CreationDriver } from "./i9-creation.js";
 
 export const I9SearchCriteriaSchema = I9LookupInputSchema.partial().extend({
   profileId: I9RecordIdsSchema.shape.profileId.optional(),
@@ -19,7 +20,7 @@ export type I9SearchRow = z.output<typeof I9SearchRowSchema>;
 export const I9SearchOutputSchema = z.strictObject({ rows: z.array(I9SearchRowSchema), restricted: z.boolean() });
 export type I9SearchOutput = z.output<typeof I9SearchOutputSchema>;
 
-export interface I9Driver {
+export interface I9Driver extends I9CreationDriver {
   readonly system: "i9";
   searchEmployees(input: I9SearchCriteria): Promise<I9SearchOutput>;
   readRecordSummary(record: z.output<typeof I9RecordIdsSchema>): Promise<I9SignerOutput>;

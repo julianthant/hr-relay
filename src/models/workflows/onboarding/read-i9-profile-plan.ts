@@ -2,7 +2,8 @@ import { z } from "zod";
 import { DateOnlySchema, taskId } from "../../../rules/identity/ids.js";
 import { defineTaskContract } from "../../task/task-contract.js";
 import { I9RecordIdsSchema } from "../../systems/i9/read-section2-signer.js";
-import { HirePlanSchema, HireEmployeeSchema, OnboardingReadHirePlan } from "./read-hire-plan.js";
+import { HireEmployeeSchema } from "../../people/hire-employee.js";
+import { HirePlanSchema, OnboardingReadHirePlan } from "./read-hire-plan.js";
 import { OnboardingI9LookupSchema, OnboardingI9NotRequiredSchema } from "./read-i9-lookup.js";
 
 export const OnboardingI9CreateRequestSchema = z.strictObject({

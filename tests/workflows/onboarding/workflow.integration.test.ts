@@ -1,5 +1,9 @@
+import { createI9WriteWorld } from "../../support/helpers/backend/i9-write-world.js";
+import { RunDryRunPreviewResultSchema } from "../../../src/models/run/result.js";
+import { DRY_RUN_I9_PROFILE_ID } from "../../../src/models/workflow/dry-run.js";
+import { I9ProfileProofSchema, I9RemoteProofSchema, i9ProfileKey, i9RemoteKey } from "../../../src/models/ui/i9-creation.js";
 import assert from "node:assert/strict";
-import { describe, it } from "vitest";
+import { afterEach, describe, it } from "vitest";
 import { compileWorkflow, workflowExplorerDeclaration } from "../../../src/workflow-kit/workflow-definition.js";
 import { descriptorRuntimeNodes, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
 import { crmStore } from "../../../src/backend/systems/crm/task-registry.js";
@@ -182,4 +186,65 @@ describe("read-only onboarding workflow", () => {
       error => error instanceof TaskRefusal && error.code === "ONBOARDING_I9_LOOKUP_UNRESOLVED");
     assert.deepEqual(bad.records, []);
   });
+});
+
+const { harness, cleanup } = createI9WriteWorld();
+afterEach(cleanup);
+
+it("onboarding/write-transactions — saves the profile and remote record through separate fenced, verified writes", async () => {
+  const h = await harness(), run = await h.run();
+  assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
+  assert.deepEqual(h.driver.events.filter(event => event.startsWith("commit:")), ["commit:profile", "commit:remote"]);
+  const intents = h.database.authority.writeIntents.listByRun(run.envelope.runId);
+  assert.equal(intents.length, 2); assert.ok(intents.every(intent => intent.status === "committed"));
+  assert.equal(h.driver.profiles.length, 1); assert.equal(h.driver.records.length, 1);
+  assert.ok(h.captures.filter(value => value === "profile-create:step").length >= 11);
+  assert.ok(h.captures.filter(value => value === "remote-create:step").length >= 6);
+  assert.ok(h.captures.includes("profile-create:before-submit") && h.captures.includes("profile-create:after-submit"));
+  assert.ok(h.captures.includes("remote-create:before-submit") && h.captures.includes("remote-create:after-submit"));
+  const repeat = await h.run();
+  assert.ok(repeat.lifecycle.state === "terminal" && repeat.lifecycle.outcome === "done");
+  assert.equal(h.driver.events.filter(event => event.startsWith("commit:")).length, 2);
+});
+
+it("fills both preview forms with labelled numeric provenance and creates no write authority or master fill", async () => {
+  const h = await harness(), run = await h.run(true);
+  assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
+  const result = h.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
+  const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
+  assert.deepEqual(preview.steps.map(step => step.state), ["transaction-preview", "transaction-preview"]);
+  const remote = preview.steps.find(step => step.nodeId === "remote-create"); assert.ok(remote?.state === "transaction-preview");
+  assert.deepEqual(remote.samples.map(sample => sample.value), [DRY_RUN_I9_PROFILE_ID]);
+  assert.deepEqual(remote.preview.probe, { state: "not-required", reason: "preview-only-sample" });
+  assert.equal(h.driver.events.includes("probe:remote"), false);
+  assert.equal(h.driver.events.some(event => event.startsWith("commit:")), false);
+  assert.deepEqual(h.driver.profiles, []); assert.deepEqual(h.driver.records, []);
+  assert.deepEqual(h.database.authority.writeIntents.countDryRunEvidenceByRun(run.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
+  assert.deepEqual(h.database.authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId), []);
+  assert.deepEqual(h.database.authority.workbooks.runOperations(run.envelope.runId), []);
+});
+
+it("refuses a real numeric sample before opening a browser or probing, and rejects it as either completion proof", async () => {
+  const h = await harness(), run = await h.run(false, { ...h.example, existingProfileId: DRY_RUN_I9_PROFILE_ID });
+  assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed");
+  assert.equal(h.database.authority.failures.listByRun(run.envelope.runId)[0]?.code, "DRY_RUN_SAMPLE_REFUSED");
+  assert.deepEqual(h.driver.events, []);
+  assert.deepEqual(h.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+  for (const [schema, proof] of [[I9ProfileProofSchema, { kind: "i9-profile", profileId: DRY_RUN_I9_PROFILE_ID,
+    firstName: "Fixture", lastName: "Hire", dob: "2000-01-14", email: "hire@example.test", departmentNumber: "000412", source: "saved-profile-read" }],
+  [I9RemoteProofSchema, { kind: "i9-remote-record", profileId: DRY_RUN_I9_PROFILE_ID, i9Id: "900002", startDate: "09/11/2026",
+    email: "hire@example.test", source: "i9-record-read" }]] as const) assert.equal(schema.safeParse(proof).success, false);
+});
+
+for (const role of ["profile", "remote"] as const) it(`parks an UNKNOWN ${role} submit and refuses another unattended attempt`, async () => {
+  const h = await harness({ [role === "profile" ? "profileSubmitFailure" : "remoteSubmitFailure"]: new Error("synthetic lost submit response") });
+  const run = await h.run(); assert.equal(run.lifecycle.state, "parked-write");
+  const key = role === "profile" ? i9ProfileKey(h.example) : i9RemoteKey({ ...h.example, profileId: "900001" });
+  const intent = h.database.authority.writeIntents.findByPermanentKey("i9", key); assert.equal(intent?.status, "parked");
+  assert.equal(intent?.generation, 1);
+  const clicks = h.driver.events.filter(event => event.startsWith("commit:")).length;
+  const repeated = await h.run();
+  assert.ok(repeated.lifecycle.state === "terminal" && repeated.lifecycle.outcome === "failed");
+  assert.equal(h.driver.events.filter(event => event.startsWith("commit:")).length, clicks);
+  assert.equal(h.database.authority.writeIntents.findByPermanentKey("i9", key)?.generation, 1);
 });
