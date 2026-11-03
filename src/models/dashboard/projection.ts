@@ -1,3 +1,4 @@
+import { QueueParentSchema } from "./queue-parent.js";
 import { RunPauseSchema } from "../run/record.js";
 import { z } from "zod";
 import { WorkerControlRecordSchema } from "../run/worker-control.js";
@@ -36,11 +37,6 @@ import {
   RunDetailSectionSchema,
 } from "./primitives.js";
 
-const ParentRunSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("root") }),
-  z.strictObject({ state: z.literal("child"), parentRunId: RunIdSchema }),
-]);
-
 export const ResolvedInstanceSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   instance: z.enum(["prod", "test"]),
@@ -67,9 +63,6 @@ const RunFactWireSchema = z.strictObject({
   value: z.string().min(1),
 });
 
-/** How this row is contained by its parent — `root`, `member` or `linked` — projected from the run's own shape and lineage, never inferred from a workflow id. */
-export const ContainmentSchema = z.enum(["root", "member", "linked"]);
-
 /** A run this row DELEGATED TO and is waiting on; the chip needs where to jump, what to call it, and what it is doing, so the wire carries all three. */
 const LinkedRunWireSchema = z.strictObject({
   runId: RunIdSchema,
@@ -79,6 +72,8 @@ const LinkedRunWireSchema = z.strictObject({
   panelKind: PanelKindSchema,
   status: QueueStatusSchema,
 });
+
+export const QueueParentWireSchema = QueueParentSchema.extend({ ...LinkedRunWireSchema.shape, title: z.string().min(1) });
 
 /** The run's scheduling class, read from the run envelope (its one home); a deliberate MIRROR kept member-for-member identical by the mirror joint. */
 export const QueuePrioritySchema = z.enum(["interactive", "bulk"]);
@@ -114,7 +109,7 @@ const QueueBaseFields = {
   workflowId: WorkflowIdSchema,
   traceId: TraceIdSchema,
   attempt: z.number().int().positive(),
-  lineage: ParentRunSchema,
+  parent: QueueParentWireSchema.nullable(),
   actorId: ActorIdSchema.optional(),
     /* The app build THIS RUN was enqueued under — not the build serving the page; a run enqueued before the stamp existed says so, with its reason. */
   appVersion: RunAppVersionSchema,
@@ -134,9 +129,6 @@ const QueueBaseFields = {
     z.strictObject({ state: z.literal("present"), value: PositiveIntSchema }),
     z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
   ]),
-    /* The dashboard-started GROUP this run belongs to — read off `RunRecord.sessionId`, the ONE place membership lives; `run_batches` holds no member list to disagree with it. */
-    /* How this row is contained by its parent — `root`, `member` or `linked`; projected from the run's own shape and lineage, and served in its own right. */
-  containment: ContainmentSchema,
     /* The runs this row DELEGATED TO and is waiting on; an EMPTY array is a real answer — this run spawned no child that keeps its own row. */
   linkedRuns: z.array(LinkedRunWireSchema),
     /* What this run PRODUCED, in the words its receipt uses; read from the run's ALREADY-DERIVED evidence receipt, and never an act that persists a row. */
@@ -247,33 +239,10 @@ function refineActions(
   }
 }
 
-/** Containment, lineage and surface kind are three views of one fact, so the schema refuses a payload where they disagree rather than letting a surface pick a winner. */
-function refineContainment(
-  surface: {
-    containment: z.infer<typeof ContainmentSchema>;
-    surfaceKind: string;
-    lineage: { state: "root" | "child" };
-    runId: string;
-    linkedRuns: readonly { runId: string }[];
-  },
+function refineLinkedRuns(
+  surface: { runId: string; linkedRuns: readonly { runId: string }[] },
   context: z.RefinementCtx,
 ): void {
-  const parented = surface.lineage.state === "child";
-  if (parented === (surface.containment === "root")) {
-    context.addIssue({
-      code: "custom",
-      path: ["containment"],
-      message: `a ${surface.lineage.state} row cannot be contained as ${surface.containment}`,
-    });
-  }
-  if ((surface.containment === "member") !== (surface.surfaceKind === "member")) {
-    context.addIssue({
-      code: "custom",
-      path: ["containment"],
-      message: `containment ${surface.containment} disagrees with surfaceKind ${surface.surfaceKind}; `
-        + "a member is exactly the row counted in its parent's rollup instead of the day's totals",
-    });
-  }
   const linkedIds = surface.linkedRuns.map(({ runId }) => runId);
   if (new Set(linkedIds).size !== linkedIds.length) {
     context.addIssue({ code: "custom", path: ["linkedRuns"], message: "linked run ids must be unique" });
@@ -283,66 +252,46 @@ function refineContainment(
   }
 }
 
-function queueSurfaceWireSchema<SessionSchema extends z.ZodType>(session: SessionSchema) {
-  const baseFields = { ...QueueBaseFields, session };
-  const regular = z.strictObject({
-    ...baseFields,
-    surfaceKind: z.enum(["single", "preview"]),
-  }).superRefine((surface, context) => {
-    refineEndedAt(surface, context);
-    refineGateOpenedAt(surface, context);
-    refineActions(surface, context);
-    refineContainment(surface, context);
-  });
-  const member = z.strictObject({
-    ...baseFields,
-    surfaceKind: z.literal("member"),
-  }).superRefine((surface, context) => {
-    refineEndedAt(surface, context);
-    refineGateOpenedAt(surface, context);
-    refineActions(surface, context);
-    refineContainment(surface, context);
-    if (surface.lineage.state !== "child") {
-      context.addIssue({ code: "custom", path: ["lineage"], message: "member surfaces require a parent run" });
-    }
-  });
-  const operation = z.strictObject({
-    ...baseFields,
-    surfaceKind: z.literal("operation"),
-    memberRunIds: z.array(RunIdSchema),
-    memberRollup: z.strictObject({
-      total: z.number().int().nonnegative(),
-      terminal: z.number().int().nonnegative(),
-      failed: z.number().int().nonnegative(),
-    }),
-      /* The first few members BY NAME, so a counted anchor whose own title is a number still says who is in it; on the OPERATION variant alone and DERIVED from the member rows' own served titles. */
-    memberPreview: z.discriminatedUnion("state", [
-      z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
-      z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
-    ]),
-  }).superRefine((surface, context) => {
-    refineEndedAt(surface, context);
-    refineGateOpenedAt(surface, context);
-    refineActions(surface, context);
-    refineContainment(surface, context);
-    if (new Set(surface.memberRunIds).size !== surface.memberRunIds.length) {
-      context.addIssue({ code: "custom", path: ["memberRunIds"], message: "operation member ids must be unique" });
-    }
-    if (surface.memberRollup.total !== surface.memberRunIds.length) {
-      context.addIssue({ code: "custom", path: ["memberRollup", "total"], message: "operation rollup total must match member ids" });
-    }
-    if (surface.memberRollup.terminal > surface.memberRollup.total || surface.memberRollup.failed > surface.memberRollup.terminal) {
-      context.addIssue({ code: "custom", path: ["memberRollup"], message: "operation rollup counts are inconsistent" });
-    }
-  });
-  return z.union([regular, member, operation]);
-}
-
-/** The live queue wire: every projected row states session membership or its reasoned absence. */
-export const QueueSurfaceWireSchema = queueSurfaceWireSchema(QueueSessionWireSchema);
-
-/** Archive-storage read arm only; the archive generation says whether an absent key is historical or invalid. */
-export const ArchivedQueueSurfaceStorageSchema = queueSurfaceWireSchema(QueueSessionWireSchema.optional());
+const baseFields = { ...QueueBaseFields, session: QueueSessionWireSchema };
+const regular = z.strictObject({
+  ...baseFields,
+  surfaceKind: z.enum(["single", "preview"]),
+}).superRefine((surface, context) => {
+  refineEndedAt(surface, context);
+  refineGateOpenedAt(surface, context);
+  refineActions(surface, context);
+  refineLinkedRuns(surface, context);
+});
+const operation = z.strictObject({
+  ...baseFields,
+  surfaceKind: z.literal("operation"),
+  memberRunIds: z.array(RunIdSchema),
+  memberRollup: z.strictObject({
+    total: z.number().int().nonnegative(),
+    terminal: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+  }),
+    /* The first few members BY NAME, so a counted anchor whose own title is a number still says who is in it; on the OPERATION variant alone and DERIVED from the member rows' own served titles. */
+  memberPreview: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("present"), value: z.string().min(1) }),
+    z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),
+  ]),
+}).superRefine((surface, context) => {
+  refineEndedAt(surface, context);
+  refineGateOpenedAt(surface, context);
+  refineActions(surface, context);
+  refineLinkedRuns(surface, context);
+  if (new Set(surface.memberRunIds).size !== surface.memberRunIds.length) {
+    context.addIssue({ code: "custom", path: ["memberRunIds"], message: "operation member ids must be unique" });
+  }
+  if (surface.memberRollup.total !== surface.memberRunIds.length) {
+    context.addIssue({ code: "custom", path: ["memberRollup", "total"], message: "operation rollup total must match member ids" });
+  }
+  if (surface.memberRollup.terminal > surface.memberRollup.total || surface.memberRollup.failed > surface.memberRollup.terminal) {
+    context.addIssue({ code: "custom", path: ["memberRollup"], message: "operation rollup counts are inconsistent" });
+  }
+});
+export const QueueSurfaceWireSchema = z.union([regular, operation]);
 
 export const DayCountWireSchema = z.strictObject({ day: LocalDateSchema, count: z.number().int().nonnegative() });
 export const StatusCountWireSchema = z.strictObject({ status: QueueStatusSchema, count: z.number().int().nonnegative() });
@@ -628,12 +577,12 @@ export const DashboardDayWireSchema = z.strictObject({
   if (day.attemptHistory !== undefined) {
     const rows = new Map(day.queueSurfaces.map(row => [row.runId, row]));
     if (day.attemptHistory.length !== day.queueSurfaces.length) {
-      context.addIssue({ code: "custom", path: ["attemptHistory"], message: "attempt metadata must include every selected-day run" });
+      context.addIssue({ code: "custom", path: ["attemptHistory"], message: "attempt metadata must include every served run" });
     }
     for (const [index, entry] of day.attemptHistory.entries()) {
       const row = rows.get(entry.runId);
       if (row === undefined || row.startedAt !== entry.startedAt || JSON.stringify(row.endedAt) !== JSON.stringify(entry.endedAt)) {
-        context.addIssue({ code: "custom", path: ["attemptHistory", index], message: "attempt metadata must match its selected-day run" });
+        context.addIssue({ code: "custom", path: ["attemptHistory", index], message: "attempt metadata must match its exact served run" });
       }
     }
   }

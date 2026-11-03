@@ -29,8 +29,10 @@ it("keeps a failed read distinct and retries only through the read callback", ()
   assert.match(surface.textContent ?? "", /couldn’t be read/u);
   act(() => surface.querySelector("button")?.click()); assert.equal(reads, 1);
 });
-it("disables retry while reading", () => {
+it("keeps both managed rows while reading without exposing a path or copy action", () => {
   const surface = render({ loading: true, onRetry: () => { throw new Error("unexpected effect"); } });
   assert.match(surface.textContent ?? "", /Reading app-data/u);
-  assert.equal(surface.querySelector("button")?.disabled, true);
+  assert.equal(surface.querySelectorAll("[data-settings-path]").length, 2);
+  assert.equal(surface.querySelectorAll('[data-slot="skeleton"]').length, 4);
+  assert.equal(surface.querySelectorAll("input, button").length, 0);
 });

@@ -3,8 +3,8 @@ import { join, relative } from "node:path";
 import { z } from "zod";
 import { isDirectExecution } from "./scope-files.js";
 
-// Storage closure, backup and restore proofs refuse off macOS, so these files run on macOS runners.
-export const MACOS_FILES: readonly string[] = [
+// Storage closure, backup and restore proofs require native platform runners.
+export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/maintenance/account-deletion.integration.test.ts",
   "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
   "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",
@@ -43,7 +43,7 @@ export const MACOS_FILES: readonly string[] = [
   "tests/backend/storage/maintenance/fixed-layout.test.ts",
 ];
 
-// Native browser process proofs run on macOS one at a time, without competing files.
+// Native browser process proofs run one at a time, without competing files.
 export const SERIAL_FILES: readonly string[] = [
   "tests/backend/storage/maintenance/cancel-queued-runs.integration.test.ts",
   "tests/backend/storage/browser-roots.native.integration.test.ts",
@@ -60,7 +60,7 @@ export const SERIAL_STORAGE_FILES: readonly string[] = [
 ];
 
 export type CiProject = "unit" | "integration" | "architecture";
-export type CiRunner = "ubuntu" | "macos" | "serial" | "storage";
+export type CiRunner = "ubuntu" | "native" | "serial" | "storage";
 export type CiDurations = Readonly<Record<string, number>>;
 
 const DURATIONS_PATH = "scripts/test/ci-durations.json";
@@ -80,17 +80,18 @@ export function balance(files: readonly string[], jobs: number, weight: (file: s
   return bins.map(bin => bin.files.sort());
 }
 
-export function selectCiFiles(listed: readonly string[], project: CiProject, runner: CiRunner, job: number, jobs: number, durations: CiDurations): string[] {
-  const macos = [...MACOS_FILES, ...SERIAL_FILES];
-  const missing = macos.filter(file => projectOf(file) === project && !listed.includes(file));
+export function selectCiFiles(listing: readonly string[], project: CiProject, runner: CiRunner, job: number, jobs: number, durations: CiDurations): string[] {
+  const listed = listing.map(file => file.replaceAll("\\", "/"));
+  const native = [...NATIVE_FILES, ...SERIAL_FILES];
+  const missing = native.filter(file => projectOf(file) === project && !listed.includes(file));
   if (missing.length > 0) throw new Error(`CI file lists name files Vitest does not list: ${missing.join(", ")}`);
   const known = Object.values(durations).filter(seconds => seconds > 0).sort((a, b) => a - b);
   const seconds = (file: string) => Math.max(0.1, durations[file] ?? known[Math.floor(known.length / 2)] ?? 1);
-  if (runner === "ubuntu") return balance(listed.filter(file => !macos.includes(file)), jobs, seconds)[job - 1] ?? [];
+  if (runner === "ubuntu") return balance(listed.filter(file => !native.includes(file)), jobs, seconds)[job - 1] ?? [];
   // Serial proofs run alone; other files share two workers, so they count half their time.
-  const bin = balance(macos, jobs, file => isSingleWorker(file) ? seconds(file) : seconds(file) / 2)[job - 1] ?? [];
+  const bin = balance(native, jobs, file => isSingleWorker(file) ? seconds(file) : seconds(file) / 2)[job - 1] ?? [];
   const selected = runner === "serial" ? SERIAL_FILES : runner === "storage" ? SERIAL_STORAGE_FILES
-    : MACOS_FILES.filter(file => !SERIAL_STORAGE_FILES.includes(file));
+    : NATIVE_FILES.filter(file => !SERIAL_STORAGE_FILES.includes(file));
   return bin.filter(file => projectOf(file) === project && selected.includes(file));
 }
 
@@ -106,7 +107,9 @@ export function durationsFromReports(reports: readonly unknown[]): Record<string
     if (root < 0 || endTime < startTime) throw new Error(`Invalid CI timing for ${normalized}`);
     return [normalized.slice(root + 1), Math.round((endTime - startTime) / 100) / 10] as const;
   }));
-  return Object.fromEntries(entries.sort(([a], [b]) => a.localeCompare(b)));
+  const slowest = new Map<string, number>();
+  for (const [file, seconds] of entries) slowest.set(file, Math.max(slowest.get(file) ?? 0, seconds));
+  return Object.fromEntries([...slowest].sort(([a], [b]) => a.localeCompare(b)));
 }
 
 if (isDirectExecution(import.meta.url)) {

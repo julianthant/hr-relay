@@ -106,9 +106,16 @@ export const CanonicalCredentialCreationSchema = z.strictObject({
 
 export const ProfileOnboardingDuoFailureSchema = z.strictObject({
   kind: z.enum(["unavailable", "refused", "unknown"]),
-  causeTag: z.enum(["scope", "revoked", "busy", "browser-root", "browser-lifetime", "counter", "worker", "provider"]),
+  causeTag: z.enum(["scope", "revoked", "busy", "browser-root", "browser-lifetime", "counter", "worker", "provider", "aborted", "timed-out", "request-refused"]),
 });
 export type ProfileOnboardingDuoFailure = z.infer<typeof ProfileOnboardingDuoFailureSchema>;
+
+export const ProfileOnboardingDuoEventSchema = z.strictObject({
+  stage: z.enum(["intercepted", "forwarded", "backend-received", "replied", "refused", "timed-out", "aborted", "platform-native", "platform-virtual"]),
+  requestId: z.uuid().optional(),
+  detail: z.enum(["sender", "request", "document", "account", "username", "backend", "native-scope", "native-origin", "native-unavailable", "native-security", "native-not-allowed", "native-other"]).optional(),
+});
+export type ProfileOnboardingDuoEvent = z.infer<typeof ProfileOnboardingDuoEventSchema>;
 
 export const SignUpDuoAttemptSchema = z.strictObject({
   attemptId: z.uuid(), generation: z.number().int().safe().positive(), method: z.enum(["key", "touch"]),

@@ -84,8 +84,7 @@ export type DelegationManifest = z.infer<typeof DelegationManifestSchema>;
 
 export type DelegationReadiness = Readonly<{ state: "ready" }>
   | Readonly<{ state: "waiting"; childRunId: string }>
-  | Readonly<{ state: "blocked"; childRunId: string; reason: "child-failed" | "manual-parent-resume" | "child-cancellation-unavailable" }>
-  | Readonly<{ state: "blocked"; childRunId: string; reason: "child-preview"; manifestId: DelegationManifest["manifestId"]; resultDigest: z.infer<typeof FingerprintSchema> }>;
+  | Readonly<{ state: "blocked"; childRunId: string; reason: "child-failed" | "manual-parent-resume" | "child-cancellation-unavailable" }>;
 
 export function delegationJoinDisposition(plan: Pick<DelegationManifest, "join" | "policy">, states: readonly string[]): "satisfied" | "blocked" | "failed" {
   if (plan.join === "none" || states.every(state => state === "done") || plan.join === "all-settled" || plan.policy.onChildFailed === "allow-partial") return "satisfied";

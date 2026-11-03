@@ -19,7 +19,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
-| `scripts/test/` | Suite measurement, duration-balanced CI file selection, direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
+| `scripts/test/` | Suite measurement, duration-balanced CI file selection, shared full-Chromium installation preflight (`chromium-preflight.ts`), direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
 | `.github/workflows/ci.yml` and `ci-checks.yml` | Per-branch supersession, FIFO pipeline admission, stable required summaries, suite execution and automatic file-timing feedback. |
 | `scripts/verify/` | Repository privacy, browser-login and test-target verification. Standalone verification holds the runtime listener; abandoned reservations settle through startup recovery. |
 | `scripts/verify-parity-json.ts` | Desktop parity runner. |
@@ -125,6 +125,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/people/hire-employee.ts` | Validated hire employee facts shared by Onboarding planning and system write targets. |
 | `src/models/ui/ucpath-hire.ts` | Hire targets, complete findings, staged wizard states, permanent keys and independently verified filing proofs. Each hire task contract lives in its canonical `models/systems/ucpath/<task>.ts` file; `hire-contract.ts` shares read/subject metadata. `backend/systems/ucpath/driver/hire-operation.ts` and `hire-ui-registry.ts` own the hire browser family; `rules/ucpath/hire-verdict.ts` refuses incomplete or uncertain discovery. |
 | `src/models/ui/i9-creation.ts` | Separate profile and remote-record targets, staged states, permanent keys and saved-effect proofs. `backend/systems/i9/driver/creation-operation.ts` owns their browser operations; the I-9 store binds their prepare, commit, probe and verification tasks. |
+| `src/models/dashboard/queue-parent.ts` | Queue visibility classification shared by native summaries, projections and browser consumers. Queue surfaces carry one nullable parent fact; stored run shapes remain scheduling authority. |
 | `src/models/dashboard/activity-population.ts` | Canonical Analytics population, selected browse, export and AP1 snapshot schemas. `activity-selection.ts` owns the nested AS1 report selection used by summary and XLSX exports. |
 | `src/models/workflows/person-lookup/result.ts` | Person Lookup terminal result schema shared by its definition, retained CRM proof and OCR outcome fold. |
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. `person-preferences.ts` owns the strict person appearance/shell values and neutral defaults; snapshot preference fingerprints are independent of execution config fingerprints. |

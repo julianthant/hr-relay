@@ -107,6 +107,9 @@ export function dryRunRefusalMessage(descriptor: AnyWorkflowDescriptor): string 
     return `${descriptor.id} has no transaction node, so a dry run would be indistinguishable from a real `
       + "run; start it for real or not at all";
   }
+  if (support.reason === "descendant-declares-unsupported") {
+    return `${descriptor.id} reaches ${support.workflowId} transaction node "${support.nodeId}", which declares dryRun:"unsupported"; start it for real or not at all`;
+  }
   return `${descriptor.id} transaction node "${support.nodeId}" declares dryRun:"unsupported"; `
     + "start it for real or not at all";
 }

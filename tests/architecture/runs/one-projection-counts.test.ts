@@ -1,3 +1,4 @@
+import { isQueueTopLevel } from "../../../src/models/dashboard/queue-parent.js";
 import { syntheticDatabasePath } from "../../support/helpers/synthetic-database-admission.js";
 import { fenceWriteFixture } from "../../support/helpers/write-fence-fixture.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
@@ -208,7 +209,7 @@ describe("one-projection-counts", () => {
     // The three renderings, each read off the ONE payload:
     const workflowPanelTotal = payload.workflowCounts.reduce((sum, { count }) => sum + count, 0);
     const statusBarSum = payload.statusCounts.reduce((sum, { count }) => sum + count, 0);
-    const renderedQueueRows = payload.queueSurfaces.filter(({ surfaceKind }) => surfaceKind !== "member").length;
+    const renderedQueueRows = payload.queueSurfaces.filter(isQueueTopLevel).length;
 
     assert.equal(workflowPanelTotal, statusBarSum);
     assert.equal(statusBarSum, renderedQueueRows);

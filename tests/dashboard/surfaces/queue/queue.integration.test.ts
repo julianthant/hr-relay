@@ -11,7 +11,8 @@ partition,
 queueRowAccessibleName,
 queueRowTitle,
 rowInfoFacts,
-visibleRunIds
+visibleRunIds,
+queueScopeWorkflow
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueuePanel,QueueRow } from "../../../../src/dashboard/surfaces/queue/queue.js";
 import {
@@ -27,6 +28,8 @@ uuidOf,
 } from "../../../support/fixtures/dashboard/fixture-day.js";
 import { summaryFixture } from "../../../support/helpers/backend/served-database-surfaces-fixtures.js";
 import { id } from "../../../support/helpers/database-foundation/fixtures.js";
+
+import { queueParentFixture } from "../../../support/helpers/dashboard/queue-parent-fixture.js";
 
 const rows = FIXTURE_DAY_WIRE.queueSurfaces;
 
@@ -65,7 +68,7 @@ describe("Queue consumes the served day boundary", () => {
     assert.equal(operation.surfaceKind, "operation");
     if (operation.surfaceKind !== "operation") throw new Error("operation fixture changed shape");
     const selected = rows.filter((row) => row.runId === operation.runId
-      || (row.lineage.state === "child" && row.lineage.parentRunId === operation.runId));
+      || (row.parent !== null && row.parent.runId === operation.runId));
 
     const partitioned = partition(selected);
     assert.deepEqual(partitioned.top.map((row) => row.runId), [operation.runId]);
@@ -81,6 +84,29 @@ describe("Queue consumes the served day boundary", () => {
       assert.equal((markup.match(new RegExp(`data-demo-row-id="${memberRunId}"`, "gu")) ?? []).length, 1);
     }
     assert.match(markup, new RegExp(`${operation.memberRollup.terminal} of ${operation.memberRollup.total} finished; ${operation.memberRollup.failed} failed`, "u"));
+  });
+
+  it("retains nested inline context, failure lines, linked gates and keyboard traversal", () => {
+    const base = rowWhere(row => row.surfaceKind === "single");
+    const parent = QueueSurfaceWireSchema.parse({ ...base, surfaceKind: "operation", runId: uuidOf(4301), parent: null,
+      title: "Outer group", memberRunIds: [uuidOf(4302)], memberRollup: { total: 1, terminal: 0, failed: 0 },
+      memberPreview: { state: "present", value: "Inner group" } });
+    const nested = QueueSurfaceWireSchema.parse({ ...parent, runId: uuidOf(4302), workflowId: "ocr", title: "Inner group",
+      parent: queueParentFixture(parent.runId, { workflowId: parent.workflowId }), memberRunIds: [uuidOf(4303)],
+      memberRollup: { total: 1, terminal: 1, failed: 1 }, linkedRuns: [{ runId: uuidOf(4304), workflowId: "i9-lookup",
+        partitionDay: FIXTURE_DAY, label: "I-9 lookup", panelKind: "review", status: "awaiting-approval" }] });
+    const failed = QueueSurfaceWireSchema.parse({ ...base, runId: uuidOf(4303), workflowId: "ocr-page", title: "Page 9",
+      parent: queueParentFixture(nested.runId, { visibility: "hidden-unless-failed", workflowId: nested.workflowId }),
+      status: "failed", endedAt: { state: "present", value: FIXTURE_NOW } });
+    const served = [parent, nested, failed];
+    assert.equal(queueScopeWorkflow(failed, served), parent.workflowId);
+    assert.equal(queueScopeWorkflow(nested, served), parent.workflowId);
+    assert.deepEqual(visibleRunIds(served), [parent.runId, nested.runId, failed.runId]);
+    const markup = panelMarkup(served);
+    for (const row of served) assert.equal((markup.match(new RegExp(`data-demo-row-id="${row.runId}"`, "gu")) ?? []).length, 1);
+    assert.match(markup, /I-9 lookup/u);
+    assert.match(markup, /Members of Inner group/u);
+    assert.match(markup, /Page 9/u);
   });
 
   it("selects the member from the whole line and retains its keyboard button", async () => {

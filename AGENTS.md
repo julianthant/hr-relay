@@ -103,11 +103,12 @@ The repository holds only the current version. No compatibility readers, old mig
   open pull requests and fixes red checks, real Bugbot findings and `merge-conflict` labels on the
   pull request branch; it is the only agent that pushes to an open pull request. The operator handles
   only pull requests labeled `needs-human`.
-- Pull requests into `staging` run static, privacy, unit, integration and architecture checks;
-  parity runs on the release pull request into `main`, and a red release is fixed by a pull request
-  into `staging`. Run the tests related to your change locally before pushing, and parity when the
-  change touches a dashboard screen.
-- A test file that needs macOS goes in `MACOS_FILES` in `scripts/test/ci-files.ts`. When CI jobs'
+- Run static, privacy and portable Ubuntu unit, integration and architecture checks for pull
+  requests into `staging`. Run platform-native proofs and parity in CI only for a full release
+  started by the operator: a `staging` → `main` pull request or a manual full-release dispatch. Agents must never
+  dispatch or rerun `ci.yml`. Fix a red release by a pull request into `staging`. Run the tests related
+  to your change locally before pushing, and parity when the change touches a dashboard screen.
+- A test file that needs native platform proofs goes in `NATIVE_FILES` in `scripts/test/ci-files.ts`. When CI jobs'
   end times spread more than a minute, refresh `scripts/test/ci-durations.json` (see
   `docs/rebuild/reference/guards-and-tests.md`).
 - A pull request bundles a good amount of related work, so CI runs once per batch rather than after
@@ -139,8 +140,11 @@ The repository holds only the current version. No compatibility readers, old mig
 - During a task: focused tests for the changed behavior, `npm run lint`, and the affected static and
   generated checks. Run `npm run test:local` for tests that need this machine or its accounts.
   Update tests when behavior changes, and say when none exist.
-- Before push: `npm run test:local`, `npm run typecheck` and `npm run lint`. Cloud runs unit,
-  integration and architecture on macOS and Windows, plus static, privacy and parity. A release
+- Before push: `npm run test:local`, `npm run typecheck` and `npm run lint`. Run portable cloud unit,
+  integration and architecture suites on Ubuntu, plus static and privacy. Run platform-native proofs
+  and parity in CI only for operator-started full releases (`staging` → `main` pull requests or
+  manual full-release dispatches). Otherwise run Windows-native tests locally on Windows and
+  macOS-native tests locally on the Mac when load is low. A release
   pull request then runs `npm run web:build`, `npm run test:coverage` alone, and `npm run test:perf`.
   Coverage selects the unit, integration and architecture suites without perf, so don't run those
   three separately.

@@ -32,7 +32,7 @@ import { completionFromAuthorization } from "../../../models/run/completion.js";
 import { DeletedRunRecordSchema,RunDeleteInputSchema,type DeletedRunRecord } from "../../../models/run/deleted-run.js";
 import { RunRecordSchema,runClaim,runTransitionViolation,type RunRecord } from "../../../models/run/record.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
-import { RunResultRecordSchema,createRunTerminalEvidenceResult,deriveCheckpointOutputDigest,deriveCheckpointProvenanceDigest,deriveTerminalFailureDigest,terminalDelegationDependencyRecord,terminalGateDependencyRecord,terminalEvidenceResult,type RunResultRecord } from "../../../models/run/result.js";
+import { RunResultRecordSchema, readRunPreviewResult,createRunTerminalEvidenceResult,deriveCheckpointOutputDigest,deriveCheckpointProvenanceDigest,deriveTerminalFailureDigest,terminalDelegationDependencyRecord,terminalGateDependencyRecord,terminalEvidenceResult,type RunResultRecord } from "../../../models/run/result.js";
 import { RunSessionRecordSchema,type RunSessionRecord } from "../../../models/run/session.js";
 import { StartPlanRecordSchema,isStartPlanExpired,type StartPlanRecord } from "../../../models/run/start-plan.js";
 import { FailureTerminalAuthorizationRecordSchema,TerminalAuthorizationRecordSchema,type TerminalAuthorizationRecord } from "../../../models/run/terminal-authorization.js";
@@ -48,7 +48,7 @@ import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/ide
 import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
 import { capturedInstantClock } from "../../../rules/time/clock.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { DelegationManifestSchema,DependencyRecordSchema,delegationJoinDisposition,type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
+import { DelegationManifestSchema,DependencyRecordSchema,delegationJoinDisposition,type DelegationManifest,type DelegationReadiness } from "../../../rules/workflow/dependencies.js";
 import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-provenance.js";
 import { authenticateAuditedParkedWriteResolution,authenticateParkedWriteRecheck,authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
@@ -111,7 +111,7 @@ import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeas
 import { assertWorkflowRunResultAuthorization,descriptorRuntimeNodes,workflowProjections,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
 import type { VerifiedBackup } from "./backup-service.js";
-import { assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationReadiness,readDelegationWait,readDelegationWaitState,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
+import { assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { AUTHORITY_APPLICATION_ID,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
@@ -243,6 +243,8 @@ type SettingsCurrentRepository = Readonly<{
 
 
 type DependencyRepository = Readonly<{
+  authenticateGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup>;
+  parents(envelopes: readonly RunRecord["envelope"][]): ReturnType<typeof readQueueParents>;
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof DependencyRecordSchema>>;
   get(dependencyId: string): z.infer<typeof DependencyRecordSchema> | undefined;
   listByParentRun(parentRunId: string): readonly z.infer<typeof DependencyRecordSchema>[];
@@ -1899,6 +1901,10 @@ export class AuthorityDatabase implements Disposable {
   #transactionDepth = 0;
   #savepointSequence = 0;
   #transactionMode: "authority" | "projection" | "read" | undefined;
+  #delegationReadSnapshot: {
+    waits: Map<string, ReturnType<typeof readDelegationWaitState>>;
+    groups: Map<string, { manifest: string; group: ReturnType<typeof authenticateDelegationGroup> }>;
+  } | undefined;
   #authorityDirty = false;
   #workerMembershipChanges = new Set<string>();
   #writeCommitHooks: AuthorityWriteCommitHooks | undefined;
@@ -3141,19 +3147,23 @@ export class AuthorityDatabase implements Disposable {
   }
 
   summaryWorkflows() {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId)).workflows(this.getMeta().authorityGeneration) });
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId),
+      envelopes => this.authority.dependencies.parents(envelopes)).workflows(this.getMeta().authorityGeneration) });
   }
 
   queryRunSummaries(query: Parameters<ReturnType<typeof createRunSummaries>["query"]>[1]) {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId)).query(this.getMeta().authorityGeneration,query) });
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId),
+      envelopes => this.authority.dependencies.parents(envelopes)).query(this.getMeta().authorityGeneration,query) });
   }
 
   queryRunCalendar(query: Parameters<ReturnType<typeof createRunSummaries>["calendar"]>[1]) {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId)).calendar(this.getMeta().authorityGeneration, query) });
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId),
+      envelopes => this.authority.dependencies.parents(envelopes)).calendar(this.getMeta().authorityGeneration, query) });
   }
 
   readRunSummaries() {
-    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId)).read(this.getMeta().authorityGeneration) });
+    return this.withAuthorityReadSnapshot(() => { this.#validateExternalQuerySources(); return createRunSummaries(this.#database, run => this.authority.dependencies.waitState(run.envelope.runId),
+      envelopes => this.authority.dependencies.parents(envelopes)).read(this.getMeta().authorityGeneration) });
   }
 
   registerRunSearchDeclarations(input: unknown): void {
@@ -3940,6 +3950,8 @@ export class AuthorityDatabase implements Disposable {
   #assertStoredTerminalDependencies(result: RunResultRecord, current: RunRecord, depth = 0, visited = new Set<string>()): void {
     if (depth > 16 || visited.has(result.runId)) throw new Error("terminal-child-dependency-cycle-or-depth");
     visited.add(result.runId);
+    const preview = readRunPreviewResult(result);
+    if (preview !== undefined && !current.envelope.dryRun) throw new Error("terminal-preview-dry-run-required");
     const continuation = current.envelope.continuation === undefined ? undefined : AuthenticatedRunContinuation.authenticate(this.authority, current.envelope);
     const invocations = this.authority.lifecycleJournal.listDelegationInvocations(current.envelope.runId);
     const receipts = result.dependencies.filter(dependency => dependency.state === "child-resolved" || dependency.state === "delegation-resolved");
@@ -3958,6 +3970,9 @@ export class AuthorityDatabase implements Disposable {
           || delegationJoinDisposition(evidence.manifest, evidence.children.map(member => member.run.lifecycle.state === "terminal"
             ? member.run.lifecycle.outcome : "active")) !== "satisfied") throw new Error("terminal-delegation-dependency-canonical-mismatch");
         for (const member of evidence.children) {
+          if (readRunPreviewResult(member.result) !== undefined && (!current.envelope.dryRun || !member.run.envelope.dryRun
+            || preview?.kind !== "delegated-dry-run-preview"
+            || !preview.steps.some(step => step.nodeId === dependency.nodeId && step.state === "delegation-preview"))) throw new Error("terminal-child-preview-accounting-mismatch");
           this.#assertResultMatchesRun(member.result, member.run);
           if (terminalEvidenceResult(member.result) === undefined) this.#assertStoredTerminalDependencies(member.result, member.run, depth + 1, visited);
           else assertTerminalEvidenceOwner(this.#database, member.result);
@@ -4252,6 +4267,16 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  #readDelegationGroup(manifest: DelegationManifest): ReturnType<typeof authenticateDelegationGroup> {
+    const snapshot = this.#delegationReadSnapshot;
+    const fingerprint = snapshot === undefined ? undefined : canonicalJsonStringify(manifest);
+    const cached = snapshot?.groups.get(manifest.manifestId);
+    if (cached !== undefined && cached.manifest === fingerprint) return structuredClone(cached.group);
+    const group = authenticateDelegationGroup(this.authority, manifest);
+    if (snapshot !== undefined && fingerprint !== undefined) snapshot.groups.set(manifest.manifestId, { manifest: fingerprint, group: structuredClone(group) });
+    return group;
+  }
+
   #withReadSnapshot<Result>(read: () => Result): Result {
     return withOperationProof(() => {
       if (this.#transactionDepth === 0) clearOperationProofSlots();
@@ -4263,6 +4288,7 @@ export class AuthorityDatabase implements Disposable {
       this.#database.exec("BEGIN");
       this.#transactionDepth = 1;
       this.#transactionMode = "read";
+      this.#delegationReadSnapshot = { waits: new Map(), groups: new Map() };
       this.#authorityDirty = false;
       try {
         const result = read();
@@ -4277,6 +4303,7 @@ export class AuthorityDatabase implements Disposable {
         clearOperationProofSlots();
         this.#transactionDepth = 0;
         this.#transactionMode = undefined;
+        this.#delegationReadSnapshot = undefined;
         this.#snapshotExternalDataVersion = undefined;
         this.#authorityDirty = false;
       }
@@ -5115,11 +5142,13 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       dependencies: Object.freeze({
+        authenticateGroup: (manifest: DelegationManifest) => this.#readDelegationGroup(manifest),
+        parents: (envelopes: readonly RunRecord["envelope"][]) => readQueueParents(this.authority, envelopes),
         groups: (parentRunId: string) => {
           const parent = this.authority.runs.get(parentRunId);
           if (parent === undefined) throw new Error("delegation-parent-unavailable");
           const own = retainedDelegationManifests(this.authority, parentRunId)
-            .map(manifest => ({ manifest, group: authenticateDelegationGroup(this.authority, manifest) }));
+            .map(manifest => ({ manifest, group: this.authority.dependencies.authenticateGroup(manifest) }));
           const keys = new Set(own.map(({ group }) => `${group.invocation.nodeId}/${group.invocation.edgeId}`));
           return [...own, ...continuationDelegationGroups(this.authority, parent.envelope)
             .filter(({ group }) => !keys.has(`${group.invocation.nodeId}/${group.invocation.edgeId}`))];
@@ -5129,7 +5158,13 @@ export class AuthorityDatabase implements Disposable {
           if (parent === undefined) throw new Error("delegation-parent-unavailable");
           return AuthenticatedRunContinuation.authenticate(this.authority, parent.envelope).delegation(nodeId, edgeId);
         },
-        waitState: (parentRunId: string) => readDelegationWaitState(this.authority, parentRunId),
+        waitState: (parentRunId: string) => {
+          const cached = this.#delegationReadSnapshot?.waits.get(parentRunId);
+          if (cached !== undefined) return cached === null ? null : { ...cached };
+          const state = readDelegationWaitState(this.authority, parentRunId);
+          this.#delegationReadSnapshot?.waits.set(parentRunId, state === null ? null : { ...state });
+          return state;
+        },
         wait: (parentRunId: string, descriptor: AnyWorkflowDescriptor) => {
           const parent = this.authority.runs.get(parentRunId);
           if (parent === undefined) throw new Error("delegation-parent-unavailable");

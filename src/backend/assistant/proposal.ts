@@ -24,7 +24,7 @@ export function prepareAssistantProposal(planner: AssistantPlanner, workflowId: 
     || request.rerun !== undefined || request.stepOmissions !== undefined || request.protectedSubmissionBindings !== undefined
     || request.retainedInputs !== undefined) throw new Error("assistant-proposal-refused");
   const support = workflowDryRunSupport(request.descriptor);
-  if (support.state !== "supported") throw new Error("assistant-proposal-refused");
+  if (support.state !== "supported" || !("firstTransactionNodeId" in support)) throw new Error("assistant-proposal-refused");
   const firstTransaction = descriptorRuntimeNodes(request.descriptor).find(node => String(node.id) === support.firstTransactionNodeId);
   if (firstTransaction?.kind !== "transaction" || firstTransaction.dryRun !== "stop-after-prepare") throw new Error("assistant-proposal-refused");
   const plan = planStart({ authority: context.deps.authority, clock: context.deps.clock, ids: context.deps.ids,

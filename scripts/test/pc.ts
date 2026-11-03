@@ -5,13 +5,13 @@ import { dirname, isAbsolute, join, matchesGlob, relative, resolve } from "node:
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { MACOS_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./ci-files.js";
+import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "./ci-files.js";
 import { isDirectExecution } from "./scope-files.js";
 import { buildPcSource } from "./pc-source.js";
 import type { PcSource } from "./pc-source.js";
 
 const projects = ["--project", "unit", "--project", "integration", "--project", "architecture"];
-const macosFiles = new Set([...MACOS_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES]);
+const nativeFiles = new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES]);
 const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
 export const pcDurationScript = "process.stdout.write(String(Number(process.hrtime.bigint() - BigInt(process.argv[1])) / 1e6))";
 
@@ -52,7 +52,7 @@ export function selectPcFiles(listed: readonly string[], patterns: readonly stri
   }
   const selected = [...new Set(normalized)].filter(file => patterns.length === 0
     || patterns.some(pattern => file === pattern || matchesGlob(file, pattern))).sort();
-  return { files: selected.filter(file => !macosFiles.has(file)), skipped: selected.filter(file => macosFiles.has(file)) };
+  return { files: selected.filter(file => !nativeFiles.has(file)), skipped: selected.filter(file => nativeFiles.has(file)) };
 }
 
 async function command(program: string, args: string[], cwd: string, log?: string, input?: Buffer): Promise<number> {
@@ -203,7 +203,7 @@ async function mac(patterns: string[]): Promise<number> {
       .map(({ file }) => relative(root, file).replaceAll("\\", "/"));
     const selected = selectPcFiles(listed, patterns.map(pattern => isAbsolute(pattern) ? relative(root, pattern) : pattern.replace(/^\.\//u, "")));
     result.files = selected.files;
-    if (selected.skipped.length) process.stdout.write(`test:pc skipping ${selected.skipped.length} macOS-only file(s); GitHub CI owns them.\n`);
+    if (selected.skipped.length) process.stdout.write(`test:pc skipping ${selected.skipped.length} native file(s); GitHub CI owns them.\n`);
     if (selected.files.length === 0) {
       process.stdout.write("test:pc no portable affected files.\n");
       result.exitCode = 0;

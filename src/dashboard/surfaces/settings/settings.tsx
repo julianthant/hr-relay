@@ -14,13 +14,13 @@ import type { SettingsSaveListener,SettingsSaveProblemListener } from "./editor/
 import { SettingsAuthoritySection } from "./editor/settings-authorities.js";
 import { useEditableSettings } from "./editor/settings-editor-model.js";
 import { EditableSettingsSection } from "./editor/settings-editor.js";
+import "./settings-data.css";
 import "./hub-settings.css";
 import { KeyboardSection } from "./navigation/settings-keyboard.js";
 import { searchSettings,settingsSearchIndex,type SettingsSearchResult } from "./navigation/settings-search-model.js";
 import { SettingsSearchTargetContext,useSettingsSearchArrival } from "./navigation/settings-search-target-model.js";
 import { PreflightSection } from "./preflight/settings-preflight.js";
 import { RoutesSection } from "./routes/settings-routes.js";
-import "./settings-data.css";
 import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import { storageNeedsAttention,type StorageHealthSummary } from "./storage/storage-settings-model.js";
 import { StorageSection } from "./storage/storage-settings.js";

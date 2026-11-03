@@ -2,7 +2,7 @@ import { z } from "zod";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../config/catalog.js";
 import { HOST_PRIMARY_DISPLAY_ENV } from "../config/host-display.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS } from "../config/secrets.js";
+import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS, DEVELOPMENT_DEBUG_MIRROR_ENV } from "../config/secrets.js";
 
 const EnvironmentKeySchema = z.union([z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.literal("SystemRoot")]);
 const NATIVE_PICKER_ENVIRONMENT_OWNER = "src/backend/transports/http/native-path-picker.ts";
@@ -13,7 +13,7 @@ export const RuntimeEnvironmentExactSpecSchema = z.discriminatedUnion("dispositi
     key: EnvironmentKeySchema,
     classification: z.enum(["secret", "direct-identifier", "non-secret-config"]),
     disposition: z.literal("active"),
-    channel: z.enum(["config", "config-default", "secret", "config-and-secret", "provider-model", "process-ownership", "process-mechanics"]),
+    channel: z.enum(["config", "config-default", "secret", "config-and-secret", "provider-model", "process-ownership", "development-diagnostics", "process-mechanics"]),
     owner: z.string().regex(/^src\/[a-z0-9/_-]+\.ts$/),
     documented: z.boolean(),
   }),
@@ -186,6 +186,14 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
 
 export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecSchema.array().parse([
   {
+    key: DEVELOPMENT_DEBUG_MIRROR_ENV,
+    classification: "non-secret-config",
+    disposition: "active",
+    channel: "development-diagnostics",
+    owner: "src/models/config/secrets.ts",
+    documented: true,
+  },
+  {
     key: "SystemRoot",
     classification: "non-secret-config",
     disposition: "active",
@@ -241,6 +249,7 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
 export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilySpecSchema.array().parse([]));
 
 export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([
+  { key: DEVELOPMENT_DEBUG_MIRROR_ENV, paths: ["src/models/config/secrets.ts"] },
   { key: "SystemRoot", paths: [NATIVE_PICKER_ENVIRONMENT_OWNER] },
   { key: "NODE_OPTIONS", paths: ["playwright.parity.config.ts"] },
   { key: "RELAY_TEST_HOST", paths: ["scripts/test/pc.ts"] },
@@ -350,7 +359,9 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
       ? "src/models/dashboard/dashboard-frontend-owner.ts"
       : spec.channel === "config-default"
         ? "src/models/config/host-display.ts"
-        : undefined;
+        : spec.channel === "development-diagnostics" && spec.key === DEVELOPMENT_DEBUG_MIRROR_ENV
+          ? "src/models/config/secrets.ts"
+          : undefined;
     if (expectedOwner === undefined) {
       violations.push(`${spec.key} retains forbidden active ${spec.channel} environment ownership`);
       continue;
