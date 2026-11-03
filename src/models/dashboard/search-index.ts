@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, NonNegativeIntSchema, PositiveIntSchema, ErrorCodeSchema, RunIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import { SearchMetadataSchema, CrossDateSearchStateFacetSchema, CrossDateSearchShapeFacetSchema, CrossDateSearchSystemFacetSchema } from "./search.js";
+import { SubjectProjectionSpecRuntimeSchema } from "../workflow/presentation.js";
 
 /** Public declared projection addresses; no source values or value-derived identities. */
 export const RunSearchDeclarationSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   version: PositiveIntSchema,
   contractFingerprint: FingerprintSchema,
-  subjectProjection: z.strictObject({ nodeId: z.string().min(1), fieldPath: z.string().min(1) }).nullable(),
+  subjectProjection: SubjectProjectionSpecRuntimeSchema.nullable(),
 });
 export const RunSearchIndexRecordSchema = z.strictObject({
   runId: RunIdSchema,

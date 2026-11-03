@@ -6,6 +6,8 @@ import { deriveEvidenceEntryId, evidenceEntryRef } from "../../../models/trust/e
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import { ProjectionDegradedError } from "../commands/refusals.js";
+import { EidSchema } from "../../../rules/identity/ids.js";
+import { directIdentifierDisplay } from "../../../rules/redaction/redaction.js";
 
 import type { JsonValue } from "../../../rules/validation/canonical-json.js";
 import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
@@ -23,6 +25,7 @@ export interface SubjectCheckpointSource {
 export interface SubjectProjectionAddress {
   readonly nodeId: string;
   readonly fieldPath: string;
+  readonly eidFieldPath?: string;
 }
 
 function isJsonRecord(value: JsonValue): value is { readonly [key: string]: JsonValue } {
@@ -71,7 +74,10 @@ export function resolveSubjectTitle(
       + "not be empty",
     );
   }
-  return name;
+  if (subjectProjection.eidFieldPath === undefined) return name;
+  const eid = leafAtPath(stored.output.value, subjectProjection.eidFieldPath);
+  if (eid.kind === "absent") throw new ProjectionDegradedError("subject-title-eid-missing");
+  return `${titleCasePersonName(name)} · EID ${directIdentifierDisplay(EidSchema.parse(eid.value))}`;
 }
 
 export function allowsSubjectIdentity(run: RunRecord, descriptor: AnyWorkflowDescriptor): boolean {
@@ -101,5 +107,8 @@ export function resolveResultTitle(descriptor: AnyWorkflowDescriptor, run: RunRe
   const value = verifiedResultDisplayValue(run, receipt, projection.fieldPath, "title");
   if (value === undefined || value === null) return inputTitle;
   if (typeof value !== "string" || value.trim() === "") throw new ProjectionDegradedError("result-title-value-invalid");
-  return titleCasePersonName(value);
+  const name = titleCasePersonName(value);
+  if (descriptor.subtitleProjection === undefined) return name;
+  const eid = verifiedResultDisplayValue(run, receipt, descriptor.subtitleProjection.fieldPath, "subtitle");
+  return eid === undefined || eid === null ? name : `${name} · EID ${directIdentifierDisplay(EidSchema.parse(eid))}`;
 }

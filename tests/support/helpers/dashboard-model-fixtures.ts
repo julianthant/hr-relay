@@ -172,7 +172,7 @@ export function createDashboardModelFixtures() {
 
       version: 7,
 
-      spreadsheetIntake: true,
+      spreadsheetIntake: true, requiredWorkbookTypeIds: [],
       inputRun: {
         placeholder: "Enter EIDs or names, semicolon-separated",
         parser: {

@@ -5,7 +5,7 @@ export type LogDecisionAction = Readonly<{
   id: string;
   label: string;
   primary?: boolean;
-  input?: Readonly<{ kind: "verification"; question: string }> | Readonly<{ kind: "date"; label: string }> | Readonly<{ kind: "candidate"; question: string; candidates: readonly Readonly<{ id: string; name: string; description: string }>[] }> | Readonly<{ kind: "text"; label: string; placeholder?: string; hint?: string; pattern?: string }>;
+  input?: Readonly<{ kind: "verification"; question: string }> | Readonly<{ kind: "date"; label: string }> | Readonly<{ kind: "candidate"; presentation?: "inline"; question: string; candidates: readonly Readonly<{ id: string; name: string; description: string }>[] }> | Readonly<{ kind: "text"; label: string; placeholder?: string; hint?: string; pattern?: string }>;
   result: Readonly<{ title: string; message: string; tone?: "info" | "danger" | "positive"; continues?: boolean }>;
 }>;
 export type LogDecision = Readonly<{

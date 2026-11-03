@@ -59,7 +59,7 @@ export function createAssistantPlanningAdapters(options: Readonly<{
         assertCurrent,
         assertSubjectBinding(input: SchemaBoundCanonicalValue) {
           const planning = workflowPlanning(descriptor);
-          const expected = JsonValueSchema.parse(planning.parseCanonicalInput(planning.parseInput(submission)));
+          const expected = JsonValueSchema.parse(planning.parseCanonicalInput(planning.parseInput(submission).input));
           if (input.schemaHash !== canonicalHash || canonicalJsonStringify(input.value) !== canonicalJsonStringify(expected)) throw new Error('assistant-subject-binding-unavailable');
           options.assertSubjectBinding(descriptor, currentSubject(subject.subjectRef), input);
           assertCurrent();

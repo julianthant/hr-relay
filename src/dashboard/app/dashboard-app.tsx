@@ -26,7 +26,7 @@ import { productWorkflowComposition, workflowSource, type WorkflowComposition, t
 import type { NavbarSearchResult } from "../surfaces/shell/search/navbar-view-model.js";
 import { ViewNavigationProvider } from "./navigation/view-navigation.js";
 import { useViewState, type RouteSetter } from "./navigation/view-route-model.js";
-import { buildWorkflowCatalog, servedLaunchWorkflows } from "../surfaces/workflows/workflow-catalog-model.js";
+import { buildWorkflowCatalog, servedLaunchWorkflows, workflowStartRestrictions } from "../surfaces/workflows/workflow-catalog-model.js";
 import { DashboardSkeleton, QueueSkeleton, RunPanelSkeleton } from "../surfaces/shared/loading/loading.js";
 import { SettingsSectionSkeleton } from "../surfaces/settings/settings-loading.js";
 import { RerunValuesRequestSchema } from "../../models/dashboard/rerun-values.js";
@@ -353,8 +353,8 @@ function LoadedApp({
     ? `Date ${day} is after Today (${today}).` : `Invalid date: ${day || "(empty)"}.`;
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
   const workflowComposition = useMemo(() => composeWorkflows(launchWorkflows(workflows)), [composeWorkflows, workflows]);
-  const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows), workflowComposition.catalogIncludesMocks ?? true, workflowComposition.sources), [workflows, workflowComposition]);
-  const explorerCatalog = useMemo(() => workflowComposition.explorerSources ? buildWorkflowCatalog(launchWorkflows(workflows), workflowComposition.catalogIncludesMocks ?? true, workflowComposition.explorerSources) : workflowCatalog, [workflows, workflowComposition, workflowCatalog]);
+  const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows), workflowComposition.catalogIncludesMocks ?? true, workflowComposition.sources, boot.featureAvailability), [workflows, workflowComposition, boot.featureAvailability]);
+  const explorerCatalog = useMemo(() => workflowComposition.explorerSources ? buildWorkflowCatalog(launchWorkflows(workflows), workflowComposition.catalogIncludesMocks ?? true, workflowComposition.explorerSources, boot.featureAvailability) : workflowCatalog, [workflows, workflowComposition, workflowCatalog, boot.featureAvailability]);
   const dataSources = workflowComposition.dataSources ?? workflowComposition.sources;
   const hasServedWorkflows = workflowComposition.servedDay ?? Object.values(dataSources).includes("served");
   const dayState = useDashboardDay((hasServedWorkflows || workflowComposition.sessions !== "mock") && dateSelection.state === "valid" ? day : undefined, nowIso, authorityEpoch, boot.actor.id);
@@ -387,7 +387,8 @@ function LoadedApp({
   const railPreview = route.run !== undefined && requestedPreview === null ? null : requestedPreview && !workflowCatalog.some(flow => flow.id === requestedPreview) ? requestedPreview
     : routeWorkflowId && workflowComposition.sourceForRoute(routeWorkflowId, requestedPreview !== null) === "mock" ? routeWorkflowId : null;
   const [allMockRuns, setMockRuns] = useState<readonly MockRun[]>(seedMockRuns);
-  const mockRuns = useMemo(() => allMockRuns.filter(run => workflowComposition.sourceForRoute(run.workflowId, true) === "mock"), [allMockRuns, workflowComposition]);
+  const startRestrictions = useMemo(() => workflowStartRestrictions(boot.featureAvailability), [boot.featureAvailability]);
+  const mockRuns = useMemo(() => allMockRuns.filter(run => !startRestrictions.has(run.workflowId) && workflowComposition.sourceForRoute(run.workflowId, true) === "mock"), [allMockRuns, workflowComposition, startRestrictions]);
   // The route selection clears after the removal commits; a run deleted here is not an unavailable destination.
   const [deletedMockRuns, setDeletedMockRuns] = useState<ReadonlySet<string>>(() => new Set());
   const launchWorkflow = route.view?.launchWorkflow;
@@ -1014,7 +1015,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
           {/* Intake is a durable workspace; leaving it must not discard mapping progress. */}
-          <DashboardTakeovers activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
+          <DashboardTakeovers onOpenRun={selectRun} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
             client={client} workflowCatalog={explorerCatalog} settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
@@ -1052,7 +1053,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
             <div className="dashboard-panel-columns">
               <div className="dashboard-queue-column">
                 <h1 className="sr-only">{previewFlow?.label ?? workflowLabelOf(activeWorkflowId)} queue</h1>
-              {previewFlow && dateSelection.state === "valid" ? <WorkflowMockQueue label={previewFlow.label} runs={railQueueRows} allRuns={mockRuns} selected={railRun} onSelect={setRailRun}
+              {startRestrictions.has(activeWorkflowId) && previewFlow ? <Panel className="min-h-0"><PanelBody><EmptyState title="Workflow unavailable" description={startRestrictions.get(activeWorkflowId)} /></PanelBody></Panel> : previewFlow && dateSelection.state === "valid" ? <WorkflowMockQueue label={previewFlow.label} runs={railQueueRows} allRuns={mockRuns} selected={railRun} onSelect={setRailRun}
                 onRetry={id => { const source = mockRetrySource(mockRuns, id); openMockLaunch({ workflowId: source.workflowId, source }); }}
                 onDelete={ids => { setDeletedMockRuns(previous => new Set([...previous, ...ids])); setMockRuns(previous => previous.filter(run => !ids.includes(run.id))); toast({ tone: "success", title: "Run deleted" }); if (railRun && ids.includes(railRun)) { setRailRun(undefined); setRailReviewId(undefined); } }}
                 day={day} nowIso={nowIso} anchorIso={boot.serverClock.now} sort={sort} filter={queueFilterScope} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (

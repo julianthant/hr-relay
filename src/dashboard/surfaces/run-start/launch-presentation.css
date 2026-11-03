@@ -191,7 +191,7 @@
 .launch-dialog .launch-picker .workflow-rail h3 { @apply text-body; }
 .launch-dialog .launch-picker .workflow-rail button { @apply h-8 rounded-[10px] font-normal; }
 
-.launch-dialog { display: grid; grid-template-columns: 190px minmax(0, 1fr); grid-template-rows: 73px minmax(0, 1fr) 57px; }
+.launch-dialog { display: grid; overflow: clip; grid-template-columns: 190px minmax(0, 1fr); grid-template-rows: 73px minmax(0, 1fr) 57px; }
 .launch-dialog.launch-rerun { grid-template-columns: minmax(0, 1fr); }
 .launch-dialog > header, .launch-dialog > footer { grid-column: 1 / -1; }
 
@@ -212,3 +212,8 @@
 .launch-dialog .launch-flags .ds-checkbox-row { flex-direction:row-reverse;align-items:center;justify-content:space-between; }
 .launch-dialog .launch-flags .ds-checkbox-copy { flex:1; }
 .launch-dialog .launch-flags .ds-switch-row { width:100%; }
+
+.launch-confirm-row { display:grid; grid-template-columns:minmax(120px,1fr) minmax(0,2fr); gap:24px; align-items:start; padding:14px 18px; font-size:var(--ds-text-ui); line-height:var(--ds-lh-ui); }
+.launch-confirm-row+.launch-confirm-row { border-top:1px solid var(--ui-stroke); }
+.launch-confirm-row dt { color:var(--ui-muted); }
+.launch-confirm-row dd { margin:0; overflow-wrap:anywhere; }

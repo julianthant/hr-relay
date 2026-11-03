@@ -101,6 +101,9 @@ source, and sheet targets show explicit unavailable states.
 The Queue displays selected workflow/day rows with title, status, outcome/warnings, timing,
 identity disclosure, and available actions. The focus toolbar sorts and filters the same row
 population. Focus mode and expanded wells are view coordinates; bulk selection is transient state.
+Confirmed person titles read `Last, First · EID #`, including operation members. The title resolver
+joins only a declared same-checkpoint identity or verified same-run result fields; unresolved searches
+keep their known input title. Operator names remain separate from the system subject.
 Escape exits selection. A row's `#N` footer is its attempt, followed by plain trace text and duration.
 The footer is one line. Delete confirms with the title, selected run, buttons, and the footer’s short run ID plus revision, without a description. Creation provenance belongs in the information disclosure.
 
