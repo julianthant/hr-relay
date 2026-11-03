@@ -1,7 +1,10 @@
+import { prepareBuildManifest } from "./scripts/build/workflow-build-manifest.js";
 import { defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 import { availableParallelism } from "node:os";
 import { scaledMs } from "./tests/support/time-scale.js";
+
+prepareBuildManifest(import.meta.dirname);
 
 export const REBUILD_COVERAGE_INCLUDE = ["src/**/*.ts", "src/**/*.tsx"] as const;
 export const REBUILD_UNIT_TEST_INCLUDE = ["tests/**/*.test.ts"] as const;

@@ -19,7 +19,7 @@ export function buildI9ProfileCreation(author: WorkflowAuthor<typeof OnboardingI
   return { profile, steps: [[group, [profile]]] as const,
     result: author.result(OnboardingResultSchema, [crm.plan, ucpath.subject, profile], ({ outputs }) => ({
       state: "implementation-incomplete", plan: outputs["hire-plan"], subject: outputs["hire-subject"], i9: outputs["i9-profile-plan"],
-      hireWrite: { state: "unimplemented", owner: "write-safety" }, rosterAccess: { state: "unimplemented", owner: "spreadsheets" },
+      hireWrite: { state: "unimplemented", owner: "write-safety" }, rosterAccess: { state: "snapshot-bound", owner: "spreadsheets" },
     } as const)) };
 }
 
