@@ -32,6 +32,19 @@ export function parsePrototypeSid(bytes: Buffer): string {
   const parts = Array.from({ length: bytes[1] }, (_, i) => bytes.readUInt32LE(8 + i * 4));
   return `S-1-${authority}${parts.map((part) => `-${part}`).join("")}`;
 }
+export function parsePrototypeTokenUser(bytes: Buffer, base: bigint, returnedLength: number): string {
+  requireFact(Number.isInteger(returnedLength) && returnedLength >= 16 && returnedLength <= bytes.length,
+    "native-token-query-size");
+  const end = base + BigInt(returnedLength);
+  requireFact(base > 0n && end <= 0x10000000000000000n, "native-token-buffer-address");
+  const pointer = bytes.readBigUInt64LE(0);
+  requireFact(pointer >= base + 16n && pointer % 4n === 0n && pointer + 8n <= end,
+    "native-token-sid-pointer");
+  const offset = Number(pointer - base);
+  const length = 8 + bytes[offset + 1] * 4;
+  requireFact(offset + length <= returnedLength, "native-token-sid-truncated");
+  return parsePrototypeSid(bytes.subarray(offset, offset + length));
+}
 export function parsePrototypeAcl(bytes: Buffer): NativeAce[] {
   requireFact(bytes.length >= 8 && [2, 4].includes(bytes[0]) && bytes.readUInt16LE(2) === bytes.length,
     "native-acl-malformed");
@@ -185,8 +198,7 @@ async function loadNative() {
       const bytes = Buffer.alloc(4096), length = [0];
       requireFact(nativeBool(tokenInfo(token.handle, 1, bytes, bytes.length, length)) && length[0] >= 16
         && length[0] <= bytes.length, "native-token-query-unproved");
-      const pointer: unknown = koffi.decode(bytes, "void *");
-      return sid(pointer);
+      return parsePrototypeTokenUser(bytes, koffi.address(bytes), length[0]);
     } finally { closeResource(token); }
   }
   function facts(item: Resource): NativeFacts {

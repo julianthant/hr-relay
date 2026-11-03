@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { parsePrototypeAcl, parsePrototypeSid, parsePrototypeStreams, windowsNativePrototype } from "./windows-native-prototype.js";
+import { parsePrototypeAcl, parsePrototypeSid, parsePrototypeStreams, parsePrototypeTokenUser, windowsNativePrototype } from "./windows-native-prototype.js";
 
 describe("Windows prototype portable parsing contracts (not native proof)", () => {
   it("keeps SID authority and subauthorities exact and refuses malformed lengths", () => {
@@ -9,6 +9,22 @@ describe("Windows prototype portable parsing contracts (not native proof)", () =
     assert.throws(() => parsePrototypeSid(sid.subarray(0, 11)), /native-sid-length/u);
     sid[1] = 16;
     assert.throws(() => parsePrototypeSid(sid), /native-sid-malformed/u);
+  });
+  it("reads TOKEN_USER SID only inside its owning buffer and returned extent", () => {
+    const bytes = Buffer.alloc(64), base = 1n << 54n;
+    bytes.writeBigUInt64LE(base + 32n, 0);
+    Buffer.from([1, 1, 0, 0, 0, 0, 0, 5, 18, 0, 0, 0]).copy(bytes, 32);
+    assert.equal(parsePrototypeTokenUser(bytes, base, 44), "S-1-5-18");
+    assert.throws(() => parsePrototypeTokenUser(bytes, base, 43), /native-token-sid-truncated/u);
+    for (const pointer of [base - 4n, base + 8n, base + 33n, base + 40n, base + 64n]) {
+      bytes.writeBigUInt64LE(pointer, 0);
+      assert.throws(() => parsePrototypeTokenUser(bytes, base, 44), /native-token-sid-pointer/u);
+    }
+    bytes.writeBigUInt64LE(base + 32n, 0);
+    bytes[33] = 16;
+    assert.throws(() => parsePrototypeTokenUser(bytes, base, 64), /native-token-sid-truncated/u);
+    assert.throws(() => parsePrototypeTokenUser(bytes, base, 65), /native-token-query-size/u);
+    assert.throws(() => parsePrototypeTokenUser(bytes, 0n, 64), /native-token-buffer-address/u);
   });
   it("parses an explicit allow ACE and refuses unsupported/truncated ACEs", () => {
     const acl = Buffer.alloc(28);
