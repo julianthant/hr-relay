@@ -27,6 +27,8 @@ import type { WorkerRunResources } from "../../../runtime/workers/worker-loop.js
 import { selectRunSettings } from "../../../runs/settings/run-settings.js";
 import { createWorkbookLibraryAdapter } from "../../../processing/providers/workbook-library-adapter.js";
 import { createRunWorkbookService } from "../../../runs/workbooks.js";
+import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
+import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;
@@ -74,6 +76,11 @@ export function createRunResourcesFactory(input:Readonly<{
    const key=`${run.envelope.runId}:${run.envelope.attempt}:${run.claimGeneration}:${snapshot.fingerprint}`;
    const resources=runCache.get(key)??Object.freeze({...baseline,providers:{...baseline.providers,adapters:Object.freeze({...baseline.providers.adapters,
     "workbooks.library":createWorkbookLibraryAdapter({runId:run.envelope.runId,repository:input.authority.workbooks,clock:input.clock,
+     publicationSource:()=>{
+      const module=[...WORKFLOW_MODULES,...CHILD_ONLY_WORKFLOW_MODULES].find(module=>module.descriptor.id===run.envelope.workflow);
+      if(module===undefined)throw new WorkbookLibraryError("WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE");
+      return {workflowId:module.descriptor.id,workflowLabel:module.descriptor.label};
+     },
       references:{runId:run.envelope.runId,write:command=>runWorkbooks.write(run,command)}}),
    })}});
    runCache.set(key,resources);

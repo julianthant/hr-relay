@@ -235,6 +235,16 @@ schema and send parsed output. The raw-draft fingerprint invalidates plans even 
 edits; each async settlement retains its dispatch fingerprint. Confirmed cancellation creates no
 new run. Rerun creates a new attempt with explicit lineage, never overwrites the original.
 
+The workbook catalogue uses the existing client facade for named version create/use/rename/delete,
+source/type changes and removal. Its catalogue revision and editable workbook revision both bind a
+mutation. The immutable action record supports a read-only result check after a lost response;
+a refresh never resubmits a change. Removing catalogue membership keeps retained snapshot evidence.
+`workbookLibraryVersion` reads exact named bytes independently of the numeric editable revision.
+Reference requests may choose `versionId`; the retained snapshot carries its matching `versionId`
+and `versionName`, while `version` remains the current library CAS revision. Row-choice producers
+read named bytes through `WorkbookLibraryRepository.libraryVersion`, preserving selected worksheet
+and row identities even when a run chooses a version other than the one in use.
+
 Runs with captured workbook references advertise the lazy `workbook-writes` section. Native receipt
 events order its existing Logs decision rows. Row choices carry the original receipt digest and live
 workbook revision; confirmations send only worksheet/row identity through `resolve-workbook-row`.

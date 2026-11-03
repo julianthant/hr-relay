@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { afterEach, expect, it } from "vitest";
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION } from "../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { createWorkflowWorkbookService } from "../../../src/backend/workbooks/workflow-workbook-service.js";
 import { WorkbookLibraryError } from "../../../src/backend/workbooks/workbook-library-service.js";
 import { WorkflowWorkbookCommandSchema, type WorkflowWorkbookCommand } from "../../../src/models/processing/workbooks/read-result.js";
@@ -27,15 +27,16 @@ const table = i9CheckWorkbookTable([i9RetentionRow({ input: i9CheckInput, initia
 const command = (): WorkflowWorkbookCommand => WorkflowWorkbookCommandSchema.parse({ name: "I-9 results", table });
 function fixture() {
   const database = new DatabaseSync(":memory:"); databases.push(database);
-  for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements]) database.exec(statement);
+  for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(statement);
   const repository = createWorkbookLibraryRepository({ database, read: work => work(), mutate: work => {
     database.exec("BEGIN");
     try { const result = work(); database.exec("COMMIT"); return result.result; }
     catch (cause) { database.exec("ROLLBACK"); throw cause; }
   } });
   const clock = manualClock(new Date("2026-11-01T00:00:00.000Z"));
-  const service = createWorkflowWorkbookService({ repository, clock });
-  return { database, repository, service, clock };
+  const publicationSource = () => ({ workflowId: 'i9-check', workflowLabel: 'I-9 Check' });
+  const service = createWorkflowWorkbookService({ repository, clock, publicationSource });
+  return { database, repository, service, clock, publicationSource };
 }
 function saved(result: Awaited<ReturnType<ReturnType<typeof fixture>["service"]["publish"]>>) {
   if (result.state !== "saved") throw new Error("Fixture publication refused");
@@ -48,6 +49,8 @@ it("workbooks/publish — creates one library workbook per run and replays the s
   expect(concurrent[0]).toEqual(concurrent[1]);
   expect(saved(concurrent[0]).libraryId).not.toBe(first.libraryId);
   expect(f.repository.list()).toHaveLength(2);
+  expect(f.repository.libraryState(first.libraryId).origin).toEqual({ kind: 'workflow', runId, workflowId: 'i9-check',
+    workflowLabel: 'I-9 Check', rowCount: table.rows.length, rowSubject: 'person' });
   expect(f.repository.history(first.libraryId)).toHaveLength(0);
   const workbook = f.repository.read(first.libraryId)?.workbook;
   expect(workbook?.sheets[0].rows[1].cells[1]).toEqual({ value: "000012345", numFmt: "@" });

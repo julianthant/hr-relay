@@ -148,8 +148,9 @@ export const WorkbookOperationRecordSchema = z.strictObject({ libraryId: Workboo
 export type WorkbookOperationRecord = z.infer<typeof WorkbookOperationRecordSchema>;
 export const WorkbookNamedVersionSchema = z.strictObject({ name: NameSchema, provenance: z.enum(['operator', 'migration']), snapshot: SavedWorkbookWireSchema });
 export const WorkbookReferenceRequestSchema = z.strictObject({ typeId: WorkbookIdSchema, libraryId: WorkbookIdSchema.optional(),
-  keys: z.array(z.string().min(1)), fields: z.array(FieldSchema) });
+  versionId: WorkbookIdSchema.optional(), keys: z.array(z.string().min(1)), fields: z.array(FieldSchema) });
 export const WorkbookReferenceSnapshotSchema = z.strictObject({ libraryId: WorkbookIdSchema, version: z.number().int().positive(),
+  versionId: WorkbookIdSchema.optional(), versionName: NameSchema.optional(),
   worksheets: z.array(z.strictObject({ sheetId: WorkbookIdSchema, name: NameSchema })).min(1),
   type: WorkbookTypeSchema, rows: z.array(z.strictObject({ key: z.string(), state: z.enum(['matched', 'missing', 'ambiguous']),
     matches: z.array(z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema, values: z.record(FieldSchema, WorkbookCellValueWireSchema) })) })) });
@@ -158,6 +159,8 @@ export const RunWorkbookReferenceSchema = z.strictObject({ request: WorkbookRefe
   const { request, snapshot } = reference;
   const sheets = new Set(snapshot.worksheets.map(sheet => sheet.sheetId));
   if (request.typeId !== snapshot.type.id || request.libraryId !== undefined && request.libraryId !== snapshot.libraryId
+    || request.versionId !== undefined && request.versionId !== snapshot.versionId
+    || (snapshot.versionId === undefined) !== (snapshot.versionName === undefined)
     || new Set(request.keys).size !== request.keys.length || new Set(request.fields).size !== request.fields.length
     || sheets.size !== snapshot.worksheets.length || request.keys.length !== snapshot.rows.length
     || snapshot.rows.some((row, index) => row.key !== request.keys[index]
