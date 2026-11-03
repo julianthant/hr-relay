@@ -1,3 +1,4 @@
+import { PersonPreferencesSchema } from "../../../src/models/config/person-preferences.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -79,6 +80,7 @@ function readerRules(rows: readonly ReaderCatalogRow[]): readonly ReaderRule[] {
   return [
     { declaration: "resolveConfigWithProvenance", keys: ordinaryComposition },
     { declaration: "createSettingsRuntimeReader", keys: settingsReadback },
+    { declaration: "preferencesFromSettings", keys: rows.filter(({ key }) => key.startsWith("preferences.")).map(({ key }) => key) },
     { declaration: "createProtectedSettingsRuntimeReader", keys: protectedReadback },
     { declaration: "defaultRuntimePaths", keys: rows.filter(({ defaultKind }) => defaultKind === "runtime-path").map(({ key }) => key) },
     { declaration: "providerInvocationConfig", keys: Object.values(PROVIDER_CAPABILITY_CONFIG_KEYS).map((key) => `providers.${key}`) },
@@ -153,10 +155,11 @@ function assertRecursivelyFrozen(value: unknown): void {
 
 describe("settings catalog", () => {
   it("covers every schema leaf and every secret family in both directions", () => {
-    const leaves = schemaLeaves(z.toJSONSchema(ConfigSchema));
+    const leaves = [...schemaLeaves(z.toJSONSchema(ConfigSchema)), ...schemaLeaves(z.toJSONSchema(PersonPreferencesSchema), "preferences")];
     assert.deepEqual(coverageViolations(leaves), []);
     assert.deepEqual(coverageViolations([...leaves, "uncatalogued.setting"]), ["uncatalogued.setting"]);
     assert.deepEqual(coverageViolations(leaves.filter((leaf) => leaf !== "actor.label")), ["actor.label"]);
+    assert.deepEqual(coverageViolations(leaves.filter((leaf) => leaf !== "preferences.theme")), ["preferences.theme"]);
     const external = SECRET_SPECS
       .map((spec) => spec.name);
     assert.deepEqual(SETTINGS_CATALOG.filter((row) => !["ordinary-settings", "runtime-isolation", "derived-host"].includes(row.sourceClass))
@@ -168,7 +171,7 @@ describe("settings catalog", () => {
 
   it("generates exactly ordinary document members with no protected leaf", () => {
     const ordinary = schemaLeaves(z.toJSONSchema(SettingsOverrideSchema)).filter((leaf) => !leaf.includes(".test."));
-    const expected = schemaLeaves(z.toJSONSchema(ConfigSchema)).filter((leaf) =>
+    const expected = [...schemaLeaves(z.toJSONSchema(ConfigSchema)), ...schemaLeaves(z.toJSONSchema(PersonPreferencesSchema), "preferences")].filter((leaf) =>
       SETTINGS_CATALOG.some((row) => row.sourceClass === "ordinary-settings"
         && (leaf === row.key || leaf.startsWith(`${row.key}.`))));
     assert.deepEqual(ordinary.sort(), expected.sort());
@@ -179,12 +182,12 @@ describe("settings catalog", () => {
     assert.equal(SettingsOverrideSchema.safeParse({ urls: { kuali: { test: { entry: "https://example.invalid" } } } }).success, true);
     assert.throws(() => ordinarySettingsObject("actor", z.strictObject({ id: z.string() })), /actor.label is missing/u);
   });
-  it("pins the 64-row closed registry and refuses a missing or duplicated row", () => {
-    assert.equal(SETTINGS_CATALOG.length, 64);
+  it("pins the 74-row closed registry and refuses a missing or duplicated row", () => {
+    assert.equal(SETTINGS_CATALOG.length, 74);
     assert.deepEqual(Object.fromEntries([
       "ordinary-settings", "protected-store", "derived-host", "runtime-isolation",
     ].map((sourceClass) => [sourceClass, SETTINGS_CATALOG.filter((row) => row.sourceClass === sourceClass).length])), {
-      "ordinary-settings": 55,
+      "ordinary-settings": 65,
       "protected-store": 5,
       "derived-host": 1,
       "runtime-isolation": 3,
