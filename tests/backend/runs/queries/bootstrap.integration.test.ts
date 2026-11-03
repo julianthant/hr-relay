@@ -109,7 +109,7 @@ describe("bootstrap start-surface block", () => {
           enqueue: descriptor.enqueue,
           version: descriptor.version,
 
-          spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined,
+          spreadsheetIntake: INTAKE_PROJECTIONS[String(descriptor.id)] !== undefined, requiredWorkbookTypeIds: [...descriptor.requiredWorkbookTypeIds],
           steps: projectStartSteps(descriptor).map((step) => ({
             key: step.key,
             label: step.label,
@@ -193,6 +193,19 @@ describe("bootstrap start-surface block", () => {
     }
   });
 });
+it('serves the missing workflow backends as explicit start restrictions', async () => {
+  const world = await makeWorld();
+  try {
+    const wire = buildBootstrap(depsOf(world));
+    for (const id of ['i9-check', 'onboarding', 'crm-doc-download']) {
+      const capability = wire.featureAvailability.find(feature => feature.feature === `workflow-start:${id}`)?.availability;
+      expect(capability?.state).toBe('unavailable');
+      if (capability?.state !== 'unavailable') throw new Error('missing workflow start refusal');
+      expect(capability.reason).toMatch(/not available|not implemented/);
+    }
+  } finally { await world.dispose(); }
+});
+
 }
 
 {

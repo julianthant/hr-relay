@@ -1,3 +1,6 @@
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { WorkbookRunReferenceSelectionSchema } from "../../../models/dashboard/workbooks.js";
+import type { WorkbookLibraryEntry } from "../../../models/dashboard/workbook-library.js";
 import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 import {
   stepOmissionFactsSchema,
@@ -432,4 +435,14 @@ export function toggleStepSelection(
   const stillForced = forcedStepOmissions(steps, [...selected]);
   for (const forced of stillForced.keys()) selected.delete(forced);
   return Object.freeze(steps.filter((candidate) => selected.has(candidate.key)).map((candidate) => candidate.key));
+}
+
+export function launchWorkbookReferences(requiredTypes: readonly string[], catalog: readonly WorkbookLibraryEntry[],
+  selections: Readonly<Record<string, { libraryId: string; versionId: string }>>, submissionCount: number) {
+  return Array.from({ length: submissionCount }, (_, index) => requiredTypes.map(typeId => {
+    const selection = selections[typeId];
+    const entry = catalog.find(entry => entry.type.id === typeId && entry.libraryId === selection?.libraryId);
+    if (!entry || !entry.state.versions.some(version => version.id === selection.versionId)) throw new Error(ERROR_CATALOG.WORKBOOK_INVALID.text);
+    return WorkbookRunReferenceSelectionSchema.parse({ entry: index + 1, typeId, libraryId: entry.libraryId, versionId: selection.versionId });
+  })).flat();
 }

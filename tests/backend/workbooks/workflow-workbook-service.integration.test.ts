@@ -34,7 +34,7 @@ function fixture() {
     catch (cause) { database.exec("ROLLBACK"); throw cause; }
   } });
   const clock = manualClock(new Date("2026-11-01T00:00:00.000Z"));
-  const publicationSource = () => ({ workflowId: 'i9-check', workflowLabel: 'I-9 Check' });
+  const publicationSource = () => ({ workflowId: 'i9-check', workflowLabel: 'I-9 Check', partitionDay: '2026-10-31' });
   const service = createWorkflowWorkbookService({ repository, clock, publicationSource });
   return { database, repository, service, clock, publicationSource };
 }
@@ -50,7 +50,7 @@ it("workbooks/publish — creates one library workbook per run and replays the s
   expect(saved(concurrent[0]).libraryId).not.toBe(first.libraryId);
   expect(f.repository.list()).toHaveLength(2);
   expect(f.repository.libraryState(first.libraryId).origin).toEqual({ kind: 'workflow', runId, workflowId: 'i9-check',
-    workflowLabel: 'I-9 Check', rowCount: table.rows.length, rowSubject: 'person' });
+    workflowLabel: 'I-9 Check', partitionDay: '2026-10-31', rowCount: table.rows.length, rowSubject: 'person' });
   expect(f.repository.history(first.libraryId)).toHaveLength(0);
   const workbook = f.repository.read(first.libraryId)?.workbook;
   expect(workbook?.sheets[0].rows[1].cells[1]).toEqual({ value: "000012345", numFmt: "@" });

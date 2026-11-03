@@ -212,3 +212,8 @@
 .launch-dialog .launch-flags .ds-checkbox-row { flex-direction:row-reverse;align-items:center;justify-content:space-between; }
 .launch-dialog .launch-flags .ds-checkbox-copy { flex:1; }
 .launch-dialog .launch-flags .ds-switch-row { width:100%; }
+
+.launch-confirm-row { display:grid; grid-template-columns:minmax(120px,1fr) minmax(0,2fr); gap:24px; align-items:start; padding:14px 18px; font-size:var(--ds-text-ui); line-height:var(--ds-lh-ui); }
+.launch-confirm-row+.launch-confirm-row { border-top:1px solid var(--ui-stroke); }
+.launch-confirm-row dt { color:var(--ui-muted); }
+.launch-confirm-row dd { margin:0; overflow-wrap:anywhere; }

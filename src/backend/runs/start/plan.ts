@@ -187,6 +187,11 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
     const display = protectedSubjectDisplay(bindings, () => ({ title: planning.title(parsed), subtitle: planning.subtitle(parsed) }));
     const references = selections.filter(selection => selection.entry === entry);
     const requiredTypes = planning.requiredWorkbookTypeIds;
+    const lookups = planning.referenceLookups(parsed);
+    if (lookups.length !== requiredTypes.length || new Set(lookups.map(lookup => lookup.typeId)).size !== lookups.length
+      || lookups.some(lookup => !requiredTypes.includes(lookup.typeId))) {
+      refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
+    }
     if (references.length !== requiredTypes.length || new Set(references.map(reference => reference.typeId)).size !== references.length
       || references.some(reference => !requiredTypes.includes(reference.typeId))) {
       refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_INVALID.text); continue;
@@ -196,17 +201,22 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
       const workbooks = deps.workbooks;
       if (workbooks === undefined) { refuse("capability-unavailable", ERROR_CATALOG.WORKBOOK_PROVIDER_UNAVAILABLE.text); continue; }
       try {
-        workbookReferences = references.map(({ entry: _entry, ...reference }) => ({
-          schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output"),
-          value: JsonValueSchema.parse(RunWorkbookReferenceSchema.parse({ request: reference, snapshot: workbooks.snapshot(reference) })),
-        }));
+        workbookReferences = references.map(({ entry: _entry, ...selection }) => {
+          const lookup = lookups.find(lookup => lookup.typeId === selection.typeId);
+          if (lookup === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          const reference = { ...lookup, ...selection };
+          return { schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output"),
+            value: JsonValueSchema.parse(RunWorkbookReferenceSchema.parse({ request: reference, snapshot: workbooks.snapshot(reference) })) };
+        });
       } catch (error) {
         if (!(error instanceof WorkbookLibraryError)) throw error;
         refuse("capability-unavailable", error.message); continue;
       }
     }
+    const outputs = planning.plannedOutputs(parsed, (workbookReferences ?? []).map(reference => RunWorkbookReferenceSchema.parse(reference.value)));
     seenItemIds.add(itemId);
     planned.push(PlannedRunSchema.parse({
+      ...(outputs.length === 0 ? {} : { outputs }),
       ...(workbookReferences === undefined ? {} : { workbookReferences }),
       ...(descriptor.enqueue !== "supersede-active" ? {} : { supersedeTargets: startSupersedeTargets(
         deps.authority.authority.runs.listByItem({ workflow: descriptor.id, itemId })) }),

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { WorkbookLibraryStateSchema, WorkbookLibraryEntrySchema, WorkbookLibrarySnapshotSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, type WorkbookLibraryState, type WorkbookLibraryActionRecord } from "../../../models/dashboard/workbook-library.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { applyMasterChange, WorkbookOwnershipSchema, workbookMatches } from "../../workbooks/master-changes.js";
+import { applyMasterChange, mergeMasterWorkbooks, WorkbookOwnershipSchema, workbookMatches } from "../../workbooks/master-changes.js";
 import { WorkbookReferenceRequestSchema, WorkbookReferenceSnapshotSchema, WorkbookTypeSchema, WorkbookMetadataSchema, WorkbookNamedVersionSchema, WorkbookOperationSchema, WorkbookOperationReceiptSchema, decodeEditableWorkbook } from "../../../models/dashboard/workbooks.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -360,7 +360,37 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
         if (version === undefined) throw new WorkbookLibraryError('WORKBOOK_REVISION_UNAVAILABLE');
         return version;
       };
-      if (change.kind === 'create-version') {
+      if (change.kind === 'merge') {
+        if (change.sources.some(source => source.libraryId === id)) throw new WorkbookLibraryError('WORKBOOK_INVALID');
+        const sources = [{ libraryId: id, expectedRevision: state.revision, expectedVersion: before.version }, ...change.sources].map(source => {
+          const state = libraryState(source.libraryId), record = required(source.libraryId), meta = metadata(source.libraryId);
+          if (state.removed) throw new WorkbookLibraryError('WORKBOOK_NOT_FOUND');
+          if (state.revision !== source.expectedRevision || record.version !== source.expectedVersion) throw new WorkbookLibraryError('WORKBOOK_VERSION_CONFLICT');
+          if (inUse(source.libraryId, at)) throw new WorkbookLibraryError('WORKBOOK_LIBRARY_IN_USE');
+          if (meta.typeId !== metadata(id).typeId || state.origin.kind !== 'local') throw new WorkbookLibraryError('WORKBOOK_MERGE_INVALID');
+          return { state, record, meta, view: libraryVersion(source.libraryId) };
+        });
+        const workbookType = type(metadata(id).typeId);
+        if (workbookType === undefined) throw new WorkbookLibraryError('WORKBOOK_STORAGE_CORRUPT');
+        const merged = mergeMasterWorkbooks(sources.map(source => ({ libraryId: source.record.libraryId,
+          savedAt: source.view.version.savedAt, workbook: source.view.workbook })), workbookType, change.name, change.duplicates);
+        if (merged === undefined) throw new WorkbookLibraryError('WORKBOOK_MERGE_INVALID');
+        apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
+          change: { kind: 'save', expectedVersion: before.version, workbook: merged } });
+        apply({ operationId: `library:${action.operationId}:metadata`, source: { kind: 'operator' }, at,
+          change: { kind: 'metadata', expectedVersion: required(id).version, metadata: { ...metadata(id), sharePoint: null } } });
+        for (const source of sources.slice(1)) {
+          const snapshotId = putLibrarySnapshot(id, `${action.operationId}:${source.record.libraryId}`, { ...source.view.workbook, libraryId: id });
+          next.versions.push({ id: `${action.operationId}:${source.record.libraryId}`, name: `From ${source.record.workbook.name}`,
+            snapshotId, version: source.view.version.version, savedAt: source.view.version.savedAt, source: 'retained' });
+          putLibraryState({ ...source.state, revision: source.state.revision + 1, removed: true });
+          changes += 2;
+        }
+        if (change.sources.some(source => source.libraryId === workbookType.defaultWorkbookId)) {
+          database.prepare('UPDATE workbook_types SET payload_json=? WHERE id=?').run(canonicalJsonStringify({ ...workbookType, defaultWorkbookId: id }), workbookType.id);
+          changes++;
+        }
+      } else if (change.kind === 'create-version') {
         let version: number, snapshotId: string;
         if (change.from.kind === 'sharepoint') {
           const meta = metadata(id);
@@ -387,6 +417,10 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
         next.versions.push({ id: action.operationId, snapshotId, name: change.name, version, savedAt: at,
           source: change.from.kind === 'sharepoint' ? 'sharepoint' : 'operator' });
         next.selectedVersionId = change.useNow ? action.operationId : state.selectedVersionId;
+      } else if (change.kind === 'sync') {
+        if (sharePointWorkbook === undefined || metadata(id).sharePoint === null) throw new WorkbookLibraryError('WORKBOOK_SYNC_LINK_REQUIRED');
+        apply({ operationId: `library:${action.operationId}`, source: { kind: 'sync', syncId: action.operationId }, at,
+          change: { kind: 'sync', expectedVersion: before.version, workbook: sharePointWorkbook } });
       } else if (change.kind === 'rename-version') {
         selected(change.versionId);
         next.versions = next.versions.map(version => version.id === change.versionId ? { ...version, name: change.name } : version);
@@ -406,6 +440,9 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
       } else if (change.kind === 'metadata') {
         apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
           change: { kind: 'metadata', expectedVersion: before.version, metadata: change.metadata } });
+      } else if (change.kind === 'link' || change.kind === 'unlink') {
+        apply({ operationId: `library:${action.operationId}`, source: { kind: 'operator' }, at,
+          change: { kind: 'metadata', expectedVersion: before.version, metadata: { ...metadata(id), sharePoint: change.kind === 'unlink' ? null : { url: change.url, verifiedAt: at } } } });
       } else {
         if (inUse(id, at)) throw new WorkbookLibraryError('WORKBOOK_LIBRARY_IN_USE');
         next.removed = true;

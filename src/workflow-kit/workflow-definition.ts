@@ -807,6 +807,7 @@ export function defineStep<const Spec extends {
 export function inheritStepProof<Input extends z.ZodType>(parent: WorkflowDefinition<Input>) {
   return {
     requiredWorkbookTypeIds: parent.requiredWorkbookTypeIds,
+    ...(parent.referenceLookups === undefined ? {} : { referenceLookups: parent.referenceLookups }),
     version: 1,
     icon: parent.icon,
     category: parent.category,

@@ -28,6 +28,7 @@ import { selectRunSettings } from "../../../runs/settings/run-settings.js";
 import { createWorkbookLibraryAdapter } from "../../../processing/providers/workbook-library-adapter.js";
 import { createRunWorkbookService } from "../../../runs/workbooks.js";
 import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
+import { searchPartitionDay } from "../../../../models/dashboard/search-calendar.js";
 import { WorkbookLibraryError } from "../../../workbooks/workbook-library-service.js";
 
 export function createRunResourcesFactory(input:Readonly<{
@@ -79,7 +80,7 @@ export function createRunResourcesFactory(input:Readonly<{
      publicationSource:()=>{
       const module=[...WORKFLOW_MODULES,...CHILD_ONLY_WORKFLOW_MODULES].find(module=>module.descriptor.id===run.envelope.workflow);
       if(module===undefined)throw new WorkbookLibraryError("WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE");
-      return {workflowId:module.descriptor.id,workflowLabel:module.descriptor.label};
+      return {workflowId:module.descriptor.id,workflowLabel:module.descriptor.label,partitionDay:searchPartitionDay(new Date(run.envelope.enqueuedAt))};
      },
       references:{runId:run.envelope.runId,write:command=>runWorkbooks.write(run,command)}}),
    })}});

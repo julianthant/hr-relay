@@ -60,7 +60,7 @@ for (const theme of PARITY_THEMES) test(`OnBase document type selection and revi
       await expect(dialog).not.toContainText("Unavailable");
       await dialog.locator('input[type="file"]').setInputFiles(pdf);
       await advance(dialog); await advance(dialog);
-      await expect(dialog.getByRole("region", { name: "Confirm", exact: true }).locator("dl")).toContainText(type);
+      await expect(dialog.getByRole("region", { name: "Confirm", exact: true }).getByRole("group", { name: "Run plan", exact: true })).toContainText(type);
       await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
       await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: /^Records \d+$/u }).click();
@@ -201,7 +201,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await expect(confirmation).toContainText("Headless · screenshots required");
         if (optional === undefined) await expect(confirmation).not.toContainText("Omitted");
         else await expect(confirmation).toContainText(readingOnly ? "Off · enter records in review" : `Omitted: ${optional.label}`);
-        await expect(confirmation.locator("dl")).toHaveCSS("font-family", /-apple-system/);
+        await expect(confirmation.getByRole("group", { name: "Run plan", exact: true }).locator("dl")).toHaveCSS("font-family", /-apple-system/);
         await expect(confirmation.locator("details")).toHaveCount(0);
         await expect(confirmation.getByText("Workflow plan", { exact: true })).toHaveCount(0);
         expect((await dialog.locator(":scope > footer").boundingBox())!.height).toBe(57);

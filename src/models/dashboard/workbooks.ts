@@ -154,7 +154,9 @@ export const WorkbookReferenceSnapshotSchema = z.strictObject({ libraryId: Workb
   worksheets: z.array(z.strictObject({ sheetId: WorkbookIdSchema, name: NameSchema })).min(1),
   type: WorkbookTypeSchema, rows: z.array(z.strictObject({ key: z.string(), state: z.enum(['matched', 'missing', 'ambiguous']),
     matches: z.array(z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema, values: z.record(FieldSchema, WorkbookCellValueWireSchema) })) })) });
-export const WorkbookRunReferenceSelectionSchema = WorkbookReferenceRequestSchema.extend({ entry: z.number().int().positive() });
+export const WorkbookReferenceLookupSchema = WorkbookReferenceRequestSchema.pick({ typeId: true, keys: true, fields: true });
+export const WorkbookRunReferenceSelectionSchema = WorkbookReferenceRequestSchema.pick({ typeId: true, libraryId: true, versionId: true }).extend({ entry: z.number().int().positive() });
+export type WorkbookReferenceLookup = z.infer<typeof WorkbookReferenceLookupSchema>;
 export const RunWorkbookReferenceSchema = z.strictObject({ request: WorkbookReferenceRequestSchema, snapshot: WorkbookReferenceSnapshotSchema }).superRefine((reference, ctx) => {
   const { request, snapshot } = reference;
   const sheets = new Set(snapshot.worksheets.map(sheet => sheet.sheetId));
@@ -174,3 +176,5 @@ export type WorkbookType = z.infer<typeof WorkbookTypeSchema>;
 export type WorkbookMetadata = z.infer<typeof WorkbookMetadataSchema>;
 export type WorkbookOperation = z.infer<typeof WorkbookOperationSchema>;
 export type WorkbookOperationReceipt = z.infer<typeof WorkbookOperationReceiptSchema>;
+
+export type RunWorkbookReference = z.infer<typeof RunWorkbookReferenceSchema>;

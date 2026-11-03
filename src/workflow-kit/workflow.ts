@@ -1,3 +1,5 @@
+import { WorkbookReferenceLookupSchema, type WorkbookReferenceLookup, type RunWorkbookReference } from "../models/dashboard/workbooks.js";
+import { PlannedRunOutputSchema, type PlannedRunOutput } from "../models/dashboard/run-outputs.js";
 import type { RunContinuation } from "../models/run/continuation.js";
 import { DryRunStepSchema } from "../models/workflow/dry-run.js";
 import { WorkbookIdSchema } from "../models/dashboard/workbooks.js";
@@ -207,6 +209,8 @@ export interface WorkflowDescriptor<
   readonly contractFingerprint: Fingerprint;
   /** Existing references or linked masters this workflow directly needs. */
   readonly requiredWorkbookTypeIds: readonly string[];
+  readonly referenceLookups?: (input: z.output<InputSchema>) => readonly WorkbookReferenceLookup[];
+  readonly plannedOutputs?: (input: z.output<InputSchema>, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
   readonly code: string;
   readonly label: string;
   readonly sessionLabel?: string;
@@ -264,6 +268,8 @@ export interface AnyWorkflowDescriptor {
   readonly version: number;
   readonly contractFingerprint: Fingerprint;
   readonly requiredWorkbookTypeIds: readonly string[];
+  readonly referenceLookups?: (input: never) => readonly WorkbookReferenceLookup[];
+  readonly plannedOutputs?: (input: never, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
   readonly code: string;
   readonly label: string;
   readonly sessionLabel?: string;
@@ -409,6 +415,8 @@ export function workflowDryRunSupport(descriptor: AnyWorkflowDescriptor): Workfl
 // Re-parses through the canonical schema before handing to authored callbacks.
 export interface WorkflowPlanning {
   readonly requiredWorkbookTypeIds: readonly string[];
+  readonly referenceLookups: (parsed: unknown) => readonly WorkbookReferenceLookup[];
+  readonly plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => readonly PlannedRunOutput[];
   readonly parseInput: (raw: unknown) => unknown;
   readonly parseCanonicalInput: (value: unknown) => unknown;
   readonly matchKey: (parsed: unknown) => string;
@@ -1172,6 +1180,8 @@ export function defineWorkflowDescriptor<
   }));
   PLANNING.set(descriptor, Object.freeze({
     requiredWorkbookTypeIds,
+    referenceLookups: (parsed: unknown) => WorkbookReferenceLookupSchema.array().parse(spec.referenceLookups?.(spec.canonicalInput.parse(parsed)) ?? []),
+    plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => PlannedRunOutputSchema.array().parse(spec.plannedOutputs?.(spec.canonicalInput.parse(parsed), references) ?? []),
     parseInput: (raw: unknown) => spec.flow.input.parse(raw),
     parseCanonicalInput: (value: unknown) => spec.canonicalInput.parse(value),
     matchKey: (parsed: unknown) => spec.identity.matchKey(spec.canonicalInput.parse(parsed)),

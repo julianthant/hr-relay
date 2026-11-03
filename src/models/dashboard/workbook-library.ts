@@ -1,11 +1,11 @@
 import { z } from "zod";
-import { IsoInstantSchema, RunIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
-import { WorkbookIdSchema, WorkbookRevisionSchema, WorkbookMetadataSchema, WorkbookTypeSchema, EditableWorkbookWireSchema } from "./workbooks.js";
+import { IsoInstantSchema, RunIdSchema, WorkflowIdSchema, DateOnlySchema } from "../../rules/identity/ids.js";
+import { WorkbookIdSchema, WorkbookRevisionSchema, WorkbookMetadataSchema, WorkbookTypeSchema, EditableWorkbookWireSchema, WorkbookLinkSchema } from "./workbooks.js";
 
 const NameSchema = z.string().refine(value => value.trim().length > 0);
 export const WorkbookLibraryOriginSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("local") }),
-  z.strictObject({ kind: z.literal("workflow"), runId: RunIdSchema, workflowId: WorkflowIdSchema, workflowLabel: NameSchema,
+  z.strictObject({ kind: z.literal("workflow"), runId: RunIdSchema, partitionDay: DateOnlySchema, workflowId: WorkflowIdSchema, workflowLabel: NameSchema,
     rowCount: z.number().int().nonnegative(), rowSubject: z.enum(["person", "record"]) }),
   z.strictObject({ kind: z.literal("unavailable"), code: z.literal("WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE") }),
 ]);
@@ -39,6 +39,12 @@ export const WorkbookLibraryEntrySchema = z.strictObject({
 export const WorkbookLibraryCatalogSchema = z.array(WorkbookLibraryEntrySchema)
   .refine(entries => new Set(entries.map(entry => entry.libraryId)).size === entries.length);
 export const WorkbookLibraryChangeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("sync") }),
+  z.strictObject({ kind: z.literal("link"), url: WorkbookLinkSchema.shape.url }),
+  z.strictObject({ kind: z.literal("unlink") }),
+  z.strictObject({ kind: z.literal("merge"), name: NameSchema, duplicates: z.enum(["keep-newer", "keep-both"]),
+    sources: z.array(z.strictObject({ libraryId: WorkbookIdSchema, expectedVersion: WorkbookRevisionSchema, expectedRevision: WorkbookRevisionSchema })).min(1)
+      .refine(sources => new Set(sources.map(source => source.libraryId)).size === sources.length) }),
   z.strictObject({ kind: z.literal("rename"), name: NameSchema }),
   z.strictObject({ kind: z.literal("metadata"), metadata: WorkbookMetadataSchema }),
   z.strictObject({ kind: z.literal("create-version"), name: NameSchema,

@@ -72,7 +72,7 @@ export function createRunStartDialogHarness() {
           start.inputRun === undefined
             ? { state: "absent", reason: START_DOOR_ABSENCE["no-typed-input"] }
             : { state: "present", surface: start.inputRun },
-        spreadsheetIntake: start.spreadsheetIntake,
+        spreadsheetIntake: start.spreadsheetIntake, requiredWorkbookTypeIds: start.requiredWorkbookTypeIds,
       };
     },
   );

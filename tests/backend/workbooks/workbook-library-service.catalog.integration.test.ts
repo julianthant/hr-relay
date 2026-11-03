@@ -107,3 +107,34 @@ it('names a SharePoint version atomically and keeps the prior version in use whe
   expect(downloads).toBe(1);
   expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
 });
+
+it('merges atomically, retains both originals as named versions, archives sources and refuses stale source authority', async () => {
+  const f = fixture(), id = f.record.libraryId;
+  f.service.putType({ id: 'roster', name: 'Roster', keyFieldId: 'eid', fields: ['eid', 'fullName'], defaultWorkbookId: null });
+  await f.apply({ kind: 'metadata', metadata: { typeId: 'roster', sharePoint: null } });
+  const other = f.service.create({ ...f.record.workbook, libraryId: undefined, name: 'Other.xlsx' });
+  await f.service.libraryAction(other.libraryId, { operationId: 'type', expectedRevision: 1, expectedVersion: 1,
+    change: { kind: 'metadata', metadata: { typeId: 'roster', sharePoint: null } } }, new AbortController().signal);
+  const source = { libraryId: other.libraryId, expectedRevision: f.repository.libraryState(other.libraryId).revision, expectedVersion: f.service.read(other.libraryId).version };
+  const stale = f.action({ kind: 'merge', name: 'Merged.xlsx', duplicates: 'keep-both', sources: [{ ...source, expectedRevision: source.expectedRevision - 1 }] });
+  await expect(f.service.libraryAction(id, stale, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_VERSION_CONFLICT' });
+  expect(f.service.catalog()).toHaveLength(2);
+  const action = f.action({ kind: 'merge', name: 'Merged.xlsx', duplicates: 'keep-both', sources: [source] });
+  const result = await f.service.libraryAction(id, action, new AbortController().signal);
+  expect(f.service.catalog()).toHaveLength(1);
+  expect(f.service.catalog()[0]).toMatchObject({ name: 'Merged.xlsx', rowCount: 2, metadata: { typeId: 'roster', sharePoint: null } });
+  expect(result.result.versions.some(version => version.name === 'From Other.xlsx')).toBe(true);
+  expect(f.service.revision(other.libraryId, 1)).toEqual(other);
+  expect(f.repository.libraryVersion(id, 'original').workbook.sheets[0].rows).toHaveLength(2);
+  expect(await f.service.libraryAction(id, action, new AbortController().signal)).toEqual(result);
+  expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
+});
+
+it('links and unlinks without treating link time as a successful sync', async () => {
+  const f = fixture();
+  await f.apply({ kind: 'link', url: 'https://example.sharepoint.com/roster.xlsx' });
+  expect(f.service.catalog()[0].metadata.sharePoint?.url).toBe('https://example.sharepoint.com/roster.xlsx');
+  expect(f.service.catalog()[0].state.versions.map(version => version.source)).toEqual(['import']);
+  await f.apply({ kind: 'unlink' });
+  expect(f.service.catalog()[0].metadata.sharePoint).toBeNull();
+});

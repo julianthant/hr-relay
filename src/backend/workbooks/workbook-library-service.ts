@@ -114,7 +114,7 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       if (record.version !== action.expectedVersion || state.revision !== action.expectedRevision) throw new WorkbookLibraryError('WORKBOOK_VERSION_CONFLICT');
       signal.throwIfAborted();
       const apply = (workbook?: EditableWorkbookWire) => deps.repository.libraryAction(libraryId, action, deps.clock.now().toISOString(), workbook);
-      return action.change.kind === 'create-version' && action.change.from.kind === 'sharepoint'
+      return action.change.kind === 'sync' || action.change.kind === 'create-version' && action.change.from.kind === 'sharepoint'
         ? withDownloadedWorkbook(libraryId, action.operationId, signal, apply) : apply();
     },
     create(value: unknown): SavedWorkbook {

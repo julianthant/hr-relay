@@ -1,3 +1,4 @@
+import { WorkbookLibraryEntrySchema } from '../../../src/models/dashboard/workbook-library.js';
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import assert from 'node:assert/strict';
 import { describe, it, vi } from 'vitest';
@@ -9,7 +10,7 @@ import { SavedWorkbookSchema, type SavedWorkbook } from '../../../src/models/das
 const book = () => ({ ...newEditableWorkbook(), libraryId: 'saved' });
 const saved = (version = 3, workbook = book()): SavedWorkbook => SavedWorkbookSchema.parse({ libraryId: workbook.libraryId, version, createdAt: '2026-10-01T00:00:00Z', savedAt: '2026-10-15T00:00:00Z', workbook });
 function setup() {
-  const client = { workbookList: vi.fn(async () => [saved()]), workbookOpen: vi.fn(async () => saved()), workbookCreate: vi.fn(async (workbook: unknown) => saved(1, { ...workbook as ReturnType<typeof book>, libraryId: 'generated' })), workbookSave: vi.fn(async (_id: string, version: number, workbook: unknown) => saved(version + 1, workbook as ReturnType<typeof book>)), workbookRevision: vi.fn(), workbookHistory: vi.fn(), workbookIntake: vi.fn(), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>() } satisfies WorkbookLibraryQueries;
+  const client = { workbookList: vi.fn(async () => [saved()]), workbookOpen: vi.fn(async () => saved()), workbookCreate: vi.fn(async (workbook: unknown) => saved(1, { ...workbook as ReturnType<typeof book>, libraryId: 'generated' })), workbookSave: vi.fn(async (_id: string, version: number, workbook: unknown) => saved(version + 1, workbook as ReturnType<typeof book>)), workbookRevision: vi.fn(), workbookHistory: vi.fn(), workbookIntake: vi.fn(), workbookCatalog: vi.fn<WorkbookLibraryQueries['workbookCatalog']>(), workbookTypes: vi.fn<WorkbookLibraryQueries['workbookTypes']>(), workbookPutType: vi.fn<WorkbookLibraryQueries['workbookPutType']>(), workbookLibraryVersion: vi.fn<WorkbookLibraryQueries['workbookLibraryVersion']>(), workbookLibraryAction: vi.fn<WorkbookLibraryQueries['workbookLibraryAction']>(), workbookLibraryActionStatus: vi.fn<WorkbookLibraryQueries['workbookLibraryActionStatus']>() } satisfies WorkbookLibraryQueries;
   return { client, adapter: createSpreadsheetWiringAdapter(client) };
 }
 describe('served workbook authority', () => {
@@ -174,4 +175,51 @@ it('blocks a new save after read-authority replacement until current library dat
   const { client, adapter } = setup(); await adapter.open('saved');
   adapter.setReadAuthority({}); assert.equal((await adapter.save('saved', book())).state, 'refused'); assert.equal(client.workbookSave.mock.calls.length, 0);
   await adapter.list(); client.workbookOpen.mockResolvedValueOnce(saved(4)); assert.equal((await adapter.save('saved', book())).state, 'confirmed'); assert.equal(client.workbookSave.mock.calls.length, 1);
+});
+
+describe('named library actions', () => {
+  const entry = () => WorkbookLibraryEntrySchema.parse({ libraryId: 'saved', version: 3, name: 'Roster.xlsx', rowCount: 0,
+    worksheets: [{ id: 'sheet', name: 'People' }], metadata: { typeId: 'roster', sharePoint: null },
+    type: { id: 'roster', name: 'Roster', fields: ['eid'], keyFieldId: 'eid', defaultWorkbookId: null },
+    state: { libraryId: 'saved', revision: 1, selectedVersionId: 'original', removed: false, origin: { kind: 'local' },
+      versions: [{ id: 'original', name: 'Original', snapshotId: 'original', version: 3, savedAt: '2026-11-01T00:00:00Z', source: 'import' }] } });
+  it('retains uncertain actions and reserves every merge source without a second POST', async () => {
+    const { client, adapter } = setup(), file = entry(), other = { ...entry(), libraryId: 'other', state: { ...entry().state, libraryId: 'other' } };
+    client.workbookCatalog.mockResolvedValue([file, other]); client.workbookTypes.mockResolvedValue([file.type]);
+    client.workbookLibraryAction.mockRejectedValue(new Error('lost response')); client.workbookLibraryActionStatus.mockResolvedValue({ state: 'absent' });
+    await adapter.refreshCatalog();
+    const change = { kind: 'merge' as const, name: 'Merged.xlsx', duplicates: 'keep-both' as const, sources: [{ libraryId: 'other', expectedVersion: 3, expectedRevision: 1 }] };
+    assert.equal((await adapter.changeLibrary(file, change)).state, 'uncertain');
+    assert.deepEqual(adapter.snapshot().pendingLibraries, ['saved', 'other']);
+    assert.equal((await adapter.changeLibrary(other, { kind: 'remove' })).state, 'uncertain');
+    assert.equal((await adapter.settleLibrary('other')).state, 'uncertain'); assert.equal(client.workbookLibraryAction.mock.calls.length, 1);
+    const action = client.workbookLibraryAction.mock.calls[0][1];
+    const result = { ...file.state, revision: 2 };
+    client.workbookLibraryActionStatus.mockResolvedValue({ state: 'recorded', record: { libraryId: 'saved', action, at: file.state.versions[0].savedAt, result } });
+    client.workbookCatalog.mockResolvedValue([{ ...file, name: 'Merged.xlsx', state: result }]);
+    assert.equal((await adapter.settleLibrary('saved')).state, 'confirmed'); assert.deepEqual(adapter.snapshot().pendingLibraries, []);
+    assert.equal(client.workbookLibraryAction.mock.calls.length, 1);
+  });
+  it('ignores superseded catalogue reads and refuses changes based on stale authority', async () => {
+    const { client, adapter } = setup(), file = entry();
+    client.workbookTypes.mockResolvedValue([file.type]);
+    let finish!: (files: readonly ReturnType<typeof entry>[]) => void;
+    client.workbookCatalog.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const earlier = adapter.refreshCatalog();
+    client.workbookCatalog.mockResolvedValue([{ ...file, state: { ...file.state, revision: 2 } }]);
+    await adapter.refreshCatalog(); finish([file]); await earlier;
+    assert.equal(adapter.snapshot().catalog[0].state.revision, 2);
+    assert.equal((await adapter.changeLibrary(file, { kind: 'remove' })).state, 'refused');
+    assert.equal(client.workbookLibraryAction.mock.calls.length, 0);
+    client.workbookCatalog.mockRejectedValue(new Error('offline')); await adapter.refreshCatalog();
+    assert.equal(adapter.snapshot().catalog.length, 1); assert(adapter.snapshot().catalogError);
+  });
+  it('rechecks an uncertain type save without posting or accepting a different type', async () => {
+    const { client, adapter } = setup(), type = entry().type;
+    client.workbookPutType.mockRejectedValue(new Error('lost response')); client.workbookTypes.mockResolvedValue([]);
+    assert.equal((await adapter.saveType(type)).state, 'uncertain');
+    assert.equal((await adapter.saveType({ ...type, name: 'Edited' })).state, 'refused');
+    client.workbookTypes.mockResolvedValue([type]); assert.equal((await adapter.saveType(type)).state, 'confirmed');
+    assert.equal(client.workbookPutType.mock.calls.length, 1);
+  });
 });
