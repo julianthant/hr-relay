@@ -13,7 +13,7 @@
     if (event.source !== window || event.origin !== location.origin || event.data?.type !== 'RELAY_DUO_RESPONSE') return;
     const pending = waiting.get(event.data.id);
     if (!pending) return;
-    waiting.delete(event.data.id);
+    window.postMessage({ type: 'RELAY_DUO_SETTLED', id: event.data.id }, location.origin);
     if (event.data.success) pending.resolve(event.data.result);
     else pending.reject(new DOMException('Duo setup could not complete.', 'NotAllowedError'));
   });
@@ -21,16 +21,28 @@
     if (signal?.aborted) return Promise.reject(new DOMException('Request aborted', 'AbortError'));
     return new Promise((resolve, reject) => {
       const id = crypto.randomUUID();
-      const abort = () => { waiting.delete(id); window.postMessage({ type: 'RELAY_DUO_ABORT', id }, location.origin); reject(new DOMException('Request aborted', 'AbortError')); };
+      let timer;
+      const cleanup = () => { waiting.delete(id); clearTimeout(timer); signal?.removeEventListener('abort', abort); };
+      const cancel = reason => {
+        cleanup();
+        window.postMessage({ type: 'RELAY_DUO_ABORT', id, reason }, location.origin);
+        reject(new DOMException('Duo enrollment ended.', reason === 'aborted' ? 'AbortError' : 'NotAllowedError'));
+      };
+      const abort = () => cancel('aborted');
       waiting.set(id, {
-        resolve: value => { signal?.removeEventListener('abort', abort); resolve(value); },
-        reject: error => { signal?.removeEventListener('abort', abort); reject(error); },
+        resolve: value => { cleanup(); resolve(value); },
+        reject: error => { cleanup(); reject(error); },
       });
       signal?.addEventListener('abort', abort, { once: true });
+      if (Number.isFinite(nativeOptions?.timeout) && nativeOptions.timeout > 0) timer = setTimeout(() => cancel('timed-out'), nativeOptions.timeout);
       window.postMessage({ type: 'RELAY_DUO_REQUEST', id, operation: type, request: { ...data, origin: location.origin }, nativeOptions }, location.origin);
     });
   }
   if (globalThis.PublicKeyCredential) {
+    PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable = async () => {
+      const result = await request('RELAY_CAPABILITIES', { rpId: 'duosecurity.com' });
+      return result.platformAvailable;
+    };
     const originalSupport = PublicKeyCredential.isExternalCTAP2SecurityKeySupported?.bind(PublicKeyCredential);
     PublicKeyCredential.isExternalCTAP2SecurityKeySupported = async () => {
       const result = await request('RELAY_CAPABILITIES', { rpId: 'duosecurity.com' });

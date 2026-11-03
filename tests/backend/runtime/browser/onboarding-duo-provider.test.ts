@@ -55,6 +55,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
       if (input.method === "install") { startupEntered?.(); await startupHold; if (failInstall) throw new Error("synthetic arm initialization failed"); return; }
       if (input.method === "browserFocus") { windowFocusCount++; return; }
       if (input.method === "browserInstall") return;
+      if (input.method === "platformAvailable") return true;
       if (input.method === "browserNext") return new Promise(resolve => { browserWaiter = resolve; });
       if (input.method === "browserStop") { if (lostStopAck) throw new Error("synthetic worker already closed"); browserWaiter?.(null); browserWaiter = undefined; return; }
       if (input.method === "assertContext") { if (!documentCurrent) throw new Error("synthetic document drift"); return; }
@@ -114,6 +115,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     } },
   });
   const owner: DraftDuoBrowserOwner = { ...attempt, assertCurrent() { if (!current) throw new Error("synthetic revoked"); },
+    reportEvent() {},
     async acquireCredentials() { throw new Error("unexpected credential acquisition"); },
     readState() { throw new Error("unexpected UI state"); }, async start() { throw new Error("unexpected UI start"); },
     async cancel() { throw new Error("unexpected UI cancel"); }, confirm() { throw new Error("unexpected UI confirmation"); } };

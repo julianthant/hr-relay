@@ -4,6 +4,7 @@
   const base64url = text => text.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   const equal = (left, right) => left.length === right.length && left.every((value, index) => value === right[index]);
   globalThis.RelayNative = Object.freeze({
+    platformAvailable: () => PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable(),
     async create(publicKey, expected, signal) {
       if (!nativeCreate || publicKey.authenticatorSelection?.authenticatorAttachment !== 'platform') throw new Error('ONBOARDING_DUO_NATIVE_UNAVAILABLE');
       if (publicKey.rp?.id !== expected.rpId || encode(publicKey.challenge) !== expected.challenge

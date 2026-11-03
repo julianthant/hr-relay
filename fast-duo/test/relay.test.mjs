@@ -17,8 +17,9 @@ function world() {
   const scope = { documentId: DOCUMENT, url: `${ORIGIN}/setup`, accountNames: ['alex@example.edu'], accountRevision: 0 };
   const api = {
     runtime: { id: 'owned-extension' },
-    tabs: { get: async id => ({ id, url: scope.url }), sendMessage: async (_id, _request, target) => {
+    tabs: { get: async id => ({ id, url: scope.url }), sendMessage: async (_id, request, target) => {
       if (target.documentId !== scope.documentId) throw new Error('document replaced');
+      if (request.type === 'RELAY_PLATFORM_PROBE') return { available: false };
       return { url: scope.url, origin: new URL(scope.url).origin, documentActive: true, accountNames: [...scope.accountNames], accountRevision: scope.accountRevision };
     } },
     storage: {
@@ -33,7 +34,8 @@ function world() {
       },
     },
   };
-  return { api, scope, worker: createRelayWorker(api), state: () => saved, localReads: () => localReads, cleared: () => cleared };
+  const events = [];
+  return { api, scope, events, worker: createRelayWorker(api, async event => { events.push(event); }), state: () => saved, localReads: () => localReads, cleared: () => cleared };
 }
 const enrollment = (attachment = 'cross-platform') => ({ type: 'DUO_AUTOPILOT_ENROLL', request: {
   origin: ORIGIN, rpId: 'duosecurity.com', requestId: crypto.randomUUID(), challenge: CHALLENGE,
@@ -70,6 +72,14 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
   const sender = { id: w.api.runtime.id, url: root + 'src/options.html', origin: root.slice(0, -1),
     tab: { id: 9, url: root + 'src/options.html' }, frameId: 0, documentId: DOCUMENT, documentLifecycle: 'active' };
   const send = (message, source) => new Promise(resolve => { receive(message, source, resolve); });
+  const denied = async (message, source) => {
+    const response = send(message, source);
+    if (source.id === w.api.runtime.id && source.url.startsWith(ORIGIN) && message.request?.rpId === 'duosecurity.com') {
+      const event = await owner.browserNext(); assert.equal(event.kind, 'event'); assert.equal(event.event.stage, 'refused');
+      owner.browserReply(event.id, { ok: true, value: { observed: true } });
+    }
+    assert.equal((await response).success, false);
+  };
   const response = send({ type: 'STATE' }, sender);
   const request = await owner.browserNext(); assert.equal(request.kind, 'state');
   owner.browserReply(request.id, { ok: true, value: { state: 'onboarding' } });
@@ -86,15 +96,21 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
     { type: 'STATE', password: 'must-not-be-accepted' }, { type: 'RELAY_CANCEL', method: 'touch', attemptId: 'forged' }]) {
     assert.equal((await send(message, sender)).success, false);
   }
-  for (const [type, result] of [['RELAY_CAPABILITIES', { softwareKey: false }], ['DUO_AUTOPILOT_SIGN', { passThrough: true }]]) {
+  for (const [type, result] of [['RELAY_CAPABILITIES', { softwareKey: false, platformAvailable: true }], ['DUO_AUTOPILOT_SIGN', { passThrough: true }]]) {
     const message = { type, request: { origin: ORIGIN, rpId: 'duosecurity.com' } };
-    assert.deepEqual(await send(message, SENDER), { success: true, result });
-    assert.equal((await send(message, { ...SENDER, id: 'foreign' })).success, false);
-    assert.equal((await send(message, { ...SENDER, frameId: 1 })).success, false);
-    assert.equal((await send(message, { ...SENDER, documentId: 'replaced' })).success, false);
-    assert.equal((await send({ ...message, request: { ...message.request, rpId: 'foreign' } }, SENDER)).success, false);
+    const response = send(message, SENDER);
+    if (type === 'RELAY_CAPABILITIES') {
+      const request = await owner.browserNext();
+      assert.equal(request.kind, 'platform'); assert.equal(request.url, SENDER.url); assert.equal(request.available, false);
+      owner.browserReply(request.id, { ok: true, value: true });
+    }
+    assert.deepEqual(await response, { success: true, result });
+    await denied(message, { ...SENDER, id: 'foreign' });
+    await denied(message, { ...SENDER, frameId: 1 });
+    await denied(message, { ...SENDER, documentId: 'replaced' });
+    await denied({ ...message, request: { ...message.request, rpId: 'foreign' } }, SENDER);
   }
-  assert.equal((await send(enrollment(), SENDER)).success, false);
+  await denied(enrollment(), SENDER);
   assert.deepEqual(w.state(), {}); assert.equal(w.localReads(), 0);
   await owner.browserStop(); assert.equal((await send({ type: 'STATE' }, sender)).success, false);
 });

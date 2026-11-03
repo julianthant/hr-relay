@@ -37,6 +37,7 @@ it("real extension isolated native create uses page RP/origin and ignores forged
     globalThis.realmGuardFailures = [];
     globalThis.realmDocumentFormats = [];
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.type === 'RELAY_DUO_EVENT') { sendResponse({ success: true }); return false; }
       let parsedUrl;
       try { parsedUrl = new URL(sender.url); } catch { parsedUrl = undefined; }
       realmDocumentFormats.push({
