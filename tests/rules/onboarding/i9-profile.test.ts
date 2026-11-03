@@ -25,7 +25,6 @@ describe("onboarding I-9 delegation and profile plan", () => {
     if (result.state !== "creation-required") throw new Error("creation plan required");
     assert.equal(result.request.firstName, "Legal");
     assert.equal(result.request.ssn, "123456789");
-    assert.deepEqual(result.write, { state: "unimplemented", owner: "write-safety" });
   });
 
   it("reuses observed profile IDs and preserves unsigned, signed and historical distinctions", () => {

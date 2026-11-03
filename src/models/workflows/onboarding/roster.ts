@@ -1,7 +1,9 @@
 import { z } from "zod";
-import { EidSchema, IsoInstantSchema, FingerprintSchema, RunIdSchema } from "../../../rules/identity/ids.js";
+import { CANONICAL_FIELDS } from "../../fields/registry.js";
+import { containsDryRunSample } from "../../workflow/dry-run.js";
+import { IsoInstantSchema, FingerprintSchema, RunIdSchema } from "../../../rules/identity/ids.js";
 import { WorkbookIdSchema } from "../../dashboard/workbooks.js";
-import { UcpathApprovalStatusSchema, UcpathTransactionReceiptSchema } from "../../ui/ucpath-ss-smart-hr.js";
+import { UcpathTransactionReceiptSchema } from "../../ui/ucpath-ss-smart-hr.js";
 
 const namePart = z.string().min(1).refine(value => value.trim() === value);
 const RosterPersonNameSchema = z.strictObject({
@@ -22,8 +24,10 @@ export const OnboardingRosterBindingSchema = OnboardingRosterReferenceBindingSch
 
 export const ONBOARDING_ROSTER_TYPE_ID = "onboarding-roster";
 export const ONBOARDING_ROSTER_GATE_ID = "roster-choice";
-export const ONBOARDING_ROSTER_FIELDS = ["email", "firstName", "lastName", "middleName",
+export const ONBOARDING_ROSTER_NAME_FIELDS = ["email", "firstName", "lastName", "middleName",
   "roster.livedFirstName", "roster.livedLastName", "roster.livedMiddleName"] as const;
+export const ONBOARDING_ROSTER_OUTPUT_FIELDS = ["eid", "i9ProfileId", "transactionNumber", "transactionApprovalStatus"] as const;
+export const ONBOARDING_ROSTER_FIELDS = [...ONBOARDING_ROSTER_NAME_FIELDS, ...ONBOARDING_ROSTER_OUTPUT_FIELDS] as const;
 
 export const OnboardingRosterSnapshotRowSchema = z.strictObject({
   binding: OnboardingRosterBindingSchema,
@@ -47,23 +51,10 @@ export const OnboardingRosterReadOutputSchema = z.discriminatedUnion("state", [
 ]);
 
 export const OnboardingRosterCellsSchema = z.strictObject({
-  eid: EidSchema.optional(), i9ProfileId: z.string().min(1).optional(),
+  eid: CANONICAL_FIELDS.eid.schema.optional(), i9ProfileId: CANONICAL_FIELDS.i9ProfileId.schema.optional(),
   transactionNumber: UcpathTransactionReceiptSchema.optional(),
-  transactionApprovalStatus: UcpathApprovalStatusSchema.optional(),
+  transactionApprovalStatus: CANONICAL_FIELDS.transactionApprovalStatus.schema.optional(),
 }).refine(cells => Object.values(cells).some(value => value !== undefined), "a roster fill needs at least one result cell")
   .refine(cells => (cells.transactionNumber === undefined) === (cells.transactionApprovalStatus === undefined),
-    "transaction number and approval status must be supplied together");
-
-export const OnboardingRosterWriteInputSchema = z.strictObject({
-  target: z.literal("master"), source: OnboardingRosterBindingSchema, cells: OnboardingRosterCellsSchema,
-});
-export const OnboardingRosterWriteOutputSchema = z.discriminatedUnion("state", [
-  z.strictObject({
-    state: z.literal("filled"), workbookId: WorkbookIdSchema, rowKey: OnboardingRosterRowKeySchema,
-    changeLogId: z.string().min(1),
-  }),
-  z.strictObject({
-    state: z.literal("resolve-required"), workbookId: WorkbookIdSchema, rowKey: OnboardingRosterRowKeySchema,
-    reason: z.enum(["row-missing", "row-ambiguous", "operator-edited-cell"]),
-  }),
-]);
+    "transaction number and approval status must be supplied together")
+  .refine(cells => !containsDryRunSample(cells), "Preview samples cannot fill a master cell");

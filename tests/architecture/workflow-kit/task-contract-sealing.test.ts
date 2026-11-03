@@ -283,6 +283,7 @@ describe("task contract sealing architecture", () => {
       "src/models/workflows/onboarding/read-hire-plan.ts",
       "src/models/workflows/onboarding/read-i9-lookup.ts",
       "src/models/workflows/onboarding/read-i9-profile-plan.ts",
+      "src/models/workflows/onboarding/read-write-plan.ts",
       "src/models/workflows/person-lookup/read-active-status.ts",
       "src/models/workflows/person-lookup/read-resolved-identity.ts",
       "src/models/workflows/separations/match-active-employment.ts",

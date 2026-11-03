@@ -21,6 +21,7 @@ export const ERROR_CATALOG = Object.freeze({
   OCR_REVIEW_REFUSED: catalogEntry("The saved OCR review or selection changed or could not be authenticated. Reload the review before continuing.", EmptyParametersSchema),
   OCR_PUBLICATION_REFUSED: catalogEntry("The OCR reading could not be bound to its saved run, source page and operator. Preserve the run and review its evidence.", EmptyParametersSchema),
   ONBOARDING_CRM_READ_FAILED: catalogEntry("CRM hire data could not be verified. Review the record before starting a new run.", EmptyParametersSchema),
+  ONBOARDING_WRITE_REVIEW_REFUSED: catalogEntry("The reviewed hire path does not have complete, matching identity and transaction evidence. Review the retained findings before continuing.", EmptyParametersSchema),
   UCPATH_HIRE_REFUSED: catalogEntry("UCPath hire could not be verified. Review the retained evidence before continuing.", EmptyParametersSchema),
   I9_WRITE_REFUSED: catalogEntry("I-9 did not prove the intended identity, form or saved record. Review the retained evidence; an uncertain submission must not be retried.", EmptyParametersSchema),
   ONBOARDING_DATA_INVALID: catalogEntry("CRM hire data failed validation. Review the source fields and run overrides.", EmptyParametersSchema),

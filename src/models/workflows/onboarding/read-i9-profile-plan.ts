@@ -17,8 +17,7 @@ export const OnboardingI9ProfileSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("existing-profile"), profileId: I9RecordIdsSchema.shape.profileId,
     i9Status: z.enum(["signed", "unsigned", "historical"]) }),
   z.strictObject({ state: z.literal("review-required"), reason: z.enum(["lookup-restricted", "profile-id-unavailable"]) }),
-  z.strictObject({ state: z.literal("creation-required"), request: OnboardingI9CreateRequestSchema,
-    write: z.strictObject({ state: z.literal("unimplemented"), owner: z.literal("write-safety") }) }),
+  z.strictObject({ state: z.literal("creation-required"), request: OnboardingI9CreateRequestSchema }),
 ]);
 
 export const OnboardingReadI9ProfilePlan = defineTaskContract({
@@ -27,7 +26,7 @@ export const OnboardingReadI9ProfilePlan = defineTaskContract({
   errorCodes: ["INCONSISTENT_INPUTS"], subject: { kind: "none", reason: "declares creation inputs only after a successful delegated no-match; it performs no write" },
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: [],
   example: {
-    state: "creation-required", write: { state: "unimplemented", owner: "write-safety" },
+    state: "creation-required",
     request: {
       firstName: OnboardingReadHirePlan.example.employee.firstName, lastName: OnboardingReadHirePlan.example.employee.lastName,
       middleName: "", ssn: null, dob: "2000-01-14", email: "hire@example.test", departmentNumber: "000412", startDate: "09/11/2026",

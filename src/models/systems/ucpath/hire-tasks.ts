@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { UcpathTransactionReceiptSchema } from "../../ui/ucpath-ss-smart-hr.js";
 import { defineTaskContract, ContractFieldPathSchema } from "../../task/task-contract.js";
 import { taskId, TaskIdSchema } from "../../../rules/identity/ids.js";
-import { UcpathHireTargetSchema, UcpathHireIdentitySchema, UcpathHireProofSchema, UcpathHireScanSchema, UcpathHireVerdictSchema,
-  UcpathHireStagingSchema, UCPATH_HIRE_SUBJECT, UCPATH_HIRE_STAGED, UCPATH_HIRE_PROOF_EXAMPLE, ucpathHireKey } from "../../ui/ucpath-hire.js";
+import { UcpathHireTargetSchema, UcpathHireQuerySchema, UcpathHireIdentitySchema, UcpathHireProofSchema, UcpathHireScanSchema, UcpathHireVerdictSchema,
+  UcpathHireStagingSchema, UCPATH_HIRE_SUBJECT, UCPATH_HIRE_STAGED, UCPATH_HIRE_PROOF_EXAMPLE, ucpathHireKey, ucpathHireSearchDigest } from "../../ui/ucpath-hire.js";
 
 const discovery = { kind: "none", reason: "Independently scans and verifies every exact hire transaction before reporting saved-effect evidence" } as const;
 const subject = { kind: "person", expected: { fromInput: ContractFieldPathSchema.parse("expectedName"), identity: "name" },
@@ -10,8 +11,8 @@ const subject = { kind: "person", expected: { fromInput: ContractFieldPathSchema
 const read = { effect: "read", errorCodes: ["UCPATH_HIRE_REFUSED"], subject: discovery,
   freshness: { defaultMaxAgeMs: 0, defaultOverride: "forbidden" }, provenance: { default: "live" }, scenarios: ["onboarding/write-transactions"] } as const;
 export const UcpathReadHireFindings = defineTaskContract({ ...read, id: taskId("ucpath/read-hire-findings"), title: "Read UCPath hire transactions",
-  input: UcpathHireIdentitySchema, output: UcpathHireScanSchema,
-  example: { state: "complete", rows: [], observedAt: "2026-09-01T18:00:00.000Z", source: "ss-smart-hr-list-and-detail" } });
+  input: UcpathHireIdentitySchema, output: UcpathHireScanSchema, errorCodes: ["UCPATH_HIRE_REFUSED", "BROWSER_SCREENSHOT_CAPTURE_FAILED"],
+  example: { state: "complete", rows: [], queryDigest: ucpathHireSearchDigest({ firstName: "Fixture", lastName: "Hire" }), observedAt: "2026-09-01T18:00:00.000Z", source: "ss-smart-hr-list-and-detail" } });
 export const UcpathMatchHire = defineTaskContract({ ...read, id: taskId("ucpath/match-hire"), title: "Check for an existing UCPath hire",
   input: UcpathHireTargetSchema, output: UcpathHireVerdictSchema,
   example: { state: "present", proof: UCPATH_HIRE_PROOF_EXAMPLE } });
@@ -34,3 +35,7 @@ export const UcpathCreateHire = defineTaskContract({ id: taskId("ucpath/create-h
     idempotency: { probe: { taskId: TaskIdSchema.parse("ucpath/match-hire"), effect: "read" }, key: ucpathHireKey,
       recoveryAbsence: { kind: "operator-only", reason: "UCPath hire propagation has no verified negative-recovery window; uncertain submissions require operator resolution" } },
   }, example: { receipt: UCPATH_HIRE_PROOF_EXAMPLE } });
+
+export const UcpathReadHireReceipt = defineTaskContract({ ...read, id: taskId("ucpath/read-hire-receipt"), title: "Read the current hire receipt",
+  input: z.strictObject({ query: UcpathHireQuerySchema, transactionId: UcpathTransactionReceiptSchema }), output: UcpathHireProofSchema,
+  errorCodes: ["UCPATH_HIRE_REFUSED", "BROWSER_SCREENSHOT_CAPTURE_FAILED"], example: UCPATH_HIRE_PROOF_EXAMPLE });

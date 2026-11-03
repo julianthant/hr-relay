@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import { RunWorkbookReferenceSchema } from "../../models/dashboard/workbooks.js";
 import { deriveSchemaHash, schemaBoundValueSchema, type SchemaBoundCanonicalValue } from "../../models/validation/schema-bound-value.js";
-import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterReadOutputSchema,
+import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_NAME_FIELDS, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterReadOutputSchema,
   OnboardingRosterReferenceBindingSchema, OnboardingRosterSnapshotRowSchema } from "../../models/workflows/onboarding/roster.js";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { sha256Hex } from "../validation/sha256.js";
@@ -12,7 +12,7 @@ type Match = Reference["snapshot"]["rows"][number]["matches"][number];
 export function onboardingRosterRow(binding: z.input<typeof OnboardingRosterReferenceBindingSchema>, match: Match) {
   const values = match.values;
   if (values.email !== binding.rowKey.email) throw new Error("onboarding-roster-key-mismatch");
-  const lived = ONBOARDING_ROSTER_FIELDS.slice(4).map(field => values[field]);
+  const lived = ONBOARDING_ROSTER_NAME_FIELDS.slice(4).map(field => values[field]);
   return OnboardingRosterSnapshotRowSchema.parse({
     binding: { ...binding, sheetId: match.sheetId, rowId: match.rowId },
     references: {

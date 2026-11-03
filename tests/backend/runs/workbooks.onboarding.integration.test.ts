@@ -1,35 +1,20 @@
+import { createOnboardingRunWorld } from "../../support/helpers/backend/onboarding-run-world.js";
 import { readRunCheckpoint } from "../../../src/backend/runtime/checkpoints/run-checkpoint-reader.js";
 import { continuationEvidenceDigest, validateRunContinuation } from "../../../src/backend/storage/sqlite/run-continuation.js";
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { readDelegationEvidence } from "../../../src/backend/storage/sqlite/delegation-authority.js";
-import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { TimelineEventRecordSchema, type TimelineEventRecord } from "../../../src/models/events/timeline.js";
-import { createNoteTimelineWriter } from "../../../src/backend/storage/events/note-timeline-writer.js";
-import { runQueuedSpanEvent } from "../../../src/backend/runs/commands/run-queued-span.js";
-import { ActorIdSchema } from "../../../src/rules/identity/ids.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
 import { GateIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
-import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
-import { childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
 import { buildRunEvidenceReceipt } from "../../../src/backend/runs/provenance/evidence-receipt.js";
-import { canonicalChildExecution } from "../../support/helpers/backend/canonical-child-execution.js";
-import { healthyCrmDriver, healthyUcpathDriver, ManualScheduler, recordingLogger, recordingTimelineEmitter, sessionFactoryHarness, sessionManagerFor } from "../../support/helpers/phase1f-executor-harness.js";
-import { duoCeremonyGatesOver } from "../../support/helpers/duo-ceremony-fixtures.js";
-import { testRunLifecycle } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import { runClaim } from "../../../src/models/run/record.js";
 import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding/result.js";
-import type { AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-database.js";
-import type { I9LookupInput } from "../../../src/models/systems/i9/read-section2-signer.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { rmSync } from "node:fs";
 import { afterAll, afterEach, describe, it } from "vitest";
-import { createStartPlanService } from "../../../src/backend/runs/commands/start-plan-service.js";
 import { authenticateOnboardingRosterChoice, buildRunWorkbookSection } from "../../../src/backend/runs/workbooks.js";
-import { createWorkbookLibraryService } from "../../../src/backend/workbooks/workbook-library-service.js";
-import { encodeEditableWorkbook } from "../../../src/models/dashboard/workbooks.js";
 import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema, ONBOARDING_INPUT_EXAMPLE } from "../../../src/models/workflows/onboarding/input.js";
 import { ONBOARDING_ROSTER_FIELDS, ONBOARDING_ROSTER_GATE_ID, OnboardingRosterChoiceSchema } from "../../../src/models/workflows/onboarding/roster.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
@@ -41,191 +26,20 @@ import { OnboardingReadHirePlan } from "../../../src/models/workflows/onboarding
 import { CrmReadHireData } from "../../../src/models/systems/crm/read-hire-data.js";
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { onboardingWorkflow } from "../../../src/workflows/onboarding/workflow.js";
-import { createProfileFixtureSet } from "../../support/helpers/admission-fixture.js";
-import { createCommandKernelTestWorld } from "../../support/helpers/backend/command-kernel-harness.js";
-import { unexpectedWorkbookSync } from "../../support/helpers/backend/workbook-sync.js";
-import { singleAppliedRunId, appliedRunIds } from "../../support/fixtures/operator-command-fixtures.js";
-import { testRunService, testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.js";
-import type { EditableWorkbook } from "../../../src/models/dashboard/workbooks.js";
+import { appliedRunIds } from "../../support/fixtures/operator-command-fixtures.js";
+import { testRunService } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
 
 const descriptor = compileWorkflow(onboardingWorkflow).descriptor;
-const managers: Awaited<ReturnType<typeof sessionManagerFor>>[] = [];
-const fixtureProfiles = createProfileFixtureSet();
-const world = createCommandKernelTestWorld(fixtureProfiles.create);
-afterAll(() => fixtureProfiles.close());
-afterEach(async () => {
-  while (managers.length) await managers.pop()!.closeAll("worker-stop");
-  while (world.openDatabases.length) world.openDatabases.pop()!.close();
-  while (world.profiles.length) await world.profiles.pop()!.close();
-  while (world.roots.length) rmSync(world.roots.pop()!, { recursive: true, force: true });
-});
-
-async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate") {
-  const h = await world.createHarness(undefined, { descriptors: [descriptor], publishQueued: (run, publication) => {
-    assert.ok(publication);
-    createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
-  } });
-  const profile = world.profiles.at(-1); assert.ok(profile);
-  const profilePath = profile.path;
-  const repository = h.database.authority.workbooks;
-  const library = createWorkbookLibraryService({ repository, clock: h.clock, sync: unexpectedWorkbookSync });
-  const key = "hire@example.test";
-  function sheet(id: string, email: string) {
-    return { id, name: id, width: ONBOARDING_ROSTER_FIELDS.length, hidden: [], headerRow: 1,
-      columnBindings: ONBOARDING_ROSTER_FIELDS.map((fieldId, index) => ({ id: `${id}-${index}`, sourceColumn: index,
-        sourceHeader: fieldId, fieldId, basis: "manual" })),
-      rows: [{ id: `${id}-header`, cells: ONBOARDING_ROSTER_FIELDS.map(value => ({ value })) },
-        { id: `${id}-person`, cells: [email, "Fixture", "Hire", "", null, null, null].map(value => ({ value })) }] };
-  }
-  const saved = library.create({ name: "Synthetic.xlsx", themes: [], hasFormulas: false,
-    sheets: [sheet("people", match === "missing" ? "other@example.test" : key), sheet("archive", match === "duplicate" ? key : "other@example.test")] });
-  repository.putType({ id: "onboarding-roster", name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: null });
-  library.operatorOperation(saved.libraryId, "declare-type", { kind: "metadata", expectedVersion: 1,
-    metadata: { typeId: "onboarding-roster", sharePoint: null } });
-  const declared = repository.types().find(type => type.id === "onboarding-roster"); assert.ok(declared);
-  repository.putType({ ...declared, defaultWorkbookId: saved.libraryId });
-  const config = h.database.authority.runtimeConfig.get(); assert.ok(config);
-  let snapshots = 0;
-  const planner = createStartPlanService({ authority: h.database, authorityRead: h.database, clock: h.clock, ids: h.plannerIds,
-    descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, planTtlMs: 600_000,
-    workbooks: { snapshot: value => { snapshots++; return library.snapshot(value); } }, configFingerprint: config.configFingerprint,
-    configSnapshotId: config.configSnapshotId, plannedBy: "local-operator" });
-  const selection = { entry: 1, typeId: "onboarding-roster" };
-  const request = { workflowId: descriptor.id, submissions: [{ email: key, mode: "new-hire", configuredJobEndDate: "06/30/2027" }],
-    dryRun: false, workbookReferences: [selection] };
-  const plan = (value: unknown = request) => {
-    const wire = planner.plan(value), record = h.database.authority.startPlans.get(wire.startPlanId); assert.ok(record); return record;
-  };
-  const start = () => {
-    const planned = plan(); assert.equal(planned.refused.length, 0);
-    const result = h.kernel.execute(world.startCommand(planned));
-    const run = h.database.authority.runs.get(singleAppliedRunId(result)); assert.ok(run); return run;
-  };
-  function edit(change: (workbook: EditableWorkbook) => void) {
-    const record = library.read(saved.libraryId); assert.ok(record);
-    const workbook = structuredClone(record.workbook); change(workbook);
-    const receipt = library.operatorOperation(saved.libraryId, randomUUID(), { kind: "save", expectedVersion: record.version,
-      workbook: encodeEditableWorkbook(workbook) }); assert.equal(receipt.state, "applied");
-  }
-  function park(run: RunRecord) {
-    const ports = testWorkerPorts(h.database, h.clock, { path: profilePath, descriptor, poolIndex: 1 });
-    const worker = h.database.authority.workerSlots.list(descriptor.id).find(value => value.poolIndex === 1); assert.ok(worker);
-    const claimed = ports.claimNext({ commandId: randomUUID(), workflow: descriptor.id, workerId: worker.workerId });
-    assert.equal(claimed.state, "applied"); if (claimed.state !== "applied") throw new Error("claim refused");
-    assert.equal(claimed.run.envelope.runId, run.envelope.runId);
-    const service = testRunService(h.database, h.clock), now = h.clock.now().toISOString();
-    const claim = { workerId: worker.workerId, claimGeneration: claimed.run.claimGeneration };
-    for (const state of ["validating", "running"] as const) {
-      assert.equal(service.workerTransition({ commandId: randomUUID(), runId: run.envelope.runId, claim,
-        lifecycle: { state, workerId: worker.workerId, claimedAt: now, heartbeatAt: now } }).state, "applied");
-    }
-    const parked = service.workerTransition({ commandId: randomUUID(), runId: run.envelope.runId, claim,
-      lifecycle: { state: "parked-gate", gateId: ONBOARDING_ROSTER_GATE_ID, parkedAt: now, resumeAt: ONBOARDING_ROSTER_GATE_ID } });
-    assert.equal(parked.state, "applied"); if (parked.state !== "applied") throw new Error("park refused");
-    h.database.assertWorkerLifecycleRelease(worker.workerId);
-    return parked.run;
-  }
-  const section = (run: RunRecord) => {
-    const current = h.database.authority.runs.get(run.envelope.runId); assert.ok(current);
-    return buildRunWorkbookSection(h.database.authority, current);
-  };
-  const choice = (run: RunRecord) => {
-    const resolution = section(run).referenceChoices?.[0]?.resolution;
-    assert.ok(resolution?.state === "available");
-    return CommandRequestSchema.parse({ commandId: world.nextCommandId(), requestedAt: h.clock.now().toISOString(),
-      requestedBy: "local-operator", source: "run-detail", family: "run", type: "resolve-workbook-reference-row",
-      target: resolution.target, payload: { sheetId: resolution.candidates[0].sheetId, rowId: resolution.candidates[0].rowId } });
-  };
-  return { ...h, profilePath, key, library, repository, id: saved.libraryId, selection, request, plan, start, edit, park, section, choice,
-    snapshots: () => snapshots };
-}
+const runWorld = createOnboardingRunWorld();
+const { fixture, executionFixture } = runWorld;
+afterAll(runWorld.close);
+afterEach(runWorld.cleanup);
 
 function foreignNative(record: TimelineEventRecord, runId: string) {
   assert.ok(record.payload.kind === "span");
   return TimelineEventRecordSchema.parse({ ...record, scope: { kind: "run", runId },
     payload: { kind: "span", event: { ...record.payload.event, runId } } });
-}
-
-type ExecutionFault = "gate-missing" | "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
-
-async function executionFixture(corruptAssertedSubject = false) {
-  const f = await fixture();
-  const calls: { system: string; input: unknown }[] = [];
-  const sessions = sessionFactoryHarness({
-    crm: () => ({ ...healthyCrmDriver(), readHireData: async (input: { email: string }) => {
-      calls.push({ system: "crm", input }); return CrmReadHireData.example;
-    } }),
-    ucpath: () => ({ ...healthyUcpathDriver(), searchPersonMatch: async (input: unknown) => {
-      calls.push({ system: "ucpath", input }); return { hits: [], confirmed: [], dropped: [] };
-    } }),
-    i9: () => ({ system: "i9" as const, searchEmployees: async () => { throw new Error("unused search"); },
-      readRecordSummary: async () => { throw new Error("unused summary"); }, readSection2Signer: async (input: I9LookupInput) => {
-        calls.push({ system: "i9", input }); return { i9Status: "not-found" as const, signerName: "" as const };
-      } }),
-  });
-  const manager = await sessionManagerFor(sessions, f.clock, undefined, undefined, duoCeremonyGatesOver(f.database, f.clock));
-  managers.push(manager);
-  const execution = canonicalChildExecution({ descriptor, stores: taskStoreRegistry, authority: f.database,
-    lifecycle: testRunLifecycle(f.database, f.clock), sessions: manager, emitter: recordingTimelineEmitter(f.database, f.clock).emitter,
-    ...(corruptAssertedSubject ? { publishCheckpoint: () => {} } : {}),
-    taskNotes: createNoteTimelineWriter({ repository: f.database.authority.timelineEvents, clock: f.clock }),
-    clock: f.clock, ids: { uuid: randomUUID }, scheduler: new ManualScheduler(f.clock), taskDeadlineMs: 60_000,
-    log: recordingLogger().log }, f.database, f.profilePath,
-    id => id === descriptor.id ? descriptor : id === "i9-lookup" ? childWorkflowModuleOf("onboarding", "i9-lookup").descriptor : undefined);
-  let fault: ExecutionFault | undefined;
-  let markSubjectCheckpoint = corruptAssertedSubject;
-  let repositoryView: ((repositories: AuthorityRepositories) => AuthorityRepositories) | undefined;
-  const transaction = f.database.withAuthorityTransaction.bind(f.database);
-  f.database.withAuthorityTransaction = work => transaction(repositories => {
-    if (repositoryView !== undefined) return work(repositoryView(repositories));
-    if (fault === undefined && !markSubjectCheckpoint) return work(repositories);
-    const corruptGate = (gate: ReturnType<AuthorityRepositories["gateResults"]["get"]>) => {
-      if (gate === undefined || gate.gateId !== ONBOARDING_ROSTER_GATE_ID) return gate;
-      if (fault === "gate-missing") return undefined;
-      if (fault === "checkpoint") return { ...gate, checkpointFingerprint: FingerprintSchema.parse("b".repeat(64)) };
-      if (fault !== "legal-name" && fault !== "lived-name") return gate;
-      const selected = OnboardingRosterChoiceSchema.parse(gate.result.value);
-      const row = { ...selected.row, references: { ...selected.row.references,
-        ...(fault === "legal-name" ? { legalName: { ...selected.row.references.legalName, firstName: "Injected" } }
-          : { livedName: { firstName: "Injected", lastName: "Hire", middleName: "" } }) } };
-      const result = { ...gate.result, value: { ...selected, row } };
-      return { ...gate, result, checkpointFingerprint: FingerprintSchema.parse(deriveGateResultCheckpointFingerprint(result)) };
-    };
-    return work({ ...repositories,
-      runCheckpoints: { ...repositories.runCheckpoints, insert: input => {
-        const row = RunCheckpointRecordSchema.parse(input);
-        if (!markSubjectCheckpoint || row.nodeId !== "hire-subject") return repositories.runCheckpoints.insert(row);
-        const inserted = repositories.runCheckpoints.insert({ ...row, assertion: { step: "ucpath-search", assertedAt: row.writtenAt } });
-        markSubjectCheckpoint = false;
-        return inserted;
-      } },
-      gateResults: { ...repositories.gateResults, get: id => corruptGate(repositories.gateResults.get(id)),
-        listByRun: id => repositories.gateResults.listByRun(id).flatMap(gate => {
-          const retained = corruptGate(gate); return retained === undefined ? [] : [retained];
-        }) },
-      commands: { ...repositories.commands, get: id => {
-        const command = repositories.commands.get(id);
-        return fault === "command" && command?.type === "resolve-workbook-reference-row"
-          ? { ...command, payload: { sheetId: "archive", rowId: "archive-person" } } : command;
-      } },
-      commandAudits: { ...repositories.commandAudits, findByCommand: id => {
-        const audit = repositories.commandAudits.findByCommand(id);
-        if (fault === "audit-missing") return undefined;
-        return fault === "audit-changed" && audit?.request.type === "resolve-workbook-reference-row"
-          ? { ...audit, request: { ...audit.request, payload: { sheetId: "archive", rowId: "archive-person" } } } : audit;
-      } },
-      timelineEvents: { ...repositories.timelineEvents, get: id => {
-        const event = repositories.timelineEvents.get(id);
-        if (event?.payload.kind !== "span" || event.payload.event.t !== "gate.resolved") return event;
-        if (fault === "native-missing") return undefined;
-        return fault === "native-changed" ? { ...event, payload: { ...event.payload,
-          event: { ...event.payload.event, resultHash: "b".repeat(64) } } } : event;
-      } },
-    });
-  });
-  return { ...f, execution, calls, sessions, setFault: (value: ExecutionFault | undefined) => { fault = value; },
-    setRepositoryView: (value: typeof repositoryView) => { repositoryView = value; } };
 }
 
 describe("Onboarding captured roster admission and row choice", () => {
@@ -270,13 +84,13 @@ describe("Onboarding captured roster admission and row choice", () => {
     for (const changed of [undefined, foreignNative(resolved, randomUUID())]) {
       assert.throws(() => buildRunWorkbookSection({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
         get: id => id === resolved.eventId ? changed : repositories.timelineEvents.get(id) } },
-      repositories.runs.get(queued.envelope.runId)!));
+      queued));
     }
   });
 
   it("uses the native terminal event for an unresolved cancelled run and permits a later recording clock", async () => {
     const f = await fixture("missing"), run = f.start();
-    assert.equal(f.kernel.execute({ commandId: world.nextCommandId(), requestedAt: f.clock.now().toISOString(),
+    assert.equal(f.kernel.execute({ commandId: runWorld.nextCommandId(), requestedAt: f.clock.now().toISOString(),
       requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel",
       target: { runId: run.envelope.runId, expectedVersion: run.version } }).state, "applied");
     const terminal = f.database.authority.runs.get(run.envelope.runId); assert.ok(terminal && terminal.lifecycle.state === "terminal");
@@ -331,7 +145,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     }
     for (const values of [["", "Hire", "", null, null, null], ["Fixture", 4, "", null, null, null],
       ["Fixture", "Hire", "", "Lived", null, null], ["Fixture", "Hire", "", "", "", ""]]) {
-      f.edit(workbook => { workbook.sheets[0].rows[1].cells = [f.key, ...values].map(value => ({ value })); });
+      f.edit(workbook => { workbook.sheets[0].rows[1].cells = [f.key, ...values, null, null, null, null].map(value => ({ value })); });
       assert.equal(f.plan().planned.length, 0);
     }
   });
@@ -374,7 +188,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     f.edit(workbook => { workbook.sheets[1].rows[1].cells[1].value = "Later"; });
     assert.deepEqual(authenticateOnboardingRosterChoice(f.database.authority, current, gate).row, chosen);
     assert.equal(f.section(current).referenceChoices?.[0]?.resolution.state, "resolved");
-    assert.equal(f.kernel.execute({ ...command, commandId: world.nextCommandId() }).state, "rejected");
+    assert.equal(f.kernel.execute({ ...command, commandId: runWorld.nextCommandId() }).state, "rejected");
     assert.deepEqual(f.repository.runOperations(run.envelope.runId), []);
     assert.equal(f.snapshots(), 1);
   });
@@ -391,7 +205,7 @@ describe("Onboarding captured roster admission and row choice", () => {
       { ...command.target, referenceDigest: "b".repeat(64) }, { ...command.target, libraryId: "foreign" },
       { ...command.target, key: "other@example.test" }, { ...command.target, typeId: "general" },
       { ...command.target, gateId: "other-gate" }, { ...command.target, runId: randomUUID() }, { ...command.target, expectedVersion: run.version + 1 },
-    ]) assert.equal(f.kernel.execute({ ...command, commandId: world.nextCommandId(), target }).state, "rejected");
+    ]) assert.equal(f.kernel.execute({ ...command, commandId: runWorld.nextCommandId(), target }).state, "rejected");
     const tampered = structuredClone(run); tampered.input.parsed.value = { ...OnboardingCanonicalValueSchema.parse(run.input.parsed.value),
       roster: { ...OnboardingCanonicalValueSchema.parse(run.input.parsed.value).roster, reason: "row-missing" } };
     assert.throws(() => buildRunWorkbookSection(f.database.authority, tampered));
@@ -433,7 +247,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     f.edit(workbook => { const added = structuredClone(workbook.sheets[0]); added.id = "new-sheet"; added.name = "New"; workbook.sheets.push(added); });
     const command = f.choice(run); assert.ok(command.type === "resolve-workbook-reference-row");
     assert.equal(f.kernel.execute({ ...command, payload: { sheetId: "new-sheet", rowId: "people-person" } }).state, "rejected");
-    const actual = CommandRequestSchema.parse({ ...command, commandId: world.nextCommandId() });
+    const actual = CommandRequestSchema.parse({ ...command, commandId: runWorld.nextCommandId() });
     assert.ok(actual.type === "resolve-workbook-reference-row");
     assert.equal(f.kernel.execute(actual).state, "applied");
     const gate = f.database.authority.gateResults.get(`${run.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(gate);
@@ -504,8 +318,9 @@ describe("Onboarding captured roster admission and row choice", () => {
     const result = f.database.authority.runResults.get(root.envelope.runId); assert.ok(result);
     const output = OnboardingResultSchema.parse(result.result.value);
     assert.equal(output.plan.employee.firstName, "Chosen"); assert.equal(output.plan.employee.preferredFirstName, "Lived");
-    assert.equal(output.hireWrite.state, "unimplemented");
-    assert.deepEqual(f.calls.map(call => call.system), ["crm", "ucpath", "i9", "crm", "ucpath"]);
+    assert.equal(output.hireWrite.state, "verified");
+    assert.equal(output.state, "master-review-required");
+    assert.deepEqual(f.calls.map(call => call.system), ["crm", "ucpath", "i9", "crm", "ucpath", "crm", "ucpath"]);
     const childCall = f.calls.find(call => call.system === "i9"); assert.ok(childCall);
     assert.equal(Reflect.get(Object(childCall.input), "firstName"), "Chosen");
     const children = f.database.authority.runs.listChildren(root.envelope.runId);
@@ -527,7 +342,8 @@ describe("Onboarding captured roster admission and row choice", () => {
     try { assert.throws(() => receipts.ensureReceipt(root.envelope.runId)); } finally { f.setFault(undefined); }
     assert.ok(receipt.decisions.some(decision => decision.kind === "gate" && decision.outcome === "taken"
       && decision.reason.includes("selected") && decision.reason.includes("row.binding.referenceDigest")));
-    assert.deepEqual(f.repository.runOperations(root.envelope.runId), []);
+    const operations = f.repository.runOperations(root.envelope.runId);
+    assert.equal(operations.length, 1); assert.equal(operations[0]?.receipt.state, "resolve-required");
   });
 
   it.each([false, true])("authenticates the actual transitive I-9 boundary and recovered source choice (tampered source: %s)", async tamper => {
@@ -548,7 +364,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(root.envelope.runId), []);
     f.execution.lifecycle.admitDelegation = admit;
     const failed = f.database.authority.runs.get(root.envelope.runId); assert.ok(failed);
-    const recoveredResult = f.kernel.execute({ commandId: world.nextCommandId(), requestedAt: f.clock.now().toISOString(),
+    const recoveredResult = f.kernel.execute({ commandId: runWorld.nextCommandId(), requestedAt: f.clock.now().toISOString(),
       requestedBy: "local-operator", source: "run-detail", family: "run", type: "recover-run",
       target: { runId: root.envelope.runId, expectedVersion: failed.version } });
     assert.equal(recoveredResult.state, "applied");
@@ -638,7 +454,7 @@ describe("Onboarding captured roster admission and row choice", () => {
       const result = f.database.authority.runResults.get(recoveredId); assert.ok(result);
       assert.equal(OnboardingResultSchema.parse(result.result.value).plan.employee.firstName, "Fixture");
       assert.equal(f.calls.filter(call => call.system === "i9").length, 1);
-      assert.deepEqual(f.database.authority.gateResults.listByRun(recoveredId), []);
+      assert.deepEqual(f.database.authority.gateResults.listByRun(recoveredId).map(gate => gate.gateId), ["hire-review"]);
       const original = f.database.authority.gateResults.get(`${root.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(original && "commandId" in original);
       const receipts = createReceiptService({ database: f.database, runReader: testRunService(f.database, f.clock), descriptors: [descriptor] });
       assert.equal(f.database.authority.evidenceReceipts.findByRun(recoveredId), undefined);
@@ -661,7 +477,8 @@ describe("Onboarding captured roster admission and row choice", () => {
         && decision.reason.includes(root.envelope.runId) && decision.reason.includes(original.commandId)));
       const input = { descriptor, run: completed.run, result,
         checkpoints: f.database.authority.runCheckpoints.listByItem(descriptor.id, root.envelope.itemId),
-        gateResults: [], continuedGateResults: [original],
+        writes: f.database.authority.writeIntents.listByRun(recoveredId).map(intent => ({ intent, attempts: f.database.authority.writeAttempts.listByIntent(intent.writeIntentId) })),
+        gateResults: f.database.authority.gateResults.listByRun(recoveredId), continuedGateResults: [original],
         delegations: f.database.withAuthorityTransaction(repositories => [readDelegationEvidence(repositories, recoveredId, "i9-lookup-child")]) };
       assert.deepEqual(buildRunEvidenceReceipt(input), receipt);
       assert.throws(() => buildRunEvidenceReceipt({ ...input, gateResults: [original], continuedGateResults: [] }), /belongs to run/u);
@@ -671,7 +488,7 @@ describe("Onboarding captured roster admission and row choice", () => {
       const altered = structuredClone(completed.run); assert.ok(altered.envelope.continuation);
       altered.envelope.continuation.gates[0].digest = FingerprintSchema.parse("b".repeat(64));
       assert.throws(() => buildRunEvidenceReceipt({ ...input, run: altered }), /continued-gate-membership/u);
-      assert.deepEqual(f.database.authority.gateResults.listByRun(recoveredId), []);
+      assert.deepEqual(f.database.authority.gateResults.listByRun(recoveredId).map(gate => gate.gateId), ["hire-review"]);
     }
   });
 
@@ -692,7 +509,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     let candidate: RunRecord;
     if (capturedAssertion) {
       assert.deepEqual(row.assertion, { step: "ucpath-search", assertedAt: row.writtenAt });
-      const result = f.kernel.execute({ commandId: world.nextCommandId(), requestedAt: f.clock.now().toISOString(),
+      const result = f.kernel.execute({ commandId: runWorld.nextCommandId(), requestedAt: f.clock.now().toISOString(),
         requestedBy: "local-operator", source: "run-detail", family: "run", type: "recover-run",
         target: { runId: failed.envelope.runId, expectedVersion: failed.version } });
       assert.equal(result.state, "applied", JSON.stringify({ state: result.state,

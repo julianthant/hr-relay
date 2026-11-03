@@ -38,7 +38,7 @@ export function fakeUcpathHirePage(options: Readonly<{
       evaluate: async () => fields.has(key),
       inputValue: async () => {
         if (key === "filter:UC_TRANSACT_ID" && options.staleFilter) return "T009999999";
-        const persisted = { "Position Number": current().positionNumber, email: current().email, "Date of Birth": current().dob.replace(/^(\d{4})-(\d{2})-(\d{2})$/u, "$2/$3/$1") };
+        const persisted = { "Tracker Profile ID": current().profileId ?? "", "Position Number": current().positionNumber, email: current().email, "Date of Birth": current().dob.replace(/^(\d{4})-(\d{2})-(\d{2})$/u, "$2/$3/$1") };
         const value = view === "detail" ? Object.entries(persisted).find(([field]) => field === key)?.[1] ?? fields.get(key) : fields.get(key);
         if (value === undefined) throw new Error(`Unexpected hire input ${key}`); return value;
       },
