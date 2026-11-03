@@ -54,8 +54,13 @@ describe("THE run/queue projection", () => {
     appendOther(w, { ...base, t: "span.started", kind: "task", ts: w.clock.now().toISOString(), name: "searching" });
     appendOther(w, { ...base, t: "span.ended", kind: "task", ts: w.clock.now().toISOString(), outcome: "done" });
 
+    const publications: string[] = [];
+    const generation = w.database.getMeta().authorityGeneration;
+    w.projection.onChange(change => w.database.withAuthorityTransaction(() => { publications.push(change.kind); }));
     w.projection.ingestFromTimeline();
 
+    assert.deepEqual(publications, ["snapshot"]);
+    assert.equal(w.database.getMeta().authorityGeneration, generation);
     assert.equal(w.projection.health().state, "live");
     const fold = w.projection.runFold(uuidOf(1));
     assert.equal(fold?.taskSpans.length, 1);
