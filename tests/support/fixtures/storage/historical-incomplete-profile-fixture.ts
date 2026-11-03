@@ -1,5 +1,5 @@
 import { removeSchema16PersonPreferences } from "./person-preferences-predecessor.js";
-import { removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "./historical-run-schema.js";
+import { restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "./historical-run-schema.js";
 import { restorePreReadingArtifactRetention } from "./pre-reading-artifact-retention.js";
 import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { restoreEmptyPreMasterWorkbookFixture } from "../../helpers/workbooks/pre-master-schema.js";
@@ -76,6 +76,7 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
   let failure: { error: unknown } | undefined;
   try {
     database.exec("PRAGMA foreign_keys=ON; BEGIN EXCLUSIVE");
+    restoreSchema18WorkbookReferenceFixture(database);
     removeEmptySchema18WorkbookCatalog(database);
     if (options.sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(database);
     if (options.sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(database);

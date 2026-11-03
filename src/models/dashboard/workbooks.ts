@@ -147,15 +147,22 @@ export const WorkbookOperatorOperationRequestSchema = WorkbookOperationSchema.sh
 export const WorkbookOperationRecordSchema = z.strictObject({ libraryId: WorkbookIdSchema, operation: WorkbookOperationSchema, receipt: WorkbookOperationReceiptSchema });
 export type WorkbookOperationRecord = z.infer<typeof WorkbookOperationRecordSchema>;
 export const WorkbookNamedVersionSchema = z.strictObject({ name: NameSchema, provenance: z.enum(['operator', 'migration']), snapshot: SavedWorkbookWireSchema });
-export const WorkbookReferenceRequestSchema = z.strictObject({ typeId: WorkbookIdSchema, libraryId: WorkbookIdSchema.optional(),
-  versionId: WorkbookIdSchema.optional(), keys: z.array(z.string().min(1)), fields: z.array(FieldSchema) });
+const WorkbookReferenceRequestBaseSchema = z.strictObject({ typeId: WorkbookIdSchema, libraryId: WorkbookIdSchema.optional(),
+  versionId: WorkbookIdSchema.optional(), selectedRow: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema }).optional(),
+  keys: z.array(z.string().min(1)), fields: z.array(FieldSchema) });
+export const WorkbookReferenceRequestSchema = WorkbookReferenceRequestBaseSchema.refine(request => request.selectedRow === undefined
+  || (request.libraryId !== undefined && request.versionId !== undefined && request.keys.length === 1),
+{ message: 'selected workbook rows require an explicit library, version and one lookup key' });
 export const WorkbookReferenceSnapshotSchema = z.strictObject({ libraryId: WorkbookIdSchema, version: z.number().int().positive(),
   versionId: WorkbookIdSchema.optional(), versionName: NameSchema.optional(),
   worksheets: z.array(z.strictObject({ sheetId: WorkbookIdSchema, name: NameSchema })).min(1),
   type: WorkbookTypeSchema, rows: z.array(z.strictObject({ key: z.string(), state: z.enum(['matched', 'missing', 'ambiguous']),
     matches: z.array(z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema, values: z.record(FieldSchema, WorkbookCellValueWireSchema) })) })) });
-export const WorkbookReferenceLookupSchema = WorkbookReferenceRequestSchema.pick({ typeId: true, keys: true, fields: true });
-export const WorkbookRunReferenceSelectionSchema = WorkbookReferenceRequestSchema.pick({ typeId: true, libraryId: true, versionId: true }).extend({ entry: z.number().int().positive() });
+export const WorkbookReferenceLookupSchema = WorkbookReferenceRequestBaseSchema.pick({ typeId: true, keys: true, fields: true });
+export const WorkbookRunReferenceSelectionSchema = WorkbookReferenceRequestBaseSchema.pick({ typeId: true, libraryId: true, versionId: true, selectedRow: true })
+  .extend({ entry: z.number().int().positive() }).refine(selection => selection.selectedRow === undefined
+    || (selection.libraryId !== undefined && selection.versionId !== undefined),
+  { message: 'selected workbook rows require an explicit library and version' });
 export type WorkbookReferenceLookup = z.infer<typeof WorkbookReferenceLookupSchema>;
 export const RunWorkbookReferenceSchema = z.strictObject({ request: WorkbookReferenceRequestSchema, snapshot: WorkbookReferenceSnapshotSchema }).superRefine((reference, ctx) => {
   const { request, snapshot } = reference;
@@ -163,6 +170,8 @@ export const RunWorkbookReferenceSchema = z.strictObject({ request: WorkbookRefe
   if (request.typeId !== snapshot.type.id || request.libraryId !== undefined && request.libraryId !== snapshot.libraryId
     || request.versionId !== undefined && request.versionId !== snapshot.versionId
     || (snapshot.versionId === undefined) !== (snapshot.versionName === undefined)
+    || (request.selectedRow !== undefined && snapshot.rows.flatMap(row => row.matches).filter(match =>
+      match.sheetId === request.selectedRow?.sheetId && match.rowId === request.selectedRow?.rowId).length !== 1)
     || new Set(request.keys).size !== request.keys.length || new Set(request.fields).size !== request.fields.length
     || sheets.size !== snapshot.worksheets.length || request.keys.length !== snapshot.rows.length
     || snapshot.rows.some((row, index) => row.key !== request.keys[index]

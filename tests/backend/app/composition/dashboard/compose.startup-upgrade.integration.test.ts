@@ -1,5 +1,5 @@
 import { removeSchema16PersonPreferences, prePreferencesSettingsRow } from "../../../../support/fixtures/storage/person-preferences-predecessor.js";
-import { removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../../support/fixtures/storage/historical-run-schema.js";
+import { restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../../support/fixtures/storage/historical-run-schema.js";
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../../support/fixtures/storage/pre-reading-artifact-retention.js";
 import assert from "node:assert/strict";
@@ -283,6 +283,7 @@ it("preserves a real UNKNOWN parked write, its fenced attempt and stopped worker
     const native = new DatabaseSync(path);
     try {
       native.exec("BEGIN EXCLUSIVE");
+      restoreSchema18WorkbookReferenceFixture(native);
       removeEmptySchema18WorkbookCatalog(native);
       removeEmptySchema17OcrReview(native);
       removeSchema16PersonPreferences(native);
@@ -338,6 +339,7 @@ function historicalTen(path: string): void {
   const database = new DatabaseSync(path);
   try {
     database.exec("BEGIN EXCLUSIVE");
+    restoreSchema18WorkbookReferenceFixture(database);
     removeEmptySchema18WorkbookCatalog(database);
     removeEmptySchema17OcrReview(database);
     removeSchema16PersonPreferences(database);
