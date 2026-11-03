@@ -218,7 +218,8 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
           inputSchemaHash: deriveSchemaHash(target.input, "input"), canonicalInputSchemaHash: deriveSchemaHash(target.canonicalInput, "output"), resultSchemaHash: workflowTerminalResultExecution(target).schemaHash },
         configSnapshotId: parent.envelope.configSnapshotId, configFingerprint: parent.envelope.configFingerprint,
         dryRun: parent.envelope.dryRun, cardinality: plan.cardinality, join: plan.join, policy: plan.policy, planFingerprint: plan.planFingerprint,
-        children: plan.children.map(({ childItemId, canonicalInputFingerprint }) => ({ childItemId, canonicalInputFingerprint })) });
+        children: plan.children.map(({ childItemId, canonicalInputFingerprint, sourceRecordIds }) => ({ childItemId, canonicalInputFingerprint,
+          ...(sourceRecordIds === undefined ? {} : { sourceRecordIds }) })) });
       const journal = lifecycle.inspectJournal(repositories, "delegation-invocation", invocation, { kind: "none" });
       if (journal.state === "divergent") throw new Error("delegation-replay-divergent");
       let manifest = repositories.delegationManifests.get(manifestId);

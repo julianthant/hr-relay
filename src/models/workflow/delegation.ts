@@ -2,8 +2,8 @@
 import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
-import { FingerprintSchema, ItemIdSchema } from "../../rules/identity/ids.js";
-import type { DelegationEdgeId, Fingerprint, ItemId, RunId } from "../../rules/identity/ids.js";
+import { FingerprintSchema, ItemIdSchema, StableRecordIdSchema } from "../../rules/identity/ids.js";
+import type { DelegationEdgeId, Fingerprint, ItemId, RunId, StableRecordId, WorkflowId } from "../../rules/identity/ids.js";
 import type { DelegationPolicy } from "./delegation-policy.js";
 import { DelegationPolicySchema } from "./delegation-policy.js";
 import type { AnyWorkflowRef, ChildRunOutcome } from "./graph.js";
@@ -14,6 +14,7 @@ export interface PlannedChild<Target extends AnyWorkflowRef> {
   readonly childItemId: ItemId;
   readonly input: z.output<Target["input"]>;
   readonly canonicalInputFingerprint: Fingerprint;
+  readonly sourceRecordIds?: readonly StableRecordId[];
 }
 
 export interface DelegationPlan<Target extends AnyWorkflowRef> {
@@ -45,6 +46,7 @@ export interface DelegationFanOutRequest<Target extends AnyWorkflowRef> {
   readonly policy: DelegationPolicy;
   /** Raw bound value: one input for `cardinality:"one"`, an array for `"many"`. */
   readonly bound: unknown;
+  readonly sourceRecordIds?: readonly (readonly StableRecordId[])[];
   readonly deriveChildItemId: (input: z.output<Target["input"]>) => ItemId;
 }
 
@@ -64,6 +66,7 @@ export function planDelegationFanOut<Target extends AnyWorkflowRef>(
     throw new Error(`delegation edge ${request.edgeId} is cardinality "one" but produced ${String(rawInputs.length)} inputs`);
   }
 
+  if (request.sourceRecordIds !== undefined && request.sourceRecordIds.length !== rawInputs.length) throw new Error("delegation-source-membership-count-mismatch");
   const children: PlannedChild<Target>[] = [];
   const seen = new Set<string>();
   for (const [index, raw] of rawInputs.entries()) {
@@ -78,7 +81,10 @@ export function planDelegationFanOut<Target extends AnyWorkflowRef>(
       );
     }
     seen.add(childItemId);
+    const sources = request.sourceRecordIds?.[index]?.map(id => StableRecordIdSchema.parse(id));
+    if (sources !== undefined && (sources.length === 0 || new Set(sources).size !== sources.length)) throw new Error("delegation-source-membership-invalid");
     children.push({
+      ...(sources === undefined ? {} : { sourceRecordIds: sources.toSorted() }),
       childItemId,
       input: parsed,
       canonicalInputFingerprint: delegationChildInputFingerprint(parsed),
@@ -86,25 +92,27 @@ export function planDelegationFanOut<Target extends AnyWorkflowRef>(
   }
 
   // Record empty fan-outs explicitly so joins receive an empty array.
-  const identity = {
-    edgeId: request.edgeId,
-    workflowId: request.target.id,
-    cardinality: request.cardinality,
-    join: request.join,
-    policy,
-    children: children.map(({ childItemId, canonicalInputFingerprint }) => ({
-      childItemId,
-      canonicalInputFingerprint,
-    })),
-  };
   return {
     edgeId: request.edgeId,
     cardinality: request.cardinality,
     join: request.join,
     policy,
     children,
-    planFingerprint: fingerprintOf("delegation-plan", identity),
+    planFingerprint: delegationPlanFingerprint({ ...request, workflowId: request.target.id, policy, children }),
   };
+}
+
+export function delegationPlanFingerprint(identity: Readonly<{
+  edgeId: DelegationEdgeId; workflowId: WorkflowId; cardinality: DelegationPlan<AnyWorkflowRef>["cardinality"];
+  join: DelegationPlan<AnyWorkflowRef>["join"]; policy: DelegationPolicy;
+  children: readonly Pick<PlannedChild<AnyWorkflowRef>, "childItemId" | "canonicalInputFingerprint" | "sourceRecordIds">[];
+}>): Fingerprint {
+  return fingerprintOf("delegation-plan", { edgeId: identity.edgeId, workflowId: identity.workflowId,
+    cardinality: identity.cardinality, join: identity.join, policy: identity.policy,
+    children: identity.children.map(({ childItemId, canonicalInputFingerprint, sourceRecordIds }) => ({
+      childItemId, canonicalInputFingerprint, ...(sourceRecordIds === undefined ? {} : { sourceRecordIds }),
+    })),
+  });
 }
 
 /** Replaying a `child-run` node re-plans and must land on exactly the stored manifest; attaching new children silently would orphan the old ones. */

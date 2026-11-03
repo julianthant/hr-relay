@@ -7,7 +7,7 @@ import type { DependencyRecord } from "../../../rules/workflow/dependencies.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import { RunResultRecordSchema, readRunPreviewResult, terminalEvidenceResult, DelegationTerminalEvidenceSchema, delegationDependencyRecord } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { delegationChildInputFingerprint } from "../../../models/workflow/delegation.js";
+import { delegationChildInputFingerprint, delegationPlanFingerprint } from "../../../models/workflow/delegation.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -45,6 +45,7 @@ export function authenticateOriginalDelegationGroup(repositories: AuthorityRepos
   const invocation = DelegationInvocationRequestSchema.parse(command.request);
   if (invocation.commandId !== lifecycleCommandId("delegation-invocation", { runId: parent.envelope.runId, attempt: parent.envelope.attempt, nodeId: invocation.nodeId })
     || invocation.runId !== parent.envelope.runId || invocation.attempt !== parent.envelope.attempt
+    || invocation.planFingerprint !== delegationPlanFingerprint({ ...invocation, workflowId: invocation.target.workflowId })
     || invocation.definitionFingerprint !== parent.envelope.contractFingerprint || invocation.edgeId !== manifest.edgeId
     || invocation.manifestId !== manifest.manifestId || invocation.planFingerprint !== manifest.manifestFingerprint
     || invocation.parentInputDigest !== sha256Hex(canonicalJsonStringify(valueFreeProtectedData(parent.input)))

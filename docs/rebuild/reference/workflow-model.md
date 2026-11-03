@@ -782,3 +782,5 @@ through `defineStep`. Their proof recipes retain proof identity and order; `inde
 harness with `defineStepProof`. `inheritStepProof` shares parent ingress and presentation without
 copying declarations. Specialized proof ingress remains explicit in `StepProofSpec`. Workflow
 composition uses typed build results, without runtime group or entry lookups.
+
+A delegate may declare `sourceRecordIds(scope)`, an ordered list of record sets aligned with its bound children. Each set is nonempty and unique; planning sorts it and includes it in the immutable plan fingerprint. Canonical input equality does not replace this source membership proof. OCR identity and signer lookups declare the records that requested each read.

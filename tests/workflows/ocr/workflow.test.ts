@@ -79,6 +79,8 @@ describe("child-only OCR document graph", () => {
     assert.ok(signerNode?.kind === "child-run");
     const input = OcrInputSchema.parse({ ...requestFixture().request, formType });
     assert.deepEqual(lookup.bind({ input, outputs: { "build-review": review } }), person.map(request => request.input));
+    assert.deepEqual(lookup.sourceRecordIds?.({ input, outputs: { "build-review": review } }), person.map(request => request.recordIds));
+    assert.deepEqual(signerNode.sourceRecordIds?.({ input, outputs: { "build-review": review, "lookup-identities": [] } }), signer.map(request => request.recordIds));
     assert.deepEqual(signerNode.bind({ input, outputs: { "build-review": review, "lookup-identities": [] } }), signer.map(request => request.input));
     assert.equal(signerNode.policy.visibility, "inline");
     assert.equal(nodes.some(node => node.kind === "parallel"), false);

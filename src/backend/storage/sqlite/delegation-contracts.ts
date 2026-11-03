@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { CommandIdSchema, DelegationEdgeIdSchema, DelegationManifestIdSchema, DependencyIdSchema, FingerprintSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema, WorkflowIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
+import { CommandIdSchema, DelegationEdgeIdSchema, DelegationManifestIdSchema, DependencyIdSchema, FingerprintSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema, StableRecordIdSchema, WorkflowIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 import { DelegationTerminalDependencySchema } from "../../../models/run/result.js";
 import { DelegationPolicySchema } from "../../../models/workflow/delegation-policy.js";
 
@@ -31,7 +31,7 @@ export const DelegationInvocationRequestSchema = z.strictObject({
   join: z.enum(["one", "all", "all-settled", "none"]),
   policy: DelegationPolicySchema,
   planFingerprint: FingerprintSchema,
-  children: z.array(z.strictObject({ childItemId: ItemIdSchema, canonicalInputFingerprint: FingerprintSchema })),
+  children: z.array(z.strictObject({ childItemId: ItemIdSchema, canonicalInputFingerprint: FingerprintSchema, sourceRecordIds: z.array(StableRecordIdSchema).min(1).optional() })),
 });
 
 export const DelegationAdmissionRequestSchema = z.strictObject({
