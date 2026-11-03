@@ -388,3 +388,5 @@ owns the exact migration and backup rules.
 UCPath hire filing proofs bind the independently read transaction, legal identity, date and position. Pending proves a filing awaiting approval; it does not mean the person has been hired. Denied, Error and Pushed Back cannot complete the write. New hires may have no assigned EID; a pre-assignment ID is never filled into the master. The entire new-hire or concurrent-hire wizard is staged and captured before fencing, and Save and Submit is clicked once.
 
 Hire event keys retain the verified hire email, date and position across EID assignment or reviewed mode changes. Before master fills, a fresh complete read must prove the exact retained T-number and current filing status. New-hire receipt reuse also checks the independently read Tracker Profile ID against the verified I-9 profile.
+
+Completion-proof descriptions preserve nullable scalar fields explicitly. Email syntax and refinements remain marked for server validation; the completion proof schema still decides acceptance.
