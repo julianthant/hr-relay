@@ -16,6 +16,8 @@ import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow
 import { onbaseWorkflow } from "../../src/workflows/onbase/workflow.js";
 import { separationsWorkflow } from "../../src/workflows/separations/workflow.js";
 import { fixtureBuildManifest } from "../support/fixtures/workflow-definition-fixtures.js";
+import { onboardingWorkflow } from "../../src/workflows/onboarding/workflow.js";
+import { ONBOARDING_ROSTER_FIELDS } from "../../src/models/workflows/onboarding/roster.js";
 
 const Input = z.strictObject({ value: z.string() });
 const canonicalInput = defineCanonicalInput(Input, Input, [{ value: "fixture" }]);
@@ -50,6 +52,35 @@ const currentDefinitions: readonly AnyWorkflowDefinition[] = [
 ];
 
 describe("direct workbook type requirements", () => {
+  it("derives lookups from admitted ingress before canonical reference binding", () => {
+    let parses = 0;
+    const ingress = z.strictObject({ value: z.string().transform(value => { parses++; return `${value}!`; }), captured: z.string().optional() });
+    const captured = defineCanonicalInput(ingress, Input.extend({ captured: z.string() }), [{ value: "fixture", captured: "retained" }]);
+    const ingressFlow = flow(ingress).step("reading", contract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => ({ value: input.value }) })
+      .build({ schema: Input, dependsOn: ["reading"], derive: ({ outputs }) => outputs.reading });
+    const descriptor = defineWorkflowDescriptor({ ...descriptorSpec, flow: ingressFlow, canonicalInput: captured,
+      requiredWorkbookTypeIds: ["roster"], referenceLookups: input => [{ typeId: "roster", keys: [input.value], fields: ["email"] }],
+      plannedOutputs: input => [{ kind: "workbook", name: `${input.value}.xlsx`, rowSubject: "person", rows: { state: "known", count: 1 } }] });
+    const planning = workflowPlanning(descriptor);
+    parses = 0;
+    const admitted = planning.parseInput({ value: "fixture" });
+    expect(admitted.lookups).toEqual([{ typeId: "roster", keys: ["fixture!"], fields: ["email"] }]);
+    expect(parses).toBe(1);
+    expect(() => planning.plannedOutputs({ value: "fixture" }, [])).toThrow();
+    expect(planning.plannedOutputs({ value: "fixture", captured: "retained" }, [])).toEqual([
+      { kind: "workbook", name: "fixture.xlsx", rowSubject: "person", rows: { state: "known", count: 1 } },
+    ]);
+  });
+
+  it("authors the Onboarding roster lookup without caller-supplied roster values", () => {
+    const planning = workflowPlanning(compileWorkflow(onboardingWorkflow).descriptor);
+    const ingress = planning.parseInput({ email: "hire@example.test", mode: "new-hire" });
+    expect(() => planning.parseCanonicalInput(ingress.input)).toThrow();
+    expect(ingress.lookups).toEqual([
+      { typeId: "onboarding-roster", keys: ["hire@example.test"], fields: [...ONBOARDING_ROSTER_FIELDS] },
+    ]);
+  });
+
   it("preserves exact nonempty IDs and order through compilation and sealed readers", () => {
     const ids = ["roster/custom:2026", "Mixed Case type"];
     const definition = defineWorkflow({ ...base, requiredWorkbookTypeIds: ids });

@@ -87,6 +87,7 @@ current corpus.
 - Standalone OCR has no downstream approval; delegated OCR holds downstream outcomes until approval.
 - The launcher shares Input/Values, Options, Steps, and Confirm layouts without adding empty stages.
 - Run and Rerun Options use card rows; Dry run starts off, browser mode is Headed, and Screenshots is locked Always on.
+- Required reference types add spreadsheet and named-version rows. Confirm frames Plan, Input and declared Output groups; each stage starts at the top, and body scrolling keeps the header and footer in place.
 - Reading steps allow typed manual values while form actions and required sign-in steps remain included.
 - Settings uses a stationary rail/Navbar and body-scoped content, search, guarded exit, and child breadcrumbs.
 - Settings places General/Credentials under Personal and Paths/Routes under Advanced; Performance remains reachable through Settings search.
@@ -97,9 +98,10 @@ current corpus.
 - Notifications has interactive local destinations and separate read state.
 - Analytics uses duration coverage and exact-population drilldown rather than a labor-saving estimate.
 - Explorer renders complete local workflow timelines and source disclosures with stable IDs.
-- Spreadsheets uses the approved HUB library, inline spreadsheet types and Kronos report controls,
-  versioned files, typed fields, selected header/column import, real XLSX workers and bounded editor history.
-  The former Library/Types tabs, library search and Date added column are absent.
+- Spreadsheets uses the approved HUB library, inline spreadsheet types,
+  separate reference-data and workflow-output tables, search and type filtering, named versions in a drawer,
+  typed fields, selected header/column import, real XLSX workers and bounded editor history.
+  The former Library/Types tabs and Date added column are absent.
 - The HUB Assistant mounts in the shell with a retained composer in Chat files. Product conversations use the served assistant controller with per-chat cancellation and account authority.
   Canonical selected-run actions require explicit Start run confirmation and show their exact public plan. Confirmed starts and cancellations resolve in the thread; unknown outcomes retain the disabled card. Other proposals without issued action authority keep confirmation unavailable. Explicit parity composition retains the approved conversation and workflow
   samples; workbook registration and exact-version reads use the served library.

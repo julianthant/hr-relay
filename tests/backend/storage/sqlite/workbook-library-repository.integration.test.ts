@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
-import { createWorkbookLibraryRepository, hasOnlyInitialWorkbookType, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
+import { createWorkbookLibraryRepository, hasOnlyInitialWorkbookType, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION } from "../../../../src/backend/storage/sqlite/workbook-library-repository.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -18,7 +18,7 @@ it("adds workbook storage to the baseline without changing existing schema or re
     const existingSchema = database.prepare("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name").all();
     const state = database.prepare("SELECT * FROM database_states").get();
     database.exec("BEGIN IMMEDIATE");
-    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements]) database.exec(statement);
+    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(statement);
     database.exec("COMMIT");
     const after = database.prepare("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name").all();
     expect(after.filter(row => existingSchema.some(before => before.name === row.name))).toEqual(existingSchema);
@@ -55,7 +55,7 @@ it("does not initialize schema implicitly when constructing the repository", () 
 it('recognizes only the exact single seeded type without hiding its raw inventory count', () => {
   const database = new DatabaseSync(':memory:');
   try {
-    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements]) database.exec(statement);
+    for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(statement);
     const original = { id: 'general', name: 'General workbook', keyFieldId: null, fields: [], defaultWorkbookId: null };
     expect(hasOnlyInitialWorkbookType(database)).toBe(true);
     expect(database.prepare('SELECT COUNT(*) AS count FROM workbook_types').get()?.count).toBe(1);

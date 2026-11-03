@@ -1,0 +1,11 @@
+{
+  "stateId": "workbook-reference-logs-available",
+  "viewport": "1440x1000",
+  "theme": "paper-ink",
+  "adapter": "fixture",
+  "fixtureId": "workbook-reference-logs.spec.ts:ordered roster reference Logs light 1440",
+  "descriptorHash": "bb4e6205beffa33f37bd41e635894074c0bc49937b14d51119ae2e411e89e30f",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "default"
+}

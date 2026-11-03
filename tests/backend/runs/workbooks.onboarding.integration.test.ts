@@ -91,7 +91,7 @@ async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate") 
     descriptors: { resolve: id => id === descriptor.id ? descriptor : undefined }, planTtlMs: 600_000,
     workbooks: { snapshot: value => { snapshots++; return library.snapshot(value); } }, configFingerprint: config.configFingerprint,
     configSnapshotId: config.configSnapshotId, plannedBy: "local-operator" });
-  const selection = { entry: 1, typeId: "onboarding-roster", keys: [key], fields: [...ONBOARDING_ROSTER_FIELDS] };
+  const selection = { entry: 1, typeId: "onboarding-roster" };
   const request = { workflowId: descriptor.id, submissions: [{ email: key, mode: "new-hire", configuredJobEndDate: "06/30/2027" }],
     dryRun: false, workbookReferences: [selection] };
   const plan = (value: unknown = request) => {
@@ -313,7 +313,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(f.section(stored).referenceChoices?.length, 0);
     assert.equal(f.snapshots(), 1);
     const selected = f.plan({ ...f.request, submissions: [{ ...f.request.submissions[0], email: "other@example.test" }],
-      workbookReferences: [{ ...f.selection, libraryId: f.id, keys: ["other@example.test"] }] });
+      workbookReferences: [{ ...f.selection, libraryId: f.id }] });
     assert.equal(selected.planned.length, 1); assert.equal(selected.refused.length, 0);
     assert.equal(OnboardingCanonicalInput.safeParse(f.request.submissions[0]).success, false);
   });
@@ -323,10 +323,12 @@ describe("Onboarding captured roster admission and row choice", () => {
     for (const request of [
       { ...f.request, submissions: [{ ...f.request.submissions[0], roster: ONBOARDING_INPUT_EXAMPLE.roster }] },
       { ...f.request, workbookReferences: [] },
-      { ...f.request, workbookReferences: [{ ...f.selection, keys: ["other@example.test"] }] },
-      { ...f.request, workbookReferences: [{ ...f.selection, fields: ["email", "livedName"] }] },
       { ...f.request, workbookReferences: [{ ...f.selection, typeId: "general" }] },
+      { ...f.request, workbookReferences: [{ ...f.selection, versionId: "missing" }] },
     ]) assert.equal(f.plan(request).planned.length, 0);
+    for (const reference of [{ ...f.selection, keys: ["other@example.test"] }, { ...f.selection, fields: ["email", "livedName"] }]) {
+      assert.throws(() => f.plan({ ...f.request, workbookReferences: [reference] }));
+    }
     for (const values of [["", "Hire", "", null, null, null], ["Fixture", 4, "", null, null, null],
       ["Fixture", "Hire", "", "Lived", null, null], ["Fixture", "Hire", "", "", "", ""]]) {
       f.edit(workbook => { workbook.sheets[0].rows[1].cells = [f.key, ...values].map(value => ({ value })); });

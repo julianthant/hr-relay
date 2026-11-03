@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { z } from 'zod';
 import { Workbook, writeXlsx } from '@shbernal/ts-xlsx';
-import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, validateWorkbookLibrary } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
+import { createWorkbookLibraryRepository, WORKBOOK_LIBRARY_MIGRATION, WORKBOOK_MASTER_MIGRATION, WORKBOOK_LIBRARY_CATALOG_MIGRATION, validateWorkbookLibrary } from '../../../src/backend/storage/sqlite/workbook-library-repository.js';
 import { createWorkbookLibraryService } from '../../../src/backend/workbooks/workbook-library-service.js';
 import { encodeSavedWorkbook, type WorkbookOperation } from '../../../src/models/dashboard/workbooks.js';
 import { manualClock } from '../../../src/rules/time/clock.js';
@@ -17,7 +17,7 @@ const roots: string[] = [], databases: DatabaseSync[] = [];
 afterEach(() => { databases.splice(0).forEach(db => db.close()); roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })); });
 function open(path = ':memory:', initialize = true) {
   const database = new DatabaseSync(path); databases.push(database);
-  if (initialize) for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements]) database.exec(statement);
+  if (initialize) for (const statement of [...WORKBOOK_LIBRARY_MIGRATION.statements, ...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) database.exec(statement);
   const tx = <T>(work: () => T): T => {
     database.exec('BEGIN IMMEDIATE');
     try { const value = work(); database.exec('COMMIT'); return value; } catch (error) { database.exec('ROLLBACK'); throw error; }
@@ -249,7 +249,7 @@ it('migrates every retained revision with explicit migration provenance without 
     const json = JSON.stringify(encodeSavedWorkbook(record));
     db.prepare('INSERT INTO workbook_library_history(workbook_id,version,created_at,saved_at,payload_json) VALUES(?,?,?,?,?)').run(record.libraryId, record.version, record.createdAt, record.savedAt, json);
   }
-  for (const sql of WORKBOOK_MASTER_MIGRATION.statements) db.exec(sql);
+  for (const sql of [...WORKBOOK_MASTER_MIGRATION.statements, ...WORKBOOK_LIBRARY_CATALOG_MIGRATION.statements]) db.exec(sql);
   expect(db.prepare('SELECT name,provenance,version FROM workbook_library_history ORDER BY version').all()).toEqual([
     { name: 'Saved revision 1', provenance: 'migration', version: 1 }, { name: 'Saved revision 2', provenance: 'migration', version: 2 }]);
   expect(validateWorkbookLibrary(db)).toBeGreaterThan(0);
