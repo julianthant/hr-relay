@@ -40,8 +40,6 @@ const contracts = [ExtractPdfPages, ReadOcrSourcePages, ReadOcrReviewSeed, ReadO
   ReadManualOcrReading, ReadOcrPageReading] as const;
 const scopes: readonly Readonly<{ scope: EvidenceValueScope; schema: z.ZodType }>[] = [
   ...contracts.map(contract => ({ scope: { kind: "task-output" as const, taskId: contract.id }, schema: contract.output })),
-];
-const deferredScopes: typeof scopes = [
   ...["ocr", "ocr-source-pages"].map(id => ({
     scope: { kind: "workflow-input" as const, workflowId: WorkflowIdSchema.parse(id) }, schema: OcrInputSchema,
   })),
@@ -62,15 +60,6 @@ describe("OCR producer evidence classifications", () => {
       const projection = z.toJSONSchema(schema, { io: "output", unrepresentable: "any" });
       for (const path of schemaLeaves(projection)) classifyEvidenceLeaf(scope, path);
       for (const path of ["unexpected", "record.unexpected", "extraction.unexpected", "manifest.document.unexpected"]) {
-        assert.throws(() => classifyEvidenceLeaf(scope, path), /no declared evidence classification/u);
-      }
-    });
-  }
-
-  for (const { scope, schema } of deferredScopes) {
-    it(`keeps ${evidenceScopeKey(scope)} undeclared before workflow activation`, () => {
-      const projection = z.toJSONSchema(schema, { io: "output", unrepresentable: "any" });
-      for (const path of schemaLeaves(projection)) {
         assert.throws(() => classifyEvidenceLeaf(scope, path), /no declared evidence classification/u);
       }
     });
@@ -112,6 +101,30 @@ describe("OCR producer evidence classifications", () => {
   it("does not lend an OCR producer's declarations to a foreign task", () => {
     assert.throws(() => classifyEvidenceLeaf({ kind: "task-output", taskId: TaskIdSchema.parse("ucpath/search-person-org") },
       "extraction.record.answers"), /no declared evidence classification/u);
+  });
+
+  it("drops workflow inputs, captured identities and approval references from diagnostic evidence", () => {
+    const declarations: readonly Readonly<{ scope: EvidenceValueScope; paths: readonly string[] }>[] = [
+      { scope: { kind: "workflow-input", workflowId: WorkflowIdSchema.parse("ocr") },
+        paths: ["document.sha256", "sourceRunId", "readingId", "roster.rows", "reading.actorId", "reading.assertions"] },
+      { scope: { kind: "workflow-input", workflowId: WorkflowIdSchema.parse("ocr-page") },
+        paths: ["page.image.sha256", "reading.extraction.record.answers", "reading.actorId"] },
+      { scope: { kind: "workflow-result", workflowId: WorkflowIdSchema.parse("ocr") },
+        paths: ["review.records", "identities", "approvedSnapshot.snapshotId", "approvedSnapshot.sourceRunId", "approvedSnapshot.digest"] },
+      { scope: { kind: "gate-result", workflowId: WorkflowIdSchema.parse("ocr"), gateId: GateIdSchema.parse("approve-records") },
+        paths: ["snapshotId", "sourceRunId", "digest"] },
+    ];
+    for (const { scope, paths } of declarations) {
+      for (const path of paths) {
+        const declaration = classifyEvidenceLeaf(scope, path);
+        assert.equal(declaration.classification, "sensitive-hr");
+        assert.equal(declaration.transform, "drop");
+        assert.deepEqual(redactValue(declaration.classification, declaration.transform, "synthetic-sensitive"),
+          { state: "redacted", classification: "sensitive-hr", transform: "drop" });
+      }
+    }
+    assert.throws(() => classifyEvidenceLeaf({ kind: "workflow-input", workflowId: WorkflowIdSchema.parse("unregistered-ocr") },
+      "document.sha256"), /no declared evidence classification/u);
   });
 
   it("retains the local-agent refusal after classifying rejected input metadata", () => {

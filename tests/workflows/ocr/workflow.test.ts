@@ -3,7 +3,7 @@ import { describe, it } from "vitest";
 import { auditWorkflowModuleRoles } from "../../../src/workflow-kit/validation/workflow-module-audit.js";
 import { compileWorkflow, workflowExplorerDeclaration } from "../../../src/workflow-kit/workflow-definition.js";
 import { descriptorRuntimeNodes, workflowTerminalResultExecution } from "../../../src/workflow-kit/workflow.js";
-import { workflowModuleOf, childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
+import { ocrModule, ocrPageModule, workflowModuleOf, childWorkflowModuleOf } from "../../../src/backend/app/registries/workflow-registry.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { ocrWorkflow } from "../../../src/workflows/ocr/workflow.js";
 import { OcrPageWorkflowInputSchema } from "../../../src/models/workflows/ocr-page/input.js";
@@ -22,7 +22,7 @@ import { ItemIdSchema } from "../../../src/rules/identity/ids.js";
 import { sourceFixture, donePage, submittedPage, READING_ID, SOURCE_RUN_ID } from "../../support/fixtures/ocr/source-pages.js";
 import { readOcrPageFixture } from "../../support/fixtures/ocr/read-page.js";
 import { ocrTaskContext } from "../../support/fixtures/ocr/task-context.js";
-import { UNREGISTERED_OCR_MODULES } from "../../support/fixtures/ocr/unregistered-workflows.js";
+import { ocrSourcePagesModule, ocrPageReadingModule } from "../../../src/backend/app/registries/step-proof-modules.js";
 
 const descriptor = compileWorkflow(ocrWorkflow).descriptor;
 const nodes = descriptorRuntimeNodes(descriptor);
@@ -63,10 +63,11 @@ async function finishFixture(scope: Parameters<typeof completed.bind>[0]) {
     input: ReadOcrResult.input.parse(completed.bind(scope)), ctx: ocrTaskContext().ctx }));
 }
 
-describe("unregistered OCR document graph", () => {
-  it("compiles complete exact stores and generated timelines without production registration", () => {
-    assert.deepEqual(UNREGISTERED_OCR_MODULES.map(module => String(module.descriptor.id)), ["ocr", "ocr-page", "ocr-source-pages", "ocr-page-reading"]);
-    assert.deepEqual(auditWorkflowModuleRoles(UNREGISTERED_OCR_MODULES), []);
+describe("child-only OCR document graph", () => {
+  it("compiles complete exact stores and generated timelines without public registration", () => {
+    const modules = [ocrModule, ocrPageModule, ocrSourcePagesModule, ocrPageReadingModule];
+    assert.deepEqual(modules.map(module => String(module.descriptor.id)), ["ocr", "ocr-page", "ocr-source-pages", "ocr-page-reading"]);
+    assert.deepEqual(auditWorkflowModuleRoles(modules), []);
     assert.equal(children.join, "all-settled");
     assert.equal(children.policy.cascadeCancel, "cascade");
     assert.equal(lookup.join, "all-settled");

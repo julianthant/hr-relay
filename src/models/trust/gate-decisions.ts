@@ -2,6 +2,15 @@
 import { z } from "zod";
 import { GateIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import { EvidenceLeafPathSchema } from "./evidence-classification.js";
+import { OcrApprovalReferenceSchema } from "../workflows/ocr/result.js";
+
+export const SNAPSHOT_APPROVAL_DECISIONS = Object.freeze([
+  Object.freeze({ workflowId: WorkflowIdSchema.parse("ocr"), gateId: GateIdSchema.parse("approve-records"), result: OcrApprovalReferenceSchema }),
+]);
+
+export function findSnapshotApprovalDecision(workflowId: string, gateId: string) {
+  return SNAPSHOT_APPROVAL_DECISIONS.find(declaration => declaration.workflowId === workflowId && declaration.gateId === gateId);
+}
 
 /** Exactly `DecisionEvidenceSchema.outcome`'s arms — no wider, no narrower. */
 export const GateDecisionOutcomeSchema = z.enum([
