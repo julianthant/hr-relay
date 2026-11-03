@@ -1,5 +1,7 @@
 import type { Readable } from "node:stream";
-import { NamedArtifactOutputSchema, type NamedArtifactOutput } from "../models/artifacts/artifacts.js";
+import { ARTIFACT_COLLECTION_MEDIA_TYPE, ArtifactCollectionManifestSchema, CollectionArtifactOutputSchema,
+  NamedFileArtifactOutputSchema, type CollectionArtifactOutput, type NamedFileArtifactOutput } from "../models/artifacts/artifacts.js";
+import { canonicalJsonStringify } from "../rules/validation/canonical-json.js";
 import type { ArtifactPutMetadata, ArtifactRef } from "../models/artifacts/artifacts.js";
 
 export interface ContentAddressedArtifactWriter {
@@ -20,6 +22,13 @@ export interface DiagnosticArtifactWriter extends ContentAddressedArtifactWriter
 }
 
 /** The blocking documents-file projection publishes this task output before its step completes. */
-export function namedArtifactOutput(artifact: ArtifactRef, fileName: string): NamedArtifactOutput {
-  return NamedArtifactOutputSchema.parse({ artifact, fileName });
+export function namedArtifactOutput(artifact: ArtifactRef, fileName: string): NamedFileArtifactOutput {
+  return NamedFileArtifactOutputSchema.parse({ artifact, fileName });
+}
+
+export async function collectionArtifactOutput(writer: ContentAddressedArtifactWriter,
+  files: CollectionArtifactOutput["files"]): Promise<CollectionArtifactOutput> {
+  const manifest = ArtifactCollectionManifestSchema.parse({ files });
+  const artifact = await writer.put(new TextEncoder().encode(canonicalJsonStringify(manifest)), { mediaType: ARTIFACT_COLLECTION_MEDIA_TYPE });
+  return CollectionArtifactOutputSchema.parse({ ...manifest, artifact });
 }

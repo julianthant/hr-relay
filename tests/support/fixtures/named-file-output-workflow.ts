@@ -19,4 +19,4 @@ const definition = flow(input).step("archive", namedFileOutputContract, { depend
 export const namedFileOutputDescriptor = defineWorkflowDescriptor({ id: "wiring-projection", version: 1, contractFingerprint: "a".repeat(64), code: "wj", label: "Named output fixture", icon: "Search", category: "operations",
   canonicalInput, inputSubject: "name", surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS, surfaces: {}, details: [],
   identity: { matchKey: (value: z.output<typeof input>) => value.name }, presentation: { title: (value: z.output<typeof input>) => value.name }, scenarios: [String(namedFileOutputScenario)],
-  artifactProjections: [{ id: "batch-archive", source: { nodeId: "archive", fieldPath: "archive" }, keyFields: ["archive.fileName"], sink: "documents-file", blocking: true }], flow: definition });
+  artifactProjections: [{ id: "batch-archive", source: { nodeId: "archive", fieldPath: "archive" }, keyFields: ["archive.artifact.sha256"], sink: "documents-file", blocking: true }], flow: definition });

@@ -241,6 +241,14 @@ The named sink publishes the retained bytes once and refuses every existing dest
 identical bytes. Path components, control characters, reserved filenames and unsafe stages refuse.
 An interrupted prepared publication retains its pending evidence and fails closed under the existing
 publication-conflict protocol; a completed acknowledgment replays without touching the destination.
+For several document destinations, return `collectionArtifactOutput(writer, files)`, where each file
+contains a validated `relativePath` and retained artifact. Use one blocking `documents-file` projection
+keyed by the collection's `artifact.sha256`. The helper retains an exact manifest; publication verifies
+it and every member's bytes, stages the files, and prepares that manifest before publishing members.
+Relative path segments follow the safe filename rules; duplicate destinations, conflicting parents,
+symlink parents and existing destination files refuse. Completion acknowledges the collection only
+after every destination is verified and its directories are synced. Partial publication keeps the
+prepared manifest and pending outbox; it never becomes a completed collection or an automatic replay.
 `src/backend/storage/artifacts/content-addressed-artifact-writer.ts` validates the admitted root,
 rejects symlinks, publishes atomically, deduplicates content, and verifies references on open.
 Direct mutable task filesystem writes are excluded by `artifact-effect-boundary`.
