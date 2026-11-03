@@ -17,7 +17,7 @@ import type { z } from "zod";
 const same = (left: unknown, right: unknown) => canonicalJsonStringify(left) === canonicalJsonStringify(right);
 
 export function createApprovedOcrRecordReader(deps: Readonly<{
-  database: AuthorityDatabase; reader: Pick<RunRecordService, "read">; run: RunRecord;
+  database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot">; reader: Pick<RunRecordService, "read">; run: RunRecord;
   assertCurrent(): void; resolveDescriptor(workflowId: string): AnyWorkflowDescriptor | undefined;
 }>) {
   const reader = deps.reader;
