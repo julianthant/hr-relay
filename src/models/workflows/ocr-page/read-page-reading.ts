@@ -14,7 +14,7 @@ if (!providerExample.admitted) throw new Error("OCR page contract example is not
 export const ReadOcrPageReading = defineTaskContract({
   id: taskId("workflow:ocr-page/read-page-reading"), title: "Retain page reading", effect: "read",
   input: z.strictObject({ request: OcrPageWorkflowInputSchema, extraction: AdmittedExtractionSchema.nullable() }),
-  output: OcrPageReadingSchema, errorCodes: ["INCONSISTENT_INPUTS"],
+  output: OcrPageReadingSchema, errorCodes: ["INCONSISTENT_INPUTS", "OCR_PUBLICATION_REFUSED"],
   subject: { kind: "none", reason: "source binding grants no person or write authority" },
   freshness: { defaultMaxAgeMs: Infinity, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: [],
   example: bindOcrPageReading(OCR_PAGE_EXAMPLE.page, providerExample.extraction),

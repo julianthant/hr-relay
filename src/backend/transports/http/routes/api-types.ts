@@ -17,9 +17,10 @@ import type { StartPlanService } from "../../../runs/commands/start-plan-service
 import type { RunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
 import type { StaticBundle } from "../static-bundle.js";
 import type { RequestIdentityCheckpoint } from "../request-identity.js";
+import type { OcrRouteDeps } from "./ocr.js";
 
 /** Shared wiring plus leaf-owned contracts. Existing composed fixtures remain valid. */
-export interface DashboardAppDeps extends ChatGptAccountRouteDeps, WorkbooksRouteDeps, TrustRouteDeps, ShellRouteDeps, SettingsRouteDeps, StorageRouteDeps, ExplorerRouteDeps, IntakeRouteDeps, RunDetailRouteDeps {
+export interface DashboardAppDeps extends OcrRouteDeps, ChatGptAccountRouteDeps, WorkbooksRouteDeps, TrustRouteDeps, ShellRouteDeps, SettingsRouteDeps, StorageRouteDeps, ExplorerRouteDeps, IntakeRouteDeps, RunDetailRouteDeps {
   readonly notifications?: { collection?(actor: string, operation: import("../../../../models/notifications/notifications.js").NotificationCollectionOperation): import("../../../../models/notifications/notifications.js").NotificationCollectionTarget; snapshot(actor: string): readonly import("../../../../models/dashboard/projection.js").NotificationWire[]; target: ReturnType<typeof import("../../../runs/queries/notifications.js").createNotificationTargetQuery>; status(): import("../../../runs/notifications/observation.js").NotificationObservationStatus };
   readonly assistant?: AssistantService;
   readonly requestIdentity: RequestIdentityCheckpoint;

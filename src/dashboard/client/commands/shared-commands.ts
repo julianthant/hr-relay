@@ -30,6 +30,7 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
   if (command.family === "worker-browser" && command.type === "check-parked-write" && targets.length !== 2) identityMismatch(response);
   const matches = (target: typeof targets[number]): boolean => {
     switch (command.family) {
+      case "ocr-review": return (target.family === "ocr-review" || target.family === "run") && target.runId === command.target.runId;
       case "application": return target.family === "application" && target.runtimeGeneration === command.target.runtimeGeneration;
       case 'assistant-model-preference': return target.family === 'assistant-model-preference'
         && target.profileId === command.target.profileId && target.revision === command.target.expectedRevision + 1;
@@ -57,6 +58,7 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
   };
   if (!targets.every(matches)) identityMismatch(response);
   const anchor = targets.some(target => {
+    if (command.family === "ocr-review") return target.family === "ocr-review" && target.runId === command.target.runId;
     if (command.family === "run") return target.family === "run" && target.runId === command.target.runId;
     if (command.family === "gate") return target.family === "gate";
     if (command.family === "start") return target.family === "start";
