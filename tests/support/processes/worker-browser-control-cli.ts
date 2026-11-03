@@ -67,7 +67,7 @@ try {
           const deadline = systemClock.monotonicMs() + scaledMs(20_000);
           while (!existsSync(join(root,"release-drivers"))) {
             if (systemClock.monotonicMs() > deadline) throw new Error("fixture-driver-barrier-expired");
-            await new Promise(resolve => setTimeout(resolve,25));
+            await new Promise(resolve => setTimeout(resolve,scaledMs(25)));
           }
           return Reflect.apply(value, target, values) as unknown;
         };
@@ -118,7 +118,7 @@ try {
   const duoCeremony = duoCeremonyGatesOver(database, systemClock, scheduler);
   runtimeEntered = true;
   const report = await composeWorkerRuntime({ lifetimeLock, stopSignal: controller.signal, admission: machine, preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, args, env: {},
-    createSessionFactory, duoCeremony, heartbeatIntervalMs: 100, });
+    createSessionFactory, duoCeremony, heartbeatIntervalMs: scaledMs(100), });
   assert.equal(report.closure, 'proved');
   runtimeClosureProved = true;
   writeFileSync(join(root,`report-${String(process.pid)}.json`),JSON.stringify(report));
