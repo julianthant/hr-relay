@@ -103,6 +103,15 @@ describe("secrets single source", () => {
     assert.deepEqual(auditSoleRunnerInvocation(runnerInvocationProductionSources()), []);
   });
 
+  it("recomputes packed runner queries when the same source path changes", () => {
+    const path = "src/packed-runner-control.ts";
+    const safe = "const packed = { run: () => undefined }; packed.run();";
+    const unsafe = 'import { runCli } from "./cli.js"; const packed = { run: runCli }; packed.run();';
+    assert.deepEqual(auditSoleRunnerInvocation([{ path, content: safe }]), []);
+    assert.ok(auditSoleRunnerInvocation([{ path, content: unsafe }]).length > 0);
+    assert.deepEqual(auditSoleRunnerInvocation([{ path, content: safe }]), []);
+  });
+
   it("rejects key-refusal, admission, selector and wrapper tampering", () => {
     const path = "src/backend/app/bootstrap/secure-env-bootstrap.ts";
     const content = readFileSync(join(REPO_ROOT, path), "utf8");
