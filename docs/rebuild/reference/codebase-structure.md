@@ -140,6 +140,12 @@ Its task implementations live in `tasks/read-source-page.ts`, `stage-import.ts`,
 registration, importing the definition, backend task store and retained proofs. The generated descriptor
 tuple imports definitions directly, keeping those backend imports out of the dashboard.
 `src/models/ocr/stored-extraction.ts` owns immutable extraction storage envelopes: validated source-bound page readings and explicitly unbound source evidence. The native artifact repository reads exact extraction IDs and retains every deliberate reading version.
+`src/models/ocr/review.ts` owns uploaded PDF records, canonical review revisions and selected approval snapshots.
+`src/backend/storage/sqlite/ocr-review.ts` owns their native repository and migration.
+`src/backend/runs/lifecycle/ocr-checkpoint-publication.ts` admits OCR resource ownership and publishes readings with checkpoints;
+`ocr-review-authority.ts` authenticates review journals, snapshots and OCR recovery references.
+`src/backend/runs/commands/ocr-source-service.ts` owns uploaded PDF admission, authorized source-page bytes and read-only command settlement.
+`src/backend/runs/queries/ocr-review.ts` projects the existing review section, served through the existing typed client.
 
 The unregistered `src/workflows/ocr/` and `src/workflows/ocr-page/`
 folders use the same layout; their test-only composition inventory in

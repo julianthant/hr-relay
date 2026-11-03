@@ -1,4 +1,8 @@
-import { donePage, sourceFixture } from "../../fixtures/ocr/source-pages.js";
+import { donePage, READING_ID, sourceFixture } from "../../fixtures/ocr/source-pages.js";
+import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, ocrReviewDigest } from "../../../../src/models/ocr/review.js";
+import { buildOcrReviewSeed } from "../../../../src/models/workflows/ocr/review-seed.js";
+import { accountOcrPages } from "../../../../src/models/workflows/ocr/page-accounting.js";
+import { timelineCheckpointReference } from "../../../../src/models/events/timeline.js";
 import type { DuoCeremonyLeaseToken } from "../../../../src/workflow-kit/duo-ceremony-lease.js";
 import type { ExclusiveSessionLease } from "../../../../src/models/sessions/exclusive-session-lease.js";
 import { createAssistantAuthorization } from "../../../../src/backend/assistant/authorization.js";
@@ -33,7 +37,7 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { ReadActiveStatus } from "../../../../src/models/workflows/person-lookup/read-active-status.js";
 import { deriveBulkRunCommandFingerprint } from "../../../../src/rules/commands/commands.js";
-import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
+import { LOCAL_OPERATOR_ACTOR_ID, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { deriveIdempotencyKeyDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-lookup/workflow.js";
@@ -471,7 +475,27 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
   const duoTokens = new WeakMap<AuthorityDatabase, DuoCeremonyLeaseToken>();
   const exclusiveTokens = new WeakMap<AuthorityDatabase, ExclusiveSessionLease>();
   const assistantActions = new WeakMap<AuthorityDatabase, { fixture: ReturnType<typeof assistant>; chat: ReturnType<ReturnType<typeof assistant>["authorization"]["createChat"]> }>();
+  const source = sourceFixture(1), page = source.inputs[0]; assert.ok(page);
+  const seed = { review: buildOcrReviewSeed({ sourceRunId: RunIdSchema.parse(RUN_ID),
+    accounting: accountOcrPages(source.manifest, READING_ID, [donePage(page)]), roster: null }), identities: [] };
+  const review = OcrReviewRevisionSchema.parse({ id: `${RUN_ID}#1`, sourceRunId: RUN_ID, revision: 1, seed,
+    records: seed.review.records.map(record => ({ recordId: record.recordId, fields: record.fields, assertedEid: "10800000", discarded: false })),
+    origin: { kind: "checkpoint", key: "native-accounting-checkpoint", digest: HASH_A,
+      checkpoint: timelineCheckpointReference(RunCheckpointRecordSchema.parse({ ...RUN_CHECKPOINT, runId: RUN_ID })) },
+    actorId: "local-operator", createdAt: NOW });
+  const approval = OcrApprovedSnapshotSchema.parse({ snapshotId: UUID_1, sourceRunId: RUN_ID, revision: 1,
+    reviewDigest: ocrReviewDigest(review), selectedRecordIds: review.records.map(record => record.recordId),
+    records: review.records, approvedBy: "local-operator", approvedAt: NOW });
   return [
+    { table: "ocr_source_uploads", mutate: db => { db.authority.ocrReviews.upload({ artifact: source.manifest.document,
+      fileName: "source.pdf", uploadedAt: NOW, uploadedBy: "local-operator" }); } },
+    { table: "ocr_review_revisions", prepare: db => { db.authority.runs.enqueue(QUEUED_RUN); },
+      mutate: db => { db.authority.ocrReviews.append(review, 0); } },
+    { table: "ocr_approved_snapshots", prepare: db => {
+      db.authority.runs.enqueue(QUEUED_RUN);
+      db.authority.commands.insert(COMMAND_FIXTURES[0]);
+      db.authority.ocrReviews.append(review, 0);
+    }, mutate: db => { db.authority.ocrReviews.approve(approval); } },
     { table: "assistant_grants", mutate: db => { assistant(db).grant(); } },
     { table: "assistant_chats", mutate: db => { assistant(db).authorization.createChat(); } },
     { table: "assistant_actions", prepare: db => { const fixture = assistant(db); fixture.grant(); assistantActions.set(db, { fixture, chat: fixture.authorization.createChat() }); }, mutate: db => {

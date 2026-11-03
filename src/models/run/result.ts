@@ -13,6 +13,7 @@ import {
   DelegationEdgeIdSchema,
   DependencyIdSchema,
   FingerprintSchema,
+  GateIdSchema,
   IsoInstantSchema,
   ItemIdSchema,
   NodeIdSchema,
@@ -29,6 +30,7 @@ import { FailureRecordSchema, type FailureRecord } from "../trust/failure.js";
 import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-value.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { RunCheckpointRecordSchema } from "../workflow/checkpoint.js";
+import { GateResultRecordSchema, deriveGateResultCheckpointFingerprint, type GateResultRecord } from "../workflow/gates.js";
 
 export const TerminalNotRunReasonSchema = z.enum([
   "condition-false",
@@ -123,12 +125,32 @@ export const DelegationTerminalDependencySchema = z.strictObject({
   }
 });
 
+export const GateTerminalDependencySchema = z.strictObject({
+  state: z.literal("gate-resolved"),
+  nodeId: NodeIdSchema,
+  gate: z.strictObject({ runId: RunIdSchema, gateId: GateIdSchema }),
+  resultSchemaHash: FingerprintSchema,
+  checkpointFingerprint: FingerprintSchema,
+  recordDigest: FingerprintSchema,
+});
+
+export function terminalGateDependencyRecord(nodeId: z.infer<typeof NodeIdSchema>, input: GateResultRecord) {
+  const gate = GateResultRecordSchema.parse(input);
+  if (gate.nodeId !== nodeId || String(gate.gateId) !== String(nodeId)
+    || gate.checkpointFingerprint !== deriveGateResultCheckpointFingerprint(gate.result)) throw new Error("terminal-gate-dependency-binding-mismatch");
+  return GateTerminalDependencySchema.parse({ state: "gate-resolved", nodeId,
+    gate: { runId: gate.runId, gateId: gate.gateId }, resultSchemaHash: gate.result.schemaHash,
+    checkpointFingerprint: gate.checkpointFingerprint,
+    recordDigest: sha256Hex(`hrauto:terminal-gate:v1\0${canonicalJsonStringify(gate)}`) });
+}
+
 export const TerminalDependencyRecordSchema = z.discriminatedUnion("state", [
   ResolvedTerminalDependencySchema,
   NotRunTerminalDependencySchema,
   AssertedTerminalDependencySchema,
   ChildTerminalDependencySchema,
   DelegationTerminalDependencySchema,
+  GateTerminalDependencySchema,
 ]);
 
 export const DelegationTerminalEvidenceSchema = z.strictObject({
@@ -141,6 +163,7 @@ export const DelegationTerminalEvidenceSchema = z.strictObject({
 
 /** Exact executor evidence consumed by the factory-owned terminal derive. */
 export const TerminalDependencyEvidenceSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("gate-resolved"), nodeId: NodeIdSchema, gate: GateResultRecordSchema }),
   DelegationTerminalEvidenceSchema,
   z.strictObject({
     state: z.literal("child-resolved"), nodeId: NodeIdSchema,
@@ -356,6 +379,10 @@ export const RunResultRecordSchema = z.strictObject({
     });
   }
   for (const [index, dependency] of record.dependencies.entries()) {
+    if (dependency.state === "gate-resolved" && (String(dependency.gate.gateId) !== String(dependency.nodeId)
+      || dependency.gate.runId !== record.runId && !record.continuation?.gates.some(gate => gate.runId === dependency.gate.runId && gate.nodeId === dependency.nodeId))) {
+      context.addIssue({ code: "custom", path: ["dependencies", index], message: "gate terminal dependency belongs to a different run or node" });
+    }
     if ((dependency.state === "child-resolved" || dependency.state === "delegation-resolved") && dependency.parentRunId !== record.runId && !record.continuation?.sources.some(source => source.runId === dependency.parentRunId)) {
       context.addIssue({ code: "custom", path: ["dependencies", index], message: "child terminal dependency belongs to a different parent run" });
     }

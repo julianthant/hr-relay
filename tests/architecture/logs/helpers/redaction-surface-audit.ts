@@ -28,7 +28,7 @@ import { NativePathPickerResponseSchema } from "../../../../src/models/dashboard
 import { DiagnosticBundleWireSchema } from "../../../../src/models/dashboard/diagnostic-bundle.js";
 import { WorkflowExplorerWireSchema } from "../../../../src/models/dashboard/explorer.js";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
-import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
+import { OcrCommandResultWireSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { CrossDateSearchPageSchema } from "../../../../src/models/dashboard/search.js";
 import { SettingsFactsWireSchema } from "../../../../src/models/dashboard/settings.js";
 import { EditableSettingsPathSchema, EditableSettingsWireSchema } from "../../../../src/models/dashboard/settings-editor.js";
@@ -761,6 +761,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "request/workbook-intake", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookIntakeRequestSchema },
   { id: "wire/workbook-intake", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: WorkbookIntakeResultSchema },
   { id: "wire/intake-command-result", egress: "operator-loopback", module: "src/models/dashboard/workbooks.ts", schema: IntakeCommandResultWireSchema },
+  { id: "wire/ocr-command-result", egress: "operator-loopback", module: "src/models/dashboard/run-detail.ts", schema: OcrCommandResultWireSchema },
 
   { id: "wire/run-logs-stream", egress: "operator-loopback", module: "src/models/dashboard/run-logs-subscription.ts", schema: CompositeStreamEnvelopeSchema },
   { id: "wire/rerun-values", egress: "operator-loopback", module: "src/models/dashboard/rerun-values.ts", schema: RerunValuesResponseSchema },
@@ -851,6 +852,54 @@ const LIBRARY_ACTION_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrig
 const PLANNED_OUTPUT_ORIGINS = ['name', 'sheetId', 'worksheetName', 'folderName', 'archiveName', 'people[].rowId', 'people[].label'] as const;
 const LIBRARY_NAME_RETENTION = 'Operator-approved named workbook and version management retains entered names in the local library state and its immutable action journal (docs/rebuild/reference/data-intake-and-edit-data.md, Saved workbook reference data). This permits local authority retention only, with no process or OS notification egress.';
 
+const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
+  { path: "approvedSnapshots[].records[].fields.answers[].raw", origin: "captured-hr-value" },
+  { path: "approvedSnapshots[].records[].fields.answers[].reason", origin: "captured-hr-value" },
+  { path: "approvedSnapshots[].records[].fields.answers[].value", origin: "captured-hr-value" },
+  { path: "revision.id", origin: "repository-authored" },
+  { path: "revision.origin.key", origin: "repository-authored" },
+  { path: "revision.records[].fields.answers[].raw", origin: "captured-hr-value" },
+  { path: "revision.records[].fields.answers[].reason", origin: "captured-hr-value" },
+  { path: "revision.records[].fields.answers[].value", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].input.dob", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].input.firstName", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].input.lastName", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].input.name", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.candidateEids[]", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.code", origin: "repository-authored" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.datesEid", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.details.department", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.details.eid", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.details.endDate", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.details.hrStatus", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.details.matchedEid", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.details.matchedName", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.details.name", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.details.search", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.details.startDate", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.details.terminationReason", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.activeStatus.reason", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.output.crmDates.dates.reason", origin: "captured-hr-value" },
+  { path: "revision.seed.identities[].outcome.reason", origin: "external-text" },
+  { path: "revision.seed.review.accounting.outcomes[].output.extraction.record.answers[].raw", origin: "captured-hr-value" },
+  { path: "revision.seed.review.accounting.outcomes[].output.extraction.record.answers[].reason", origin: "captured-hr-value" },
+  { path: "revision.seed.review.accounting.outcomes[].output.extraction.record.answers[].value", origin: "captured-hr-value" },
+  { path: "revision.seed.review.accounting.outcomes[].output.extraction.source.actorId", origin: "operator-authored" },
+  { path: "revision.seed.review.accounting.outcomes[].output.extraction.source.agentId", origin: "external-text" },
+  { path: "revision.seed.review.accounting.outcomes[].output.extraction.source.invocation", origin: "external-text" },
+  { path: "revision.seed.review.accounting.outcomes[].output.extraction.source.modelId", origin: "external-text" },
+  { path: "revision.seed.review.accounting.outcomes[].output.extraction.source.providerId", origin: "external-text" },
+  { path: "revision.seed.review.accounting.outcomes[].reason", origin: "external-text" },
+  { path: "revision.seed.review.grouping.subjects[].displayName", origin: "captured-hr-value" },
+  { path: "revision.seed.review.grouping.subjects[].matchKey", origin: "captured-hr-value" },
+  { path: "revision.seed.review.records[].fields.answers[].raw", origin: "captured-hr-value" },
+  { path: "revision.seed.review.records[].fields.answers[].reason", origin: "captured-hr-value" },
+  { path: "revision.seed.review.records[].fields.answers[].value", origin: "captured-hr-value" },
+  { path: "revision.seed.review.records[].lookup.name", origin: "captured-hr-value" },
+  { path: "revision.seed.review.records[].subjectName", origin: "captured-hr-value" },
+  { path: "revision.seed.review.roster.rows[].name", origin: "captured-hr-value" },
+];
+
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
     { surface: 'wire/bootstrap', path: 'workflows[].start.requiredWorkbookTypeIds[]', origin: 'repository-authored' },
@@ -882,6 +931,19 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     ...['libraryId', 'versionId'].map(path => ({ surface: 'wire/start-plan', path: `planned[].workbookReferences[].${path}`, origin: 'repository-authored' as const })),
     { surface: 'wire/start-plan', path: 'planned[].workbookReferences[].versionName', origin: 'operator-authored' },
     ...['worksheets[].sheetId', 'worksheets[].name', ...LIBRARY_TYPE_ORIGINS.map(path => `type.${path}`)].map(path => ({ surface: 'wire/start-plan', path: `planned[].workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
+  ...[
+    { surface: "wire/run-logs-stream", prefix: "envelope.payload.ocr" },
+    { surface: "wire/run-detail-section", prefix: "payload.ocr" },
+    { surface: "wire/stream-envelope", prefix: "payload.ocr" },
+  ].flatMap(({ surface, prefix }) => OCR_REVIEW_ORIGINS.map(({ path, origin }) => ({ surface, path: `${prefix}.${path}`, origin }))),
+  { surface: "wire/ocr-command-result", path: "request.payload.fields.answers[].raw", origin: "captured-hr-value" },
+  { surface: "wire/ocr-command-result", path: "request.payload.fields.answers[].reason", origin: "captured-hr-value" },
+  { surface: "wire/ocr-command-result", path: "request.payload.fields.answers[].value", origin: "captured-hr-value" },
+  { surface: "wire/ocr-command-result", path: "request.payload.ocrApproval.selectedRecordIds[]", origin: "repository-authored" },
+  { surface: "wire/ocr-command-result", path: "request.payload.result.value", origin: "captured-hr-value" },
+  { surface: "wire/ocr-command-result", path: "request.reason", origin: "operator-authored" },
+  { surface: "wire/ocr-command-result", path: "result.entries", origin: "protected-value" },
+  { surface: "wire/ocr-command-result", path: "result.message", origin: "captured-hr-value" },
     ...[
       ['wire/action-descriptor', ''],
       ['wire/dashboard-day', 'queueSurfaces[].actions[].'],

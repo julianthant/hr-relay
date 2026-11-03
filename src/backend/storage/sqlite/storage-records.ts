@@ -12,6 +12,7 @@ import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSin
 import { ImportedArtifactSchema } from "../../../models/intake/imported-artifact.js";
 import { ExclusiveSessionLeaseSchema } from "../../../models/sessions/exclusive-session-lease.js";
 import { z } from "zod";
+import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, OcrSourceUploadSchema } from "../../../models/ocr/review.js";
 import { DuoCeremonyLeaseRecordSchema } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { RunSessionRecordSchema } from "../../../models/run/session.js";
 import { DeletedRunRecordSchema } from "../../../models/run/deleted-run.js";
@@ -73,6 +74,9 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   browser_sessions: WorkerBrowserObservationSchema,
   auth_leases: DuoCeremonyLeaseRecordSchema,
   exclusive_session_leases: ExclusiveSessionLeaseSchema,
+  ocr_review_revisions: OcrReviewRevisionSchema,
+  ocr_source_uploads: OcrSourceUploadSchema,
+  ocr_approved_snapshots: OcrApprovedSnapshotSchema,
   notifications: NotificationRecordSchema,
   notification_states: NotificationHealthSchema,
   artifacts: z.union([ImportedArtifactSchema, StoredOcrExtractionSchema, GeneratedArtifactSchema]),

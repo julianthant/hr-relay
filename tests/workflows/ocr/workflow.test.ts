@@ -8,7 +8,7 @@ import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry
 import { ocrWorkflow } from "../../../src/workflows/ocr/workflow.js";
 import { OcrPageWorkflowInputSchema } from "../../../src/models/workflows/ocr-page/input.js";
 import { ReadActiveStatus } from "../../../src/models/workflows/person-lookup/read-active-status.js";
-import { OcrResultSchema } from "../../../src/models/workflows/ocr/result.js";
+import { OcrResultSchema, OcrWorkflowResultSchema } from "../../../src/models/workflows/ocr/result.js";
 import { ReadOcrResult } from "../../../src/models/workflows/ocr/read-result.js";
 import { readOcrResultTask } from "../../../src/workflows/ocr/tasks/read-result.js";
 import { OcrInputSchema } from "../../../src/models/workflows/ocr/input.js";
@@ -70,15 +70,20 @@ describe("unregistered OCR document graph", () => {
     assert.equal(children.join, "all-settled");
     assert.equal(children.policy.cascadeCancel, "cascade");
     assert.equal(lookup.join, "all-settled");
-    assert.deepEqual(workflowTerminalResultExecution(descriptor).dependsOn, ["read-result"]);
-    assert.deepEqual(descriptor.timeline.map(step => step.key), ["source-pages", "page-readings", "review-records", "identity-lookups"]);
+    assert.deepEqual(workflowTerminalResultExecution(descriptor).dependsOn, ["read-result", "approve-records"]);
+    assert.deepEqual(descriptor.timeline.map(step => step.key), ["source-pages", "page-readings", "review-records", "identity-lookups", "approval"]);
     assert.ok(workflowExplorerDeclaration(ocrWorkflow));
     for (const id of ["ocr", "ocr-page"]) {
       assert.throws(() => workflowModuleOf(id));
       assert.equal(WORKFLOW_DESCRIPTORS.some(descriptor => descriptor.id === id), false);
       assert.throws(() => childWorkflowModuleOf("person-lookup", id));
     }
-    assert.equal(nodes.some(node => node.kind === "transaction" || node.kind === "gate"), false);
+    assert.equal(nodes.some(node => node.kind === "transaction"), false);
+    assert.deepEqual(nodes.filter(node => node.kind === "gate").map(node => ({ id: node.id, resolvedBy: node.resolvedBy })),
+      [{ id: "approve-records", resolvedBy: "operator" }]);
+    const approval = nodes.find(node => node.id === "approve-records");
+    assert.ok(approval?.kind === "gate" && approval.resolvedBy === "operator");
+    assert.deepEqual(approval.when, { kind: "equals", of: { from: "input", path: "approval" }, value: "release" });
   });
 
   it("retains three duplicate records while looking up their common identity once", async () => {
@@ -95,8 +100,8 @@ describe("unregistered OCR document graph", () => {
     const outcome = { state: "failed", itemId, runId: "00000000-0000-4000-8000-000000000801", failureId: "00000000-0000-4000-8000-000000000777" };
     const scope = { input: request, outputs: { "build-review": review, "lookup-identities": [outcome] } };
     const result = await finishFixture(scope);
-    assert.deepEqual(OcrResultSchema.parse(workflowTerminalResultExecution(descriptor).derive({ input: request,
-      outputs: { "read-result": result } })), result);
+    assert.deepEqual(OcrWorkflowResultSchema.parse(workflowTerminalResultExecution(descriptor).derive({ input: request,
+      outputs: { "read-result": result } })), { ...result, approvedSnapshot: null });
     assert.deepEqual(result.identities[0].recordIds, review.records.map(record => record.recordId));
     assert.deepEqual(result.identities[0].outcome, outcome);
     const successful = await finishFixture({ ...scope,

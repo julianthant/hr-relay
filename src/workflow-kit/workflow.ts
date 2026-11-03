@@ -29,7 +29,7 @@ import {
 import type { Fingerprint, NodeId, ScenarioId, WorkflowId } from "../rules/identity/ids.js";
 import {
   RunDryRunPreviewResultSchema,
-  delegationEvidenceOutput, terminalDelegationDependencyRecord, singleDelegationResult,
+  delegationEvidenceOutput, terminalDelegationDependencyRecord, singleDelegationResult, terminalGateDependencyRecord,
   RunResultRecordSchema,
   TerminalDependencyEvidenceSchema,
   deriveCheckpointOutputDigest,
@@ -1283,6 +1283,18 @@ export function defineWorkflowDescriptor<
     const dependencies: TerminalDependencyRecord[] = [...expectedDependencies, ...dependencySpecFor(additional.map(entry => entry.nodeId), purpose)].map((expected) => {
       const entry = byNode.get(expected.nodeId);
       if (entry === undefined) throw new Error(`${purpose} dependency ${expected.nodeId} is missing`);
+      if (entry.state === "gate-resolved") {
+        const node = nodeByIdOrThrow(id, nodes, entry.nodeId, purpose);
+        const gate = entry.gate;
+        if (node.kind !== "gate" || gate.result.schemaHash !== dependencySchemaHashes.get(entry.nodeId)
+          || (node.resolvedBy === "operator" ? !("commandId" in gate) : !("source" in gate) || gate.source.kind !== node.resolvedBy)
+          || gate.runId !== currentRun.envelope.runId && !currentRun.envelope.continuation?.gates.some(reference => reference.runId === gate.runId && reference.nodeId === entry.nodeId)) {
+          throw new Error("terminal-gate-dependency-identity-mismatch");
+        }
+        const receipt = terminalGateDependencyRecord(entry.nodeId, gate);
+        outputs[entry.nodeId] = node.result.parse(gate.result.value);
+        return receipt;
+      }
       const sourceParent = entry.state === "delegation-resolved" || entry.state === "child-resolved"
         ? entry.parentRunId === currentRun.envelope.runId
           ? { runId: currentRun.envelope.runId, attempt: currentRun.envelope.attempt }
