@@ -70,6 +70,10 @@ export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: u
       || ([["runId","runId"],["workflow","workflowId"],["attempt","attempt"],["descriptorVersion","descriptorVersion"],
         ["contractFingerprint","contractFingerprint"],["configSnapshotId","configSnapshotId"],["configFingerprint","configFingerprint"]] as const).some(
         ([field,key]) => Reflect.get(terminal.envelope,field) !== object[key])) throw new Error("run-settlement-result-mismatch");
+    if (terminal.completion === undefined) {
+      const evidence = z.object({ value: z.object({ kind: z.literal("lifecycle-evidence"), appliedVersion: z.number().int().positive() }) }).parse(object.result).value;
+      if (evidence.appliedVersion !== terminal.version) throw new Error("run-settlement-context-mismatch");
+    }
     extras.id = `${String(object.runId)}:${terminal.version}`;
     extras.settlement_version = terminal.version;
     extras.terminal_run_json = z.string().parse(row.terminal_run_json);

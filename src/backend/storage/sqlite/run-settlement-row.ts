@@ -5,7 +5,10 @@ import { z } from "zod";
 import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
 
 export const CURRENT_RUN_SETTLEMENT_SQL = `run.state='terminal'
-  AND json_extract(settlement.terminal_run_json,'$.lifecycle') IS json_extract(run.lifecycle_json,'$.lifecycle')
+  AND json_extract(settlement.terminal_run_json,'$.lifecycle.state')=run.state
+  AND json_extract(settlement.terminal_run_json,'$.lifecycle.outcome')=run.outcome
+  AND ${["endedAt", "failureId", "errorSummary", "diagnosticSafetyVersion", "verdict", "evidenceReceiptId"].map(field =>
+    `json_extract(settlement.terminal_run_json,'$.lifecycle.${field}') IS json_extract(run.lifecycle_json,'$.lifecycle.${field}')`).join(" AND ")}
   AND ((run.outcome IN ('done','failed') AND settlement.settlement_version=json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1)
     OR (run.outcome NOT IN ('done','failed','interrupted') AND settlement.settlement_version=json_extract(settlement.payload_json,'$.result.value.appliedVersion')))`;
 

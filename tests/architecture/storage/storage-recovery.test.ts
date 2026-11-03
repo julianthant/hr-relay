@@ -2613,6 +2613,7 @@ describe("authority.health preflight and static recovery boundary", () => {
       "src/backend/storage/sqlite/readonly-authority-snapshot.ts",
       "src/backend/storage/sqlite/run-record-row.ts",
       "src/backend/storage/sqlite/run-search-index.ts",
+      "src/backend/storage/sqlite/run-settlement-row.ts",
       "src/backend/storage/sqlite/run-summaries.ts",
       "src/backend/storage/sqlite/settings-activation.ts",
       "src/backend/storage/sqlite/settings-storage.ts",
