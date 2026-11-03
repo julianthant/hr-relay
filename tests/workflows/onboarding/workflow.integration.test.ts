@@ -1,3 +1,6 @@
+import { OnboardingReadWritePlan } from "../../../src/models/workflows/onboarding/read-write-plan.js";
+import { UCPATH_HIRE_PROOF_EXAMPLE } from "../../../src/models/ui/ucpath-hire.js";
+import { I9CreateRemoteRecord } from "../../../src/models/systems/i9/create-remote-record.js";
 import { createOnboardingWriteWorld } from "../../support/helpers/backend/onboarding-write-world.js";
 import { RunDryRunPreviewResultSchema } from "../../../src/models/run/result.js";
 import { DRY_RUN_I9_PROFILE_ID } from "../../../src/models/workflow/dry-run.js";
@@ -25,7 +28,7 @@ import { OnboardingReadHirePlan } from "../../../src/models/workflows/onboarding
 import { OnboardingReadI9ProfilePlan } from "../../../src/models/workflows/onboarding/read-i9-profile-plan.js";
 import { OnboardingReadI9Lookup, OnboardingI9OutcomeSchema } from "../../../src/models/workflows/onboarding/read-i9-lookup.js";
 import { OnboardingResultSchema } from "../../../src/models/workflows/onboarding/result.js";
-import { I9LookupInputSchema, I9SignerOutputSchema } from "../../../src/models/systems/i9/read-section2-signer.js";
+import { I9LookupInputSchema, I9SignerOutputSchema, I9RecordIdsSchema } from "../../../src/models/systems/i9/read-section2-signer.js";
 import { readI9LookupTask } from "../../../src/workflows/onboarding/tasks/read-i9-lookup.js";
 import { TaskRefusal, createSeparationTaskFixtures } from "../../support/helpers/separation-task-fixtures.js";
 import { classifyEvidenceLeaf, evidenceLeaves, redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
@@ -36,7 +39,7 @@ const descriptor = compileWorkflow(onboardingWorkflow).descriptor;
 const nodes = descriptorRuntimeNodes(descriptor);
 const plan = OnboardingReadHirePlan.output.parse(OnboardingReadHirePlan.example);
 
-describe("read-only onboarding workflow", () => {
+describe("onboarding workflow", () => {
   it("onboarding/crm-extraction — binds the real CRM task output to the snapshot-backed hire plan", async () => {
     const source = nodes.find(node => node.id === "crm-source");
     const planNode = nodes.find(node => node.id === "hire-plan");
@@ -64,20 +67,21 @@ describe("read-only onboarding workflow", () => {
     assert.equal(childWorkflowModuleOf("onboarding", "i9-lookup").descriptor.id, "i9-lookup");
     assert.deepEqual(STEP_PROOF_MODULES.filter(module => module.role.kind === "chunk-harness" && module.role.of === "onboarding")
       .map(module => module.descriptor.id), registration.proofs.map(proof => proof.definition.id));
-    assert.deepEqual(descriptor.timeline.map(step => step.key), ["crm-data", "ucpath-search", "i9-search", "i9-profile-creation"]);
+    assert.deepEqual(descriptor.timeline.map(step => step.key), ["crm-data", "ucpath-search", "i9-search", "hire-review", "i9-creation", "ucpath-hire", "master-results"]);
     assert.deepEqual(onboardingWorkflow.steps.map(([, entries]) => entries.map(entry => entry.id)), [
-      ["roster-choice", "crm-source", "hire-plan"], ["ucpath-source", "hire-subject"], ["i9-lookup-child", "i9-lookup"], ["i9-profile-plan"],
+      ["roster-choice", "crm-source", "hire-plan"], ["ucpath-source", "hire-subject"], ["i9-lookup-child", "i9-lookup"], ["hire-findings", "hire-review"],
+      ["write-plan", "i9-route", "i9-profile-plan", "i9-profile-save", "i9-remote-create"], ["hire-create", "hire-receipt", "concurrent-hire-create", "concurrent-hire-receipt"], ["master-results", "concurrent-master-results"],
     ]);
     for (const [index, proof] of registration.proofs.entries()) {
-      assert.deepEqual(proof.definition.role, { kind: "chunk-harness", of: "onboarding", step: descriptor.timeline[index]?.key });
+      assert.deepEqual(proof.definition.role, { kind: "chunk-harness", of: "onboarding", step: ["crm-data", "ucpath-search", "i9-search", "hire-review"][index] });
     }
     assert.equal(onboardingWorkflow.steps[0]?.[1][1]?.contracts[0], CrmReadHireData);
     assert.equal(onboardingWorkflow.steps[1]?.[1][0]?.contracts[0], SearchPersonMatch);
     assert.equal(crmStore.tasks.readHireData.contract.id, "crm/read-hire-data");
-    assert.ok(nodes.every(node => node.kind !== "transaction"));
+    assert.deepEqual(nodes.filter(node => node.kind === "transaction").map(node => node.commit.uses.id), ["i9/create-profile", "i9/create-remote-record", "ucpath/create-hire", "ucpath/create-hire"]);
   });
 
-  it("preserves the read graph dependencies and exact task contracts", () => {
+  it("pins the reviewed graph dependencies and exact task contracts", () => {
     assert.deepEqual(workflowExplorerDeclaration(onboardingWorkflow).flatMap(group => group.entries), [
       { id: "roster-choice", kind: "gate", nodeIds: ["roster-choice"], dependsOn: [], taskIds: [] },
       { id: "crm-source", kind: "task", nodeIds: ["crm-source"], dependsOn: ["roster-choice"], taskIds: ["crm/read-hire-data"] },
@@ -86,15 +90,27 @@ describe("read-only onboarding workflow", () => {
       { id: "hire-subject", kind: "task", nodeIds: ["hire-subject"], dependsOn: ["hire-plan", "ucpath-source"], taskIds: ["workflow:onboarding/match-hire-subject"] },
       { id: "i9-lookup-child", kind: "delegate", nodeIds: ["i9-lookup-child"], dependsOn: ["hire-plan", "hire-subject"], taskIds: [] },
       { id: "i9-lookup", kind: "task", nodeIds: ["i9-lookup"], dependsOn: ["hire-plan", "hire-subject", "i9-lookup-child"], taskIds: ["workflow:onboarding/read-i9-lookup"] },
-      { id: "i9-profile-plan", kind: "task", nodeIds: ["i9-profile-plan"], dependsOn: ["hire-plan", "i9-lookup"], taskIds: ["workflow:onboarding/read-i9-profile-plan"] },
+      { id: "hire-findings", kind: "task", nodeIds: ["hire-findings"], dependsOn: ["hire-plan", "hire-subject", "i9-lookup"], taskIds: ["ucpath/read-hire-findings"] },
+      { id: "hire-review", kind: "gate", nodeIds: ["hire-review"], dependsOn: ["hire-plan", "ucpath-source", "hire-subject", "i9-lookup", "hire-findings"], taskIds: [] },
+      { id: "write-plan", kind: "task", nodeIds: ["write-plan"], dependsOn: ["hire-plan", "ucpath-source", "hire-subject", "i9-lookup", "hire-findings", "hire-review"], taskIds: ["workflow:onboarding/read-write-plan"] },
+      { id: "i9-route", kind: "branch", nodeIds: ["i9-route"], dependsOn: ["write-plan"], taskIds: [] },
+      { id: "i9-profile-plan", kind: "task", nodeIds: ["i9-profile-plan"], dependsOn: ["hire-plan", "i9-lookup", "write-plan"], taskIds: ["workflow:onboarding/read-i9-profile-plan"] },
+      { id: "i9-profile-save", kind: "transaction", nodeIds: ["i9-profile-save"], dependsOn: ["write-plan", "hire-review"], taskIds: ["i9/stage-profile", "i9/create-profile"] },
+      { id: "i9-remote-create", kind: "transaction", nodeIds: ["i9-remote-create"], dependsOn: ["write-plan", "i9-profile-save"], taskIds: ["i9/stage-remote-record", "i9/create-remote-record"] },
+      { id: "hire-create", kind: "transaction", nodeIds: ["hire-create"], dependsOn: ["write-plan", "hire-review", "i9-profile-save", "i9-remote-create"], taskIds: ["ucpath/stage-hire", "ucpath/create-hire"] },
+      { id: "hire-receipt", kind: "task", nodeIds: ["hire-receipt"], dependsOn: ["write-plan", "hire-create"], taskIds: ["ucpath/read-hire-receipt"] },
+      { id: "concurrent-hire-create", kind: "transaction", nodeIds: ["concurrent-hire-create"], dependsOn: ["write-plan", "hire-review", "i9-profile-plan"], taskIds: ["ucpath/stage-hire", "ucpath/create-hire"] },
+      { id: "concurrent-hire-receipt", kind: "task", nodeIds: ["concurrent-hire-receipt"], dependsOn: ["write-plan", "concurrent-hire-create"], taskIds: ["ucpath/read-hire-receipt"] },
+      { id: "master-results", kind: "task", nodeIds: ["master-results"], dependsOn: ["write-plan", "hire-receipt", "i9-remote-create"], taskIds: ["workbooks/read-result"] },
+      { id: "concurrent-master-results", kind: "task", nodeIds: ["concurrent-master-results"], dependsOn: ["write-plan", "concurrent-hire-receipt"], taskIds: ["workbooks/read-result"] },
     ]);
-    assert.deepEqual(onboardingWorkflow.result.references.map(reference => reference.id), ["hire-plan", "hire-subject", "i9-profile-plan"]);
+    assert.deepEqual(onboardingWorkflow.result.references.map(reference => reference.id), ["hire-plan", "write-plan", "hire-review", "hire-create", "hire-receipt", "i9-remote-create", "master-results", "concurrent-hire-create", "concurrent-hire-receipt", "concurrent-master-results"]);
   });
 
   it("preserves proof identities, shared ingress and every safety prerequisite", () => {
     assert.deepEqual(registration.proofs.map(proof => [proof.definition.id, proof.definition.code, proof.order]), [
       ["onboarding-crm-data", "onc", 15], ["onboarding-ucpath-search", "onu", 16],
-      ["onboarding-i9-search", "onis", 17], ["onboarding-i9-profile-creation", "onip", 18],
+      ["onboarding-i9-search", "onis", 17], ["onboarding-hire-writes", "onhw", 18],
     ]);
     const entryIds = ["roster-choice", "crm-source", "hire-plan", "ucpath-source", "hire-subject", "i9-lookup-child", "i9-lookup", "i9-profile-plan"];
     const proofSizes = [3, 5, 7, 8];
@@ -102,8 +118,10 @@ describe("read-only onboarding workflow", () => {
     for (const [index, proof] of registration.proofs.entries()) {
       assert.equal(proof.definition.input, onboardingWorkflow.input);
       assert.equal(proof.definition.canonicalInput, onboardingWorkflow.canonicalInput);
-      assert.deepEqual(proof.definition.steps.flatMap(([, entries]) => entries.map(entry => entry.id)), entryIds.slice(0, proofSizes[index]));
-      assert.deepEqual(proof.definition.result.references.map(reference => reference.id), [targets[index]]);
+      assert.deepEqual(proof.definition.steps.flatMap(([, entries]) => entries.map(entry => entry.id)), index === 3
+        ? onboardingWorkflow.steps.flatMap(([, entries]) => entries.map(entry => entry.id)) : entryIds.slice(0, proofSizes[index]));
+      assert.deepEqual(proof.definition.result.references.map(reference => reference.id), index === 3
+        ? onboardingWorkflow.result.references.map(reference => reference.id) : [targets[index]]);
     }
   });
 
@@ -126,21 +144,25 @@ describe("read-only onboarding workflow", () => {
     assert.equal(child.deriveChildItemId(request, { canonicalItemId: i9LookupItemId(request) }), i9LookupItemId(request));
   });
 
-  it("keeps all write results explicitly unimplemented in its terminal declaration", () => {
-    const subject = { state: "new-hire", candidateEids: [] };
+  it("derives completion from independent receipts and the actual master write disposition", () => {
     const terminal = workflowTerminalResultExecution(descriptor);
-    const result = OnboardingResultSchema.parse(terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: {
-      "hire-plan": plan, "hire-subject": subject, "i9-profile-plan": OnboardingReadI9ProfilePlan.example,
-    } }));
-    assert.equal(result.state, "implementation-incomplete");
-    assert.deepEqual(result.hireWrite, { state: "unimplemented", owner: "write-safety" });
-    assert.deepEqual(result.rosterAccess, { state: "snapshot-bound", owner: "spreadsheets" });
-    assert.equal(result.i9.state, "creation-required");
-    assert.match(descriptor.summary ?? "", /Read-only.*not yet available/u);
-    assert.deepEqual(descriptor.outcomeProjection, { fieldPath: "state", cases: [
-      { value: "implementation-incomplete", label: "Hire unavailable", tone: "warning" },
-    ] });
+    const outputs = {
+      "hire-plan": plan, "write-plan": OnboardingReadWritePlan.example, "hire-review": { decision: "new-hire" },
+      "hire-create": { disposition: "committed", output: { receipt: UCPATH_HIRE_PROOF_EXAMPLE } },
+      "hire-receipt": UCPATH_HIRE_PROOF_EXAMPLE, "i9-remote-create": { output: I9CreateRemoteRecord.example },
+      "master-results": { state: "recorded", operationId: "results", libraryId: "master", version: 2, receiptState: "applied" },
+    };
+    const derive = (value: typeof outputs) => OnboardingResultSchema.parse(terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: value }));
+    const result = derive(outputs);
+    assert.equal(result.state, "filed"); assert.equal(result.hireWrite.receipt.transactionId, UCPATH_HIRE_PROOF_EXAMPLE.transactionId);
+    assert.equal(result.i9.state, "verified");
+    assert.equal(derive({ ...outputs, "master-results": { ...outputs["master-results"], receiptState: "resolve-required" } }).state, "master-review-required");
+    assert.throws(() => OnboardingResultSchema.parse(terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: { ...outputs, "hire-receipt": null } })));
+    assert.deepEqual(descriptor.outcomeProjection?.cases.map(value => value.value), ["filed", "master-review-required"]);
     assert.ok(descriptor.details.some(detail => "kind" in detail.source && detail.source.kind === "result" && detail.source.fieldPath === "hireWrite.state"));
+    for (const workflow of ["onboarding", "onboarding-hire-writes"]) {
+      for (const leaf of evidenceLeaves(result)) classifyEvidenceLeaf({ kind: "workflow-result", workflowId: WorkflowIdSchema.parse(workflow) }, leaf.path);
+    }
   });
 
   it("classifies registered inputs and every planning outcome without exposing SSNs in diagnostic evidence", () => {
@@ -152,19 +174,11 @@ describe("read-only onboarding workflow", () => {
         classifyEvidenceLeaf({ kind: "workflow-input", workflowId: WorkflowIdSchema.parse(proof.definition.id) }, leaf.path);
       }
     }
-    const terminal = workflowTerminalResultExecution(descriptor);
-    const outcomes = [
-      OnboardingReadI9ProfilePlan.example,
-      { state: "not-required", subjectState: "existing-person" },
-      { state: "existing-profile", profileId: "900001", i9Status: "signed" },
-      { state: "review-required", reason: "lookup-restricted" },
-    ];
-    for (const i9 of outcomes) {
-      const result = terminal.derive({ input: ONBOARDING_INPUT_EXAMPLE, outputs: {
-        "hire-plan": plan, "hire-subject": { state: "new-hire", candidateEids: [] }, "i9-profile-plan": i9,
-      } });
-      for (const leaf of evidenceLeaves(result)) classifyEvidenceLeaf({ kind: "workflow-result", workflowId: descriptor.id }, leaf.path);
+    for (const output of [OnboardingReadI9ProfilePlan.example, { state: "not-required", subjectState: "existing-person" },
+      { state: "existing-profile", profileId: "900001", i9Status: "signed" }, { state: "review-required", reason: "lookup-restricted" }]) {
+      for (const leaf of evidenceLeaves(output)) classifyEvidenceLeaf({ kind: "task-output", taskId: OnboardingReadI9ProfilePlan.id }, leaf.path);
     }
+    for (const leaf of evidenceLeaves(OnboardingReadWritePlan.example)) classifyEvidenceLeaf({ kind: "task-output", taskId: OnboardingReadWritePlan.id }, leaf.path);
     const ssn = "123456789";
     const redacted = redactEvidenceLeaf({ kind: "task-output", taskId: OnboardingReadHirePlan.id },
       { path: "employee.ssn", field: "ssn", value: ssn });
@@ -212,7 +226,7 @@ it("fills both preview forms with labelled numeric provenance and creates no wri
   assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
   const result = h.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
   const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
-  assert.deepEqual(preview.steps.map(step => step.state), ["transaction-preview", "transaction-preview"]);
+  assert.deepEqual(preview.steps.map(step => step.state), ["exercised", "transaction-preview", "transaction-preview", "not-run"]);
   const remote = preview.steps.find(step => step.nodeId === "remote-create"); assert.ok(remote?.state === "transaction-preview");
   assert.deepEqual(remote.samples.map(sample => sample.value), [DRY_RUN_I9_PROFILE_ID]);
   assert.deepEqual(remote.preview.probe, { state: "not-required", reason: "preview-only-sample" });
@@ -228,6 +242,8 @@ it("refuses a real numeric sample before opening a browser or probing, and rejec
   const h = await harness(), run = await h.run(false, { ...h.example, existingProfileId: DRY_RUN_I9_PROFILE_ID });
   assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed");
   assert.equal(h.database.authority.failures.listByRun(run.envelope.runId)[0]?.code, "DRY_RUN_SAMPLE_REFUSED");
+  assert.equal(I9RecordIdsSchema.safeParse({ profileId: DRY_RUN_I9_PROFILE_ID, i9Id: "900002" }).success, false);
+  assert.equal(I9SignerOutputSchema.safeParse({ i9Status: "unsigned", signerName: "", profileId: DRY_RUN_I9_PROFILE_ID }).success, false);
   assert.deepEqual(h.driver.events, []);
   assert.deepEqual(h.database.authority.writeIntents.listByRun(run.envelope.runId), []);
   for (const [schema, proof] of [[I9ProfileProofSchema, { kind: "i9-profile", profileId: DRY_RUN_I9_PROFILE_ID,
@@ -266,7 +282,7 @@ it("previews the entire three-write sequence with a labelled Tracker Profile ID 
   assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "done");
   const result = h.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
   const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
-  assert.deepEqual(preview.steps.map(step => step.state), ["transaction-preview", "transaction-preview", "transaction-preview"]);
+  assert.deepEqual(preview.steps.map(step => step.state), ["exercised", "transaction-preview", "transaction-preview", "not-run", "transaction-preview"]);
   const hire = preview.steps.find(step => step.nodeId === "hire-create"); assert.ok(hire?.state === "transaction-preview");
   assert.equal(hire.samples[0]?.value, DRY_RUN_I9_PROFILE_ID);
   assert.equal(hire.samples[0]?.field, "Tracker Profile ID");

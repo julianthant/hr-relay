@@ -1,3 +1,4 @@
+import { readHireReceiptTask } from "./tasks/read-hire-receipt.js";
 import { readHireFindingsTask } from "./tasks/read-hire-findings.js";
 import { matchHireTask } from "./tasks/match-hire.js";
 import { verifyHireTask } from "./tasks/verify-hire.js";
@@ -27,7 +28,7 @@ export const ucpathStore = defineBrowserStore(
   ucpathDriver,
   ucpathSession,
   {
-    readHireFindings: readHireFindingsTask, matchHire: matchHireTask, verifyHire: verifyHireTask,
+    readHireReceipt: readHireReceiptTask, readHireFindings: readHireFindingsTask, matchHire: matchHireTask, verifyHire: verifyHireTask,
     stageHire: stageHireTask, createHire: createHireTask,
     searchPersonMatch: searchPersonMatchTask,
     searchPersonOrg: searchPersonOrgTask,

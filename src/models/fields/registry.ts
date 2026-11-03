@@ -1,5 +1,6 @@
 /** The canonical field registry: the closed vocabulary an operator can bind a spreadsheet column to, one entry per fact a workflow can be about. */
 import { z } from "zod";
+import { UcpathApprovalStatusSchema } from "../ui/ucpath-ss-smart-hr.js";
 import { DateOnlySchema, EidSchema, IntakeTargetFieldIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 import { DataClassificationSchema, EvidenceTransformSchema, evidenceTransformAllowed } from "../../rules/redaction/redaction.js";
 import {
@@ -66,6 +67,8 @@ export const CanonicalFieldIdSchema = z.enum([
   "kualiDocId",
   "terminationType",
   "transactionNumber",
+  "i9ProfileId",
+  "transactionApprovalStatus",
 ]);
 export type CanonicalFieldId = z.infer<typeof CanonicalFieldIdSchema>;
 
@@ -776,6 +779,16 @@ export const CANONICAL_FIELDS = Object.freeze({
     auditNote:
       "legacy maps this free text to a UCPath reason code through a fuzzy fallback chain the rebuild will not "
       + "port; the separations migration owns the closed mapping",
+  }),
+  i9ProfileId: defineCanonicalField({
+    id: "i9ProfileId", label: "I-9 Profile ID", schema: z.string().regex(/^[1-9]\d*$/u),
+    coerce: textCoercer("i9ProfileId"), aliases: ["I-9 Profile ID", "Tracker Profile ID", "I9 Profile", "I-9 profile", "I9 profile number", "I-9 profile number", "I9 ID"],
+    examples: ["900001"], classification: "direct-identifier", redactTransform: "last4", evidence: "resolved",
+  }),
+  transactionApprovalStatus: defineCanonicalField({
+    id: "transactionApprovalStatus", label: "Transaction Approval Status", schema: UcpathApprovalStatusSchema,
+    coerce: textCoercer("transactionApprovalStatus"), aliases: ["Transaction Approval Status", "Approval Status"],
+    examples: ["Pending", "Approved"], classification: "safe-diagnostic", redactTransform: "allow", evidence: "resolved",
   }),
   transactionNumber: auditedText({
     id: "transactionNumber",

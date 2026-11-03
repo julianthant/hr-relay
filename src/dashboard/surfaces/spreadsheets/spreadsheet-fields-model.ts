@@ -14,7 +14,7 @@ export interface SpreadsheetField {
 }
 const DATE_FIELDS = new Set<CanonicalFieldId>(['dob', 'effectiveDate', 'hireDate', 'separationDate', 'lastDayWorked', 'signatureDate']);
 const NAME_FIELDS = new Set<CanonicalFieldId>(['fullName', 'firstName', 'lastName', 'middleName', 'middleInitial', 'livedName', 'suffix', 'supervisor']);
-const IDENTIFIER_FIELDS = new Set<CanonicalFieldId>(['eid', 'ppsEid', 'pid', 'ssn', 'deptId', 'departmentCode', 'jobCode', 'positionNumber', 'recruitmentNumber', 'kualiDocId', 'transactionNumber']);
+const IDENTIFIER_FIELDS = new Set<CanonicalFieldId>(['eid', 'ppsEid', 'pid', 'ssn', 'deptId', 'departmentCode', 'jobCode', 'positionNumber', 'recruitmentNumber', 'kualiDocId', 'transactionNumber', 'i9ProfileId']);
 const LABELS: Partial<Record<CanonicalFieldId, string>> = { eid: 'Employee ID', fullName: 'Legal name', livedName: 'Lived name', cellPhone: 'Phone', hireDate: 'Start date', supervisor: 'Supervisor name' };
 const EXTRA_ALIASES: Partial<Record<CanonicalFieldId, readonly string[]>> = { eid: ['UCPath Empl ID'], transactionNumber: ['Transaction ID', 'Transaction No.', 'UCPath Transaction Number', 'UCPath Transaction ID', 'UCPath Transaction #'], livedName: ['Preferred name'], workLocation: ['Proposed location assignment'], hireDate: ['Start date', 'Employment date'], supervisor: ['Supervisor name'] };
 const extra = (id: string, label: string, type: SpreadsheetFieldType, aliases: readonly string[] = [], format = type === 'status' ? 'Yes, No, Pending or Complete' : 'Text'): SpreadsheetField => ({ id: `roster.${id}`, label, type, aliases, format });
@@ -28,7 +28,6 @@ export const SPREADSHEET_FIELDS: readonly SpreadsheetField[] = [
       format: id === 'eid' ? '8 digits, starting with 10' : id === 'ssn' ? '9 digits' : id === 'transactionNumber' ? 'Starts with T' : type === 'date' ? 'MM/DD/YYYY or YYYY-MM-DD' : type === 'email' ? 'Email address' : type === 'phone' ? '7–15 digits' : type === 'identifier' ? 'Identifier stored as text' : 'Text',
     };
   }),
-  extra('i9ProfileId', 'I-9 profile ID', 'identifier', ['I9 profile', 'I-9 profile', 'I9 profile number', 'I-9 profile number', 'I9 ID', 'I9 profile ID'], '6 or 7 digits'),
   extra('tsn', 'TSN', 'identifier', ['Temporary student number']),
   extra('personalPhone', 'Personal phone', 'phone'),
   extra('supervisorEmail', 'Supervisor email', 'email', ['Manager email'], 'Email address'),

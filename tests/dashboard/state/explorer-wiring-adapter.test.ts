@@ -1,3 +1,4 @@
+import { ViewNavigationContext } from "../../../src/dashboard/app/navigation/view-route-model.js";
 import { servedFixtureSources as previewFixtureSources } from "../../parity/helpers/workflow-composition.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
@@ -172,6 +173,24 @@ it("invalidates settled and pending requests across workflow and client A -> B -
     assert.equal(seen.at(-1)?.state, "loading");
     await act(async () => pending[4].resolve(wire)); assert.equal(seen.at(-1)?.state, "refused");
   } finally { await act(async () => root.unmount()); }
+});
+
+it("renders the actual authored onboarding branch through the served definition and existing timeline", async () => {
+  const workflow = wire.workflows.find(workflow => workflow.id === "onboarding"); assert.ok(workflow);
+  const projected = projectExplorerDefinition(workflow); assert.ok(projected.state === "ready");
+  assert.ok(projected.projection.steps.some(step => step.title === "i9-route"));
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => new Response(JSON.stringify({ ...wire, workflows: [workflow] }), { status: 200 }) });
+  const catalog: WorkflowCatalogEntry[] = [{ id: workflow.id, label: workflow.label, categoryId: "uncategorized", role: { kind: "composition" }, source: "served", launch: { state: "served" } }];
+  try {
+    await act(async () => root.render(createElement(ViewNavigationContext.Provider, {
+      value: { view: { explorerWorkflow: workflow.id }, start: false, setStart() {}, update() {} },
+      children: createElement(DashboardClientProvider, { client, children: createElement(WorkflowExplorer, { catalog, client }) }),
+    })));
+    assert.ok([...host.querySelectorAll('[aria-label="Workflow steps"] h2')].some(node => node.textContent === "i9-route"));
+    assert.ok(host.textContent?.includes("No alternative is selected in this definition preview."));
+  } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
 it("mounts a served entry without a fictional preview through the injected-client scaffold", async () => {

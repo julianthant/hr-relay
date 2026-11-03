@@ -10,7 +10,7 @@ import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 
 const key = "hire@example.test", capturedAt = "2026-10-31T01:02:03.000Z";
 const values = { email: key, firstName: "Legal", lastName: "Hire", middleName: "",
-  "roster.livedFirstName": null, "roster.livedLastName": null, "roster.livedMiddleName": null };
+  "roster.livedFirstName": null, "roster.livedLastName": null, "roster.livedMiddleName": null, eid: "10800000", i9ProfileId: "900001", transactionNumber: "T009000001", transactionApprovalStatus: "Pending" };
 const reference = { request: { typeId: "onboarding-roster", keys: [key], fields: [...ONBOARDING_ROSTER_FIELDS] },
   snapshot: { libraryId: "roster", version: 1, worksheets: [{ sheetId: "people", name: "People" }],
     type: { id: "onboarding-roster", name: "Onboarding roster", keyFieldId: "email", fields: [...ONBOARDING_ROSTER_FIELDS], defaultWorkbookId: "roster" },

@@ -1,5 +1,5 @@
 import { UcpathHireTargetSchema, UcpathHireStagingSchema, UcpathHireProofSchema, UCPATH_HIRE_STAGED,
-  UcpathHireScanSchema, type UcpathHireTarget, type UcpathHireDriver, type UcpathHireScan } from "../../../../models/ui/ucpath-hire.js";
+  UcpathHireScanSchema, ucpathHireSearchDigest, type UcpathHireTarget, type UcpathHireDriver, type UcpathHireScan } from "../../../../models/ui/ucpath-hire.js";
 import { containsDryRunSample } from "../../../../models/workflow/dry-run.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 
@@ -18,9 +18,9 @@ export function deterministicHireOperations(options: Readonly<{
       if (staged === undefined) throw new Error("No staged hire subject");
       return options.observedName ?? staged.expectedName;
     },
-    async scanHireTransactions() {
+    async scanHireTransactions(input) {
       events.push("probe:hire");
-      return UcpathHireScanSchema.parse({ state: options.completeness ?? "complete", rows,
+      return UcpathHireScanSchema.parse({ state: options.completeness ?? "complete", rows, queryDigest: ucpathHireSearchDigest(input.employee),
         observedAt: options.now, source: "ss-smart-hr-list-and-detail" });
     },
     async stageHire(raw, capture) {
@@ -42,7 +42,7 @@ export function deterministicHireOperations(options: Readonly<{
       if (containsDryRunSample(target)) throw new Error("Preview hire cannot be submitted");
       staged = undefined; events.push("commit:hire");
       const row = { transactionId: `T${String(9000001 + rows.length).padStart(9, "0")}`, approvalStatus: options.approvalStatus ?? "Pending",
-        action: "HIR" as const, displayedName: target.expectedName, emplId: target.emplId,
+        profileId: target.profileId, action: "HIR" as const, displayedName: target.expectedName, emplId: target.emplId,
         effectiveDate: target.employee.effectiveDate, positionNumber: target.employee.positionNumber, email: target.employee.email,
         dob: target.employee.dob, detailVerified: true as const };
       rows.push(row);

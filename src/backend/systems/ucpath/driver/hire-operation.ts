@@ -1,15 +1,15 @@
 import type { Locator, Page } from "playwright";
 import type { Clock } from "../../../../rules/time/clock.js";
-import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
+import { EidSchema } from "../../../../rules/identity/ids.js";
 import { UcpathHireIdentitySchema, UcpathHireTargetSchema, UcpathHireFindingSchema, UcpathHireScanSchema,
   UcpathHireStagingSchema, UCPATH_HIRE_STAGED,
-  type UcpathHireTarget, type UcpathHireDriver, type UcpathHireScan } from "../../../../models/ui/ucpath-hire.js";
+  ucpathHireSearchDigest, type UcpathHireTarget, type UcpathHireDriver, type UcpathHireScan } from "../../../../models/ui/ucpath-hire.js";
 import { containsDryRunSample } from "../../../../models/workflow/dry-run.js";
 import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { textOf } from "./transaction-findings-operation.js";
 import { UCPATH_HIRE_UI as ui } from "./hire-ui-registry.js";
-import { ucpathHireVerdict } from "../hire-verdict.js";
+import { hireProofForTarget, ucpathHireVerdict } from "../../../../rules/ucpath/hire-verdict.js";
 
 const BOUND_MS = 30_000;
 const normalize = (value: string) => value.trim().replace(/\s+/gu, " ").toLowerCase();
@@ -61,6 +61,7 @@ export function createUcpathHireOperations(assertCurrent: () => void, page: Page
     if (startDate !== effectiveDate) throw new Error("ucpath-hire-detail-date-mismatch");
     const row = UcpathHireFindingSchema.parse({ transactionId, approvalStatus: await visible(ui.status(page)), action: await visible(ui.detailAction(page)),
       displayedName: await visible(ui.detailName(page)), emplId, effectiveDate,
+      profileId: (await ui.field(page, "profileId").inputValue()).trim() || null,
       positionNumber: await ui.field(page, "positionNumber").inputValue(), email: await ui.email(page).inputValue(),
       dob: (await ui.field(page, "dob").inputValue()).replace(/^(\d{2})\/(\d{2})\/(\d{4})$/u, "$3-$1-$2"), detailVerified: true });
     if (await visible(ui.transactionId(page)) !== transactionId) throw new Error("ucpath-hire-detail-changed");
@@ -88,7 +89,7 @@ export function createUcpathHireOperations(assertCurrent: () => void, page: Page
       requireApp("search");
       const states = [await ui.rows(page).count() > 0, await ui.transactionId(page).isVisible(), await ui.empty(page).isVisible()];
       if (states.filter(Boolean).length !== 1) throw new Error("ucpath-hire-search-settlement-ambiguous");
-      const result = (rows: UcpathHireScan["rows"], state: UcpathHireScan["state"]) => UcpathHireScanSchema.parse({ state, rows,
+      const result = (rows: UcpathHireScan["rows"], state: UcpathHireScan["state"]) => UcpathHireScanSchema.parse({ state, rows, queryDigest: ucpathHireSearchDigest(input.employee),
         observedAt: clock.now().toISOString(), source: "ss-smart-hr-list-and-detail" });
       if (states[2]) return result([], "complete");
       if (states[1]) {
@@ -212,9 +213,9 @@ export function createUcpathHireOperations(assertCurrent: () => void, page: Page
       }
       if (outcome !== "detail") throw new Error("ucpath-hire-submit-unverified");
       const row = await readDetail();
-      const verdict = ucpathHireVerdict(target, { state: "complete", rows: [row], observedAt: IsoInstantSchema.parse(clock.now().toISOString()), source: "ss-smart-hr-list-and-detail" });
-      if (verdict.state !== "present") throw new Error("ucpath-hire-submit-unverified");
-      return verdict.proof;
+      const proof = hireProofForTarget(target, row);
+      if (proof === undefined) throw new Error("ucpath-hire-submit-unverified");
+      return proof;
     },
   };
   return operations;

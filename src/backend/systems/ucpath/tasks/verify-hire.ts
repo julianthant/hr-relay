@@ -1,8 +1,8 @@
 import { defineTask } from "../../../../workflow-kit/task.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { runHireOperation } from "../hire-task-error.js";
-import { UcpathVerifyHire } from "../../../../models/systems/ucpath/hire-tasks.js";
-import { ucpathHireVerdict } from "../hire-verdict.js";
+import { UcpathVerifyHire } from "../../../../models/systems/ucpath/verify-hire.js";
+import { ucpathHireVerdict } from "../../../../rules/ucpath/hire-verdict.js";
 
 export const verifyHireTask = defineTask(ucpathDriver, UcpathVerifyHire, {
   sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
