@@ -6,9 +6,8 @@ import { dirname, join } from "node:path";
 import { it } from "vitest";
 import { GENERATED_OUTPUTS } from "../../../scripts/build/generated-outputs.js";
 import { mergeGeneratedConflicts } from "../../../scripts/build/merge-generated-conflicts.js";
-import { collectSourceClosure } from "../../../scripts/build/workflow-build-manifest.js";
 
-const manifest = "src/workflow-kit/validation/generated-build-manifest.ts";
+const registry = "src/workflows/generated-descriptors.ts";
 const authored = "workflow.ts";
 
 function fixture(mixed: boolean, run: (root: string, head: string, staging: string) => void): void {
@@ -29,12 +28,12 @@ function fixture(mixed: boolean, run: (root: string, head: string, staging: stri
     git("add", ".");
     git("commit", "-m", "base");
     git("checkout", "-b", "feature");
-    put(manifest, "feature manifest\n");
+    put(registry, "feature registry\n");
     put(authored, "feature workflow\n");
     git("commit", "-am", "feature");
     const head = git("rev-parse", "HEAD");
     git("checkout", "staging");
-    put(manifest, "staging manifest\n");
+    put(registry, "staging registry\n");
     put(mixed ? authored : "staging.ts", "staging workflow\n");
     git("add", ".");
     git("commit", "-m", "staging");
@@ -49,23 +48,12 @@ it("resolves generated conflicts from the combined sources and retains both merg
     assert.equal(mergeGeneratedConflicts(root, staging, checkout => {
       assert.equal(readFileSync(join(checkout, authored), "utf8"), "feature workflow\n");
       assert.equal(readFileSync(join(checkout, "staging.ts"), "utf8"), "staging workflow\n");
-      writeFileSync(join(checkout, manifest), "regenerated combined manifest\n");
+      writeFileSync(join(checkout, registry), "regenerated combined registry\n");
     }), true);
     execFileSync("git", ["commit", "-m", "merge"], { cwd: root });
     const parents = execFileSync("git", ["show", "-s", "--format=%P", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
     assert.equal(parents, `${head} ${staging}`);
-    assert.equal(readFileSync(join(root, manifest), "utf8"), "regenerated combined manifest\n");
-  });
-});
-
-it("keeps the generated manifest import resolvable while computing fresh source fingerprints", () => {
-  fixture(false, (root, _head, staging) => {
-    writeFileSync(join(root, authored), `import "./${manifest.replace(/\.ts$/u, ".js")}";\n`);
-    execFileSync("git", ["commit", "-am", "reference generated manifest"], { cwd: root });
-    assert.equal(mergeGeneratedConflicts(root, staging, checkout => {
-      assert.deepEqual(collectSourceClosure(checkout, join(checkout, authored)).map(source => source.path), [authored]);
-      writeFileSync(join(checkout, manifest), "regenerated combined manifest\n");
-    }), true);
+    assert.equal(readFileSync(join(root, registry), "utf8"), "regenerated combined registry\n");
   });
 });
 
@@ -79,12 +67,12 @@ it("refuses a mixed conflict before running any generator or creating a commit",
 
 it("regenerates a generated file deleted by the PR and modified by staging", () => {
   fixture(false, (root, _head, staging) => {
-    execFileSync("git", ["rm", "--", manifest], { cwd: root });
+    execFileSync("git", ["rm", "--", registry], { cwd: root });
     execFileSync("git", ["commit", "-m", "delete generated output"], { cwd: root });
     assert.equal(mergeGeneratedConflicts(root, staging, checkout => {
-      writeFileSync(join(checkout, manifest), "regenerated combined manifest\n");
+      writeFileSync(join(checkout, registry), "regenerated combined registry\n");
     }), true);
-    assert.equal(readFileSync(join(root, manifest), "utf8"), "regenerated combined manifest\n");
+    assert.equal(readFileSync(join(root, registry), "utf8"), "regenerated combined registry\n");
     assert.equal(execFileSync("git", ["diff", "--name-only", "--diff-filter=U"], { cwd: root, encoding: "utf8" }), "");
   });
 });
@@ -111,7 +99,7 @@ it("merges on a fresh runner without a configured Git identity", () => {
     execFileSync("git", ["config", "user.name", ""], { cwd: root });
     execFileSync("git", ["config", "user.email", ""], { cwd: root });
     assert.equal(mergeGeneratedConflicts(root, staging, checkout => {
-      writeFileSync(join(checkout, manifest), "regenerated combined manifest\n");
+      writeFileSync(join(checkout, registry), "regenerated combined registry\n");
     }), true);
   });
 });
