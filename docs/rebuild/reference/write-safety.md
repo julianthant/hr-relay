@@ -186,6 +186,11 @@ A settled prior transaction returns an `already-present` preview without staging
 
 `run-executor.ts` records each transaction preview and continues through the declared graph. A later form can consume a separately declared, labelled preview-only sample; dependent receipt/confirmation reads stay unavailable. Samples never become ordinary outputs, real transaction checkpoints or submit receipts. A live sequencer rejects preview scope, preview bindings and reserved sample values before probing, staging or fencing. Upstream task checkpoints, gate records, preview events, and terminal rehearsal evidence can still exist. A dry run is not a verified real write. Dry-run evidence accounting uses `writeIntents.countDryRunEvidenceByRun`, scoped to the run rather than global table counts.
 
+The shared preview contract reserves `DRY_RUN_TRANSACTION_NUMBER` and the numeric
+`DRY_RUN_I9_PROFILE_ID`. Numeric profile samples retain their producer and field labels and use
+the same preview admission and real-write refusal as transaction-number samples. Numeric detection
+matches a complete digit token, so an ordinary longer identifier containing the same digits is not a sample.
+
 ## 4. Crash recovery and UNKNOWN refusal
 
 `createWriteRecoveryService` handles unfinished `attempting` intents. Production worker startup parks unfinished attempts for operator action; the standalone recovery service is not composed into that startup path. Worker and expired-claim recovery must reconcile these intents before ordinary queue admission. [Execution and sessions](execution-and-sessions.md) describes that scheduling boundary.
