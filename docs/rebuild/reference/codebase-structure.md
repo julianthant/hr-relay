@@ -15,7 +15,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
 | `fast-duo/` | Dashboard-owned Chromium enrollment and backend-signed workflow login runtimes. |
-| `scripts/build/` | Workflow registry and manifest generation and checks; `generated-outputs.ts` owns merge-train regeneration paths and commands, and `merge-generated-conflicts.ts` resolves generated conflicts in temporary worktrees. |
+| `scripts/build/` | Workflow registry generation, manifest-only source-tool preparation and independent checks; `generated-outputs.ts` owns merge-train regeneration paths and commands, and `merge-generated-conflicts.ts` resolves generated conflicts in temporary worktrees. |
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
@@ -28,7 +28,11 @@ This map names the current source, test, and documentation owners. Relay runs lo
 
 `npm run build:registries` reads workflow indexes and generates `src/workflows/generated-descriptors.ts`
 and `src/backend/app/registries/generated-{workflow-modules,workflow-stores,step-proof-modules}.ts`.
-`npm run build:manifest` runs that generator, then generates `src/workflow-kit/validation/generated-build-manifest.ts`.
+`npm run build:manifest` runs that generator, then prepares the ignored
+`src/workflow-kit/validation/generated-build-manifest.ts`. `build:manifest:prepare` prepares only
+the manifest; source-tool configs and package prehooks call it before graph loading. Read-only
+`build:manifest:check` checks registry freshness before manifest bytes. [Guards and tests](guards-and-tests.md#build-manifest-preparation)
+owns preparation boundaries, watcher restart requirements and the future packaging contract.
 `npm run stores:catalog` generates the catalog section in `docs/rebuild/reference/stores.md`.
 `npm run roadmap` generates the roadmap site. Each command has a corresponding `:check` command.
 `npm run web:build` produces the dashboard bundle in `dist/`.
@@ -120,7 +124,7 @@ Paths in this table are relative to `src/backend/`.
 | `src/models/workflows/person-lookup/result.ts` | Person Lookup terminal result schema shared by its definition, retained CRM proof and OCR outcome fold. |
 | `src/models/config/` | Settings grammar, isolation shape, and immutable configuration snapshots. `person-preferences.ts` owns the strict person appearance/shell values and neutral defaults; snapshot preference fingerprints are independent of execution config fingerprints. |
 | `src/models/workflow/dry-run.ts` | Browser-safe preview stage accounting, typed sample provenance and reserved sample detection. |
-| `src/models/workflow/build-manifest.ts` | Pure build-manifest path, schemas, types and parser shared by generation and runtime validation. `workflow-kit/validation/build-manifest.ts` owns the eagerly validated checked-in manifest and fingerprint resolvers. |
+| `src/models/workflow/build-manifest.ts` | Pure build-manifest path, schemas, types and parser shared by generation and runtime validation. `workflow-kit/validation/build-manifest.ts` owns the eagerly validated prepared static manifest and fingerprint resolvers. |
 | `src/models/events/` | Timeline, confirmed action, declared step result, and confirmation-proof schemas. |
 | `src/models/trust/` | Failure, diagnostic, receipt, and scenario schemas. |
 | `src/rules/identity/logical-item.ts` | Browser-safe logical-item derivation, shared with runtime identity minting through `identifiers.ts`. |

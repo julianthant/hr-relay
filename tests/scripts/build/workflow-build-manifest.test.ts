@@ -1,11 +1,11 @@
 import { testProcessImport } from "../../support/compiled-process.js";
-import { cpSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { BUILD_MANIFEST_PATH } from "../../../src/models/workflow/build-manifest.js";
 import { describe,expect,it } from "vitest";
-import { auditBuildManifestBytes, collectSourceClosure, computeBuildManifest, declaredWorkflowId, renderBuildManifestModule } from "../../../scripts/build/workflow-build-manifest.js";
+import { auditBuildManifestBytes, collectSourceClosure, computeBuildManifest, declaredWorkflowId, fingerprintSourceSet, prepareBuildManifest, renderBuildManifestModule } from "../../../scripts/build/workflow-build-manifest.js";
 
 describe("workflow definition compiler", () => {
 
@@ -114,7 +114,7 @@ it("runs the actual generator without existing output and replaces conflicted ou
     mkdirSync(join(owner, "tasks"), { recursive: true });
     writeFileSync(join(owner, "task-registry.ts"), "export const registry = true;\n");
     const task = join(owner, "tasks/read.ts");
-    writeFileSync(task, "export const read = true;\n");
+    writeFileSync(task, 'import { BUILD_MANIFEST } from "../../../../workflow-kit/validation/build-manifest.js";\nexport const read = BUILD_MANIFEST;\n');
     const target = join(root, BUILD_MANIFEST_PATH);
     mkdirSync(dirname(target), { recursive: true });
     const run = (...args: string[]) => spawnSync(process.execPath,
@@ -124,16 +124,35 @@ it("runs the actual generator without existing output and replaces conflicted ou
       const result = run(...args);
       expect(result.error).toBeUndefined(); expect(result.signal).toBeNull(); expect(result.status, result.stderr).toBe(status);
     };
+    const runtime = () => spawnSync(process.execPath,
+      ["--import", testProcessImport(), join(root, "src/workflow-kit/validation/build-manifest.ts")],
+      { cwd: root, encoding: "utf8" });
+    expect(runtime().status).not.toBe(0);
     check(1, "--check");
     check(0);
+    expect(runtime().status).toBe(0);
+    const bytes = readFileSync(target, "utf8");
+    const modified = statSync(target).mtimeMs;
+    check(0);
+    expect(readFileSync(target, "utf8")).toBe(bytes);
+    expect(statSync(target).mtimeMs).toBe(modified);
     const first = computeBuildManifest(root);
+    expect(first.tasks[0]?.sources.map(source => source.path)).toContain("src/workflow-kit/validation/build-manifest.ts");
+    expect(first.tasks[0]?.sources.map(source => source.path)).not.toContain(BUILD_MANIFEST_PATH);
     expect(readFileSync(target, "utf8")).toBe(renderBuildManifestModule(first));
     expect(auditBuildManifestBytes(readFileSync(target, "utf8"), first)).toEqual([]);
     check(0, "--check");
-    writeFileSync(task, "export const read = false;\n");
+    writeFileSync(target, bytes.replace(" = {", " =  {"));
     check(1, "--check");
+    expect(readFileSync(target, "utf8")).toBe(bytes.replace(" = {", " =  {"));
+    writeFileSync(target, bytes);
+    writeFileSync(task, readFileSync(task, "utf8") + "export const changed = true;\n");
+    check(1, "--check");
+    expect(readFileSync(target, "utf8")).toBe(bytes);
     writeFileSync(target, "<<<<<<< current\nnot valid TypeScript\n=======\nforeign output\n>>>>>>> incoming\n");
     check(1, "--check");
+    expect(readFileSync(target, "utf8")).toContain("<<<<<<< current");
+    expect(runtime().status).not.toBe(0);
     check(0);
     const current = computeBuildManifest(root);
     expect(current.tasks[0]?.fingerprint).not.toBe(first.tasks[0]?.fingerprint);
@@ -141,4 +160,51 @@ it("runs the actual generator without existing output and replaces conflicted ou
     expect(auditBuildManifestBytes(readFileSync(target, "utf8"), current)).toEqual([]);
     check(0, "--check");
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("excludes only the exact artifact while refusing ordinary unresolved imports", () => {
+  const root = mkdtempSync(join(tmpdir(), "relay-manifest-resolution-"));
+  try {
+    const entry = join(root, "entry.ts");
+    writeFileSync(entry, 'import "./src/workflow-kit/validation/generated-build-manifest.js";\n');
+    expect(collectSourceClosure(root, entry).map(source => source.path)).toEqual(["entry.ts"]);
+    for (const specifier of ["./missing.js", "./elsewhere/generated-build-manifest.js"]) {
+      writeFileSync(entry, `import "${specifier}";\n`);
+      expect(() => collectSourceClosure(root, entry)).toThrow(/build manifest cannot resolve/);
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("invalidates imported source, installed toolchain and driver closure membership", () => {
+  const root = mkdtempSync(join(tmpdir(), "relay-manifest-inputs-"));
+  const put = (path: string, value: string) => {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), value);
+  };
+  try {
+    for (const name of ["typescript", "zod"]) put(`node_modules/${name}/package.json`, '{"version":"1.0.0"}');
+    put("src/backend/systems/crm/task-registry.ts", "export const registry = true;\n");
+    put("src/backend/systems/crm/tasks/read.ts", 'import type { Value } from "../value.js";\n');
+    put("src/backend/systems/crm/value.ts", "export type Value = 1;\n");
+    const first = computeBuildManifest(root);
+    put("src/backend/systems/crm/value.ts", "export type Value = 2;\n");
+    const imported = computeBuildManifest(root);
+    expect(imported.tasks[0]?.fingerprint).not.toBe(first.tasks[0]?.fingerprint);
+    put("node_modules/typescript/package.json", '{"version":"2.0.0"}');
+    const toolchain = computeBuildManifest(root);
+    expect(toolchain.tasks[0]?.fingerprint).not.toBe(imported.tasks[0]?.fingerprint);
+    put("src/backend/systems/crm/driver/interpreter.ts", "export const driver = true;\n");
+    const driver = computeBuildManifest(root);
+    expect(driver.tasks[0]?.fingerprint).not.toBe(toolchain.tasks[0]?.fingerprint);
+    expect(driver.tasks[0]?.sources.map(source => source.path)).toContain("src/backend/systems/crm/driver/interpreter.ts");
+    prepareBuildManifest(root);
+    const target = join(root, BUILD_MANIFEST_PATH), bytes = readFileSync(target, "utf8");
+    prepareBuildManifest(root);
+    expect(readFileSync(target, "utf8")).toBe(bytes);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("retains the canonical fingerprint algorithm's known complete tuple", () => {
+  expect(fingerprintSourceSet({ typescript: "5.9.3", zod: "4.6.6" }, "crm/read", []))
+    .toBe("8360e1578d55ebfbff6bcffb72100606d6fdb6ecc831d1d253abd46c694afa90");
 });
