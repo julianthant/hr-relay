@@ -90,7 +90,22 @@ afterAll(() => profiles.close());
     change: { kind: 'save', expectedVersion: 1, workbook: encodeEditableWorkbook({ ...saved.workbook, name: 'Settled.xlsx' }) } });
   const accountingVersion = (_saved: SavedWorkbook): WorkbookOperation => ({ operationId: 'accounting-version', source: { kind: 'operator' }, at: IsoInstantSchema.parse(CLOCK.now().toISOString()),
     change: { kind: 'version', expectedVersion: 1, name: 'Reviewed' } });
+  const renameAccountingVersion = (database: AccountingDatabase) => {
+    const saved = accountingWorkbook(database), state = database.authority.workbooks.libraryState(saved.libraryId);
+    const record = database.authority.workbooks.libraryAction(saved.libraryId, { operationId: 'accounting-version-name', expectedVersion: saved.version,
+      expectedRevision: state.revision, change: { kind: 'rename-version', versionId: state.selectedVersionId, name: 'Reviewed original' } }, CLOCK.now().toISOString());
+    assert.deepEqual(database.authority.workbooks.libraryActionRecord(saved.libraryId, record.action.operationId), record);
+    assert.deepEqual(database.authority.workbooks.libraryState(saved.libraryId), record.result);
+    assert.equal(record.result.versions[0].name, 'Reviewed original');
+  };
   const cases: readonly MutationCase[] = [...authorityMutationCases({ prepareRunning, terminalFailureRequest, terminalSuccessRequest, terminalizeForTrust, DIAGNOSTIC_BUNDLE, FAILURE_RECORD, DRY_RUN_SCENARIO_RESULT, OPERATOR_XLSX_EXPORT, CLOCK, ATOMIC_WRITE_COMMIT, databasePaths, INTAKE_MANIFEST, OCR_EXTRACTION, prepareWorkerSlot, claimedWorkerId, prepareDelegationOwners, COMMAND_AUDIT, RUN_CHECKPOINT, OBSERVED_PRESENT_WRITE_INTENT }),
+    { table: "workbook_library_actions", prepare: prepareAccountingWorkbook, mutate: renameAccountingVersion },
+    { table: "workbook_library_state", prepare: prepareAccountingWorkbook, mutate: renameAccountingVersion },
+    { table: "workbook_library_snapshots", mutate: database => {
+      const saved = createAccountingWorkbook(database), version = database.authority.workbooks.libraryVersion(saved.libraryId);
+      assert.equal(version.version.id, 'original');
+      assert.deepEqual(version.workbook, encodeEditableWorkbook(saved.workbook));
+    } },
     { table: "workbook_creations", mutate: database => {
       const saved = createAccountingWorkbook(database);
       assert.deepEqual(database.authority.workbooks.creation(saved.libraryId), saved);

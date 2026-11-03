@@ -12,7 +12,7 @@
     - heading "Edit spreadsheet type" [level=2]
   - text: Type name
   - textbox "Type name": Onboarding roster
-  - paragraph: "Columns: First name, Last name, Employee ID"
+  - paragraph: "Columns: First Name, Last Name, Employee ID"
   - contentinfo:
     - button "Cancel"
     - button "Save type"

@@ -76,7 +76,7 @@ async function serveLaunchAuthority<Source>(h: Awaited<ReturnType<typeof launchH
     workflows: catalog?.workflows ?? [{ id: h.descriptor.id, code: h.descriptor.code, label: h.descriptor.label, categoryId: h.descriptor.category,
       descriptorFingerprint: h.descriptor.contractFingerprint, availability: { state: "available" }, role: h.workflow.role,
       start: { enqueue: h.workflow.enqueue, version: h.workflow.version, steps: h.workflow.steps,
-        inputRun: h.descriptor.surfaces.inputRun, spreadsheetIntake: false } }],
+        inputRun: h.descriptor.surfaces.inputRun, spreadsheetIntake: false, requiredWorkbookTypeIds: [...h.descriptor.requiredWorkbookTypeIds] } }],
   });
   const fixtures = createFixtureBff({ profile: { bootstrap, descriptorHash, day: snapshot() } });
   const streams = new Set<ServerResponse>();

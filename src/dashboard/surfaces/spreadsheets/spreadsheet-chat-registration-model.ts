@@ -72,13 +72,16 @@ export function createSpreadsheetChatRegistrationPort(adapter: Adapter) {
     },
     async open(file: SpreadsheetFileReference) { return (await adapter.readVersion(file.libraryId, file.version)).workbook; },
     async download(file: SpreadsheetFileReference) {
-      const document = await this.open(file);
-      const csv = /\.csv$/iu.test(document.name);
-      if (csv && document.sheets.length !== 1) throw new Error('SPREADSHEET_CSV_REQUIRES_ONE_SHEET');
-      const data = csv ? await exportSheetInWorker(document.sheets[0]) : await exportSpreadsheetInWorker(document);
-      return { name: document.name, blob: new Blob([data], { type: csv ? 'text/csv;charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }) };
+      return spreadsheetDownload(await this.open(file));
     },
   };
+}
+
+export async function spreadsheetDownload(document: EditableWorkbook) {
+  const csv = /\.csv$/iu.test(document.name);
+  if (csv && document.sheets.length !== 1) throw new Error('SPREADSHEET_CSV_REQUIRES_ONE_SHEET');
+  const data = csv ? await exportSheetInWorker(document.sheets[0]) : await exportSpreadsheetInWorker(document);
+  return { name: document.name, blob: new Blob([data], { type: csv ? 'text/csv;charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }) };
 }
 
 export function spreadsheetChatRegistrationPort(adapter: Adapter): SpreadsheetChatRegistrationPort {

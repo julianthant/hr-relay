@@ -1,3 +1,4 @@
+import type { FrontendBootstrapWire } from "../../../models/dashboard/bootstrap.js";
 import { WORKFLOW_SOURCES, workflowSource, type WorkflowSourcePolicy } from "../../app/workflow-sources.js";
 import type { RunStartWorkflow } from "../run-start/run-start.js";
 import { MOCK_WORKFLOW_CATALOG, type MockWorkflow } from "./mocks/workflow-mock-catalog.js";
@@ -14,7 +15,7 @@ export interface WorkflowCatalogEntry extends WorkflowNavigationEntry {
 }
 
 /** Compose each workflow from its statically selected source. */
-export function buildWorkflowCatalog(served: readonly RunStartWorkflow[], includePreviews = true, sources: WorkflowSourcePolicy = WORKFLOW_SOURCES): readonly WorkflowCatalogEntry[] {
+export function buildWorkflowCatalog(served: readonly RunStartWorkflow[], includePreviews = true, sources: WorkflowSourcePolicy = WORKFLOW_SOURCES, features: FrontendBootstrapWire["featureAvailability"] = []): readonly WorkflowCatalogEntry[] {
   if (includePreviews && new Set(MOCK_WORKFLOW_CATALOG.workflows.map(flow => flow.id)).size !== MOCK_WORKFLOW_CATALOG.workflows.length) throw new Error("WORKFLOW_PREVIEW_REGISTRY_DUPLICATE");
   const seen = new Set<string>();
   const entries: WorkflowCatalogEntry[] = served.filter(flow => workflowSource(flow.workflowId, sources) === "served").map(flow => {
@@ -36,9 +37,19 @@ export function buildWorkflowCatalog(served: readonly RunStartWorkflow[], includ
       launch: preview.runnable ? { state: "preview" }
         : { state: "unavailable", label: "Parent only", reason: "Started by a parent workflow." } });
   }
-  return workflowNavigationGroups(entries).flatMap(group => group.entries.flatMap(node => [node.entry, ...node.members.map(member => member.entry)]));
+  const restrictions = workflowStartRestrictions(features);
+  const guarded = entries.map(entry => {
+    const restriction = restrictions.get(entry.id);
+    return restriction ? { ...entry, launch: { state: 'unavailable' as const, label: 'Unavailable', reason: restriction } } : entry;
+  });
+  return workflowNavigationGroups(guarded).flatMap(group => group.entries.flatMap(node => [node.entry, ...node.members.map(member => member.entry)]));
 }
 
 export function servedLaunchWorkflows(catalog: readonly WorkflowCatalogEntry[]): readonly RunStartWorkflow[] {
   return catalog.flatMap(entry => entry.served ? [entry.served] : []);
+}
+
+export function workflowStartRestrictions(features: FrontendBootstrapWire['featureAvailability']): ReadonlyMap<string, string> {
+  return new Map(features.flatMap(feature => feature.feature.startsWith('workflow-start:') && feature.availability.state === 'unavailable'
+    ? [[feature.feature.slice('workflow-start:'.length), feature.availability.reason] as const] : []));
 }

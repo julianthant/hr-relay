@@ -1,3 +1,4 @@
+import { RunWorkbookReferenceSchema } from "../../../models/dashboard/workbooks.js";
 import { z } from "zod";
 import { failureCorrectionSubmission } from "../start/failure-correction.js";
 import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
@@ -204,6 +205,11 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         ...(record.rerun === undefined ? {} : { rerun: projectRerunPlanForOperator(record.rerun) }),
         planned: record.planned.map((planned) => ({
           ...(planned.supersedeTargets === undefined ? {} : { supersedeTargets: planned.supersedeTargets }),
+          ...(planned.workbookReferences === undefined ? {} : { workbookReferences: planned.workbookReferences.map(reference => {
+            const { libraryId, version, versionId, versionName, worksheets, type } = RunWorkbookReferenceSchema.parse(reference.value).snapshot;
+            return { libraryId, version, ...(versionId === undefined ? {} : { versionId }), ...(versionName === undefined ? {} : { versionName }), worksheets, type };
+          }) }),
+          ...(planned.outputs === undefined ? {} : { outputs: planned.outputs }),
           logicalKey: planned.itemId,
           title: planned.title,
           ...(planned.subtitle === undefined ? {} : { subtitle: planned.subtitle }),

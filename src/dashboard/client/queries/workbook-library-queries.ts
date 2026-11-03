@@ -3,13 +3,23 @@ import {
   SavedWorkbookWireSchema, WorkbookRevisionSchema, WorkbookListWireSchema, WorkbookHistoryWireSchema,
   WorkbookCreateRequestSchema, WorkbookSaveRequestSchema, WorkbookIntakeRequestSchema,
   WorkbookIntakeResultSchema, encodeEditableWorkbook, decodeSavedWorkbook, type SavedWorkbook,
+  WorkbookTypeSchema,
 } from "../../../models/dashboard/workbooks.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { httpError, schemaError } from "../errors.js";
 import type { DashboardTransport } from "../transport.js";
 import { parseOrThrow } from "./query-parse.js";
+import { WorkbookLibraryCatalogSchema, WorkbookLibraryActionSchema, WorkbookLibraryActionRecordSchema, WorkbookLibraryActionStatusSchema, WorkbookLibraryVersionViewSchema,
+  type WorkbookLibraryEntry, type WorkbookLibraryAction, type WorkbookLibraryActionRecord } from "../../../models/dashboard/workbook-library.js";
 
 export interface WorkbookLibraryQueries {
+  workbookCatalog(): Promise<readonly WorkbookLibraryEntry[]>;
+  workbookTypes(): Promise<readonly z.infer<typeof WorkbookTypeSchema>[]>;
+  workbookPutType(type: z.infer<typeof WorkbookTypeSchema>): Promise<z.infer<typeof WorkbookTypeSchema>>;
+
+  workbookLibraryVersion(libraryId: string, versionId: string): Promise<z.infer<typeof WorkbookLibraryVersionViewSchema>>;
+  workbookLibraryAction(libraryId: string, action: WorkbookLibraryAction): Promise<WorkbookLibraryActionRecord>;
+  workbookLibraryActionStatus(libraryId: string, operationId: string): Promise<z.infer<typeof WorkbookLibraryActionStatusSchema>>;
   workbookList(): Promise<readonly SavedWorkbook[]>;
   workbookOpen(libraryId: string): Promise<SavedWorkbook>;
   workbookRevision(libraryId: string, version: number): Promise<SavedWorkbook>;
@@ -30,6 +40,41 @@ function canonicalContent(value: unknown): string {
 
 export function createWorkbookLibraryQueries(transport: DashboardTransport): WorkbookLibraryQueries {
   return Object.freeze({
+    async workbookCatalog() {
+      const path = '/api/v1/workbooks/catalog';
+      return parseOrThrow(WorkbookLibraryCatalogSchema, path, await transport.requestJson(path));
+    },
+    async workbookTypes() {
+      const path = '/api/v1/workbooks/types';
+      const types = parseOrThrow(WorkbookTypeSchema.array(), path, await transport.requestJson(path));
+      if (new Set(types.map(type => type.id)).size !== types.length) throw schemaError(path, 'duplicate workbook type identities');
+      return types;
+    },
+    async workbookPutType(value: z.infer<typeof WorkbookTypeSchema>) {
+      const path = '/api/v1/workbooks/types', type = parseOrThrow(WorkbookTypeSchema, path, value);
+      const saved = parseOrThrow(WorkbookTypeSchema, path, await transport.requestJson(path, { method: 'POST', body: JSON.stringify(type) }));
+      if (canonicalContent(saved) !== canonicalContent(type)) throw schemaError(path, 'workbook type acknowledgment differs from request');
+      return saved;
+    },
+    async workbookLibraryVersion(libraryId: string, versionId: string) {
+      const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/versions/${encodeURIComponent(versionId)}`;
+      const view = parseOrThrow(WorkbookLibraryVersionViewSchema, path, await transport.requestJson(path));
+      if (view.libraryId !== libraryId || view.version.id !== versionId) throw schemaError(path, 'named version identity mismatch');
+      return view;
+    },
+    async workbookLibraryAction(libraryId: string, value: WorkbookLibraryAction) {
+      const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/library-actions`;
+      const action = parseOrThrow(WorkbookLibraryActionSchema, path, value);
+      const record = parseOrThrow(WorkbookLibraryActionRecordSchema, path, await transport.requestJson(path, { method: 'POST', body: JSON.stringify(action) }));
+      if (record.libraryId !== libraryId || canonicalContent(record.action) !== canonicalContent(action)) throw schemaError(path, 'library action identity mismatch');
+      return record;
+    },
+    async workbookLibraryActionStatus(libraryId: string, operationId: string) {
+      const path = `/api/v1/workbooks/${encodeURIComponent(libraryId)}/library-actions/${encodeURIComponent(operationId)}`;
+      const status = parseOrThrow(WorkbookLibraryActionStatusSchema, path, await transport.requestJson(path));
+      if (status.state === 'recorded' && (status.record.libraryId !== libraryId || status.record.action.operationId !== operationId)) throw schemaError(path, 'library action identity mismatch');
+      return status;
+    },
     async workbookList() {
       const path = "/api/v1/workbooks/list";
       const records = parseOrThrow(WorkbookListWireSchema, path, await transport.requestJson(path));
