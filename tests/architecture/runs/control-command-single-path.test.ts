@@ -187,7 +187,7 @@ function withoutWorkerControlAdmissions(content: string, kernelContent: string):
   return content;
 }
 
-type DelegationAuditRead = Readonly<{ owner: string; id: string; guards: readonly string[]; calls?: readonly string[]; bindings?: Readonly<Record<string, string>> }>;
+type DelegationAuditRead = Readonly<{ owner: string; id: string; guards: readonly string[]; calls?: readonly string[]; bindings?: Readonly<Record<string, string>>; loops?: readonly string[]; updates?: readonly string[] }>;
 const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRead[]>> = {
   "src/backend/storage/sqlite/command-record-row.ts": [
     { owner: "withCanonicalRunCommandScope", id: "request.commandId", guards: [
@@ -197,6 +197,62 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
     ], calls: ["repositories.commands.assertIdentity(request,parentCommandId)"] },
   ],
   "src/backend/storage/sqlite/delegation-root-authority.ts": [
+    {
+      "owner": "authenticateGateResume",
+      "id": "gate.commandId",
+      "guards": [
+        "rows.some(row=>row.runId!==run.envelope.runId)||newSet(rows.map(row=>row.nodeId)).size!==rows.length",
+        "latest.length!==1||gate===undefined||!(\"commandId\"ingate)||!(\"resolvedBy\"ingate)||String(gate.nodeId)!==String(gate.gateId)||gate.expectedVersion<2||gate.expectedVersion>=run.version||gate.checkpointFingerprint!==deriveGateResultCheckpointFingerprint(gate.result)",
+        "source===undefined||source.commandId!==gate.commandId||!(source.family===\"gate\"&&source.type===\"resolve-gate\"||source.family===\"run\"&&source.type===\"resolve-workbook-reference-row\")||source.target.runId!==run.envelope.runId||source.target.gateId!==gate.gateId||source.target.expectedVersion!==gate.expectedVersion||source.requestedBy!==actorId||source.requestedBy!==gate.resolvedBy||source.type===\"resolve-gate\"&&!same(source.payload.result,gate.result)||audit?.result.state!==\"applied\"||!same(audit.request,source)||audit.completedAt!==gate.resolvedAt||audit.versionChanges.length!==1||audit.versionChanges[0]?.target.family!==\"gate\"||audit.versionChanges[0].target.runId!==run.envelope.runId||audit.versionChanges[0].target.gateId!==gate.gateId||Number(audit.versionChanges[0].before)!==Number(gate.expectedVersion)||audit.versionChanges[0].after!==gate.expectedVersion+1||audit.result.affectedTargets.length!==2||!audit.result.affectedTargets.some(target=>target.family===\"gate\"&&target.runId===run.envelope.runId&&target.gateId===gate.gateId)||!audit.result.affectedTargets.some(target=>target.family===\"run\"&&target.runId===run.envelope.runId)",
+        "command===undefined||!(\"kind\"incommand)||command.kind!==\"run-lifecycle\"||command.commandId!==commandId||command.operation!==\"transition\"||settled===undefined||!(\"kind\"insettled)||settled.kind!==\"run-lifecycle\"||!same(settled.request,command)||settled.result.kind!==\"run\"||settled.result.runId!==run.envelope.runId||settled.result.appliedVersion!==gate.expectedVersion+1||settled.result.appliedVersion>run.version||String(settled.auditId)!==String(commandId)||Date.parse(settled.completedAt)<Date.parse(gate.resolvedAt)",
+        "!same(CanonicalTransitionRequestSchema.parse(command.request),{commandId,runId:run.envelope.runId,expectedVersion:gate.expectedVersion,lifecycle:{state:\"queued\"}})",
+        "resolved?.source.kind!==\"native\"||resolved.eventId!==lifecycleCommandId(\"timeline-gate-resolved\",source.commandId)||resolved.scope.kind!==\"run\"||resolved.scope.runId!==run.envelope.runId||resolved.workflow!==run.envelope.workflow||resolved.occurredAt!==gate.resolvedAt||resolved.recordedAt!==gate.resolvedAt||event===undefined||event.runId!==run.envelope.runId||event.workflow!==run.envelope.workflow||event.traceId!==run.envelope.traceId||event.spanPath!==run.envelope.traceId||event.attempt>run.envelope.attempt||event.gate!==gate.gateId||event.ts!==gate.resolvedAt||event.resultHash!==sha256Hex(`hrauto:gate-resolved-span:v1\\0${canonicalJsonStringify(gate.result)}`)",
+        "page.length===0",
+        "record.cursor<=after||record.cursor>resolved.cursor||record.scope.kind!==\"run\"||record.scope.runId!==run.envelope.runId||record.workflow!==run.envelope.workflow",
+        "!same(history.at(-1),resolved)",
+        "opened===undefined||openedEvent===undefined||opened.cursor>=resolved.cursor||openedEvent.gate!==gate.gateId||openedEvent.runId!==run.envelope.runId||openedEvent.workflow!==run.envelope.workflow||openedEvent.traceId!==run.envelope.traceId||openedEvent.spanPath!==run.envelope.traceId||openedEvent.attempt!==event.attempt",
+        "claim===undefined||claim.claimGeneration===undefined||claim.claimGeneration>run.claimGeneration||claim.runId!==run.envelope.runId||claim.workflow!==run.envelope.workflow||claim.traceId!==run.envelope.traceId||claim.spanPath!==run.envelope.traceId||claim.attempt!==event.attempt",
+        "parked===undefined||!(\"kind\"inparked)||parked.kind!==\"run-lifecycle\"||parked.commandId!==parkId||parked.operation!==\"worker-transition\"||parkAudit===undefined||!(\"kind\"inparkAudit)||parkAudit.kind!==\"run-lifecycle\"||!same(parkAudit.request,parked)||parkAudit.result.kind!==\"run\"||parkAudit.result.runId!==run.envelope.runId||parkAudit.result.appliedVersion!==gate.expectedVersion||String(parkAudit.auditId)!==String(parkId)||opened.eventId!==lifecycleCommandId(\"timeline-lifecycle\",parkId)",
+        "request.runId!==run.envelope.runId||request.claim.workerId!==claim.workerId||request.claim.claimGeneration!==claim.claimGeneration||request.lifecycle.state!==\"parked-gate\"||request.lifecycle.gateId!==gate.gateId||request.lifecycle.resumeAt!==run.envelope.startAt||request.lifecycle.parkedAt!==openedEvent.ts||opened.occurredAt!==openedEvent.ts||Date.parse(parkAudit.completedAt)<Date.parse(openedEvent.ts)||Date.parse(parkAudit.completedAt)>Date.parse(gate.resolvedAt)"
+      ],
+      "calls": [
+        "validateNativeLifecycleRequest(command)",
+        "validateNativeLifecycleRequest(parked)",
+        "repositories.timelineEvents.page({runId:run.envelope.runId,after,through:resolved.cursor,limit:1000})",
+        "history.push(record)"
+      ],
+      "bindings": {
+        "rows": "repositories.gateResults.listByRun(run.envelope.runId)",
+        "issued": "rows.filter(row=>\"commandId\"inrow)",
+        "latestVersion": "Math.max(...issued.map(row=>row.expectedVersion))",
+        "latest": "issued.filter(row=>row.expectedVersion===latestVersion)",
+        "gate": "latest[0]",
+        "source": "repositories.commands.get(gate.commandId)",
+        "audit": "repositories.commandAudits.findByCommand(gate.commandId)",
+        "commandId": "lifecycleCommandId(\"operator-gate\",source.commandId)",
+        "command": "repositories.lifecycleJournal.getCommand(commandId)",
+        "settled": "repositories.lifecycleJournal.findAuditByCommand(commandId)",
+        "resolved": "repositories.timelineEvents.get(lifecycleCommandId(\"timeline-gate-resolved\",source.commandId))",
+        "event": "resolved?.payload.kind===\"span\"&&resolved.payload.event.t===\"gate.resolved\"?resolved.payload.event:undefined",
+        "history": "[]",
+        "after": "0",
+        "page": "repositories.timelineEvents.page({runId:run.envelope.runId,after,through:resolved.cursor,limit:1000})",
+        "opened": "history.filter(record=>record.source.kind===\"native\"&&record.payload.kind===\"span\"&&record.payload.event.t===\"gate.opened\").at(-1)",
+        "openedEvent": "opened?.payload.kind===\"span\"&&opened.payload.event.t===\"gate.opened\"?opened.payload.event:undefined",
+        "claimed": "history.filter(record=>record.cursor<opened.cursor&&record.source.kind===\"native\"&&record.payload.kind===\"span\"&&record.payload.event.t===\"run.claimed\").at(-1)",
+        "claim": "claimed?.payload.kind===\"span\"&&claimed.payload.event.t===\"run.claimed\"?claimed.payload.event:undefined",
+        "parkId": "lifecycleCommandId(\"executor-transition\",{runId:run.envelope.runId,generation:claim.claimGeneration,version:gate.expectedVersion-1})",
+        "parked": "repositories.lifecycleJournal.getCommand(parkId)",
+        "parkAudit": "repositories.lifecycleJournal.findAuditByCommand(parkId)",
+        "request": "CanonicalWorkerTransitionRequestSchema.parse(parked.request)"
+      },
+      "loops": [
+        "after<resolved.cursor"
+      ],
+      "updates": [
+        "after=record.cursor"
+      ]
+    },
     { owner: "authenticateRunPriority", id: "source.commandId", guards: ['audit?.result.state!=="applied"', "!same(audit.request,source)", "Number(changes[0].before)!==Number(source.target.expectedVersion)"], calls: ["validateNativeLifecycleRequest(command)"] },
     { owner: "authenticateStartPlanRun", id: "plan.consumedBy.commandId", guards: ["audit===undefined", "!same(audit.request,command)", "command.target.expectedVersion!==plan.version-1"], calls: ["validateNativeLifecycleRequest(created)"] },
     { owner: "authenticateRootRun", id: "request.sourceCommandId", guards: ['audit?.result.state!=="applied"', "!same(audit.request,source)", "source.target.expectedVersion!==request.expectedVersion"], calls: ["validateNativeLifecycleRequest(origin)"] },
@@ -275,8 +331,10 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     const use = candidates[0], method = use.parent, call = method.parent;
     if (compact(use.expression) !== "repositories" || !ts.isPropertyAccessExpression(method) || method.name.text !== "findByCommand"
       || !ts.isCallExpression(call) || call.expression !== method || call.arguments.length !== 1 || compact(call.arguments[0]) !== spec.id) return content;
-    const guards = new Set<string>(), calls = new Set<string>(), bindings = new Map<string, string>();
+    const guards = new Set<string>(), calls = new Set<string>(), bindings = new Map<string, string>(), loops = new Set<string>(), updates = new Set<string>();
     function facts(node: ts.Node): void {
+      if (ts.isWhileStatement(node)) loops.add(compact(node.expression));
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) updates.add(compact(node));
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined) bindings.set(node.name.text, compact(node.initializer));
       if (ts.isCallExpression(node)) calls.add(compact(node));
       if (ts.isIfStatement(node)) {
@@ -306,7 +364,8 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
     }
     facts(owner.body);
     if (spec.guards.some(proof => !guards.has(proof)) || spec.calls?.some(proof => !calls.has(proof))
-      || Object.entries(spec.bindings ?? {}).some(([name, value]) => bindings.get(name) !== value)) return content;
+      || Object.entries(spec.bindings ?? {}).some(([name, value]) => bindings.get(name) !== value)
+      || spec.loops?.some(proof => !loops.has(proof)) || spec.updates?.some(proof => !updates.has(proof))) return content;
     if (spec.owner === "withCanonicalRunCommandScope") {
       const installed = owner.body.statements.some(statement => ts.isExpressionStatement(statement)
         && compact(statement) === "activeRunCommand={repositories,request:canonicalJsonStringify(request)};");
@@ -398,6 +457,34 @@ describe("finite native delegation audit read ownership", () => {
           const proof = expressions.find(expression => expression.getText(parsed).replace(/\s+/gu, "") === guard);
           assert.ok(proof, `missing refusal guard ${guard}`);
           mutants.push(mutate(proof, "true"));
+        }
+      }
+      for (const spec of specs.filter(value => value.owner === "authenticateGateResume")) {
+        const owner = parsed.statements.filter(ts.isFunctionDeclaration).find(fn => fn.name?.text === spec.owner); assert.ok(owner?.body);
+        const proofNodes: ts.Node[] = [];
+        function proofTree(node: ts.Node): void { proofNodes.push(node); ts.forEachChild(node, proofTree); }
+        proofTree(owner.body);
+        for (const guard of spec.guards) {
+          const condition = proofNodes.find(node => node.getText(parsed).replace(/\s+/gu, "") === guard); assert.ok(condition);
+          const parts: ts.Node[] = [];
+          function operands(node: ts.Node): void {
+            if (ts.isBinaryExpression(node) || ts.isPrefixUnaryExpression(node) || ts.isConditionalExpression(node)) parts.push(node);
+            ts.forEachChild(node, operands);
+          }
+          operands(condition);
+          for (const part of parts) mutants.push(mutate(part, "true"));
+        }
+        for (const name of Object.keys(spec.bindings ?? {})) {
+          const binding = proofNodes.filter(ts.isVariableDeclaration).find(node => ts.isIdentifier(node.name) && node.name.text === name);
+          assert.ok(binding?.initializer); mutants.push(mutate(binding.initializer, "undefined"));
+        }
+        for (const guard of [...(spec.loops ?? []), ...(spec.updates ?? [])]) {
+          const proof = proofNodes.find(node => node.getText(parsed).replace(/\s+/gu, "") === guard); assert.ok(proof);
+          mutants.push(mutate(proof, "false"));
+        }
+        for (const proof of spec.calls ?? []) {
+          const call = proofNodes.filter(ts.isCallExpression).find(node => node.getText(parsed).replace(/\s+/gu, "") === proof); assert.ok(call);
+          mutants.push(mutate(call, "undefined"));
         }
       }
       if (path === "src/backend/runs/workbooks.ts") {

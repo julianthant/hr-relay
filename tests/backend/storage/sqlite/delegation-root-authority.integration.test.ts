@@ -1,3 +1,9 @@
+import { z } from "zod";
+import { flow } from "../../../../src/workflow-kit/flow.js";
+import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
+import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
+import { testWorkerPorts } from "../../../support/fixtures/run-lifecycle-fixtures.js";
+import { FixtureReadReceipt } from "../../../support/fixtures/descriptor-fixtures.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -10,7 +16,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { authenticateRootRun, authenticateStartPlanRun } from "../../../../src/backend/storage/sqlite/delegation-root-authority.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { FingerprintSchema, PositiveIntSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
+import { FingerprintSchema, PositiveIntSchema, RunIdSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { fixtureDescriptor } from "../../../support/fixtures/descriptor-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
@@ -28,7 +34,22 @@ afterEach(async () => {
   if (failures.length) throw new AggregateError(failures, "delegation root fixture cleanup failed");
 });
 
-async function fixture() {
+const approvalResult = z.strictObject({ approved: z.boolean() });
+const resumeDescriptor = defineWorkflowDescriptor({
+  id: "resume-proof", version: 1, contractFingerprint: "c".repeat(64), code: "rp", label: "Resume proof", icon: "Search", category: "operations",
+  canonicalInput: fixtureDescriptor.canonicalInput, inputSubject: "eid", surface: { shape: "single" }, enqueue: "reject-active",
+  actions: fixtureDescriptor.actions, surfaces: {}, details: [], identity: { matchKey: input => input.eid },
+  presentation: { title: input => input.eid }, scenarios: ["resume-proof/happy"],
+  timeline: [{ key: "review", label: "Review", nodes: ["approval", "resume-node", "second-approval", "after-second"] }],
+  flow: flow(fixtureDescriptor.input).gate("approval", { dependsOn: [], label: "Approval", statusKey: "needsReview",
+    resolvedBy: "operator", result: approvalResult })
+    .step("resume-node", FixtureReadReceipt, { dependsOn: ["approval"], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
+    .gate("second-approval", { dependsOn: [], label: "Second approval", statusKey: "needsReview", resolvedBy: "operator", result: approvalResult })
+    .step("after-second", FixtureReadReceipt, { dependsOn: ["second-approval"], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
+    .build({ schema: FixtureReadReceipt.output, dependsOn: ["after-second"], derive: ({ outputs }) => outputs["after-second"] }),
+});
+
+async function fixture(descriptor: AnyWorkflowDescriptor = fixtureDescriptor) {
   const profile = await createBoundProfileFixture();
   cleanup.push(async () => await profile.close());
   const clock = manualClock(new Date(NOW));
@@ -39,7 +60,7 @@ async function fixture() {
   seedInitialSettingsRuntimeConfig(database, clock);
   const active = database.authority.runtimeConfig.get();
   assert.ok(active);
-  const descriptors = { resolve: (workflow: string) => workflow === fixtureDescriptor.id ? fixtureDescriptor : undefined };
+  const descriptors = { resolve: (workflow: string) => workflow === descriptor.id ? descriptor : undefined };
   const lifecycle = new RunRecordService({ database, clock, ids: sequentialIdFactory("a"), publishQueued: () => undefined });
   const unused = (): never => { throw new Error("unrequested process effect"); };
   const kernel = createCommandKernel({ authority: database, lifecycle, clock, ids: sequentialIdFactory("c"),
@@ -51,15 +72,50 @@ async function fixture() {
   const planner = createStartPlanService({ authority: database, authorityRead: database, descriptors, clock,
     ids: sequentialIdFactory("b"), planTtlMs: 600_000, configFingerprint: active.configFingerprint,
     configSnapshotId: active.configSnapshotId, plannedBy: "local-operator" });
-  const plan = planner.plan({ workflowId: fixtureDescriptor.id, submissions: [{ eid: "10812345", mode: "write" }],
-    dryRun: true, priority: "bulk", selectedStepKeys: fixtureDescriptor.timeline.map(step => step.key), browserMode: "headless",
+  const plan = planner.plan({ workflowId: descriptor.id, submissions: [{ eid: "10812345", mode: "write" }],
+    dryRun: true, priority: "bulk", selectedStepKeys: descriptor.timeline.map(step => step.key), browserMode: "headless",
     captureBrowserScreenshots: false });
   const result = kernel.execute({ commandId: randomUUID(), requestedAt: NOW, requestedBy: "local-operator",
-    source: "dashboard", family: "start", type: "start-run", target: { workflowId: fixtureDescriptor.id,
+    source: "dashboard", family: "start", type: "start-run", target: { workflowId: descriptor.id,
       startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints });
   const run = database.authority.runs.get(singleAppliedRunId(result));
   assert.ok(run);
-  return { database, run, kernel, lifecycle };
+  return { database, run, kernel, lifecycle, clock, profile };
+}
+
+async function resumedRoot() {
+  const f = await fixture(resumeDescriptor);
+  const ports = testWorkerPorts(f.database, f.clock, { path: f.profile.path, descriptor: resumeDescriptor, poolIndex: 1 });
+  const worker = f.database.authority.workerSlots.list(resumeDescriptor.id).find(row => row.poolIndex === 1); assert.ok(worker);
+  const workerId = worker.workerId;
+  function parkAndResolve(gateId: "approval" | "second-approval", resumeAt: "resume-node" | "after-second", rename = false) {
+    const claimed = ports.claimNext({ commandId: randomUUID(), workflow: resumeDescriptor.id, workerId: workerId });
+    assert.equal(claimed.state, "applied"); if (claimed.state !== "applied") throw new Error("fixture claim refused");
+    const claim = { workerId: workerId, claimGeneration: claimed.run.claimGeneration }, now = f.clock.now().toISOString();
+    for (const lifecycle of [
+      { state: "validating" as const, workerId: workerId, claimedAt: now, heartbeatAt: now },
+      { state: "running" as const, workerId: workerId, claimedAt: now, heartbeatAt: now },
+      { state: "parked-gate" as const, gateId, parkedAt: now, resumeAt },
+    ]) {
+      const current = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(current);
+      assert.equal(f.lifecycle.workerTransition({ commandId: lifecycleCommandId("executor-transition", { runId: current.envelope.runId,
+        generation: claim.claimGeneration, version: current.version }), runId: current.envelope.runId, claim, lifecycle }).state, "applied");
+    }
+    f.database.assertWorkerLifecycleRelease(workerId);
+    let parked = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(parked);
+    if (rename) {
+      assert.equal(f.kernel.execute({ commandId: randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "run", type: "rename",
+        target: { runId: parked.envelope.runId, expectedVersion: parked.version }, payload: { displayName: "Synthetic review" } }).state, "applied");
+      parked = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(parked);
+    }
+    const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: now, requestedBy: "local-operator", source: "dashboard", family: "gate", type: "resolve-gate",
+      target: { runId: parked.envelope.runId, expectedVersion: parked.version, gateId },
+      payload: { result: { schemaHash: deriveSchemaHash(approvalResult, "output"), value: { approved: true } } } });
+    assert.equal(f.kernel.execute(command).state, "applied");
+    const run = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(run); assert.equal(run.envelope.startAt, resumeAt);
+    return { run, command };
+  }
+  return { ...f, parkAndResolve };
 }
 
 describe("retained canonical start-plan authority for a delegation root", () => {
@@ -221,4 +277,70 @@ describe("canonical synchronous run command custody", () => {
     assert.equal(database.authority.commandAudits.findByCommand(request.commandId), undefined);
     assert.throws(() => withCanonicalRunCommandScope(database.authority, request, () => application));
   });
+  it("authenticates the latest native gate-resume node and refuses stale historical cursors", async () => {
+    const f = await resumedRoot(), first = f.parkAndResolve("approval", "resume-node");
+    f.database.withAuthorityTransaction(repositories => authenticateStartPlanRun(repositories, first.run));
+    const second = f.parkAndResolve("second-approval", "after-second");
+    f.database.withAuthorityTransaction(repositories => {
+      authenticateStartPlanRun(repositories, second.run);
+      assert.throws(() => authenticateStartPlanRun(repositories, RunRecordSchema.parse({ ...second.run,
+        envelope: { ...second.run.envelope, startAt: "resume-node" } })), /delegation-root-resume-authority-unavailable/u);
+    });
+  });
+
+  it("refuses missing, foreign, partial, ambiguous or modified native resume custody", async () => {
+    const f = await resumedRoot(), { run, command } = f.parkAndResolve("approval", "resume-node");
+    const operatorId = lifecycleCommandId("operator-gate", command.commandId);
+    f.database.withAuthorityTransaction(repositories => {
+      const rejects = (candidate: typeof repositories) => assert.throws(() => authenticateStartPlanRun(candidate, run), /delegation-root-resume-authority-unavailable|run-lifecycle-request-binding-mismatch/u);
+      rejects({ ...repositories, gateResults: { ...repositories.gateResults, listByRun: () => [] } });
+      rejects({ ...repositories, gateResults: { ...repositories.gateResults, listByRun: id => {
+        const rows = repositories.gateResults.listByRun(id); return [...rows, ...rows];
+      } } });
+      rejects({ ...repositories, gateResults: { ...repositories.gateResults, listByRun: id => repositories.gateResults.listByRun(id)
+        .map(row => ({ ...row, runId: RunIdSchema.parse(randomUUID()) })) } });
+      for (const missing of ["park-command", "park-audit", "operator-command", "operator-audit"] as const) {
+        rejects({ ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal,
+          getCommand: id => id === operatorId && missing === "operator-command" ? undefined : (() => {
+            const value = repositories.lifecycleJournal.getCommand(id);
+            return missing === "park-command" && value !== undefined && "kind" in value && value.kind === "run-lifecycle" && value.operation === "worker-transition" ? undefined : value;
+          })(),
+          findAuditByCommand: id => id === operatorId && missing === "operator-audit" ? undefined : (() => {
+            const value = repositories.lifecycleJournal.findAuditByCommand(id);
+            return missing === "park-audit" && value !== undefined && "kind" in value && value.kind === "run-lifecycle" && value.request.operation === "worker-transition" ? undefined : value;
+          })(),
+        } });
+      }
+      rejects({ ...repositories, commands: { ...repositories.commands, get: id => {
+        const value = repositories.commands.get(id); return id === command.commandId && value?.type === "resolve-gate"
+          ? { ...value, payload: { result: { ...value.payload.result, value: { approved: false } } } } : value;
+      } } });
+      rejects({ ...repositories, commandAudits: { ...repositories.commandAudits, findByCommand: id => {
+        const value = repositories.commandAudits.findByCommand(id); return id === command.commandId && value !== undefined
+          ? { ...value, completedAt: IsoInstantSchema.parse("2026-01-01T00:00:00.000Z") } : value;
+      } } });
+      rejects({ ...repositories, timelineEvents: { ...repositories.timelineEvents, get: id => {
+        const value = repositories.timelineEvents.get(id); return value?.payload.kind === "span" && value.payload.event.t === "gate.resolved"
+          ? { ...value, payload: { ...value.payload, event: { ...value.payload.event, resultHash: "b".repeat(64) } } } : value;
+      } } });
+      for (const fault of ["missing", "partial", "foreign-generation"] as const) rejects({ ...repositories,
+        timelineEvents: { ...repositories.timelineEvents, page: request => {
+          const rows = repositories.timelineEvents.page(request);
+          if (fault === "missing") return [];
+          if (fault === "partial") return rows.filter(row => row.payload.kind !== "span" || row.payload.event.t !== "gate.opened");
+          return rows.map(row => row.payload.kind === "span" && row.payload.event.t === "run.claimed" ? { ...row,
+            payload: { ...row.payload, event: { ...row.payload.event, claimGeneration: run.claimGeneration + 1 } } } : row);
+        } } });
+      assert.throws(() => authenticateStartPlanRun(repositories, RunRecordSchema.parse({ ...run,
+        envelope: { ...run.envelope, startAt: "forged-cursor" } })), /delegation-root-resume-authority-unavailable/u);
+    });
+  });
+
+  it("fails closed when an intervening control prevents exact park-version lookup", async () => {
+    const f = await resumedRoot(), { run } = f.parkAndResolve("approval", "resume-node", true);
+    f.database.withAuthorityTransaction(repositories => {
+      assert.throws(() => authenticateStartPlanRun(repositories, run), /delegation-root-resume-authority-unavailable/u);
+    });
+  });
+
 });

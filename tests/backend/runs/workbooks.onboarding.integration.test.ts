@@ -1,5 +1,3 @@
-import { CanonicalCreateRunRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
-import { valueFreeProtectedData, retainedRunProtectedBindings } from "../../../src/models/write-safety/protected-input.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
 import { GateIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
@@ -196,23 +194,7 @@ async function executionFixture() {
       } },
     });
   });
-  function creationBinding(original: RunRecord) {
-    const run = f.database.authority.runs.get(original.envelope.runId); assert.ok(run);
-    const origin = f.database.authority.lifecycleJournal.findRunOrigin(run.envelope.runId); assert.ok(origin?.operation === "create");
-    const request = CanonicalCreateRunRequestSchema.parse(origin.request);
-    const session = run.sessionId === undefined ? undefined : f.database.authority.runSessions.get(run.sessionId);
-    const plan = session?.origin.kind === "start-plan" ? f.database.authority.startPlans.get(session.origin.startPlanId) : undefined;
-    const entry = plan?.planned.find(value => value.itemId === run.envelope.itemId);
-    const expectedInput = valueFreeProtectedData(run.input, retainedRunProtectedBindings(run));
-    return { currentInputUnchanged: canonicalJsonStringify(run.input) === canonicalJsonStringify(original.input), continuation: request.continuation !== undefined, sameMatchKey: request.matchKey === entry?.matchKey, sameSession: request.sessionId === run.sessionId,
-      sameInput: canonicalJsonStringify(request.input) === canonicalJsonStringify(expectedInput),
-      inputParts: Object.keys(request.input).filter(key => canonicalJsonStringify(Reflect.get(request.input, key))
-        !== canonicalJsonStringify(Reflect.get(Object(expectedInput), key))),
-      retryOf: request.retryOf !== undefined, envelopeRetryOf: run.envelope.retryOf !== undefined,
-      sameAppVersion: request.appVersion === run.appVersion, startAt: run.envelope.startAt !== undefined,
-      injected: run.envelope.injected !== undefined, freshnessOverride: run.envelope.freshnessOverride !== undefined };
-  }
-  return { ...f, execution, calls, sessions, creationBinding, setFault: (value: ExecutionFault | undefined) => { fault = value; } };
+  return { ...f, execution, calls, sessions, setFault: (value: ExecutionFault | undefined) => { fault = value; } };
 }
 
 describe("Onboarding captured roster admission and row choice", () => {
@@ -414,11 +396,9 @@ describe("Onboarding captured roster admission and row choice", () => {
     f.edit(workbook => { workbook.sheets[0].rows[1].cells[1].value = "Later"; });
     const executed = await f.execution.execute(root, new AbortController().signal);
     assert.ok(executed.run?.lifecycle.state === "terminal" && executed.run.lifecycle.outcome === "done",
-      JSON.stringify({ creation: f.creationBinding(root), lifecycle: executed.run?.lifecycle.state, outcomes: executed.outcomes.map(value => value.state),
+      JSON.stringify({ lifecycle: executed.run?.lifecycle.state, outcomes: executed.outcomes.map(value => value.state),
         failures: [root, ...f.database.authority.runs.listChildren(root.envelope.runId)].flatMap(run =>
-          f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId, debug }) => ({ code, nodeId,
-            internalCodes: debug?.stack.match(/\b(?:delegation|run-continuation|checkpoint|worker)[a-z0-9-]+\b/gu),
-            sourceFrames: debug?.stack.match(/src\/[a-zA-Z0-9/_.-]+:\d+:\d+/gu) }))) }));
+          f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId }) => ({ code, nodeId }))) }));
     const result = f.database.authority.runResults.get(root.envelope.runId); assert.ok(result);
     const output = OnboardingResultSchema.parse(result.result.value);
     assert.equal(output.plan.employee.firstName, "Chosen"); assert.equal(output.plan.employee.preferredFirstName, "Lived");
@@ -492,11 +472,9 @@ describe("Onboarding captured roster admission and row choice", () => {
     } else {
       const completed = await f.execution.execute(recovered, new AbortController().signal);
       assert.ok(completed.run?.lifecycle.state === "terminal" && completed.run.lifecycle.outcome === "done",
-        JSON.stringify({ creation: f.creationBinding(root), lifecycle: completed.run?.lifecycle.state, outcomes: completed.outcomes.map(value => value.state),
+        JSON.stringify({ lifecycle: completed.run?.lifecycle.state, outcomes: completed.outcomes.map(value => value.state),
           failures: [recovered, ...f.database.authority.runs.listChildren(recoveredId)].flatMap(run =>
-            f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId, debug }) => ({ code, nodeId,
-            internalCodes: debug?.stack.match(/\b(?:delegation|run-continuation|checkpoint|worker)[a-z0-9-]+\b/gu),
-            sourceFrames: debug?.stack.match(/src\/[a-zA-Z0-9/_.-]+:\d+:\d+/gu) }))) }));
+            f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId }) => ({ code, nodeId }))) }));
       const result = f.database.authority.runResults.get(recoveredId); assert.ok(result);
       assert.equal(OnboardingResultSchema.parse(result.result.value).plan.employee.firstName, "Fixture");
       assert.equal(f.calls.filter(call => call.system === "i9").length, 1);

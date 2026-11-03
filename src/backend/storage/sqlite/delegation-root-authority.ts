@@ -1,3 +1,5 @@
+import { CanonicalWorkerTransitionRequestSchema } from "./run-store-contracts.js";
+import { deriveGateResultCheckpointFingerprint } from "../../../models/workflow/gates.js";
 import { captureRunContinuation, validateRunContinuation } from "./run-continuation.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { RunRecord } from "../../../models/run/record.js";
@@ -35,6 +37,89 @@ export function authenticateRunPriority(repositories: AuthorityRepositories, run
       expectedVersion: source.target.expectedVersion, priority: "interactive" });
   });
   if (proofs.length !== 1) throw new Error("delegation-priority-authority-unavailable");
+}
+
+function authenticateGateResume(repositories: AuthorityRepositories, run: RunRecord, actorId: string): void {
+  if (run.envelope.startAt === undefined) return;
+  const unavailable = (): Error => new Error("delegation-root-resume-authority-unavailable");
+  const rows = repositories.gateResults.listByRun(run.envelope.runId);
+  if (rows.some(row => row.runId !== run.envelope.runId)
+    || new Set(rows.map(row => row.nodeId)).size !== rows.length) throw unavailable();
+  const issued = rows.filter(row => "commandId" in row);
+  const latestVersion = Math.max(...issued.map(row => row.expectedVersion));
+  const latest = issued.filter(row => row.expectedVersion === latestVersion);
+  const gate = latest[0];
+  if (latest.length !== 1 || gate === undefined || !("commandId" in gate) || !("resolvedBy" in gate)
+    || String(gate.nodeId) !== String(gate.gateId) || gate.expectedVersion < 2 || gate.expectedVersion >= run.version
+    || gate.checkpointFingerprint !== deriveGateResultCheckpointFingerprint(gate.result)) throw unavailable();
+  const source = repositories.commands.get(gate.commandId);
+  const audit = repositories.commandAudits.findByCommand(gate.commandId);
+  if (source === undefined || source.commandId !== gate.commandId || !(source.family === "gate" && source.type === "resolve-gate"
+      || source.family === "run" && source.type === "resolve-workbook-reference-row")
+    || source.target.runId !== run.envelope.runId || source.target.gateId !== gate.gateId
+    || source.target.expectedVersion !== gate.expectedVersion || source.requestedBy !== actorId || source.requestedBy !== gate.resolvedBy
+    || source.type === "resolve-gate" && !same(source.payload.result, gate.result)
+    || audit?.result.state !== "applied" || !same(audit.request, source) || audit.completedAt !== gate.resolvedAt
+    || audit.versionChanges.length !== 1 || audit.versionChanges[0]?.target.family !== "gate"
+    || audit.versionChanges[0].target.runId !== run.envelope.runId || audit.versionChanges[0].target.gateId !== gate.gateId
+    || Number(audit.versionChanges[0].before) !== Number(gate.expectedVersion) || audit.versionChanges[0].after !== gate.expectedVersion + 1
+    || audit.result.affectedTargets.length !== 2
+    || !audit.result.affectedTargets.some(target => target.family === "gate" && target.runId === run.envelope.runId && target.gateId === gate.gateId)
+    || !audit.result.affectedTargets.some(target => target.family === "run" && target.runId === run.envelope.runId)) throw unavailable();
+  const commandId = lifecycleCommandId("operator-gate", source.commandId);
+  const command = repositories.lifecycleJournal.getCommand(commandId), settled = repositories.lifecycleJournal.findAuditByCommand(commandId);
+  if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle" || command.commandId !== commandId || command.operation !== "transition"
+    || settled === undefined || !("kind" in settled) || settled.kind !== "run-lifecycle" || !same(settled.request, command)
+    || settled.result.kind !== "run" || settled.result.runId !== run.envelope.runId
+    || settled.result.appliedVersion !== gate.expectedVersion + 1 || settled.result.appliedVersion > run.version
+    || String(settled.auditId) !== String(commandId) || Date.parse(settled.completedAt) < Date.parse(gate.resolvedAt)) throw unavailable();
+  validateNativeLifecycleRequest(command);
+  if (!same(CanonicalTransitionRequestSchema.parse(command.request), { commandId, runId: run.envelope.runId,
+    expectedVersion: gate.expectedVersion, lifecycle: { state: "queued" } })) throw unavailable();
+  const resolved = repositories.timelineEvents.get(lifecycleCommandId("timeline-gate-resolved", source.commandId));
+  const event = resolved?.payload.kind === "span" && resolved.payload.event.t === "gate.resolved" ? resolved.payload.event : undefined;
+  if (resolved?.source.kind !== "native" || resolved.eventId !== lifecycleCommandId("timeline-gate-resolved", source.commandId) || resolved.scope.kind !== "run" || resolved.scope.runId !== run.envelope.runId
+    || resolved.workflow !== run.envelope.workflow || resolved.occurredAt !== gate.resolvedAt || resolved.recordedAt !== gate.resolvedAt || event === undefined
+    || event.runId !== run.envelope.runId || event.workflow !== run.envelope.workflow || event.traceId !== run.envelope.traceId
+    || event.spanPath !== run.envelope.traceId || event.attempt > run.envelope.attempt || event.gate !== gate.gateId || event.ts !== gate.resolvedAt
+    || event.resultHash !== sha256Hex(`hrauto:gate-resolved-span:v1\0${canonicalJsonStringify(gate.result)}`)) throw unavailable();
+  const history: NonNullable<typeof resolved>[] = [];
+  let after = 0;
+  while (after < resolved.cursor) {
+    const page = repositories.timelineEvents.page({ runId: run.envelope.runId, after, through: resolved.cursor, limit: 1000 });
+    if (page.length === 0) throw unavailable();
+    for (const record of page) {
+      if (record.cursor <= after || record.cursor > resolved.cursor || record.scope.kind !== "run"
+        || record.scope.runId !== run.envelope.runId || record.workflow !== run.envelope.workflow) throw unavailable();
+      history.push(record); after = record.cursor;
+    }
+  }
+  if (!same(history.at(-1), resolved)) throw unavailable();
+  const opened = history.filter(record => record.source.kind === "native" && record.payload.kind === "span"
+    && record.payload.event.t === "gate.opened").at(-1);
+  const openedEvent = opened?.payload.kind === "span" && opened.payload.event.t === "gate.opened" ? opened.payload.event : undefined;
+  if (opened === undefined || openedEvent === undefined || opened.cursor >= resolved.cursor || openedEvent.gate !== gate.gateId
+    || openedEvent.runId !== run.envelope.runId || openedEvent.workflow !== run.envelope.workflow
+    || openedEvent.traceId !== run.envelope.traceId || openedEvent.spanPath !== run.envelope.traceId || openedEvent.attempt !== event.attempt) throw unavailable();
+  const claimed = history.filter(record => record.cursor < opened.cursor && record.source.kind === "native" && record.payload.kind === "span"
+    && record.payload.event.t === "run.claimed").at(-1);
+  const claim = claimed?.payload.kind === "span" && claimed.payload.event.t === "run.claimed" ? claimed.payload.event : undefined;
+  if (claim === undefined || claim.claimGeneration === undefined || claim.claimGeneration > run.claimGeneration
+    || claim.runId !== run.envelope.runId || claim.workflow !== run.envelope.workflow
+    || claim.traceId !== run.envelope.traceId || claim.spanPath !== run.envelope.traceId || claim.attempt !== event.attempt) throw unavailable();
+  const parkId = lifecycleCommandId("executor-transition", { runId: run.envelope.runId,
+    generation: claim.claimGeneration, version: gate.expectedVersion - 1 });
+  const parked = repositories.lifecycleJournal.getCommand(parkId), parkAudit = repositories.lifecycleJournal.findAuditByCommand(parkId);
+  if (parked === undefined || !("kind" in parked) || parked.kind !== "run-lifecycle" || parked.commandId !== parkId || parked.operation !== "worker-transition"
+    || parkAudit === undefined || !("kind" in parkAudit) || parkAudit.kind !== "run-lifecycle" || !same(parkAudit.request, parked)
+    || parkAudit.result.kind !== "run" || parkAudit.result.runId !== run.envelope.runId || parkAudit.result.appliedVersion !== gate.expectedVersion
+    || String(parkAudit.auditId) !== String(parkId) || opened.eventId !== lifecycleCommandId("timeline-lifecycle", parkId)) throw unavailable();
+  validateNativeLifecycleRequest(parked);
+  const request = CanonicalWorkerTransitionRequestSchema.parse(parked.request);
+  if (request.runId !== run.envelope.runId || request.claim.workerId !== claim.workerId || request.claim.claimGeneration !== claim.claimGeneration
+    || request.lifecycle.state !== "parked-gate" || request.lifecycle.gateId !== gate.gateId || request.lifecycle.resumeAt !== run.envelope.startAt
+    || request.lifecycle.parkedAt !== openedEvent.ts || opened.occurredAt !== openedEvent.ts
+    || Date.parse(parkAudit.completedAt) < Date.parse(openedEvent.ts) || Date.parse(parkAudit.completedAt) > Date.parse(gate.resolvedAt)) throw unavailable();
 }
 
 export function authenticateStartPlanRun(repositories: AuthorityRepositories, run: RunRecord) {
@@ -99,9 +184,10 @@ export function authenticateStartPlanRun(repositories: AuthorityRepositories, ru
     || !same(request.input, valueFreeProtectedData(run.input, retainedRunProtectedBindings(run)))
     || request.matchKey !== entry.matchKey || request.retryOf !== expectedRetry
     || envelope.retryOf !== expectedRetry || request.appVersion !== run.appVersion
-    || envelope.startAt !== undefined || envelope.injected !== undefined || envelope.freshnessOverride !== undefined) {
+    || envelope.injected !== undefined || envelope.freshnessOverride !== undefined) {
     throw new Error("delegation-root-create-binding-mismatch");
   }
+  authenticateGateResume(repositories, run, command.requestedBy);
   authenticateRunPriority(repositories, run, request.priority, command.requestedBy);
   if (request.priority !== plan.priority) throw new Error("delegation-root-create-binding-mismatch");
   const fields = ["workflow", "descriptorVersion", "contractFingerprint", "operationDisplayCapability", "operationDisplaySnapshot",
