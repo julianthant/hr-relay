@@ -34,10 +34,16 @@ export interface DuoAssertion {
   readonly transport: "internal" | "usb";
   readonly signCount: number;
 }
+export interface DuoPlatformCredential extends DuoPublicCredential {
+  readonly transport: "internal";
+  readonly privateKeyPkcs8: string;
+  readonly signCount: number;
+}
 export interface DuoSigningSource {
   assertCurrent(): void;
   identity(): Fingerprint;
   credentials(): readonly DuoPublicCredential[];
+  platformCredentials(): readonly DuoPlatformCredential[];
   sign(request: DuoAssertionRequest): Promise<DuoAssertion>;
 }
 

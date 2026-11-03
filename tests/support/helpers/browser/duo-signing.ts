@@ -4,7 +4,7 @@ import type { DuoSigningSource } from "../../../../src/backend/storage/configura
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 
 export function fixtureDuoSigningSource(overrides: Partial<DuoSigningSource> = {}): DuoSigningSource {
-  return { assertCurrent() {}, identity: () => FingerprintSchema.parse("d".repeat(64)), credentials: () => [],
+  return { assertCurrent() {}, identity: () => FingerprintSchema.parse("d".repeat(64)), credentials: () => [], platformCredentials: () => [],
     async sign() { throw new Error("unexpected synthetic signing"); }, ...overrides };
 }
 

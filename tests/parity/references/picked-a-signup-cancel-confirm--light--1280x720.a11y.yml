@@ -10,7 +10,7 @@
 - dialog "Cancel sign-up?":
   - banner:
     - heading "Cancel sign-up?" [level=2]
-    - paragraph: Your unfinished profile and the credentials you entered are removed from this Mac. Devices you added stay in Duo device management.
+    - paragraph: Your unfinished profile and the credentials you entered are removed from this computer. Devices you added stay in Duo device management.
     - button "Close"
   - contentinfo:
     - button "Keep setting up"

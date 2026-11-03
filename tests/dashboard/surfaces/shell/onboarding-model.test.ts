@@ -403,8 +403,8 @@ it("maps each Duo method state to its approved label, note and track without inv
       assert.deepEqual(track.map(step => step.tone), state === "idle" ? ["off", "off", "off"] : state === "complete" ? ["complete", "complete", "complete"] : ["complete", failed ? "failed" : "pending", "off"]);
       assert.equal(note, failed ? "Relay could not confirm that setup completed. Review your Duo devices; do not repeat this attempt."
         : state === "complete" ? "This sign-in method is verified. No further enrollment is needed."
-        : state === "pending" ? method === "key" ? "Waiting for Duo security key enrollment." : "Waiting for native Touch ID."
-        : method === "key" ? "Fast Duo creates the software key only when Duo requests it." : "Uses the native Mac prompt, with software interception disabled.");
+        : state === "pending" ? method === "key" ? "Waiting for Duo security key enrollment." : "Waiting for Duo to add Touch ID."
+        : method === "key" ? "Fast Duo creates the software key only when Duo requests it." : "Choose Touch ID or Windows Hello in Duo.");
     }
   }
 });
