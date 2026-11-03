@@ -66,6 +66,8 @@
 
 @container actions (max-width: 450px) {
   .dashboard-log-date > .ds-date-picker { width: 144px; }
+  .queue-start-trigger { width: 32px; min-width: 32px; padding-inline: 0; }
+  .queue-start-label { display: none; }
 }
 
 .queue-filter-tabs { display: flex; flex: 1; flex-direction: column; min-height: 0; gap: 0; }
