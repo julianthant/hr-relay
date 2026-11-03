@@ -107,7 +107,9 @@ for (const theme of ["light", "dark"] as const) {
       await page.getByRole("button", { name: "Show setup browser", exact: true }).click();
       const fast = await popup;
       await fast.setViewportSize({ width: 1440, height: 900 });
+      await fast.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); Reflect.set(window, "relayParityMotion", false); }, theme);
       await installFrozenMonotonic(fast); await fast.reload();
+      await expect(fast.locator("[data-app-root]")).toHaveAttribute("data-demo-theme", theme);
       await expect(fast.getByRole("button", { name: "Start capture", exact: true })).toBeEnabled();
       await capture(fast, info, "fast-idle", theme);
       const touchCard = fast.locator(".method-card").filter({ hasText: "Touch ID" });

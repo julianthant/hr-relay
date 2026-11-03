@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { z } from "zod";
 import { DuoEnrollmentScopeSchema } from "../../models/config/duo-credential-store.js";
-import { assertFinishedProfileOnboarding, type SignUpDuoAttempt, type SignUpOperation } from "../../models/profiles/profile.js";
+import { assertFinishedProfileOnboarding, ProfileOnboardingDuoFailureSchema, type ProfileOnboardingDuoFailure, type SignUpDuoAttempt, type SignUpOperation } from "../../models/profiles/profile.js";
 import type { ProfileOnboardingMethod, ProfileOnboardingState } from "../../models/profiles/public-profile.js";
 import type { Clock } from "../../rules/time/clock.js";
 import type { createDuoCredentialStore } from "../storage/configuration/duo-credential-store.js";
@@ -19,7 +19,8 @@ export function duoAccountMatches(email: string, observed: string): boolean {
 export function createProfileOnboarding(input: {
   readonly clock: Clock;
   readonly provider?: ProfileOnboardingDuoProvider;
-  readonly failureKind: (error: Error) => "unavailable" | "refused" | "unknown";
+  readonly failureDiagnostic: (error: Error) => ProfileOnboardingDuoFailure;
+  readonly onFailure: (attempt: DraftDuoAttempt, failure: ProfileOnboardingDuoFailure) => void;
   readonly read: (operationId: string) => SignUpOperation;
   readonly update: <T>(operationId: string, change: (operation: SignUpOperation) => Readonly<{ operation: SignUpOperation; result: T }>) => T;
   readonly email: (operation: SignUpOperation) => string;
@@ -97,15 +98,16 @@ export function createProfileOnboarding(input: {
     updateAttempt(attempt, (_operation, latest) => ({ receipt: completeIfProved(latest), result: undefined }));
   }
   async function reportFailure(attempt: DraftDuoAttempt, error: Error): Promise<void> {
-    const kind = input.failureKind(error);
+    const failure = ProfileOnboardingDuoFailureSchema.parse(input.failureDiagnostic(error)), kind = failure.kind;
     if (kind === "unknown" && !retainedFailures.includes(error)) retainedFailures.push(error);
     try {
-      input.update(attempt.operationId, operation => {
-        const draft = requiredDraft(operation);
-        if (draft.generation !== attempt.generation || !draft.attempts.some(entry => entry.attemptId === attempt.attemptId)) return unavailable();
+      const recorded = input.update(attempt.operationId, operation => {
+        const draft = requiredDraft(operation), receipt = draft.attempts.find(entry => entry.attemptId === attempt.attemptId);
+        if (draft.generation !== attempt.generation || receipt === undefined) return unavailable();
         return { operation: { ...operation, onboarding: { ...draft, attempts: draft.attempts.map(entry => entry.attemptId === attempt.attemptId
-          ? { ...entry, state: kind === "unknown" ? "unknown" as const : "closed" as const } : entry) } }, result: undefined };
+          ? { ...entry, failure: entry.failure ?? failure, state: kind === "unknown" ? "unknown" as const : "closed" as const } : entry) } }, result: receipt.failure === undefined };
       });
+      if (recorded) input.onFailure(attempt, failure);
     } catch (failure) { retainedFailures.push(error, failure); throw new AggregateError([error, failure], "profile-onboarding-failure-retention-unproved", { cause: failure }); }
     const lease = leases.get(attempt.attemptId); if (lease !== undefined) lease.revoked = true;
   }
@@ -155,8 +157,9 @@ export function createProfileOnboarding(input: {
         });
         settleAttempt(attempt);
       },
-      async retainUnknown() {
-        input.update(attempt.operationId, operation => {
+      async retainUnknown(diagnostic) {
+        const failure = ProfileOnboardingDuoFailureSchema.parse(diagnostic);
+        const retained = input.update(attempt.operationId, operation => {
           const draft = requiredDraft(operation);
           if (draft.generation !== attempt.generation || !draft.attempts.some(entry => entry.attemptId === attempt.attemptId)) return unavailable();
           const receipt = draft.attempts.find(entry => entry.attemptId === attempt.attemptId);
@@ -164,11 +167,12 @@ export function createProfileOnboarding(input: {
             && receipt?.state === "complete" && completeIfProved(receipt).state === "complete"
             && receipt.scope !== undefined && input.store(operation).readForScope(receipt.scope)
               .some(entry => entry.credentialId === receipt.ceremony?.credentialId && entry.state === "ready")) {
-            return { operation, result: undefined };
+            return { operation, result: false };
           }
           return { operation: { ...operation, onboarding: { ...draft, attempts: draft.attempts.map(entry => entry.attemptId === attempt.attemptId
-            ? { ...entry, state: "unknown" as const } : entry) } }, result: undefined };
+            ? { ...entry, failure: entry.failure ?? failure, state: "unknown" as const } : entry) } }, result: receipt?.failure === undefined };
         });
+        if (retained) input.onFailure(attempt, failure);
         const lease = leases.get(attempt.attemptId); if (lease !== undefined) lease.revoked = true;
       },
     });
@@ -211,8 +215,8 @@ export function createProfileOnboarding(input: {
           retainedFailures.push(error, cleanup);
           throw new AggregateError([error, cleanup], "profile-onboarding-provider-closure-unproved", { cause: cleanup });
         }
-        if (error instanceof Error && input.failureKind(error) === "unavailable") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE", { cause: error });
-        if (error instanceof Error && input.failureKind(error) === "refused") throw new ProfileSessionRefusedError("PROFILE_SIGN_IN_REFUSED", { cause: error });
+        if (error instanceof Error && input.failureDiagnostic(error).kind === "unavailable") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE", { cause: error });
+        if (error instanceof Error && input.failureDiagnostic(error).kind === "refused") throw new ProfileSessionRefusedError("PROFILE_SIGN_IN_REFUSED", { cause: error });
         throw error;
       }
     },
