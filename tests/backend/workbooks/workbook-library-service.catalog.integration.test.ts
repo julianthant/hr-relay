@@ -138,3 +138,17 @@ it('links and unlinks without treating link time as a successful sync', async ()
   await f.apply({ kind: 'unlink' });
   expect(f.service.catalog()[0].metadata.sharePoint).toBeNull();
 });
+
+it('captures exact named all-row bytes separately from live CAS and refuses missing named versions', () => {
+  const f = fixture(), id = f.record.libraryId;
+  f.repository.putType({ id: 'ocr-roster', name: 'OCR roster', keyFieldId: 'eid', fields: ['eid', 'fullName'], defaultWorkbookId: null });
+  f.service.operatorOperation(id, 'type', { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'ocr-roster', sharePoint: null } });
+  const edited = structuredClone(f.service.read(id).workbook);
+  edited.sheets[0].rows[1].cells[1].value = 'Changed, Person';
+  f.service.save(id, 2, edited);
+  const request = { mode: 'all', typeId: 'ocr-roster', libraryId: id, versionId: 'original', expectedVersion: 3, fields: ['eid', 'fullName'] };
+  const captured = f.service.snapshot(request);
+  expect(captured).toMatchObject({ version: 3, versionId: 'original', versionName: 'Original version', rows: [{ matches: [{ values: { fullName: 'Example, Person' } }] }] });
+  expect(() => f.service.snapshot({ ...request, versionId: 'missing' })).toThrow(expect.objectContaining({ code: 'WORKBOOK_REVISION_UNAVAILABLE' }));
+  expect(() => f.service.snapshot({ ...request, expectedVersion: 2 })).toThrow(expect.objectContaining({ code: 'WORKBOOK_VERSION_CONFLICT' }));
+});

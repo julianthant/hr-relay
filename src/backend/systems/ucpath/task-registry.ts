@@ -1,3 +1,8 @@
+import { readEmergencyContactsTask } from "./tasks/read-emergency-contacts.js";
+import { stageEmergencyContactTask } from "./tasks/stage-emergency-contact.js";
+import { probeEmergencyContactTask } from "./tasks/match-emergency-contact-plan.js";
+import { verifyEmergencyContactTask } from "./tasks/verify-emergency-contact-plan.js";
+import { saveEmergencyContactTask } from "./tasks/save-emergency-contact.js";
 import { readHireReceiptTask } from "./tasks/read-hire-receipt.js";
 import { readHireFindingsTask } from "./tasks/read-hire-findings.js";
 import { matchHireTask } from "./tasks/match-hire.js";
@@ -28,6 +33,8 @@ export const ucpathStore = defineBrowserStore(
   ucpathDriver,
   ucpathSession,
   {
+    readEmergencyContacts: readEmergencyContactsTask, stageEmergencyContact: stageEmergencyContactTask,
+    probeEmergencyContact: probeEmergencyContactTask, verifyEmergencyContact: verifyEmergencyContactTask, saveEmergencyContact: saveEmergencyContactTask,
     readHireReceipt: readHireReceiptTask, readHireFindings: readHireFindingsTask, matchHire: matchHireTask, verifyHire: verifyHireTask,
     stageHire: stageHireTask, createHire: createHireTask,
     searchPersonMatch: searchPersonMatchTask,

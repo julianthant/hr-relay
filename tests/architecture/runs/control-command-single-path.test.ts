@@ -519,7 +519,10 @@ describe("finite native delegation audit read ownership", () => {
           const proof = expressions.find(expression => {
             let owner: ts.Node | undefined = expression.parent;
             while (owner !== undefined && !ts.isFunctionDeclaration(owner)) owner = owner.parent;
+            let condition: ts.Node = expression;
+            while (condition.parent !== undefined && !ts.isIfStatement(condition.parent) && !ts.isFunctionDeclaration(condition.parent)) condition = condition.parent;
             return owner !== undefined && ts.isFunctionDeclaration(owner) && owner.name?.text === spec.owner
+              && ts.isIfStatement(condition.parent) && condition.parent.expression === condition
               && expression.getText(parsed).replace(/\s+/gu, "") === guard;
           });
           assert.ok(proof, `missing refusal guard ${guard}`);

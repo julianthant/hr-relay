@@ -42,6 +42,7 @@ export type OcrFieldSpec = z.infer<typeof OcrFieldSpecSchema>;
 export const OcrFormSpecSchema = z.strictObject({
   formType: OcrFormTypeSchema,
   title: z.string().min(1),
+  lookup: z.enum(["person-lookup", "i9-lookup"]),
     /** Classify/extract loose pages independently; subject pairing belongs to grouping. */
   pageKinds: z.array(OcrPageKindSchema).min(1),
   /** One paragraph of orientation, prepended to every generated instruction. */
@@ -70,6 +71,7 @@ function field(
 
 const OATH: z.input<typeof OcrFormSpecSchema> = {
   formType: "oath",
+  lookup: "person-lookup",
   pageKinds: ["oath"],
   title: "Oath / Patent Policy signature roster",
   description:
@@ -100,6 +102,7 @@ const OATH: z.input<typeof OcrFormSpecSchema> = {
 
 const EMERGENCY_CONTACT: z.input<typeof OcrFormSpecSchema> = {
   formType: "emergency-contact",
+  lookup: "person-lookup",
   pageKinds: ["emergency-contact"],
   title: "Emergency contact form",
   description:
@@ -146,6 +149,7 @@ const EMERGENCY_CONTACT: z.input<typeof OcrFormSpecSchema> = {
 /** One UNIFORM record across both sections, as the prompt demanded: every record has the SAME fields, and which ones are filled depends on the page kind. */
 const I9: z.input<typeof OcrFormSpecSchema> = {
   formType: "i9",
+  lookup: "i9-lookup",
   pageKinds: ["i9-section1", "i9-section2"],
   title: "Form I-9 employment eligibility verification",
   description:

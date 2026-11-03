@@ -2,6 +2,8 @@
 import { compileWorkflow, composeWorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import { taskStoreRegistry } from "./task-registry.js";
 import { registration as crmDocDownloadModuleRegistration } from "../../../workflows/crm-doc-download/index.js";
+import { registration as emergencyContactModuleRegistration } from "../../../workflows/emergency-contact/index.js";
+import { registration as emergencyContactMemberModuleRegistration } from "../../../workflows/emergency-contact-member/index.js";
 import { registration as i9CheckModuleRegistration } from "../../../workflows/i9-check/index.js";
 import { registration as i9CheckStartModuleRegistration } from "../../../workflows/i9-check-start/index.js";
 import { registration as i9LookupModuleRegistration } from "../../../workflows/i9-lookup/index.js";
@@ -40,6 +42,10 @@ export const crmDocumentPackageWorksheetsModule = composeWorkflowModule(compileW
 export const i9CheckStartDocumentsModule = composeWorkflowModule(compileWorkflow(i9CheckStartModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
 export const i9CheckStartRosterReferenceModule = composeWorkflowModule(compileWorkflow(i9CheckStartModuleRegistration.proofs[1].definition), taskStoreRegistry.stores);
 export const i9CheckStartRetentionModule = composeWorkflowModule(compileWorkflow(i9CheckStartModuleRegistration.proofs[2].definition), taskStoreRegistry.stores);
+export const contactPlanModule = composeWorkflowModule(compileWorkflow(emergencyContactMemberModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
+export const contactPreviewModule = composeWorkflowModule(compileWorkflow(emergencyContactMemberModuleRegistration.proofs[1].definition), taskStoreRegistry.stores);
+export const emergencyContactReadDocumentModule = composeWorkflowModule(compileWorkflow(emergencyContactModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
+export const emergencyContactMembersModule = composeWorkflowModule(compileWorkflow(emergencyContactModuleRegistration.proofs[1].definition), taskStoreRegistry.stores);
 
 export const STEP_PROOF_MODULES = Object.freeze([
   separationsKronosTimecardModule,
@@ -70,4 +76,8 @@ export const STEP_PROOF_MODULES = Object.freeze([
   i9CheckStartDocumentsModule,
   i9CheckStartRosterReferenceModule,
   i9CheckStartRetentionModule,
+  contactPlanModule,
+  contactPreviewModule,
+  emergencyContactReadDocumentModule,
+  emergencyContactMembersModule,
 ] as const);

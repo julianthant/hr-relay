@@ -4,7 +4,7 @@
 <div id="editor" hidden></div><div id="address" hidden></div>
 <script>
 const fixture = __FIXTURE__;
-const state = { rows: structuredClone(fixture.page.rows), paged: true, saves: 0, actions: [], modalIndex: null };
+const state = { rows: structuredClone(fixture.page.rows), paged: true, saves: 0, actions: [], searches: [], modalIndex: null };
 const editor = document.getElementById('editor');
 const address = document.getElementById('address');
 const labels = { address1: 'Address 1', address2: 'Address 2', city: 'City', state: 'State', postalCode: 'Postal', country: 'Country' };
@@ -87,6 +87,6 @@ function openAddress(index) {
   };
   address.append(cancel, ok);
 }
-document.getElementById('search').onclick = () => { editor.hidden = false; render(); };
+document.getElementById('search').onclick = () => { state.searches.push(document.getElementById('search-eid').value); editor.hidden = false; render(); };
 window.contactFixtureState = state;
 </script></body></html>

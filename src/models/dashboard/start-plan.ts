@@ -16,7 +16,7 @@ import { BrowserPresentationModeSchema, InstanceSelectionSchema, RunPrioritySche
 import { StartRefusalCodeSchema } from "../run/start-refusal.js";
 import { TimelineCategoryKeySchema } from "../workflow/presentation.js";
 import { StepOmissionsSchema } from "../workflow/step-omission.js";
-import { WorkbookRunReferenceSelectionSchema, WorkbookReferenceSnapshotSchema } from "./workbooks.js";
+import { WorkbookRunReferenceSelectionSchema, WorkbookNamedReferenceSnapshotSchema } from "./workbooks.js";
 
 /** The leaves both sides agree on verbatim. */
 const SHARED_REQUEST_LEAVES = {
@@ -79,8 +79,7 @@ export const StartPlanWireSchema = z.strictObject({
   planned: z.array(z.strictObject({
     supersedeTargets: StartSupersedeTargetsSchema.optional(),
     outputs: z.array(PlannedRunOutputSchema).optional(),
-    workbookReferences: z.array(WorkbookReferenceSnapshotSchema.pick({ libraryId: true, version: true, versionId: true, versionName: true, worksheets: true, type: true })
-      .extend({ selectedRow: WorkbookRunReferenceSelectionSchema.shape.selectedRow })).optional(),
+    workbookReferences: z.array(WorkbookNamedReferenceSnapshotSchema.pick({ libraryId: true, version: true, versionId: true, versionName: true, worksheets: true, type: true }).partial({ versionId: true, versionName: true }).extend({ selectedRow: WorkbookRunReferenceSelectionSchema.shape.selectedRow })).optional(),
     logicalKey: z.string().min(1),
     title: z.string().min(1),
     subtitle: z.string().min(1).optional(),
