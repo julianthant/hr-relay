@@ -177,3 +177,12 @@ describe_m1("frontend workflow catalog", () => {
   });
 });
 }
+
+it_m1('uses served start refusals even for a statically selected preview', () => {
+  const reason = 'Top-level start is unavailable until its workflow backend is implemented.';
+  const catalog = buildWorkflowCatalog_m1([], true, previewFixtureSources([]), [
+    { feature: 'workflow-start:i9-check', availability: { state: 'unavailable', code: 'deferred', reason } },
+  ]);
+  expect_m1(catalog.find(entry => entry.id === 'i9-check')?.launch).toEqual({ state: 'unavailable', label: 'Unavailable', reason });
+  expect_m1(catalog.find(entry => entry.id === 'crm-doc-download')?.launch.state).toBe('preview');
+});

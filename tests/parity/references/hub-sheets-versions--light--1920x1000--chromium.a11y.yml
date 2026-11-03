@@ -7,30 +7,23 @@
 # capturedAt: 2026-08-03
 
 - region "Notifications"
-- dialog "Spreadsheet versions":
+- dialog "Versions":
   - banner:
-    - heading "Spreadsheet versions" [level=2]
-    - paragraph: Download an exact saved version. Your current draft stays open.
+    - heading "Versions" [level=2]
+    - paragraph: Autumn onboarding.xlsx
     - button "Close"
-  - table "Saved spreadsheet versions":
-    - rowgroup:
-      - row "Version Saved File Actions":
-        - columnheader "Version"
-        - columnheader "Saved"
-        - columnheader "File"
-        - columnheader "Actions"
-    - rowgroup:
-      - row "2 09/30/2026 Autumn onboarding.xlsx Download version 2":
-        - cell "2"
-        - cell "09/30/2026"
-        - cell "Autumn onboarding.xlsx"
-        - cell "Download version 2":
-          - button "Download version 2": Download
-      - row "1 09/30/2026 Autumn onboarding.xlsx Download version 1":
-        - cell "1"
-        - cell "09/30/2026"
-        - cell "Autumn onboarding.xlsx"
-        - cell "Download version 1":
-          - button "Download version 1": Download
-  - contentinfo:
-    - button "Close"
+  - heading "Source" [level=3]
+  - paragraph: This Mac
+  - paragraph: Versions are saved in your local library.
+  - heading "Saved versions" [level=3]
+  - button "New version"
+  - strong: Fall hires added
+  - text: In use
+  - paragraph: 09/30/2026 · Saved locally
+  - button "Download Fall hires added": Download
+  - button "Actions for Fall hires added"
+  - strong: Original
+  - paragraph: 09/30/2026 · Saved locally
+  - button "Use"
+  - button "Download Original": Download
+  - button "Actions for Original"

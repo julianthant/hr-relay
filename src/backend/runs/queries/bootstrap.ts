@@ -44,6 +44,9 @@ export interface BootstrapQueryDeps {
 const DEFERRED_FEATURES = [
   ["ocr", "OCR review surfaces land in 2h"],
   ["archive", "archive snapshots land with the version service in 2i"],
+  ["workflow-start:i9-check", "I-9 Check is available only inside its parent workflow. A top-level PDF start and one combined results workbook are not available yet."],
+  ["workflow-start:onboarding", "Onboarding is a read-only review for one email. A start containing multiple people is not available yet; hire submission remains unavailable."],
+  ["workflow-start:crm-doc-download", "CRM Doc Download is not implemented. CRM downloads and per-worksheet folders with ZIP files are not available yet."],
   ["workflow-editor", "the editor is a Phase-3 surface"],
 ] as const;
 
@@ -122,6 +125,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
           : { inputRun: descriptor.surfaces.inputRun }),
 
         spreadsheetIntake: intake !== undefined,
+        requiredWorkbookTypeIds: [...descriptor.requiredWorkbookTypeIds],
       },
     })),
     systemInstances: [...systems.values()].sort().map((system) => ({

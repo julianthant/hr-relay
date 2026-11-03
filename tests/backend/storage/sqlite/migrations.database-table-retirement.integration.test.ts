@@ -43,7 +43,10 @@ const CURRENT_TABLES = [
   "timeline_events",
   "workbook_creations",
   "workbook_library",
+  "workbook_library_actions",
   "workbook_library_history",
+  "workbook_library_snapshots",
+  "workbook_library_state",
   "workbook_operations",
   "workbook_types",
   "worker_controls",
@@ -59,10 +62,10 @@ it("fresh native authority has the exact current physical inventory", async () =
     const raw = new DatabaseSync(f.path, { readOnly: true });
     try {
       const actual = raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => String(row.name));
-      assert.equal(CURRENT_TABLES.length, 46);
+      assert.equal(CURRENT_TABLES.length, 49);
       assert.deepEqual(actual, CURRENT_TABLES);
       assert.deepEqual(AUTHORITY_TABLE_REGISTRY.map(row => row.name).sort(), CURRENT_TABLES);
-      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 17);
+      assert.equal(raw.prepare("PRAGMA user_version").get()?.user_version, 18);
     } finally { raw.close(); }
   } finally { await f.dispose(); }
 });
