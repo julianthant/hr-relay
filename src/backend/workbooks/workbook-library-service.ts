@@ -5,6 +5,8 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Clock } from "../../rules/time/clock.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
+import type { WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
+import { FingerprintSchema } from "../../rules/identity/ids.js";
 
 export class WorkbookLibraryError extends Error {
   constructor(readonly code: Extract<ErrorCatalogCode, `WORKBOOK_${string}`>, options?: ErrorOptions) {
@@ -30,11 +32,30 @@ export interface WorkbookLibraryRepository {
   operation(libraryId: string, value: unknown): WorkbookOperationReceipt;
   journal(libraryId: string): readonly WorkbookOperationReceipt[];
   snapshot(value: unknown): z.infer<typeof WorkbookReferenceSnapshotSchema>;
+  runOperations(runId: string): readonly WorkbookOperationRecord[];
 }
 function input<T>(schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value);
   if (!parsed.success) throw new WorkbookLibraryError("WORKBOOK_INVALID", { cause: parsed.error });
   return parsed.data;
+}
+
+export function snapshotWorkbookReference(repository: WorkbookLibraryRepository, value: unknown) {
+  return deepFreeze(repository.snapshot(input(WorkbookReferenceRequestSchema, value)));
+}
+
+export function writeRunWorkbook(repository: WorkbookLibraryRepository, clock: Clock,
+  runIdValue: unknown, libraryId: string, operationId: string, value: unknown, referenceDigest?: string) {
+  const runId = input(RunIdSchema, runIdValue), change = input(WorkbookOperatorOperationRequestSchema, value);
+  if (change.kind !== 'patch' && change.kind !== 'add') throw new WorkbookLibraryError('WORKBOOK_INVALID');
+  repository.drain(libraryId);
+  const current = repository.read(libraryId);
+  if (current === undefined) throw new WorkbookLibraryError('WORKBOOK_NOT_FOUND');
+  if (current.workbook.hasFormulas || current.workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
+  const replay = repository.journal(libraryId).find(receipt => receipt.operationId === operationId);
+  return repository.operation(libraryId, { operationId, source: { kind: 'run', runId,
+    ...(referenceDigest === undefined ? {} : { referenceDigest: input(FingerprintSchema, referenceDigest) }) },
+    at: replay?.at ?? clock.now().toISOString(), change });
 }
 export interface WorkbookSyncCommand {
   readonly libraryId: string;
@@ -90,15 +111,8 @@ export function createWorkbookLibraryService(deps: Readonly<{ repository: Workbo
       const replay = deps.repository.journal(libraryId).find(receipt => receipt.operationId === operationId);
       return deps.repository.operation(libraryId, { operationId, source: { kind: 'operator' }, at: replay?.at ?? deps.clock.now().toISOString(), change });
     },
-    writeRun(runIdValue: unknown, libraryId: string, operationId: string, value: unknown) {
-      const runId = input(RunIdSchema, runIdValue), change = input(WorkbookOperatorOperationRequestSchema, value);
-      if (change.kind !== 'patch' && change.kind !== 'add') throw new WorkbookLibraryError('WORKBOOK_INVALID');
-      deps.repository.drain(libraryId);
-      if (read(libraryId).workbook.hasFormulas || read(libraryId).workbook.unsupportedMetadata) throw new WorkbookLibraryError('WORKBOOK_METADATA_UNSUPPORTED');
-      const replay = deps.repository.journal(libraryId).find(receipt => receipt.operationId === operationId);
-      return deps.repository.operation(libraryId, { operationId, source: { kind: 'run', runId }, at: replay?.at ?? deps.clock.now().toISOString(), change });
-    },
-    snapshot: (value: unknown) => deepFreeze(deps.repository.snapshot(input(WorkbookReferenceRequestSchema, value))),
+    writeRun: (runIdValue: unknown, libraryId: string, operationId: string, value: unknown) => writeRunWorkbook(deps.repository, deps.clock, runIdValue, libraryId, operationId, value),
+    snapshot: (value: unknown) => snapshotWorkbookReference(deps.repository, value),
     async sync(libraryId: string, operationId: string, signal: AbortSignal) {
       input(WorkbookIdSchema, operationId);
       deps.repository.drain(libraryId);

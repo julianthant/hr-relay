@@ -146,6 +146,7 @@ describe("driver lease boundary", () => {
       "src/backend/runtime/workers/worker-sessions.ts",
       "src/backend/runtime/execution/run-executor.ts",
       "src/backend/runtime/writes/write-sequencer.ts",
+      "src/backend/runtime/writes/recovery-activity.ts",
     ]);
     const violations = sourceFiles()
       .filter(({ path, content }) => (path === "src/backend/app/composition/worker-compose.ts" ? withoutRetryInitialization(content) : content).includes(".withDriver(") && !allowed.has(path))

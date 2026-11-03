@@ -635,6 +635,15 @@ no exact or ambiguous match. Check again requests confirmation readback only; a 
 number supplies no proof. Pending decisions keep the original outcome unknown. The isolated
 `ucpath-found` fixture is synthetic; backend acquisition and resolution wiring are separate.
 
+The served parked-termination section supplies the held check's retained registered-task findings
+through the canonical run-detail client. Logs attaches the existing table to that exact parked
+step. Missing reads remain unavailable, capped scans remain partial, and pending selector
+provenance keeps resolution authority false. Check again uses the confirmed idle-worker held
+check with its exact worker and write target; unavailable workers disable table commands. A typed
+transaction number uses the existing exact-ID recheck and supplies only a read request. Retained
+evidence must match the original occurrence, descriptor, task implementation and closed recovery
+activity. Neither table resolution can grant authority while selectors remain unverified.
+
 ### Full dry-run preview presentation
 
 Full-preview accounting counts exercised applicable steps, including submit rehearsals where no click occurs.

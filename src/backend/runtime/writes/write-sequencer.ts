@@ -402,7 +402,7 @@ interface BoundedTaskInvocation {
   readonly settlement: Promise<BoundedTaskSettlement>;
 }
 
-function beginBoundedTask(
+export function beginBoundedTask(
   deps: BoundedTaskDeps,
   taskId: TaskId,
   signal: AbortSignal,

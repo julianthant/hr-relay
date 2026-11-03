@@ -271,6 +271,25 @@ function takeFirstTab(frame: HTMLElement): HTMLElement {
   return first;
 }
 
+describe_m1("served signed-out appearance", () => {
+  afterEach_m1(_afterEachFixture0);
+  for (const preview of [false, true]) {
+    it_m1(preview ? "honors an explicit preview owner" : "keeps neutral preferences despite origin storage", async () => {
+      let reads = 0;
+      const client = { ...appClient(), readProfileSession: async () => { reads++; return { state: "signed-out" as const }; } };
+      localStorage.setItem("rebuild-demo.theme", "light");
+      try {
+        await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served",
+          workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1,
+          ...(preview ? { previewPreferences: createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: "light" }) } : {}),
+        }));
+        assert_m1.equal(reads, 1);
+        assert_m1.equal(document.querySelector("[data-app-root]")?.getAttribute("data-demo-theme"), preview ? "light" : NEUTRAL_PERSON_PREFERENCES.theme);
+      } finally { localStorage.clear(); }
+    });
+  }
+});
+
 describe_m1("ds/TakeoverFrame — entering a takeover moves focus into it", () => {
 afterEach_m1(_afterEachFixture0);
 

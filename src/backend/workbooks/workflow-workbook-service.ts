@@ -1,16 +1,25 @@
 import { z } from "zod";
-import { SavedWorkbookSchema, EditableWorkbookSchema } from "../../models/dashboard/workbooks.js";
-import { WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema } from "../../models/processing/workbooks/read-result.js";
+import { SavedWorkbookSchema, EditableWorkbookSchema, type WorkbookOperationReceipt } from "../../models/dashboard/workbooks.js";
+import { WorkflowWorkbookCommandSchema, WorkflowWorkbookResultSchema, type WorkbookReferenceWriteSchema } from "../../models/processing/workbooks/read-result.js";
 import { RunIdSchema } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { WorkbookLibraryError, type WorkbookLibraryRepository } from "./workbook-library-service.js";
 
-export function createWorkflowWorkbookService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock }>) {
+export function createWorkflowWorkbookService(deps: Readonly<{ repository: WorkbookLibraryRepository; clock: Clock;
+  references?: Readonly<{ runId: string; write(command: z.infer<typeof WorkbookReferenceWriteSchema>): WorkbookOperationReceipt }>;
+}>) {
   return Object.freeze({
     async publish(runIdValue: unknown, commandValue: unknown, signal: AbortSignal): Promise<z.output<typeof WorkflowWorkbookResultSchema>> {
       const runId = RunIdSchema.parse(runIdValue), command = WorkflowWorkbookCommandSchema.parse(commandValue);
+      if ("kind" in command) {
+        signal.throwIfAborted();
+        if (deps.references === undefined || deps.references.runId !== runId) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const result = deps.references.write(command);
+        return WorkflowWorkbookResultSchema.parse({ state: "recorded", operationId: result.operationId,
+          libraryId: result.libraryId, version: result.version, receiptState: result.state });
+      }
       const operationId = sha256Hex(runId), libraryId = `workflow:${operationId}`;
       const marker = `workflow:${operationId}:${sha256Hex(canonicalJsonStringify(command))}:`;
       const receipt = () => WorkflowWorkbookResultSchema.parse({ state: "saved", operationId, libraryId, version: 1 });

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CANONICAL_FIELD_IDS } from "../fields/registry.js";
-import { IsoInstantSchema, WorkflowIdSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../rules/identity/ids.js";
+import { IsoInstantSchema, WorkflowIdSchema, LOCAL_OPERATOR_ACTOR_ID, FingerprintSchema } from "../../rules/identity/ids.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { IntakeSessionWireSchema } from "../intake/wire.js";
 import { IntakeCommandRequestSchema, CommandResultSchema } from "../../rules/commands/commands.js";
@@ -106,16 +106,19 @@ export const WorkbookLinkSchema = z.strictObject({ url: z.url().refine(value => 
 }), verifiedAt: IsoInstantSchema });
 export const WorkbookMetadataSchema = z.strictObject({ typeId: WorkbookIdSchema, sharePoint: WorkbookLinkSchema.nullable() });
 const WorkbookCellValueWireSchema = z.union([PrimitiveCellSchema, DateCellWireSchema]);
+export const WorkbookCellValuesSchema = z.record(FieldSchema, WorkbookCellValueWireSchema);
 export const WorkbookWriteSourceSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('operator') }),
-  z.strictObject({ kind: z.literal('run'), runId: z.string().min(1) }),
+  z.strictObject({ kind: z.literal('run'), runId: z.string().min(1), referenceDigest: FingerprintSchema.optional() }),
   z.strictObject({ kind: z.literal('sync'), syncId: z.string().min(1) }),
 ]);
 export const WorkbookOperationSchema = z.strictObject({
   operationId: WorkbookIdSchema, source: WorkbookWriteSourceSchema, at: IsoInstantSchema,
   change: z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('save'), expectedVersion: z.number().int().positive(), workbook: EditableWorkbookWireSchema }),
-    z.strictObject({ kind: z.literal('patch'), key: z.string().min(1), values: z.record(FieldSchema, WorkbookCellValueWireSchema),
+    z.strictObject({ kind: z.literal('patch'), key: z.string().min(1), values: WorkbookCellValuesSchema,
+      expectedVersion: WorkbookRevisionSchema.optional(),
+      resolves: z.strictObject({ operationId: WorkbookIdSchema, receiptDigest: z.string().regex(/^[a-f\d]{64}$/u) }).optional(),
       selection: z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema, expectedVersion: z.number().int().positive() }).optional() }),
     z.strictObject({ kind: z.literal('add'), sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema, key: z.string().min(1), values: z.record(FieldSchema, WorkbookCellValueWireSchema) }),
     z.strictObject({ kind: z.literal('sync'), expectedVersion: z.number().int().positive(), workbook: EditableWorkbookWireSchema }),
@@ -141,12 +144,29 @@ export const WorkbookOperationReceiptSchema = z.strictObject({
     ctx.addIssue({ code: 'custom', message: 'invalid workbook receipt state' });
 });
 export const WorkbookOperatorOperationRequestSchema = WorkbookOperationSchema.shape.change;
+export const WorkbookOperationRecordSchema = z.strictObject({ libraryId: WorkbookIdSchema, operation: WorkbookOperationSchema, receipt: WorkbookOperationReceiptSchema });
+export type WorkbookOperationRecord = z.infer<typeof WorkbookOperationRecordSchema>;
 export const WorkbookNamedVersionSchema = z.strictObject({ name: NameSchema, provenance: z.enum(['operator', 'migration']), snapshot: SavedWorkbookWireSchema });
 export const WorkbookReferenceRequestSchema = z.strictObject({ typeId: WorkbookIdSchema, libraryId: WorkbookIdSchema.optional(),
   keys: z.array(z.string().min(1)), fields: z.array(FieldSchema) });
 export const WorkbookReferenceSnapshotSchema = z.strictObject({ libraryId: WorkbookIdSchema, version: z.number().int().positive(),
+  worksheets: z.array(z.strictObject({ sheetId: WorkbookIdSchema, name: NameSchema })).min(1),
   type: WorkbookTypeSchema, rows: z.array(z.strictObject({ key: z.string(), state: z.enum(['matched', 'missing', 'ambiguous']),
     matches: z.array(z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema, values: z.record(FieldSchema, WorkbookCellValueWireSchema) })) })) });
+export const WorkbookRunReferenceSelectionSchema = WorkbookReferenceRequestSchema.extend({ entry: z.number().int().positive() });
+export const RunWorkbookReferenceSchema = z.strictObject({ request: WorkbookReferenceRequestSchema, snapshot: WorkbookReferenceSnapshotSchema }).superRefine((reference, ctx) => {
+  const { request, snapshot } = reference;
+  const sheets = new Set(snapshot.worksheets.map(sheet => sheet.sheetId));
+  if (request.typeId !== snapshot.type.id || request.libraryId !== undefined && request.libraryId !== snapshot.libraryId
+    || new Set(request.keys).size !== request.keys.length || new Set(request.fields).size !== request.fields.length
+    || sheets.size !== snapshot.worksheets.length || request.keys.length !== snapshot.rows.length
+    || snapshot.rows.some((row, index) => row.key !== request.keys[index]
+      || row.state !== (row.matches.length === 0 ? 'missing' : row.matches.length === 1 ? 'matched' : 'ambiguous')
+      || row.matches.some(match => !sheets.has(match.sheetId)
+        || Object.keys(match.values).length !== request.fields.length || request.fields.some(field => !Object.hasOwn(match.values, field))))) {
+    ctx.addIssue({ code: 'custom', message: 'run workbook reference must retain its exact requested values and membership' });
+  }
+});
 export type WorkbookType = z.infer<typeof WorkbookTypeSchema>;
 export type WorkbookMetadata = z.infer<typeof WorkbookMetadataSchema>;
 export type WorkbookOperation = z.infer<typeof WorkbookOperationSchema>;

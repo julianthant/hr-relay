@@ -41,6 +41,7 @@ export function activeRunsForItem(
 }
 
 export interface PlannedRunInsert {
+  readonly workbookReferences?: RunRecord["input"]["workbookReferences"];
   readonly itemId: string;
 
   readonly matchKey: string;
@@ -164,7 +165,8 @@ export function fanOutQueuedRuns(
       browserMode: envelope.browserMode, captureBrowserScreenshots: envelope.captureBrowserScreenshots,
       stepOmissions: envelope.stepOmissions, sourceBound: envelope.sourceBound, continuation: envelope.continuation,
       retryOf: entry.retryOf, appVersion: envelope.appVersion, sessionId: envelope.session.sessionId,
-      input: { raw: entry.rawInput, parsed: entry.parsedInput, ingressSchemaHash: envelope.ingressSchemaHash },
+      input: { raw: entry.rawInput, parsed: entry.parsedInput, ingressSchemaHash: envelope.ingressSchemaHash,
+        ...(entry.workbookReferences === undefined ? {} : { workbookReferences: entry.workbookReferences }) },
       runtimeConfig,
     }).filter(([, value]) => value !== undefined)));
     const publication = { title: entry.title, ...(entry.subtitle === undefined ? {} : { subtitle: entry.subtitle }), actorId: envelope.actorId };

@@ -167,7 +167,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   }, [session, setRoute]);
   const preferencesMode: Parameters<typeof createPersonPreferences>[0] = profileSource === "mock" ? "preview" : session?.state === "active" && session.duoState === "ready" ? "person" : "signed-out";
   const preferenceRequest = useMemo(() => ({ client: profileClient, profileId, profileEpoch, mode: preferencesMode }), [profileClient, profileId, profileEpoch, preferencesMode]);
-  const preferences = useMemo(() => preferenceRequest.mode === "preview" && previewPreferences !== undefined ? previewPreferences : createPersonPreferences(preferenceRequest.mode), [preferenceRequest, previewPreferences]);
+  const preferences = useMemo(() => previewPreferences ?? createPersonPreferences(preferenceRequest.mode), [preferenceRequest, previewPreferences]);
   const previousPreferences = useRef(preferences);
   if (previousPreferences.current !== preferences) { previousPreferences.current.clear(); previousPreferences.current = preferences; }
   useHubMotion(preferences);

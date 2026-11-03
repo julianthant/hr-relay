@@ -64,7 +64,7 @@ export function applyMasterChange(input: Readonly<{ workbook: EditableWorkbookWi
     state: 'applied', version: input.version, ...('key' in change ? { key: change.key } : {}), candidates: [], changes: [], source: operation.source, at: operation.at };
   const refuse = (reason: NonNullable<WorkbookOperationReceipt['reason']>, resolve = false) => ({ workbook: input.workbook, ownership: input.ownership,
     receipt: WorkbookOperationReceiptSchema.parse({ ...receipt, state: resolve ? 'resolve-required' : 'refused', reason, changes: [] }) });
-  if ('expectedVersion' in change && change.expectedVersion !== input.version) return refuse('version-conflict');
+  if ('expectedVersion' in change && change.expectedVersion !== undefined && change.expectedVersion !== input.version) return refuse('version-conflict', change.kind === 'patch');
   if (change.kind !== 'metadata' && change.kind !== 'version' && (workbook.hasFormulas || workbook.unsupportedMetadata || ('workbook' in change && (change.workbook.hasFormulas || change.workbook.unsupportedMetadata)))) return refuse('metadata-unsupported');
   if (change.kind === 'version' || change.kind === 'metadata') return { workbook, ownership, receipt };
   if (change.kind === 'save') {

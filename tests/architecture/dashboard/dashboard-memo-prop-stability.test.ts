@@ -2,8 +2,8 @@
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
 import { readFileSync } from "node:fs";
-import { join, relative } from "node:path";
-import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
+import { join } from "node:path";
+import { REPO_ROOT, repoRelative, walkFiles } from "../support/helpers/guard-files.js";
 
 const CALLER_ROOTS = ["src/dashboard"] as const;
 const FIXTURE_ROOT = "tests/architecture/dashboard/fixtures";
@@ -89,7 +89,7 @@ export function memoPropStabilityViolations(fileName: string, text: string): str
 }
 
 function callerFiles(): string[] {
-  return CALLER_ROOTS.flatMap(root => walkFiles(join(REPO_ROOT, root), { extensions: [".tsx"] }).map(file => relative(REPO_ROOT, file)));
+  return CALLER_ROOTS.flatMap(root => walkFiles(join(REPO_ROOT, root), { extensions: [".tsx"] }).map(repoRelative));
 }
 
 describe("dashboard memo prop stability", () => {

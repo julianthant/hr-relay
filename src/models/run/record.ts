@@ -181,6 +181,7 @@ export function runTransitionViolation(from: RunLifecycle, to: RunLifecycle): st
 
 /** The raw submission, the parsed canonical value and both schema hashes, stored separately; Edit Data can patch neither. */
 export const RunInputStorageSchema = z.strictObject({
+  workbookReferences: z.array(SchemaBoundCanonicalValueSchema).optional(),
   raw: JsonValueSchema,
   /** Parsed through the workflow's canonical-input schema, bound to its hash. */
   parsed: SchemaBoundCanonicalValueSchema.extend({protectedBindings:ProtectedInputBindingsSchema}).superRefine((parsed, context) => {
