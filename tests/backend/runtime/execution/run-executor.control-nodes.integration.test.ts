@@ -746,9 +746,9 @@ describe("parallel and seam arms", () => {
       return randomUUID();
     } } }, database, path, resolve);
     const childRuns: ChildRunExecutor = {
-      executeChildRun: context => {
-        contexts.push(String(context.node.id));
-        return canonical.childRuns.executeChildRun(context);
+      executeChildRuns: context => {
+        contexts.push(String(context.owner.id));
+        return canonical.childRuns.executeChildRuns(context);
       },
     };
     const queued = canonical.start(childRunDescriptor, controlQueuedRun(childRunDescriptor, "left").input.raw, { dryRun: false });

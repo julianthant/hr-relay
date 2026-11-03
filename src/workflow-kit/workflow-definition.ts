@@ -249,7 +249,7 @@ interface ParallelEntry<Id extends string, Output> extends WorkflowEntry<Id, Out
   readonly label?: string;
   readonly join: "all";
   readonly failure: "fail-fast";
-  readonly branches: readonly Readonly<{ id: string; leaves: readonly TaskEntry<string, unknown, boolean>[] }>[];
+  readonly branches: readonly Readonly<{ id: string; leaves: readonly (TaskEntry<string, unknown, boolean> | DelegateEntry<string, unknown>)[] }>[];
 }
 
 interface DelegateEntry<Id extends string, Output> extends WorkflowEntry<Id, Output, false> {
@@ -520,26 +520,31 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
           throw new Error(`parallel entry "${identity.id}" branch "${branch.id}" runs no leaf`);
         }
         const leaves = branch.leaves.map((leaf) => {
-          if (leaf.kind !== "task") {
+          if (leaf.kind !== "task" && leaf.kind !== "delegate") {
             throw new Error(
               `parallel entry "${identity.id}" branch "${branch.id}" leaf "${leaf.id}" is a ${leaf.kind} entry; `
-              + "a parallel leaf is a task entry with its own checkpoint",
+              + "a parallel leaf is a task or delegate entry with its own evidence",
             );
           }
           if (leafObjects.has(leaf)) {
             throw new Error(`parallel entry "${identity.id}" lists leaf "${leaf.id}" in more than one branch`);
           }
           leafObjects.add(leaf);
-          return leaf as TaskEntry<string, unknown, boolean>;
+          return leaf as TaskEntry<string, unknown, boolean> | DelegateEntry<string, unknown>;
         });
         return Object.freeze({ id: branch.id, leaves: Object.freeze(leaves) });
       });
+      const hasDelegates = compiledBranches.some(branch => branch.leaves.some(leaf => leaf.kind === "delegate"));
+      if (hasDelegates && compiledBranches.some(branch => branch.leaves.some(leaf => leaf.references.some(reference => leafObjects.has(reference))))) {
+        throw new Error(`parallel entry "${identity.id}" with delegates cannot depend on a sibling leaf; declare that work sequentially`);
+      }
+      const references = hasDelegates ? [...new Set(compiledBranches.flatMap(branch => branch.leaves.flatMap(leaf => leaf.references)))] : [];
       const entry: ParallelEntry<string, unknown> = {
         entryKind: "workflow-entry",
         kind: "parallel",
         id: identity.id,
         ...withStep(identity),
-        references: Object.freeze([]),
+        references: Object.freeze(references),
         contracts: Object.freeze(compiledBranches.flatMap((branch) => branch.leaves.flatMap(({ contracts }) => contracts))),
         ...(identity.label === undefined ? {} : { label: identity.label }),
         join: "all",
@@ -934,14 +939,14 @@ function entryNodeIds(entry: AnyWorkflowEntry): readonly string[] {
     : [entry.id];
 }
 
-function topologicalEntries(definition: AnyWorkflowDefinition): readonly RuntimeEntry[] {
+function topologicalEntries(definition: AnyWorkflowDefinition, parallelOf: ReadonlyMap<AnyWorkflowEntry, ParallelEntry<string, unknown>>): readonly RuntimeEntry[] {
   const entries = flattenEntries(definition.steps) as unknown as readonly RuntimeEntry[];
   const ordered: RuntimeEntry[] = [];
   const remaining = new Set(entries);
   while (remaining.size > 0) {
     const ready = entries.find((entry) =>
       remaining.has(entry)
-      && entry.references.every((reference) => !remaining.has(reference as RuntimeEntry)));
+      && [...entry.references, ...(parallelOf.get(entry)?.references ?? [])].every((reference) => !remaining.has(reference as RuntimeEntry)));
     if (ready === undefined) {
       throw new Error(`workflow ${definition.id} dependency cycle among: ${[...remaining].map(({ id }) => id).join(", ")}`);
     }
@@ -987,7 +992,7 @@ interface RuntimeFlowBuilder {
   parallel(
     id: string,
     branches: readonly Readonly<{ id: string; nodes: readonly string[] }>[],
-    opts: Readonly<{ join: "all" | "all-settled" }>,
+    opts: Readonly<{ join: "all" | "all-settled"; dependsOn?: readonly string[] }>,
   ): RuntimeFlowBuilder;
   childRun(id: string, target: AnyWorkflowRef, opts: Readonly<{
     label?: string;
@@ -1011,8 +1016,6 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
   definition: WorkflowDefinition<InputSchema, ResultSchema, CompletionProgram | undefined>,
 ): CompiledFlow<InputSchema, ResultSchema> {
   const builder = flow(definition.input) as unknown as RuntimeFlowBuilder;
-  // A leaf's parallel node must be declared before the leaf (builder downstream check); the
-  // parallel entry has no references, so it is emitted lazily before its first leaf in dep order.
   const parallelOf = new Map<AnyWorkflowEntry, ParallelEntry<string, unknown>>();
   for (const entry of flattenEntries(definition.steps)) {
     if (!isParallel(entry)) continue;
@@ -1025,10 +1028,10 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
     builder.parallel(
       entry.id,
       entry.branches.map((branch) => ({ id: branch.id, nodes: branch.leaves.map((leaf) => leaf.id) })),
-      { join: entry.join },
+      { join: entry.join, dependsOn: entry.references.map(reference => reference.id) },
     );
   };
-  for (const entry of topologicalEntries(definition)) {
+  for (const entry of topologicalEntries(definition, parallelOf)) {
     const dependsOn = Object.freeze(entry.references.map(({ id }) => id));
     if (entry.kind === "parallel") continue;
     const parent = parallelOf.get(entry);

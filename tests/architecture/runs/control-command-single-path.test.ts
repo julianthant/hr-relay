@@ -193,7 +193,7 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
     { owner: "withCanonicalRunCommandScope", id: "request.commandId", guards: [
       'canonicalJsonStringify(repositories.commands.get(request.commandId))!==canonicalJsonStringify(request)',
       'repositories.commandAudits.findByCommand(request.commandId)!==undefined',
-      'activeRunCommand!==undefined', '!(request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel"))', '"then"inresult',
+      'activeRunCommand!==undefined', '!(request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel"||request.type==="resume"))', '"then"inresult',
     ], calls: ["repositories.commands.assertIdentity(request,parentCommandId)"] },
   ],
   "src/backend/storage/sqlite/delegation-root-authority.ts": [
@@ -238,7 +238,7 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
   ],
   "src/backend/storage/sqlite/delegation-authority.ts": [
     { owner: "authenticateOperatorSource", id: "source.commandId", guards: ['audit.result.state!=="applied"', "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(source)", "source.requestedBy!==LOCAL_OPERATOR_ACTOR_ID"], calls: ["assertCanonicalRunCommandScope(repositories,source)"] },
-    { owner: "resolveDelegationRetry", id: "retry.sourceCommandId", guards: ['sourceAudit===undefined?continued===undefined:sourceAudit.result.state!=="applied"||canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source)', "canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source)", "lifecycleRequest.sourceCommandId!==source.commandId"], calls: ["assertDelegationReplacement(repositories,original,child,next)", "authenticateContinuationRetryOwner(repositories,child,retry.continuationOwner,retry.sourceCommandId)"] },
+    { owner: "resolveDelegationRetry", id: "retry.sourceCommandId", guards: ['sourceAudit!==undefined&&(sourceAudit.result.state!=="applied"||canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source))', "canonicalJsonStringify(sourceAudit.request)!==canonicalJsonStringify(source)", "lifecycleRequest.sourceCommandId!==source.commandId"], calls: ["authenticateOperatorSource(repositories,source,sourceAudit)", "assertDelegationReplacement(repositories,original,child,next)", "authenticateContinuationRetryOwner(repositories,child,retry.continuationOwner,retry.sourceCommandId)"] },
     { owner: "delegationCancellationAvailability", id: "source.commandId", guards: ['run?.lifecycle.state!=="terminal"', "repositories.commandAudits.findByCommand(source.commandId)===undefined"], calls: ["readDelegationCancellation(repositories,runId)"] },
     { owner: "readDelegationCancellation", id: "source.commandId", guards: ['authored?.result.state!=="applied"', "canonicalJsonStringify(authored.request)!==canonicalJsonStringify(source)", "canonicalJsonStringify(audit.request)!==canonicalJsonStringify(retained)"], calls: ["authenticateCancellationSource(repositories,run,request.cancellationSource)"] },
   ],
@@ -447,7 +447,7 @@ function withoutDelegationAuditReads(content: string, path: string, kernelConten
       !== "repositories,request,()=>dispatchActive(dependencies,repositories,request,now,auditId),parentCommandId") return content;
     const selection = calls[0].parent;
     if (!ts.isConditionalExpression(selection) || selection.whenTrue !== calls[0]
-      || selection.condition.getText(kernel).replace(/\s+/gu, "") !== 'request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel")') return content;
+      || selection.condition.getText(kernel).replace(/\s+/gu, "") !== 'request.family==="ocr-review"||request.family==="start"||request.family==="run"&&(request.type==="retry"||request.type==="recover-run"||request.type==="cancel"||request.type==="resume")') return content;
     let callback: ts.Node | undefined = calls[0].parent;
     while (callback !== undefined && !ts.isArrowFunction(callback)) callback = callback.parent;
     if (callback === undefined || !ts.isArrowFunction(callback) || !ts.isCallExpression(callback.parent)

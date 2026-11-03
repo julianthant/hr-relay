@@ -31,15 +31,17 @@ afterEach(async () => {
 function countAuthorityReads<Result>(
   w: DashboardWorld,
   work: () => Result,
-): { value: Result; getRun: number; canonicalRead: number; canonicalList: number; latestCheckpoint: number; getReceipt: number } {
+): { value: Result; getRun: number; canonicalRead: number; canonicalList: number; canonicalTree: number; latestCheckpoint: number; getReceipt: number } {
   const original = {
     canonicalRead: w.runReader.read.bind(w.runReader),
     canonicalList: w.runReader.list.bind(w.runReader),
+    canonicalTree: w.runReader.withRunTreeSnapshot.bind(w.runReader),
     getRun: w.authority.getRun.bind(w.authority),
     latestCheckpoint: w.authority.latestCheckpoint.bind(w.authority),
     getReceipt: w.authority.getReceipt.bind(w.authority),
   };
-  const counts = { getRun: 0, canonicalRead: 0, canonicalList: 0, latestCheckpoint: 0, getReceipt: 0 };
+  const counts = { getRun: 0, canonicalRead: 0, canonicalList: 0, canonicalTree: 0, latestCheckpoint: 0, getReceipt: 0 };
+  w.runReader.withRunTreeSnapshot = (ids, read) => { counts.canonicalTree += 1; return original.canonicalTree(ids, read); };
   w.runReader.read = (runId) => {
     counts.canonicalRead += 1;
     return original.canonicalRead(runId);
@@ -69,6 +71,7 @@ function countAuthorityReads<Result>(
   } finally {
     w.runReader.read = original.canonicalRead;
     w.runReader.list = original.canonicalList;
+    w.runReader.withRunTreeSnapshot = original.canonicalTree;
     w.authority.getRun = original.getRun;
     w.authority.latestCheckpoint = original.latestCheckpoint;
     w.authority.getReceipt = original.getReceipt;
@@ -116,7 +119,8 @@ describe("member preview slices before joining", () => {
     assert.equal(counted.latestCheckpoint, 4);
     assert.equal(counted.getRun, 0);
     assert.equal(counted.canonicalRead, 1);
-    assert.equal(counted.canonicalList, 1);
+    assert.equal(counted.canonicalList, 0);
+    assert.equal(counted.canonicalTree, 1);
   });
 
   it("costs the same three joins whether the group has four members or forty", async () => {

@@ -22,7 +22,7 @@ function fixture() {
     db.prepare(`INSERT INTO runs (${Object.keys(row).join(",")}) VALUES (${Object.keys(row).map(() => "?").join(",")})`).run(...Object.values(row));
     return row.id;
   };
-  return { db, add, summaries: createRunSummaries(db) };
+  return { db, add, summaries: createRunSummaries(db, () => null) };
 }
 
 describe("native summary snapshots", () => {
@@ -108,5 +108,22 @@ describe("native summary snapshots", () => {
     const row = { ...runRecordColumns(RunRecordSchema.parse(QUEUED_RUN)), trace_id: "corrupt" };
     f.db.prepare(`INSERT INTO runs (${Object.keys(row).join(",")}) VALUES (${Object.keys(row).map(() => "?").join(",")})`).run(...Object.values(row));
     expect(() => f.summaries.read(1)).toThrow(/trace_id/u);
+  });
+
+  it("filters authenticated waiting states before pagination without skipping matching rows", () => {
+    const f = fixture();
+    const ids = Array.from({ length: 12 }, (_, index) => f.add(index + 1, "2026-10-01T12:00:00.000Z"));
+    const running = new Set([ids[3], ids[8], ids[11]]), blocked = new Set([ids[1], ids[9]]);
+    const summaries = createRunSummaries(f.db, run => running.has(run.envelope.runId) ? { nodeId: "children", state: "running" }
+      : blocked.has(run.envelope.runId) ? { nodeId: "children", state: "blocked" } : null);
+    const query = { workflow: QUEUED_RUN.envelope.workflow, status: "running", limit: 2 } as const;
+    const first = summaries.query(1, query);
+    expect(first.items.map(row => row.runId)).toEqual([ids[3], ids[8]]);
+    const second = summaries.query(1, { ...query, after: first.next ?? undefined });
+    expect(second.items.map(row => row.runId)).toEqual([ids[11]]);
+    expect(second.next).toBeNull();
+    expect(summaries.query(1, { ...query, status: "blocked" }).items.map(row => row.runId)).toEqual([ids[1], ids[9]]);
+    expect(summaries.query(1, { ...query, status: "queued", limit: 20 }).items.map(row => row.runId))
+      .toEqual(ids.filter(id => !running.has(id) && !blocked.has(id)));
   });
 });

@@ -3,7 +3,7 @@ import { ActivityPopulationRangeSchema, ActivityPopulationRunSchema, ActivitySuc
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { spreadsheetCsvRow } from "../exports/spreadsheet-csv.js";
-import { deriveRunStatus } from "../lifecycle/run-status.js";
+import { deriveRunStatus } from "../../../rules/runs/run-status.js";
 import { activityReportCsv, activityReportCsvFileName } from "./activity-export.js";
 import { createActivitySelectionService, createActivitySnapshotSigner } from "./activity-selection.js";
 import { queryActivitySummaries, visitActivitySummaryRange } from "./activity-summaries.js";
