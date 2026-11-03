@@ -24,6 +24,7 @@ function world() {
       writes++;
       assert.ok(typeof init?.body === "string");
       const command = SettingsCommandRequestSchema.parse(JSON.parse(init.body));
+      assert.equal(command.source, "person-preferences");
       const target = person;
       await writeOverride?.();
       const settings = mergeSettingsPatch(saved.settings, command.payload.patch);

@@ -41,7 +41,7 @@ export function createPersonPreferences(mode: "person" | "preview" | "signed-out
       const started = generation;
       const binding = active.current();
       const command = SettingsCommandRequestSchema.parse({ commandId: crypto.randomUUID(), requestedAt: binding.authority.nowIso,
-        requestedBy: binding.scope.actorId, source: "settings-surface", family: "settings", type: "apply-settings",
+        requestedBy: binding.scope.actorId, source: "person-preferences", family: "settings", type: "apply-settings",
         target: { expectedRevision: document.revision }, payload: { settingsSchemaHash: document.settingsSchemaHash,
           patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
       resolvePersonPreferences(mergeSettingsPatch({ preferences: state.value }, patch).preferences);

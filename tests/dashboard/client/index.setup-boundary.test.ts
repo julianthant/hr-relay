@@ -26,7 +26,8 @@ it("independent Setup consumer reads production readiness and reruns/replays the
   app.use("*", async (c, next) => { c.set("requestActorId", ActorIdSchema.parse("local-operator")); await next(); });
   registerSettingsPreflightRoutes(app, { clock, preflight });
   app.get("/api/v1/bootstrap", (c) => c.json(buildBootstrap({ appVersion: "0.1.0", clock, modules: [], descriptorSetHash: fingerprint,
-    settingsSchemaHash: fingerprint, projection: { generation: () => 1 }, authorityMeta: () => ({ schemaVersion: 53, authorityGeneration: 1 }),
+    settingsSchemaHash: fingerprint, projection: { generation: () => 1 }, actorLabel: () => "Fixture Operator",
+    authorityMeta: () => ({ schemaVersion: 53, authorityGeneration: 1 }),
     automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "missing", preflightReport: () => preflight.readLatest(), })));
   const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async (url, init) => app.request(url, { ...init, headers: { ...init?.headers, host: "localhost" } }) });
   const ready = await client.readiness(); assert.ok(ready.state === "present"); assert.ok(ready.checks.every((check) => check.verdict === "pass"));

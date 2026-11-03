@@ -158,6 +158,7 @@ createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<Dashboard
         descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
         settingsSchemaHash: descriptorSetHash(["settings-schema"]),
         projection,
+        actorLabel: () => "Fixture Operator",
         authorityMeta: () => database.getMeta(),
         // The seeded adapter runs no backup lane; "missing" is its true state.
         automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "missing",
