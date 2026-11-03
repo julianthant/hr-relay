@@ -31,7 +31,10 @@ export function createOcrReviewWorld() {
       const rendered: { value?: z.output<typeof ExtractPdfPagesOutputSchema> } = {};
       const render = defineTask(ExtractPdfPages, { sessions: [], async run({ ctx }) {
         assert.ok(rendered.value);
-        ctx.recordData([{ direction: "read", field: "pageCount", value: rendered.value.pageCount }]);
+        ctx.recordData([
+          { direction: "read", field: "pageCount", value: rendered.value.pageCount },
+          { direction: "read", field: "pages", value: rendered.value.pages },
+        ]);
         return rendered.value;
       } });
       const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction"),

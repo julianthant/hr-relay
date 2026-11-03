@@ -15225,11 +15225,11 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/verify-onboarding-record"
     },
     {
-      "fingerprint": "c5178c8d116820c774efe73d5c3dd540a1c32e6edbba00e851d9e990e80b06c0",
+      "fingerprint": "9a196340bf797cca5cd92cbfc9cccc1a643fe9aeae7f9d39ea8c677bd5fe7d78",
       "sources": [
         {
           "path": "src/backend/processing/extraction/tasks/extract-pdf-pages.ts",
-          "sha256": "7382b975546ec39b91ff126e6685755be522243ed438c944f9165fa2025f1a4c"
+          "sha256": "9fcbda76ed0fc7174d153e3a394247fe07bfa09d699a5f45673f6123f1aecf38"
         },
         {
           "path": "src/models/artifacts/artifacts.ts",

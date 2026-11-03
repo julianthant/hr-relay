@@ -11,6 +11,10 @@ type ExtractSpreadsheetOutput,
 } from "../../../../src/models/processing/extraction/extract-spreadsheet.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import type { ContentAddressedArtifactWriter } from "../../../../src/workflow-kit/artifacts.js";
+import { createTaskProvenanceCollector } from "../../../../src/backend/runs/provenance/task-provenance.js";
+import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
+import { UNREGISTERED_OCR_MODULES } from "../../../support/fixtures/ocr/unregistered-workflows.js";
 
 const CSV = "text/csv";
 type ArtifactReference = ReturnType<typeof ArtifactRefSchema.parse>;
@@ -101,6 +105,15 @@ async function runPdf(
   document: ArtifactReference;
 }>>> {
   const document = artifactFor(bytes, "application/pdf");
+  const descriptor = UNREGISTERED_OCR_MODULES.find(module => module.descriptor.id === "ocr")?.descriptor;
+  assert.ok(descriptor);
+  const node = descriptorRuntimeNodes(descriptor).find(node => node.kind === "task" && node.uses.id === extractPdfPagesTask.contract.id);
+  assert.ok(node?.kind === "task");
+  const provenance = createTaskProvenanceCollector({ descriptor,
+    execution: { runId: "11111111-2222-4333-8444-555555555555", traceId: "oc-000000-1111", attempt: 1,
+      workflowId: descriptor.id, nodeId: node.id, taskId: node.uses.id },
+    upstreamEvidence: { checkpoints: [] }, clock: manualClock(new Date("2026-11-02T00:00:00.000Z")), onRecord: () => {},
+  });
   const writes: { bytes: Buffer; mediaType: string }[] = [];
   const facts: unknown[] = [];
   const outputRef = ArtifactRefSchema.parse({
@@ -124,13 +137,14 @@ async function runPdf(
       },
     },
     fail,
-    recordData: (point: unknown) => { facts.push(point); },
+    recordData: (point: Parameters<typeof provenance.recordData>[0]) => { facts.push(point); provenance.recordData(point); },
   };
   try {
     const output = ExtractPdfPagesOutputSchema.parse(await extractPdfPagesTask.impl.run({
       input: { document, ...(toPage === undefined ? {} : { toPage }) },
       ctx: ctx as never,
     }));
+    provenance.finalizeRead(output);
     return { outcome: "success" as const, output, writes, facts, opened, document };
   } catch (error) {
     const caught = error as Error & { code?: string };
@@ -190,7 +204,7 @@ describe("extraction task wrappers", () => {
     assert.deepEqual([...pngBytes.subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
     assert.deepEqual(rendered.facts, [[
       { direction: "read", field: "pageCount", value: 1 },
-      { direction: "read", field: "renderedPages", value: 1 },
+      { direction: "read", field: "pages", value: rendered.output.pages },
     ]]);
   });
 
