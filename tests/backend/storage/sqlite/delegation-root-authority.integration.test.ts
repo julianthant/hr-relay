@@ -47,7 +47,7 @@ const resumeDescriptor = defineWorkflowDescriptor({
   flow: flow(fixtureDescriptor.input).gate("approval", { dependsOn: [], label: "Approval", statusKey: "needsReview",
     resolvedBy: "operator", result: approvalResult })
     .step("resume-node", FixtureReadReceipt, { dependsOn: ["approval"], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
-    .gate("second-approval", { dependsOn: [], label: "Second approval", statusKey: "needsReview", resolvedBy: "operator", result: approvalResult })
+    .gate("second-approval", { dependsOn: [], label: "Second approval", statusKey: "needsSecondReview", resolvedBy: "operator", result: approvalResult })
     .step("after-second", FixtureReadReceipt, { dependsOn: ["second-approval"], replay: "checkpoint", bind: ({ input }) => ({ eid: input.eid }) })
     .build({ schema: FixtureReadReceipt.output, dependsOn: ["after-second"], derive: ({ outputs }) => outputs["after-second"] }),
 });
