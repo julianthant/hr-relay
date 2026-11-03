@@ -67,3 +67,38 @@ it("keeps the accepted selection and refuses invalid PDFs before planning or upl
   await dialog.press("Remove accepted.pdf");
   expect(dialog.text()).toContain("No PDFs selected"); expect(dialog.disabled("Continue")).toBe(true);
 });
+
+it("refuses the same PDF bytes under another filename without replacing the accepted draft", async () => {
+  let calls = 0;
+  const dialog = await h.openDialog(h.stubClient({ uploadOcrSource: async request => {
+    calls += 1;
+    return OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
+      artifact: { id: `00000000-0000-4000-8000-${String(calls).padStart(12, "0")}`, mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } });
+  } }), { workflows: [workflow], panelWorkflowId: workflow.workflowId });
+  await attach([pdf("original.pdf", "%PDF same content")]);
+  await attach([pdf("renamed.pdf", "%PDF same content")]);
+  expect(dialog.text()).toContain("PDF selection refused");
+  expect(dialog.text()).toContain("original.pdf");
+  expect(document.querySelector('[aria-label="Selected PDFs"]')?.textContent).not.toContain("renamed.pdf");
+  expect(dialog.disabled("Continue")).toBe(true);
+});
+
+it("retires an upload when the selected workflow changes and ignores its late response", async () => {
+  type Upload = ReturnType<typeof OcrSourceUploadSchema.parse>;
+  const held: { resolve?: (upload: Upload) => void; signal: AbortSignal | undefined } = { signal: undefined };
+  const pending = new Promise<Upload>(resolve => { held.resolve = resolve; });
+  const other = h.WORKFLOWS.find(candidate => candidate.inputRun.state === "present"); assert.ok(other);
+  const dialog = await h.openDialog(h.stubClient({ uploadOcrSource: (_request, signal) => { held.signal = signal; return pending; } }),
+    { workflows: [workflow, other], panelWorkflowId: workflow.workflowId });
+  const file = pdf("retired.pdf", "%PDF retired");
+  await attach([file]);
+  expect(dialog.text()).toContain("Reading PDFs");
+  await dialog.press(other.label);
+  expect(held.signal?.aborted).toBe(true);
+  const resolve = held.resolve; assert.ok(resolve);
+  await act(async () => resolve(OcrSourceUploadSchema.parse({ fileName: file.name, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
+    artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: file.size, sha256: createHash("sha256").update(new Uint8Array(await file.arrayBuffer())).digest("hex") } })));
+  expect(dialog.text()).not.toContain(file.name);
+  expect(document.querySelector('[aria-label="Selected PDFs"]')).toBeNull();
+  expect(document.querySelector("textarea")).not.toBeNull();
+});
