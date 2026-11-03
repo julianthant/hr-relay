@@ -118,7 +118,12 @@ describe("source-bound Rerun value read", () => {
     const h = await harness(); const source = await failed(h);
     const current = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "onboarding"); assert.ok(current);
     const parser = { split: { kind: "whole-text" }, rules: [{ when: { kind: "pattern", pattern: "email" }, emit: "email" }] };
-    const descriptor = { ...current, surfaces: { ...current.surfaces, inputRun: InputRunSurfaceSchema.parse({
+    const descriptor = defineWorkflowDescriptor({ id: current.id, version: current.version, contractFingerprint: current.contractFingerprint,
+      code: current.code, label: current.label, icon: current.icon, category: current.category,
+      canonicalInput: OnboardingCanonicalInput, inputSubject: "email", surface: current.surface,
+      enqueue: current.enqueue, actions: current.actions, details: [], scenarios: ["source-read/happy"],
+      identity: { matchKey: input => input.email.toLowerCase() }, presentation: { title: input => input.email },
+      surfaces: { inputRun: InputRunSurfaceSchema.parse({
       placeholder: "Email", parser, typedInput: { modeField: "mode", modeLabel: "Hire mode", initialMode: "new-hire",
         description: "Read retained hire input", controls: [], modes: ["new-hire", "rehire"].map(value => ({
           value, label: value, inputLabel: "Email", hint: "Saved email", placeholder: "Email",
@@ -126,7 +131,11 @@ describe("source-bound Rerun value read", () => {
             { field: "configuredJobEndDate", value: { kind: "text", text: "06/30/2027" } }],
           parser: { kind: "entries", spec: parser }, display: { kind: "first-present", fields: ["email"] }, identityFields: ["email"],
         })) },
-    }) } };
+      }) },
+      flow: flow(OnboardingInput).step("read", sourceBoundReadContract,
+        { dependsOn: [], replay: "checkpoint", bind: () => ({ eid: "10812345" }) })
+        .build({ schema: sourceBoundReadContract.output, dependsOn: ["read"], derive: ({ outputs }) => outputs.read }),
+    });
     const retainedSchema = z.strictObject({ email: OnboardingInput.shape.email, mode: OnboardingInput.shape.mode,
       postalCodeOverride: OnboardingInput.shape.postalCodeOverride, configuredJobEndDate: OnboardingInput.shape.configuredJobEndDate });
     const value = retainedSchema.parse({ email: ONBOARDING_INPUT_EXAMPLE.email, mode: "rehire",
