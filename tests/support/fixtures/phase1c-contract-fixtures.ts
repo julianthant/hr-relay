@@ -81,6 +81,11 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   ...["pause", "resume"].map(type => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
   { ...BASE_COMMAND, family: "application", type: "pause-all", target: { runtimeGeneration: 1 }, payload: { targets: [RUN_TARGET] } },
   { ...BASE_COMMAND, family: "application", type: "pause-all-and-quit", target: { runtimeGeneration: 1 }, payload: { confirmed: true, targets: [RUN_TARGET] } },
+  { ...BASE_COMMAND, family: "ocr-review", type: "correct-ocr-record", target: { runId: UUID_2, expectedRevision: 1 },
+    payload: { recordId: `${HASH_A}#emergency-contact#1`, assertedEid: null,
+      fields: { answers: [{ path: "employee.name", state: "absent", reason: "blank" }], blockingPaths: ["employee.name"], answersFingerprint: HASH_A } } },
+  ...["discard-ocr-record", "restore-ocr-record"].map(type => ({ ...BASE_COMMAND, family: "ocr-review", type,
+    target: { runId: UUID_2, expectedRevision: 1 }, payload: { recordId: `${HASH_A}#emergency-contact#1` } })),
 ];
 
 export const SUBJECT_EVIDENCE = {

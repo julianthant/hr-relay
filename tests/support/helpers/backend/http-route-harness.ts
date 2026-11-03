@@ -158,6 +158,7 @@ export async function harness(options: {
   readonly protectedCommandAcceptedAt?: DashboardAppDeps["protectedCommandAcceptedAt"];
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
+  readonly ocr?: DashboardAppDeps["ocr"];
   /** Wrap the real start-plan service (e.g. to observe whether admission reached it). */
   readonly startPlans?: (real: StartPlanService) => StartPlanService;
 
@@ -376,6 +377,7 @@ export async function harness(options: {
       label: "Local operator",
     }),
     intake: options.intake ?? UNWIRED_INTAKE_SERVICE,
+    ...(options.ocr === undefined ? {} : { ocr: options.ocr }),
     intakeCommandResult: createIntakeCommandResultQuery(database),
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, options.intake ?? UNWIRED_INTAKE_SERVICE) },
     bootstrap: {

@@ -194,6 +194,14 @@ backend paths are connected to that preview.
 
 ## Command outcomes and recovery
 
+OCR correction, discard and restore use the `ocr-review` command family with an exact run and
+expected review revision. Their immutable revision, command/audit history and canonical run-version
+advance commit together, preserving the existing Queue and selected-detail replacement flow.
+The `review` section includes full source-bound OCR data and approval snapshots. PDF uploads use
+the guarded `/api/v1/ocr/files` byte route; source pages require run, revision and original page
+coordinates. Read-only `/api/v1/runs/:runId/ocr/commands/:commandId` settlement returns the original
+authenticated result for uncertainty checks without dispatching the command again.
+
 The command envelope carries `commandId`, `requestedAt`, `requestedBy`, `source`, and optional
 `reason`. The request adds its exact `family`, `type`, target, and payload. Run targets use
 `runId` and `expectedVersion`; pool targets use `workflowId` and a nonnegative `expectedVersion`

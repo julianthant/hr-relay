@@ -12,6 +12,9 @@ import { type AuthorityTableName } from "../../../models/config/authority.js";
 
 const RowSchema = z.record(z.string(), z.union([z.string(),z.number(),z.null()]));
 const fields = {
+  ocr_source_uploads: {id:"artifact.id",created_at:"uploadedAt"},
+  ocr_review_revisions: {id:"id",run_id:"sourceRunId",revision:"revision",command_id:"origin.commandId",created_at:"createdAt"},
+  ocr_approved_snapshots: {id:"snapshotId",run_id:"sourceRunId",revision:"revision",created_at:"approvedAt"},
   assistant_model_preference: {id:"id",profile_id:"profileId",revision:"revision",command_id:"commandId",audit_id:"auditId",updated_at:"updatedAt"},
   assistant_grants: {id:"id",profile_id:"profileId",revision:"policy.revision",command_id:"commandId",updated_at:"updatedAt"},
   assistant_chats: {id:"id",profile_id:"profileId",epoch:"epoch",created_at:"createdAt",expires_at:"expiresAt"},

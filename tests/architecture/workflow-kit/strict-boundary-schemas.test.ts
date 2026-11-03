@@ -1,6 +1,6 @@
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { deriveWriteAuthorityReason } from "../../../src/rules/write-safety/write-authority-reason.js";
-import { createRunTerminalEvidenceResult, deriveTerminalFailureDigest, RunTerminalEvidenceResultSchema, NotRunTerminalDependencySchema, ResolvedTerminalDependencySchema, RunResultRecordSchema, TerminalDependencyRecordSchema, TerminalNotRunReasonSchema, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, deriveRunResultDigest, deriveTerminalDependencyDigest } from "../../../src/models/run/result.js";
+import { createRunTerminalEvidenceResult, deriveTerminalFailureDigest, RunTerminalEvidenceResultSchema, NotRunTerminalDependencySchema, ResolvedTerminalDependencySchema, GateTerminalDependencySchema, RunResultRecordSchema, TerminalDependencyRecordSchema, TerminalNotRunReasonSchema, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest, deriveRunResultDigest, deriveTerminalDependencyDigest } from "../../../src/models/run/result.js";
 import { RunCompletionSchema, completionFromAuthorization } from "../../../src/models/run/completion.js";
 import { currentAtomicWriteFixture } from "../../support/helpers/timeline-write-fixture.js";
 import { CredentialStoreApplyOutcomeSchema } from "../../../src/models/config/credential-store.js";
@@ -745,13 +745,19 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "TerminalNotRunReason", schema: TerminalNotRunReasonSchema, fixtures: TerminalNotRunReasonSchema.options },
   { name: "ResolvedTerminalDependency", schema: ResolvedTerminalDependencySchema, fixtures: [RESOLVED_TERMINAL_DEPENDENCY] },
   { name: "NotRunTerminalDependency", schema: NotRunTerminalDependencySchema, fixtures: [NOT_RUN_TERMINAL_DEPENDENCY] },
-  { name: "TerminalDependencyRecord", schema: TerminalDependencyRecordSchema, fixtures: [RESOLVED_TERMINAL_DEPENDENCY, NOT_RUN_TERMINAL_DEPENDENCY] },
+  { name: "GateTerminalDependency", schema: GateTerminalDependencySchema, fixtures: [{ state: "gate-resolved", nodeId: GATE_RESULT.nodeId,
+    gate: { runId: GATE_RESULT.runId, gateId: GATE_RESULT.gateId }, resultSchemaHash: GATE_RESULT.result.schemaHash,
+    checkpointFingerprint: GATE_RESULT.checkpointFingerprint, recordDigest: HASH_A }] },
+  { name: "TerminalDependencyRecord", schema: TerminalDependencyRecordSchema, fixtures: [RESOLVED_TERMINAL_DEPENDENCY, NOT_RUN_TERMINAL_DEPENDENCY,
+    { state: "gate-resolved", nodeId: GATE_RESULT.nodeId, gate: { runId: GATE_RESULT.runId, gateId: GATE_RESULT.gateId },
+      resultSchemaHash: GATE_RESULT.result.schemaHash, checkpointFingerprint: GATE_RESULT.checkpointFingerprint, recordDigest: HASH_A }] },
   { name: "RunTerminalEvidenceResult", schema: RunTerminalEvidenceResultSchema, fixtures: [FAILED_RESULT.result.value, { kind: "lifecycle-evidence", outcome: "cancelled", commandId: UUID_1, auditId: UUID_1, requestFingerprint: HASH_A, appliedVersion: 2 }] },
   { name: "RunResultRecord", schema: RunResultRecordSchema, fixtures: [RUN_RESULT], openFixturePaths: ["result.value"] },
 
   { name: "TerminalDependencyEvidence", schema: TerminalDependencyEvidenceSchema, fixtures: [
     { state: "resolved", nodeId: RUN_CHECKPOINT.nodeId, checkpoint: RUN_CHECKPOINT },
     NOT_RUN_TERMINAL_DEPENDENCY,
+    { state: "gate-resolved", nodeId: GATE_RESULT.nodeId, gate: GATE_RESULT },
   ], openFixturePaths: ["checkpoint.output.value"] },
   { name: "CheckpointExpectation", schema: CheckpointExpectationSchema, fixtures: [
     { descriptorVersion: 1, contractFingerprint: HASH_A, implFingerprint: HASH_B, outputSchemaHash: HASH_A },

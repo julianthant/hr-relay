@@ -52,6 +52,7 @@ function fixture() {
 function convert(database: DatabaseSync) {
   const migration = SQLITE_MIGRATIONS.find(row => row.version === 16); assert.ok(migration);
   for (const [index, statement] of migration.statements.entries()) { database.exec(statement); if (index === 2) migratePersonPreferences(database); }
+  for (const next of SQLITE_MIGRATIONS.filter(row => row.version > 16)) for (const statement of next.statements) database.exec(statement);
   database.prepare("UPDATE database_states SET schema_version=?").run(CURRENT_AUTHORITY_SCHEMA_VERSION);
   database.exec(`PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}`);
 }

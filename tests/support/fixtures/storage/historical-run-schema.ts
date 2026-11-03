@@ -5,6 +5,15 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { runRecordColumns, runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 
+export function removeEmptySchema17OcrReview(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 17);
+  for (const table of ["ocr_approved_snapshots", "ocr_review_revisions", "ocr_source_uploads"]) {
+    assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
+  }
+  for (const table of ["ocr_approved_snapshots", "ocr_review_revisions", "ocr_source_uploads"]) database.exec(`DROP TABLE ${table}`);
+  database.exec("UPDATE database_states SET schema_version=16; PRAGMA user_version=16");
+}
+
 export function removeSchema15RunPause(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 15);
   assert.equal(database.prepare("SELECT count(*) AS count FROM runs WHERE json_type(lifecycle_json,'$.pause') IS NOT NULL").get()?.count, 0);

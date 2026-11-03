@@ -15,6 +15,8 @@ import { childCrashWriteModules, childCrashWriteRoot } from "../fixtures/child-e
 import { absentProbeEvidence, createWriteFixtureWorld, writeFixtureSessions } from "../fixtures/write-sequencer-fixtures.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 
+import { createWorkflowRegistry } from "../../../src/backend/app/registries/workflow-registry.js";
+
 let stage: "arguments" | "machine" | "profile" | "graph" | "compose" | "terminal" = "arguments";
 try {
 const [repoRoot, mode, port] = z.tuple([z.string().min(1), z.enum(["checkpoint", "resume", "attempting"]), z.coerce.number().int().positive()]).parse(process.argv.slice(2));
@@ -36,6 +38,9 @@ const writeGraph = childCrashWriteModules(driver);
 const modules = mode === "attempting" ? writeGraph.modules : childExecutionModules;
 const stores = mode === "attempting" ? writeGraph.stores : childExecutionStores;
 const root = mode === "attempting" ? childCrashWriteRoot : childExecutionRoot;
+const rootModule = modules.find(module => module.descriptor === root.descriptor);
+assert.ok(rootModule);
+const executionRegistry = createWorkflowRegistry([rootModule], modules.filter(module => module !== rootModule));
 if (mode === "attempting") {
   driver.probeResults.push(absentProbeEvidence(systemClock.now().toISOString()));
   driver.afterCommitClickBeforeTaskSettlement = async () => {
@@ -59,7 +64,7 @@ stage = "compose";
   const report = await composeWorkerRuntime({ lifetimeLock, stopSignal: controller.signal, admission: machine, isolation: rebuildRuntimeIsolation, repoRoot,
     args: [root.descriptor.id, "--pool-index", "1", "--drain"], env: {},
     ...(mode === "attempting" ? { sessionFactory: writeFixtureSessions(driver).factory } : {}),
-    executionRegistry: { resolve: id => modules.find(module => module.descriptor.id === id), stores,
+    executionRegistry: { resolve: id => executionRegistry.publicRegistry[id], resolveChild: executionRegistry.childModuleOf, stores,
       manifest: childExecutionBuildManifest },
     openDatabase: (options, clock) => {
       database = AuthorityDatabase.open(admission, options, clock, undefined, {
