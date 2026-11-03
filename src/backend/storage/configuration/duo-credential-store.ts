@@ -73,14 +73,14 @@ export function createDuoCredentialStore(admission: RuntimeAdmission, clock: Clo
     },
     credentials: publicCredentials,
     platformCredentials(): readonly DuoPlatformCredential[] {
-      return read().record.credentials.filter(credential => credential.state === "ready").flatMap((credential): DuoPlatformCredential[] => {
+      return access(() => read().record.credentials.filter(credential => credential.state === "ready").flatMap((credential): DuoPlatformCredential[] => {
         const authenticator = credential.authenticator;
         if (authenticator === undefined) throw new Error("duo-authenticator-required");
         if (authenticator.transport !== "internal") return [];
         validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
         return [{ credentialId: credential.credentialId, rpId: "duosecurity.com", ...authenticator,
           transport: "internal", privateKeyPkcs8: credential.privateKeyPkcs8, signCount: owner.readDuoCounter(credential.credentialId) }];
-      });
+      }));
     },
     read() {
       const { revision, record } = read();

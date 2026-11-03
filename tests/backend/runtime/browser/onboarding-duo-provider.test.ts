@@ -218,6 +218,7 @@ describe("draft Duo provider", () => {
         await w.send("persist", { credentialId: "cHVibGljLWlk", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
           transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
         await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId: randomUUID() });
+        await new Promise<void>(resolve => setImmediate(resolve));
         w.rejectPoll(method, new Error("synthetic target closed before context event"));
         await retained;
         if (proof === "missing-event") w.withholdCloseEvent();
