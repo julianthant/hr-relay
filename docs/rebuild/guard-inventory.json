@@ -680,6 +680,12 @@
   },
   "repositoryChecks": [
     {
+      "name": "span-task-namespace-parity",
+      "command": "npx vitest run --project unit tests/models/events/types.test.ts",
+      "owner": "docs/rebuild/reference/task-contract.md",
+      "invariant": "Reason: the persisted span task grammar omitted the existing workbooks namespace and rejected native workbook task observations. Require identical canonical and span task grammars, exercise every browser/service namespace, and refuse invalid namespaces and operations in both."
+    },
+    {
       "name": "completed-restore-custody",
       "command": "npm test -- tests/backend/storage/sqlite/offline-restore.profile-continuity.integration.test.ts",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",

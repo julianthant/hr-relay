@@ -25,12 +25,15 @@ describe("the descriptor prose the modal draws", () => {
     }
   });
 
-  it("has exactly one start method kind, which is why no method tabs are drawn", () => {
+  it("exposes the I-9 PDF start without giving a workflow two start methods", () => {
 
     assert.deepEqual(
       WORKFLOW_DESCRIPTORS.filter((descriptor) => descriptor.surfaces.uploadRun !== undefined).map((d) => d.id),
-      [],
+      ["i9-check-start"],
     );
+    for (const descriptor of WORKFLOW_DESCRIPTORS) {
+      assert.ok(Number(descriptor.surfaces.uploadRun !== undefined) + Number(descriptor.surfaces.inputRun !== undefined) <= 1, descriptor.id);
+    }
   });
 });
 
@@ -67,15 +70,17 @@ describe("workflow descriptor registry", () => {
       "person-lookup",
       "separations",
       "onboarding",
+      "i9-check-start",
       "crm-doc-download",
     ]);
     expect(WORKFLOW_MODULES.map(({ descriptor }) => String(descriptor.id))).toEqual([
       "person-lookup",
       "separations",
       "onboarding",
+      "i9-check-start",
       "crm-doc-download",
     ]);
-    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations", "onboarding", "crm-doc-download"]);
+    expect(Object.keys(SERVER_REGISTRY)).toEqual(["person-lookup", "separations", "onboarding", "i9-check-start", "crm-doc-download"]);
     for (const descriptor of STEP_PROOF_DESCRIPTORS) {
       expect(() => workflowModuleOf(descriptor.id)).toThrow(/not registered/u);
     }

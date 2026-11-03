@@ -17,7 +17,7 @@ describe_m0("frontend workflow catalog", () => {
 
 describe_m1("legacy workflow previews", () => {
   it_m1("covers all 15 permanent workflows with distinct contracts", () => {
-    expect_m1(MOCK_WORKFLOWS_m1.map(flow => flow.id).sort()).toEqual(["crm-doc-download", "emergency-contact", "i9-check", "i9-lookup", "kronos-pay-rule", "oath-signature", "oath-upload", "ocr", "old-kronos-reports", "onbase", "onboarding", "person-lookup", "separations", "sharepoint-download", "work-study"].sort());
+    expect_m1(MOCK_WORKFLOWS_m1.map(flow => flow.id).sort()).toEqual(["crm-doc-download", "emergency-contact", "i9-check-start", "i9-lookup", "kronos-pay-rule", "oath-signature", "oath-upload", "ocr", "old-kronos-reports", "onbase", "onboarding", "person-lookup", "separations", "sharepoint-download", "work-study"].sort());
     expect_m1(mockWorkflow_m1("i9-lookup").methods).toEqual(["delegated"]);
     expect_m1(mockWorkflow_m1("sharepoint-download").methods).toEqual(["roster"]);
     expect_m1(mockWorkflow_m1("oath-signature").methods).toEqual(["typed", "pdf"]);
@@ -32,7 +32,7 @@ describe_m1("legacy workflow previews", () => {
     ["oath-upload", ["wait-approval", "wait-signatures", "servicenow-auth", "open-hr-form", "fill-form", "submit"]],
     ["emergency-contact", ["navigation", "fill-form", "save"]],
     ["onbase", ["authenticate", "prepare-import", "fill-keywords", "import"]],
-    ["i9-check", ["person-match", "employment-dates", "roster-match"]],
+    ["i9-check-start", ["person-match", "employment-dates", "roster-match"]],
     ["crm-doc-download", ["search-record", "download", "archive"]],
     ["sharepoint-download", ["navigate", "download"]],
     ["old-kronos-reports", ["searching", "extracting", "downloading"]],

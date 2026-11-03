@@ -1,5 +1,5 @@
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
-import { I9CheckCanonicalInput, I9CheckInput } from "../../models/workflows/i9-check/input.js";
+import { I9CheckCanonicalInput, I9CheckInput, i9CheckMatchKey } from "../../models/workflows/i9-check/input.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { i9CheckPersonLookupDefinition } from "./steps/person-lookup/step.js";
@@ -24,7 +24,7 @@ export const i9CheckWorkflow = defineWorkflow({
   input: I9CheckInput,
   canonicalInput: I9CheckCanonicalInput,
   inputSubject: "name",
-  identity: { matchKey: input => `${input.ocrRunId}:${input.recordId}` },
+  identity: { matchKey: i9CheckMatchKey },
   presentation: { title: input => input.person.name, subtitle: () => "I-9 retention check" },
   surface: { shape: "operation-member" },
   surfaces: {},

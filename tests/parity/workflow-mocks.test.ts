@@ -1,3 +1,4 @@
+import { workflowReferenceId } from "./helpers/workflow-reference-id.js";
 import { capturePresentationReference } from "./helpers/presentation-reference.js";
 import { installFrozenMonotonic } from "./helpers/app-driver.js";
 
@@ -149,7 +150,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         if (flow.methods[0] === "typed") await dialog.getByRole("textbox", { name: flow.inputLabel, exact: true }).fill(flow.example);
         if (flow.methods[0] === "pdf") await dialog.locator('input[type="file"]').setInputFiles(pdf);
         await expect(dialog.getByRole("button", { name: "Continue", exact: true })).toBeEnabled();
-        await attachScreenshotFile(page, info, `input-${flow.id}-${theme.attribute}-${width}.png`);
+        await attachScreenshotFile(page, info, `input-${workflowReferenceId(flow.id)}-${theme.attribute}-${width}.png`);
         await advance(dialog);
         await expect(dialog.getByRole("region", { name: "Options", exact: true })).toBeVisible();
         await expect(dialog.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
@@ -216,7 +217,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
         await logs.getByRole("button", { name: "Rerun", exact: true }).click();
         const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
         await expect(rerun).toBeVisible();
-        await attachScreenshotFile(page, info, `rerun-${flow.id}.png`);
+        await attachScreenshotFile(page, info, `rerun-${workflowReferenceId(flow.id)}.png`);
         await expect(rerun.getByRole("list", { name: "Run configuration path" }).getByRole("listitem")).toHaveText([/^1\s*Steps$/u, /^2\s*Values$/u, /^3\s*Options$/u, /^4\s*Confirm$/u]);
         await expect(rerun.getByRole("complementary", { name: "Source run", exact: true })).toHaveCount(0);
         if (optional !== undefined) await expect(rerun.getByRole("checkbox", { name: optional.label, exact: true })).not.toBeChecked();
