@@ -140,7 +140,7 @@ support all three canonical forms. The child-only production definitions in
 `src/workflows/ocr/` and `src/workflows/ocr-page/` compose full-document rendering, subscription or
 manual page readings and all-settled page accounting. Each form declares its lookup in the form
 registry: Emergency Contact and Oath use Person Lookup; I-9 uses the I-9 official-signer lookup.
-The generic descriptor has two sequential lookup edges; the form's unused edge emits an explicit
+The generic descriptor has two lookup edges derived from the review; the form's unused edge emits an explicit
 empty join. Requests deduplicate identical search inputs while retaining every contributing record
 ID. Person and signer results retain their distinct output schemas. Neither grants approval.
 Page children are hidden unless failed; lookup children are inline. Record-group lineage remains
@@ -163,7 +163,8 @@ The native OCR repository stores them in `ocr_source_uploads`, `ocr_review_revis
 the existing content-addressed writer. Source-page reads admit the current person, run, revision
 and original page before preparing a verified byte lease, then revalidate after preparation.
 
-The final OCR result checkpoint publishes revision 1 with the actual run identity. Changed authenticated child outcomes publish
+The final OCR result checkpoint publishes revision 1 with the actual run identity. OCR rebuilds
+its derived review and result tasks when it resumes. Changed authenticated child outcomes publish
 a later checkpoint-origin revision with all records derived from that one seed; corrections from
 the previous seed do not carry across. Unchanged child evidence leaves the current revision and
 its corrections intact. Machine rebuilds refuse after an approval snapshot exists.

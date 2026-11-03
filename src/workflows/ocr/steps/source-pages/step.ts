@@ -49,7 +49,7 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
     bind: ({ outputs }) => outputs["read-source-pages"].pages,
     deriveChildItemId: (_input, context) => context.canonicalItemId,
   });
-  const review = task({ id: "build-review", contract: ReadOcrReviewSeed, replay: "checkpoint" }, [source, pages],
+  const review = task({ id: "build-review", contract: ReadOcrReviewSeed, replay: "always-rerun" }, [source, pages],
     ({ input, outputs }) => ({
       ...(input.sourceRunId === undefined ? {} : { sourceRunId: input.sourceRunId }), roster: input.roster, formType: input.formType,
       manifest: outputs["read-source-pages"].manifest, readingId: input.readingId, outcomes: [...outputs["read-pages"]]
@@ -66,11 +66,11 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
     id: "lookup-signers", label: "Look up official signers",
     target: { id: WorkflowIdSchema.parse("i9-lookup"), input: I9LookupInputSchema, result: I9SignerOutputSchema },
     edgeId: "ocr-signers", cardinality: "many", await: "terminal", join: "all-settled", policy: childPolicy
-  }, [review, identities], {
+  }, [review], {
     bind: ({ outputs }) => ocrSignerLookupRequests(outputs["build-review"]).map(request => request.input),
     deriveChildItemId: (_input, context) => context.canonicalItemId,
   });
-  const completed = task({ id: "read-result", contract: ReadOcrResult, replay: "checkpoint" }, [review, identities, signers],
+  const completed = task({ id: "read-result", contract: ReadOcrResult, replay: "always-rerun" }, [review, identities, signers],
     ({ outputs }) => ({ review: outputs["build-review"], outcomes: [...outputs["lookup-identities"], ...outputs["lookup-signers"]] }));
   const approval = gate({ id: "approve-records", label: "Approve selected records", resolvedBy: "operator",
     result: OcrApprovalReferenceSchema, when: { kind: "equals", of: { from: "input", path: "approval" }, value: "release" } }, [completed]);
