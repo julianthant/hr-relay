@@ -374,7 +374,7 @@ function authenticateObservationOrigins(repositories: AuthorityRepositories, des
     if (last === undefined) throw new Error("delegation-observation-page-unavailable");
     after = last.cursor;
   }
-  const sourceCheckpoints = new Map<string, readonly RunCheckpointRecord[]>();
+  const checkpointsByProducer = new Map<string, readonly RunCheckpointRecord[]>();
   for (const entry of checkpoint.observationOrigins) {
     const { origin } = entry;
     if (!observed.some(event => event.points.some(point => (point.origins ?? []).some(source =>
@@ -389,10 +389,10 @@ function authenticateObservationOrigins(repositories: AuthorityRepositories, des
       || producer.envelope.workflow !== checkpoint.workflowId || producer.envelope.itemId !== checkpoint.itemId
       || producer.envelope.attempt !== origin.attempt || producer.envelope.contractFingerprint !== descriptor.contractFingerprint) throw new Error("delegation-observation-producer-mismatch");
     const key = canonicalJsonStringify([checkpoint.workflowId, checkpoint.itemId, origin.nodeId, origin.attempt]);
-    let candidates = sourceCheckpoints.get(key);
+    let candidates = checkpointsByProducer.get(key);
     if (candidates === undefined) {
       candidates = repositories.runCheckpoints.listByAttempt(checkpoint.workflowId, checkpoint.itemId, origin.nodeId, origin.attempt);
-      sourceCheckpoints.set(key, candidates);
+      checkpointsByProducer.set(key, candidates);
     }
     if (!candidates.some(candidate => candidate.runId === origin.runId && candidate.contractFingerprint === descriptor.contractFingerprint
       && candidate.output.schemaHash === deriveSchemaHash(source.uses.output, "output")
