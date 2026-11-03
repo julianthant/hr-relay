@@ -1,3 +1,8 @@
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
+import { TimelineEventRecordSchema, type TimelineEventRecord } from "../../../src/models/events/timeline.js";
+import { createNoteTimelineWriter } from "../../../src/backend/storage/events/note-timeline-writer.js";
+import { runQueuedSpanEvent } from "../../../src/backend/runs/commands/run-queued-span.js";
+import { ActorIdSchema } from "../../../src/rules/identity/ids.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { redactEvidenceLeaf } from "../../../src/models/trust/evidence-classification.js";
 import { GateIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
@@ -53,7 +58,10 @@ afterEach(async () => {
 });
 
 async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate") {
-  const h = await world.createHarness(undefined, { descriptors: [descriptor] });
+  const h = await world.createHarness(undefined, { descriptors: [descriptor], publishQueued: (run, publication) => {
+    assert.ok(publication);
+    createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
+  } });
   const profile = world.profiles.at(-1); assert.ok(profile);
   const profilePath = profile.path;
   const repository = h.database.authority.workbooks;
@@ -129,6 +137,12 @@ async function fixture(match: "unique" | "missing" | "duplicate" = "duplicate") 
     snapshots: () => snapshots };
 }
 
+function foreignNative(record: TimelineEventRecord, runId: string) {
+  assert.ok(record.payload.kind === "span");
+  return TimelineEventRecordSchema.parse({ ...record, scope: { kind: "run", runId },
+    payload: { kind: "span", event: { ...record.payload.event, runId } } });
+}
+
 type ExecutionFault = "gate-missing" | "legal-name" | "lived-name" | "checkpoint" | "command" | "audit-missing" | "audit-changed" | "native-missing" | "native-changed";
 
 async function executionFixture() {
@@ -150,6 +164,7 @@ async function executionFixture() {
   managers.push(manager);
   const execution = canonicalChildExecution({ descriptor, stores: taskStoreRegistry, authority: f.database,
     lifecycle: testRunLifecycle(f.database, f.clock), sessions: manager, emitter: recordingTimelineEmitter(f.database, f.clock).emitter,
+    taskNotes: createNoteTimelineWriter({ repository: f.database.authority.timelineEvents, clock: f.clock }),
     clock: f.clock, ids: { uuid: randomUUID }, scheduler: new ManualScheduler(f.clock), taskDeadlineMs: 60_000,
     log: recordingLogger().log }, f.database, f.profilePath,
     id => id === descriptor.id ? descriptor : id === "i9-lookup" ? childWorkflowModuleOf("onboarding", "i9-lookup").descriptor : undefined);
@@ -198,6 +213,73 @@ async function executionFixture() {
 }
 
 describe("Onboarding captured roster admission and row choice", () => {
+  it("anchors pending, parked and selected states to their own retained native producers", async () => {
+    const f = await fixture("missing"), queued = f.start();
+    const pending = f.section(queued).referenceChoices?.[0]; assert.ok(pending);
+    const birth = f.database.authority.timelineEvents.get(pending.native.eventId); assert.ok(birth);
+    assert.equal(birth.payload.kind === "span" && birth.payload.event.t, "run.queued");
+    const repositories = f.database.authority;
+    const laterRecord = TimelineEventRecordSchema.parse({ ...birth, eventId: randomUUID(), cursor: birth.cursor + 1 });
+    assert.throws(() => buildRunWorkbookSection({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
+      page: input => [...repositories.timelineEvents.page(input), laterRecord] } }, queued));
+    const recordedLater = TimelineEventRecordSchema.parse({ ...birth, recordedAt: "2027-01-01T00:00:00.000Z" });
+    assert.deepEqual(buildRunWorkbookSection({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
+      page: input => repositories.timelineEvents.page(input).map(record => record.eventId === birth.eventId ? recordedLater : record) } }, queued)
+      .referenceChoices?.[0]?.native, pending.native);
+    const parked = f.park(queued);
+    const held = f.section(parked).referenceChoices?.[0]; assert.ok(held);
+    const opened = f.database.authority.timelineEvents.get(held.native.eventId); assert.ok(opened);
+    assert.equal(opened.payload.kind === "span" && opened.payload.event.t, "gate.opened");
+    const openedLater = TimelineEventRecordSchema.parse({ ...opened, recordedAt: "2027-01-01T00:00:00.000Z" });
+    assert.deepEqual(buildRunWorkbookSection({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
+      get: id => id === opened.eventId ? openedLater : repositories.timelineEvents.get(id) } }, parked)
+      .referenceChoices?.[0]?.native, held.native);
+    for (const [run, anchor] of [[queued, birth], [parked, opened]] as const) {
+      for (const changed of [undefined, foreignNative(anchor, randomUUID())]) {
+        const repositories = f.database.authority;
+        const timelineEvents = { ...repositories.timelineEvents,
+          get: (id: string) => id === anchor.eventId ? changed : repositories.timelineEvents.get(id),
+          page: (input: Parameters<typeof repositories.timelineEvents.page>[0]) => repositories.timelineEvents.page(input)
+            .flatMap(record => record.eventId === anchor.eventId ? changed === undefined ? [] : [changed] : [record]) };
+        assert.throws(() => buildRunWorkbookSection({ ...repositories, gateResults: { ...repositories.gateResults,
+          get: () => undefined }, timelineEvents }, run));
+      }
+    }
+    f.edit(workbook => { workbook.sheets[0].rows[1].cells[0].value = f.key; });
+    assert.deepEqual(f.section(parked).referenceChoices?.[0]?.native, held.native);
+    assert.equal(f.kernel.execute(f.choice(parked)).state, "applied");
+    const selected = f.section(parked).referenceChoices?.[0]; assert.ok(selected);
+    const resolved = f.database.authority.timelineEvents.get(selected.native.eventId); assert.ok(resolved);
+    assert.equal(resolved.payload.kind === "span" && resolved.payload.event.t, "gate.resolved");
+    for (const changed of [undefined, foreignNative(resolved, randomUUID())]) {
+      assert.throws(() => buildRunWorkbookSection({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
+        get: id => id === resolved.eventId ? changed : repositories.timelineEvents.get(id) } },
+      repositories.runs.get(queued.envelope.runId)!));
+    }
+  });
+
+  it("uses the native terminal event for an unresolved cancelled run and permits a later recording clock", async () => {
+    const f = await fixture("missing"), run = f.start();
+    assert.equal(f.kernel.execute({ commandId: world.nextCommandId(), requestedAt: f.clock.now().toISOString(),
+      requestedBy: "local-operator", source: "dashboard", family: "run", type: "cancel",
+      target: { runId: run.envelope.runId, expectedVersion: run.version } }).state, "applied");
+    const terminal = f.database.authority.runs.get(run.envelope.runId); assert.ok(terminal && terminal.lifecycle.state === "terminal");
+    const choice = f.section(terminal).referenceChoices?.[0]; assert.ok(choice);
+    const repositories = f.database.authority, event = repositories.timelineEvents.get(choice.native.eventId); assert.ok(event);
+    assert.equal(event.payload.kind === "span" && event.payload.event.t, "span.ended");
+    const recordedLater = TimelineEventRecordSchema.parse({ ...event, recordedAt: "2027-01-01T00:00:00.000Z" });
+    assert.deepEqual(buildRunWorkbookSection({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
+      page: input => repositories.timelineEvents.page(input).map(record => record.eventId === event.eventId ? recordedLater : record) } }, terminal)
+      .referenceChoices?.[0]?.native, choice.native);
+    for (const changed of [undefined, foreignNative(event, randomUUID())]) {
+      assert.throws(() => buildRunWorkbookSection({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
+        page: input => repositories.timelineEvents.page(input).flatMap(record => record.eventId === event.eventId
+          ? changed === undefined ? [] : [changed] : [record]) } }, terminal));
+    }
+    const repeated = TimelineEventRecordSchema.parse({ ...event, eventId: randomUUID(), cursor: event.cursor + 1 });
+    assert.throws(() => buildRunWorkbookSection({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
+      page: input => [...repositories.timelineEvents.page(input), repeated] } }, terminal));
+  });
   it("binds the default or selected workbook exactly once and retains the immutable typed legal/lived row", async () => {
     const f = await fixture("unique"), run = f.start();
     assert.deepEqual(run.input.parsed.protectedBindings, []);
@@ -264,7 +346,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(current.lifecycle.state, "queued"); assert.equal(current.version, run.version + 1);
     assert.equal(canonicalJsonStringify(current.input), original);
     const gate = f.database.authority.gateResults.get(`${run.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(gate);
-    const chosen = authenticateOnboardingRosterChoice(f.database.authority, current, gate);
+    const { row: chosen } = authenticateOnboardingRosterChoice(f.database.authority, current, gate);
     assert.equal(chosen.references.legalName.firstName, "Chosen"); assert.equal(chosen.references.livedName?.firstName, "Lived");
     assert.equal(chosen.binding.sheetId, "archive"); assert.equal(chosen.binding.workbookVersion, command.target.workbookVersion);
     const hirePlan = descriptorRuntimeNodes(descriptor).find(node => node.id === "hire-plan"); assert.ok(hirePlan?.kind === "task");
@@ -272,7 +354,7 @@ describe("Onboarding captured roster admission and row choice", () => {
       outputs: { "crm-source": CrmReadHireData.example, "roster-choice": { decision: "selected", row: chosen } } }));
     assert.deepEqual(bound.roster, chosen);
     f.edit(workbook => { workbook.sheets[1].rows[1].cells[1].value = "Later"; });
-    assert.deepEqual(authenticateOnboardingRosterChoice(f.database.authority, current, gate), chosen);
+    assert.deepEqual(authenticateOnboardingRosterChoice(f.database.authority, current, gate).row, chosen);
     assert.equal(f.section(current).referenceChoices?.[0]?.resolution.state, "resolved");
     assert.equal(f.kernel.execute({ ...command, commandId: world.nextCommandId() }).state, "rejected");
     assert.deepEqual(f.repository.runOperations(run.envelope.runId), []);
@@ -338,7 +420,7 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.equal(f.kernel.execute(actual).state, "applied");
     const gate = f.database.authority.gateResults.get(`${run.envelope.runId}:${ONBOARDING_ROSTER_GATE_ID}`); assert.ok(gate);
     const current = f.database.authority.runs.get(run.envelope.runId); assert.ok(current);
-    assert.equal(authenticateOnboardingRosterChoice(f.database.authority, current, gate).binding.rowId, "people-person");
+    assert.equal(authenticateOnboardingRosterChoice(f.database.authority, current, gate).row.binding.rowId, "people-person");
     const choice = OnboardingRosterChoiceSchema.parse(gate.result.value);
     const parsed = choice.row;
     const tampered = { ...gate, result: { ...gate.result, value: { ...choice, row: { ...parsed, binding: { ...parsed.binding, rowId: "archive-person" } } } } };
@@ -398,7 +480,9 @@ describe("Onboarding captured roster admission and row choice", () => {
     assert.ok(executed.run?.lifecycle.state === "terminal" && executed.run.lifecycle.outcome === "done",
       JSON.stringify({ lifecycle: executed.run?.lifecycle.state, outcomes: executed.outcomes.map(value => value.state),
         failures: [root, ...f.database.authority.runs.listChildren(root.envelope.runId)].flatMap(run =>
-          f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId }) => ({ code, nodeId }))) }));
+          f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId, summary, debug }) => ({ code, nodeId,
+            authority: summary.match(/\b(?:delegation|run-continuation|checkpoint|worker)[a-z0-9-]+\b/g),
+            frames: debug?.stack.match(/src\/[a-zA-Z0-9/_.-]+:\d+:\d+/g) }))) }));
     const result = f.database.authority.runResults.get(root.envelope.runId); assert.ok(result);
     const output = OnboardingResultSchema.parse(result.result.value);
     assert.equal(output.plan.employee.firstName, "Chosen"); assert.equal(output.plan.employee.preferredFirstName, "Lived");
@@ -453,7 +537,16 @@ describe("Onboarding captured roster admission and row choice", () => {
     const recoveredId = appliedRunIds(recoveredResult).find(id => id !== root.envelope.runId); assert.ok(recoveredId);
     const recovered = f.database.authority.runs.get(recoveredId); assert.ok(recovered?.envelope.continuation);
     assert.ok(recovered.envelope.continuation.gates.some(gate => gate.runId === root.envelope.runId && gate.nodeId === ONBOARDING_ROSTER_GATE_ID));
-    assert.equal(f.section(recovered).referenceChoices?.[0]?.resolution.state, "resolved");
+    const carried = f.section(recovered).referenceChoices?.[0]; assert.ok(carried);
+    assert.equal(carried.resolution.state, "resolved"); assert.equal(carried.native.runId, recoveredId);
+    const issuance = f.database.authority.timelineEvents.get(carried.native.eventId); assert.ok(issuance);
+    assert.equal(issuance.payload.kind === "span" && issuance.payload.event.t, "run.queued");
+    for (const changed of [undefined, foreignNative(issuance, root.envelope.runId)]) {
+      const repositories = f.database.authority;
+      assert.throws(() => buildRunWorkbookSection({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
+        page: input => repositories.timelineEvents.page(input).flatMap(record => record.eventId === issuance.eventId
+          ? changed === undefined ? [] : [changed] : [record]) } }, recovered));
+    }
     f.edit(workbook => { workbook.sheets[0].rows[1].cells[1].value = "Later"; });
     if (tamper) {
       const hooks = f.calls.length, browsers = f.sessions.opens();
@@ -474,7 +567,9 @@ describe("Onboarding captured roster admission and row choice", () => {
       assert.ok(completed.run?.lifecycle.state === "terminal" && completed.run.lifecycle.outcome === "done",
         JSON.stringify({ lifecycle: completed.run?.lifecycle.state, outcomes: completed.outcomes.map(value => value.state),
           failures: [recovered, ...f.database.authority.runs.listChildren(recoveredId)].flatMap(run =>
-            f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId }) => ({ code, nodeId }))) }));
+            f.database.authority.failures.listByRun(run.envelope.runId).map(({ code, nodeId, summary, debug }) => ({ code, nodeId,
+            authority: summary.match(/\b(?:delegation|run-continuation|checkpoint|worker)[a-z0-9-]+\b/g),
+            frames: debug?.stack.match(/src\/[a-zA-Z0-9/_.-]+:\d+:\d+/g) }))) }));
       const result = f.database.authority.runResults.get(recoveredId); assert.ok(result);
       assert.equal(OnboardingResultSchema.parse(result.result.value).plan.employee.firstName, "Fixture");
       assert.equal(f.calls.filter(call => call.system === "i9").length, 1);

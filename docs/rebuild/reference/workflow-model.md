@@ -66,7 +66,11 @@ immutable during execution.
 
 A missing or ambiguous match parks at `roster-choice` before the CRM read. The `workbook-writes`
 section serves separate `referenceChoices` with exact reference identity, typed field/value entries,
-and an available, unavailable or resolved state. A missing key has no candidates. Refresh may show
+and an available, unavailable or resolved state. Every choice carries an own-run `native` event
+anchor: queued issuance before review, the parked gate's opening during review, the authenticated
+resolution after selection, or the terminal run span when unresolved. A continued selection uses the
+current run's queued issuance after authenticating the original choice and continuation; it does not
+claim another human selection. Missing, foreign or ambiguous native evidence refuses projection. A missing key has no candidates. Refresh may show
 current exact-key matches only in the original worksheet set. `resolve-workbook-reference-row`
 accepts sheet and row identity, rechecks the live revision, type, key and worksheet membership, and
 rebuilds typed values into a durable `{ decision: "selected", row }` gate result before the canonical

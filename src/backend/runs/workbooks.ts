@@ -1,8 +1,13 @@
+import type { TimelineEventRecord } from "../../models/events/timeline.js";
+import { readTimelineRecords } from "../storage/events/timeline-reader.js";
+import { authenticateRootRun } from "../storage/sqlite/delegation-root-authority.js";
+import { validateNativeLifecycleRequest } from "../storage/sqlite/native-lifecycle-request.js";
+import { CanonicalWorkerTransitionRequestSchema } from "../storage/sqlite/run-store-contracts.js";
 import { parseCanonicalInputSnapshot } from "../../models/workflow/canonical-input.js";
 import { z } from "zod";
 import type { AuthorityDatabase, AuthorityRepositories } from "../storage/sqlite/authority-database.js";
 import { RunWorkbookReferenceSchema, type WorkbookOperationReceipt, type WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
-import { RunWorkbookWritesWireSchema, type RunWorkbookWritesWire } from "../../models/dashboard/run-detail.js";
+import { NativeRunEventWireSchema, RunWorkbookWritesWireSchema, type RunWorkbookWritesWire } from "../../models/dashboard/run-detail.js";
 import { WorkbookReferenceWriteSchema } from "../../models/processing/workbooks/read-result.js";
 import { schemaBoundValueSchema, deriveSchemaHash, type SchemaBoundCanonicalValue } from "../../models/validation/schema-bound-value.js";
 import type { RunRecord } from "../../models/run/record.js";
@@ -132,6 +137,72 @@ function onboardingReference(run: RunRecord) {
   return { roster, reference, binding };
 }
 
+function referenceNative(run: RunRecord, record: TimelineEventRecord | undefined) {
+  const event = record?.payload.kind === "span" ? record.payload.event : undefined;
+  if (record === undefined || record.source.kind !== "native" || record.scope.kind !== "run"
+    || record.scope.runId !== run.envelope.runId || record.workflow !== run.envelope.workflow
+    || event === undefined || !("runId" in event) || event.runId !== run.envelope.runId
+    || event.workflow !== run.envelope.workflow || event.traceId !== run.envelope.traceId
+    || event.attempt > run.envelope.attempt || event.spanPath !== run.envelope.traceId
+    || record.occurredAt !== event.ts) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  return NativeRunEventWireSchema.parse({ eventId: record.eventId, order: record.cursor, runId: event.runId,
+    attempt: event.attempt, traceId: event.traceId, spanPath: event.spanPath });
+}
+
+function queuedReferenceNative(repositories: AuthorityRepositories, run: RunRecord) {
+  const authority = authenticateRootRun(repositories, run);
+  const records = readTimelineRecords(repositories.timelineEvents, 0, run.envelope.runId).records
+    .filter(record => record.payload.kind === "span" && record.payload.event.t === "run.queued");
+  const record = records[0];
+  const event = record?.payload.kind === "span" && record.payload.event.t === "run.queued" ? record.payload.event : undefined;
+  const id = deriveStableUuid("timeline-span-singleton", canonicalJsonStringify({ scope: { kind: "run", runId: run.envelope.runId },
+    attempt: run.envelope.attempt, spanPath: run.envelope.traceId, type: "run.queued" }));
+  if (records.length !== 1 || record?.eventId !== id || event === undefined || event.ts !== run.envelope.enqueuedAt
+    || event.attempt !== run.envelope.attempt || event.itemId !== run.envelope.itemId
+    || event.actorId !== authority.command.requestedBy || event.descriptorVersion !== run.envelope.descriptorVersion
+    || event.contractFingerprint !== run.envelope.contractFingerprint || event.configFingerprint !== run.envelope.configFingerprint
+    || event.configSnapshotId !== run.envelope.configSnapshotId
+    || canonicalJsonStringify(event.resolvedInstance) !== canonicalJsonStringify(run.envelope.resolvedInstance)) {
+    throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  }
+  return referenceNative(run, record);
+}
+
+function pendingReferenceNative(repositories: AuthorityRepositories, run: RunRecord) {
+  if (run.lifecycle.state === "parked-gate" && run.lifecycle.gateId === ONBOARDING_ROSTER_GATE_ID) {
+    const lifecycle = run.lifecycle;
+    const parked = repositories.lifecycleJournal.findGatePark(run.envelope.runId, lifecycle.gateId, run.version);
+    if (parked === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+    validateNativeLifecycleRequest(parked);
+    const audit = repositories.lifecycleJournal.findAuditByCommand(parked.commandId);
+    const request = CanonicalWorkerTransitionRequestSchema.parse(parked.request);
+    if (parked.operation !== "worker-transition" || audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
+      || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(parked) || audit.result.kind !== "run"
+      || audit.result.runId !== run.envelope.runId || audit.result.appliedVersion > run.version
+      || request.runId !== run.envelope.runId || Number(request.claim.claimGeneration) !== Number(run.claimGeneration)
+      || canonicalJsonStringify(request.lifecycle) !== canonicalJsonStringify(lifecycle)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+    const record = repositories.timelineEvents.get(lifecycleCommandId("timeline-lifecycle", parked.commandId));
+    const event = record?.payload.kind === "span" ? record.payload.event : undefined;
+    if (event?.t !== "gate.opened" || event.gate !== lifecycle.gateId || event.ts !== lifecycle.parkedAt) {
+      throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+    }
+    return referenceNative(run, record);
+  }
+  if (run.lifecycle.state === "terminal") {
+    const lifecycle = run.lifecycle;
+    const records = readTimelineRecords(repositories.timelineEvents, 0, run.envelope.runId).records
+      .filter(record => record.payload.kind === "span" && record.payload.event.t === "span.ended" && record.payload.event.kind === "run");
+    const record = records[0];
+    const event = record?.payload.kind === "span" ? record.payload.event : undefined;
+    if (records.length !== 1 || event?.t !== "span.ended" || event.kind !== "run" || event.outcome !== lifecycle.outcome
+      || event.ts !== lifecycle.endedAt || lifecycle.outcome === "failed" && event.failureId !== lifecycle.failureId) {
+      throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+    }
+    return referenceNative(run, record);
+  }
+  return queuedReferenceNative(repositories, run);
+}
+
 export function authenticateOnboardingRosterChoice(repositories: AuthorityRepositories, run: RunRecord, gate: GateResultRecord) {
   const { roster, reference, binding } = onboardingReference(run);
   const row = schemaBoundValueSchema(OnboardingRosterChoiceSchema, deriveSchemaHash(OnboardingRosterChoiceSchema, "output")).parse(gate.result).value.row;
@@ -161,7 +232,7 @@ export function authenticateOnboardingRosterChoice(repositories: AuthorityReposi
     || audit?.result.state !== "applied" || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)) {
     throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   }
-  return row;
+  return { row, native: referenceNative(run, recorded) };
 }
 
 export function authenticateOnboardingRosterExecution(repositories: AuthorityRepositories, run: RunRecord) {
@@ -182,7 +253,7 @@ export function authenticateOnboardingRosterExecution(repositories: AuthorityRep
     || canonicalJsonStringify(source.input.workbookReferences) !== canonicalJsonStringify(run.input.workbookReferences)) {
     throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   }
-  return { row: authenticateOnboardingRosterChoice(repositories, source, gate), gate };
+  return { ...authenticateOnboardingRosterChoice(repositories, source, gate), gate };
 }
 
 function buildReferenceChoices(repositories: AuthorityRepositories, run: RunRecord) {
@@ -205,11 +276,13 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
     ];
     const sheet = reference.value.snapshot.worksheets.find(sheet => sheet.sheetId === row.binding.sheetId);
     if (sheet === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
-    return [{ ...base, resolution: { state: "resolved", workbookVersion: row.binding.workbookVersion,
+    return [{ ...base, native: choice.gate.runId === run.envelope.runId ? choice.native : queuedReferenceNative(repositories, run),
+      resolution: { state: "resolved", workbookVersion: row.binding.workbookVersion,
       selected: { sheetId: row.binding.sheetId, rowId: row.binding.rowId, label: `${sheet.name} · ${legalName.lastName}, ${legalName.firstName}`, values } } }];
   }
+  const native = pendingReferenceNative(repositories, run);
   if (run.lifecycle.state !== "parked-gate" || run.lifecycle.gateId !== ONBOARDING_ROSTER_GATE_ID) {
-    return [{ ...base, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
+    return [{ ...base, native, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
   }
   const live = liveCandidates(repositories, reference.value, binding.rowKey.email);
   const candidates = live.candidates.map(match => {
@@ -217,11 +290,11 @@ function buildReferenceChoices(repositories: AuthorityRepositories, run: RunReco
     return { sheetId: match.sheetId, rowId: match.rowId, label: match.label,
       values: reference.value.request.fields.map(fieldId => ({ fieldId, value: match.values[fieldId] })) };
   });
-  if (candidates.length === 0) return [{ ...base, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
+  if (candidates.length === 0) return [{ ...base, native, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } }];
   const target = { runId: run.envelope.runId, expectedVersion: run.version, libraryId: binding.workbookId,
     typeId: binding.workbookType, referenceDigest: reference.digest, key: binding.rowKey.email,
     workbookVersion: live.version, gateId: ONBOARDING_ROSTER_GATE_ID };
-  return [{ ...base, resolution: { state: "available", target, candidates, action: {
+  return [{ ...base, native, resolution: { state: "available", target, candidates, action: {
     kind: "command", key: "resolve-workbook-reference-row", command: "resolve-workbook-reference-row", label: "Choose a roster row",
     intent: "primary", icon: "resolve", placement: ["review"], expectedVersion: run.version, referenceTarget: target,
     confirm: { title: "Use this roster row", body: "Relay checks the current key, worksheet and revision, then retains this row's name values for the run.", confirmLabel: "Use row", tone: "neutral" },

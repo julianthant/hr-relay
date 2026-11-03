@@ -39,6 +39,7 @@ type AuthorityTransactionWrap = <Result>(
 ) => Result;
 
 interface HarnessOptions {
+  readonly publishQueued?: ConstructorParameters<typeof RunRecordService>[0]["publishQueued"];
   readonly profile?: BoundProfileStorageFixture;
   readonly prepareAssistantModelPreference?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["prepareAssistantModelPreference"];
   readonly failureResolution?: import("../../../../src/backend/runs/commands/command-kernel.js").CommandKernelDependencies["failureResolution"];
@@ -207,7 +208,7 @@ export function createCommandKernelTestWorld(profileFixture: () => Promise<Bound
       ...(options.profile === undefined ? {} : { authorityProfileId: options.profile.admission.profileBinding.profileId }),
       ...(options.prepareAssistantModelPreference === undefined ? {} : { prepareAssistantModelPreference: options.prepareAssistantModelPreference }),
       ...(options.failureResolution === undefined ? {} : { failureResolution: options.failureResolution }),
-      lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: () => {} }),
+      lifecycle: new RunRecordService({ database: database, clock: clock, ids: sequentialIdFactory("e"), publishQueued: options.publishQueued ?? (() => {}) }),
       appVersion: "0.1.0",
       configIdentity: { configFingerprint: database.authority.runtimeConfig.get()!.configFingerprint, configSnapshotId: database.authority.runtimeConfig.get()!.configSnapshotId },
       intakeParser: UNWIRED_INTAKE_PARSER,
