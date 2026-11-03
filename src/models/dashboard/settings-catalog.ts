@@ -19,6 +19,7 @@ export function settingsSectionFor(key: string): EditableSettingsSectionId {
   if (key.startsWith("urls.")) return "routes";
   if (key.startsWith("annualDates.")) return "annual-dates";
   if (key.startsWith("providers.")) return "providers";
+  if (key.startsWith("preferences.")) return "general";
   if (key.startsWith("actor.") || key.startsWith("features.") || key === "browser.headless") return "general";
   return "performance";
 }
@@ -59,7 +60,7 @@ function scalarControl(schema: z.core.$ZodType, key: string): z.infer<typeof Sca
   const value = unwrap(schema);
   if (value instanceof z.ZodNumber) return { input: "number", minimum: value.safeParse(0).success ? 0 : 1 };
   if (value instanceof z.ZodBoolean) return { input: "boolean" };
-  if (value instanceof z.ZodString || value instanceof z.ZodURL) return { input: key.startsWith("annualDates.") ? "date" : key.startsWith("paths.") ? "path" : key.startsWith("urls.") ? "url" : "text" };
+  if (value instanceof z.ZodEnum || value instanceof z.ZodString || value instanceof z.ZodURL) return { input: key.startsWith("annualDates.") ? "date" : key.startsWith("paths.") ? "path" : key.startsWith("urls.") ? "url" : "text" };
   throw new Error("settings-editor-control-missing");
 }
 export function settingsControlFor(key: string): SettingsControl {

@@ -1,3 +1,5 @@
+import { removeSchema16PersonPreferences, prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { restoreEmptyPreMasterWorkbookFixture } from '../../../support/helpers/workbooks/pre-master-schema.js';
 import { restorePreReadingArtifactRetention } from "../../../support/fixtures/storage/pre-reading-artifact-retention.js";
@@ -46,7 +48,7 @@ import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/s
 const hostFacts = { primaryDisplay: null };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 
-async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 = 8, extractionEvidence = false) {
+async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 = 8, extractionEvidence = false) {
   const profile = await createBoundProfileFixture();
   const binding = profile.admission.profileBinding;
   const credentials = boundProfileCredentials(profile.admission);
@@ -62,7 +64,7 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
       const initial = readBootSettings(repositories);
       assert.equal(repositories.runtimeConfig.get(), undefined);
       const resolved = resolveSettings(initial.settings);
-      repositories.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: initial.revision,
+      repositories.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: initial.revision,
         fingerprint: resolved.fingerprint, capturedAt: systemClock.now().toISOString(), capturedBy: LOCAL_OPERATOR_ACTOR_ID,
         config: resolved.config, provenance: resolved.provenance });
     });
@@ -108,7 +110,8 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
     raw.exec("PRAGMA foreign_keys=ON");
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(raw.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
     raw.exec("BEGIN EXCLUSIVE");
-    removeSchema15RunPause(raw);
+    removeSchema16PersonPreferences(raw);
+    if (sourceVersion < 15) removeSchema15RunPause(raw);
     if (sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(raw);
     if (sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(raw);
     if (sourceVersion < 10) {
@@ -141,7 +144,7 @@ function rawEight(path: string) {
   } finally { raw.close(); }
 }
 
-it("upgrades a genuinely READY bound profile with unchanged historical rows, credentials and replay", async () => {
+it("upgrades a genuinely READY bound profile with exact preference conversion, retained historical rows, credentials and replay", async () => {
   const f = await readyBoundEight();
   try {
     const before = rawEight(f.path), protectedBefore = digest(join(f.stateRoot, "credentials", "protected.json"));
@@ -158,7 +161,7 @@ it("upgrades a genuinely READY bound profile with unchanged historical rows, cre
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
-      else assert.deepEqual(after[table], rows);
+      else assert.deepEqual(after[table]?.map(row => prePreferencesSettingsRow(table, row)), rows.map(row => ({ ...row })));
     }
     assert.equal(after.database_upgrades?.length, (before.database_upgrades?.length ?? 0) + 1);
     assert.equal(digest(join(f.stateRoot, "credentials", "protected.json")), protectedBefore);
@@ -258,12 +261,13 @@ it("refuses a genuine canonical queued run despite stopped global process roles"
   } finally { await f.close(); }
 });
 
-it.each([8, 11, 12, 13, 14] as const)("automatically upgrades schema %s with queued work intact instead of retiring its durable state", async sourceVersion => {
+it.each([8, 11, 12, 13, 14, 15] as const)("automatically upgrades schema %s with queued work intact instead of retiring its durable state", async sourceVersion => {
   const f = await readyBoundEight("queued", sourceVersion);
   try {
     const before = rawEight(f.path);
     assert.ok((before.runs?.length ?? 0) > 0); assert.ok((before.artifacts?.length ?? 0) > 0);
-    assert.throws(() => runRecordFromRow(before.runs?.[0]), /native schema/u);
+    if (sourceVersion < 15) assert.throws(() => runRecordFromRow(before.runs?.[0]), /native schema/u);
+    else assert.doesNotThrow(() => runRecordFromRow(before.runs?.[0]));
     const artifactDirectory = join(f.stateRoot, "artifacts"), artifactNames = readdirSync(artifactDirectory);
     assert.equal(artifactNames.length, 1); const artifactName = artifactNames[0]; assert.ok(artifactName);
     const artifactBytes = readFileSync(join(artifactDirectory, artifactName)), outputBytes = readFileSync(join(f.stateRoot, "files", "upgrade-proof.txt"));
@@ -277,7 +281,7 @@ it.each([8, 11, 12, 13, 14] as const)("automatically upgrades schema %s with que
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
-      else assert.deepEqual(after[table], rows);
+      else assert.deepEqual(after[table]?.map(row => prePreferencesSettingsRow(table, row)), rows.map(row => ({ ...row })));
     }
     assert.equal(after.database_upgrades?.length, (before.database_upgrades?.length ?? 0) + 1);
     assert.deepEqual(readFileSync(join(artifactDirectory, artifactName)), artifactBytes);
@@ -472,7 +476,7 @@ it("revokes READY custody on exact artifact-root ancestry substitution", async (
   }
 });
 
-it.each([9, 10, 11, 12, 13, 14] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
+it.each([9, 10, 11, 12, 13, 14, 15] as const)("upgrades supported schema %s to the current version with exact source proof", async sourceVersion => {
   const f = await readyBoundEight("idle", sourceVersion);
   try {
     const before = rawEight(f.path);
@@ -488,7 +492,7 @@ it.each([9, 10, 11, 12, 13, 14] as const)("upgrades supported schema %s to the c
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
-      else assert.deepEqual(after[table], rows);
+      else assert.deepEqual(after[table]?.map(row => prePreferencesSettingsRow(table, row)), rows.map(row => ({ ...row })));
     }
     const fresh = f.machine.admitProfile(f.binding.profileId);
     try { assert.equal(fresh.profileMaintenanceSchemaVersion(), CURRENT_AUTHORITY_SCHEMA_VERSION); }

@@ -629,6 +629,7 @@ async function composeDashboardRuntimeStartup(
       capturedAt: now,
       capturedBy: LOCAL_OPERATOR_ACTOR_ID,
       config: resolved.config,
+      preferences: resolved.preferences, preferencesFingerprint: resolved.preferencesFingerprint,
       provenance: resolved.provenance,
     };
     if (repositories.runtimeConfig.get() === undefined) {

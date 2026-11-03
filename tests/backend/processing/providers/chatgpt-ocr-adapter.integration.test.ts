@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { createChatGptCredentialRepository } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
@@ -226,7 +227,7 @@ it("runs the actual extraction task through the subscription adapter and admits 
     let deadline = 0;
     const client = createProviderClient("ocr.extract", { adapters: { "ocr.extract": adapterFor(f) }, clock: f.clock, idFactory: { next: randomUUID }, runSignal: new AbortController().signal,
       execution: { runId: id, attempt: 1, nodeId: "extract", taskId: "ocr/extract-form-page" }, configSnapshotId: id, configFingerprint: fingerprint,
-      configSnapshot: { configSnapshotId: id, revision: 1, fingerprint, config, provenance: {}, capturedAt: f.clock.now().toISOString(), capturedBy: "local-operator" },
+      configSnapshot: { ...PREFERENCES_SNAPSHOT, configSnapshotId: id, revision: 1, fingerprint, config, provenance: {}, capturedAt: f.clock.now().toISOString(), capturedBy: "local-operator" },
       deadlineScheduler: { schedule(at) { deadline = at; return { cancel() {} }; } },
     });
     const recorded: unknown[] = [];

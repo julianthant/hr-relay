@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { testProcessImport } from "../../../../support/compiled-process.js";
 import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
@@ -539,7 +540,7 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
       const resolved = resolveConfigWithProvenance(saved.settings, hostConfigFacts({}), clock,
         { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot });
       assert.equal(resolved.config.paths.browserProfileRoot, join(profile.stateRoot, 'browsers'));
-      const active = database.authority.runtimeConfig.initialize({ configSnapshotId: nextCommandId(), revision: saved.revision,
+      const active = database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: nextCommandId(), revision: saved.revision,
         fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
         capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
       assert.equal(active.configFingerprint, resolved.fingerprint);

@@ -4,21 +4,22 @@ import { useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
 import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, PageHeading, SearchInput } from '../../../ds/ui.js';
 import type { SettingsSaveListener } from "../editor/settings-attempt-model.js";
-import { DEFAULT_SHORTCUT_PREFERENCES, SHORTCUT_ACTIONS, saveShortcutPreferences, shortcutChord, shortcutLabel, useShortcutPreferences, type ShortcutAction } from './keyboard-preferences-model.js';
+import { DEFAULT_SHORTCUT_PREFERENCES, SHORTCUT_ACTIONS, useSaveShortcutPreferences, shortcutChord, shortcutLabel, useShortcutPreferences, type ShortcutAction } from './keyboard-preferences-model.js';
 
 export function KeyboardSection({ onSaved }: { onSaved?: SettingsSaveListener }) {
   const preferences = useShortcutPreferences();
+  const saveShortcutPreferences = useSaveShortcutPreferences();
   const [query, setQuery] = useViewState('keyboardQuery', '', 'replace');
   const [editing, setEditing] = useState<{ id: ShortcutAction; index: number } | null>(null);
   const [captured, setCaptured] = useState('');
   const [error, setError] = useState('');
   const actions = SHORTCUT_ACTIONS.filter(action => `${action.title} ${action.description} ${preferences.bindings[action.id].join(' ')}`.toLowerCase().includes(query.toLowerCase()));
   const edit = (id: ShortcutAction, index: number) => { setEditing({ id, index }); setCaptured(preferences.bindings[id][index] ?? ''); setError(''); };
-  const save = () => {
+  const save = async () => {
     if (!editing || !captured) return;
     const next = [...preferences.bindings[editing.id]];
     next[editing.index] = captured;
-    try { saveShortcutPreferences({ ...preferences, bindings: { ...preferences.bindings, [editing.id]: next } }); setEditing(null); }
+    try { if (!await saveShortcutPreferences({ ...preferences, bindings: { ...preferences.bindings, [editing.id]: next } })) return; setEditing(null); }
     catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); return; }
     onSaved?.({ title: `Saved ${SHORTCUT_ACTIONS.find(action => action.id === editing.id)!.title} shortcut` });
   };

@@ -45,7 +45,7 @@ function fixture(ownedOperation = false) {
   return {root,admission,observer,identity,staged,read:()=>inspectStorageRecovery(observer,identity)};
 }
 describe("native recovery evidence inventory",()=>{
-  it.each([8,9,10,11,12,13,CURRENT_AUTHORITY_SCHEMA_VERSION])("keeps supported person backup schema %s eligible behind current authority",schemaVersion=>{
+  it.each([8,9,10,11,12,13,14,15,CURRENT_AUTHORITY_SCHEMA_VERSION])("keeps supported person backup schema %s eligible behind current authority",schemaVersion=>{
     const f=fixture();
     const input={schemaVersion,backupPath:join(f.root,"backup.sqlite"),backupSha256:"a".repeat(64),stateRoot:f.root,authorityAvailable:true};
     expect(inspectRestoreEligibility(f.admission,input)).toEqual({state:"eligible"});

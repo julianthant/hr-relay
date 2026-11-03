@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { composeProfileRuntime, composeSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
@@ -77,7 +78,7 @@ describe("composition-reads-no-environment-leaf", () => {
           try {
             const stored = database.authority.runtimeConfig.get(); assert.ok(stored);
             const snapshot = database.authority.configSnapshots.get(stored.configSnapshotId); assert.ok(snapshot);
-            return { config: snapshot.config, provenance: snapshot.provenance, fingerprint: snapshot.fingerprint };
+            return { ...PREFERENCES_SNAPSHOT, config: snapshot.config, provenance: snapshot.provenance, fingerprint: snapshot.fingerprint };
           } finally { database.close(); }
         };
         const before = readConfig();

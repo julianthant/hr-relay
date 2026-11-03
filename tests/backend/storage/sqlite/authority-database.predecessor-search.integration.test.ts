@@ -1,3 +1,4 @@
+import { removeSchema16PersonPreferences } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { restoreEmptyPreMasterWorkbookFixture } from "../../../support/helpers/workbooks/pre-master-schema.js";
 import { removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
 import assert from "node:assert/strict";
@@ -5,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { insertNativeCommand, settleNativeCommand } from "../../../../src/backend/storage/sqlite/command-record-row.js";
@@ -25,7 +26,7 @@ it.each([[12, "published"], [12, "building"], [13, "published"], [13, "building"
     for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) database.exec(statement);
     database.prepare("INSERT INTO settings_snapshots(id,revision,fingerprint,payload_json,captured_at) VALUES(?,?,?,?,?)")
       .run(CONFIG_SNAPSHOT.configSnapshotId, CONFIG_SNAPSHOT.revision, CONFIG_SNAPSHOT.fingerprint, JSON.stringify(CONFIG_SNAPSHOT), CONFIG_SNAPSHOT.capturedAt);
-    database.prepare("INSERT INTO database_states VALUES(?,?,?,?,?,?,?,?)").run(1, 15, 0, QUEUED_RUN.createdAt, 0, "ready",
+    database.prepare("INSERT INTO database_states VALUES(?,?,?,?,?,?,?,?)").run(1, CURRENT_AUTHORITY_SCHEMA_VERSION, 0, QUEUED_RUN.createdAt, 0, "ready",
       "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222");
     const settings = initialSettingsFileRecord();
     const command = SettingsInitializationCommandSchema.parse({ kind: "settings-initialization", commandId: randomUUID(), revision: 1,
@@ -47,6 +48,8 @@ it.each([[12, "published"], [12, "building"], [13, "published"], [13, "building"
     index.publishChanges(1, QUEUED_RUN.createdAt, RunSearchPublicationSchema.parse({ state: "published", sourceGeneration: 0, afterRun: null, rowCount: 0 }));
     assert.equal(index.publication().state, "published");
     assert.equal(database.prepare("SELECT count(*) AS count FROM run_search").get()?.count, 1);
+    database.exec(`PRAGMA user_version=${CURRENT_AUTHORITY_SCHEMA_VERSION}`);
+    removeSchema16PersonPreferences(database);
     database.exec("DROP TRIGGER run_pause_insert; DROP TRIGGER run_pause_update; ALTER TABLE runs DROP COLUMN pause_state");
     if (version < 14) removeEmptyExclusiveSessionLeaseFixture(database);
     if (version < 13) restoreEmptyPreMasterWorkbookFixture(database);

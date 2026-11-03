@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { testProcessImport } from "../../compiled-process.js";
 import { vi } from "vitest";
 import * as workerLoops from "../../../../src/backend/runtime/workers/worker-loop.js";
@@ -88,7 +89,7 @@ export function createWorkerCompositionTestWorld() {
       database.withAuthorityTransaction((repositories) => {
         const retained = repositories.configSnapshots.get(parsedRun.envelope.configSnapshotId);
         const configSnapshotId = retained === undefined ? parsedRun.envelope.configSnapshotId : randomUUID();
-        const snapshot = {
+        const snapshot = { ...PREFERENCES_SNAPSHOT,
           configSnapshotId,
           revision: readSettings(repositories).revision,
           fingerprint: resolved.fingerprint,
@@ -129,7 +130,7 @@ export function createWorkerCompositionTestWorld() {
         if (repositories.runtimeConfig.get() !== undefined) return;
         const resolved = resolveConfigWithProvenance(readSettings(repositories).settings, hostConfigFacts({}), clock, { stateRoot: fixture.stateRoot, artifactRoot: fixture.admission.artifactRoot });
         const configSnapshotId = "66666666-6666-4666-8666-666666666666";
-        repositories.runtimeConfig.initialize({
+        repositories.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT,
           configSnapshotId,
           revision: readSettings(repositories).revision,
           fingerprint: resolved.fingerprint,

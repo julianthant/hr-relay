@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { randomUUID } from "node:crypto";
 import { releaseSeededWriteOwners } from "../../../support/helpers/timeline-write-fixture.js";
 import { createProfileFixtureSet, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
@@ -63,7 +64,7 @@ async function harness(configureRunners?: (runners: readonly PreflightRunner[]) 
   const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock,
     { stateRoot, artifactRoot: profile.admission.artifactRoot });
   const identity = { configSnapshotId: "66666666-6666-4666-8666-666666666666", configFingerprint: resolved.fingerprint };
-  database.authority.runtimeConfig.initialize({ configSnapshotId: identity.configSnapshotId, fingerprint: resolved.fingerprint,
+  database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: identity.configSnapshotId, fingerprint: resolved.fingerprint,
     config: resolved.config, provenance: resolved.provenance, revision: 1, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
   const descriptors = { resolve: (id: string) => id === personLookupDescriptor.id ? personLookupDescriptor : undefined };
   let protectedRecord = initialProtectedStoreRecord();
@@ -450,7 +451,7 @@ async function harness(beforeCrmEndpoint?: () => Promise<void>) {
   });
   const resolved = {...resolveConfigWithProvenance({},hostConfigFacts({}),clock),config:f.input.config,fingerprint:sha256Hex(canonicalJsonStringify(f.input.config))};
   const identity = { configSnapshotId: "66666666-6666-4666-8666-666666666666", configFingerprint: resolved.fingerprint };
-  database.authority.runtimeConfig.initialize({ configSnapshotId: identity.configSnapshotId, fingerprint: resolved.fingerprint,
+  database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: identity.configSnapshotId, fingerprint: resolved.fingerprint,
     config: resolved.config, provenance: resolved.provenance, revision: 1, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
   const descriptors = { resolve: (id: string) => id === personLookupDescriptor.id ? personLookupDescriptor : undefined };
   let probes=0;
@@ -672,7 +673,7 @@ for (const capability of ["dashboard.serve", "executor.run"] as const) it(`the d
   const database = AuthorityDatabase.open({ path: f.databasePath, busyTimeoutMs: 250, migrationOwner: "default-preflight-owner" }, f.clock);
   try {
     const config = f.input.config, fingerprint = sha256Hex(canonicalJsonStringify(config));
-    database.authority.runtimeConfig.initialize({ configSnapshotId: f.input.scope.configSnapshotId, fingerprint,
+    database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: f.input.scope.configSnapshotId, fingerprint,
       config, provenance: resolveConfigWithProvenance({}, hostConfigFacts({}), f.clock).provenance,
       revision: 1, capturedAt: f.clock.now().toISOString(), capturedBy: "local-operator" });
     const scope = PreflightAdmissionScopeSchema.parse({ ...f.input.scope, configFingerprint: fingerprint, requestedCapabilities: [capability] });

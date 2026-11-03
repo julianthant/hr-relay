@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { testProcessImport } from "../../../support/compiled-process.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import { credentialKeychainTestEnvironment } from "../../../support/helpers/credential-keychain-fake.js";
@@ -76,7 +77,7 @@ async function prepare(arm: "read" | "write" = "read") {
     const settings = readSettings(database.authority);
     const resolved = resolveConfigWithProvenance(settings.settings, hostConfigFacts({}), systemClock,
       { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot });
-    database.authority.runtimeConfig.initialize({ configSnapshotId: randomUUID(), revision: 1,
+    database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT, configSnapshotId: randomUUID(), revision: 1,
       fingerprint: resolved.fingerprint, capturedAt: systemClock.now().toISOString(), capturedBy: "local-operator",
       config: resolved.config, provenance: resolved.provenance });
     const patch = { "actor.label": { set: "Synthetic operator" }, "features.duoWebAuthn": { set: false } } as const;

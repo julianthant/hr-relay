@@ -1,3 +1,4 @@
+import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
@@ -95,7 +96,7 @@ it("executes two real children and a nested child with one actual home process a
     const settings = readSettings(database.authority);
     const resolved = resolveConfigWithProvenance(settings.settings, hostConfigFacts({}), systemClock,
       { stateRoot: profile.stateRoot, artifactRoot: profile.admission.artifactRoot });
-    if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize({
+    if (database.authority.runtimeConfig.get() === undefined) database.authority.runtimeConfig.initialize({ ...PREFERENCES_SNAPSHOT,
       configSnapshotId: randomUUID(), revision: 1, fingerprint: resolved.fingerprint, capturedAt: systemClock.now().toISOString(),
       capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
     const initial = database.authority.runtimeConfig.get();
