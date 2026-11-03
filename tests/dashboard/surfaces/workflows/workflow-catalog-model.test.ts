@@ -109,6 +109,22 @@ const catalog = buildWorkflowCatalog_m1(served, true, servedFixtureSources_m1([]
 const noop = () => {};
 
 describe_m1("frontend workflow catalog", () => {
+  it_m1("offers a served saved-row Onboarding declaration unless an explicit restriction applies", () => {
+    const onboarding = served.find(workflow => workflow.workflowId === "onboarding");
+    assert_m0.ok(onboarding?.inputRun.state === "present");
+    expect_m1(onboarding.inputRun.surface.workbookRows).toEqual({ typeId: "onboarding-roster", inputField: "email" });
+    const features = FIXTURE_START_PICKER_BOOTSTRAP_m1.featureAvailability;
+    expect_m1(features.some(feature => feature.feature === "workflow-start:onboarding")).toBe(false);
+    const sources = servedFixtureSources_m1([onboarding]);
+    const entries = buildWorkflowCatalog_m1([onboarding], false, sources, features);
+    expect_m1(entries.find(entry => entry.id === "onboarding")?.launch).toEqual({ state: "served" });
+    expect_m1(servedLaunchWorkflows_m1(entries)).toEqual([onboarding]);
+    const reason = "Explicit start restriction";
+    const restricted = buildWorkflowCatalog_m1([onboarding], false, sources, [...features,
+      { feature: "workflow-start:onboarding", availability: { state: "unavailable", code: "deferred", reason } }]);
+    expect_m1(restricted.find(entry => entry.id === "onboarding")?.launch).toEqual({ state: "unavailable", label: "Unavailable", reason });
+  });
+
   it_m1("retains custom served bootstrap workflows in Explorer and Logs preview catalogs", () => {
     const custom = { ...served[0], workflowId: "launch-proof", label: "Launch proof" };
     const bootstrap = [...served, custom];

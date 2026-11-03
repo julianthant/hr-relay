@@ -188,6 +188,12 @@ export function planStart(deps: StartPlannerDeps, request: StartPlanRequest): St
         workbookReferences = references.map(({ entry: _entry, ...selection }) => {
           const lookup = lookups.find(lookup => lookup.typeId === selection.typeId);
           if (lookup === undefined) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          if (selection.selectedRow !== undefined) {
+            const capability = descriptor.surfaces.inputRun?.workbookRows;
+            if (capability?.typeId !== selection.typeId || lookup.keys.length !== 1
+              || parsed === null || typeof parsed !== "object"
+              || Reflect.get(parsed, capability.inputField) !== lookup.keys[0]) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+          }
           const reference = { ...lookup, ...selection };
           return { schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output"),
             value: JsonValueSchema.parse(RunWorkbookReferenceSchema.parse({ request: reference, snapshot: workbooks.snapshot(reference) })) };

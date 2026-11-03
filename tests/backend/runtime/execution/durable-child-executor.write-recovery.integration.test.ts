@@ -1,3 +1,5 @@
+import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
+import { buildRunPreviewResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { afterAll } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
@@ -22,7 +24,7 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { testRunLifecycle, testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, writeFixtureDescriptor,
-  writeFixtureSessions, WRITE_FIXTURE_EID, WRITE_FIXTURE_IMPL_FINGERPRINT } from "../../../support/fixtures/write-sequencer-fixtures.js";
+  writeFixtureSessions, WRITE_FIXTURE_EID, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_WORKER_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
@@ -264,6 +266,19 @@ it("runs nested read-only delegated children with dryRun true and consumes their
   const parentResult = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(parentResult);
   const preview = RunDryRunPreviewResultSchema.parse(parentResult.result.value);
   assert.equal(preview.externalCommit, "none");
+  assert.deepEqual(parentResult.dependencies.map(dependency => [dependency.nodeId, dependency.state]), [["observe", "resolved"], ["lookup", "child-resolved"]]);
+  const observed = f.database.authority.runCheckpoints.listByItem(f.run.envelope.workflow, f.run.envelope.itemId).find(checkpoint => checkpoint.nodeId === "observe");
+  assert.ok(observed);
+  const read = { state: "resolved", nodeId: observed.nodeId, checkpoint: observed } as const;
+  const delegated = readDelegationEvidence(f.database.authority, f.run.envelope.runId, "lookup");
+  const { completion, ...retainedRun } = done.run; assert.equal(completion?.kind, "done");
+  const running = { ...retainedRun, lifecycle: { state: "running", workerId: WRITE_FIXTURE_WORKER_ID,
+    claimedAt: f.clock.now().toISOString(), heartbeatAt: f.clock.now().toISOString() } };
+  const build = (evidence: unknown) => buildRunPreviewResult(childReadPreviewRoot.descriptor, running, preview.steps, evidence, f.clock);
+  assert.deepEqual(build([read, delegated]).record.dependencies, parentResult.dependencies);
+  assert.throws(() => build([read]), /missing=lookup/);
+  assert.throws(() => build([read, { ...delegated, parentRunId: child.envelope.runId }]), /terminal-delegation-dependency-identity-mismatch/);
+
   assert.ok(preview.steps.some(step => step.nodeId === "write" && step.state === "transaction-preview"));
   assert.equal(f.driver.events.filter(event => event === "prepare").length, 1);
   assert.equal(f.driver.events.some(event => event.startsWith("commit-click:")), false);

@@ -772,12 +772,12 @@ export const ParkedWriteSubjectWireSchema = z.discriminatedUnion("state", [
 export const ProofFieldWireSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     kind: z.literal("fixed"),
-    path: ContractFieldPathSchema,
+    path: ContractFieldPathSchema, nullable: z.literal(true).optional(),
     value: z.union([z.string(), z.number(), z.boolean()]),
   }),
   z.strictObject({
     kind: z.literal("text"),
-    path: ContractFieldPathSchema,
+    path: ContractFieldPathSchema, nullable: z.literal(true).optional(),
     minLength: z.number().int().nonnegative().optional(),
     maxLength: z.number().int().positive().optional(),
     /** The regex SOURCE — a client cannot be handed a zod schema. */
@@ -788,12 +788,12 @@ export const ProofFieldWireSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({
     kind: z.literal("choice"),
-    path: ContractFieldPathSchema,
+    path: ContractFieldPathSchema, nullable: z.literal(true).optional(),
     options: z.array(z.string().min(1)).min(1),
   }),
   z.strictObject({
     kind: z.literal("integer"),
-    path: ContractFieldPathSchema,
+    path: ContractFieldPathSchema, nullable: z.literal(true).optional(),
     minimum: z.number().int().optional(),
     maximum: z.number().int().optional(),
   }),

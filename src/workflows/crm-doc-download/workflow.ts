@@ -2,7 +2,7 @@ import { defineWorkflow } from "../../workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../models/workflow/presentation.js";
 import { CrmDocDownloadInput, CrmDocDownloadCanonicalInput, CRM_DOCUMENT_INPUT_PARSER } from "../../models/workflows/crm-doc-download/input.js";
-import { ONBOARDING_ROSTER_TYPE_ID, ONBOARDING_ROSTER_FIELDS } from "../../models/workflows/onboarding/roster.js";
+import { ONBOARDING_ROSTER_TYPE_ID, ONBOARDING_ROSTER_NAME_FIELDS } from "../../models/workflows/onboarding/roster.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { crmDocumentSearchRecordsDefinition } from "./steps/search-records/step.js";
 import { crmDocumentReferenceDefinition } from "./steps/reference/step.js";
@@ -13,7 +13,7 @@ export const crmDocDownloadWorkflow = defineWorkflow({
   id: "crm-doc-download", version: 1, code: "cd", label: "CRM Document Download", icon: "FileText", category: "documents",
   summary: "Download verified CRM PDFs and package one archive in each person's worksheet folder using the selected spreadsheet version's legal and lived names.",
   requiredWorkbookTypeIds: [ONBOARDING_ROSTER_TYPE_ID],
-  referenceLookups: input => [{ typeId: ONBOARDING_ROSTER_TYPE_ID, keys: input.people.flatMap(person => person.kind === "email" ? [person.value] : []), fields: [...ONBOARDING_ROSTER_FIELDS] }],
+  referenceLookups: input => [{ typeId: ONBOARDING_ROSTER_TYPE_ID, keys: input.people.flatMap(person => person.kind === "email" ? [person.value] : []), fields: [...ONBOARDING_ROSTER_NAME_FIELDS] }],
   plannedOutputs: () => [{ kind: "worksheet-archives", state: "after-row-choice" }],
   input: CrmDocDownloadInput, canonicalInput: CrmDocDownloadCanonicalInput, inputSubject: "none",
   surface: { shape: "single" }, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,

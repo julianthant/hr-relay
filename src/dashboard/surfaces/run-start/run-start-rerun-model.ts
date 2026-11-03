@@ -27,8 +27,9 @@ export function defaultRerunSteps(snapshot: RerunValuesSnapshot, workflow: RunSt
 }
 
 export function partialRerunTypedInput(surface: TypedInputSurface, input: Extract<RerunValuesSnapshot["sourceInput"], { state: "partial" }>) {
-  const mode = surface.modes.find(mode => input.value[surface.modeField] === mode.value)?.value ?? surface.initialMode;
+  const mode = surface.modes.find(mode => input.value[surface.modeField] === mode.value)?.value ?? null;
   const draft = { ...typedInputDefaults(surface, mode) };
+  if (mode === null) return { draft, text: "", input: JsonValueSchema.parse({}) };
   for (const control of surface.controls) {
     const value = input.value[control.field];
     if (typeof value === typeof draft[control.field] && (typeof value === "boolean" || typeof value === "string")) draft[control.field] = value;

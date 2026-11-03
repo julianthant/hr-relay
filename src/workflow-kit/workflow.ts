@@ -1609,7 +1609,7 @@ export function defineWorkflowDescriptor<
         currentRun,
         evidenceInput,
         dependencySpecFor([...new Set([...firstTransaction.dependsOn,
-          ...nodes.filter(node => node.kind === "task" && steps.find(step => step.nodeId === node.id)?.state === "exercised").map(node => node.id)])], "dry-run preview"),
+          ...nodes.filter(node => (node.kind === "task" || node.kind === "child-run") && steps.find(step => step.nodeId === node.id)?.state === "exercised").map(node => node.id)])], "dry-run preview"),
         "dry-run preview",
       );
       const previewValue = JsonValueSchema.parse(RunDryRunPreviewResultSchema.parse({

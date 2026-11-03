@@ -47,7 +47,7 @@ describe("UCPath hire browser operations on a fake page", () => {
     assert.equal(h.actions.includes("click:save"), false);
   });
   it("uses an independently resolved existing EID without editing legal identity or linking an I-9", async () => {
-    const h = fixture({ rehire: true, saved: { emplId: EidSchema.parse("10800000") } });
+    const h = fixture({ rehire: true, saved: { emplId: EidSchema.parse("10800000"), profileId: null } });
     await h.driver.stageHire({ ...target, mode: "rehire", emplId: EidSchema.parse("10800000"), profileId: null }, h.capture);
     assert.equal(h.fields.get("Select Template"), "UC_CONC_HIRE");
     assert.equal(h.actions.includes("fill:Legal First Name"), false);

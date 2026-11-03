@@ -1,11 +1,12 @@
 import { z } from "zod";
 import { HirePlanSchema } from "./read-hire-plan.js";
 import { HireSubjectSchema } from "./match-hire-subject.js";
-import { OnboardingI9ProfileSchema } from "./read-i9-profile-plan.js";
-
+import { I9RemoteProofSchema } from "../../ui/i9-creation.js";
+import { UcpathHireProofSchema } from "../../ui/ucpath-hire.js";
+import { WorkflowWorkbookResultSchema } from "../../processing/workbooks/read-result.js";
 export const OnboardingResultSchema = z.strictObject({
-  state: z.literal("implementation-incomplete"), plan: HirePlanSchema, subject: HireSubjectSchema,
-  i9: OnboardingI9ProfileSchema,
-  hireWrite: z.strictObject({ state: z.literal("unimplemented"), owner: z.literal("write-safety") }),
-  rosterAccess: z.strictObject({ state: z.literal("snapshot-bound"), owner: z.literal("spreadsheets") }),
+  state: z.enum(["filed", "master-review-required"]), plan: HirePlanSchema, subject: HireSubjectSchema,
+  i9: z.union([z.strictObject({ state: z.literal("not-required") }), I9RemoteProofSchema.safeExtend({ state: z.literal("verified") })]),
+  hireWrite: z.strictObject({ state: z.literal("verified"), disposition: z.enum(["committed", "already-present"]), receipt: UcpathHireProofSchema }),
+  rosterAccess: WorkflowWorkbookResultSchema,
 });

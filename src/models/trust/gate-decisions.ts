@@ -63,11 +63,18 @@ export const GATE_DECISIONS: readonly GateDecisionDeclaration[] = Object.freeze(
     resolution: { source: "workbook-reference", boundNodeId: "document-rows", boundOutputPath: "referenceDigest" },
     arms: [{ value: "selected", outcome: "taken", summary: "an operator selected retained worksheet rows for the CRM document batch" }],
   })),
-  ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-i9-profile-creation"].map(workflowId => ({
+  ...["onboarding", "onboarding-crm-data", "onboarding-ucpath-search", "onboarding-i9-search", "onboarding-hire-writes"].map(workflowId => ({
     workflowId, gateId: "roster-choice", decisionPath: "decision", boundEvidencePath: "row.binding.referenceDigest",
     resolution: { source: "workbook-reference", boundInputPath: "roster.binding.referenceDigest",
       inputCondition: { path: "roster.state", equals: "resolve-required" } },
     arms: [{ value: "selected", outcome: "taken", summary: "an operator selected this roster row for the hire review" }],
+  })),
+  ...["onboarding", "onboarding-hire-writes"].map(workflowId => ({
+    workflowId, gateId: "hire-review", decisionPath: "decision", resolution: { source: "operator" },
+    arms: [
+      { value: "new-hire", outcome: "approved", summary: "an operator reviewed the complete transaction findings and approved a new hire" },
+      { value: "existing-person", outcome: "approved", summary: "an operator selected an independently confirmed existing EID for a concurrent hire" },
+    ],
   })),
     /* The name-resolved identity approval: a supplied EID creates no gate row, and when this gate does open, `rejected` terminalizes the run, so both arms are real outcomes. */
   {
