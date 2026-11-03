@@ -19,8 +19,8 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
-| `scripts/test/` | Suite measurement, duration-balanced CI file selection, shared full-Chromium installation preflight (`chromium-preflight.ts`), direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
-| `.github/workflows/ci.yml`, `ci-pipeline.yml`, `ci-checks.yml`, `ci-release-checks.yml` | Sole event/required-summary owner; admitted plan, route validation and timing publication; shared portable jobs; conditional full-release native/parity proofs and release batch. |
+| `scripts/test/` | Suite measurement, shared typed CI selection/proof/timing-history policy (`ci-plan.ts`), duration-balanced CI file selection, shared full-Chromium installation preflight (`chromium-preflight.ts`), direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
+| `.github/workflows/ci.yml`, `release.yml` | Flat, disjoint staging-only portable and main/manual full-release entrypoints, stable required checks, workflow-level shared FIFO and timing publication. |
 | `scripts/verify/` | Repository privacy, browser-login and test-target verification. Standalone verification holds the runtime listener; abandoned reservations settle through startup recovery. |
 | `scripts/verify-parity-json.ts` | Desktop parity runner. |
 | `src/` | Application source. |

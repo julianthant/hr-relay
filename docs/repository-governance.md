@@ -15,9 +15,11 @@ release pull request.
 | `staging` | `static`, `privacy`, `unit`, `integration`, `architecture`, `parity` |
 | `main` | the `staging` checks, plus `release` |
 
-The expensive `release` job runs only on PRs from `staging` into `main`, after the other checks.
+The expensive `release-batch` job runs only on PRs from `staging` into `main`, after the other checks.
 The required top-level `release` summary also runs for other heads targeting `main` and fails their
-head validation, so a skipped expensive job cannot satisfy main protection.
+head validation, so omitted expensive work cannot satisfy main protection for an invalid source.
+Valid Markdown-only omissions pass after proof validation; manual releases validate routine proofs
+without a PR source-head restriction.
 The expensive job’s isolated macOS runner builds the web bundle, runs coverage alone, then
 performance. The operator authorizes release PRs from
 `staging` to `main`, and syncs `main` back into `staging` after merging.
@@ -27,8 +29,7 @@ performance. The operator authorizes release PRs from
 `.github/workflows/merge-train.yml` runs on every push to `staging`, and CI calls it as its final job.
 It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then merges
 `staging` into every open, non-draft, same-repository PR by `julianthant` into `staging` that lacks it, whatever its
-labels or auto-merge state, so every PR re-runs CI on the latest `staging`; CI cancels each PR's
-older in-progress run. Auto-merge then lands whichever PR passes first. A PR it cannot update gets
+labels or auto-merge state, so every update queues CI on the latest `staging`; older heads run to completion. Auto-merge then lands whichever PR passes first. A PR it cannot update gets
 `merge-conflict`. If GitHub's update reports a conflict, the train attempts a merge in a temporary
 worktree. Conflicts exclusively in `scripts/build/generated-outputs.ts`'s registered outputs are
 resolved by running the generators against the combined sources. Catalog conflicts must be wholly
@@ -53,7 +54,7 @@ session runs, red PRs wait; nothing red merges. The operator watches only `needs
 CI takes Node from `package.json` engines and caches npm. Run portable suites on Ubuntu for staging
 pull requests. Run platform-native proofs and Desktop parity in CI only for a full release
 started by the operator: a `staging` → `main` pull request or a manual full-release dispatch. Only the operator
-may start such a run; agents must never dispatch or rerun `ci.yml`. Between releases, run
+may start such a run; agents must never dispatch or rerun CI workflows. Between releases, run
 Windows-native tests locally on Windows and macOS-native tests locally on the Mac when load is low.
 Keep native files out of Ubuntu shards. Native proofs and the padded-receipt storage upgrade run in separate single-worker invocations, preserving their
 existing deadlines under duration-based assignment. Native integration jobs first verify the
@@ -70,24 +71,26 @@ same serial/storage separation and native membership. Windows uses explicit Bash
 Windows Node/npm, the runner temp directory and Windows Chromium installation. Before checkout,
 it disables Git automatic line-ending conversion to preserve fixture bytes and shell scripts.
 
-`ci.yml` retains per-PR or per-dispatch-branch cancellation, and queues `ci-pipeline.yml` in the
-shared `ci-runners` concurrency group with `queue: max`. The pipeline owns one plan/balancing
-artifact and final timing publication. It calls portable-only `ci-checks.yml` for ordinary PRs,
-or `ci-release-checks.yml` for a full release. The latter reuses the same portable workflow beside
-macOS/Windows native proofs and Desktop parity, then gates the expensive release batch. Both
-callees retain their explicit test environment budgets; nested calls never reacquire admission.
-The release call is conditional: staging does not instantiate any native or Desktop parity child
-job. Its required top-level parity summary reports an intentional portable omission. The pipeline
-validates a successful selected call and an exactly skipped unselected call before publishing
-outputs, and refuses missing or unsuccessful selected outputs. GitHub admits one pipeline at
-a time without a waiting runner. Completion, failure or cancellation releases admission; no polling
-job can occupy a runner needed by an older run. GitHub orders this queue by when pipelines start
-waiting, rather than guaranteeing workflow creation-time order, and accepts at most 100 pending
-pipelines. Queue overflow cancels additional arrivals. The merge train remains outside admission.
-The seven required check names remain top-level summaries owned only by `ci.yml`;
-unit always runs, including after cancellation, and also requires a successful complete pipeline,
-including timing publication. This mandatory gate prevents skipped cancellation summaries from
-allowing an incomplete pipeline to merge. Other cancelled summaries and the merge train may stop.
+`ci.yml` runs only for staging pull requests and defines portable Ubuntu jobs plus a plain passing
+required parity summary and the existing merge-train call. `release.yml` runs only for main pull
+requests or operator manual releases and defines the portable, macOS/Windows native, Desktop parity
+and release-batch jobs directly. Staging never calls or loads the release workflow.
+
+Both event workflows hold the shared `ci-runners` group at workflow scope with `queue: max` and
+`cancel-in-progress: false`. Admission covers the complete flat graph. Each push queues another
+run; obsolete queued or running heads finish rather than being superseded. CI-invoked merge train
+is inside that workflow admission lifetime; the standalone staging-push train remains separate.
+GitHub orders the queue by arrival at admission, accepts at most 100 pending runs, and cancels
+additional arrivals on overflow. There is no initial-job reservation, nested admission or API
+canceller. Batch repair pushes to avoid redundant queued work.
+
+`scripts/test/ci-plan.ts` owns typed selection, proof/result validation and timing-history policy.
+The two workflows duplicate only the necessary job/setup/API adapters. The final required `unit`
+job always validates all mandatory proofs and timing publication, including after cancellation;
+it excludes downstream merge train to avoid a dependency cycle. In releases, `unit-proofs` lets
+the isolated batch wait for unit proofs before final `unit` validates the completed batch and
+published timings. Required names stay `static`, `privacy`, `unit`, `integration`, `architecture`
+and `parity` on staging, plus `release` on main. Other cancelled summaries and the train may stop.
 
 Run static, privacy and affected portable unit, integration and architecture suites for ready PRs
 into `staging`. For PRs from `staging` into `main`, add selected native proofs, parity and release.
@@ -99,10 +102,13 @@ repeat CI; Markdown-only PRs run static and privacy. A deliberately omitted suit
 summary, while failed change detection or any failed/cancelled selected group fails its summary.
 Markdown-only release PRs omit coverage and perf.
 
-Every admitted run downloads the latest successful run's retained `ci-timings` artifact before
-selecting files. Its immutable `ci-balancing` artifact gives every shard identical duration inputs.
-After the selected route and output validation succeed, the admitted pipeline merges all portable
-and native per-file reports into inherited timings and publishes `ci-timings` for the next run. Report names include the runner OS and selection group;
+Timing discovery enumerates registered workflow IDs for the exact `ci.yml` and `release.yml` paths,
+then orders their successful histories together, newest first, excluding the current run. An
+unregistered new release workflow is not queried. Unexpected API failures fail CI; a valid absence
+of retained reports selects the committed seed. Every admitted run downloads the newest retained
+eligible `ci-timings` artifact before selecting files. Its immutable `ci-balancing` artifact gives every shard identical duration inputs.
+After mandatory proof validation succeeds, each workflow merges its portable/native file reports
+into inherited timings and publishes `ci-timings` for the next run. Report names include the runner OS and selection group;
 when both platforms report one file, the slower duration wins independently of artifact order.
 Measurements for omitted suites remain intact.
 Without a retained artifact, CI explicitly uses the committed `scripts/test/ci-durations.json` seed;
