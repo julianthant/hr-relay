@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
 import { productionWorkerLaunch } from "../../../src/backend/app/composition/dashboard/compose.js";
@@ -14,18 +15,22 @@ describe("debug events in backend descendants", () => {
     { mode: "production", development: false, args: [], mirror: false },
     { mode: "production entrypoint", development: true, args: ["--prod"], mirror: false },
     { mode: "Electron", development: true, args: ["--electron"], mirror: false },
-  ])("persists in $mode and mirrors only in development", ({ development, args, mirror }) => {
+  ])("persists in $mode and mirrors only in development", async ({ development, args, mirror }) => {
     const launch = productionWorkerLaunch(root, { RELAY_DEV_DEBUG_MIRROR: "1" }, development);
-    const result = spawnSync(process.execPath, ["--import", testProcessImport(), child, ...args], {
-      cwd: root, env: launch.environment, encoding: "utf8",
+    const processChild = spawn(process.execPath, ["--import", testProcessImport(), child, ...args], {
+      cwd: root, env: launch.environment, stdio: ["ignore", "pipe", "pipe"],
     });
-    assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, "1");
+    let stdout = "", stderr = "";
+    processChild.stdout.setEncoding("utf8").on("data", (chunk: string) => { stdout += chunk; });
+    processChild.stderr.setEncoding("utf8").on("data", (chunk: string) => { stderr += chunk; });
+    await once(processChild, "close");
+    assert.equal(processChild.exitCode, 0, stderr);
+    assert.equal(stdout, "1");
     if (mirror) {
-      assert.equal(result.stderr.trim().split("\n").length, 1);
-      assert.match(result.stderr, /"category":"duo"/u);
-      assert.match(result.stderr, /"correlationId":"child-event"/u);
-      assert.equal(result.stderr.includes("PRIVATE_MESSAGE_CANARY"), false);
-    } else assert.equal(result.stderr, "");
+      assert.equal(stderr.trim().split("\n").length, 1);
+      assert.match(stderr, /"category":"duo"/u);
+      assert.match(stderr, /"correlationId":"child-event"/u);
+      assert.equal(stderr.includes("PRIVATE_MESSAGE_CANARY"), false);
+    } else assert.equal(stderr, "");
   });
 });
