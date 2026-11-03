@@ -408,6 +408,24 @@ before the account owner when the active profile changes or the page closes.
 
 ### Run reference and output plans
 
-`WorkflowStartWire.requiredWorkbookTypeIds` declares each required reference type. The dashboard sends `workbookReferences: [{entry, typeId, libraryId?, versionId?}]` on the existing start-plan request. The in-use version is the default; an explicit named version preserves its immutable bytes. The browser cannot supply lookup keys or fields. A workflow declares `referenceLookups(input) -> [{typeId, keys, fields}]`; the single ingress parse derives lookups before reference binding, requires exact required-type membership and combines those facts with the operator's library/version choices. Captured references then bind the canonical input before identity, display and output planning. Missing lookup capability refuses planning.
+`WorkflowStartWire.requiredWorkbookTypeIds` declares each required reference type. The dashboard sends
+`workbookReferences: [{entry, typeId, libraryId?, versionId?, selectedRow?: {sheetId, rowId}}]` on the existing
+start-plan request. Without a row selection, the in-use version is the default. An explicit named version
+preserves its immutable bytes. The browser cannot supply lookup keys or fields. A workflow declares
+`referenceLookups(input) -> [{typeId, keys, fields}]`; the single ingress parse derives these before reference
+binding and requires exact required-type membership. Missing lookup capability refuses planning.
+
+`selectedRow` requires an explicit library, an immutable named version and exactly one derived key.
+The descriptor's `inputRun.workbookRows` must declare that required type, and its input field must equal
+the derived key. The selected sheet/row pair must occur exactly once among that key's retained matches.
+Expected unavailable selections produce entry refusals. Captured references bind canonical input before
+identity, display and output planning. [Onboarding binding](workflow-model.md#11-shape) owns its typed values and execution authentication.
+
+Each selected physical row remains an ordered ordinary submission with its entry-scoped reference.
+Duplicate normalized emails and active identities remain explicit per-entry refusals. Accepted entries
+become independent runs with `shape: single` through the existing fanout under one reviewed command. Selection never silently
+deduplicates entries. Public `planned[].workbookReferences[].selectedRow` comes from the retained request.
+The client verifies unique, in-range refusal indices, complete entry coverage and matching references for
+each accepted entry before confirmation.
 
 A workflow declares `plannedOutputs(input, references)` to project output facts from parsed input and captured references. These become `planned[].outputs` in the retained plan and public response and are bound into its input fingerprint. `src/models/dashboard/run-outputs.ts` owns the closed vocabulary: `workbook` with a known row count or `after-review`, a concrete `worksheet-archive` with its worksheet/row membership, or `worksheet-archives` with `after-row-choice` when packaging membership is unresolved. Confirm renders those served facts; absence never creates an output placeholder. A plan describes intended output, not a produced artifact.
