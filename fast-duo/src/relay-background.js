@@ -223,6 +223,16 @@ if (typeof chrome !== 'undefined') {
       await chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
       browserInstalled = true;
     },
+    async browserFocus() {
+      requireBrowser();
+      const contexts = await chrome.runtime.getContexts({ contextTypes: ['TAB'], documentUrls: [chrome.runtime.getURL('src/options.html')], frameIds: [0] });
+      requireBrowser();
+      if (contexts.length !== 1) throw new Error('ONBOARDING_DUO_SCOPE');
+      const window = await chrome.windows.get(contexts[0].windowId);
+      requireBrowser();
+      await chrome.windows.update(window.id, { focused: true, ...(window.state === 'minimized' ? { state: 'normal' } : {}) });
+      requireBrowser();
+    },
     browserNext() {
       requireBrowser();
       if (requests.length) return Promise.resolve(requests.shift());
