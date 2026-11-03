@@ -385,6 +385,7 @@ export async function harness(options: {
       descriptorSetHash: descriptorSetHash([fixtureDescriptor.contractFingerprint]),
       settingsSchemaHash: descriptorSetHash(["settings-schema"]),
       projection,
+      actorLabel: () => "Fixture Operator",
       authorityMeta: () => database.getMeta(),
       // The harness runs no backup lane; "missing" is its true state.
       automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "missing",

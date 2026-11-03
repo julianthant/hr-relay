@@ -9,11 +9,15 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "8f02329222f6926a2bb90d864c3e40ac758121b68e8dd3382e5d8a7e0b8e9364",
+      "fingerprint": "5f37c4addcb599acaff111c690074d26eaa7430ab84b5bdaf7f2a35f36b28895",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -38,10 +42,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -297,7 +297,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -443,11 +443,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-check"
     },
     {
-      "fingerprint": "0fe1a0440eda4d1dde8eeac37da5a40b4f384ed7a8616442c09457c42ad638d9",
+      "fingerprint": "b9f8304d7f4bc5c2e39eac770f21e46d2604029af03fa3754adeb156f91703bf",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -472,10 +476,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -731,7 +731,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -877,11 +877,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-check-person-lookup"
     },
     {
-      "fingerprint": "19848cd877cad14dc472c600e773966c1c71c983333f7d551d496bc0501fad44",
+      "fingerprint": "d31752ff2135e5fdd1b40d77ff6e4c5655195b5df1a67920143caf47f9b27ffc",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -906,10 +910,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -1165,7 +1165,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -1311,11 +1311,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-check-person-match"
     },
     {
-      "fingerprint": "1e4669334c9a4bea3023158b5e537be99af32ffc99b0d31b0b88639737c0ec31",
+      "fingerprint": "9a6c9ceecb8830f6b49c1c6de8988cd2551d9562893926207907347d866e5479",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -1340,10 +1344,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -1599,7 +1599,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -1745,11 +1745,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-check-roster-match"
     },
     {
-      "fingerprint": "132de044d0d3ab238e8f30e1713846229b8a267daeca1cded7e66bdc40e316e3",
+      "fingerprint": "83cd83c16741e00bdb0caf3d20b6595c2f78afb2b3e6b941e7e14ba499f439b8",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -1774,10 +1778,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -2017,7 +2017,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -2147,11 +2147,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-lookup"
     },
     {
-      "fingerprint": "f8f656d25fe71f515eb42614df535cc190b21783bdb0125ae9f526dfd18e664a",
+      "fingerprint": "c68252c13460519ba4e899e5df556c0e4353b2579b7713ecb6986e3bb66bc80f",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -2176,10 +2180,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -2419,7 +2419,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -2549,11 +2549,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "i9-lookup-lookup"
     },
     {
-      "fingerprint": "73a930f7bb0a2bf7b0ed271438f9171808f42533999067a8398acf835e59065d",
+      "fingerprint": "d1e24a427638de9ed7ad86221a08574863aa1bf9a73053f18e643b9c27f701bc",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -2578,10 +2582,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -2909,7 +2909,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -3059,11 +3059,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr"
     },
     {
-      "fingerprint": "595d758921ef9c7b15aeb01b5730572d83eb8468dc9cf4fd96f157b6cbef0060",
+      "fingerprint": "43ceac24f798f9216622eb80d81416550a1fa394fb946b33070588f59b74cd67",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -3088,10 +3092,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -3359,7 +3359,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -3493,11 +3493,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr-page"
     },
     {
-      "fingerprint": "2234a209730b0450d669c61d5bf9f6d42a66b63829e7befe3241faa5ba2a6ac7",
+      "fingerprint": "f578f88c763848e09b22fd4079ab1793f08bb9505cff4b5ca6ca6156100cf333",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -3522,10 +3526,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -3793,7 +3793,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -3927,11 +3927,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr-page-reading"
     },
     {
-      "fingerprint": "17454d2cfd001de00ea7ebf389a18e9272447089e6fa7183cc9c3f52798c5cb8",
+      "fingerprint": "5b6143e59ce4dd2fc2123f6bc3765da9ec17548780aa8db34bfb40f40207b029",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -3956,10 +3960,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -4287,7 +4287,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -4437,11 +4437,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ocr-source-pages"
     },
     {
-      "fingerprint": "21fed77ff11d030c2d0904b69d90bb764d2fe769796fd50ffbbfa4facc2baa95",
+      "fingerprint": "28ae6145feecb687d6b12c2c5723d311ca25c701b1a28aa748cdcbf7727a1048",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -4466,10 +4470,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -4705,7 +4705,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -4843,11 +4843,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onbase"
     },
     {
-      "fingerprint": "c074d9b1e9d897fa2ceb445dc13a691bc17799039f83db7a8757f0b42a085aa6",
+      "fingerprint": "a9c12aaf38f2f0c44c7d83d31f5a77245ba0c326fd3cfb9bcf890f3dbe727fa1",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -4872,10 +4876,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -5111,7 +5111,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -5249,11 +5249,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onbase-import-document"
     },
     {
-      "fingerprint": "72f9348c55ba345cd1f3b11cefd619c17c05bf64fc3cea9fc1a771e246b9886e",
+      "fingerprint": "caaa9e2a623df54dd3986d4416b71fc6f5981b1b7d2bb50c0328e159953f38fa",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -5278,10 +5282,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -5517,7 +5517,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -5655,11 +5655,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onbase-source-page"
     },
     {
-      "fingerprint": "5b00d94b06ed9a59c7a967305137daa9a295e2035c938f023099a9d13ac6c321",
+      "fingerprint": "6b76bfccca642fea4c4b529d9d4e995d633a503751ad3337edb5d16d84a0332f",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -5684,10 +5688,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -5967,7 +5967,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -6121,11 +6121,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding"
     },
     {
-      "fingerprint": "06cd49c2298914627dd76ee4179819cb9a64b2e2455cef8882a1fabbe98db86e",
+      "fingerprint": "0e7de1a9d4df67979684f423807d48c0f49008d6847ac90dd12fdf19921b5acd",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -6150,10 +6154,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -6433,7 +6433,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -6587,11 +6587,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding-crm-data"
     },
     {
-      "fingerprint": "581f80256b728085855da87335de80b75e43bc30507dccb78f553b2ac97ec13c",
+      "fingerprint": "a888f60c6ec4534d677d0b3de23633716d1b86f563fa3dafe10a8206827b8f32",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -6616,10 +6620,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -6899,7 +6899,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -7053,11 +7053,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding-i9-profile-creation"
     },
     {
-      "fingerprint": "e058f3195ef90100796be6e6d66086aee60ee42a7d041be504d663df9791d31c",
+      "fingerprint": "3ef58d8670fd7bca49b721bfc49d436d2824487bec84722765a300c4569b6ed8",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -7082,10 +7086,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -7365,7 +7365,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -7519,11 +7519,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding-i9-search"
     },
     {
-      "fingerprint": "4289f35f16bfc09e628dc7ce85e747144dc320d475b680baf9aae715a7cad9a6",
+      "fingerprint": "bf19f389489b0d858f5ed2ef5e77ce234817991da33b8c68911ab844c3779006",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -7548,10 +7552,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -7831,7 +7831,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -7985,11 +7985,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "onboarding-ucpath-search"
     },
     {
-      "fingerprint": "c82cafa536a492b5591d4c7b3d413ab4795a0380215d7bc5c33ce1f60b014ccb",
+      "fingerprint": "22dcbc79740632c38da0022fd0fa389fd5485ad6de9266f2489897f2c8aaf2b3",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -8014,10 +8018,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -8301,7 +8301,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -8451,11 +8451,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "ff4ad991a404e3bf9cc81b0b8d627a1721a7ab2f3e6fe361e0c3e9828201e8e9",
+      "fingerprint": "10b1f7ca853ad34fd1462c7df898215385f0a0bd8368db0eca8628cd417758fa",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -8480,10 +8484,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -8767,7 +8767,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -8917,11 +8917,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-active-status"
     },
     {
-      "fingerprint": "a79ac4c8497ae20f2994c9c69ed35f9b7680cbb4103e2c87cc2e1219d2ec3d56",
+      "fingerprint": "a8547d4b081019d256f10ae9fa0014567382f3fdc39c0fb0e669eba0a9f23f29",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -8946,10 +8950,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -9233,7 +9233,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -9383,11 +9383,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-crm-dates"
     },
     {
-      "fingerprint": "8fd1dd66d446e559280ecdb46f5c6fd328d45001bbec05edf4b43ea6f10b93b2",
+      "fingerprint": "c816f03e55dc6a1d5488e92b447503f39abb66e67c0dbdbb55ccb018550e4363",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -9412,10 +9416,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -9699,7 +9699,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -9849,11 +9849,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-cross-verify"
     },
     {
-      "fingerprint": "811e6d9a2508d3087ff6bf0315f3008ec7ee9312378793a234363408085595d3",
+      "fingerprint": "9c6d9d1b370bf723ea4af1a9122824d32d167de674fc3e10b5376c4d8ea70e1f",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -9878,10 +9882,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -10165,7 +10165,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -10315,11 +10315,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup-searching"
     },
     {
-      "fingerprint": "6b574b0c0732a51f0c3e046a6fc9d6381826a443b64e14bf0a7208d220d88b9a",
+      "fingerprint": "534cc813765510dc225ba88d31ed245d9c7d58f14fa48c6ac5bbcbee5cc8deb1",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -10344,10 +10348,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -10727,7 +10727,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -10929,11 +10929,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations"
     },
     {
-      "fingerprint": "f55d9c39ddf5e6bc1a522c87e851700aebf7a43ee443c29840e720f25d9ea447",
+      "fingerprint": "4b25ad2fc00b70063bb525a5f0e6827f020999fc13a3961ebf0a9e02d0c20ceb",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -10958,10 +10962,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -11341,7 +11341,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -11543,11 +11543,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-identity-check"
     },
     {
-      "fingerprint": "5f192acc4509040ff994d11d0b3362350cfae0553ce37413639df6f13e2cfff4",
+      "fingerprint": "5ec626283cf9cf086047c1b25c39ddb8ed48d5e7fe4d1d77164c173ddd1d2c18",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -11572,10 +11576,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -11955,7 +11955,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -12157,11 +12157,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "fb28888c649ff6674f2e8c1141f15308b202e9783f1b3e8e457a5d0cbd5a26fd",
+      "fingerprint": "991c7d0c24b15749935f9f08e0a3289b338ced3c85381f75db16066278a309a6",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -12186,10 +12190,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -12569,7 +12569,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -12771,11 +12771,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-finalization"
     },
     {
-      "fingerprint": "801c8949c63752e4db0ec76eb7c91a36cf54a822fc565f2c3f4db796df14af48",
+      "fingerprint": "9b9b3530d6b9d16162ea6e71cb127caa37b3ef568bf3428d078f34e3c01128a4",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -12800,10 +12804,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -13183,7 +13183,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -13385,11 +13385,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "00d7f3bb64b464b1f55f488f2ff407af2df0f7c754d56bf403cd0a1488722ab2",
+      "fingerprint": "974f6dc66539abafd49f3e7fe741d70b526ffe6ebec497ed48d457e8d4287b8b",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -13414,10 +13418,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -13797,7 +13797,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/commands/lifecycle-command-id.ts",
@@ -26531,7 +26531,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination-filing-present"
     },
     {
-      "fingerprint": "baacbdb1d422e8208bf8dc7eed3197731a5c2f06b647ab802e44a138cd805af2",
+      "fingerprint": "2d4ec4e55b7f87140d1d08f2b149822df85adf254e39ac0981bb1590db716b52",
       "sources": [
         {
           "path": "src/backend/processing/workbooks/tasks/read-result.ts",
@@ -26540,6 +26540,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -26564,10 +26568,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -26771,7 +26771,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/identity/ids.ts",
@@ -29287,11 +29287,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:onboarding/match-hire-subject"
     },
     {
-      "fingerprint": "6e3140345f8e30ec7f5d123a4c01b5dc32606b5c4edb1a25d6588c959dbd70f9",
+      "fingerprint": "c8cb3e3888b6fd2316c44200fd31dac516f06bb01661bd4f2616572585dbd186",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -29316,10 +29320,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -29535,7 +29535,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/identity/ids.ts",
@@ -29621,11 +29621,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:onboarding/read-hire-plan"
     },
     {
-      "fingerprint": "b1b258cd0b115810d09211be41bc7581fae8d9da297d007d089ed8ae49cca165",
+      "fingerprint": "fe2c91f251c40fe47d7a5e6d256fce2ac168196d88e05602830f9765230b3bbe",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -29650,10 +29654,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -29889,7 +29889,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/identity/ids.ts",
@@ -29975,11 +29975,15 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:onboarding/read-i9-lookup"
     },
     {
-      "fingerprint": "1adfbc96a643be0e28988c05bc25a86420cbb86193935c534a385d9cdbe99c28",
+      "fingerprint": "3379ddfc0bac5fea8d6b9459bb5c4850a29131ee3443a20007ca426355172c0b",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
           "sha256": "a1ca8e6787aaea8645fa6b4223c7603afecd16edab6585c6a7fcc9f5c2c5fcf8"
+        },
+        {
+          "path": "src/models/config/assistant-model-preference.ts",
+          "sha256": "43f6c9096993bbd050415fcaf21c1f5eef8366f265646b1daa55c3cc3022ce61"
         },
         {
           "path": "src/models/config/catalog.ts",
@@ -30004,10 +30008,6 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/settings.ts",
           "sha256": "490eee0f0b25e3fec3a8dde16ff0fa315d9a965de5644f22a7848e7dc74ad36f"
-        },
-        {
-          "path": "src/models/dashboard/assistant.ts",
-          "sha256": "f2756acbcf7addd4d7a4adcdbe91ac9728b87162763c622e4f00473b6d56378e"
         },
         {
           "path": "src/models/dashboard/primitives.ts",
@@ -30243,7 +30243,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/rules/commands/commands.ts",
-          "sha256": "3ca17b18f21a3464742824f91b0045dac3a23e7630f28eb3233dc8d1cd6941e7"
+          "sha256": "f0919d8530385bc5bc7199fe35e527bfb32cdfe3c1130f70404b063e7c43835c"
         },
         {
           "path": "src/rules/identity/ids.ts",

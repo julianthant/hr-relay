@@ -1,5 +1,5 @@
 import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND } from '../../../models/dashboard/assistant.js';
-import type { AssistantActionIdentity } from "../../../models/dashboard/assistant.js";
+import type { AssistantActionIdentity, AssistantActionProposal } from "../../../models/dashboard/assistant.js";
 export interface AssistantSource {
   readonly id: string;
   readonly title: string;
@@ -17,6 +17,7 @@ export interface AssistantMessage {
 
 export interface AssistantMockProposal {
   readonly action?: AssistantActionIdentity;
+  readonly startPlan?: Extract<AssistantActionProposal, { effect: 'workflow-start' }>['startPlan'];
   readonly expiresAt?: string;
   readonly id: string;
   readonly revision: string;

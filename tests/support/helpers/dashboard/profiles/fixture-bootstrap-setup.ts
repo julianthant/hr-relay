@@ -21,7 +21,7 @@ WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
     settingsSchemaHash: descriptorSetHash(["settings-schema"]),
     protectedSchemaHash: descriptorSetHash(["protected-settings-schema"]),
     projectionGeneration: 1,
-    actor: { id: "local-operator", label: "Local operator" },
+    actor: { id: "local-operator", label: "Jordan Lee" },
     serverClock: { now: FIXTURE_NOW, zone: "America/Los_Angeles" },
     storage: { authority: "healthy", automaticRepair: { state: "none" }, backup: "current", checkedAt: at(0) },
     workflows: [{

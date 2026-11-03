@@ -7,6 +7,9 @@ import { assertMonotonicFrozen, installFrozenMonotonic } from "./helpers/app-dri
 import { attachShellA11y } from "./helpers/shell-proof.js";
 import { startFixtureServer } from "../support/helpers/dashboard/fixture-bff.js";
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
+import { SettingsCommandRequestSchema, CommandResultSchema } from "../../src/rules/commands/commands.js";
+import { mergeSettingsPatch } from "../../src/models/config/settings.js";
+import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
 
 async function assertCentered(page: Page, selector: string) {
   const position = await page.locator(selector).evaluate(element => { const box = element.getBoundingClientRect(); return { x: box.x - (innerWidth - box.width) / 2, y: box.y - (innerHeight - box.height) / 2 }; });
@@ -24,7 +27,7 @@ async function capture(page: Page, info: TestInfo, state: string, theme: string)
     descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default",
   });
 }
-for (const theme of ["light", "dark"]) {
+for (const theme of ["light", "dark"] as const) {
   test(`HUB shell chat lifecycle, overlays and logout ${theme}`, async ({ page }, info) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
@@ -133,16 +136,37 @@ for (const theme of ["light", "dark"]) {
     } finally { await server.close(); }
   });
 
-  test(`HUB appearance, session mock preferences and motion ${theme}`, async ({ page }, info) => {
+  test(`HUB appearance, served person preferences and motion ${theme}`, async ({ page }, info) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await installFrozenMonotonic(page);
       await page.setViewportSize({ width: 1440, height: 900 });
-      await page.addInitScript(value => Reflect.set(window, "relayParityTheme", value), theme);
+      await page.addInitScript(value => { Reflect.set(window, "relayParityTheme", value); Reflect.set(window, "relayParityPersonPreferences", true); }, theme);
+      let saved: Parameters<typeof mergeSettingsPatch>[0] = { preferences: { theme, animations: true } };
+      let revision = 2, writes = 0, profileReads = 0;
+      await page.route("**/api/v1/profile/state", route => { profileReads++; return route.fulfill({ json: {
+        state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready",
+      } }); });
+      await page.route("**/api/v1/settings/editable", route => route.fulfill({ json: fixtureSettingsDocument(saved, revision) }));
+      await page.route("**/api/v1/commands", route => {
+        const command = SettingsCommandRequestSchema.parse(route.request().postDataJSON());
+        expect(command.source).toBe("person-preferences");
+        expect(command.target.expectedRevision).toBe(revision);
+        expect(Object.keys(command.payload.patch)).toEqual(["preferences.animations"]);
+        saved = mergeSettingsPatch(saved, command.payload.patch); revision++; writes++;
+        const document = fixtureSettingsDocument(saved, revision);
+        return route.fulfill({ json: CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
+          affectedTargets: [{ family: "settings", revision }], settingsRevision: revision,
+          settingsFingerprint: document.settingsFingerprint, restartRequired: false }) });
+      });
       await page.goto(`${server.baseUrl}/?settings=general`);
       const animations = page.getByRole("switch", { name: /^Animations / });
+      await expect(animations).toBeEnabled();
+      await expect(page.getByText("Saved for Jordan Lee on this Mac.", { exact: true })).toBeVisible();
       await expect(animations).toBeChecked(); await page.locator('[data-settings-path="appearance.animations"] .ds-switch-control').click();
       await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
+      await expect(page.getByText("Saved for Jordan Lee. Your reduced-motion preference takes priority.", { exact: true })).toBeVisible();
+      await expect(page.getByText("Settings write unconfirmed", { exact: true })).toHaveCount(0);
       const search = page.locator(".settings-nav-search input");
       const fill = await search.evaluate(element => getComputedStyle(element).backgroundColor);
       await page.keyboard.press("Tab");
@@ -150,23 +174,20 @@ for (const theme of ["light", "dark"]) {
       expect(await search.evaluate(element => getComputedStyle(element).backgroundColor)).toBe(fill);
       await search.blur();
       await capture(page, info, "settings-general", theme);
-      const before = await page.locator(".settings-compact-page").boundingBox();
-      await page.getByRole("button", { name: "Ask before every action", exact: true }).click();
-      const firstMode = page.getByRole("menuitemradio", { name: /^Ask before every action/ });
-      await firstMode.hover(); await expect(firstMode).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-      await capture(page, info, "settings-permission", theme);
-      await page.keyboard.press("Escape");
-      await expect(page.getByRole("button", { name: "Ask before every action", exact: true })).toBeFocused();
-      await page.getByRole("button", { name: "Ask before every action", exact: true }).click();
-      await page.keyboard.press("End"); await page.keyboard.press("Enter");
-      await expect(page.getByRole("button", { name: "Ask before every action", exact: true })).toBeFocused();
-      expect(await page.locator(".settings-compact-page").boundingBox()).toEqual(before);
+      await expect(page.getByRole("group", { name: "Assistant permission", exact: true })).toHaveCount(0);
+      await expect(page.locator('[data-settings-path="assistant.permission"]')).toHaveCount(0);
+      await search.fill("assistant permission");
+      await expect(page.getByRole("button", { name: "Assistant permission", exact: true })).toHaveCount(0);
+      await search.clear();
       await page.getByRole("link", { name: "Keyboard", exact: true }).click();
       await page.getByRole("link", { name: "General", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Ask before every action", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Ask before every action", exact: true })).toHaveCount(0);
       await expect(animations).not.toBeChecked();
       await page.reload(); await expect(animations).not.toBeChecked();
+      await expect(animations).toBeEnabled(); expect(writes).toBe(1); expect(profileReads).toBe(2);
       await page.locator('[data-settings-path="appearance.animations"] .ds-switch-control').click(); await page.emulateMedia({ reducedMotion: "reduce" });
+      await expect(animations).toBeChecked(); expect(writes).toBe(2);
+      await expect(page.getByText("Settings write unconfirmed", { exact: true })).toHaveCount(0);
       expect(await page.locator(".hub-logout").evaluate(element => getComputedStyle(element).transitionDuration)).toBe("0s");
       await page.getByRole("link", { name: "Storage", exact: true }).click();
       for (const selector of [".ds-form-group > .ds-result-row", ".diagnostic-check-entry > .ds-result-row"]) {

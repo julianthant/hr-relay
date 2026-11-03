@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { AssistantModelPreferenceSchema } from "../../models/dashboard/assistant.js";
+import { AssistantModelPreferenceSchema } from "../../models/config/assistant-model-preference.js";
+
 import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
 import { StoredAssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";
 import { RunContinuationSchema } from "../../models/run/continuation.js";
