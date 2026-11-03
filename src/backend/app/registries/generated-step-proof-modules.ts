@@ -4,6 +4,7 @@ import { taskStoreRegistry } from "./task-registry.js";
 import { registration as i9CheckModuleRegistration } from "../../../workflows/i9-check/index.js";
 import { registration as i9LookupModuleRegistration } from "../../../workflows/i9-lookup/index.js";
 import { registration as onbaseModuleRegistration } from "../../../workflows/onbase/index.js";
+import { registration as onboardingModuleRegistration } from "../../../workflows/onboarding/index.js";
 import { registration as personLookupModuleRegistration } from "../../../workflows/person-lookup/index.js";
 import { registration as separationsModuleRegistration } from "../../../workflows/separations/index.js";
 
@@ -22,6 +23,10 @@ export const i9CheckPersonLookupModule = composeWorkflowModule(compileWorkflow(i
 export const i9CheckRosterMatchModule = composeWorkflowModule(compileWorkflow(i9CheckModuleRegistration.proofs[2].definition), taskStoreRegistry.stores);
 export const onbaseSourcePageModule = composeWorkflowModule(compileWorkflow(onbaseModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
 export const onbaseImportDocumentModule = composeWorkflowModule(compileWorkflow(onbaseModuleRegistration.proofs[1].definition), taskStoreRegistry.stores);
+export const onboardingCrmDataModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[0].definition), taskStoreRegistry.stores);
+export const onboardingUcpathSearchModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[1].definition), taskStoreRegistry.stores);
+export const onboardingI9SearchModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[2].definition), taskStoreRegistry.stores);
+export const onboardingI9ProfileCreationModule = composeWorkflowModule(compileWorkflow(onboardingModuleRegistration.proofs[3].definition), taskStoreRegistry.stores);
 
 export const STEP_PROOF_MODULES = Object.freeze([
   separationsKronosTimecardModule,
@@ -39,4 +44,8 @@ export const STEP_PROOF_MODULES = Object.freeze([
   i9CheckRosterMatchModule,
   onbaseSourcePageModule,
   onbaseImportDocumentModule,
+  onboardingCrmDataModule,
+  onboardingUcpathSearchModule,
+  onboardingI9SearchModule,
+  onboardingI9ProfileCreationModule,
 ] as const);

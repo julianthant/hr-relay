@@ -16,6 +16,7 @@ export const DASHBOARD_SCENARIO_FILE_PATTERN =
 const INTEGRATION_SCENARIO_FILES = [
   "tests/workflows/person-lookup/workflow.scenarios.integration.test.ts",
   "tests/workflows/i9-check/workflow.integration.test.ts",
+  "tests/workflows/onboarding/workflow.integration.test.ts",
   "tests/backend/workbooks/workflow-workbook-service.integration.test.ts",
   "tests/backend/systems/onbase/tasks/read-source-page.test.ts",
   "tests/backend/systems/onbase/driver/interpreter.test.ts",
@@ -46,6 +47,7 @@ const PERSON_LOOKUP_FILE = workflowStructuralScenarioPath("person-lookup", defin
 const I9_LOOKUP_FILE = workflowStructuralScenarioPath("i9-lookup", defineWorkflowRole({ kind: "standalone" }));
 
 export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchema.array().parse([
+  { scenarioId: "onboarding/crm-extraction", file: "tests/workflows/onboarding/workflow.integration.test.ts" },
   { scenarioId: "workbooks/publish", file: "tests/backend/workbooks/workflow-workbook-service.integration.test.ts" },
   { scenarioId: "i9-check/person", file: "tests/workflows/i9-check/workflow.integration.test.ts" },
   { scenarioId: "onbase/one-page", file: "tests/backend/systems/onbase/tasks/read-source-page.test.ts" },
