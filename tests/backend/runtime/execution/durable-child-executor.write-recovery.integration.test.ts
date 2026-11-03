@@ -1,7 +1,7 @@
 import { afterAll } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
-import { childWriteRecoveryRoot as root, childPrerequisiteRoot, childPrerequisiteModules, childCrashWrite, parallelChildWriteRecoveryRoot, childReadPreviewRoot, childUnsupportedPreviewRoot, childUnsupportedPreviewTarget } from "../../../support/fixtures/child-execution-write-workflow.js";
+import { childWriteRecoveryRoot as root, childPrerequisiteRoot, childPrerequisiteModules, childCrashWrite, parallelChildWriteRecoveryRoot, childReadPreviewRoot, childUnsupportedPreviewRoot, childUnsupportedPreviewTarget, childGateResumeRoot } from "../../../support/fixtures/child-execution-write-workflow.js";
 import assert from "node:assert/strict";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -9,7 +9,7 @@ import { taskId } from "../../../../src/rules/identity/ids.js";
 import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
 import { resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
-import { workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
@@ -36,11 +36,11 @@ afterAll(() => profiles.close());
 const world = createRunExecutorTestWorld(profiles.create);
 afterEach(world.cleanup);
 
-async function fixture(mode: "single" | "prerequisites" | "parallel" | "read-preview" | "unsupported-preview" = "single", dryRun = false) {
+async function fixture(mode: "single" | "prerequisites" | "parallel" | "read-preview" | "unsupported-preview" | "gate-resume" = "single", dryRun = false) {
   const prerequisites = mode === "prerequisites", parallel = mode === "parallel", readPreview = mode === "read-preview", unsupportedPreview = mode === "unsupported-preview";
-  const withReads = prerequisites || readPreview || unsupportedPreview;
+  const withReads = prerequisites || readPreview || unsupportedPreview || mode === "gate-resume";
   const driver = createWriteFixtureWorld(), graph = withReads || parallel ? childPrerequisiteModules(driver) : undefined;
-  const selectedRoot = readPreview ? childReadPreviewRoot : unsupportedPreview ? childUnsupportedPreviewRoot
+  const selectedRoot = mode === "gate-resume" ? childGateResumeRoot : readPreview ? childReadPreviewRoot : unsupportedPreview ? childUnsupportedPreviewRoot
     : parallel ? parallelChildWriteRecoveryRoot : prerequisites ? childPrerequisiteRoot : root;
   const stores = graph?.stores ?? buildWriteFixtureRegistry(driver);
   const h = await world.executorHarness({ descriptor: selectedRoot.descriptor, stores, sessions: writeFixtureSessions(driver) });
@@ -285,3 +285,43 @@ it("still refuses a delegated child whose transaction explicitly does not suppor
   assert.equal(f.driver.events.includes("prepare"), false);
   assert.equal(f.driver.events.some(event => event.startsWith("commit-click:")), false);
 });
+
+for (const dryRun of [false, true]) {
+it(`resumes an approved gate at its next node after a completed child with dryRun ${String(dryRun)}`, async () => {
+  const f = await fixture("gate-resume", dryRun);
+  f.driver.probeResults.push(absentProbeEvidence(f.clock.now().toISOString()));
+  const parked = await f.execution.execute(f.run, world.SIGNAL);
+  assert.ok(parked.run?.lifecycle.state === "parked-gate");
+  assert.equal(parked.run.lifecycle.gateId, "review");
+  assert.equal(parked.run.lifecycle.resumeAt, "write");
+  const children = f.database.authority.runs.listChildren(f.run.envelope.runId);
+  assert.equal(children.length, 1);
+  const child = children[0]; assert.ok(child);
+  assert.ok(child.lifecycle.state === "terminal" && child.lifecycle.outcome === "done");
+  const childResult = f.database.authority.runResults.get(child.envelope.runId); assert.ok(childResult);
+  const manifests = f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId);
+  assert.equal(f.driver.events.includes("prepare"), false);
+  const gate = descriptorRuntimeNodes(childGateResumeRoot.descriptor).find(node => node.id === "review");
+  assert.ok(gate?.kind === "gate");
+  const command = { commandId: randomUUID(), family: "gate", type: "resolve-gate", source: "dashboard", requestedBy: "local-operator",
+    requestedAt: f.clock.now().toISOString(), target: { runId: parked.run.envelope.runId, expectedVersion: parked.run.version, gateId: parked.run.lifecycle.gateId },
+    payload: { result: { schemaHash: deriveSchemaHash(gate.result, "output"), value: { approved: true } } } } as const;
+  const approved = f.execution.kernel.execute(command);
+  assert.equal(approved.state, "applied", JSON.stringify(approved));
+  assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.envelope.startAt, "write");
+  const done = await f.execution.execute(f.run, world.SIGNAL);
+  assert.ok(done.run?.lifecycle.state === "terminal" && done.run.lifecycle.outcome === "done",
+    JSON.stringify(f.database.authority.failures.listByRun(f.run.envelope.runId).map(failure => ({ code: failure.code, summary: failure.summary, stack: failure.debug?.stack }))));
+  assert.equal(done.run.envelope.runId, f.run.envelope.runId);
+  assert.equal(done.run.envelope.attempt, f.run.envelope.attempt);
+  assert.deepEqual(f.database.authority.runs.listChildren(f.run.envelope.runId), children);
+  assert.deepEqual(f.database.authority.runResults.get(child.envelope.runId), childResult);
+  assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId), manifests);
+  assert.equal(f.driver.events.filter(event => event === "prepare").length, 1);
+  assert.equal(f.driver.events.filter(event => event.startsWith("commit-click:")).length, dryRun ? 0 : 1);
+  assert.equal(f.database.authority.commandAudits.findByCommand(command.commandId)?.result.state, "applied");
+  const result = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(result);
+  if (dryRun) assert.equal(RunDryRunPreviewResultSchema.parse(result.result.value).externalCommit, "none");
+  else assert.deepEqual(result.result.value, { transactionId: "T123456" });
+});
+}
