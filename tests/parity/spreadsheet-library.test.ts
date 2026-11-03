@@ -45,6 +45,10 @@ for (const theme of ['light', 'dark']) for (const width of [1024, 1440]) {
       await create.getByRole('button', { name: 'Cancel', exact: true }).click();
       await expect(drawer.getByRole('button', { name: 'Check result', exact: true })).toBeEnabled();
       await capturePresentationReference(page, info, 'uncertain');
+      await drawer.getByRole('button', { name: 'Close', exact: true }).click();
+      await expect(versions).toBeEnabled(); await expect(versions).toBeFocused();
+      await versions.click();
+      await expect(drawer.getByRole('button', { name: 'Check result', exact: true })).toBeEnabled();
       hideStatus = false;
       await drawer.getByRole('button', { name: 'Check result', exact: true }).click();
       await expect(drawer.getByText('Fall hires added', { exact: true })).toBeVisible();
