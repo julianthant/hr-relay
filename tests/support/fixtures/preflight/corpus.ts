@@ -102,24 +102,29 @@ async function inject(f: Awaited<ReturnType<typeof runtimeFixture>>, entry: Case
   throw new Error(`No fault injector for ${id}`);
 }
 export function auditPreflightExecutions(raw: unknown): void {
+  auditPreflightManifests();
   const executions=z.array(ExecutionSchema).parse(raw);
   const expected=preflightFaultCases();
   assert.equal(executions.length,expected.length,"missing or extra executed dependency case");
   assert.equal(new Set(executions.map(entry=>`${entry.dependency}/${entry.variant}`)).size,expected.length,"duplicate execution");
   for(const entry of expected) {
     const execution=executions.find(candidate=>candidate.dependency===entry.dependency.id&&candidate.variant===entry.variant);assert.ok(execution,"unexecuted dependency");
-    const manifest=PREFLIGHT_SCENARIO_MANIFESTS.find(candidate=>candidate.id===entry.dependency.scenario);assert.ok(manifest);
-    assert.equal(execution.scenario,manifest.id);assert.equal(execution.check,entry.dependency.check);
-    assert.equal(execution.terminal,manifest.expect.terminal);assert.equal(execution.actionCount,manifest.expect.actionCount);assert.equal(execution.externalCommitCount,manifest.expect.externalCommitCount);
-    assert.deepEqual(execution.evidence,manifest.expect.requiredEvidence);
-    assert.equal(execution.reportDigest,sha256Hex(canonicalJsonStringify(execution.report)),"mismatched detector evidence");
-    const outcome=execution.report.results.find(result=>result.check===entry.dependency.check);assert.ok(outcome);
-    assert.equal(outcome.status,entry.dependency.requirement==="blocking"?"fail":"warning","injected fault incorrectly reported healthy");
-    assert.equal(execution.terminal,execution.report.results.some(result=>result.status==="fail")?"failed":"partial");
-    assert.deepEqual(manifest.expect.failureCode,execution.terminal==="failed"?{state:"present",value:"PREFLIGHT_FAILED"}:{state:"absent"});
+    auditPreflightExecution(execution, entry);
   }
 }
-export async function executePreflightCorpus(transform?: (runners: readonly PreflightRunner[]) => readonly PreflightRunner[]): Promise<CorpusExecution[]> {
+function auditPreflightExecution(execution: CorpusExecution, entry: Case): void {
+  const manifest=PREFLIGHT_SCENARIO_MANIFESTS.find(candidate=>candidate.id===entry.dependency.scenario);assert.ok(manifest);
+  assert.equal(execution.scenario,manifest.id);assert.equal(execution.check,entry.dependency.check);
+  assert.equal(execution.terminal,manifest.expect.terminal);assert.equal(execution.actionCount,manifest.expect.actionCount);assert.equal(execution.externalCommitCount,manifest.expect.externalCommitCount);
+  assert.deepEqual(execution.evidence,manifest.expect.requiredEvidence);
+  assert.equal(execution.reportDigest,sha256Hex(canonicalJsonStringify(execution.report)),"mismatched detector evidence");
+  const outcome=execution.report.results.find(result=>result.check===entry.dependency.check);assert.ok(outcome);
+  assert.equal(outcome.status,entry.dependency.requirement==="blocking"?"fail":"warning","injected fault incorrectly reported healthy");
+  assert.equal(execution.terminal,execution.report.results.some(result=>result.status==="fail")?"failed":"partial");
+  assert.deepEqual(manifest.expect.failureCode,execution.terminal==="failed"?{state:"present",value:"PREFLIGHT_FAILED"}:{state:"absent"});
+}
+
+function auditPreflightManifests(): void {
   const fixture=FixtureSchema.parse(JSON.parse(readFileSync(join(process.cwd(),"tests/support/fixtures/preflight/environment-doctor.json"),"utf8")));
   assert.equal(new Set(fixture.faults.map(fault=>fault.scenario)).size,PREFLIGHT_SCENARIO_MANIFESTS.length);
   for(const raw of PREFLIGHT_SCENARIO_MANIFESTS) {
@@ -130,15 +135,17 @@ export async function executePreflightCorpus(transform?: (runners: readonly Pref
     assert.equal(manifest.fixture,"fixtures/preflight/environment-doctor.json");
     assert.deepEqual(manifest.requiredAssertions,[`reports-${fault.injection}`]);
   }
+}
+
+export async function executePreflightCase(entry: Case, transform?: (runners: readonly PreflightRunner[]) => readonly PreflightRunner[]): Promise<CorpusExecution> {
+  auditPreflightManifests();
   const profiles = createProfileFixtureSet();
-  const executions:CorpusExecution[]=[];
   let actionCount=0, externalCommitCount=0;
   const launch = vi.spyOn(chromium,"launch").mockImplementation(()=>{actionCount++;throw new Error("Corpus attempted a browser launch");});
   const persistent = vi.spyOn(chromium,"launchPersistentContext").mockImplementation(()=>{actionCount++;throw new Error("Corpus attempted a persistent browser launch");});
   const spawn = vi.spyOn(childProcess,"spawn").mockImplementation(()=>{actionCount++;throw new Error("Corpus attempted a process launch");});
   const fetch = vi.spyOn(globalThis,"fetch").mockImplementation(()=>{externalCommitCount++;throw new Error("Corpus attempted an external request");});
   try {
-  for(const entry of preflightFaultCases()) {
     const f=await runtimeFixture(entry.dependency.capabilities, profiles.create);let undo:(()=>Promise<void>|void)|undefined;
     try {
       const feature=FEATURE_RUNTIME_SPECS.find(candidate=>candidate.dependency===entry.dependency.id);
@@ -151,10 +158,10 @@ export async function executePreflightCorpus(transform?: (runners: readonly Pref
       assert.deepEqual(readFileSync(f.databasePath),databaseBefore,"detectors mutated authority");
       await undo();undo=undefined;
       assert.equal((await f.report()).results.find(result=>result.check===entry.dependency.check)?.status,"pass","explicit restoration did not re-check healthy");
-      executions.push(ExecutionSchema.parse({scenario:entry.dependency.scenario,dependency:entry.dependency.id,variant:entry.variant,check:entry.dependency.check,report,
-        terminal:report.results.some(result=>result.status==="fail")?"failed":"partial",actionCount,externalCommitCount,evidence:[`preflight.${entry.dependency.scenario.slice("preflight/".length)}`],reportDigest:sha256Hex(canonicalJsonStringify(report)),restored:true}));
+      const execution = ExecutionSchema.parse({scenario:entry.dependency.scenario,dependency:entry.dependency.id,variant:entry.variant,check:entry.dependency.check,report,
+        terminal:report.results.some(result=>result.status==="fail")?"failed":"partial",actionCount,externalCommitCount,evidence:[`preflight.${entry.dependency.scenario.slice("preflight/".length)}`],reportDigest:sha256Hex(canonicalJsonStringify(report)),restored:true});
+      auditPreflightExecution(execution, entry);
+      return execution;
     } finally {try {await undo?.();} finally {await f.close();}}
-  }
-  auditPreflightExecutions(executions);return executions;
   } finally {launch.mockRestore();persistent.mockRestore();spawn.mockRestore();fetch.mockRestore();await profiles.close();}
 }
