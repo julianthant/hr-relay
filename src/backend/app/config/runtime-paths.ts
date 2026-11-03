@@ -1,5 +1,5 @@
 import { join, resolve } from "node:path";
-import { ConfigPathsSchema,type ConfigPaths } from "../../../models/config/schema.js";
+import { ConfigPathsSchema,ONBOARDING_DOCUMENTS_DIRECTORY_NAME,type ConfigPaths } from "../../../models/config/schema.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "./runtime-isolation.js";
 
 export function defaultBrowserProfileRoot(): string {
@@ -12,7 +12,7 @@ export function defaultRuntimePaths(): ConfigPaths {
   return ConfigPathsSchema.parse({
     reportsDir: join(stateRoot, "files", "reports"),
     downloadsDir: join(stateRoot, "files", "downloads"),
-    onboardingDocsDir: join(stateRoot, "files", "onboarding"),
+    onboardingDocsDir: join(stateRoot, "files", ONBOARDING_DOCUMENTS_DIRECTORY_NAME),
     i9CheckTrackerPath: join(stateRoot, "files", "reports", "i9-check-tracker.xlsx"),
     stateRoot,
     artifactRoot: join(workspace, rebuildRuntimeIsolation.artifactRoot),

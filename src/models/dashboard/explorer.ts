@@ -168,7 +168,7 @@ export const ExplorerContractFieldWireSchema = z.strictObject({
   kind: ContractSchemaLeafKindSchema,
   presence: z.enum(["always", "sometimes"]),
   /** The closed vocabulary an `enum`/`literal` field admits. */
-  options: z.array(z.string().min(1)).min(1).optional(),
+  options: z.array(z.string()).min(1).optional(),
   recorded: ExplorerFieldRecordedWireSchema,
 });
 export type ExplorerContractFieldWire = z.infer<typeof ExplorerContractFieldWireSchema>;

@@ -24,6 +24,7 @@ import type {
   CrmOnboardingRecordRead,
 } from "../../../../models/ui/crm-onboarding.js";
 import { CRM_UI_REGISTRY } from "./ui-registry.js";
+import { readCrmHireDataOnPage } from "./hire-operation.js";
 
 const CRM_HOST = "act-crm.my.site.com";
 const CRM_SEARCH_PATH = "/hr/ONB_SearchOnboardings";
@@ -546,6 +547,7 @@ async function readOnboardingDates(
 export function createCrmOnboardingDriver(assertCurrent: () => void, page: Page): CrmOnboardingDriver {
   return Object.freeze(CrmOnboardingDriverSchema.parse({
     system: "crm",
+    readHireData: (input: Readonly<{ email: string }>) => readCrmHireDataOnPage(assertCurrent, page, input.email),
     async searchOnboardingRecords(input: Readonly<{ name?: string; eid?: string }>) {
       const discovered = new Map<string, ExactCrmOnboardingRecord>();
       const names = input.name === undefined ? [] : nameSearchQueries(input.name);

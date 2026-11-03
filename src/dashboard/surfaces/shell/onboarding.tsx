@@ -1,3 +1,4 @@
+import { PROFILE_ONBOARDING_STATE } from "../../../models/profiles/public-profile.js";
 import type { PublicProfileState } from "../../../models/profiles/public-profile.js";
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -118,7 +119,7 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
             try {
               const result: PublicProfileState = await port.submit(signup ? "signup" : "login", details);
               if (request !== submitted.current) return;
-              if (result.state === "onboarding") {
+              if (result.state === PROFILE_ONBOARDING_STATE) {
                 setForms(current => ({ ...current, [formStep]: { ...current[formStep], password: "" } }));
                 onStep(result.step); return;
               }

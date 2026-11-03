@@ -2,6 +2,7 @@
 import { registration as i9CheckModuleRegistration } from "../../../workflows/i9-check/index.js";
 import { registration as i9LookupModuleRegistration } from "../../../workflows/i9-lookup/index.js";
 import { registration as onbaseModuleRegistration } from "../../../workflows/onbase/index.js";
+import { registration as onboardingModuleRegistration } from "../../../workflows/onboarding/index.js";
 import { registration as personLookupModuleRegistration } from "../../../workflows/person-lookup/index.js";
 import { registration as separationsModuleRegistration } from "../../../workflows/separations/index.js";
 
@@ -9,6 +10,7 @@ export const WORKFLOW_TASK_STORES = Object.freeze([
   i9CheckModuleRegistration.store,
   i9LookupModuleRegistration.store,
   onbaseModuleRegistration.store,
+  onboardingModuleRegistration.store,
   personLookupModuleRegistration.store,
   separationsModuleRegistration.store,
 ] as const);

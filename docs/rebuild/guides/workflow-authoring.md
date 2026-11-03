@@ -50,7 +50,7 @@ effect, input and output. `src/backend/app/registries/task-registry.ts` composes
 | New generic dashboard interaction | Change the shared capability under its own approved scope. |
 
 Reuse follows the operation and output contract. Bind or fold the useful facts from a page-read
-task instead of adding another scrape for one field. A thin workflow-owned system-task call uses `reuseTask(step, identity, bindInput)` from
+task instead of adding another scrape for one field. A thin workflow-owned system-task call in a step module uses `reuseTask(step, identity, bindInput)` from
 `workflow-definition.ts`. It returns the typed `identity` and `bind` used by `author.task`. The
 identity retains the exact driver contract, including its input/output schemas and provenance; the system store keeps the driver implementation, session policy, screenshots and provenance. Such calls are fingerprinted through the workflow source closure, not registered again as mini-store implementations. Pure calculation tasks use `defineTask` and the workflow mini-store.
 

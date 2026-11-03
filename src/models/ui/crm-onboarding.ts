@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { CrmHireData } from "../systems/crm/read-hire-data.js";
 import type { CrmDiscoveredRecord } from "../systems/crm/search-onboarding-records.js";
 import {
   CrmReadOnboardingDates,
@@ -96,9 +97,10 @@ const ReadOnboardingDatesOperationSchema = z.custom<(
   input: z.output<typeof CrmReadOnboardingDates.input>,
 ) => Promise<CrmOnboardingDatesRead>>((value) => typeof value === "function");
 
-/** CRM's task-facing semantic surface; the contract-bound methods here are the only operations Person Lookup tasks can invoke. */
+/** CRM's task-facing semantic surface. */
 export const CrmOnboardingDriverSchema = z.strictObject({
   system: z.literal("crm"),
+  readHireData: z.custom<(input: Readonly<{ email: string }>) => Promise<CrmHireData>>((value) => typeof value === "function"),
   searchOnboardingRecords: z.custom<(input: Readonly<{ name?: string; eid?: string }>) => Promise<CrmDiscoveredRecord[]>>((value) => typeof value === "function"),
   verifyOnboardingRecord: z.custom<(input: CrmDiscoveredRecord) => Promise<CrmDiscoveredRecord>>((value) => typeof value === "function"),
   readOnboardingRecord: ReadOnboardingRecordOperationSchema,

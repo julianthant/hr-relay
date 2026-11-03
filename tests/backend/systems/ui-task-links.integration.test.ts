@@ -22,6 +22,7 @@ describe("Explorer registered graph and service acceptance", () => {
       assert.deepEqual(wire.workflows.map(w => w.id), query.modules.map(m => m.descriptor.id));
       let conditional = 0;
       let transactions = 0;
+      let delegated = 0;
       for (const module of query.modules) {
         const served = wire.workflows.find(w => w.id === module.descriptor.id);
         assert.ok(served);
@@ -44,9 +45,17 @@ describe("Explorer registered graph and service acceptance", () => {
             if (view.shape.kind !== "transaction") throw new Error("transaction view mismatch");
             assert.equal(view.shape.dryRun, node.dryRun);
           }
+          if (node.kind === "child-run") {
+            delegated += 1;
+            assert.deepEqual(view.shape, {
+              kind: "child-run", edgeId: String(node.edgeId), targetWorkflowId: node.target.id, cardinality: node.cardinality,
+              await: node.await, join: node.join, onChildFailed: node.policy.onChildFailed,
+              cascadeCancel: node.policy.cascadeCancel, afterChildRetry: node.policy.afterChildRetry, visibility: node.policy.visibility,
+            });
+          }
         }
         for (const source of [served.sources.descriptor, served.sources.module, ...served.nodes.flatMap(n => n.tasks.flatMap(t => [t.contractSource, t.implSource]))]) {
-          assert.equal(source.state, "resolved");
+          assert.equal(source.state, "resolved", `${module.descriptor.id}: ${JSON.stringify(source)}`);
           if (source.state === "resolved") assert.ok(existsSync(join(EXPLORER_SOURCE_ROOT, source.path)), source.path);
         }
         for (const scenario of served.scenarios) {
@@ -59,6 +68,6 @@ describe("Explorer registered graph and service acceptance", () => {
             .filter(link => link.taskUses.includes(task.taskId)).map(link => link.id).sort());
         }
       }
-      assert.ok(conditional > 0 && transactions > 0, "must exercise actual conditional and transaction nodes");
+      assert.ok(conditional > 0 && transactions > 0 && delegated > 0, "must exercise actual conditional, transaction and delegation nodes");
   });
 });
