@@ -267,7 +267,7 @@ export async function verifyShellCommandEffect(
       || !reply.affectedTargets.some(target => target.family === "gate" && target.runId === request.target.runId
         && target.gateId === request.target.gateId)) return mismatch(reply);
     const detail = await client.runDetail(request.target.runId);
-    if (detail.runId !== request.target.runId || detail.rowRevision <= request.target.expectedVersion || !detail.availableSections.includes("workbook-writes")) return mismatch(detail);
+    if (detail.runId !== request.target.runId || detail.rowRevision < request.target.expectedVersion || !detail.availableSections.includes("workbook-writes")) return mismatch(detail);
     const section = await client.runSection(request.target.runId, "workbook-writes");
     if (section.section !== "workbook-writes" || section.payload.runId !== request.target.runId) return mismatch(section);
     const choice = section.payload.referenceChoices?.find(choice => choice.libraryId === request.target.libraryId && choice.typeId === request.target.typeId

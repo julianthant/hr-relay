@@ -23,7 +23,7 @@ describe("workbook reference row-choice wire", () => {
   it("requires an own-run native anchor for every choice state", () => {
     for (const resolution of [choice.resolution,
       { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] },
-      { state: "resolved", workbookVersion: 4, selected: candidate }]) {
+      { state: "resolved", workbookVersion: 4, resolvedAt: NOW, selected: candidate }]) {
       for (const changed of [undefined, { ...native, runId: UUID_3 }, { ...native, eventId: "invalid" }, { ...native, order: 0 }]) {
         assert.equal(RunWorkbookWritesWireSchema.safeParse({ ...section,
           referenceChoices: [{ ...choice, resolution, native: changed }] }).success, false);
@@ -75,9 +75,22 @@ describe("workbook reference row-choice wire", () => {
       assert.equal(RunWorkbookWritesWireSchema.safeParse({ ...section, referenceChoices: [{ ...choice,
         resolution: { ...choice.resolution, candidates } }] }).success, false);
     }
-    const resolution = { state: "resolved", workbookVersion: 4, selected: candidate };
+    const resolution = { state: "resolved", workbookVersion: 4, resolvedAt: NOW, selected: candidate };
     assert.equal(RunWorkbookWritesWireSchema.safeParse({ ...section, referenceChoices: [{ ...choice, resolution }] }).success, true);
     assert.equal(RunWorkbookWritesWireSchema.safeParse({ ...section, referenceChoices: [{ ...choice,
       resolution: { ...resolution, action } }] }).success, false);
+  });
+  it("admits distinct batch members under one exact reference and refuses duplicate or mixed reference membership", () => {
+    const otherTarget = { ...target, key: "other@example.test" };
+    const other = { ...choice, key: otherTarget.key, resolution: { ...choice.resolution, target: otherTarget, action: { ...action, referenceTarget: otherTarget } } };
+    assert.equal(RunWorkbookWritesWireSchema.safeParse({ ...section, referenceChoices: [choice, other] }).success, true);
+    for (const identity of [{ libraryId: UUID_3 }, { referenceDigest: HASH_B }]) {
+      const changed = { ...other, ...identity, resolution: { state: "unavailable", code: "WORKBOOK_ROW_CHOICE_UNAVAILABLE", candidates: [] } };
+      assert.equal(RunWorkbookWritesWireSchema.safeParse({ ...section, referenceChoices: [changed] }).success, true);
+      assert.equal(RunWorkbookWritesWireSchema.safeParse({ ...section, referenceChoices: [choice, changed] }).success, false);
+    }
+    for (const changed of [{ ...other, libraryId: UUID_3 }, { ...other, referenceDigest: HASH_B }, { ...other, key: choice.key }]) {
+      assert.equal(RunWorkbookWritesWireSchema.safeParse({ ...section, referenceChoices: [choice, changed] }).success, false);
+    }
   });
 });

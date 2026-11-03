@@ -15,7 +15,7 @@ const HEX64_PATTERN = /^[0-9a-f]{64}$/;
 const TRACE_PATTERN = /^[a-z0-9]{2,4}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/;
 /** `TaskIdSchema`'s grammar, restated (this leaf imports nothing but zod). */
 const TASK_ID_PATTERN =
-  /^(?:(?:ucpath|crm|onbase|kuali|servicenow|i9|new-kronos|old-kronos|sharepoint|extraction|normalization|ocr|roster)|workflow:[a-z0-9]+(?:-[a-z0-9]+)*)\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
+  /^(?:(?:ucpath|crm|onbase|kuali|servicenow|i9|new-kronos|old-kronos|sharepoint|extraction|normalization|ocr|roster|workbooks)|workflow:[a-z0-9]+(?:-[a-z0-9]+)*)\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** `ContractFieldPathSchema`'s grammar, restated. */
 const FIELD_PATH_PATTERN = /^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)*$/;
 
