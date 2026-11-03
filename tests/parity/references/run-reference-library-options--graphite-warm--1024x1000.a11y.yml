@@ -1,0 +1,124 @@
+# run-reference-library-options--graphite-warm--1024x1000
+# adapter: fixture
+# fixture: run-reference-library.spec.ts:named reference planning dark 1024
+# descriptorHash: 06090d77c03693f73f5e9399471a3c4a98be6e38c034d6cac5a5134756bdf5e5
+# appVersion: 0.1.0
+# viewport: 1024x1000  theme: graphite-warm  variant: default
+# capturedAt: 2026-08-03
+
+- region "Notifications"
+- dialog "Start a run":
+  - banner:
+    - heading "Start a run" [level=2]
+    - paragraph: New work · Reference fixture
+    - button "Close"
+  - complementary:
+    - group:
+      - searchbox "Filter workflows"
+    - navigation "Workflow":
+      - heading "Search" [level=3]
+      - list:
+        - listitem:
+          - button "Person Lookup"
+        - listitem:
+          - button "I-9 Lookup" [disabled]: I-9 Lookup Parent only
+      - heading "Separations" [level=3]
+      - list:
+        - listitem:
+          - button "Separations"
+        - listitem:
+          - button "I-9 Check"
+      - heading "Onboarding" [level=3]
+      - list:
+        - listitem:
+          - button "Onboarding"
+        - listitem:
+          - button "Oath Signature"
+        - listitem:
+          - button "Oath Upload"
+        - listitem:
+          - button "Emergency Contact"
+      - heading "Work Study" [level=3]
+      - list:
+        - listitem:
+          - button "Work-Study"
+      - heading "Payroll" [level=3]
+      - list:
+        - listitem:
+          - button "Kronos Pay Rule"
+      - heading "Utils" [level=3]
+      - list:
+        - listitem:
+          - button "OCR"
+        - listitem:
+          - button "CRM Doc Download"
+        - listitem:
+          - button "SharePoint Download" [disabled]: SharePoint Download Parent only
+      - heading "OnBase" [level=3]
+      - list:
+        - listitem:
+          - button "OnBase"
+      - heading "Timekeeping" [level=3]
+      - list:
+        - listitem:
+          - button "Old Kronos Reports"
+      - heading "Operations" [level=3]
+      - list:
+        - listitem:
+          - button "Reference fixture"
+  - list "Run configuration path":
+    - listitem:
+      - button "1 Input": Input
+    - listitem:
+      - button "2 Options": Options
+    - listitem:
+      - button "3 Confirm" [disabled]: Confirm
+  - region "Options":
+    - heading "Run" [level=2]
+    - group "Run options":
+      - checkbox "Customize steps"
+      - text: Customize steps Choose optional steps. Screenshots
+      - paragraph: Required by this workflow.
+      - text: Always on Priority
+      - paragraph: Interactive runs go first.
+      - group "Priority":
+        - text: Priority
+        - radio "Interactive" [checked]
+        - text: Interactive
+        - radio "Bulk"
+        - text: Bulk
+      - text: Browser
+      - paragraph: Headless runs in the background.
+      - group "Browser mode":
+        - text: Browser mode
+        - radio "Headed" [checked]
+        - text: Headed
+        - radio "Headless"
+        - text: Headless
+    - heading "Reference data" [level=2]
+    - group "Reference data":
+      - text: Look up people in
+      - paragraph: "Required type: Applicant roster"
+      - text: Reference spreadsheet
+      - button "Applicants.xlsx Reference spreadsheet": Applicants.xlsx
+      - text: Version
+      - paragraph: The version in use is selected by default.
+      - text: Reference version
+      - button "Fall hires Reference version": Fall hires
+    - text: Active policy
+    - paragraph: Starts regardless of what is already running for the same subject
+    - paragraph: Fixed by this workflow.
+    - text: Workflow version
+    - paragraph: v1
+    - paragraph: Fixed by the selected workflow.
+  - contentinfo:
+    - text: 1 runReference fixture
+    - button "Back"
+    - button "Cancel"
+    - button "Preview plan"
+  - menu "Fall hires Reference version":
+    - group:
+      - group:
+        - menuitemradio "Original version"
+        - menuitemradio "Saved revision 3": Saved revision 3 In use
+        - menuitemradio "Fall hires" [checked]

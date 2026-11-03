@@ -1,0 +1,11 @@
+{
+  "stateId": "run-reference-library-confirm",
+  "viewport": "1440x1000",
+  "theme": "graphite-warm",
+  "adapter": "fixture",
+  "fixtureId": "run-reference-library.spec.ts:named reference planning dark 1440",
+  "descriptorHash": "06090d77c03693f73f5e9399471a3c4a98be6e38c034d6cac5a5134756bdf5e5",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "default"
+}
