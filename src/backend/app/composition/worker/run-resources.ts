@@ -89,7 +89,7 @@ export function createRunResourcesFactory(input:Readonly<{
       if(module===undefined)throw new WorkbookLibraryError("WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE");
       return {workflowId:module.descriptor.id,workflowLabel:module.descriptor.label,partitionDay:searchPartitionDay(new Date(run.envelope.enqueuedAt))};
      },
-      references:{runId:run.envelope.runId,write:command=>runWorkbooks.write(run,command)}}),
+      references:{runId:run.envelope.runId,read:command=>runWorkbooks.read(run,command),write:command=>runWorkbooks.write(run,command)}}),
    })},...(input.runReader===undefined?{}:{publishCheckpoint:createOcrCheckpointPublication(input.runReader,run)})});
    if(["ocr","ocr-page"].includes(run.envelope.workflow)&&resources.publishCheckpoint===undefined)throw new OcrPublicationRefusedError();
    runCache.set(key,resources);

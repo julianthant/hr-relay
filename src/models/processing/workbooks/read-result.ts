@@ -18,11 +18,12 @@ export const WorkbookReferenceWriteSchema = z.strictObject({ kind: z.literal("pa
     .refine(values => new Set(values.map(cell => cell.fieldId)).size === values.length, "Workbook fields must be unique") });
 export const WorkflowWorkbookCommandSchema = z.union([z.strictObject({ name: text, table: WorkbookTableSchema }), WorkbookReferenceWriteSchema]);
 export type WorkflowWorkbookCommand = z.output<typeof WorkflowWorkbookCommandSchema>;
+export const WorkbookRefusalSchema = z.strictObject({ state: z.literal("refused"), code: z.enum(["WORKBOOK_INVALID", "WORKBOOK_NOT_FOUND", "WORKBOOK_VERSION_CONFLICT", "WORKBOOK_STORAGE_CORRUPT", "WORKBOOK_STORAGE_FAILED", "WORKBOOK_OPERATION_CONFLICT", "WORKBOOK_METADATA_UNSUPPORTED", "WORKBOOK_REVISION_UNAVAILABLE", "WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE"]), message: text });
 export const WorkflowWorkbookResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("saved"), operationId: text, libraryId: WorkbookIdSchema, version: z.number().int().positive() }),
   z.strictObject({ state: z.literal("recorded"), operationId: text, libraryId: WorkbookIdSchema, version: z.number().int().positive(),
     receiptState: z.enum(["applied", "resolve-required", "refused"]) }),
-  z.strictObject({ state: z.literal("refused"), code: z.enum(["WORKBOOK_INVALID", "WORKBOOK_NOT_FOUND", "WORKBOOK_VERSION_CONFLICT", "WORKBOOK_STORAGE_CORRUPT", "WORKBOOK_STORAGE_FAILED", "WORKBOOK_OPERATION_CONFLICT", "WORKBOOK_METADATA_UNSUPPORTED", "WORKBOOK_REVISION_UNAVAILABLE", "WORKBOOK_OUTPUT_SOURCE_UNAVAILABLE"]), message: text }),
+  WorkbookRefusalSchema,
 ]);
 export const ReadWorkbookResult = defineTaskContract({
   id: taskId("workbooks/read-result"), title: "Save workflow workbook", effect: "read",

@@ -282,7 +282,7 @@ export interface RunConfigIdentity {
 export interface CommandKernelDependencies {
   readonly workbookRows?: Readonly<{
     resolve(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-row" }>): unknown;
-    resolveReference?(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>, capturedAt: string): SchemaBoundCanonicalValue;
+    resolveReference?(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>, capturedAt: string): SchemaBoundCanonicalValue | Readonly<{ state: "pending" }>;
   }>;
   readonly preflight?: PreflightAdmission;
   readonly applicationQuitAvailable?: boolean;
@@ -1834,11 +1834,16 @@ function verifyGateEvidenceCurrent(
   if (declaration?.boundEvidencePath !== undefined) {
     const submitted = valueAtPath(request.payload.result.value, declaration.boundEvidencePath);
     const policy = declaration.resolution;
-    const boundInput = policy.source === "workbook-reference"
+    const boundInput = policy.source === "workbook-reference" && "boundInputPath" in policy
       && valueAtPath(scope.input, policy.inputCondition.path) === policy.inputCondition.equals
       ? valueAtPath(scope.input, policy.boundInputPath) : undefined;
+    const checkpoint = policy.source === "workbook-reference" && "boundNodeId" in policy
+      ? scope.checkpoints.get(policy.boundNodeId)?.record : undefined;
+    const boundOutput = checkpoint !== undefined && policy.source === "workbook-reference" && "boundOutputPath" in policy
+      ? valueAtPath(checkpoint.output.value, policy.boundOutputPath) : undefined;
+    const bound = policy.source === "workbook-reference" && "boundNodeId" in policy ? boundOutput : boundInput;
     const currentEvidence = policy.source === "workbook-reference"
-      ? (boundInput === undefined ? [] : [{ nodeId: gate.id, value: boundInput }])
+      ? (bound === undefined ? [] : [{ nodeId: gate.id, value: bound }])
       : gate.dependsOn.flatMap((nodeId) => {
       const checkpoint = scope.checkpoints.get(String(nodeId))?.record;
       const value = checkpoint === undefined ? undefined : valueAtPath(checkpoint.output.value, declaration.boundEvidencePath!);
@@ -2521,6 +2526,7 @@ function dispatchActive(
         case "resolve-workbook-reference-row": {
           if (dependencies.workbookRows?.resolveReference === undefined) return reject(request, "capability-unavailable", "Workbook reference row choices are unavailable.");
           const result = dependencies.workbookRows.resolveReference(repositories, request, now);
+          if ("state" in result) return applied(request, [{ family: "gate", runId: request.target.runId, gateId: request.target.gateId }, runTarget(request.target.runId)], []);
           return executeResolveGate(dependencies, repositories, {
             ...request, family: "gate", type: "resolve-gate",
             target: { runId: request.target.runId, expectedVersion: request.target.expectedVersion, gateId: request.target.gateId },

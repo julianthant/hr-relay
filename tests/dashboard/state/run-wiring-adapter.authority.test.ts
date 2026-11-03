@@ -12,7 +12,7 @@ import type { PendingCommand } from "../../../src/dashboard/surfaces/shared/acti
 import { mockQueueSurface } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 import { initialMockDraft } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 import type { LogSelection } from "../../../src/dashboard/surfaces/run-detail/logs/log-selection-model.js";
-import { FailureDetailWireSchema, ParkedWriteDetailWireSchema, IdentityGateDetailWireSchema, NativeRunEventWireSchema, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
+import { RunWorkbookReferenceChoiceWireSchema, FailureDetailWireSchema, ParkedWriteDetailWireSchema, IdentityGateDetailWireSchema, NativeRunEventWireSchema, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../src/models/dashboard/start-plan.js";
 import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
@@ -35,9 +35,9 @@ const CONFIRM = { title: "Approve this identity", body: "Approving binds the res
 it("continues a reference choice inline and retains its exact uncertain command across remount", async () => {
   const selected = selectionAt(3), f = workbookReferenceChoice(3, RUN, selected.row.traceId), sent: CommandRequest[] = [];
   let replay = false, resolved = false;
-  const choice = () => ({ ...f.choice, native: NativeRunEventWireSchema.parse({ ...f.choice.native, order: resolved ? 11 : 10,
+  const choice = () => RunWorkbookReferenceChoiceWireSchema.parse({ ...f.choice, native: NativeRunEventWireSchema.parse({ ...f.choice.native, order: resolved ? 11 : 10,
     eventId: resolved ? '10000000-0000-4000-8000-000000000011' : f.choice.native.eventId }),
-    ...(resolved ? { resolution: { state: 'resolved' as const, workbookVersion: f.target.workbookVersion, selected: f.candidates[1] } } : {}) });
+    ...(resolved ? { resolution: { state: 'resolved' as const, workbookVersion: f.target.workbookVersion, resolvedAt: AT, selected: f.candidates[1] } } : {}) });
   const section = () => RunDetailSectionResponseSchema.parse({ section: 'workbook-writes', payload: { runId: RUN, operations: [], referenceChoices: [choice()] } });
   const client = { artifactUrl: (id: string) => `/artifacts/${id}`,
     runDetail: async () => detailAt(selected, resolved ? 4 : 3, { availableSections: ['logs', 'workbook-writes'],

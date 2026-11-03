@@ -6,7 +6,7 @@ import { it } from "vitest";
 import { ArtifactRefSchema, type ArtifactRef } from "../../../../src/models/artifacts/artifacts.js";
 import type { ContentAddressedArtifactWriter } from "../../../../src/workflow-kit/artifacts.js";
 import { CrmWorksheetPersonSchema, type CrmWorksheetPerson } from "../../../../src/models/workflows/crm-doc-download/documents.js";
-import { packageCrmWorksheetArchives, readCrmWorksheetArchivesTask } from "../../../../src/workflows/crm-doc-download/tasks/package-worksheets.js";
+import { packageCrmWorksheetArchives, readCrmWorksheetArchivesTask } from "../../../../src/workflows/crm-doc-download/tasks/read-worksheet-archives.js";
 import { ReadCrmWorksheetArchives } from "../../../../src/models/workflows/crm-doc-download/read-worksheet-archives.js";
 import { classifyEvidenceLeaf, evidenceLeaves } from "../../../../src/models/trust/evidence-classification.js";
 import { redactValue } from "../../../../src/rules/redaction/redaction.js";

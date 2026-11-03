@@ -1,4 +1,4 @@
-import { RunWorkbookReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
+import { RunWorkbookReferenceSchema, EditableWorkbookSchema } from "../../../src/models/dashboard/workbooks.js";
 import { CrmDocumentRecordsSchema } from "../../../src/models/systems/crm/document-tasks.js";
 import { ONBOARDING_ROSTER_FIELDS } from "../../../src/models/workflows/onboarding/roster.js";
 
@@ -19,4 +19,16 @@ export function crmDocumentReferenceFixture() {
         },
       }] })),
     } });
+}
+
+export function crmDocumentWorkbookFixture(duplicate = false) {
+  const reference = crmDocumentReferenceFixture();
+  return EditableWorkbookSchema.parse({ name: "Roster.xlsx", themes: [], hasFormulas: false, sheets: reference.snapshot.worksheets.map(sheet => {
+    const matches = reference.snapshot.rows.flatMap(row => row.matches).filter(match => match.sheetId === sheet.sheetId);
+    const rows = matches.map(match => ({ id: match.rowId, cells: ONBOARDING_ROSTER_FIELDS.map(field => ({ value: match.values[field] })) }));
+    if (duplicate && sheet.sheetId === "july" && rows[0] !== undefined) rows.push({ ...rows[0], id: "duplicate" });
+    return { id: sheet.sheetId, name: sheet.name, width: ONBOARDING_ROSTER_FIELDS.length, hidden: [], headerRow: 1,
+      columnBindings: ONBOARDING_ROSTER_FIELDS.map((fieldId, index) => ({ id: `column-${index}`, sourceColumn: index, sourceHeader: fieldId, fieldId, basis: "manual" })),
+      rows: [{ id: "header", cells: ONBOARDING_ROSTER_FIELDS.map(value => ({ value })) }, ...rows] };
+  }) });
 }

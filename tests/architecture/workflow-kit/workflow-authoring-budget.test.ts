@@ -142,14 +142,19 @@ export function collectWorkflowAuthoringBudgetTree(root: string): WorkflowAuthor
 
 
 
+const parsedSources = new Map<string, Readonly<{ text: string; source: ts.SourceFile }>>();
 function parseSource(path: string, text: string): ts.SourceFile {
-  return ts.createSourceFile(
+  const retained = parsedSources.get(path);
+  if (retained?.text === text) return retained.source;
+  const source = ts.createSourceFile(
     path,
     text,
     ts.ScriptTarget.ESNext,
     true,
     path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
+  parsedSources.set(path, { text, source });
+  return source;
 }
 
 function lineOf(source: ts.SourceFile, node: ts.Node): number {
@@ -872,11 +877,11 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
   });
 
   it("arm (c): retained mock literals stay exact and served or sibling additions remain forbidden", () => {
-    assert.equal(Object.values(RETAINED_MOCK_LITERALS).flat().length, 135);
+    assert.equal(Object.values(RETAINED_MOCK_LITERALS).flat().length, 140);
 
     assert.deepEqual(auditWorkflowAuthoringBudget(repositoryInputs(tree)), []);
     for (const path of ["src/dashboard/client/queries/day-queries.ts", "src/dashboard/surfaces/workflows/mocks/new-sibling.ts", "src/dashboard/surfaces/workflows/mocks/workflow-mock-run.tsx", ...Object.keys(RETAINED_MOCK_LITERALS)]) {
-      for (const workflowId of ["person-lookup", "onboarding", "ocr", "ocr-page"]) {
+      for (const workflowId of ["person-lookup", "onboarding", "ocr", "ocr-page", "crm-doc-download"]) {
         const sources = new Map(tree.sources);
         sources.set(path, `${sources.get(path) ?? ""}\nconst injected = (id: string) => id === "${workflowId}";`);
         assert.ok(auditWorkflowAuthoringBudget(repositoryInputs({ ...tree, sources })).some(issue => issue.startsWith(`${path}:`)), `${path}:${workflowId}`);

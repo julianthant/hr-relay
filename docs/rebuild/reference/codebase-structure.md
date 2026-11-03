@@ -136,6 +136,13 @@ Paths in this table are relative to `src/backend/`.
 
 ### Workflow ownership and imports
 
+`src/workflows/crm-doc-download/` owns CRM document batches, retained worksheet row resolution and one ZIP per worksheet.
+Its `tasks/read-worksheet-archives.ts` verifies retained PDFs and creates the archive collection;
+`steps/package-worksheets/step.ts` binds that task and owns its proof. The workflow publishes
+`worksheet-archives.collection` through the existing blocking documents sink. Shared run-bound
+reference reads live in `backend/workbooks/` and the `workbooks.library` provider; tasks accept
+lookup keys while the native run owner supplies the exact retained library and named version.
+
 `src/workflows/onbase/` registers a child-only per-person Emergency Contact PDF import with source-page and import-document step proofs. Its system store and semantic driver live in `src/backend/systems/onbase/`; `src/backend/storage/sqlite/exclusive-session-leases.ts` owns the durable identity-session lease and its migration. The browser factory holds that lease through proven browser closure; uncertainty and process loss do not expire it.
 Its task implementations live in `tasks/read-source-page.ts`, `stage-import.ts`, `match-import.ts`, `upload-import.ts` and `verify-import.ts`, matching each contract's task ID for implementation fingerprints.
 

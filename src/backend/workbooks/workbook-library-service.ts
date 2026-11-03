@@ -7,6 +7,12 @@ import type { Clock } from "../../rules/time/clock.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
 import type { WorkbookOperationRecord } from "../../models/dashboard/workbooks.js";
 import { FingerprintSchema } from "../../rules/identity/ids.js";
+import { RunWorkbookReferenceSchema } from "../../models/dashboard/workbooks.js";
+import { deriveSchemaHash, schemaBoundValueSchema, type SchemaBoundCanonicalValue } from "../../models/validation/schema-bound-value.js";
+import { WorkbookReferenceReadRequestSchema, WorkbookReferenceReadSchema, encodeWorkbookReference } from "../../models/processing/workbooks/read-reference.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../rules/validation/sha256.js";
+import { workbookMatches } from "./master-changes.js";
 import { WorkbookLibraryActionSchema, type WorkbookLibraryActionRecord, type WorkbookLibraryEntry, type WorkbookLibraryState, type WorkbookLibraryVersionViewSchema, type WorkbookLibraryOriginSchema } from "../../models/dashboard/workbook-library.js";
 import type { EditableWorkbookWire } from "../../models/dashboard/workbooks.js";
 
@@ -49,6 +55,37 @@ function input<T>(schema: z.ZodType<T>, value: unknown): T {
 
 export function snapshotWorkbookReference(repository: WorkbookLibraryRepository, value: unknown) {
   return deepFreeze(repository.snapshot(input(WorkbookReferenceRequestSchema, value)));
+}
+
+export function readRetainedWorkbookReference(repository: WorkbookLibraryRepository, bound: SchemaBoundCanonicalValue,
+  commandValue: z.input<typeof WorkbookReferenceReadRequestSchema>) {
+  const command = input(WorkbookReferenceReadRequestSchema, commandValue);
+  const { request, snapshot } = schemaBoundValueSchema(RunWorkbookReferenceSchema, deriveSchemaHash(RunWorkbookReferenceSchema, "output")).parse(bound).value;
+  if (command.typeId !== request.typeId || snapshot.versionId === undefined || snapshot.versionName === undefined
+    || snapshot.type.keyFieldId === null || request.fields.some(field => !snapshot.type.fields.includes(field))) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+  const selected = repository.libraryVersion(snapshot.libraryId, snapshot.versionId);
+  if (selected.libraryId !== snapshot.libraryId || selected.version.id !== snapshot.versionId
+    || canonicalJsonStringify(selected.workbook.sheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name }))) !== canonicalJsonStringify(snapshot.worksheets)) {
+    throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  }
+  const keyField = snapshot.type.keyFieldId;
+  const readRows = (keys: readonly string[]): z.infer<typeof WorkbookReferenceSnapshotSchema>["rows"] => keys.map(key => {
+    const matches = workbookMatches(selected.workbook, keyField, key);
+    return { key, state: matches.length === 0 ? "missing" : matches.length === 1 ? "matched" : "ambiguous",
+      matches: matches.map(({ sheetId, rowId, sheet, row }) => ({ sheetId, rowId, values: Object.fromEntries(request.fields.map(field => {
+        const indexes = sheet.columnBindings?.flatMap((binding, index) => binding.fieldId === field ? [index] : []) ?? [];
+        if (indexes.length !== 1) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        const column = indexes[0], cell = column === undefined ? undefined : row.cells[column];
+        if (cell === undefined) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+        return [field, cell.value];
+      })) })),
+    };
+  });
+  if (canonicalJsonStringify(readRows(request.keys)) !== canonicalJsonStringify(snapshot.rows)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
+  return WorkbookReferenceReadSchema.parse({ state: "read", referenceDigest: sha256Hex(canonicalJsonStringify(bound)),
+    reference: encodeWorkbookReference({ request: { ...request, libraryId: snapshot.libraryId, versionId: snapshot.versionId, keys: command.keys },
+      snapshot: { ...snapshot, rows: readRows(command.keys) } }),
+  });
 }
 
 export function writeRunWorkbook(repository: WorkbookLibraryRepository, clock: Clock,

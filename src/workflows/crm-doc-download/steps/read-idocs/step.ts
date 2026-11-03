@@ -4,6 +4,7 @@ import { defineStep, inheritStepProof, type WorkflowAuthor, type WorkflowDefinit
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import { readCrmDocumentPdfs } from "../../tasks/read-idocs.js";
 import { buildSearchRecords } from "../search-records/step.js";
+import type { buildReference } from "../reference/step.js";
 
 const group = Object.freeze({
   ...defineWorkflowStep({ key: "read-idocs", label: "Download CRM documents" }), system: "crm",
@@ -14,9 +15,10 @@ const group = Object.freeze({
   ],
 } as const);
 
-export function buildReadIdocs(author: WorkflowAuthor<typeof CrmDocDownloadInput>, search: ReturnType<typeof buildSearchRecords>) {
+export function buildReadIdocs(author: WorkflowAuthor<typeof CrmDocDownloadInput>, search: ReturnType<typeof buildSearchRecords>, reference?: ReturnType<typeof buildReference>) {
   const call = readCrmDocumentPdfs(group);
-  const documents = author.task(call.identity, [search.records], ({ outputs }) => call.bind({ input: outputs["document-records"] }));
+  const dependencies = reference === undefined ? [search.records] as const : [search.records, reference.choice] as const;
+  const documents = author.task(call.identity, dependencies, ({ outputs }) => call.bind({ input: outputs["document-records"] }));
   return { documents, steps: [[group, [documents]]] as const,
     result: author.result(CrmDownloadedPeopleSchema, [documents], ({ outputs }) => outputs["document-pdfs"]) };
 }

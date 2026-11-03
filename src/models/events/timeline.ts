@@ -3,7 +3,7 @@ import type { RunCheckpointRecord } from "../workflow/checkpoint.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { FingerprintSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema,
-  WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, TraceIdSchema, WriteAttemptIdSchema, FailureIdSchema, CommandIdSchema, ActorIdSchema } from "../../rules/identity/ids.js";
+  WorkerIdSchema, WorkflowIdSchema, WriteIntentIdSchema, TraceIdSchema, WriteAttemptIdSchema, FailureIdSchema, CommandIdSchema, ActorIdSchema, GateIdSchema } from "../../rules/identity/ids.js";
 import { LedgerEntryPayloadSchema } from "../../rules/runs/ledger.js";
 import { NoteWireSchema, SpanEventWireSchema } from "./types.js";
 import { RecoveryActivitySchema } from "../run/recovery-activity.js";
@@ -47,6 +47,10 @@ export const DebugEventSchema = z.strictObject({
 export type DebugEvent = z.infer<typeof DebugEventSchema>;
 
 export const TimelinePayloadSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("workbook-reference-row-selected"), runId: RunIdSchema, workflow: WorkflowIdSchema,
+    attempt: PositiveIntSchema, traceId: TraceIdSchema, gateId: GateIdSchema, commandId: CommandIdSchema,
+    referenceDigest: FingerprintSchema, checkpointDigest: FingerprintSchema, key: z.string().min(1),
+    sheetId: z.string().min(1), rowId: z.string().min(1), at: IsoInstantSchema }),
   z.strictObject({ kind: z.literal("workbook-write-recorded"), runId: RunIdSchema, workflow: WorkflowIdSchema,
     attempt: PositiveIntSchema, traceId: TraceIdSchema, claimGeneration: PositiveIntSchema, libraryId: z.string().min(1),
     operationId: z.string().min(1), receiptDigest: FingerprintSchema, at: IsoInstantSchema, resolvedBy: CommandIdSchema.optional() }),
@@ -104,6 +108,9 @@ export const TimelineAppendSchema = z.strictObject({
 }).superRefine((record, context) => {
   const payload = record.payload;
   if (payload.kind === "debug") return;
+  if (payload.kind === "workbook-reference-row-selected" && (record.occurredAt !== payload.at || record.recordedAt !== payload.at)) {
+    context.addIssue({ code: "custom", message: "reference row choices must retain their exact recorded time" });
+  }
   if (payload.kind === "recovery-activity-started" || payload.kind === "recovery-activity-ended") {
     const at = payload.kind === "recovery-activity-started" ? payload.openedAt : payload.endedAt;
     if (record.occurredAt !== at || record.recordedAt !== at || Date.parse(at) < Date.parse(payload.openedAt)
