@@ -15,8 +15,11 @@ release pull request.
 | `staging` | `static`, `privacy`, `unit`, `integration`, `architecture`, `parity` |
 | `main` | the `staging` checks, plus `release` |
 
-`release` runs only on PRs targeting `main`, after the other checks. Its isolated runner builds the
-web bundle, runs coverage alone, then performance. The operator authorizes release PRs from
+The expensive `release` job runs only on PRs from `staging` into `main`, after the other checks.
+The required top-level `release` summary also runs for other heads targeting `main` and fails their
+head validation, so a skipped expensive job cannot satisfy main protection.
+The expensive job’s isolated macOS runner builds the web bundle, runs coverage alone, then
+performance. The operator authorizes release PRs from
 `staging` to `main`, and syncs `main` back into `staging` after merging.
 
 ## Merge train and automatic fixes
@@ -48,18 +51,24 @@ for screens the PR did not intentionally change; anything that needs those gets 
 session runs, red PRs wait; nothing red merges. The operator watches only `needs-human`.
 
 CI takes Node from `package.json` engines and caches npm. Run portable suites on Ubuntu for staging
-pull requests. Run platform-native proofs and Desktop parity only on release pull requests into
-`main` and manual dispatches. Keep macOS-only files out of Ubuntu shards. Native proofs and the
-padded-receipt storage upgrade run in separate single-worker invocations, preserving their
+pull requests. Run platform-native proofs and Desktop parity in CI only for a full release
+started by the operator: a `staging` → `main` pull request or a manual full-release dispatch. Only the operator
+may start such a run; agents must never dispatch or rerun `ci.yml`. Between releases, run
+Windows-native tests locally on Windows and macOS-native tests locally on the Mac when load is low.
+Keep native files out of Ubuntu shards. Native proofs and the padded-receipt storage upgrade run in separate single-worker invocations, preserving their
 existing deadlines under duration-based assignment. Native integration jobs first verify the
-cached full-Chromium installation by opening a blank page and observing the owned browser process
-exit. This one-time setup has no retries; timed proofs still use fresh profiles and their existing
+full-Chromium installation through `scripts/test/chromium-preflight.ts` by opening a blank page
+and observing the owned browser process exit. This one-time setup has no retries; timed proofs still use fresh profiles and their existing
 deadlines. A full staging run uses two
 Ubuntu unit shards, two architecture shards and fourteen integration shards, plus static and
-privacy, within twenty Ubuntu runners. On release PRs and manual dispatches, use all five macOS
+privacy, within twenty Ubuntu runners. On operator-started full releases, use all five macOS
 runners for native files when parity is omitted. When parity is selected, use three macOS runners
 for parity and two for native files. The release runner starts after
-the routine suites finish. Windows jobs are not enabled.
+the routine suites finish. Windows native files use five `windows-latest` runners, or one for
+unit-only selection, with the
+same serial/storage separation and native membership. Windows uses explicit Bash with native
+Windows Node/npm, the runner temp directory and Windows Chromium installation. Before checkout,
+it disables Git automatic line-ending conversion to preserve fixture bytes and shell scripts.
 
 `ci.yml` retains per-PR or per-dispatch-branch cancellation, and queues its reusable `ci-checks.yml`
 job in the shared `ci-runners` concurrency group with `queue: max`. GitHub admits one pipeline at
@@ -73,10 +82,11 @@ including timing publication. This mandatory gate prevents skipped cancellation 
 allowing an incomplete pipeline to merge. Other cancelled summaries and the merge train may stop.
 
 Run static, privacy and affected portable unit, integration and architecture suites for ready PRs
-into `staging`. For PRs into `main`, add selected native proofs, parity and release.
+into `staging`. For PRs from `staging` into `main`, add selected native proofs, parity and release.
 Path filters select affected suites. Draft pushes run static, privacy and
-affected unit files; becoming ready starts full applicable validation. Explicit dispatches always
-select all routine suites, including parity. Drafts cannot merge. Protected-branch pushes do not
+affected unit files; becoming ready starts full applicable validation. Only the operator may start
+a manual full-release dispatch; it selects all routine suites, including native proofs and parity. Other PR heads targeting `main` omit
+native proofs, parity and expensive release work; their required release summary fails. Drafts cannot merge. Protected-branch pushes do not
 repeat CI; Markdown-only PRs run static and privacy. A deliberately omitted suite has a successful
 summary, while failed change detection or any failed/cancelled selected group fails its summary.
 Markdown-only release PRs omit coverage and perf.
@@ -84,7 +94,9 @@ Markdown-only release PRs omit coverage and perf.
 Every admitted run downloads the latest successful run's retained `ci-timings` artifact before
 selecting files. Its immutable `ci-balancing` artifact gives every shard identical duration inputs.
 After successful runner groups, CI merges their per-file reports into those inherited timings and
-publishes `ci-timings` for the next run, retaining measurements for suites not selected this time.
+publishes `ci-timings` for the next run. Report names include the runner OS and selection group;
+when both platforms report one file, the slower duration wins independently of artifact order.
+Measurements for omitted suites remain intact.
 Without a retained artifact, CI explicitly uses the committed `scripts/test/ci-durations.json` seed;
 unmeasured files use the positive measured median, or one second without measurements. Invalid
 reports or failed downloads fail CI. Every later CI fix must preserve this automatic timing feedback
@@ -92,9 +104,10 @@ and refresh the committed seed when shard end times spread more than a minute. T
 [test reference](rebuild/reference/guards-and-tests.md#2-vitest-selection-and-commands) owns file
 membership and selection details.
 
-Playwright browser caches use `~/Library/Caches/ms-playwright`, keyed by runner OS, architecture,
-macOS image, browser set and `package-lock.json` digest. An exact hit skips installation; a miss
-installs the required browsers. There are no partial-key restores. Desktop parity uses headless
+Playwright browser caches use `~/Library/Caches/ms-playwright` on macOS and
+`~/AppData/Local/ms-playwright` on Windows, keyed by runner OS, architecture, browser set and
+`package-lock.json` digest (plus the image on macOS). An exact macOS hit skips installation;
+Windows checks installation on every native integration job. A miss installs the required browsers. There are no partial-key restores. Desktop parity uses headless
 Chromium and existing references; CI never updates references or uploads HR evidence.
 
 ## Privacy check

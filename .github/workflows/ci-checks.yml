@@ -37,6 +37,7 @@ jobs:
       parity: ${{ steps.select.outputs.parity }}
       ubuntu: ${{ steps.select.outputs.ubuntu }}
       macos: ${{ steps.select.outputs.macos }}
+      windows: ${{ steps.select.outputs.windows }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -116,7 +117,8 @@ jobs:
               throw new Error('Path-filter outputs are incomplete or invalid.');
             }
             const manual = context.eventName === 'workflow_dispatch';
-            const release = manual || context.payload.pull_request?.base.ref === 'main';
+            const release = manual || (context.eventName === 'pull_request' &&
+              context.payload.pull_request?.head.ref === 'staging' && context.payload.pull_request?.base.ref === 'main');
             const selected = Object.fromEntries(suites.map(suite => [suite,
               (suite !== 'parity' || release) && (manual || filters.shared === 'true' || filters[suite] === 'true')
             ]));
@@ -135,6 +137,8 @@ jobs:
               ...(selected.integration ? jobs('integration', 14) : []),
             ];
             const macos = release ? [...(selected.parity ? jobs('parity', 3) : []), ...jobs('native', macosShards)] : [];
+            const windows = release ? jobs('native', selected.integration ? 5 : selected.unit ? 1 : 0) : [];
+            core.setOutput('windows', JSON.stringify({ include: windows }));
             for (const suite of suites) core.setOutput(suite, String(selected[suite]));
             core.setOutput('ubuntu', JSON.stringify({ include: ubuntu }));
             core.setOutput('macos', JSON.stringify({ include: macos }));
@@ -256,30 +260,7 @@ jobs:
       - name: Verify full Chromium installation before timed native proofs
         if: matrix.suite == 'native' && needs.changes.outputs.integration == 'true'
         timeout-minutes: 1
-        run: |
-          node --input-type=module <<'NODE'
-          import assert from 'node:assert/strict';
-          import { once } from 'node:events';
-          import { chromium } from 'playwright';
-          const started = performance.now();
-          const server = await chromium.launchServer({ channel: 'chromium', headless: true });
-          const exited = once(server.process(), 'close');
-          let startupMs;
-          try {
-            const browser = await chromium.connect(server.wsEndpoint());
-            const context = await browser.newContext();
-            await context.newPage();
-            startupMs = Math.round(performance.now() - started);
-            await context.close();
-            await browser.close();
-          } finally {
-            await server.close();
-            const [code, signal] = await exited;
-            assert.equal(code, 0);
-            assert.equal(signal, null);
-          }
-          console.log(JSON.stringify({ event: 'chromium-installation-verified', startupMs }));
-          NODE
+        run: npx tsx scripts/test/chromium-preflight.ts
       - name: Check native browser process proofs without competing files
         if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.integration == 'true' }}
         env:
@@ -302,16 +283,16 @@ jobs:
         env:
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
         run: scripts/test/ci-run.sh integration storage "$SLICE" --maxWorkers=1 --no-file-parallelism
-      - name: macOS-only unit files
+      - name: Native unit files
         if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.unit == 'true' }}
         env:
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh unit macos "$SLICE" --maxWorkers=2
-      - name: macOS-only integration files
+        run: scripts/test/ci-run.sh unit native "$SLICE" --maxWorkers=2
+      - name: Native integration files
         if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.integration == 'true' }}
         env:
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh integration macos "$SLICE" --maxWorkers=2
+        run: scripts/test/ci-run.sh integration native "$SLICE" --maxWorkers=2
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && matrix.suite == 'native' }}
         with:
@@ -329,9 +310,76 @@ jobs:
           path: tests/parity/.output/
           include-hidden-files: true
 
+  windows:
+    name: Windows ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}
+    needs: changes
+    if: needs.changes.outputs.windows != '{"include":[]}'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.windows) }}
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - run: npm run build:manifest:prepare
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci-balancing
+          path: scripts/test/
+      - uses: actions/cache@v4
+        if: needs.changes.outputs.integration == 'true'
+        with:
+          path: ~/AppData/Local/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium
+        if: needs.changes.outputs.integration == 'true'
+        run: npx playwright install chromium
+      - run: npm run web:build
+        if: needs.changes.outputs.integration == 'true'
+      - name: Verify full Chromium installation before timed native proofs
+        if: needs.changes.outputs.integration == 'true'
+        timeout-minutes: 1
+        run: npx tsx scripts/test/chromium-preflight.ts
+      - name: Check native browser process proofs without competing files
+        if: ${{ !cancelled() && needs.changes.outputs.integration == 'true' }}
+        env:
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: scripts/test/ci-run.sh integration serial "$SLICE" --maxWorkers=1 --no-file-parallelism
+      - name: Storage upgrade files without competing files
+        if: ${{ !cancelled() && needs.changes.outputs.integration == 'true' }}
+        env:
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: scripts/test/ci-run.sh integration storage "$SLICE" --maxWorkers=1 --no-file-parallelism
+      - name: Native unit files
+        if: ${{ !cancelled() && needs.changes.outputs.unit == 'true' }}
+        env:
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: scripts/test/ci-run.sh unit native "$SLICE" --maxWorkers=2
+      - name: Native integration files
+        if: ${{ !cancelled() && needs.changes.outputs.integration == 'true' }}
+        env:
+          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
+        run: scripts/test/ci-run.sh integration native "$SLICE" --maxWorkers=2
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: durations-windows-${{ matrix.shard }}
+          path: ${{ runner.temp }}/durations/
+          if-no-files-found: ignore
+          retention-days: 14
+
   unit:
     name: unit
-    needs: [changes, ubuntu, macos]
+    needs: [changes, ubuntu, macos, windows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -339,8 +387,8 @@ jobs:
         env:
           FILTER_RESULT: ${{ needs.changes.result }}
           SELECTED: ${{ needs.changes.outputs.unit }}
-          RUNNER_RESULTS: ${{ needs.ubuntu.result }} ${{ needs.macos.result }}
-          EXPECTED_RUNNER_RESULTS: ${{ needs.changes.outputs.macos == '{"include":[]}' && 'success skipped' || 'success success' }}
+          RUNNER_RESULTS: ${{ needs.ubuntu.result }} ${{ needs.macos.result }} ${{ needs.windows.result }}
+          EXPECTED_RUNNER_RESULTS: success ${{ needs.changes.outputs.macos == '{"include":[]}' && 'skipped' || 'success' }} ${{ needs.changes.outputs.windows == '{"include":[]}' && 'skipped' || 'success' }}
         run: |
           test "$FILTER_RESULT" = success
           if [ "$SELECTED" = false ]; then
@@ -352,7 +400,7 @@ jobs:
 
   integration:
     name: integration
-    needs: [changes, ubuntu, macos]
+    needs: [changes, ubuntu, macos, windows]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
@@ -360,8 +408,8 @@ jobs:
         env:
           FILTER_RESULT: ${{ needs.changes.result }}
           SELECTED: ${{ needs.changes.outputs.integration }}
-          RUNNER_RESULTS: ${{ needs.ubuntu.result }} ${{ needs.macos.result }}
-          EXPECTED_RUNNER_RESULTS: ${{ needs.changes.outputs.macos == '{"include":[]}' && 'success skipped' || 'success success' }}
+          RUNNER_RESULTS: ${{ needs.ubuntu.result }} ${{ needs.macos.result }} ${{ needs.windows.result }}
+          EXPECTED_RUNNER_RESULTS: success ${{ needs.changes.outputs.macos == '{"include":[]}' && 'skipped' || 'success' }} ${{ needs.changes.outputs.windows == '{"include":[]}' && 'skipped' || 'success' }}
         run: |
           test "$FILTER_RESULT" = success
           if [ "$SELECTED" = false ]; then
@@ -425,7 +473,7 @@ jobs:
 
   release:
     name: release
-    if: github.event_name == 'pull_request' && github.base_ref == 'main' && needs.changes.outputs.architecture == 'true'
+    if: github.event_name == 'pull_request' && github.head_ref == 'staging' && github.base_ref == 'main' && needs.changes.outputs.architecture == 'true'
     needs: [changes, static, unit, integration, architecture, parity, privacy]
     runs-on: macos-15
     steps:
@@ -456,8 +504,8 @@ jobs:
       - run: npm run test:perf
 
   timings:
-    needs: [changes, ubuntu, macos]
-    if: ${{ !cancelled() && needs.changes.result == 'success' && !contains(needs.*.result, 'failure') && (needs.ubuntu.result == 'success' || needs.macos.result == 'success') }}
+    needs: [changes, ubuntu, macos, windows]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && !contains(needs.*.result, 'failure') && (needs.ubuntu.result == 'success' || needs.macos.result == 'success' || needs.windows.result == 'success') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
