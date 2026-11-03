@@ -734,9 +734,12 @@ export async function executeClaimedRun(
     }
 
     const startNode = startIndex === undefined ? undefined : nodes[startIndex];
-    const resolvedStartGate = envelope.continuation === undefined && startNode?.kind === "gate"
-      ? readContinuationGate(deps.authority.authority, envelope, String(startNode.id)) : undefined;
-    const ownGateResume = resolvedStartGate?.runId === runId;
+    const previousNode = startIndex === undefined ? undefined : nodes[startIndex - 1];
+    const resolvedResumeGate = envelope.continuation === undefined
+      ? (startNode?.kind === "gate" ? readContinuationGate(deps.authority.authority, envelope, String(startNode.id)) : undefined)
+        ?? (previousNode?.kind === "gate" ? readContinuationGate(deps.authority.authority, envelope, String(previousNode.id)) : undefined)
+      : undefined;
+    const ownGateResume = resolvedResumeGate?.runId === runId;
     const completedOwnDelegation = (node: ChildRunRuntimeNode) => {
       const evidence = deps.authority.withAuthorityTransaction?.(repositories =>
         AuthenticatedRunContinuation.authenticate(repositories, envelope).dependency(String(node.id), String(node.edgeId)));
@@ -781,7 +784,7 @@ export async function executeClaimedRun(
       }
       const explicit = startIndex !== undefined && envelope.continuation === undefined;
       const inAncestorRegion = envelope.continuation !== undefined || (explicit
-        ? index < (startIndex ?? 0) || ownGateResume && index === startIndex : ancestorRegionOpen);
+        ? index < (startIndex ?? 0) || ownGateResume && index === startIndex && node.id === resolvedResumeGate?.nodeId : ancestorRegionOpen);
       if (!inAncestorRegion) {
         plan.set(String(node.id), { mode: "execute" });
         continue;

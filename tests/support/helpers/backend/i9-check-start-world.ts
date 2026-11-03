@@ -1,5 +1,4 @@
-import { createI9Driver } from "../../../../src/backend/systems/i9/driver/interpreter.js";
-import { fakeI9Page } from "../browser/fake-i9-page.js";
+import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/driver/fake.js";
 import { WorkbookNamedReferenceSnapshotSchema } from "../../../../src/models/dashboard/workbooks.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -63,7 +62,7 @@ export function createI9CheckStartWorld() {
       { ...i9Candidate, emplId: EidSchema.parse("10000001"), name: "Example, Avery", startDate: "06/01/2020" },
       { ...i9Candidate, emplId: EidSchema.parse("10000002"), name: "Example, Blair", startDate: "06/01/2020" },
     ];
-    const sessions = sessionFactoryHarness({ crm: () => healthyCrmDriver(), i9: () => createI9Driver(() => undefined, fakeI9Page({ rows: [] }).page), ucpath: (): UcpathPersonOrgDriver => ({ ...createDeterministicUcpathPersonOrgDriver(),
+    const sessions = sessionFactoryHarness({ crm: () => healthyCrmDriver(), i9: () => createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: clock.now().toISOString() }), ucpath: (): UcpathPersonOrgDriver => ({ ...createDeterministicUcpathPersonOrgDriver(),
       async searchPersonOrg(input) { return i9Search(candidates.filter(candidate => input.kind === "by-name" ? candidate.name === input.name : candidate.emplId === input.emplId)); },
       async searchPersonMatch(input) {
         const confirmed = candidates.filter(candidate => candidate.name === `${input.lastName}, ${input.firstName}`).map(candidate => ({ emplId: candidate.emplId, name: candidate.name }));

@@ -282,6 +282,7 @@ export interface WriteFixtureWorld {
   lastCapability?: unknown;
   /** Called during prepare, before it returns (budget-expiry injection). */
   onPrepare?: () => void;
+  prepareSteps?: (captureScreenshot: () => Promise<void>) => Promise<void>;
   /** When true the served driver has NO read() method. */
   omitDriverRead: boolean;
   /** When set, driver.read throws it. */
@@ -376,6 +377,7 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld, commitContra
       if (options.completeActions === true) await runDeclaredAction({ id: "fill-eid", kind: "typed", targetId: "ucpath.write-fixture.eid-input" },
         async () => { await ctx.driver.prepare("ucpath.write-fixture.eid-input"); return input.eid; }, value => value);
       else await ctx.driver.prepare("ucpath.write-fixture.eid-input");
+      await world.prepareSteps?.(ctx.captureScreenshot);
       const staged = { staged: true as const, stagedPageState: WRITE_FIXTURE_STAGED_STATE };
       ctx.recordData([
         { direction: "write", field: "staged", value: staged.staged },

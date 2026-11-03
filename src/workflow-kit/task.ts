@@ -157,7 +157,7 @@ export type ReadTaskCtx<
 export type PrepareTaskCtx<
   Driver extends { readonly system: BrowserSystemId },
   Codes extends readonly string[],
-> = BrowserTaskCtx<Driver, Codes>;
+> = BrowserTaskCtx<Driver, Codes> & Readonly<{ captureScreenshot: () => Promise<void> }>;
 
 export interface CommitTaskCtx<
   Driver extends { readonly system: BrowserSystemId },

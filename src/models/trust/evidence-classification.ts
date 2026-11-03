@@ -384,6 +384,17 @@ function onboardingPrivateLeaves(scope: EvidenceValueScope, ...paths: readonly s
   return paths.map(path => ({ scope, path, classification: "direct-identifier", transform: "digest" }));
 }
 
+function i9CreationProofLeaves(scope: EvidenceValueScope, prefix: string, remote: boolean): unknown[] {
+  return [...open(scope, `${prefix}kind`, `${prefix}source`),
+    ...onboardingPrivateLeaves(scope, ...(remote ? ["profileId", "i9Id", "startDate", "email"]
+      : ["profileId", "firstName", "lastName", "dob", "email", "departmentNumber"]).map(path => `${prefix}${path}`))];
+}
+
+function hireProofLeaves(scope: EvidenceValueScope, prefix = ""): unknown[] {
+  return [...open(scope, ...["kind", "source", "action", "approvalStatus", "detailVerified"].map(path => `${prefix}${path}`)),
+    ...onboardingPrivateLeaves(scope, ...["transactionId", "displayedName", "emplId", "effectiveDate", "positionNumber", "email", "dob"].map(path => `${prefix}${path}`))];
+}
+
 function onboardingRosterLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [
     ...onboardingPrivateLeaves(scope, `${prefix}workbookId`, `${prefix}sheetId`, `${prefix}rowId`, `${prefix}rowKey.email`),
@@ -659,6 +670,31 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...onboardingPlanLeaves(workflowResult("onboarding"), "plan."),
   ...onboardingSubjectLeaves(workflowResult("onboarding"), "subject."),
   ...onboardingProfileLeaves(workflowResult("onboarding"), "i9."),
+  ...[false, true].flatMap(remote => {
+    const suffix = remote ? "remote-record" : "profile";
+    return [
+      ...i9CreationProofLeaves(taskOutput(`i9/create-${suffix}`), "receipt.", remote),
+      ...open(taskOutput(`i9/stage-${suffix}`), "stagedPageState"),
+      ...onboardingPrivateLeaves(taskOutput(`i9/stage-${suffix}`), "observedName"),
+      ...["match", "verify"].flatMap(verb => {
+        const scope = taskOutput(`i9/${verb}-${suffix}`);
+        return [...open(scope, "state", "reason", "matches", "observedAt", "evidence.source", "evidence.sourceState", "evidence.observedAt"),
+          ...onboardingPrivateLeaves(scope, "queryDigest", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"),
+          ...population(scope, "evidence"), ...i9CreationProofLeaves(scope, "proof.", remote)];
+      }),
+    ];
+  }),
+  ...hireProofLeaves(taskOutput("ucpath/create-hire"), "receipt."),
+  ...open(taskOutput("ucpath/read-hire-findings"), "state", "observedAt", "source"),
+  ...population(taskOutput("ucpath/read-hire-findings"), "rows"),
+  ...open(taskOutput("ucpath/stage-hire"), "stagedPageState", "template", "reason", "transactionIdDisplay"),
+  ...onboardingPrivateLeaves(taskOutput("ucpath/stage-hire"), "observedName"),
+  ...["match", "verify"].flatMap(verb => {
+    const scope = taskOutput(`ucpath/${verb}-hire`);
+    return [...open(scope, "state", "reason", "matches", "observedAt", "evidence.source", "evidence.sourceState", "evidence.observedAt"),
+      ...onboardingPrivateLeaves(scope, "queryDigest", "evidence.idempotencyKeyDigest", "evidence.queryDigest", "evidence.evidenceRef"),
+      ...population(scope, "evidence"), ...hireProofLeaves(scope, "proof.")];
+  }),
   ...open(workflowResult("onboarding"), "state", "hireWrite.state", "hireWrite.owner", "rosterAccess.state", "rosterAccess.owner"),
   ...[
     "recordId", "recordUrl", "requestedEmail", "personalEmail", "workEmail", "recordFirstName", "recordLastName",

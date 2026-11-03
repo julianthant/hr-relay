@@ -41,7 +41,7 @@ The completion union contains three kinds:
 - `save-verify` invokes its declared read verifier after the commit callback settles.
 - `upload-verify` invokes its declared read verifier. Its optional `unverifiableByPage` declaration requires `policy: "always-park"`, a reason, and an `operatorAttestationExample`. That path parks after the click instead of reporting automatic completion.
 
-`REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` currently has no admitted contracts. All three current commit contracts use `save-verify`.
+`REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY` currently has no admitted contracts. All current commit contracts use `save-verify`.
 
 `idempotency` declares a read `probe`, a pure `key(input)`, and `recoveryAbsence`. Optional `retiredKeys` identify immutable keys that cannot be interpreted under the current contract. Before a real or dry-run probe, the sequencer rejects duplicate current/retired key material and refuses if any retired key has an intent. It does not rewrite the old row or use it as current proof.
 
@@ -84,10 +84,13 @@ Natural keys remain private authority data. Public projections use digest refere
 
 | Contract | Natural key | Probe | Saved-effect verifier | Negative recovery |
 | --- | --- | --- | --- | --- |
+| `ucpath/create-hire` | `ucpath:hire\|<mode>\|<resolved-eid-or-email>\|<effectiveDate>\|<positionNumber>` | `ucpath/match-hire` | `ucpath/verify-hire` | `operator-only` |
 | `ucpath/create-termination` | `ucpath:termination\|<emplId>\|<effectiveDate>` | `ucpath/match-existing-termination` | `ucpath/verify-termination` | `operator-only` |
 | `ucpath/delete-pending-terminations` | `ucpath:pending-terminations-clear:v2\|<emplId>\|<set-digest>` | `ucpath/match-pending-terminations` | `ucpath/verify-pending-terminations-cleared` | `operator-only` |
 | `kuali/save-separation-finalization` | `kuali:<documentNumber>\|finalization\|<transactionNumber>` | `kuali/match-separation-finalization` | `kuali/verify-separation-finalization` | `stabilized`: 30,000 ms after fence, two reads at least 5,000 ms apart, same source state |
 | `ucpath/save-emergency-contact` (preview only) | `ucpath:emergency-contact\|<employee-and-effect-sha256>` | `ucpath/match-emergency-contact-plan` | `ucpath/verify-emergency-contact-plan` | `operator-only` |
+| `i9/create-profile` | `i9:profile\|<email-lower>\|<first-name-lower>\|<last-name-lower>\|<dob>` | `i9/match-profile` | `i9/verify-profile` | `operator-only` |
+| `i9/create-remote-record` | `i9:remote\|<profile-id>\|<start-date>` | `i9/match-remote-record` | `i9/verify-remote-record` | `operator-only` |
 
 These declarations live in `src/models/systems/ucpath/{create-termination,delete-pending-terminations,contact-tasks}.ts` and `src/models/systems/kuali/save-separation-finalization.ts`.
 
@@ -98,6 +101,12 @@ desired-effect identity. Original and freshly read stable content must agree; ob
 not become transaction identity. Real mode refuses before acquiring contacts, and its commit task
 always returns `CONTACT_SAVE_UNAVAILABLE`. No driver Save capability exists. Preview captures the
 original and final prepared sets and creates no write intent, attempt or confirmation.
+
+I-9 declarations live in `src/models/systems/i9/{create-profile,create-remote-record}.ts`.
+Profile save and remote-record creation have separate intents and proofs. A saved profile cannot
+prove remote-record creation. Both proof schemas reject reserved preview values; remote submission
+also refuses a staged preview profile before clicking. A duplicate dialog is an uncertain save
+outcome, never authority to choose its first row or repeat the save.
 
 ### Explicit repetition
 
@@ -168,6 +177,11 @@ still reaches saved-effect verification, then refuses settlement and parks the o
 even when proof is valid. Missing required capture cannot create a transaction checkpoint or
 confirmed-operation history; resolution stays on the typed parked-write path.
 
+Prepare tasks can await `ctx.captureScreenshot()` between browser steps. This uses the retained
+session's required capture with the same run, node, attempt, configuration and sample labels.
+The capability expires with the lease. Intermediate capture failure aborts prepare before the fence
+on both the real and dry-run paths; it does not replace the sequencer's boundary captures.
+
 Standalone recovery and held-only diagnostic checks open a durable recovery activity before their
 read probe. It binds the exact run, attempt, trace, node, intent generation and original write attempt,
 with actual start and end instants. Only that operation's live scope admits its action notes outside
@@ -194,6 +208,11 @@ when probe, note drain or activity-end persistence also fails. It cannot become 
 A settled prior transaction returns an `already-present` preview without staging or observing a subject. Otherwise it stages the page and observes the subject, then returns `TransactionDryRunPreview`. It does not mint a mutation capability, fence an intent, create a write attempt, invoke commit, invoke the post-commit verifier, or write a transaction checkpoint or confirmed-operation history.
 
 `run-executor.ts` records each transaction preview and continues through the declared graph. A later form can consume a separately declared, labelled preview-only sample; dependent receipt/confirmation reads stay unavailable. Samples never become ordinary outputs, real transaction checkpoints or submit receipts. A live sequencer rejects preview scope, preview bindings and reserved sample values before probing, staging or fencing. Upstream task checkpoints, gate records, preview events, and terminal rehearsal evidence can still exist. A dry run is not a verified real write. Dry-run evidence accounting uses `writeIntents.countDryRunEvidenceByRun`, scoped to the run rather than global table counts.
+
+The shared preview contract reserves `DRY_RUN_TRANSACTION_NUMBER` and the numeric
+`DRY_RUN_I9_PROFILE_ID`. Numeric profile samples retain their producer and field labels and use
+the same preview admission and real-write refusal as transaction-number samples. Numeric detection
+matches a complete digit token, so an ordinary longer identifier containing the same digits is not a sample.
 
 ## 4. Crash recovery and UNKNOWN refusal
 
@@ -374,3 +393,5 @@ replacement keys. Ordinary credential erase/logout retains the key and authentic
 history. Cancelled unpublished sign-up removes metadata and then the OS entry under its durable
 abort intent; unproved deletion prevents completion. The [clock/config contract](clock-config-secrets.md)
 owns the exact migration and backup rules.
+
+UCPath hire filing proofs bind the independently read transaction, legal identity, date and position. Pending proves a filing awaiting approval; it does not mean the person has been hired. Denied, Error and Pushed Back cannot complete the write. New hires may have no assigned EID; a pre-assignment ID is never filled into the master. The entire new-hire or concurrent-hire wizard is staged and captured before fencing, and Save and Submit is clicked once.

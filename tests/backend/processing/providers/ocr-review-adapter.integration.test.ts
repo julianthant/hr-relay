@@ -43,11 +43,11 @@ const parent = composeWorkflowModule(compileFixtureWorkflow(defineWorkflow({
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
 
-it("ocr/approved-records — reads only the corrected, explicitly selected records from an authenticated OCR child", async () => {
-  const f = await world.fixture({ record: true, release: true, pageCount: 2, parent });
-  assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1, 1)).state, "applied");
+async function runningBulkFixture(pageCount = 2) {
+  const f = await world.fixture({ record: true, release: true, pageCount, parent });
+  assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1, pageCount - 1)).state, "applied");
   const revision = f.database.authority.ocrReviews.latest(f.run.envelope.runId); assert.ok(revision);
-  const approval = f.approval([revision.records[1].recordId]);
+  const approval = f.approval([revision.records[pageCount - 1].recordId]);
   assert.equal(f.canonical.kernel.execute(approval).state, "applied");
   assert.equal((await f.canonical.step(f.parentRun, new AbortController().signal)).outcome.state, "done");
   const owner = testWorkerLifetime(f.database, f.parentRun.envelope.workflow, 1), runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
@@ -70,16 +70,32 @@ it("ocr/approved-records — reads only the corrected, explicitly selected recor
     payload: { schemaHash: deriveSchemaHash(ReadApprovedOcrRecords.input, "output"), value: ReadApprovedOcrRecords.input.parse(value) } },
   { signal: new AbortController().signal, deadlineMonotonicMs: Infinity, requestId: "fixture" });
   const input = { delegationNodeId: NodeIdSchema.parse("read-documents"), outcomes };
-  const response = await invoke(input);
-  assert.equal(profileChecks, 2);
-  assert.equal(response.response.state, "produced");
-  if (response.response.state !== "produced") assert.fail("Selection read refused");
-  const result = ReadApprovedOcrRecords.output.parse(response.response.value.value);
+  const read = async (value: z.input<typeof ReadApprovedOcrRecords.input> = input) => {
+    const response = await invoke(value);
+    assert.equal(response.response.state, "produced");
+    if (response.response.state !== "produced") assert.fail("Selection read refused");
+    return ReadApprovedOcrRecords.output.parse(response.response.value.value);
+  };
+  const refused = async (value: z.input<typeof ReadApprovedOcrRecords.input>) => {
+    assert.deepEqual(await read(value), { state: "refused", code: "OCR_REVIEW_REFUSED" });
+  };
+  return { f, run, revision, input, authority, invoke, read, refused, profileCheckCount: () => profileChecks };
+}
+
+it("ocr/approved-records — reads only the corrected, explicitly selected records from an authenticated OCR child", async () => {
+  const { f, revision, read, profileCheckCount } = await runningBulkFixture();
+  const result = await read();
+  assert.equal(profileCheckCount(), 2);
   assert.equal(result.state, "ready");
   if (result.state !== "ready") assert.fail("Selection read refused");
   assert.deepEqual(result.sources[0].snapshot.records.map(record => record.recordId), [revision.records[1].recordId]);
   assert.deepEqual(result.sources[0].snapshot.records[0].fields, f.corrected);
   assert.notDeepEqual(result.sources[0].snapshot.records[0].fields, result.sources[0].review.records[1].fields);
+});
+
+it("refuses substituted bulk consumer custody, task and dependency authority", async () => {
+  const { f, run, input, authority, read, refused } = await runningBulkFixture(1);
+  assert.equal((await read()).state, "ready");
   for (const captured of [
     RunRecordSchema.parse({ ...run, claimGeneration: Number(run.claimGeneration) + 1 }),
     RunRecordSchema.parse({ ...run, input: { ...run.input, parsed: { ...run.input.parsed, value: { ...OcrInputSchema.parse(run.input.parsed.value), formType: "i9" } } } }),
@@ -97,13 +113,13 @@ it("ocr/approved-records — reads only the corrected, explicitly selected recor
     assert.throws(() => createApprovedOcrRecordReader({ database: f.database, run, reader, resolveDescriptor: f.resolve,
       assertCurrent: () => f.admission.assertProfileRuntime() }).readSources(input), /OCR_REVIEW_REFUSED/u);
   }
-
-  const generation = f.database.getMeta().authorityGeneration;
-  const refused = async (value: z.input<typeof ReadApprovedOcrRecords.input>) => {
-    const response = await invoke(value); assert.ok(response.response.state === "produced");
-    assert.deepEqual(ReadApprovedOcrRecords.output.parse(response.response.value.value), { state: "refused", code: "OCR_REVIEW_REFUSED" });
-  };
   await refused({ ...input, delegationNodeId: NodeIdSchema.parse("foreign") });
+});
+
+it("refuses incomplete, foreign, altered and stale native bulk selections", async () => {
+  const { f, run, input, invoke, read, refused } = await runningBulkFixture(1);
+  assert.equal((await read()).state, "ready");
+  const generation = f.database.getMeta().authorityGeneration;
   await assert.rejects(invoke({ ...input, outcomes: [] }));
   for (const change of ["missing", "foreign", "altered"] as const) {
     const altered = input.outcomes.map(outcome => {
@@ -116,7 +132,7 @@ it("ocr/approved-records — reads only the corrected, explicitly selected recor
     });
     await refused({ ...input, outcomes: altered });
   }
-  assert.equal(f.canonical.kernel.execute(f.command("discard-ocr-record", 2, 1)).state, "applied");
+  assert.equal(f.canonical.kernel.execute(f.command("discard-ocr-record", 2, 0)).state, "applied");
   await refused(input);
   assert.ok(f.database.getMeta().authorityGeneration >= generation);
 });

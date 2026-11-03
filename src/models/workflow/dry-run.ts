@@ -3,12 +3,13 @@ import { NodeIdSchema } from "../../rules/identity/ids.js";
 import { TransactionDryRunPreviewSchema } from "../../rules/write-safety/write-safety-primitives.js";
 
 export const DRY_RUN_TRANSACTION_NUMBER = "T000000000000";
+export const DRY_RUN_I9_PROFILE_ID = "9999999";
 
 export const DryRunSampleSchema = z.strictObject({
   label: z.literal("dry-run sample"),
   sourceNodeId: NodeIdSchema,
   field: z.string().min(1),
-  value: z.literal(DRY_RUN_TRANSACTION_NUMBER),
+  value: z.enum([DRY_RUN_TRANSACTION_NUMBER, DRY_RUN_I9_PROFILE_ID]),
 });
 export type DryRunSample = z.infer<typeof DryRunSampleSchema>;
 
@@ -37,7 +38,8 @@ export interface DryRunScope {
 }
 
 export function containsDryRunSample(value: unknown): boolean {
-  if (typeof value === "string") return value.includes(DRY_RUN_TRANSACTION_NUMBER);
+  if (typeof value === "string") return value.includes(DRY_RUN_TRANSACTION_NUMBER)
+    || value.split(/\D/u).includes(DRY_RUN_I9_PROFILE_ID);
   if (Array.isArray(value)) return value.some(containsDryRunSample);
   return value !== null && typeof value === "object" && Object.values(value).some(containsDryRunSample);
 }

@@ -71,6 +71,15 @@ describe("one I-9 PDF Start through admitted children", () => {
     expect(output.reference.snapshot.rows.map(row => row.matches.map(match => [match.sheetId, match.rowId]))).toEqual([[["history", "person-0"]], [["history", "person-1"]]]);
     expect(f.readRefusals).toEqual(new Set(["missing run", "foreign claim", "altered input", "foreign type", "altered fields"]));
     expect(output.people.map(person => person.sources.length)).toEqual([2, 2]);
+    for (const document of f.database.authority.runs.listChildren(f.run.envelope.runId).filter(child => child.envelope.workflow === "ocr")) {
+      const lookups = f.database.authority.runs.listChildren(document.envelope.runId).filter(child => child.envelope.workflow === "i9-lookup");
+      expect(lookups.length).toBeGreaterThan(0);
+      for (const lookup of lookups) {
+        expect(lookup.lifecycle).toMatchObject({ state: "terminal", outcome: "done" });
+        expect(f.database.authority.runResults.get(lookup.envelope.runId)?.result.value).toMatchObject({ i9Status: "not-found", signerName: "" });
+      }
+    }
+
     const workbooks = f.database.authority.workbooks.list().filter(workbook => workbook.libraryId.startsWith("workflow:"));
     expect(workbooks).toHaveLength(1);
     expect(workbooks[0].libraryId).toBe(output.workbook.libraryId);

@@ -15,7 +15,7 @@ export const onboardingWorkflow = defineWorkflow({
   summary: "Read-only hire review: CRM data, UCPath duplicate search and I-9 profile planning. Hire submission and I-9 profile creation are not yet available; roster names are retained from the selected library workbook.",
   input: OnboardingInput, canonicalInput: OnboardingCanonicalInput, inputSubject: "email",
   surface: { shape: "single" }, surfaces: {}, enqueue: "reject-active", actions: STANDARD_WORKFLOW_ACTIONS,
-  role: defineWorkflowRole({ kind: "composition" }), scenarios: ["onboarding/crm-extraction"],
+  role: defineWorkflowRole({ kind: "composition" }), scenarios: ["onboarding/crm-extraction", "onboarding/write-transactions"],
   identity: { matchKey: input => input.email.toLowerCase() },
   presentation: { title: input => input.email, subtitle: () => "Read-only review · hire unavailable" },
   outcomeProjection: { fieldPath: "state", cases: [{ value: "implementation-incomplete", label: "Hire unavailable", tone: "warning" }] },

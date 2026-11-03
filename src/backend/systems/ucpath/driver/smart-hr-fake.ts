@@ -1,3 +1,4 @@
+import { refuseHireOperations } from "./hire-fake.js";
 import { UcpathTransactionFindingsSchema } from "../../../../models/ui/ucpath-transaction-findings.js";
 import type { UcpathTransactionFindings } from "../../../../models/ui/ucpath-transaction-findings.js";
 
@@ -94,6 +95,7 @@ export function createDeterministicUcpathSmartHrDriver(
   const half = "the Smart HR termination fixture";
   let screen = UCPATH_SMART_HR_DETAILS_SCREEN;
   return {
+    ...refuseHireOperations(),
     ...refuseUnimplementedPersonOrgHalf(half),
     system: "ucpath",
     async readTransactionFindings(input) {
@@ -275,6 +277,7 @@ export function createDeterministicUcpathSmartHrWorldDriver(
     });
   };
   return {
+    ...refuseHireOperations(),
     ...refuseUnimplementedPersonOrgHalf(half),
     system: "ucpath",
     async readTransactionFindings(input) {
