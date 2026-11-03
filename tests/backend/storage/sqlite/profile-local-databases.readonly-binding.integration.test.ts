@@ -173,7 +173,7 @@ it("refuses a replaced main inode even when its copied binding matches", async (
   copyFileSync(f.path, replacement);
   let replaced = false;
   const observer = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
-    if (Array.isArray(args) && typeof args[2] === "string" && args[2].includes("const [path, expected, schema, application]") && args[3] === f.path) {
+    if (Array.isArray(args) && typeof args[2] === "string" && args[2].includes("const [path, expected, schema, application]") && args[4] === f.path) {
       renameSync(replacement, f.path); replaced = true;
     }
     return actualSpawn(command, args, options);

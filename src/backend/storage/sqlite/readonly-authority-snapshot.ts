@@ -1,6 +1,7 @@
-import { privatePathRejects } from "../private-path.js";
+import { createPrivateDirectory, privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
@@ -30,14 +31,15 @@ function inspect(path: string): BigIntStats | undefined {
 
 // Closing a source descriptor in the SQLite process releases that process's inode locks.
 const copySnapshotScript = `
-const { closeSync, constants, fstatSync, lstatSync, openSync, readSync, writeSync } = require("node:fs");
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, writeSync } from "node:fs";
+const { privatePathRejects } = await import(process.argv[3]);
 const destinationPath = process.argv[1];
 const sources = JSON.parse(process.argv[2]);
 const identity = stats => [stats.dev, stats.ino, stats.mode, stats.size, stats.mtimeNs, stats.ctimeNs].join(":");
 const inspect = path => {
   try {
     const stats = lstatSync(path, { bigint: true });
-    if (!stats.isFile() || stats.isSymbolicLink()) throw new Error("authority-readonly-source-unsafe");
+    if (!stats.isFile() || stats.nlink !== 1n || privatePathRejects(path, stats, "group-write")) throw new Error("authority-readonly-source-unsafe");
     return stats;
   } catch (error) {
     if (error.code === "ENOENT") return undefined;
@@ -119,7 +121,10 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
 }
 
 function copyReadonlyAuthoritySnapshot(sourcePath: string) {
-  const directory = mkdtempSync(join(realpathSync(tmpdir()), "relay-readonly-authority-"));
+  const directory = process.platform === "win32"
+    ? join(realpathSync(tmpdir()), `relay-readonly-authority-${randomUUID()}`)
+    : mkdtempSync(join(realpathSync(tmpdir()), "relay-readonly-authority-"));
+  if (process.platform === "win32") createPrivateDirectory(directory, { mode: 0o700 });
   const path = join(directory, "authority.sqlite");
   const sources: Array<{ path: string; suffix: string; stats: BigIntStats | undefined }> = [];
   let disposed = false;
@@ -154,9 +159,9 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string) {
       }
       if (suffix === "-journal" && source.stats.size > 0n) throw new Error("authority-readonly-source-journal-unsettled");
     }
-    const copy = spawnSync(process.execPath, ["--input-type=commonjs", "-e", copySnapshotScript, path,
+    const copy = spawnSync(process.execPath, ["--input-type=module", "-e", copySnapshotScript, "--import=tsx", path,
       JSON.stringify(sources.map(source => ({ path: source.path, suffix: source.suffix,
-        expected: source.stats === undefined ? null : identity(source.stats) })))], { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
+        expected: source.stats === undefined ? null : identity(source.stats) }))), new URL("../private-path.js", import.meta.url).href], { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
     const copyFailed = () => new Error("authority-readonly-snapshot-copy-failed", {
       cause: copy.error ?? { status: copy.status, signal: copy.signal },
     });

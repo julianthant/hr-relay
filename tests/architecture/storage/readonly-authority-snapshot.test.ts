@@ -144,12 +144,12 @@ it("refuses an abruptly terminated copy and removes its private directory withou
   let directory: string | undefined;
   const actualSpawn = childProcesses.spawnSync;
   const copier = vi.spyOn(childProcesses, "spawnSync").mockImplementation((command, args, options) => {
-    if (command !== process.execPath || !Array.isArray(args) || typeof args[3] !== "string"
-      || !dirname(args[3]).startsWith(join(realpathSync(tmpdir()), "relay-readonly-authority-"))) {
+    if (command !== process.execPath || !Array.isArray(args) || typeof args[4] !== "string"
+      || !dirname(args[4]).startsWith(join(realpathSync(tmpdir()), "relay-readonly-authority-"))) {
       return actualSpawn(command, args, options);
     }
     assert.ok(Array.isArray(args));
-    const destination: unknown = args[3]; assert.ok(typeof destination === "string");
+    const destination: unknown = args[4]; assert.ok(typeof destination === "string");
     assert.equal(destination, join(dirname(destination), "authority.sqlite"));
     directory = dirname(destination);
     assert.ok(existsSync(directory));

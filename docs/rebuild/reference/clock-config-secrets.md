@@ -317,6 +317,37 @@ SQLite precommit proofs cover registry/verifier/control evidence, registry opera
 
 Offline restore replaces SQLite only. It preserves current canonical head/key/generation/floors and credentials, and retains existing source/stage/suspect, settings and UNKNOWN-write proofs. Same-machine native key absence refuses. Same-person restore candidate checks bind immutable IDs, current paths, and verified manifest facts before replacement.
 
+### Private paths on Windows
+
+`storage/private-path.ts` is the shared privacy and flush boundary. POSIX systems use owner IDs
+and mode bits. Windows loads pinned Koffi only when a native operation is needed and observes NTFS
+owner SIDs, DACLs, file identity and reparse metadata through native handles. Null, malformed or
+unsupported ACLs, uncertain identities and all reparse points refuse. Security observations are fresh.
+
+Application paths require the current token's owner SID. Private access is limited to that SID,
+SYSTEM and Administrators; private directories also require safe inheritable ACEs. The `group-write`
+and `owner-write-only` rules permit other principals to read managed data while refusing mutation.
+Ancestors may be
+owned by those principals or the exact TrustedInstaller service SID. Other principals may read and
+traverse ancestors and create sibling directories, but cannot replace descendants or change security.
+Inherit-only ACEs do not grant access to the ancestor itself. Unsupported ACE types refuse rather
+than approximating their effective access.
+
+New private directories receive a protected inheritable DACL during native creation. Existing unsafe
+directories are refused. Private stages verify safe parent inheritance and the created descriptor
+before writing bytes. Windows ancestry retains bigint identities. Native volume serial and 64-bit
+file IDs must agree with exact Node observations; unsafe numeric witnesses and unsupported 128-bit
+file-ID mappings refuse. Persisted numeric witnesses are not silently rounded or migrated.
+
+Both isolated SQLite observers import this same policy. Their source descriptors stay in the child;
+parent observations do not claim exclusive Windows source custody. Backup, restore and deletion
+retain their existing Windows refusals.
+
+Windows path flushing opens the exact object for writing with reparse-point handling, verifies its
+identity, calls `FlushFileBuffers` and checks handle closure. Failed native handles or security
+allocations remain retained through the existing source-closure error. A successful native flush
+does not establish rename, journal-recovery or power-loss durability for Windows maintenance.
+
 ### Environment and private test inputs
 
 The secure bootstrap does not load `.env` or `.env.providers`. Provider families and their file
