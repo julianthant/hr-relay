@@ -258,9 +258,11 @@ it("selects Fast Duo cards through the device selector and blocks selection whil
     assert.equal(host.querySelector(".method-heading")?.textContent, "Relay sign-in methods0 of 2 completed");
     await act(async () => cards()[1].click());
     assert.equal(cards()[1].getAttribute("aria-pressed"), "true");
-    const select = host.querySelector<HTMLSelectElement>("#device-type"); assert.ok(select);
-    assert.equal(select.value, "touch");
-    await act(async () => { select.value = "key"; select.dispatchEvent(new Event("change", { bubbles: true })); });
+    const select = host.querySelector<HTMLButtonElement>("#device-type"); assert.ok(select);
+    assert.equal(select.dataset.value, "touch");
+    await act(async () => select.click());
+    const option = document.querySelector<HTMLElement>('[role="option"][data-value="key"]'); assert.ok(option);
+    await act(async () => option.click());
     assert.equal(cards()[0].getAttribute("aria-pressed"), "true");
     await act(async () => [...host.querySelectorAll("button")].find(button => button.textContent === "Open duo.ucsd.edu")!.click());
     assert.ok(cards().every(card => card.disabled)); assert.equal(select.disabled, true);
@@ -269,7 +271,7 @@ it("selects Fast Duo cards through the device selector and blocks selection whil
     await act(async () => root.render(createElement(OnboardingSetup, { page: "fast", port: { ...port, onboarding: { ...draft, methods: { key: idle, touch: { ...idle, state: "pending", attemptId: "00000000-0000-4000-8000-000000000003" } } } } })));
     assert.ok(cards().every(card => card.disabled)); assert.equal(select.disabled, true);
     await act(async () => cards()[1].click());
-    assert.equal(select.value, "key");
+    assert.equal(select.dataset.value, "key");
     assert.equal(cards()[1].querySelector(".duo-method-pill")?.textContent, "Pending");
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

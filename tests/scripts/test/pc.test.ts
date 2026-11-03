@@ -5,22 +5,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildPcSource, pcSyncFiles, preparePcSource } from "../../../scripts/test/pc-source.js";
 import { runInNewContext } from "node:vm";
-import { MACOS_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "../../../scripts/test/ci-files.js";
+import { NATIVE_FILES, SERIAL_FILES, SERIAL_STORAGE_FILES } from "../../../scripts/test/ci-files.js";
 import { measurePcPhase, pcDurationScript, readPcTiming, selectPcFiles } from "../../../scripts/test/pc.js";
 
 describe("PC test selection", () => {
   const portable = ["tests/models/a.test.ts", "tests/backend/a.integration.test.ts", "tests/architecture/a.test.ts"];
 
-  it("keeps affected portable files and removes every macOS list", () => {
-    const native = [...new Set([...MACOS_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])];
+  it("keeps affected portable files and removes every native list", () => {
+    const native = [...new Set([...NATIVE_FILES, ...SERIAL_FILES, ...SERIAL_STORAGE_FILES])];
     expect(selectPcFiles([...portable, ...native], [])).toEqual({ files: [...portable].sort(), skipped: native.sort() });
     expect(selectPcFiles([], [])).toEqual({ files: [], skipped: [] });
   });
 
-  it("selects literal paths or quoted globs and reports macOS-only requests", () => {
+  it("selects literal paths or quoted globs and reports native requests", () => {
     expect(selectPcFiles(portable, ["tests/backend/**/*.test.ts"]).files).toEqual([portable[1]]);
     expect(selectPcFiles([".\\tests\\models\\a.test.ts"], [portable[0]]).files).toEqual([portable[0]]);
-    expect(selectPcFiles(MACOS_FILES, [MACOS_FILES[0]]).files).toEqual([]);
+    expect(selectPcFiles(NATIVE_FILES, [NATIVE_FILES[0]]).files).toEqual([]);
     expect(() => selectPcFiles(portable, ["tests/missing.test.ts"])).toThrow(/No unit, integration or architecture file/u);
   });
 

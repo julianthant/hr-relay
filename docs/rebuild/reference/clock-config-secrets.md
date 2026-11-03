@@ -635,7 +635,7 @@ approved account surface is wired.
 
 ### Private onboarding custody
 
-Show setup browser opens one draft-owned full Chromium window on the Relay FastDuo extension's
+Show setup browser opens one draft-owned browser window (signed Google Chrome on macOS, full Chromium elsewhere) on the Relay FastDuo extension's
 existing setup page. Open duo.ucsd.edu opens a separate tab in that same context, acquires the
 original protected Details only after verifying the exact UCSD SSO document and form controls,
 then submits that pinned POST form once. Reopening focuses the owned tab; failed initialization
@@ -650,7 +650,7 @@ window. Failed attempt initialization must settle before closure; it is retained
 without preventing proved worker and browser cleanup. Reopening never rearms the failed attempt.
 The first attempt failure retains only its closed `kind` and `causeTag` values. The existing debug
 event writer records the same facts as a pinned Duo failure correlated to that attempt in the
-draft profile timeline. Raw exception messages, stacks, credentials and account values are excluded.
+draft profile timeline. Raw exception messages, stacks, credentials and account values are excluded. Interception, forwarding, backend receipt, reply, scoped refusal, abort and timeout stages use the same writer. Abort and timeout retain UNKNOWN, including before scope binding, and never permit another capture.
 The extension UI receives public draft status and exact attempt commands, never login credentials.
 Before enrollment capture is armed, verified native Duo documents may query capability support or
 pass a sign-in request to the captured browser implementation. This path exposes no software key,
@@ -659,7 +659,7 @@ enrollment, persisted credential, counter reservation or readiness proof.
 `profile-onboarding.ts` issues exact operation/generation/method attempts. Software FastDuo readiness
 requires native pending-key acknowledgement and ceremony plus either exact scoped operator CONFIRM
 or an observed exact-credential request; an unobserved portal acceptance remains false. Touch ID separately requires a platform ceremony with software interception disabled, actual Duo
-portal acceptance and operator confirmation. A successful platform-availability probe on macOS selects native
+portal acceptance and operator confirmation. The owned extension prepares platform discovery before answering Duo availability queries. macOS enrollment requires installed signed Chrome for its WebAuthn keychain entitlements; the staged extension loads through a private DevTools pipe. A successful platform-availability probe on macOS selects native
 Touch ID when available; explicit absence or a non-macOS host selects Chromium's virtual internal authenticator before
 the ceremony. A failed probe or native ceremony never triggers an emulated retry. Virtual platform
 keys enter the same encrypted Duo custody and must be ready before Finish. The retained receipt and

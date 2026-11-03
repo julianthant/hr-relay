@@ -18,19 +18,21 @@ it("renders the approved extension states and keeps card selection, guards and f
     return { success: true, result: { relaySetup: true, profile } };
   } } });
   const cards = () => [...document.querySelectorAll<HTMLButtonElement>(".relay-method-card")];
-  const select = () => document.querySelector<HTMLSelectElement>("#transport")!;
+  const picker = () => document.querySelector<HTMLElement>("#transport")!;
+  const choices = () => [...picker().querySelectorAll<HTMLButtonElement>("button")];
   try {
     await mountRelayOptions(profile);
     assert.deepEqual(cards().map(card => card.querySelector("strong")?.textContent), ["Security key", "Touch ID"]);
-    assert.equal(select().options[1].textContent, "Touch ID on this Mac (native)");
+    assert.deepEqual(choices().map(button => button.textContent), ["Security key", "Touch ID"]);
+    assert.equal(document.querySelector("select"), null);
     cards()[1].focus(); cards()[1].click();
-    assert.equal(select().value, "internal"); assert.equal(cards()[1].getAttribute("aria-pressed"), "true");
+    assert.equal(picker().dataset.value, "internal"); assert.equal(cards()[1].getAttribute("aria-pressed"), "true");
     await vi.advanceTimersByTimeAsync(1000);
     assert.equal(document.activeElement, cards()[1]);
-    select().value = "usb"; select().dispatchEvent(new Event("change"));
+    choices()[0].click();
     assert.equal(cards()[0].getAttribute("aria-pressed"), "true");
     document.querySelector<HTMLButtonElement>("#openLogin")!.click();
-    assert.ok(cards().every(card => card.disabled)); assert.equal(select().disabled, true);
+    assert.ok(cards().every(card => card.disabled)); assert.ok(choices().every(button => button.disabled));
     assert.ok(release); release(); await Promise.resolve(); await Promise.resolve();
     await vi.advanceTimersByTimeAsync(0);
     assert.ok(cards().every(card => !card.disabled));
@@ -46,7 +48,7 @@ it("renders the approved extension states and keeps card selection, guards and f
       assert.equal(cards()[0].querySelector(".relay-method-pill")?.textContent, label);
       assert.deepEqual([...cards()[0].querySelectorAll<HTMLElement>("ol li")].map(step => step.dataset.state), tones);
       assert.equal(document.getElementById("accountCount")?.textContent, `${state === "complete" ? 1 : 0} of 2 completed`);
-      assert.equal(select().disabled, state === "pending");
+      assert.ok(choices().every(button => button.disabled === (state === "pending")));
       assert.ok(cards().every(card => card.disabled === (state === "pending")));
       assert.equal(cards()[0].querySelectorAll("svg").length, 2);
       if (state === "unknown" || state === "unavailable") {
