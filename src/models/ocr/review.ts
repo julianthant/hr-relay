@@ -28,7 +28,7 @@ export function initialOcrReviewRecords(seed: z.output<typeof OcrResultSchema>) 
     const documentName = record.subjectName === null ? null : personMatchKey(record.subjectName);
     const observedName = status?.details.name == null ? null : personMatchKey(status.details.name);
     const observed = status?.ucpathSelection === "resolved" && status.details.ucpath === "Found"
-      && status.details.foundInUcpath === true && documentName !== null && documentName === observedName
+      && status.details.foundInUcpath !== false && documentName !== null && documentName === observedName
       ? EidSchema.parse(status.details.eid) : null;
     const fieldEid = record.fields.answers.find(answer => ["employee.employeeId", "employeeId"].includes(answer.path));
     const conflicting = observed !== null && fieldEid?.state === "read" && fieldEid.value !== observed;

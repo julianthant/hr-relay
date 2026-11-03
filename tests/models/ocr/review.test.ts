@@ -31,6 +31,12 @@ function result(documentEid?: string) {
 it("retains a proved UCPath identity in the initial review without requiring a correction", () => {
   assert.equal(initialOcrReviewRecords(result())[0]?.assertedEid, "10800000");
 });
+it("accepts a resolved Search identity whose Match-only UCPath flag is absent", () => {
+  const seed = result();
+  const identity = seed.identities[0]; assert.ok(identity && identity.outcome.state === "done" && "activeStatus" in identity.outcome.output);
+  identity.outcome.output.activeStatus.details.foundInUcpath = null;
+  assert.equal(initialOcrReviewRecords(seed)[0]?.assertedEid, "10800000");
+});
 it("holds a resolved lookup whose name conflicts with or cannot corroborate the document", () => {
   const seed = result();
   const identity = seed.identities[0]; assert.ok(identity && identity.outcome.state === "done" && "activeStatus" in identity.outcome.output);
@@ -44,5 +50,8 @@ it("holds a conflicting document identity and an unresolved lookup for explicit 
   const seed = result();
   const identity = seed.identities[0]; assert.ok(identity && identity.outcome.state === "done" && "activeStatus" in identity.outcome.output);
   identity.outcome.output.activeStatus.ucpathSelection = "ambiguous";
+  assert.equal(initialOcrReviewRecords(seed)[0]?.assertedEid, null);
+  identity.outcome.output.activeStatus.ucpathSelection = "resolved";
+  identity.outcome.output.activeStatus.details.foundInUcpath = false;
   assert.equal(initialOcrReviewRecords(seed)[0]?.assertedEid, null);
 });

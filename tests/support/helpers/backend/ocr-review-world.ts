@@ -30,6 +30,8 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { retainedOcrModule, retainedOcrStore, retainedOcrCheckpointPublication } from "../../fixtures/ocr/retained-review-producer.js";
 import { ocrWorkflowStore } from "../../../../src/workflows/ocr/task-registry.js";
+import { ocrForm, type OcrFormType } from "../../../../src/models/ocr/form-registry.js";
+import type { SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import type { WorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 
 export function createOcrReviewWorld() {
@@ -38,7 +40,7 @@ export function createOcrReviewWorld() {
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number;
       retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule; ocr?: WorkflowModule;
-      lookupNames?: readonly string[]; pauseAtLookup?: boolean;
+      lookupNames?: readonly string[]; pauseAtLookup?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       const rendered: { value?: z.output<typeof ExtractPdfPagesOutputSchema> } = {};
@@ -59,7 +61,7 @@ export function createOcrReviewWorld() {
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
         tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
-      const harness = await world.executorHarness({ descriptor: root.descriptor, stores });
+      const harness = await world.executorHarness({ descriptor: root.descriptor, stores, ...(options.sessions === undefined ? {} : { sessions: options.sessions }) });
       options.onHarness?.(harness);
       const { database, path, clock } = harness.authority;
       const workbooks = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
@@ -90,8 +92,9 @@ export function createOcrReviewWorld() {
       rendered.value = { pageCount: options.pageCount ?? 1, pages: Array.from({ length: options.pageCount ?? 1 }, (_, index) => ({ sourcePage: index + 1, image })) };
       const manifest = buildOcrSourceManifest(upload.artifact, rendered.value);
       if (options.lookupNames !== undefined) { assert.equal(options.lookupNames.length, manifest.pageCount); assert.equal(options.record, true); }
-      const readings = ocrPageInputs(manifest, READING_ID).map((page, index) => {
-        const original = submittedPage(page, options.lookupNames?.[index] ?? "Example, Avery", options.record === true ? "emergency-contact" : "blank");
+      const formType = options.formType ?? "emergency-contact";
+      const readings = ocrPageInputs(manifest, READING_ID, formType).map((page, index) => {
+        const original = submittedPage(page, options.lookupNames?.[index] ?? "Example, Avery", options.record === true ? ocrForm(formType).pageKinds[0] : "blank");
         const valid = { ...original, source: { kind: "operator" as const, actorId } };
         return { reading: bindManualOcrPageReading(page, actorId, { ...valid,
           record: valid.record === null ? null : options.lookupNames === undefined ? { answers: { ...valid.record.answers, "employee.name": { state: "absent", reason: "blank" } } } : valid.record }),
@@ -100,7 +103,7 @@ export function createOcrReviewWorld() {
       const first = readings[0]; assert.ok(first);
       const { reading, corrected } = first;
       const request = OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
-        formType: "emergency-contact", roster: null, approval: options.release === true ? "release" : "review-only",
+        formType, roster: null, approval: options.release === true ? "release" : "review-only",
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
       const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading }), { dryRun: options.dryRun ?? false,
           ...(options.retainedProducer === true || !root.descriptor.requiredWorkbookTypeIds.includes("ocr-roster") ? {} : { workbookReferences: [{ entry: 1, typeId: "ocr-roster", libraryId: roster.libraryId }] }) });

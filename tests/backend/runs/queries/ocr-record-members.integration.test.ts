@@ -22,6 +22,9 @@ import { buildOcr } from "../../../../src/workflows/ocr/steps/source-pages/step.
 import type { ChildVisibility } from "../../../../src/models/workflow/delegation-policy.js";
 import { ocrModule } from "../../../../src/backend/app/registries/workflow-registry.js";
 
+import { sessionFactoryHarness, healthyCrmDriver, EXECUTOR_EID } from "../../../support/helpers/phase1f-executor-harness.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
+
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
 
@@ -189,4 +192,41 @@ it("serves a linked OCR child's own review and timeline while its parent's recor
   assert.deepEqual(cards.map(card => card.disposition.label), ["Pending", "Pending"]);
   assert.deepEqual(cards.map(card => card.pages[0].imageUrl), [1, 2].map(page => `/source/${childRow.runId}/1/${page}`));
   assert.equal(database.authority.runs.get(f.run.envelope.runId)?.envelope.shape, f.run.envelope.shape);
+});
+
+it("shows verified shared identities while another native lookup is still queued before review publication", async () => {
+  const person = { emplId: EXECUTOR_EID, name: "Example, Avery", department: "Housing Dining Hospitality", jobTitle: "Fixture employee",
+    employeeStatus: "active" as const, hdh: true, hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" };
+  const sessions = sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver({ results: [person], selection: { status: "resolved", selected: person, candidateEids: [EXECUTOR_EID] } }), crm: () => healthyCrmDriver() });
+  const f = await world.fixture({ record: true, release: true, pageCount: 3,
+    lookupNames: ["Example, Avery", "Example, Robin", "Example, Avery"], pauseAtLookup: true, sessions });
+  const next = await f.canonical.step(f.run, new AbortController().signal);
+  assert.equal(next.run.envelope.workflow, "person-lookup");
+  assert.equal(next.outcome.state, "done");
+  assert.equal(f.database.authority.ocrReviews.latest(f.run.envelope.runId), undefined);
+  const presentation = f.database.withAuthorityReadSnapshot(() => readOcrQueueMembers(f.database.authority, f.canonical.lifecycle,
+    f.run.envelope.runId, id => f.resolve(id)?.label ?? id));
+  assert.ok(presentation);
+  assert.deepEqual(presentation.members.map(member => member.statusLabel), ["Verified", "Looking up", "Verified"]);
+  assert.equal(presentation.members[0]?.title, `Example, Avery · EID ${EXECUTOR_EID}`);
+  assert.equal(presentation.members[2]?.title, presentation.members[0]?.title);
+});
+
+it("binds I-9 signer records to their own native group and keeps its history covered", async () => {
+  const f = await world.fixture({ record: true, release: true, pageCount: 2, formType: "i9",
+    lookupNames: ["Example, Avery", "Example, Avery"], pauseAtLookup: true });
+  const group = f.database.authority.dependencies.groups(f.run.envelope.runId).find(({ group }) => group.invocation.nodeId === "lookup-signers");
+  assert.ok(group);
+  assert.equal(group.group.children.length, 1);
+  const child = group.group.children[0]; assert.ok(child);
+  assert.equal(child.child.envelope.workflow, "i9-lookup");
+  const source = f.database.withAuthorityReadSnapshot(() => readOcrRecordBindings(f.database.authority, f.run.envelope.runId));
+  assert.ok(source);
+  assert.equal(source.bindings.length, 2);
+  assert.ok(source.bindings.every(binding => binding.currentChildRunId === child.child.envelope.runId));
+  const presentation = f.database.withAuthorityReadSnapshot(() => readOcrQueueMembers(f.database.authority, f.canonical.lifecycle,
+    f.run.envelope.runId, id => f.resolve(id)?.label ?? id));
+  assert.ok(presentation);
+  assert.deepEqual(presentation.members.map(member => member.statusLabel), ["Looking up", "Looking up"]);
+  assert.ok(presentation.runIds.includes(child.child.envelope.runId));
 });
