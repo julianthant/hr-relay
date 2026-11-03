@@ -980,6 +980,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
       'resolution.target.libraryId', 'resolution.target.operationId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.operations[].${path}`, origin: 'repository-authored' as const })),
     ...['label', 'sheetId', 'rowId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.operations[].resolution.candidates[].${path}`, origin: 'captured-hr-value' as const })),
     ...['versionId', 'libraryId', 'typeId'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.value.recovery.request.workbookReferences[].${path}`, origin: 'captured-hr-value' as const })),
+    { surface: 'wire/run-detail-section', path: 'payload.value.recovery.request.workbookReferences[].selectedRow.sheetId', origin: 'captured-hr-value' },
+    { surface: 'wire/run-detail-section', path: 'payload.value.recovery.request.workbookReferences[].selectedRow.rowId', origin: 'captured-hr-value' },
     ...['name', 'sheetId'].map(path => ({ surface: 'wire/workbook-reference', path: `worksheets[].${path}`, origin: 'captured-hr-value' as const })),
     ...['action', 'displayedName'].map(path => ({ surface: 'wire/run-detail-section', path: `payload.ucpathFindings.findings.rows[].${path}`, origin: 'captured-hr-value' as const })),
   {"surface": "wire/run-logs-stream", "path": "envelope.payload.attemptHistory[].endedAt.reason", "origin": "repository-authored"},

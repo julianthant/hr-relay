@@ -131,7 +131,7 @@ describe("source-bound Rerun value read", () => {
       postalCodeOverride: OnboardingInput.shape.postalCodeOverride, configuredJobEndDate: OnboardingInput.shape.configuredJobEndDate });
     const value = retainedSchema.parse({ email: ONBOARDING_INPUT_EXAMPLE.email, mode: "rehire",
       postalCodeOverride: "92093", configuredJobEndDate: "06/30/2027" });
-    const { sessionId: _sessionId, ...withoutSession } = source;
+    const { sessionId: _sessionId, completion: _completion, ...withoutSession } = source;
     const run = RunRecordSchema.parse({ ...withoutSession,
       envelope: { ...source.envelope, workflow: descriptor.id, contractFingerprint: "c".repeat(64) },
       lifecycle: { state: "terminal", outcome: "interrupted", endedAt: h.clock.now().toISOString() },
@@ -163,7 +163,7 @@ describe("source-bound Rerun value read", () => {
     const h = await harness(); const source = await failed(h);
     const descriptor = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "onboarding"); assert.ok(descriptor);
     const value = { ...ONBOARDING_INPUT_EXAMPLE, mode: "rehire", postalCodeOverride: "92093" };
-    const { sessionId: _sessionId, ...withoutSession } = source;
+    const { sessionId: _sessionId, completion: _completion, ...withoutSession } = source;
     const run = RunRecordSchema.parse({ ...withoutSession,
       envelope: { ...source.envelope, workflow: descriptor.id, descriptorVersion: descriptor.version,
         contractFingerprint: older ? "c".repeat(64) : descriptor.contractFingerprint },

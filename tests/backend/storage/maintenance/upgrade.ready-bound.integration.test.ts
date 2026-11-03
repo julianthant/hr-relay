@@ -104,13 +104,18 @@ async function readyBoundEight(work: "idle" | "queued" = "idle", sourceVersion: 
             ? { workbookReferences: [{ schemaHash: FingerprintSchema.parse(workbookEvidence.schemaHash), value: workbookReferenceValue }] } : {}) }, priority: "bulk", shape: "single", dryRun: true,
         runtimeConfig: selectRunRuntime(database.authority) }));
       assert.equal(run.lifecycle.state, "queued");
-      if (workbookEvidence?.owner === "terminal-run") requireLifecycleApplied(service.transition({ commandId: randomUUID(),
-        runId: run.envelope.runId, expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: systemClock.now().toISOString() } }));
-      const ref = await createContentAddressedArtifactWriter({ admission: profile.admission }).put(Buffer.from("retained upgrade artifact"), { mediaType: "application/octet-stream" });
-      database.authority.artifactOutbox.insert({ ...artifactUpdate(), sourceRunId: run.envelope.runId,
-        payload: { schemaHash: "a".repeat(64), value: { artifact: ref } } });
-      mkdirSync(join(profile.stateRoot, "files"), { mode: 0o700 });
-      writeFileSync(join(profile.stateRoot, "files", "upgrade-proof.txt"), "ordinary person output", { mode: 0o600 });
+      if (workbookEvidence?.owner === "terminal-run") {
+        const terminal = requireLifecycleApplied(service.transition({ commandId: randomUUID(), runId: run.envelope.runId,
+          expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: systemClock.now().toISOString() } }));
+        assert.equal(terminal.lifecycle.state, "terminal");
+      }
+      if (workbookEvidence === undefined) {
+        const ref = await createContentAddressedArtifactWriter({ admission: profile.admission }).put(Buffer.from("retained upgrade artifact"), { mediaType: "application/octet-stream" });
+        database.authority.artifactOutbox.insert({ ...artifactUpdate(), sourceRunId: run.envelope.runId,
+          payload: { schemaHash: "a".repeat(64), value: { artifact: ref } } });
+        mkdirSync(join(profile.stateRoot, "files"), { mode: 0o700 });
+        writeFileSync(join(profile.stateRoot, "files", "upgrade-proof.txt"), "ordinary person output", { mode: 0o600 });
+      } else assert.deepEqual(database.authority.artifactOutbox.listPending(), []);
     }
   } finally { database.close(); }
   const row = profile.machine.readProfileRegistry().profiles.find(value => value.profileId === binding.profileId);
@@ -632,7 +637,10 @@ it.each(["run", "terminal-run", "plan", "consumed-plan"] as const)("upgrades sch
     { owner, schemaHash: deriveSchemaHash(RunWorkbookReferenceSchema, "output") });
   try {
     const before = rawEight(f.path, 18);
-    assert.equal((await upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock)).state, "upgraded");
+    const upgraded = await (owner === "run"
+      ? upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)
+      : upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock));
+    assert.equal(upgraded.state, "upgraded");
     const manifests = readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json"));
     assert.equal(manifests.length, 1);
     const manifestName = manifests[0];
@@ -655,7 +663,9 @@ it.each(([17, 18] as const).flatMap(version => (["run", "terminal-run", "plan", 
     const f = await readyBoundEight(owner.includes("run") ? "queued" : "idle", version, false, { owner, schemaHash: "a".repeat(64) });
     try {
       const bytes = readFileSync(f.path), before = rawEight(f.path, version);
-      await assert.rejects(upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock), /workbook_reference_schema_upgrade_unproved/u);
+      await assert.rejects(owner === "run"
+        ? upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)
+        : upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock), /workbook_reference_schema_upgrade_unproved/u);
       assert.deepEqual(readFileSync(f.path), bytes);
       assert.deepEqual(rawEight(f.path, version), before);
       const raw = new DatabaseSync(f.path, { readOnly: true });
