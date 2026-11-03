@@ -218,7 +218,7 @@ for (const scenario of ["software", "abort", "timeout", "platform", "scope-refus
   mkdirSync(browserRoot, { recursive: true, mode: 0o700 });
   let context: BrowserContext | undefined;
   const provider = createProfileOnboardingDuoProvider({ browserRoots: createBrowserRoots(machine), browserRoot,
-    extensionDirectory: realpathSync("fast-duo"), clock: systemClock, closeProofMs: 5000, platform: "linux",
+    extensionDirectory: realpathSync("fast-duo"), clock: systemClock, closeProofMs: 5000, platform: "win32",
     launcher: { async launch(input) {
       if (input.nativeOnly) return DEFAULT_BROWSER_LAUNCHER.launch(input);
       context = await DEFAULT_BROWSER_LAUNCHER.launch({ ...input, headless: true });
@@ -291,9 +291,21 @@ for (const scenario of ["software", "abort", "timeout", "platform", "scope-refus
         assert.doesNotMatch(JSON.stringify(events), /synthetic-enrollment@ucsd.edu|synthetic-enrollment-password|synthetic-handle|synthetic-enrollment-challenge|privateKey|publicKey|stack/);
       });
     } finally { debugAdmission.release(); }
-  } catch (error) { failure = error; }
+  } catch (error) {
+    failure = error;
+    try {
+      const debugAdmission = machine.admitProfile(draft.profileId);
+      try {
+        AuthorityDatabase.withProfileOnboardingTimeline(debugAdmission, systemClock, repository => {
+          const reasons = repository.page({ after: 0, through: repository.highWaterMark(), limit: 500 })
+            .flatMap(entry => entry.payload.kind === "debug" && entry.payload.event.category === "duo" ? [entry.payload.event.reason] : []);
+          failure = new Error(`enrollment fixture ${scenario}: ${reasons.join(", ")}`, { cause: error });
+        });
+      } finally { debugAdmission.release(); }
+    } catch (diagnosticError) { failure = new AggregateError([error, diagnosticError], "enrollment fixture and diagnostics failed"); }
+  }
   try {
-    if (profile.session.readOnboarding(draft.token, draft.operationId).methods.key.state === "unknown") {
+    if (profile.session.readOnboarding(draft.token, draft.operationId).methods[scenario === "platform" ? "touch" : "key"].state === "unknown") {
       await assert.rejects(profile.close(), error => error instanceof RuntimeCustodyUncertainError
         && error.errors.some(cause => cause instanceof AggregateError && cause.message === "profile-onboarding-custody-unproved"));
     } else await profile.close();

@@ -57,21 +57,26 @@ export interface OnboardingDuoProviderOptions {
 
 
 async function workerCall(worker: Worker, method: "install" | "next" | "reply" | "stop" | "assertContext" | "platformAvailable" | "browserInstall" | "browserFocus" | "browserNext" | "browserReply" | "browserStop", args: readonly unknown[] = []): Promise<unknown> {
-  return worker.evaluate(async input => {
+  try { return await worker.evaluate(async input => {
     const owner: unknown = Reflect.get(globalThis, "relayOnboarding");
     if (typeof owner !== "object" || owner === null) throw new Error("ONBOARDING_DUO_WORKER_UNAVAILABLE");
     const operation: unknown = Reflect.get(owner, input.method);
     if (typeof operation !== "function") throw new Error("ONBOARDING_DUO_WORKER_UNAVAILABLE");
     const result: unknown = await Reflect.apply(operation, owner, input.args);
     return result;
-  }, { method, args });
+  }, { method, args }); }
+  catch (error) {
+    if (method === "next" || method === "browserNext") throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime", error);
+    throw error;
+  }
 }
 
 
 export function createProfileOnboardingDuoProvider(options: OnboardingDuoProviderOptions): ProfileOnboardingDuoProvider {
   const browserLauncher = options.launcher ?? DEFAULT_BROWSER_LAUNCHER;
+  const nativePlatform = (options.platform ?? process.platform) === "darwin";
   const probeOptions = createNativeBrowserProbe({ clock: options.clock, scheduler: createTimeoutDeadlineScheduler(options.clock),
-    closeProofMs: options.closeProofMs, launchTimeoutMs: options.closeProofMs, signal: new AbortController().signal, launcher: browserLauncher, nativePlatform: true });
+    closeProofMs: options.closeProofMs, launchTimeoutMs: options.closeProofMs, signal: new AbortController().signal, launcher: browserLauncher, ...(nativePlatform ? { nativePlatform: true } : {}) });
   type ProviderSession = {
     attempt: DraftDuoAttempt; profileDirectory: string; context?: BrowserContext; launching?: Promise<BrowserContext>; worker?: Worker;
     capability?: DraftDuoCapability; platform?: OnboardingPlatformAuthenticator; credentialId?: string; requestId?: string; accepted: boolean; revoked: boolean;
@@ -375,7 +380,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       catch (error) { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root", error); }
       session.launchStarted = true;
       session.launching = browserLauncher.launch({ profileDirectory: session.profileDirectory, headless: false,
-        extensionDirectory, acceptDownloads: false, downloadsPath: session.profileDirectory, viewport: { width: 1100, height: 800 }, disablePasswordManager: true, defaultContextOptions: true, nativePlatform: { closeProofMs: options.closeProofMs } }).then(context => {
+        extensionDirectory, acceptDownloads: false, downloadsPath: session.profileDirectory, viewport: { width: 1100, height: 800 }, disablePasswordManager: true, defaultContextOptions: true, ...(nativePlatform ? { nativePlatform: { closeProofMs: options.closeProofMs } } : {}) }).then(context => {
         session.context = context;
         context.on("close", () => {
           session.contextClosed = true;
@@ -446,7 +451,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         }
       })().catch(async error => {
         if (!session.revoked) {
-          if (active) { await reportFailure(active, new ProfileOnboardingDuoProviderError("unknown", "worker", error)); await close(active); }
+          if (active) { await reportFailure(active, error instanceof ProfileOnboardingDuoProviderError ? error : new ProfileOnboardingDuoProviderError("unknown", "worker", error)); await close(active); }
           else owner.reportEvent({ stage: "refused", detail: "backend" });
           session.revoked = true;
         }

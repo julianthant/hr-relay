@@ -29,6 +29,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   const requests: unknown[] = [];
   let waiter: ((value: unknown) => void) | undefined;
   let browserWaiter: ((value: unknown) => void) | undefined;
+  const rejectPolls = new Map<string, (error: Error) => void>();
   let blockedStop = false, releaseStop: (() => void) | undefined, portalPages = 0;
   let lostActiveStopAck = false, blockedPump = false;
   let startupHold: Promise<void> | undefined, releaseStartup: (() => void) | undefined, startupEntered: (() => void) | undefined;
@@ -56,12 +57,12 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
       if (input.method === "browserFocus") { windowFocusCount++; return; }
       if (input.method === "browserInstall") return;
       if (input.method === "platformAvailable") return true;
-      if (input.method === "browserNext") return new Promise(resolve => { browserWaiter = resolve; });
+      if (input.method === "browserNext") return new Promise((resolve, reject) => { browserWaiter = resolve; rejectPolls.set(input.method, reject); });
       if (input.method === "browserStop") { if (lostStopAck) throw new Error("synthetic worker already closed"); browserWaiter?.(null); browserWaiter = undefined; return; }
       if (input.method === "assertContext") { if (!documentCurrent) throw new Error("synthetic document drift"); return; }
       if (input.method === "next") {
         if (requests.length) return requests.shift();
-        return new Promise(resolve => { waiter = resolve; });
+        return new Promise((resolve, reject) => { waiter = resolve; rejectPolls.set(input.method, reject); });
       }
       if (input.method === "reply") { replies.get(String(input.args[0]))?.(input.args[1]); return; }
       if (input.method === "stop") {
@@ -95,6 +96,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     close: async () => { closed = true; if (!missingCloseEvent) for (const listener of listeners) listener(); if (!blockedPump) { waiter?.(null); waiter = undefined; } browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
   const realProvider = createProfileOnboardingDuoProvider({ browserRoots: mockBrowserRootPort().browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50, platform,
     launcher: { launch: async input => {
+      assert.deepEqual(input.nativePlatform, platform === "darwin" ? { closeProofMs: 50 } : undefined);
       if(input.nativeOnly===true){
         nativeProbes++;
         if(nativeBusy)throw new Error("Failed to create a ProcessSingleton for your profile directory.");
@@ -148,6 +150,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     return result;
   }
   return { sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+    rejectPoll(method: "next" | "browserNext", error: Error) { const reject = rejectPolls.get(method); assert.ok(reject); reject(error); },
     loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, windowFocuses: () => windowFocusCount, failInstall: () => { failInstall = true; }, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
     loseActiveStopAck: () => { lostActiveStopAck = true; }, blockPump: () => { blockedPump = true; },
@@ -163,6 +166,20 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
 const BIND = { documentId: "A0000000000040008000000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
 
 describe("draft Duo provider", () => {
+  for (const method of ["next", "browserNext"] as const) it(`retains browser lifetime and the original cause when ${method} terminates before context closure`, async () => {
+    const w = world(), original = new Error("synthetic broker transport closed");
+    let reported!: (error: Error) => void;
+    const failure = new Promise<Error>(resolve => { reported = resolve; });
+    try {
+      await w.provider.start(w.attempt, w.bind, async error => { await w.reportFailure(error); reported(error); });
+      w.rejectPoll(method, original);
+      const retained = await failure;
+      assert.ok(retained instanceof ProfileOnboardingDuoProviderError);
+      assert.equal(retained.kind, "unknown"); assert.equal(retained.reason, "browser-lifetime");
+      assert.equal(retained.cause, original); assert.equal(w.failures.length, 1);
+      assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
   for(const pathKind of ["random","old-generation","changed-owner"] as const)it(`refuses an unbound ${pathKind} directory without effects`,async()=>{
     const w=world();
     const directory=pathKind==="random"?join(w.browserRoot,"onboarding-Abc123")
