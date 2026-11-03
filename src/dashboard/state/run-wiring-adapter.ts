@@ -620,6 +620,11 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     && row.rowRevision.valueOf() === envelope.target.expectedVersion.valueOf(), [gate, detailGate, row.rowRevision]);
   const matchesDecision = useCallback((envelope: CommandRequest) => {
     if (envelope.family === "gate") return matchesGate(envelope);
+    if (envelope.family === "run" && envelope.type === "retry" && detail?.childRetry?.kind === "command") {
+      const composed = composeCommandRequest(detail.childRetry, { runId: row.runId, expectedVersion: row.rowRevision }, {
+        actorId: envelope.requestedBy, source: "run-detail", commandId: envelope.commandId, requestedAt: envelope.requestedAt, childRetry: detail.childRetry });
+      return composed.state === "ready" && canonicalJsonStringify(composed.request) === canonicalJsonStringify(envelope);
+    }
     if (envelope.family === "run" && envelope.type === "resolve-workbook-reference-row") {
       const choice = workbookWrites?.section === "workbook-writes" ? workbookWrites.payload.referenceChoices?.find(choice => choice.resolution.state === "available"
         && canonicalJsonStringify(choice.resolution.target) === canonicalJsonStringify(envelope.target)) : undefined;
@@ -655,7 +660,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         commandId: envelope.commandId, requestedAt: envelope.requestedAt,
         ...(envelope.type === "recheck-write" ? { transactionId: envelope.payload.transactionId } : {}) }) : undefined;
     return composed?.state === "ready" && canonicalJsonStringify(composed.request) === canonicalJsonStringify(envelope);
-  }, [matchesGate, parked, failure, correctionCommand, row.runId, row.rowRevision, workbookWrites]);
+  }, [matchesGate, parked, failure, correctionCommand, row.runId, row.rowRevision, workbookWrites, detail]);
   const commandApplies = useCallback((attempt: NonNullable<typeof command>) => attempt.state === "pending" || attempt.state === "uncertain"
     || matchesDecision(attempt.envelope) || (attempt.state === "settled" && attempt.envelope.family === "run" && attempt.envelope.type !== "resolve-workbook-reference-row" && parked === undefined
       && row.rowRevision > attempt.envelope.target.expectedVersion) || (attempt.state === "settled" && attempt.envelope.family === "gate" && detailGate?.state === "resolved"
@@ -721,6 +726,12 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
     bindingRef.current?.feedback({ kind: "refused", commandId: envelope.commandId, reason: "not-attempted",
       feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_REFUSED", {})) });
   };
+  const onChildRetry = useCallback(() => {
+    if (value.state !== "loaded" || binding === undefined || detail?.childRetry?.kind !== "command") return;
+    const composed = composeCommandRequest(detail.childRetry, { runId: row.runId, expectedVersion: row.rowRevision }, {
+      actorId: binding.scope.actorId, source: "run-detail", requestedAt: binding.authority.nowIso, childRetry: detail.childRetry });
+    if (composed.state === "ready") dispatchIfDecisionCurrent.current(CommandRequestSchema.parse(composed.request));
+  }, [value.state, binding, detail, row.runId, row.rowRevision]);
   const preparingCorrection = useRef(false);
   const onDecision = useCallback((id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => {
     if (value.state !== "loaded" || value.snapshot === undefined || binding === undefined || (commandRef.current?.owner === commandOwner && commandBlocksDecision(commandRef.current))) return;
@@ -860,6 +871,8 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
   const replayEnvelope = currentCommand?.state === "uncertain" ? currentCommand.envelope : undefined;
   const replay = useCallback(() => { if (replayEnvelope !== undefined) void send(replayEnvelope, true); }, [replayEnvelope, send]);
   return { ...value, onDecision: value.state === "loaded" && binding !== undefined && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onDecision : undefined,
+    onChildRetry: value.state === "loaded" && binding !== undefined && detail?.childRetry !== undefined
+      && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onChildRetry : undefined,
     onUcpathDecision: value.state === "loaded" && binding !== undefined && parked?.section === "parked-write"
       && parked.payload.actions.some(action => action.kind === "command" && action.command === "check-parked-write")
       && (currentCommand === undefined || !commandBlocksDecision(currentCommand)) ? onUcpathDecision : undefined,

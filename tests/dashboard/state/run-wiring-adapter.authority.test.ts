@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, it, vi } from "vitest";
-import type { DashboardClient } from "../../../src/dashboard/client/index.js";
+import { createDashboardClient,type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { projectRunLogs, failureLogActions, gateLogActions, parkedWriteLogActions, readRunLogs, useRunWiring, type RunWiringConfirm } from "../../../src/dashboard/state/run-wiring-adapter.js";
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
@@ -31,6 +31,37 @@ const RUN = "00000000-0000-4000-8000-000000000001";
 const NOTE = "00000000-0000-4000-8000-000000000003";
 const AT = "2026-08-03T12:00:00.000Z";
 const CONFIRM = { title: "Approve this identity", body: "Approving binds the rest of this separation to this person.", confirmLabel: "Approve", tone: "neutral" } as const;
+
+it("dispatches the served child retry once and checks its replacement before refreshing", async () => {
+  const selected = selectionAt(3), sent: CommandRequest[] = [];
+  const replacementId = "00000000-0000-4000-8000-000000000004";
+  const source = detailAt(selected, 3, { header: { ...detailAt(selected, 3).header, parentRunId: NOTE, status: "failed" },
+    childRetry: { key: "retry-child", kind: "command", command: "retry", label: "Retry", expectedVersion: 3,
+      icon: "retry", intent: "neutral", placement: ["banner"] } });
+  const next = RunDetailWireSchema.parse({ ...source, runId: replacementId, rowRevision: 1, childRetry: undefined,
+    header: { ...source.header, runId: replacementId, retryOf: RUN, attempt: source.header.attempt + 1, status: "queued" } });
+  let release: (() => void) | undefined;
+  const waiting = new Promise<void>(resolve => { release = resolve; });
+  const client: DashboardClient = { ...createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => { throw new Error("unexpected retry fixture read"); } }),
+    runDetail: async (id: string) => id === replacementId ? next : source,
+    runSection: async () => logs(),
+    executeCommand: async (raw: unknown) => {
+      const request = CommandRequestSchema.parse(raw); sent.push(request); await waiting;
+      return CommandResultSchema.parse({ state: "applied", commandId: request.commandId,
+        affectedTargets: [{ family: "run", runId: RUN }, { family: "run", runId: replacementId }] });
+    },
+  };
+  const h = await harness(client); await h.render(selected);
+  assert.ok(h.state?.onChildRetry);
+  const retry = h.state.onChildRetry;
+  await act(async () => { retry(); retry(); });
+  assert.equal(sent.length, 1); assert.equal(h.state?.command?.state, "pending");
+  assert.equal(h.state?.onChildRetry, undefined);
+  assert.equal(sent[0].type, "retry"); assert.deepEqual(sent[0].target, { runId: RUN, expectedVersion: 3 });
+  await act(async () => release?.());
+  assert.equal(h.state?.command?.state, "settled"); assert.equal(h.refreshed, 1);
+  assert.equal(h.state?.onChildRetry, undefined);
+});
 
 it("continues a reference choice inline and retains its exact uncertain command across remount", async () => {
   const selected = selectionAt(3), f = workbookReferenceChoice(3, RUN, selected.row.traceId), sent: CommandRequest[] = [];

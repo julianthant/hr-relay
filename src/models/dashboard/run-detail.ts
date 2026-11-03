@@ -69,6 +69,8 @@ import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../events/type
 
 export const RunIdentityWireSchema = z.strictObject({
   runId: RunIdSchema,
+  parentRunId: RunIdSchema.optional(),
+  retryOf: RunIdSchema.optional(),
   traceId: TraceIdSchema,
   workflowId: WorkflowIdSchema,
   actorId: ActorIdSchema.optional(),
@@ -280,12 +282,17 @@ export const RunDetailWireSchema = z.strictObject({
   gate: GateDecisionWireSchema,
   outcome: OutcomeWireSchema,
   context: ContextSummaryWireSchema,
+  childRetry: ActionDescriptorWireSchema.optional(),
   /** Historical archives may omit captures; every live read emits them. */
   captures: RunCaptureAvailabilityWireSchema.optional(),
     /* The timeline steps this run OMITTED at start, by descriptor key; keys only — the operator's typed facts are the run's input and never cross this wire. */
   omittedSteps: z.array(TimelineCategoryKeySchema).min(1).optional(),
   availableSections: z.array(RunDetailSectionSchema),
 }).superRefine((detail, context) => {
+  if (detail.childRetry !== undefined && (detail.header.parentRunId === undefined || detail.header.status !== "failed" || detail.childRetry.kind !== "command"
+    || detail.childRetry.command !== "retry" || detail.childRetry.key !== "retry-child" || detail.childRetry.expectedVersion !== detail.rowRevision)) {
+    context.addIssue({ code: "custom", path: ["childRetry"], message: "child retry requires the exact failed run revision" });
+  }
   if (detail.runId !== detail.header.runId) {
     context.addIssue({ code: "custom", path: ["header", "runId"], message: "run detail and header identities must match" });
   }

@@ -1,4 +1,4 @@
-import type { ParkedWriteDetailWire } from "../../../models/dashboard/run-detail.js";
+import type { ParkedWriteDetailWire,RunDetailWire } from "../../../models/dashboard/run-detail.js";
 import { CommandRequestSchema } from "../../../rules/commands/commands.js";
 import type { DashboardClient } from "../../client/index.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -50,6 +50,7 @@ export interface CommandContext {
   /** the gate section the run advertised, when one is open */
   readonly gate?: IdentityGatePayload | undefined;
   readonly parkedWrite?: ParkedWriteDetailWire | undefined;
+  readonly childRetry?: RunDetailWire["childRetry"];
   readonly transactionId?: string | undefined;
   readonly workbookWrite?: RunWorkbookWritesWire["operations"][number];
   readonly workbookAnswer?: Extract<CommandRequest, { type: "resolve-workbook-row" }>["payload"];
@@ -171,7 +172,14 @@ export function composeCommandRequest(
       const parsed = CommandRequestSchema.safeParse({ ...envelope, family: "run", type: "resolve-workbook-row", target: action.workbookTarget, payload: answer });
       return parsed.success ? { state: "ready", request: parsed.data } : { state: "refused", reason: "The workbook row choice is unavailable." };
     }
-    case "retry":
+    case "retry": {
+      if (context.source === "run-detail" && context.childRetry?.kind === "command" && context.childRetry.command === "retry"
+        && context.childRetry.key === "retry-child" && action.expectedVersion === target.expectedVersion
+        && canonicalJsonStringify(action) === canonicalJsonStringify(context.childRetry)) {
+        return { state: "ready", request: { ...envelope, family: "run", type: "retry", target: { runId: target.runId, expectedVersion: target.expectedVersion } } };
+      }
+      return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
+    }
     case "restart":
       return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
     case "archive":
@@ -352,6 +360,19 @@ export async function verifyShellCommandEffect(
     const detail = await client.runDetail(request.target.runId);
     return detail.runId === request.target.runId && detail.rowRevision > request.target.expectedVersion
       ? { state: "matched", evidence: detail } : mismatch(detail);
+  }
+  if (request.family === "run" && request.type === "retry") {
+    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 2
+      || !reply.affectedTargets.every(target => target.family === "run")
+      || reply.affectedTargets.filter(target => target.family === "run" && target.runId === request.target.runId).length !== 1) return mismatch(reply);
+    const replacement = reply.affectedTargets.find(target => target.family === "run" && target.runId !== request.target.runId);
+    if (replacement?.family !== "run") return mismatch(reply);
+    const [source, next] = await Promise.all([client.runDetail(request.target.runId), client.runDetail(replacement.runId)]);
+    return source.runId === request.target.runId && source.rowRevision.valueOf() === request.target.expectedVersion.valueOf()
+      && source.header.status === "failed" && source.header.parentRunId !== undefined && next.runId === replacement.runId
+      && next.header.retryOf === source.runId && next.header.parentRunId === source.header.parentRunId
+      && next.header.workflowId === source.header.workflowId && next.header.attempt > source.header.attempt
+      ? { state: "matched", evidence: [source, next] } : mismatch([source, next]);
   }
   if (request.family === "worker-browser" && request.type === "check-parked-write") {
     if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 2

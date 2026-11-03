@@ -2,7 +2,7 @@ import type { DryRunPreviewStage } from "./dry-run-preview-model.js";
 import { useCallback, useMemo, useState } from "react";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import type { WorkflowSource } from "../../../app/workflow-sources.js";
-import { Badge, Banner, Button } from "../../../ds/ui.js";
+import { Badge, Banner, Button, IconButton } from "../../../ds/ui.js";
 import { StatusBadge } from "../../shared/status/status.js";
 import { dsStatusOf } from "../../shared/status/status-model.js";
 import { LogPanel } from "../log-panel.js";
@@ -17,6 +17,7 @@ import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../st
 import { LogSkeleton } from "../../shared/loading/loading.js";
 import { queueRunHeader } from "../run-header-model.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
+import { RotateCcw } from "lucide-react";
 
 export function LogSample({ selection, nowIso, source = "served", initialStepId, confirm }: { selection?: LogSelection; nowIso?: string; source?: WorkflowSource; initialStepId?: string; confirm?: RunWiringConfirm }) {
   if (source === "served" && selection !== undefined) return <ServedLogSample selection={selection} nowIso={nowIso} initialStepId={initialStepId} confirm={confirm} />;
@@ -57,7 +58,8 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm }: { select
   return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? selection.row.title} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision}
     context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}
     status={<StatusBadge status={dsStatusOf(selection.row.status)} pauseControl={selection.row.pauseControl} presentation="queue" />}
-    toolbar={toolbar}
+    toolbar={<>{resource.snapshot?.detail.childRetry !== undefined && <IconButton label={resource.snapshot.detail.childRetry.label}
+      icon={<RotateCcw aria-hidden className="size-3.5" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}{toolbar}</>}
     content={content}
     afterStep={afterStep} />;
 }

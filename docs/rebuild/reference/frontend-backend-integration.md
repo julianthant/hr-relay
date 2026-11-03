@@ -202,6 +202,13 @@ the guarded `/api/v1/ocr/files` byte route; source pages require run, revision a
 coordinates. Read-only `/api/v1/runs/:runId/ocr/commands/:commandId` settlement returns the original
 authenticated result for uncertainty checks without dispatching the command again.
 
+Run detail may serve a `childRetry` action for the current failed OCR child while its unapproved
+parent is queued and can still join it. Logs renders it in the header and dispatches the existing
+`run/retry` command through the shared executor. The action binds the exact child revision;
+readback verifies the immutable source and one replacement's native `retryOf` and parent identities.
+Successful, replaced, paused, approved and uncertain-write children have no retry action. Parked
+review and completed parents require delegation-owned resumption before that action is available.
+
 The command envelope carries `commandId`, `requestedAt`, `requestedBy`, `source`, and optional
 `reason`. The request adds its exact `family`, `type`, target, and payload. Run targets use
 `runId` and `expectedVersion`; pool targets use `workflowId` and a nonnegative `expectedVersion`

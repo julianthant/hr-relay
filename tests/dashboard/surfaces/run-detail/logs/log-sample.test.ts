@@ -49,6 +49,18 @@ describe('compact run headers', () => {
     } finally { window.history.replaceState(null, '', locationBefore); }
   });
 
+  it.each([true, false])('renders the served child retry in the log header with current availability (%s)', available => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Failed lookup' }, childRetry: { label: 'Retry' } },
+      logs: {}, unavailableEvidence: [] }, ...(available ? { onChildRetry: vi.fn() } : {}) });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    const markup = renderToStaticMarkup(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } }));
+    const header = markup.slice(markup.indexOf('<header'), markup.indexOf('</header>'));
+    assert.match(header, /aria-label="Retry"/);
+    assert.equal(/disabled=""/.test(header), !available);
+  });
+
   it.each([
     { previewState: 'none', trailingStep: false },
     { previewState: 'pending', trailingStep: false },

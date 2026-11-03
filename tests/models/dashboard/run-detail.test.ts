@@ -10,6 +10,19 @@ const { BOOTSTRAP, RUN_1, RUN_2, NOTE_1, RECORD_1, HASH_A, HASH_B, NOW, QUEUE, D
 
 const FAILURE_1 = "99999999-9999-4999-8999-999999999999";
 
+it("binds the child retry action to a failed child and its exact served revision", () => {
+  const candidate = { ...DETAIL, header: { ...DETAIL.header, status: "failed", parentRunId: RUN_2 },
+    childRetry: { key: "retry-child", kind: "command", command: "retry", expectedVersion: DETAIL.rowRevision,
+      label: "Retry", intent: "neutral", icon: "retry", placement: ["banner"] } };
+  assert.equal(RunDetailWireSchema.safeParse(candidate).success, true);
+  for (const changed of [
+    { ...candidate, header: { ...candidate.header, parentRunId: undefined } },
+    { ...candidate, header: { ...candidate.header, status: "done" } },
+    { ...candidate, childRetry: { ...candidate.childRetry, expectedVersion: DETAIL.rowRevision + 1 } },
+    { ...candidate, childRetry: { ...candidate.childRetry, command: "restart" } },
+  ]) assert.equal(RunDetailWireSchema.safeParse(changed).success, false);
+});
+
 
 
 

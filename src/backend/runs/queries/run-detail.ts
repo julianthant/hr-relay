@@ -3,7 +3,7 @@ import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import type { NativeRunEventWire } from "../../../models/dashboard/run-detail.js";
 import { availableSections, buildRunGate } from "./run-trust.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
-import { readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
+import { ocrChildRetryAvailable,readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
 import {
   RunDetailWireSchema,
   TimelineStepWireSchema,
@@ -351,9 +351,15 @@ export function buildRunDetail(
   return RunDetailWireSchema.parse({
     runId,
     rowRevision: authority.version,
+    ...(deps.canonical === undefined || !ocrChildRetryAvailable(deps.canonical.database.authority, deps.canonical.reader, authority) ? {} : {
+      childRetry: { key: "retry-child", label: "Retry", kind: "command", command: "retry", expectedVersion: authority.version,
+        intent: "neutral", icon: "retry", placement: ["banner"] },
+    }),
     panelKind: panelKindOf(authority.envelope.shape),
     header: {
       runId,
+      ...(authority.envelope.parent === undefined ? {} : { parentRunId: authority.envelope.parent.runId }),
+      ...(authority.envelope.retryOf === undefined ? {} : { retryOf: authority.envelope.retryOf }),
       traceId: authority.envelope.traceId,
       workflowId: authority.envelope.workflow,
       ...(row === undefined ? {} : { actorId: row.queued.actorId }),
