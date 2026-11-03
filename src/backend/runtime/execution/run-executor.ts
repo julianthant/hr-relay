@@ -64,7 +64,7 @@ import { buildRunPreviewResult, buildRunResult } from "../../runs/lifecycle/run-
 import { ExecutorSpanEventSchema, runSpanPath, taskSpanPath, type SpanEmitter } from "../../logs/span-emitter.js";
 import { redactObservedDataPoints } from "../../logs/observed-data.js";
 import { createTaskProvenanceCollector } from "../../runs/provenance/task-provenance.js";
-import { RunResultRecordSchema, delegationEvidenceOutput, singleDelegationResult } from "../../../models/run/result.js";
+import { RunResultRecordSchema, delegationEvidenceOutput, singleDelegationResult, terminalGateDependencyRecord } from "../../../models/run/result.js";
 import { createDeclaredActionBinder } from "../writes/operation-action-binding.js";
 import { buildTerminalAuthorization } from "../../runs/lifecycle/terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type WorkerRunLifecyclePort } from "../../runs/lifecycle/run-record-service.js";
@@ -323,7 +323,8 @@ type PlanEntry =
   | Readonly<{ mode: "asserted"; replay?: RunCheckpointRecord }>
 
   | Readonly<{ mode: "omitted" }>
-  | Readonly<{ mode: "replay-gate" }>;
+  | Readonly<{ mode: "replay-child"; evidence: Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }> }>
+  | Readonly<{ mode: "replay-gate"; record: GateResultRecord }>;
 
 /* ── the interpreter ─────────────────────────────────────────────────────── */
 
@@ -554,6 +555,7 @@ export async function executeClaimedRun(
     const outputs: Record<string, JsonValue> = {};
     const checkpointRecords = new Map<string, RunCheckpointRecord>();
     const childResultEvidence = new Map<string, Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>>();
+    const gateResultEvidence = new Map<string, Extract<TerminalDependencyEvidence, { state: "gate-resolved" }>>();
     const childSources: NonNullable<Parameters<typeof createDeclaredActionBinder>[0]["childSources"]> = new Map();
     const actionSources: NonNullable<Parameters<typeof createDeclaredActionBinder>[0]["sources"]> = new Map();
     const hydrateActionSources = (record: RunCheckpointRecord): void => {
@@ -617,6 +619,8 @@ export async function executeClaimedRun(
     ): readonly TerminalDependencyEvidence[] => nodeIds.map((dependency) => {
       const child = childResultEvidence.get(String(dependency));
       if (child !== undefined) return child;
+      const gate = gateResultEvidence.get(String(dependency));
+      if (gate !== undefined) return gate;
       const asserted = assertedRecords.get(String(dependency));
       if (asserted !== undefined) {
         return { state: "asserted" as const, nodeId: dependency, step: asserted.step, assertedAt: asserted.assertedAt, output: asserted.output };
@@ -721,6 +725,25 @@ export async function executeClaimedRun(
       }
     }
 
+    const startNode = startIndex === undefined ? undefined : nodes[startIndex];
+    const resolvedStartGate = envelope.continuation === undefined && startNode?.kind === "gate"
+      ? readContinuationGate(deps.authority.authority, envelope, String(startNode.id)) : undefined;
+    const ownGateResume = resolvedStartGate?.runId === runId;
+    const completedOwnDelegation = (node: ChildRunRuntimeNode) => {
+      const evidence = deps.authority.withAuthorityTransaction?.(repositories =>
+        AuthenticatedRunContinuation.authenticate(repositories, envelope).dependency(String(node.id), String(node.edgeId)));
+      if (evidence === undefined || evidence.parentRunId !== runId || evidence.nodeId !== node.id || evidence.edgeId !== node.edgeId
+        || node.await !== "terminal" || evidence.manifest.cardinality !== node.cardinality || evidence.manifest.join !== node.join
+        || canonicalJsonStringify(evidence.manifest.policy) !== canonicalJsonStringify(node.policy)
+        || evidence.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")
+        || evidence.manifest.resultSchemaHash !== deriveSchemaHash(node.target.result, "output")
+        || evidence.children.some(child => child.run.envelope.workflow !== node.target.id || child.run.envelope.dryRun !== envelope.dryRun)) {
+        throw new RunContinuationRefusedError("run-gate-resume-child-authority-unavailable");
+      }
+      delegationEvidenceOutput(evidence, node.target.result);
+      return evidence;
+    };
+
     const checkpointExpectation = (node: TaskRuntimeNode) => CheckpointExpectationSchema.parse({
       descriptorVersion: descriptor.version,
       contractFingerprint: descriptor.contractFingerprint,
@@ -749,7 +772,8 @@ export async function executeClaimedRun(
         continue;
       }
       const explicit = startIndex !== undefined && envelope.continuation === undefined;
-      const inAncestorRegion = envelope.continuation !== undefined || (explicit ? index < (startIndex ?? 0) : ancestorRegionOpen);
+      const inAncestorRegion = envelope.continuation !== undefined || (explicit
+        ? index < (startIndex ?? 0) || ownGateResume && index === startIndex : ancestorRegionOpen);
       if (!inAncestorRegion) {
         plan.set(String(node.id), { mode: "execute" });
         continue;
@@ -894,7 +918,7 @@ export async function executeClaimedRun(
             }
           }
           outputs[String(node.id)] = JsonValueSchema.parse(node.result.parse(stored.result.value));
-          plan.set(String(node.id), { mode: "replay-gate" });
+          plan.set(String(node.id), { mode: "replay-gate", record: stored });
           continue;
         }
         if (explicit) {
@@ -908,6 +932,10 @@ export async function executeClaimedRun(
       if (node.kind === "branch" || node.kind === "parallel") {
         // Pure control nodes re-derive deterministically from validated data.
         plan.set(String(node.id), { mode: "execute" });
+        continue;
+      }
+      if (explicit && ownGateResume && node.kind === "child-run" && node.await === "terminal") {
+        plan.set(String(node.id), { mode: "replay-child", evidence: completedOwnDelegation(node) });
         continue;
       }
       if (explicit) {
@@ -1587,6 +1615,11 @@ export async function executeClaimedRun(
         if (node.kind !== "gate") throw new Error(`node "${node.id}" is not a gate but planned a gate replay`);
         const stored = readContinuationGate(deps.authority.authority, envelope, String(node.id));
         if (stored === undefined) throw new Error(`gate "${node.id}" stored result disappeared mid-execution`);
+        if (canonicalJsonStringify(stored) !== canonicalJsonStringify(entry.record)
+          || node.resolvedBy === "operator" && node.when !== undefined && !evaluateNodeCondition(node.when, scopeFor(node.dependsOn))) {
+          throw new RunContinuationRefusedError("run-gate-resume-result-changed");
+        }
+        terminalGateDependencyRecord(node.id, stored);
         const expectedHash = deriveSchemaHash(node.result, "output");
         if (stored.result.schemaHash !== expectedHash) {
           throw new Error(
@@ -1595,6 +1628,7 @@ export async function executeClaimedRun(
           );
         }
         outputs[String(node.id)] = JsonValueSchema.parse(node.result.parse(stored.result.value));
+        gateResultEvidence.set(String(node.id), { state: "gate-resolved", nodeId: node.id, gate: stored });
         continue;
       }
 
@@ -2107,6 +2141,10 @@ export async function executeClaimedRun(
             input.signal.throwIfAborted();
             checkCancellation();
             requireOriginalClaim(getRun());
+            if (entry.mode === "replay-child"
+              && canonicalJsonStringify(completedOwnDelegation(node)) !== canonicalJsonStringify(entry.evidence)) {
+              throw new RunContinuationRefusedError("run-gate-resume-child-authority-changed");
+            }
             const sourceEvidence = continuationAuthority?.delegation(String(node.id), String(node.edgeId));
             if (sourceEvidence !== undefined) {
               const original = node.bind(sourceScopeFor(sourceEvidence.parentRunId, node.dependsOn));
@@ -2124,6 +2162,7 @@ export async function executeClaimedRun(
             input.signal.throwIfAborted();
             const pending = DelegationPendingSchema.safeParse(raw);
             if (pending.success) {
+              if (entry.mode === "replay-child") throw new RunContinuationRefusedError("run-gate-resume-child-unsettled");
               const released = getRun();
               if (pending.data.runId !== runId || released.lifecycle.state !== "queued" || runClaim(released) !== undefined
                 || released.cancelRequested === true || Number(released.claimGeneration) !== Number(claim.claimGeneration)) throw new Error("delegation-release-unproved");
@@ -2141,6 +2180,9 @@ export async function executeClaimedRun(
             requireOriginalClaim(getRun());
             deps.lifecycle.assertCurrentExecution({ runId, claim });
             const evidence = sourceEvidence ?? deps.authority.withAuthorityTransaction?.(repositories => repositories.dependencies.evidence(runId, node.id));
+            if (entry.mode === "replay-child" && canonicalJsonStringify(evidence) !== canonicalJsonStringify(entry.evidence)) {
+              throw new RunContinuationRefusedError("run-gate-resume-child-authority-changed");
+            }
             if (evidence === undefined) throw new Error("delegation-outcome-authority-unavailable");
             const output = delegationEvidenceOutput(evidence, node.target.result);
             if (canonicalJsonStringify(raw) !== canonicalJsonStringify(output)) throw new Error("delegation-outcome-value-mismatch");

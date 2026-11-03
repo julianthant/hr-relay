@@ -1,4 +1,4 @@
-import { validateRunContinuation } from "./run-continuation.js";
+import { readContinuationGate, validateRunContinuation } from "./run-continuation.js";
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
@@ -31,7 +31,7 @@ import { completionFromAuthorization } from "../../../models/run/completion.js";
 import { DeletedRunRecordSchema,RunDeleteInputSchema,type DeletedRunRecord } from "../../../models/run/deleted-run.js";
 import { RunRecordSchema,runClaim,runTransitionViolation,type RunRecord } from "../../../models/run/record.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
-import { RunResultRecordSchema,createRunTerminalEvidenceResult,deriveCheckpointOutputDigest,deriveCheckpointProvenanceDigest,deriveTerminalFailureDigest,terminalDelegationDependencyRecord,terminalEvidenceResult,type RunResultRecord } from "../../../models/run/result.js";
+import { RunResultRecordSchema,createRunTerminalEvidenceResult,deriveCheckpointOutputDigest,deriveCheckpointProvenanceDigest,deriveTerminalFailureDigest,terminalDelegationDependencyRecord,terminalGateDependencyRecord,terminalEvidenceResult,type RunResultRecord } from "../../../models/run/result.js";
 import { RunSessionRecordSchema,type RunSessionRecord } from "../../../models/run/session.js";
 import { StartPlanRecordSchema,isStartPlanExpired,type StartPlanRecord } from "../../../models/run/start-plan.js";
 import { FailureTerminalAuthorizationRecordSchema,TerminalAuthorizationRecordSchema,type TerminalAuthorizationRecord } from "../../../models/run/terminal-authorization.js";
@@ -3972,6 +3972,13 @@ export class AuthorityDatabase implements Disposable {
             `terminal dependency ${dependency.nodeId} is marked ${dependency.reason} `
             + "but has a stored checkpoint for the terminal attempt",
           );
+        }
+        continue;
+      }
+      if (dependency.state === "gate-resolved") {
+        const gate = readContinuationGate(this.authority, current.envelope, String(dependency.nodeId));
+        if (gate === undefined || canonicalJsonStringify(terminalGateDependencyRecord(dependency.nodeId, gate)) !== canonicalJsonStringify(dependency)) {
+          throw new Error("terminal-gate-dependency-canonical-mismatch");
         }
         continue;
       }

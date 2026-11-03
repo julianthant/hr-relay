@@ -15,6 +15,7 @@ import { OcrReviewRevisionSchema } from "../../../../src/models/ocr/review.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
 import { ActorIdSchema } from "../../../../src/rules/identity/ids.js";
 import { replaceOcrAuditRead, replaceOcrCommandRead } from "../../../support/helpers/backend/ocr-proof-reads.js";
+import { terminalGateDependencyRecord } from "../../../../src/models/run/result.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -65,10 +66,20 @@ it("rolls snapshot creation back with gate failure, then replays the original ap
   assert.equal(f.canonical.kernel.execute(request).state, "applied");
   assert.equal(f.canonical.kernel.execute(request).state, "already-applied");
   const snapshot = f.database.authority.ocrReviews.snapshot(request.commandId); assert.ok(snapshot);
+  const manifests = f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId);
+  const children = manifests.flatMap(manifest => manifest.children.map(child => ({
+    run: f.database.authority.runs.get(child.childRunId), result: f.database.authority.runResults.get(child.childRunId),
+  })));
   const resumed = await f.canonical.execute(f.run, new AbortController().signal);
   assert.ok(resumed.run?.lifecycle.state === "terminal" && resumed.run.lifecycle.outcome === "done");
   const result = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(result);
   assert.deepEqual(OcrWorkflowResultSchema.parse(result.result.value).approvedSnapshot, request.payload.result.value);
+  assert.deepEqual(f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId), manifests);
+  assert.deepEqual(manifests.flatMap(manifest => manifest.children.map(child => ({
+    run: f.database.authority.runs.get(child.childRunId), result: f.database.authority.runResults.get(child.childRunId),
+  }))), children);
+  const gate = f.database.authority.gateResults.get(`${f.run.envelope.runId}:approve-records`); assert.ok(gate);
+  assert.deepEqual(result.dependencies.find(dependency => dependency.nodeId === gate.nodeId), terminalGateDependencyRecord(gate.nodeId, gate));
   const review = readOcrReviewAuthority(f.database.authority, f.canonical.lifecycle, f.run.envelope.runId); assert.ok(review);
   assert.deepEqual(readOcrSnapshotsAuthority(f.database.authority, review), [snapshot]);
 });
