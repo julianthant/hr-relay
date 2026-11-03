@@ -213,40 +213,6 @@ test.describe("Queue authority, live commands, and desktop parity", () => {
     const childId = server.runIds.memberRun;
     const tree = [...database.authority.runs.listChildren(rootId), database.authority.runs.get(rootId)];
     expect(tree).toHaveLength(4);
-    const members = tree.slice(0, -1);
-    const now = tree[0]?.updatedAt;
-    if (now === undefined || members.some(member => member === undefined)) throw new Error("seeded deletion tree has no members");
-    const policy = { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline" } as const;
-    const manifestId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    const dependencies = members.map((member, index) => {
-      if (member === undefined) throw new Error("seeded deletion member is missing");
-      return {
-        dependencyId: `bbbbbbbb-000${String(index + 1)}-4000-8000-00000000000${String(index + 1)}`,
-        manifestId,
-        edgeId: "members",
-        parentRunId: rootId,
-        childRunId: member.envelope.runId,
-        childItemId: member.envelope.itemId,
-        policy,
-        state: "active" as const,
-        version: 1,
-        createdAt: now,
-        updatedAt: now,
-      };
-    });
-    database.authority.delegationManifests.insert({
-      manifestId, parentRunId: rootId, edgeId: "members",
-      inputSchemaHash: "a".repeat(64), resultSchemaHash: "b".repeat(64),
-      cardinality: "many", join: "all", policy,
-      children: dependencies.map(dependency => ({
-        dependencyId: dependency.dependencyId,
-        childRunId: dependency.childRunId,
-        childItemId: dependency.childItemId,
-        canonicalInputFingerprint: "c".repeat(64),
-      })),
-      createdAt: now, manifestFingerprint: "d".repeat(64),
-    });
-    for (const dependency of dependencies) database.authority.dependencies.insert(dependency);
     for (const run of tree) {
       if (run === undefined) throw new Error("seeded deletion tree is missing its root");
       expect(database.authority.runs.transition({

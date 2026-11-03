@@ -76,12 +76,15 @@ describe("interactive notification destinations", () => {
   });
   it("keeps records capability for empty, approved and discarded canonical record runs", () => {
     const source = input.runs.find(run => run.id === "mock:emergency-contact:sample:ocr")!;
+    const parent = input.runs.find(run => run.id === source.parentId)!;
+    expect(parent).toBeDefined();
     for (const state of [{ approved: false }, { approved: true }, { approved: false, discarded: true }]) {
       const run = { ...source, ...state, records: [] };
-      const model = ready(notificationPreviewState("normal", { ...input, runs: [run] }));
+      const runs = [parent, run];
+      const model = ready(notificationPreviewState("normal", { ...input, runs }));
       const item = model.items.find(item => item.destination.kind === "preview-run")!;
       expect(item).toMatchObject({ read: false, destination: { records: true } });
-      expect(notificationDestinationRefusal(item.destination, { ...input, runs: [run] })).toBeUndefined();
+      expect(notificationDestinationRefusal(item.destination, { ...input, runs })).toBeUndefined();
       expect(model.items.filter(item => item.destination.kind === "preview-run")).toHaveLength(1);
     }
   });

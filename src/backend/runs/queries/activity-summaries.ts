@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { RunSummaryQuerySchema } from "../../storage/sqlite/run-summaries.js";
 import { runtimeTimeZone } from "../../../rules/time/clock.js";
@@ -82,7 +83,7 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
         if(row.person.state==="available"){identities.add(row.person.identity);evidenceRows++;}
         else unavailableRows++;
       }
-      if(row.shape==="operation-member")return;
+      if(!isQueueTopLevel(row))return;
       const enqueuedAt=Date.parse(row.enqueuedAt);
       if(!Number.isFinite(enqueuedAt))throw new Error("activity-summary-enqueued-at-invalid");
       if(enqueuedAt<volumeStart||enqueuedAt>=volumeEnd)throw new Error("activity-volume-enqueue-outside-interval");
