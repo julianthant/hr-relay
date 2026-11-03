@@ -901,6 +901,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         diagnostics,
         browserScreenshotCapture,
       });
+      runtimeReport = report;
     } catch (loopError) {
       await stopGateSources();
       maintenance.stop();
@@ -920,8 +921,6 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         ? background
         : new Error("worker maintenance failed with a non-Error value", { cause: background });
     }
-    if (report.closure === "unproved") debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(),
-      area: "browser-session", code: "WORKER_SESSION_CLOSURE_UNPROVED", reason: "browser-closure-unproved" }, { kind: "worker", workerId });
     settleLease(
       database,
       clock,
@@ -931,13 +930,14 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
       report.closure === "unproved" ? new WorkerSessionClosureUnprovedError(workerId) : undefined,
       log,
     );
-    runtimeReport = report;
+    if (report.closure === "unproved") debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(),
+      area: "browser-session", code: "WORKER_SESSION_CLOSURE_UNPROVED", reason: "browser-closure-unproved" }, { kind: "worker", workerId });
   } catch (error) {
     runtimeError = error;
     try {
       debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-runtime",
         code: "WORKER_RUNTIME_FAILED", reason: hasUncertainBrowserLaunch(error) ? "browser-closure-unproved" : "worker-failed" }, { kind: "worker", workerId });
-    } catch (loggingError) { runtimeError = new AggregateError([error, loggingError], "worker failure logging unavailable", { cause: error }); }
+    } catch (loggingError) { cleanupErrors.push(loggingError); }
   } finally {
     try { await resources?.stop(); } catch (error) { cleanupErrors.push(error); }
     try { if (ocrAccount !== undefined) await ocrAccount.close(); accountClosureProven = true; }
