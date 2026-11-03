@@ -493,6 +493,8 @@ describe("the workflow explorer projection", () => {
     assert.equal(roles.has("separations-kuali-read"), false);
     assert.deepEqual(roles.get("person-lookup"), { kind: "composition" });
     assert.deepEqual(roles.get("onboarding"), { kind: "composition" });
+    assert.deepEqual(roles.get("emergency-contact"), { kind: "composition" });
+    assert.equal(roles.has("emergency-contact-member"), false);
     assert.equal(roles.has("onboarding-i9-search"), false);
     assert.deepEqual(
       wire.workflows.flatMap((workflow) =>
@@ -503,7 +505,7 @@ describe("the workflow explorer projection", () => {
           )
           .map(({ id }) => `${String(workflow.id)}:${String(id)}`),
       ),
-      ["onboarding:i9-lookup-child"],
+      ["onboarding:i9-lookup-child", "emergency-contact:read-document", "emergency-contact:members"],
     );
     for (const module of WORKFLOW_MODULES) {
       const projected = wire.workflows.find(

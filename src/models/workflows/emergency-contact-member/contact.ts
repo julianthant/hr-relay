@@ -1,3 +1,4 @@
+import { PERSON_LOOKUP_EXAMPLE_EID } from "../person-lookup/input.js";
 import { z } from "zod";
 import { EmergencyContactMemberInputSchema } from "./input.js";
 import { UcpathContactSetSchema, UcpathContactWriteTargetSchema, UcpathEmergencyContactInputSchema } from "../../systems/ucpath/emergency-contacts.js";
@@ -6,7 +7,7 @@ import { taskId } from "../../../rules/identity/ids.js";
 
 const policy = { effect: "read", subject: { kind: "none", reason: "Derives the declared contact plan from approved fields and a complete observed set" },
   freshness: { defaultMaxAgeMs: 0, defaultOverride: "forbidden" }, provenance: { default: "derived" }, scenarios: [] } as const;
-const contactExample = UcpathEmergencyContactInputSchema.parse({ emplId: "10000001", expectedName: "Example, Alex", contact: {
+const contactExample = UcpathEmergencyContactInputSchema.parse({ emplId: PERSON_LOOKUP_EXAMPLE_EID, expectedName: "Example, Alex", contact: {
   name: "Example Contact", relationship: "Parent", primary: true, cellPhone: null, homePhone: null, workPhone: null,
   address: { kind: "explicit", fields: { address1: null, address2: null, city: null, state: null, postalCode: null, country: null } },
 } });
@@ -25,7 +26,7 @@ export const PlanApprovedEmergencyContact = defineTaskContract({ ...policy, id: 
       { id: "verify-contact", kind: "verify", label: "Verify the declared approved contact" }] }, input: z.strictObject({ contact: UcpathEmergencyContactInputSchema, contacts: UcpathContactSetSchema }),
   output: ContactPlanOutputSchema, errorCodes: ["contact-plan-refused", "relationship-unmapped", "address-choice-unresolved"],
   example: { target: { ...contactExample, plan: { state: "prepare", before: { pageStateId: "ucpath.emergency-contact.editor-ready",
-    emplId: "10000001", displayedName: "Example, Alex", observation: "persisted", viewAll: "already-complete", rowCount: 1,
+    emplId: PERSON_LOOKUP_EXAMPLE_EID, displayedName: "Example, Alex", observation: "persisted", viewAll: "already-complete", rowCount: 1,
     rows: [{ kind: "blank", rowIndex: 0, primary: false, sameAddressAsEmployee: false }], observedAt: "2026-11-01T12:00:00.000Z" },
     setFingerprint: "a".repeat(64), effect: { name: "Example Contact", relationship: "Parent", primary: true, phone: null,
       address: contactExample.contact.address }, demotion: null, target: { kind: "reuse-blank", rowIndex: 0 } } }, changes: ["Add Example Contact as Primary"], demotionLine: "No existing primary needs demotion", contactLine: "Add Example Contact as Primary" },

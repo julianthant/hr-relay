@@ -108,7 +108,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
   };
 }
 
-it("emergency-contact/dry-run previews ordered primary demotion and addition with original and final captures and zero writes", async () => {
+it("emergency-contact/dry-run — previews ordered primary demotion and addition with original and final captures and zero writes", async () => {
   const f = await memberFixture();
   assert.deepEqual(f.failures.map(failure => ({ code: failure.code, summary: failure.summary })), []);
   const preview = f.preview(), step = preview.steps.find(step => step.state === "transaction-preview");
@@ -119,7 +119,7 @@ it("emergency-contact/dry-run previews ordered primary demotion and addition wit
   assert.ok(f.ports.some(port => port.actions.includes("demote-primary:0")));
   f.assertNoWrites();
 });
-it("emergency-contact/unambiguous-addition prepares the approved primary without demotion when none exists", async () => {
+it("emergency-contact/unambiguous-addition — prepares the approved primary without demotion when none exists", async () => {
   const rows = UcpathContactPageSnapshotSchema.parse(fixture.page).rows.map(row => ({ ...row, primary: false }));
   const f = await memberFixture({ rows });
   assert.deepEqual(f.failures, []);
@@ -127,7 +127,7 @@ it("emergency-contact/unambiguous-addition prepares the approved primary without
   assert.ok(f.ports.every(port => !port.actions.some(action => action.startsWith("demote-primary"))));
   f.assertNoWrites();
 });
-it("emergency-contact/exact-existing-effect uses actual protected presence and skips preparation", async () => {
+it("emergency-contact/exact-existing-effect — uses actual protected presence and skips preparation", async () => {
   const rows = UcpathContactPageSnapshotSchema.parse(fixture.page).rows;
   rows[0] = { ...rows[0], primary: false };
   rows[1] = { rowIndex: 1, name: desired.name, relationship: desired.relationship, primary: true, phone: desired.phone ?? "", sameAddressAsEmployee: false,
@@ -140,7 +140,7 @@ it("emergency-contact/exact-existing-effect uses actual protected presence and s
   assert.ok(f.ports.every(port => !port.actions.some(action => /^(fill|demote|add)/u.test(action))));
   f.assertNoWrites();
 });
-it("emergency-contact/conflict-refused refuses multiple primaries before preparation", async () => {
+it("emergency-contact/conflict-refused — refuses multiple primaries before preparation", async () => {
   const rows = UcpathContactPageSnapshotSchema.parse(fixture.page).rows;
   rows[1] = { ...rows[0], rowIndex: 1, name: "Another Primary" };
   const f = await memberFixture({ rows });
@@ -148,7 +148,7 @@ it("emergency-contact/conflict-refused refuses multiple primaries before prepara
   assert.ok(f.ports.every(port => !port.actions.some(action => /^(fill|demote|add)/u.test(action))));
   f.assertNoWrites();
 });
-it("emergency-contact/unknown refuses an unknown full-set probe without preparing or submitting", async () => {
+it("emergency-contact/unknown — refuses an unknown full-set probe without preparing or submitting", async () => {
   const f = await memberFixture({ unknownProbe: true });
   assert.equal(f.failures[0]?.nodeId, "contact-preview");
   assert.ok(f.reads >= 2);
@@ -156,7 +156,7 @@ it("emergency-contact/unknown refuses an unknown full-set probe without preparin
   assert.ok(f.ports.every(port => !port.actions.some(action => /^(fill|demote|add)/u.test(action))));
   f.assertNoWrites();
 });
-it("emergency-contact/real-save-unavailable terminalizes the named refusal before approval-provider or contact acquisition", async () => {
+it("emergency-contact/real-save-unavailable — terminalizes the named refusal before approval-provider or contact acquisition", async () => {
   const f = await memberFixture({ dryRun: false });
   assert.equal(f.failures[0]?.code, "CONTACT_SAVE_UNAVAILABLE");
   assert.equal(f.sessions.opens(), 0);

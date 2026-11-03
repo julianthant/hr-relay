@@ -1,3 +1,4 @@
+import { PERSON_LOOKUP_EXAMPLE_EID } from "../../workflows/person-lookup/input.js";
 import { z } from "zod";
 import { OcrApprovedSnapshotSchema } from "../../ocr/review.js";
 import { OcrReviewRecordSchema } from "../../ocr/review-record.js";
@@ -16,7 +17,7 @@ export const OcrApprovalReadResultSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("refused"), code: z.literal("OCR_REVIEW_REFUSED") }),
   z.strictObject({ state: z.literal("unavailable"), code: z.literal("OCR_APPROVAL_UNAVAILABLE") }),
 ]);
-const record = OcrReviewRecordSchema.parse({ recordId: `${"b".repeat(64)}#emergency-contact#1`, discarded: false, assertedEid: "10000001",
+const record = OcrReviewRecordSchema.parse({ recordId: `${"b".repeat(64)}#emergency-contact#1`, discarded: false, assertedEid: PERSON_LOOKUP_EXAMPLE_EID,
   fields: { answers: [{ state: "read", path: "contact.name", raw: "Example Contact", value: "Example Contact", confidence: 1 }],
     blockingPaths: [], answersFingerprint: "a".repeat(64) } });
 const snapshot = OcrApprovedSnapshotSchema.parse({ snapshotId: "00000000-0000-4000-8000-000000000001",

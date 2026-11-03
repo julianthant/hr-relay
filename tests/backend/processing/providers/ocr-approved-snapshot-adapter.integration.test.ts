@@ -36,7 +36,7 @@ async function admitMembers(f: Fixture) {
   assert.ok(manifest);
   return authenticateOriginalDelegationGroup(f.database.authority, manifest).children.map(child => child.original);
 }
-it("ocr/approved-snapshot consumes a corrected released record and admits its exact native member", async () => {
+it("ocr/approved-snapshot — consumes a corrected released record and admits its exact native member", async () => {
   const f = await world.fixture({ coordinator: true, record: true, pageCount: 1 });
   assert.equal(f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(run => run.envelope.workflow === "emergency-contact-member").length, 0);
   const selected = release(f, [0]), children = await admitMembers(f);

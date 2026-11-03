@@ -213,7 +213,7 @@ result. Member reads additionally authenticate native membership and exact canon
 binding. Each call checks the current review revision and approval digest; foreign references,
 altered records and later drafts refuse. Snapshot records keep the operator's selected order.
 
-The shared graph builder lives in `src/workflows/ocr/workflow.ts`. The Emergency Contact consumer
+The shared graph builder lives in `src/workflows/ocr/steps/source-pages/step.ts`. The Emergency Contact consumer
 maps only approved contact fields, requests Primary, and keeps blank address fields null. It does
 not copy the employee's address or infer a country. Conflicting desired primary effects for one EID
 refuse before member admission. Equal effects retain every selected record and share the permanent

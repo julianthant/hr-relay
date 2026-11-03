@@ -1,3 +1,4 @@
+import { z } from "zod";
 import assert from "node:assert/strict";
 import { afterEach, it, vi } from "vitest";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
@@ -23,10 +24,14 @@ it("distinguishes expected authority refusal and unavailable custody from DB fai
   assert.equal(value(await createOcrApprovedSnapshotAdapter(base).invoke(request, options)).state, "unavailable");
   const adapter = createOcrApprovedSnapshotAdapter({ ...base, reader: { read: () => ({ state: "absent", runId: base.run.envelope.runId }) } });
   assert.equal(value(await adapter.invoke(request, options)).state, "refused");
-  const failure = new Error("synthetic-authority-database-failure");
-  const spy = vi.spyOn(database, "withAuthorityReadSnapshot").mockImplementationOnce(() => { throw failure; });
-  try { await assert.rejects(adapter.invoke(request, options), error => error === failure); }
-  finally { spy.mockRestore(); }
+  const invalid = z.string().safeParse(123); assert.ok(!invalid.success);
+  for (const failure of [new Error("synthetic-authority-database-failure"), invalid.error]) {
+    const reader = { read: () => { throw failure; } };
+    await assert.rejects(createOcrApprovedSnapshotAdapter({ ...base, reader }).invoke(request, options), error => error === failure);
+    const spy = vi.spyOn(database, "withAuthorityReadSnapshot").mockImplementationOnce(() => { throw failure; });
+    try { await assert.rejects(adapter.invoke(request, options), error => error === failure); }
+    finally { spy.mockRestore(); }
+  }
   const controller = new AbortController(), abort = new Error("synthetic-provider-abort");
   controller.abort(abort);
   await assert.rejects(adapter.invoke(request, { ...options, signal: controller.signal }), error => error === abort);

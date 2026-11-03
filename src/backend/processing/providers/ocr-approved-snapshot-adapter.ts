@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { OcrApprovalReadRequestSchema, OcrApprovalReadResultSchema, ReadApprovedOcrRecord, ReadApprovedOcrSnapshot } from "../../../models/processing/ocr/read-approved-snapshot.js";
 import { ApprovedOcrRecordInputSchema } from "../../../models/workflows/ocr/approved-record.js";
 import { OcrWorkflowResultSchema } from "../../../models/workflows/ocr/result.js";
@@ -68,16 +67,23 @@ export function createOcrApprovedSnapshotAdapter(input: Readonly<{
               && node.cardinality === "one" && node.await === "terminal" && node.join === "one");
             if (edges.length !== 1 || edges[0] === undefined) throw new OcrApprovalRefusedError("ocr-approval-edge-unavailable");
             const evidence = readDelegationEvidence(input.database.authority, owner.envelope.runId, String(edges[0].id));
-            const child = childRunOutcomeSchema(OcrWorkflowResultSchema).parse(delegationEvidenceOutput(evidence, OcrWorkflowResultSchema));
+            const output = delegationEvidenceOutput(evidence, OcrWorkflowResultSchema);
+            const parsedChild = childRunOutcomeSchema(OcrWorkflowResultSchema).safeParse(output);
+            if (!parsedChild.success) throw new OcrApprovalRefusedError("ocr-approval-child-unavailable");
+            const child = parsedChild.data;
             if (child.state !== "done" || child.runId !== query.approval.sourceRunId || !same(child.output.approvedSnapshot, query.approval)) {
               throw new OcrApprovalRefusedError("ocr-approval-child-unavailable");
             }
             const snapshot = requireCurrentOcrSnapshot(input.database.authority, reader, query.approval);
             if (query.kind === "snapshot") return OcrApprovalReadResultSchema.parse({ state: "snapshot", snapshot });
-            const canonical: unknown = descriptor.canonicalInput.parse(current.input.parsed.value);
+            const parsedInput = descriptor.canonicalInput.safeParse(current.input.parsed.value);
+            if (!parsedInput.success) throw new OcrApprovalRefusedError("ocr-approval-member-input-unavailable");
+            const canonical: unknown = parsedInput.data;
             if (typeof canonical !== "object" || canonical === null) throw new OcrApprovalRefusedError("ocr-approval-member-input-unavailable");
             const approval: unknown = Reflect.get(canonical, "approval"), approvedRecord: unknown = Reflect.get(canonical, "record");
-            const member = ApprovedOcrRecordInputSchema.parse({ approval, record: approvedRecord });
+            const parsedMember = ApprovedOcrRecordInputSchema.safeParse({ approval, record: approvedRecord });
+            if (!parsedMember.success) throw new OcrApprovalRefusedError("ocr-approval-member-input-unavailable");
+            const member = parsedMember.data;
             const record = snapshot.records.find(record => record.recordId === query.recordId);
             if (record === undefined || query.recordId !== member.record.recordId || !same(member.approval, query.approval) || !same(member.record, record)) {
               throw new OcrApprovalRefusedError("ocr-approval-record-unavailable");
@@ -87,7 +93,7 @@ export function createOcrApprovedSnapshotAdapter(input: Readonly<{
           input.assertCurrent(); options.signal.throwIfAborted();
           return value;
         } catch (cause) {
-          if (!(cause instanceof OcrApprovalRefusedError) && !(cause instanceof OcrReviewRefusedError) && !(cause instanceof z.ZodError)) throw cause;
+          if (!(cause instanceof OcrApprovalRefusedError) && !(cause instanceof OcrReviewRefusedError)) throw cause;
           return OcrApprovalReadResultSchema.parse({ state: "refused", code: "OCR_REVIEW_REFUSED" });
         }
       })();
