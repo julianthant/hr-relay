@@ -379,7 +379,7 @@ it("admits exactly one of sixteen kernel singleton contenders and retains it thr
     const winnerIndex = results.findIndex(value => value.state === "held"), winner = contenders[winnerIndex];
     assert.ok(winner);
     assert.equal(results.filter(value => value.state === "held").length, 1);
-    assert.equal(results.filter(value => value.state === "refused").length, 15);
+    assert.equal(results.filter(value => value.state === "refused").length, 15, JSON.stringify(results));
     assert.equal(results[winnerIndex]?.detail, String(port));
     assert.deepEqual(results.filter(value => value.state === "refused").map(value => value.detail), Array.from({ length: 15 }, () => "RUNTIME_ALREADY_RUNNING"));
     await assert.rejects(RuntimeLifetimeLock.acquire(port), RuntimeAlreadyRunningError);

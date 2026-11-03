@@ -73,7 +73,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
 
       await captureSemanticEvidence('xlsx-imported');
       await editor.getByRole('button', { name: 'Spreadsheets', exact: true }).click();
-      await page.getByRole('table', { name: 'Registered spreadsheets', exact: true }).getByRole('button', { name: 'color-filtered-roster.xlsx', exact: true }).click();
+      await page.getByRole('table', { name: 'Your spreadsheets', exact: true }).getByRole('button', { name: 'Open color-filtered-roster.xlsx', exact: true }).click();
       await expect(editor.getByRole('textbox', { name: 'A2', exact: true })).toHaveValue('Jordan Updated');
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect(errors).toEqual([]); expect(writes).toEqual([]);
