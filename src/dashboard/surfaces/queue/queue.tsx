@@ -381,14 +381,15 @@ function MemberLine({ surface, item, selected, onSelect }: {
   return (
     <tr data-demo-row-id={surface.runId}
       title={`${queueRowTitle(surface)} — ${(pause ?? statusAccessibleName(status)).toLowerCase()}`}
-      className={cn(dsText.body, dsMotion.fast, "h-[var(--ds-h-queue-member-line)] hover:bg-[var(--ds-surface-3)]", selected && "bg-[var(--ds-surface-selected)]")}
+      onClick={(event) => { event.stopPropagation(); onSelect(String(surface.runId)); }}
+      className={cn(dsText.body, dsMotion.fast, "h-[var(--ds-h-queue-member-line)] cursor-pointer hover:bg-[var(--ds-surface-3)]", selected && "bg-[var(--ds-surface-selected)]")}
     >
       <td className="max-w-0 border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]">
         <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
           <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass, status === "running" && pause !== "Paused" && "animate-spin motion-reduce:animate-none")} />
           <BareButton type="button" title={surface.subtitle.state === "present" ? surface.subtitle.value : surface.subtitle.reason}
             aria-label={selectionLabel} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); onSelect(String(surface.runId)); }}
-            className={cn("min-w-0 truncate text-left text-[color:var(--ds-fg)] hover:underline", dsFocus)}
+            className={cn("min-w-0 truncate text-left text-[color:var(--ds-fg)]", dsFocus)}
           >{queueRowTitle(surface)}</BareButton>
           {item.attempts.length > 1 && <QueueAttemptSelector title={queueRowTitle(surface)} surface={surface} item={item}
             selectedRunId={String(surface.runId)} onSelect={onSelect} />}
