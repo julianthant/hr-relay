@@ -393,7 +393,10 @@ window is replaced only after the exact context close event, all tracked pages, 
 and startup, tab, portal and pump callbacks prove closure. A lost worker-stop acknowledgment during
 window shutdown is superseded only by that complete proof and validated owned-profile deletion;
 otherwise its cause and the closure failure remain uncertain and replacement is refused. Show never
-starts enrollment or submits SSO. Explicit Open Duo retains the existing once-per-context login path.
+starts enrollment or submits SSO. Each successful Show or Open also focuses the owned browser
+window, including its initial opening and a replacement after proved closure. A rejected attempt
+initialization is awaited to settlement during cleanup; its Unknown result and refusal fences remain.
+Explicit Open Duo retains the existing once-per-context login path.
 
 Settings Preflight owns the OCR diagnostic presentation and request lifecycle in
 `surfaces/settings/preflight/preflight-ocr-model.ts`. The profile-scoped shell composes it with the

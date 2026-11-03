@@ -44,7 +44,7 @@
   - combobox "Device type":
     - option "Security key" [disabled]
     - option "Touch ID" [selected]
-  - button "Open duo.ucpath.edu"
+  - button "Open duo.ucsd.edu"
   - button "Start capture"
   - status: Capture alone does not mean the device is added.
   - paragraph: UI mock. No credentials are created or sent.

@@ -31,6 +31,7 @@ import { createProfileVerifiers } from "../storage/configuration/verifier-store.
 import { type CredentialInventory } from "./credential-inventory.js";
 import type { ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
 import { createProfileOnboarding } from "./profile-onboarding.js";
+import { createDebugEventWriter } from "../logs/debug-events.js";
 import { createProfileRegistry,ProfileRegistryAuthorityError,withProfileLock } from "./registry.js";
 
 import type { CredentialStore } from "../../models/config/credential-store.js";
@@ -448,7 +449,16 @@ export function createProfileSession(input: {
   }
 
   const onboarding = createProfileOnboarding({
-    failureKind: error => error instanceof ProfileOnboardingDuoProviderError ? error.kind : "unknown", clock: input.clock ?? systemClock,
+    failureDiagnostic: error => error instanceof ProfileOnboardingDuoProviderError ? { kind: error.kind, causeTag: error.reason } : { kind: "unknown", causeTag: "provider" }, clock: input.clock ?? systemClock,
+    onFailure: (attempt, failure) => {
+      const clock = input.clock ?? systemClock;
+      AuthorityDatabase.withProfileOnboardingTimeline(admittedProfile(attempt.profileId), clock, repository => {
+        const build = z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"))).version;
+        createDebugEventWriter({ repository, clock, build }).emit({ category: "duo", phase: "failed", correlationId: attempt.attemptId,
+          code: "PROFILE_ONBOARDING_DUO_FAILED", message: JSON.stringify({ method: attempt.method, ...failure }), pinned: true },
+        { kind: "transport", connectionId: attempt.operationId });
+      });
+    },
     ...(input.onboardingDuo === undefined ? {} : { provider: input.onboardingDuo }),
     read: operationId => {
       const operation = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operationId);
