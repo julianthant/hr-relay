@@ -209,11 +209,13 @@ unsharded listing exactly once. Coverage, perf and local selection are unchanged
 
 ## 3. Private test temporary directory
 
-`tests/support/private-temp-setup.ts` is Vitest's global setup. It creates one directory with
+`tests/support/private-temp-setup.ts` runs once from Vitest's root global setup, shared by all
+selected projects. It creates one directory with
 `fs.mkdtemp` under `os.tmpdir()` (mode `0700` on POSIX; the per-user temp on Windows), points
 `TMPDIR`, `TMP`, and `TEMP` at it for the workers, and removes it when the run ends.
 `KEEP_TEST_TMP=1` keeps the directory. `tests/support/private-temp.test.ts` checks the directory
-the workers see.
+the workers see; `private-temp.integration.test.ts` checks project setup, invocation isolation,
+permissions, compiled-loader reuse and parent/peer-safe teardown.
 
 `compiled-process-setup.ts` transpiles source, scripts and shared test fixtures once into that
 private directory. Test child commands use `testProcessImport()` instead of tsx. Its Node hook
