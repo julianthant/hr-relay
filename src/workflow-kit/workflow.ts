@@ -1,7 +1,6 @@
 import { WorkbookReferenceLookupSchema, type WorkbookReferenceLookup, type RunWorkbookReference } from "../models/dashboard/workbooks.js";
 import { PlannedRunOutputSchema, type PlannedRunOutput } from "../models/dashboard/run-outputs.js";
 import type { RunContinuation } from "../models/run/continuation.js";
-import { DryRunStepSchema } from "../models/workflow/dry-run.js";
 import { WorkbookIdSchema } from "../models/dashboard/workbooks.js";
 import { lifecycleCommandId } from "../rules/commands/lifecycle-command-id.js";
 import { sha256Hex } from "../rules/validation/sha256.js";
@@ -28,8 +27,9 @@ import {
 } from "../rules/identity/ids.js";
 import type { Fingerprint, NodeId, ScenarioId, WorkflowId } from "../rules/identity/ids.js";
 import {
-  RunDryRunPreviewResultSchema,
-  delegationEvidenceOutput, terminalDelegationDependencyRecord, singleDelegationResult, terminalGateDependencyRecord,
+  RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, RunPreviewStepSchema,
+  isRunPreviewSchemaHash, readRunPreviewResult, resolveDelegationEvidenceOutput, type RunPreviewStep,
+  terminalDelegationDependencyRecord, singleDelegationResult, terminalGateDependencyRecord,
   RunResultRecordSchema,
   TerminalDependencyEvidenceSchema,
   deriveCheckpointOutputDigest,
@@ -379,8 +379,7 @@ export interface WorkflowProjections {
   readonly dryRun: WorkflowDryRunSupport;
 }
 
-// Preview requires transaction nodes; read-only graphs refuse it.
-export type WorkflowDryRunSupport =
+type WorkflowLocalDryRunSupport =
   | Readonly<{
     state: "supported";
     /** First preparation boundary; its real dependencies are retained in preview evidence. */
@@ -394,8 +393,12 @@ export type WorkflowDryRunSupport =
     nodeId: string;
   }>;
 
+export type WorkflowDryRunSupport = WorkflowLocalDryRunSupport
+  | Readonly<{ state: "supported"; firstDelegationNodeId: string }>
+  | Readonly<{ state: "unsupported"; reason: "descendant-declares-unsupported"; workflowId: string; nodeId: string }>;
+
 // Every transaction must support preview, including later writes.
-function deriveDryRunSupport(nodes: readonly RuntimeFlowNode[]): WorkflowDryRunSupport {
+function deriveDryRunSupport(nodes: readonly RuntimeFlowNode[]): WorkflowLocalDryRunSupport {
   const transactions = nodes.filter((node) => node.kind === "transaction");
   const [first] = transactions;
   if (first === undefined) return Object.freeze({ state: "unsupported", reason: "no-transaction-node" });
@@ -409,7 +412,77 @@ function deriveDryRunSupport(nodes: readonly RuntimeFlowNode[]): WorkflowDryRunS
 
 /** The ONE derivation every consumer shares — the projection computes it once. */
 export function workflowDryRunSupport(descriptor: AnyWorkflowDescriptor): WorkflowDryRunSupport {
-  return workflowProjections(descriptor).dryRun;
+  return projectionStateOf(descriptor).support;
+}
+
+export function workflowPreviewDependencyIds(descriptor: AnyWorkflowDescriptor, steps: readonly RunPreviewStep[]): readonly NodeId[] {
+  const support = workflowDryRunSupport(descriptor);
+  if (support.state !== "supported") throw new Error("workflow-preview-unsupported");
+  const nodes = descriptorRuntimeNodes(descriptor);
+  const boundaryId = "firstTransactionNodeId" in support ? support.firstTransactionNodeId : support.firstDelegationNodeId;
+  const boundary = nodes.find(node => node.id === boundaryId);
+  if (boundary === undefined) throw new Error("workflow-preview-boundary-unavailable");
+  const unavailable = new Set(steps.filter(step => step.state === "unavailable").map(step => step.nodeId));
+  const exercised = new Set(steps.filter(step => step.state === "exercised" || step.state === "delegation-preview").map(step => step.nodeId));
+  return [...new Set([...boundary.dependsOn.filter(id => !unavailable.has(id)),
+    ...nodes.filter(node => (node.kind === "task" || node.kind === "child-run") && exercised.has(node.id)).map(node => node.id),
+  ])];
+}
+
+export function bindWorkflowDelegationTargets(descriptors: readonly AnyWorkflowDescriptor[]): void {
+  const all = new Map(descriptors.map(descriptor => [String(descriptor.id), descriptor]));
+  if (all.size !== descriptors.length) throw new Error("workflow delegation registry has duplicate identifiers");
+  const bindings = new Map(descriptors.map(descriptor => {
+    projectionStateOf(descriptor);
+    const targets = new Map<string, AnyWorkflowDescriptor>();
+    for (const node of descriptorRuntimeNodes(descriptor)) {
+      if (node.kind !== "child-run") continue;
+      const target = all.get(node.target.id);
+      if (target === undefined) throw new Error(`workflow delegation target ${node.target.id} is not registered`);
+      projectionStateOf(target);
+      if (deriveSchemaHash(target.input, "input") !== deriveSchemaHash(node.target.input, "input")
+        || workflowTerminalResultExecution(target).schemaHash !== deriveSchemaHash(node.target.result, "output")) throw new Error("delegation-target-contract-mismatch");
+      targets.set(String(node.id), target);
+    }
+    return [descriptor, targets] as const;
+  }));
+  const qualified = new Map<AnyWorkflowDescriptor, Readonly<{ support: WorkflowDryRunSupport; depth: number }>>();
+  const visiting = new Set<AnyWorkflowDescriptor>();
+  const visit = (descriptor: AnyWorkflowDescriptor): Readonly<{ support: WorkflowDryRunSupport; depth: number }> => {
+    if (visiting.has(descriptor)) throw new Error(`workflow delegation cycle at ${descriptor.id}`);
+    const retained = qualified.get(descriptor);
+    if (retained !== undefined) return retained;
+    visiting.add(descriptor);
+    const own = projectionStateOf(descriptor).ownDryRun;
+    let support: WorkflowDryRunSupport = own, depth = 1;
+    const targets = bindings.get(descriptor);
+    if (targets === undefined) throw new Error("delegation-target-registration-unavailable");
+    for (const [nodeId, target] of targets) {
+      const { support: child, depth: childDepth } = visit(target);
+      depth = Math.max(depth, 1 + childDepth);
+      if (child.state === "unsupported" && child.reason !== "no-transaction-node") {
+        support = child.reason === "descendant-declares-unsupported" ? child
+          : Object.freeze({ state: "unsupported", reason: "descendant-declares-unsupported", workflowId: target.id, nodeId: child.nodeId });
+      } else if (child.state === "supported" && support.state === "unsupported" && support.reason === "no-transaction-node") {
+        support = Object.freeze({ state: "supported", firstDelegationNodeId: nodeId });
+      }
+    }
+    if (depth > 16) throw new Error(`workflow delegation depth exceeds 16 at ${descriptor.id}`);
+    if (own.state === "unsupported" && own.reason === "node-declares-unsupported") support = own;
+    visiting.delete(descriptor);
+    const result = Object.freeze({ support, depth }); qualified.set(descriptor, result);
+    return result;
+  };
+  for (const descriptor of descriptors) {
+    visit(descriptor);
+    const existing = projectionStateOf(descriptor).targets, targets = bindings.get(descriptor);
+    if (targets === undefined || existing !== undefined && (existing.size !== targets.size
+      || [...existing].some(([id, target]) => targets.get(id) !== target))) throw new Error("delegation-target-registration-changed");
+  }
+  for (const [descriptor, targets] of bindings) {
+    const state = projectionStateOf(descriptor);
+    state.targets = targets; state.support = visit(descriptor).support;
+  }
 }
 
 // Lookups use ingress; run callbacks use bound canonical input.
@@ -481,7 +554,18 @@ interface TerminalResultClock {
   now(): Date;
 }
 
-const PROJECTIONS = new WeakMap<object, WorkflowProjections>();
+interface WorkflowProjectionState {
+  readonly projections: WorkflowProjections;
+  readonly ownDryRun: WorkflowLocalDryRunSupport;
+  support: WorkflowDryRunSupport;
+  targets?: ReadonlyMap<string, AnyWorkflowDescriptor>;
+}
+const PROJECTIONS = new WeakMap<object, WorkflowProjectionState>();
+function projectionStateOf(descriptor: object): WorkflowProjectionState {
+  const state = PROJECTIONS.get(descriptor);
+  if (state === undefined) throw new Error("workflow projections require the exact object returned by defineWorkflowDescriptor");
+  return state;
+}
 const PLANNING = new WeakMap<object, WorkflowPlanning>();
 const RUNTIME_NODES = new WeakMap<object, readonly RuntimeFlowNode[]>();
 const TERMINAL_RESULTS = new WeakMap<object, WorkflowTerminalResultExecution>();
@@ -519,11 +603,7 @@ export function workflowPlanning(descriptor: object): WorkflowPlanning {
 
 /** The projections derived when the descriptor was built. Fails loud if it was not. */
 export function workflowProjections(descriptor: object): WorkflowProjections {
-  const projections = PROJECTIONS.get(descriptor);
-  if (projections === undefined) {
-    throw new Error("workflow projections require the exact object returned by defineWorkflowDescriptor");
-  }
-  return projections;
+  return projectionStateOf(descriptor).projections;
 }
 
 /** The sealed terminal-result view; copied or hand-built descriptors fail loud. */
@@ -1170,7 +1250,7 @@ export function defineWorkflowDescriptor<
     ...(failureCorrections === undefined ? {} : { failureCorrections }),
     nodePurposes: deriveNodePurposes(id, nodes, spec.nodePurposes),
   });
-  PROJECTIONS.set(descriptor, Object.freeze({
+  PROJECTIONS.set(descriptor, { ownDryRun: dryRun, support: dryRun, projections: Object.freeze({
     requiredWorkbookTypeIds,
     steps,
     gates,
@@ -1178,9 +1258,9 @@ export function defineWorkflowDescriptor<
     requires,
     coveragePoints: deriveGraphCoveragePoints(nodes),
     scenarios,
-    dryRun,
+    get dryRun() { return workflowDryRunSupport(descriptor); },
     contracts: Object.freeze(contracts),
-  }));
+  }) });
   PLANNING.set(descriptor, Object.freeze({
     requiredWorkbookTypeIds,
     plannedOutputs: (parsed: unknown, references: readonly RunWorkbookReference[]) => PlannedRunOutputSchema.array().parse(spec.plannedOutputs?.(spec.canonicalInput.parse(parsed), references) ?? []),
@@ -1267,6 +1347,7 @@ export function defineWorkflowDescriptor<
     evidenceInput: unknown,
     expectedDependencies: WorkflowTerminalResultExecution["dependencies"],
     purpose: string,
+    allowChildPreviews = false,
   ): Readonly<{ outputs: Record<string, unknown>; dependencies: TerminalDependencyRecord[] }> => {
     const expectedIds = expectedDependencies.map(({ nodeId }) => nodeId);
     const evidence = z.array(TerminalDependencyEvidenceSchema).parse(evidenceInput);
@@ -1314,8 +1395,10 @@ export function defineWorkflowDescriptor<
           || entry.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")
           || entry.manifest.resultSchemaHash !== deriveSchemaHash(node.target.result, "output")
           || entry.children.some(child => child.run.envelope.workflow !== node.target.id || child.run.envelope.dryRun !== currentRun.envelope.dryRun)) throw new Error("terminal-delegation-dependency-identity-mismatch");
-        const output = delegationEvidenceOutput(entry, node.target.result);
-        if (expectedIds.includes(entry.nodeId)) outputs[entry.nodeId] = output;
+        const resolution = resolveDelegationEvidenceOutput(entry, node.target.result);
+        if (resolution.kind === "preview") {
+          if (!allowChildPreviews || !currentRun.envelope.dryRun) throw new Error("terminal-preview-is-not-workflow-output");
+        } else if (expectedIds.includes(entry.nodeId)) outputs[entry.nodeId] = resolution.output;
         return terminalDelegationDependencyRecord(entry);
       }
       if (entry.state === "child-resolved") {
@@ -1323,6 +1406,7 @@ export function defineWorkflowDescriptor<
         if (node.kind !== "child-run" || node.await !== "terminal" || node.cardinality !== "one" || node.join !== "one") throw new Error("terminal-child-dependency-shape-mismatch");
         const child = entry.childRun;
         const result = RunResultRecordSchema.parse(entry.result);
+        if (readRunPreviewResult(result) !== undefined) throw new Error("terminal-child-preview-requires-group");
         if (sourceParent === undefined || entry.edgeId !== node.edgeId
           || child.workflowId !== node.target.id || result.runId !== child.runId || result.workflowId !== child.workflowId
           || result.attempt !== child.attempt || result.descriptorVersion !== child.descriptorVersion
@@ -1587,12 +1671,11 @@ export function defineWorkflowDescriptor<
           `run ${currentRun.envelope.runId} is not a dry run; a preview result may not be built for it`,
         );
       }
-      if (dryRun.state !== "supported") {
-        throw new Error(
-          `${id} is not previewable (${dryRun.reason}); no preview result can describe a run of it`,
-        );
+      const support = workflowDryRunSupport(descriptor);
+      if (support.state !== "supported") {
+        throw new Error(`${id} is not previewable (${support.reason}); no preview result can describe a run of it`);
       }
-      const steps = z.array(DryRunStepSchema).parse(previewInput);
+      const steps = z.array(RunPreviewStepSchema).parse(previewInput);
       const expectedIds = nodes.map(node => String(node.id));
       if (steps.length !== expectedIds.length || steps.some((step, index) => step.nodeId !== expectedIds[index])) {
         throw new Error("dry-run preview must account for every declared node exactly once in execution order");
@@ -1603,24 +1686,28 @@ export function defineWorkflowDescriptor<
           throw new Error("dry-run preview transaction membership mismatch");
         }
         if (node.kind === "transaction" && step.state === "exercised") throw new Error("a preview cannot claim a transaction executed");
+        if (step.state === "delegation-preview" && (node.kind !== "child-run" || node.await !== "terminal")) throw new Error("dry-run preview delegation membership mismatch");
       }
-      const firstTransaction = nodeByIdOrThrow(id, nodes, NodeIdSchema.parse(dryRun.firstTransactionNodeId), "dry-run preview");
-      const { dependencies } = resolveTerminalDependencies(
-        currentRun,
-        evidenceInput,
-        dependencySpecFor([...new Set([...firstTransaction.dependsOn,
-          ...nodes.filter(node => (node.kind === "task" || node.kind === "child-run") && steps.find(step => step.nodeId === node.id)?.state === "exercised").map(node => node.id)])], "dry-run preview"),
-        "dry-run preview",
-      );
-      const previewValue = JsonValueSchema.parse(RunDryRunPreviewResultSchema.parse({
-        kind: "dry-run-preview",
+      const { dependencies } = resolveTerminalDependencies(currentRun, evidenceInput,
+        dependencySpecFor(workflowPreviewDependencyIds(descriptor, steps), "dry-run preview"), "dry-run preview", true);
+      const previewNodes = new Set(dependencies.filter(dependency => dependency.state === "delegation-resolved"
+        && dependency.members.some(member => isRunPreviewSchemaHash(member.resultSchemaHash))).map(dependency => dependency.nodeId));
+      if (steps.some(step => (step.state === "delegation-preview") !== previewNodes.has(step.nodeId))) throw new Error("dry-run preview delegation accounting mismatch");
+      const targets = projectionStateOf(descriptor).targets;
+      const dispatched = nodes.find(node => {
+        if (node.kind !== "child-run" || node.join !== "none" || !steps.some(step => step.nodeId === node.id && step.state === "exercised")) return false;
+        const target = targets?.get(node.id);
+        return target !== undefined && workflowDryRunSupport(target).state === "supported";
+      });
+      const delegated = "firstDelegationNodeId" in support || previewNodes.size > 0 || dispatched !== undefined;
+      const schema = delegated ? RunDelegatedDryRunPreviewResultSchema : RunDryRunPreviewResultSchema;
+      const previewValue = JsonValueSchema.parse(schema.parse({
+        kind: delegated ? "delegated-dry-run-preview" : "dry-run-preview",
         externalCommit: "none",
-        coverage: { state: "full" },
+        coverage: dispatched === undefined ? { state: "full" } : { state: "partial", boundaryNodeId: dispatched.id, reason: "descendant-not-awaited" },
         steps,
       }));
-      // The hash of the bytes actually stored — never the descriptor's declared
-      // result hash, which would make a preview readable as a completed workflow.
-      const schemaHash = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
+      const schemaHash = deriveSchemaHash(schema, "output");
       const resultValue = { schemaHash, value: previewValue,
         ...(retainedRunProtectedBindings(currentRun).length === 0 ? {} :
           { protectedBindings: retainedRunProtectedBindings(currentRun) }) };

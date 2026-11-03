@@ -6,16 +6,22 @@ import { createOcrApprovedSnapshotAdapter } from "../../../../src/backend/proces
 import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
 import { authenticateOriginalDelegationGroup,retainedDelegationManifests } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
-import { StartPlanWireSchema } from "../../../../src/models/dashboard/start-plan.js";
 import { OcrApprovedSnapshotSchema } from "../../../../src/models/ocr/review.js";
 import { OcrApprovalReadRequestSchema,OcrApprovalReadResultSchema } from "../../../../src/models/processing/ocr/approved-snapshot.js";
 import { ReadApprovedOcrSnapshot } from "../../../../src/models/processing/ocr/read-approved-snapshot.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { deriveSchemaHash,schemaBoundValueSchema } from "../../../../src/models/validation/schema-bound-value.js";
 import { EmergencyContactMemberInputSchema } from "../../../../src/models/workflows/emergency-contact-member/input.js";
-import { EmergencyContactResultSchema } from "../../../../src/models/workflows/emergency-contact/result.js";
+import { EmergencyContactResultSchema, EmergencyContactMemberResultSchema } from "../../../../src/models/workflows/emergency-contact/result.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
+
+import { createDeterministicUcpathContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
+import { UcpathContactPageSnapshotSchema, type UcpathContactPageSnapshot } from "../../../../src/models/ui/ucpath-emergency-contact.js";
+import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, readRunPreviewResult } from "../../../../src/models/run/result.js";
+import { sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
+import contactPage from "../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -116,25 +122,65 @@ it("accounts for an actual unavailable real member as failed without inventing a
   assert.equal(f.harness.sessions.opens(), 0);
 });
 
-it("refuses a nonempty Emergency Contact parent dry run at native start planning before child admission", async () => {
-  let harness: Fixture["harness"] | undefined;
-  await assert.rejects(world.fixture({ coordinator: true, record: true, pageCount: 1, dryRun: true, onHarness: value => { harness = value; } }), error => {
-    assert.ok(error instanceof assert.AssertionError);
-    assert.equal(error.actual, 0);
-    assert.equal(error.expected, 1);
-    const refusals = StartPlanWireSchema.shape.refused.parse(JSON.parse(error.message.split("\n")[0]));
-    assert.equal(refusals.length, 1);
-    const [refusal] = refusals; assert.ok(refusal);
-    assert.deepEqual({ entry: refusal.entry, code: refusal.code }, { entry: 1, code: "dry-run-unsupported" });
-    assert.match(refusal.message, /emergency-contact has no transaction node/u);
-    return true;
+it("previews a nonempty parent through ordinary OCR, selected child preparations and authenticated aggregation with zero writes", async () => {
+  const selection = [1, 0];
+  const ports: ReturnType<typeof createDeterministicUcpathContactPage>[] = [], captures: UcpathContactPageSnapshot[] = [];
+  const sessions = sessionFactoryHarness({ ucpath: openIndex => {
+    const index = selection[openIndex - 1]; assert.ok(index !== undefined);
+    const port = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
+      displayedEid: String(10800000 + index), displayedName: "Example, Avery" }) });
+    ports.push(port);
+    return createDeterministicUcpathPersonOrgDriver(undefined, undefined, port);
+  } });
+  const f = await world.fixture({ coordinator: true, record: true, pageCount: 2, dryRun: true, sessions,
+    screenshotCapture: { capture: async context => {
+      assert.equal(context.screenshot.state, "available");
+      const port = ports.at(-1); assert.ok(port); captures.push(await port.snapshot());
+    } },
   });
-  assert.ok(harness);
-  assert.equal(harness.sessions.opens(), 0);
-  for (const workflow of ["emergency-contact", "ocr", "ocr-page", "emergency-contact-member"]) {
-    assert.deepEqual(harness.authority.database.authority.runs.listByWorkflow(workflow), []);
+  assert.equal(f.parentRun.envelope.dryRun, true);
+  assert.equal(sessions.opens(), 0);
+  assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state, "parked-gate");
+  const selected = release(f, selection), members = await admitMembers(f);
+  assert.deepEqual(members.map(member => EmergencyContactMemberInputSchema.parse(member.input.parsed.value).record.recordId), selected);
+  const ocrResult = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(ocrResult);
+  assert.equal(readRunPreviewResult(ocrResult), undefined);
+  const result = await f.canonical.execute(f.parentRun, new AbortController().signal);
+  assert.ok(result.run?.lifecycle.state === "terminal" && result.run.lifecycle.outcome === "done",
+    JSON.stringify(result.outcomes.map(outcome => ({ state: outcome.state }))));
+  const parentResult = f.database.authority.runResults.get(f.parentRun.envelope.runId); assert.ok(parentResult);
+  const preview = RunDelegatedDryRunPreviewResultSchema.parse(parentResult.result.value);
+  assert.equal(preview.externalCommit, "none");
+  assert.equal(preview.steps.find(step => step.nodeId === "members")?.state, "delegation-preview");
+  assert.equal(preview.steps.find(step => step.nodeId === "read-result")?.state, "unavailable");
+  assert.equal(EmergencyContactResultSchema.safeParse(parentResult.result.value).success, false);
+  const receipt = parentResult.dependencies.find(dependency => dependency.nodeId === "members");
+  assert.ok(receipt?.state === "delegation-resolved");
+  assert.deepEqual(receipt.members.map(member => member.runId), members.map(member => member.envelope.runId));
+  for (const member of members) {
+    assert.equal(member.envelope.dryRun, true);
+    const stored = f.database.authority.runResults.get(member.envelope.runId); assert.ok(stored);
+    assert.equal(RunDryRunPreviewResultSchema.parse(stored.result.value).externalCommit, "none");
+    assert.equal(EmergencyContactMemberResultSchema.safeParse(stored.result.value).success, false);
   }
-  assert.ok(harness.emitter.events().every(event => event.t !== "transaction.fenced"));
-  const date = harness.authority.clock.now().toISOString().slice(0, 10);
-  assert.deepEqual(createTransactionHistory(harness.authority.database.authority).query({ from: date, to: date }).rows, []);
+  assert.equal(ports.length, 2);
+  assert.ok(ports.every(port => port.actions.includes("demote-primary:0") && port.actions.includes("fill-name:1")));
+  assert.ok(captures.some(page => page.observation === "persisted" && page.rows[0]?.primary));
+  assert.ok(captures.some(page => page.observation === "staged" && page.rows[0]?.primary === false && page.rows[1]?.primary));
+  assert.ok(ports.every(port => !("save" in port) && !("commit" in port)));
+  const all = [f.parentRun, f.run, ...f.database.authority.runs.listChildren(f.run.envelope.runId), ...members];
+  for (const run of all) {
+    assert.equal(run.envelope.dryRun, true);
+    assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+    assert.deepEqual(f.database.authority.writeIntents.countDryRunEvidenceByRun(run.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
+  }
+  let cursor = 0;
+  for (;;) {
+    const events = f.database.authority.timelineEvents.page({ after: cursor, limit: 1000 });
+    assert.ok(events.every(event => event.payload.kind !== "span" || event.payload.event.t !== "transaction.fenced"));
+    if (events.length < 1000) break;
+    const last = events.at(-1); assert.ok(last); cursor = last.cursor;
+  }
+  const date = f.clock.now().toISOString().slice(0, 10);
+  assert.deepEqual(createTransactionHistory(f.database.authority).query({ from: date, to: date }).rows, []);
 });

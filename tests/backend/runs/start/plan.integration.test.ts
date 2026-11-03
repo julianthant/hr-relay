@@ -375,6 +375,7 @@ afterEach(_afterEachFixture0);
       assert.equal(supportsDryRun(descriptor), true, `${descriptor.id} must be previewable`);
       const support = workflowDryRunSupport(descriptor);
       assert.equal(support.state, "supported");
+      assert.ok("firstTransactionNodeId" in support);
       // The stop node is the FIRST transaction node, which is where ref task-contract
       // §10.1 says a preview ends.
       const firstTransaction = descriptorRuntimeNodes(descriptor)
