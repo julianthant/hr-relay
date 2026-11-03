@@ -12,7 +12,10 @@ import { createContentAddressedArtifactWriter } from "../../../../src/backend/st
 import { createServerVerifiedArtifactReader } from "../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { ExtractPdfPages, type ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
-import { WorkbookReferenceFactsSchema } from "../../../../src/models/processing/workbooks/read-reference.js";
+import { createRunWorkbookService } from "../../../../src/backend/runs/workbooks.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { searchPartitionDay } from "../../../../src/models/dashboard/search-calendar.js";
+import type { WorkbookLibraryChangeSchema } from "../../../../src/models/dashboard/workbook-library.js";
 import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../src/models/workflows/i9-check/start.js";
 import { OcrApprovedSnapshotSchema, ocrReviewDigest, ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
 import { answersFingerprint } from "../../../../src/models/ocr/extraction.js";
@@ -81,21 +84,36 @@ export function createI9CheckStartWorld() {
         cells: [candidate.emplId, "000012345", "2024-01-01", "TER"].map(value => ({ value })) }))] }] });
     database.authority.workbooks.putType({ id: I9_CHECK_REFERENCE.typeId, name: "Action History", keyFieldId: "eid", fields: columns, defaultWorkbookId: null });
     library.operatorOperation(saved.libraryId, "reference-type", { kind: "metadata", expectedVersion: 1, metadata: { typeId: I9_CHECK_REFERENCE.typeId, sharePoint: null } });
-    const reference = library.snapshot({ typeId: I9_CHECK_REFERENCE.typeId, libraryId: saved.libraryId, keys: candidates.map(candidate => candidate.emplId), fields: columns });
-    const fixedReference = WorkbookReferenceFactsSchema.parse({ libraryId: reference.libraryId, version: reference.version, worksheets: reference.worksheets,
-      typeId: I9_CHECK_REFERENCE.typeId, keyFieldId: "eid",
-      versionId: "selected-fixture-version", versionName: "Fall review", rows: reference.rows.map(row => ({ ...row,
-        matches: row.matches.map(match => ({ sheetId: match.sheetId, rowId: match.rowId, cells: Object.entries(match.values).map(([fieldId, value]) => ({ fieldId, value })) })),
-      })) });
+    const referenceChange = async (change: z.infer<typeof WorkbookLibraryChangeSchema>) => {
+      const entry = library.catalog().find(entry => entry.libraryId === saved.libraryId); assert.ok(entry);
+      return library.libraryAction(saved.libraryId, { operationId: randomUUID(), expectedRevision: entry.state.revision,
+        expectedVersion: entry.version, change }, new AbortController().signal);
+    };
+    const named = await referenceChange({ kind: "create-version", name: "Fall review", from: { kind: "version", versionId: "original" }, useNow: true });
+    const selectedReference = library.snapshot({ typeId: I9_CHECK_REFERENCE.typeId, libraryId: saved.libraryId,
+      versionId: named.action.operationId, keys: [], fields: columns });
+    const runWorkbooks = createRunWorkbookService({ database, clock }), readRefusals = new Set<string>();
     const projector = composeWorkerArtifactProjector({ admission, database, artifacts, clock });
     const resolve = (id: string) => (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
     const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve, createOcrCheckpointPublication, { workbooks: library,
       resources: (reader, run) => ({ artifactProjector: projector, providers: { configSnapshots: database.authority.configSnapshots, idFactory: { next: randomUUID },
         adapters: { "ocr.review": createOcrReviewAdapter({ database, reader, run, clock }),
           "workbooks.library": createWorkbookLibraryAdapter({ repository: database.authority.workbooks, runId: run.envelope.runId, clock,
+            publicationSource: () => { const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
+              return { workflowId: descriptor.id, workflowLabel: descriptor.label, partitionDay: searchPartitionDay(new Date(run.envelope.enqueuedAt)) }; },
             references: { runId: run.envelope.runId, write: () => { throw new Error("I-9 fixture must not patch a reference"); }, read: request => {
               assert.equal(request.typeId, I9_CHECK_REFERENCE.typeId); assert.deepEqual(request.keys, candidates.map(candidate => candidate.emplId));
-              return { state: "read", reference: fixedReference };
+              for (const [name, captured] of [
+                ["missing run", { ...run, envelope: { ...run.envelope, runId: randomUUID() } }],
+                ["foreign claim", { ...run, claimGeneration: Number(run.claimGeneration) + 1 }],
+                ["altered input", { ...run, input: { ...run.input, parsed: { ...run.input.parsed, value: {} } } }],
+              ] as const) {
+                assert.throws(() => runWorkbooks.read(RunRecordSchema.parse(captured), request), { code: "WORKBOOK_INVALID" }); readRefusals.add(name);
+              }
+              for (const [name, command] of [["foreign type", { ...request, typeId: "foreign" }], ["altered fields", { ...request, fields: request.fields.toReversed() }]] as const) {
+                assert.throws(() => runWorkbooks.read(run, command), { code: "WORKBOOK_INVALID" }); readRefusals.add(name);
+              }
+              return runWorkbooks.read(run, request);
             } } }),
         } } }),
     });
@@ -116,7 +134,21 @@ export function createI9CheckStartWorld() {
     }
     const input = I9CheckStartInput.parse({ documents, asOf: "2026-11-01", reviewerName: "Example Reviewer" });
     const run = canonical.start(root.descriptor, input, { dryRun: false, workbookReferences: [{ entry: 1, typeId: I9_CHECK_REFERENCE.typeId,
-      libraryId: saved.libraryId }] });
+      libraryId: saved.libraryId, versionId: selectedReference.versionId }] });
+    const changeReference = async () => {
+      const current = library.read(saved.libraryId), workbook = structuredClone(current.workbook);
+      for (const row of workbook.sheets[0].rows.slice(1)) row.cells[1].value = "999999999";
+      library.save(saved.libraryId, current.version, workbook);
+      await referenceChange({ kind: "rename-version", versionId: named.action.operationId, name: "Renamed later" });
+      const other = library.create({ name: "New default", themes: [], hasFormulas: false, sheets: workbook.sheets });
+      library.operatorOperation(other.libraryId, "new-default-type", { kind: "metadata", expectedVersion: 1,
+        metadata: { typeId: I9_CHECK_REFERENCE.typeId, sharePoint: null } });
+      const type = library.types().find(type => type.id === I9_CHECK_REFERENCE.typeId); assert.ok(type);
+      database.authority.workbooks.putType({ ...type, defaultWorkbookId: other.libraryId });
+      const request = { typeId: I9_CHECK_REFERENCE.typeId, keys: candidates.map(candidate => candidate.emplId), fields: columns };
+      return { master: library.snapshot({ ...request, libraryId: saved.libraryId }), currentDefault: library.snapshot(request),
+        renamed: library.snapshot({ ...request, libraryId: saved.libraryId, versionId: named.action.operationId }) };
+    };
     const approveNext = () => {
       const child = database.authority.runs.listChildren(run.envelope.runId).find(child => child.envelope.workflow === "ocr" && child.lifecycle.state === "parked-gate"); assert.ok(child);
       let review = database.authority.ocrReviews.latest(child.envelope.runId); assert.ok(review);
@@ -141,6 +173,7 @@ export function createI9CheckStartWorld() {
         } }).state, "applied");
       return child.envelope.runId;
     };
-    return { harness, database, clock, admission, artifacts, canonical, run, input, root, library, referenceId: saved.libraryId, approveNext };
+    return { harness, database, clock, admission, artifacts, canonical, run, input, root, library, referenceId: saved.libraryId,
+      selectedReference, changeReference, readRefusals, approveNext };
   } };
 }

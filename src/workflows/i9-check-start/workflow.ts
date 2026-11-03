@@ -13,6 +13,8 @@ export const i9CheckStartWorkflow = defineWorkflow({
   summary: "Reads attached I-9 PDFs, reviews their people, checks retention in UCPath and saves one results workbook with a row per approved person.",
   input: I9CheckStartInput, canonicalInput: I9CheckStartCanonicalInput, inputSubject: "document",
   identity: { matchKey: i9CheckStartMatchKey },
+  referenceLookups: () => [{ typeId: I9_CHECK_REFERENCE.typeId, keys: [], fields: [...I9_CHECK_REFERENCE.fields] }],
+  plannedOutputs: () => [{ kind: "workbook", name: "I-9 Check results", rowSubject: "person", rows: { state: "after-review" } }],
   presentation: { title: input => `I-9 Check · ${input.documents.length} PDF${input.documents.length === 1 ? "" : "s"}`, subtitle: () => "One results workbook" },
   surface: { shape: "single" }, surfaces: {
     uploadRun: { title: { segments: [{ kind: "literal", text: "I-9 PDFs" }] }, fields: [],
@@ -24,7 +26,6 @@ export const i9CheckStartWorkflow = defineWorkflow({
   scenarios: ["i9-check-start/pdfs"], details: [
     { key: "people", label: "People", source: { kind: "result", fieldPath: "personCount" }, display: "text" },
     { key: "reference", label: "Reference version", source: { kind: "result", fieldPath: "reference.versionName" }, display: "text" },
-    { key: "workbook", label: "Results workbook", source: { kind: "result", fieldPath: "workbook.libraryId" }, display: "text" },
   ],
   nodePurposes: [...i9CheckStartDocumentsDefinition.nodePurposes, ...i9CheckStartRosterReferenceDefinition.nodePurposes, ...i9CheckStartRetentionDefinition.nodePurposes],
   artifactProjections: [{ id: "i9-check-tracker", source: { nodeId: "publish-results", fieldPath: "tracker" }, keyFields: ["batchKey"], sink: "xlsx-retention", blocking: true }],

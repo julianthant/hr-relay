@@ -62,6 +62,11 @@ canonical input before identity and output planning. Schema-bound references ret
 in the confirmation fingerprint and native run input. Later master edits or default changes do not
 replace them. No workflow-specific key or field mapping is inferred.
 
+The I-9 PDF parent captures Action History's named version with no keys until OCR review supplies
+the approved EIDs. Its run-bound read uses those late keys against the captured immutable version,
+retaining the original version label and worksheet/row coordinates. Confirm lists every PDF and one
+results workbook with one row per person after review.
+
 Onboarding maps the exact requested email key and seven fields: `email`, `firstName`, `lastName`,
 `middleName`, `roster.livedFirstName`, `roster.livedLastName` and `roster.livedMiddleName`.
 All three lived-name cells must be null for explicit absence; otherwise all three must contain valid

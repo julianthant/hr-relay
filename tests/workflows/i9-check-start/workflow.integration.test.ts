@@ -42,6 +42,11 @@ describe("one I-9 PDF Start through admitted children", () => {
     expect(f.database.authority.workbooks.list().filter(workbook => workbook.libraryId.startsWith("workflow:"))).toHaveLength(0);
   });
   it("resumes the same parent after the first exact OCR approval and parks the next original PDF", async () => {
+    const changed = await f.changeReference();
+    expect(changed.master.versionId).not.toBe(f.selectedReference.versionId);
+    expect(changed.master.rows[0].matches[0].values.ppsEid).toBe("999999999");
+    expect(changed.currentDefault.libraryId).not.toBe(f.referenceId);
+    expect(changed.renamed.versionName).toBe("Renamed later");
     const first = f.approveNext();
     const result = await f.canonical.execute(f.run, new AbortController().signal);
     expect(result.run?.lifecycle.state).toBe("queued");
@@ -59,11 +64,19 @@ describe("one I-9 PDF Start through admitted children", () => {
     const output = I9CheckStartResultSchema.parse(terminal.result.value);
     expect(output.personCount).toBe(2);
     expect(output.tracker.rows.map(row => [row.ucpathEmplId, row.action])).toEqual([["10000001", "Keep"], ["10000002", "Keep"]]);
+    expect(output.tracker.rows.map(row => row.ppsEid)).toEqual(["000012345", "000012345"]);
+    expect(output.reference).toMatchObject({ libraryId: f.referenceId, version: f.selectedReference.version,
+      versionId: f.selectedReference.versionId, versionName: "Fall review", worksheets: [{ sheetId: "history", name: "Action History" }] });
+    expect(output.reference.rows.map(row => row.matches.map(match => [match.sheetId, match.rowId]))).toEqual([[["history", "person-0"]], [["history", "person-1"]]]);
+    expect(f.readRefusals).toEqual(new Set(["missing run", "foreign claim", "altered input", "foreign type", "altered fields"]));
     expect(output.people.map(person => person.sources.length)).toEqual([2, 2]);
     const workbooks = f.database.authority.workbooks.list().filter(workbook => workbook.libraryId.startsWith("workflow:"));
     expect(workbooks).toHaveLength(1);
     expect(workbooks[0].libraryId).toBe(output.workbook.libraryId);
     expect(workbooks[0].workbook.sheets[0].rows).toHaveLength(3);
+    expect(f.library.catalog().find(entry => entry.libraryId === output.workbook.libraryId)?.state.origin).toMatchObject({
+      kind: "workflow", workflowId: "i9-check-start", runId: f.run.envelope.runId, rowCount: 2, rowSubject: "person",
+    });
     const config = f.database.authority.configSnapshots.get(f.run.envelope.configSnapshotId); assert.ok(config);
     const sheets = await readXlsxFile(readFileSync(config.config.paths.i9CheckTrackerPath));
     expect(sheets.find(sheet => sheet.sheet === "I-9 Check")?.data).toHaveLength(3);

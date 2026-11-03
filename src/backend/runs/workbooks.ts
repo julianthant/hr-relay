@@ -341,17 +341,16 @@ export function createRunWorkbookService(deps: Readonly<{ database: AuthorityDat
         const reference = referenceFor(run, command.typeId).value;
         if (canonicalJsonStringify(command.fields) !== canonicalJsonStringify(reference.request.fields)
           || reference.snapshot.type.keyFieldId === null) throw new WorkbookLibraryError("WORKBOOK_INVALID");
-        const versionId: unknown = Reflect.get(reference.snapshot, "versionId"), versionName: unknown = Reflect.get(reference.snapshot, "versionName");
-        const version = z.strictObject({ versionId: z.string().min(1), versionName: z.string().min(1) }).safeParse({ versionId, versionName });
-        if (!version.success) throw new WorkbookLibraryError("WORKBOOK_REVISION_UNAVAILABLE");
+        const { versionId, versionName } = reference.snapshot;
+        if (versionId === undefined || versionName === undefined) throw new WorkbookLibraryError("WORKBOOK_REVISION_UNAVAILABLE");
         const snapshot = snapshotWorkbookReference(repositories.workbooks, { ...reference.request, libraryId: reference.snapshot.libraryId,
-          versionId: version.data.versionId, keys: command.keys, fields: command.fields });
-        if (Reflect.get(snapshot, "versionId") !== version.data.versionId
-          || snapshot.type.id !== reference.snapshot.type.id || snapshot.type.keyFieldId !== reference.snapshot.type.keyFieldId
+          versionId, keys: command.keys, fields: command.fields });
+        if (snapshot.type.keyFieldId !== reference.snapshot.type.keyFieldId) throw new WorkbookLibraryError("WORKBOOK_INVALID");
+        if (snapshot.versionId !== versionId || snapshot.type.id !== reference.snapshot.type.id
           || canonicalJsonStringify(snapshot.worksheets) !== canonicalJsonStringify(reference.snapshot.worksheets)) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
         return ReadWorkbookReference.output.parse({ state: "read", reference: {
           libraryId: reference.snapshot.libraryId, version: reference.snapshot.version,
-          ...version.data, typeId: reference.snapshot.type.id, keyFieldId: reference.snapshot.type.keyFieldId,
+          versionId, versionName, typeId: reference.snapshot.type.id, keyFieldId: reference.snapshot.type.keyFieldId,
           worksheets: snapshot.worksheets, rows: snapshot.rows.map(row => ({ ...row,
             matches: row.matches.map(match => ({ sheetId: match.sheetId, rowId: match.rowId,
               cells: Object.entries(match.values).map(([fieldId, value]) => ({ fieldId, value })) })),

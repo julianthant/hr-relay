@@ -3,19 +3,32 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, expect, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
-import { I9CheckStartInput } from "../../../../src/models/workflows/i9-check/start.js";
+import { I9CheckStartInput, I9_CHECK_REFERENCE } from "../../../../src/models/workflows/i9-check/start.js";
 import { i9CheckStartModule } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { OcrSourceUploadSchema } from "../../../../src/models/ocr/review.js";
 import { StartPlanRequestSchema } from "../../../../src/models/dashboard/start-plan.js";
 import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-start/run-start.js";
 import { createHash } from "node:crypto";
+import { WorkbookLibraryEntrySchema } from "../../../../src/models/dashboard/workbook-library.js";
+import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
 const descriptor = i9CheckStartModule.descriptor;
+const plannedOutputs = descriptor.plannedOutputs; assert.ok(plannedOutputs);
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, label: descriptor.label, version: descriptor.version,
-  steps: projectStartSteps(descriptor), inputRun: { state: "absent", reason: "PDF input" }, uploadRun: descriptor.surfaces.uploadRun };
+  steps: projectStartSteps(descriptor), inputRun: { state: "absent", reason: "PDF input" }, uploadRun: descriptor.surfaces.uploadRun,
+  requiredWorkbookTypeIds: descriptor.requiredWorkbookTypeIds };
+const reference = WorkbookLibraryEntrySchema.parse({ libraryId: "action-history-file", version: 3, name: "Action History.xlsx", rowCount: 2,
+  worksheets: [{ id: "history", name: "Action History" }], metadata: { typeId: I9_CHECK_REFERENCE.typeId, sharePoint: null },
+  type: { id: I9_CHECK_REFERENCE.typeId, name: "Action History", keyFieldId: "eid", fields: [...I9_CHECK_REFERENCE.fields], defaultWorkbookId: "action-history-file" },
+  state: { libraryId: "action-history-file", revision: 4, selectedVersionId: "current", removed: false, origin: { kind: "local" },
+    versions: ["earlier", "current"].map((id, index) => ({ id, name: id === "earlier" ? "Fall review" : "Current", snapshotId: id,
+      version: index + 1, savedAt: "2026-11-01T00:00:00Z", source: "operator" })) } });
+function client(served: Partial<DashboardClient>) {
+  return h.stubClient({ workbookCatalog: async () => [reference], workbookTypes: async () => [reference.type], ...served });
+}
 function pdf(name: string, contents: string) {
   const bytes = new TextEncoder().encode(contents), file = new File([bytes], name, { type: "application/pdf" });
   Object.defineProperty(file, "arrayBuffer", { value: async () => bytes.buffer });
@@ -30,32 +43,49 @@ async function attach(files: readonly File[]) {
 
 it("uploads both original PDFs through the typed client and plans one parent with stable reading IDs", async () => {
   const uploads: string[] = [], plans: unknown[] = [];
-  const client = h.stubClient({ uploadOcrSource: async request => {
+  const served = client({ uploadOcrSource: async request => {
     uploads.push(request.fileName);
     return OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
       artifact: { id: `00000000-0000-4000-8000-${String(uploads.length).padStart(12, "0")}`, mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } });
-  }, submitStartPlan: async request => { plans.push(request); return { ...h.planResponse("5a000000-0000-4000-8000-000000000001"), workflowId: descriptor.id }; } });
-  const dialog = await h.openDialog(client, { workflows: [workflow], panelWorkflowId: workflow.workflowId });
+  }, submitStartPlan: async request => { plans.push(request); const plan = h.planResponse("5a000000-0000-4000-8000-000000000001");
+    const plannedRequest = StartPlanRequestSchema.parse(request);
+    return { ...plan, workflowId: descriptor.id, planned: plan.planned.map(entry => ({ ...entry,
+      outputs: [...plannedOutputs(I9CheckStartInput.parse(plannedRequest.submissions[0]), [])],
+      workbookReferences: [{ libraryId: reference.libraryId, version: reference.version, versionId: "earlier", versionName: "Fall review",
+        worksheets: [{ sheetId: "history", name: "Action History" }], type: reference.type }],
+    })) }; } });
+  const dialog = await h.openDialog(served, { workflows: [workflow], panelWorkflowId: workflow.workflowId });
   expect(dialog.disabled("Continue")).toBe(true);
   expect(document.querySelector("textarea")).toBeNull();
   await attach([pdf("first.pdf", "%PDF first"), pdf("second.pdf", "%PDF second")]);
   expect(uploads).toEqual(["first.pdf", "second.pdf"]);
   expect(dialog.text()).toContain("2 PDFs selected");
   expect(dialog.disabled("Continue")).toBe(false);
-  await dialog.press("Continue"); await dialog.press("Continue");
+  await dialog.press("Continue");
+  await dialog.press("Current Reference version");
+  const version = document.querySelector<HTMLElement>('[role="menuitemradio"][aria-label="Fall review"]'); assert.ok(version);
+  await act(async () => version.click());
+  await dialog.press("Continue");
   expect(plans).toHaveLength(1);
   const request = StartPlanRequestSchema.parse(plans[0]);
   expect(request.submissions).toHaveLength(1);
+  expect(request.workbookReferences).toEqual([{ entry: 1, typeId: I9_CHECK_REFERENCE.typeId, libraryId: reference.libraryId, versionId: "earlier" }]);
   const input = I9CheckStartInput.parse(request.submissions[0]);
   expect(input.documents.map(file => file.fileName)).toEqual(uploads);
   expect(new Set(input.documents.map(file => file.readingId)).size).toBe(2);
   expect(dialog.text()).toContain("first.pdf"); expect(dialog.text()).toContain("second.pdf");
+  expect(dialog.text()).toContain("Action History.xlsx · Fall review");
+  expect(dialog.text()).toContain("I-9 Check results");
+  expect(dialog.text()).toContain("One row per person after review");
+  const confirm = document.querySelector('[aria-label="Confirm"]'); assert.ok(confirm);
+  expect([...confirm.querySelectorAll("dt")].filter(term => ["first.pdf", "second.pdf"].includes(term.textContent ?? ""))
+    .map(term => [term.textContent, term.nextElementSibling?.textContent])).toEqual([["first.pdf", "PDF"], ["second.pdf", "PDF"]]);
   expect(request.dryRun).toBe(false);
 });
 
 it("keeps the accepted selection and refuses invalid PDFs before planning or uploading them", async () => {
   let uploads = 0;
-  const dialog = await h.openDialog(h.stubClient({ uploadOcrSource: async request => {
+  const dialog = await h.openDialog(client({ uploadOcrSource: async request => {
     uploads += 1;
     return OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
       artifact: { id: "00000000-0000-4000-8000-000000000001", mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } });
@@ -70,7 +100,7 @@ it("keeps the accepted selection and refuses invalid PDFs before planning or upl
 
 it("refuses the same PDF bytes under another filename without replacing the accepted draft", async () => {
   let calls = 0;
-  const dialog = await h.openDialog(h.stubClient({ uploadOcrSource: async request => {
+  const dialog = await h.openDialog(client({ uploadOcrSource: async request => {
     calls += 1;
     return OcrSourceUploadSchema.parse({ fileName: request.fileName, uploadedBy: "local-operator", uploadedAt: "2026-08-03T00:00:00.000Z",
       artifact: { id: `00000000-0000-4000-8000-${String(calls).padStart(12, "0")}`, mediaType: "application/pdf", bytes: request.bytes.length, sha256: createHash("sha256").update(request.bytes).digest("hex") } });
@@ -88,7 +118,7 @@ it("retires an upload when the selected workflow changes and ignores its late re
   const held: { resolve?: (upload: Upload) => void; signal: AbortSignal | undefined } = { signal: undefined };
   const pending = new Promise<Upload>(resolve => { held.resolve = resolve; });
   const other = h.WORKFLOWS.find(candidate => candidate.inputRun.state === "present"); assert.ok(other);
-  const dialog = await h.openDialog(h.stubClient({ uploadOcrSource: (_request, signal) => { held.signal = signal; return pending; } }),
+  const dialog = await h.openDialog(client({ uploadOcrSource: (_request, signal) => { held.signal = signal; return pending; } }),
     { workflows: [workflow, other], panelWorkflowId: workflow.workflowId });
   const file = pdf("retired.pdf", "%PDF retired");
   await attach([file]);
