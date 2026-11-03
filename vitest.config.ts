@@ -69,7 +69,6 @@ const sharedConfig = defineConfig({
   },
   test: {
     env: { TZ: "America/Los_Angeles" },
-    globalSetup: ["tests/support/private-temp-setup.ts"],
     setupFiles: ["tests/support/duo-ceremony-setup.ts"],
     // Cloud and perf projects fail when a selected run collects nothing. The
     // local project may be empty; test:local passes --passWithNoTests=true.
@@ -155,6 +154,7 @@ export default defineConfig({
   ...sharedConfig,
   test: {
     ...sharedConfig.test,
+    globalSetup: ["tests/support/private-temp-setup.ts"],
     // Keep the cap at the root so CLI limits also apply to named projects.
     maxWorkers: Math.min(4, availableParallelism()),
     projects: REBUILD_TEST_PROJECTS.map(({ name, include, exclude }) => ({
