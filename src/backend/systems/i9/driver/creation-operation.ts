@@ -102,7 +102,7 @@ export function createI9CreationOperations(assertCurrent: () => void, page: Page
       await step(() => ui.createProfile(page).click({ timeout: CONTROL_MS }), capture);
       await page.waitForURL(url => url.origin === I9_APP_ORIGIN && url.pathname === "/employee/profile", { timeout: CONTROL_MS });
       for (const key of ["firstName", "middleName", "lastName", "ssn", "dob", "email"] as const) {
-        const value = key === "dob" ? usDate(input.dob) : key === "ssn" ? input.ssn ?? "" : input[key];
+        const value = key === "dob" ? usDate(input.dob) : key === "ssn" ? (input.ssn === null ? "" : input.ssn) : input[key];
         await step(() => field(key).fill(value, { timeout: CONTROL_MS }), capture);
         recordBrowserAction("typed", `i9.profile.${key}`);
       }
