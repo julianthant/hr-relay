@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import type { ChildProcess,SpawnOptions } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { DashboardLauncherOptions } from "../../../scripts/dev/dashboard.js";
@@ -54,6 +54,28 @@ async function waitUntil(predicate: () => boolean): Promise<void> {
 }
 
 describe("dashboard launcher with actual child processes", () => {
+  it("explains how to start web without a backend and launches no children", async () => {
+    const root = mkdtempSync(join(tmpdir(), "missing-backend-"));
+    try {
+      const run = await start(BACKEND, { mode: "web", frontendOwnerFile: join(root, "cache", "frontend-owner") });
+      assert.equal(await run.done, 1);
+      assert.deepEqual(run.output, ['[dashboard] Start npm run backend first and wait for "listening".\n']);
+      assert.equal(run.children.length, 0);
+      assert.equal(run.signals.listenerCount("SIGINT"), 0);
+      assert.equal(run.signals.listenerCount("SIGTERM"), 0);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("preserves a malformed ownership refusal instead of treating it as a missing backend", async () => {
+    const root = mkdtempSync(join(tmpdir(), "invalid-backend-owner-"));
+    try {
+      const frontendOwnerFile = join(root, "frontend-owner");
+      writeFileSync(frontendOwnerFile, "invalid");
+      await assert.rejects(start(BACKEND, { mode: "web", frontendOwnerFile }), { name: "ZodError" });
+      assert.equal(mocks.spawn.mock.calls.length, 0);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("starts split backend and web processes with one ownership nonce and drains each", async () => {
     const root = mkdtempSync(join(tmpdir(), "split-dashboard-"));
     const frontendOwnerFile = join(root, "frontend-owner");
@@ -63,6 +85,7 @@ describe("dashboard launcher with actual child processes", () => {
       await waitUntil(() => existsSync(frontendOwnerFile));
       assert.equal(backend.children.length, 1);
       const backendNonce = (mocks.spawn.mock.calls[0][2] as SpawnOptions).env?.[DASHBOARD_LAUNCH_NONCE_ENV];
+      assert.equal((mocks.spawn.mock.calls[0][2] as SpawnOptions).env?.RELAY_DEV_DEBUG_MIRROR, "1");
       web = await start(BACKEND, { mode: "web", frontendOwnerFile });
       await waitUntil(() => web!.output.join("").includes("frontend-started"));
       assert.equal(web.children.length, 1);

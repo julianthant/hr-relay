@@ -117,7 +117,8 @@ jobs:
               throw new Error('Path-filter outputs are incomplete or invalid.');
             }
             const manual = context.eventName === 'workflow_dispatch';
-            const release = manual || context.payload.pull_request?.base.ref === 'main';
+            const release = manual || (context.eventName === 'pull_request' &&
+              context.payload.pull_request?.head.ref === 'staging' && context.payload.pull_request?.base.ref === 'main');
             const selected = Object.fromEntries(suites.map(suite => [suite,
               (suite !== 'parity' || release) && (manual || filters.shared === 'true' || filters[suite] === 'true')
             ]));
@@ -472,7 +473,7 @@ jobs:
 
   release:
     name: release
-    if: github.event_name == 'pull_request' && github.base_ref == 'main' && needs.changes.outputs.architecture == 'true'
+    if: github.event_name == 'pull_request' && github.head_ref == 'staging' && github.base_ref == 'main' && needs.changes.outputs.architecture == 'true'
     needs: [changes, static, unit, integration, architecture, parity, privacy]
     runs-on: macos-15
     steps:

@@ -10,6 +10,12 @@ Related contracts own [run transitions](workflow-model.md), [task declarations](
 `src/backend/runtime/workers/worker-loop.ts` awaits one run per workflow-scoped worker.
 Separate workers provide parallelism and own separate browser resources.
 
+Delegated dry-run preparation uses the same admission, worker release, child claims and parent
+reclaim as ordinary delegation. A read-only child returns ordinary observations. A preview child
+settles with its authenticated preview result and joins into a parent preview, without furnishing
+ordinary workflow output or write authority. [Workflow model](workflow-model.md#21-preview-terminal-result)
+owns preview eligibility, accounting and receipts.
+
 ## 1. Runtime identities
 
 | Unit | Identity and owner |
@@ -98,6 +104,14 @@ descendant holds a `block-parent` edge. Approval stays on the run that owns the 
 refresh every waiting ancestor. A manual retry pauses its parent through the existing pause control;
 Resume binds its native command identity to the exact completed retry receipts before another claim. Delegated Retry uses
 the same checkpoint, transaction and uncertain-write validation as checkpoint recovery.
+
+Queue parentage derives from authenticated native manifests and their complete retry histories.
+Read-only snapshots share authenticated groups only for identical canonical manifest content and
+return isolated copies. Wait results share the same synchronous snapshot lifetime. Neither cache
+survives snapshot exit, an await or a mutation; scope-path-sensitive replay authentication stays direct.
+Queue reads batch sibling parentage and reuse run, title and receipt joins within that read. Member
+previews slice before joining authority. Calendar population uses indexed parent batches and day
+aggregates rather than materializing every run summary.
 
 Worker composition renews its own lease every `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`.
 Heartbeat age never proves death or transfers a claim. Recovery follows actual child exit or

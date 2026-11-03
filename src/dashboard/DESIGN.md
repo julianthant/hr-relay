@@ -93,7 +93,7 @@ categorical and equal width. Duration text carries elapsed time separately from 
 Pause and Resume live in the real row footer. Pause all is an icon in the queue toolbar; the quit
 confirmation has no run list. A recorded pause reuses the outline Queued pill with a Paused label.
 At compact action widths, Start a run uses its existing icon and accessible name so every toolbar control stays visible.
-Sign-up method chips stay on one line, and Cancel sign-up lives in the Duo step footer with confirmation.
+Sign-up method chips stay on one line, and Cancel sign-up lives in the Duo step footer with confirmation. The setup screen uses the house Select for method choice, with the same Security key and Touch ID names as its cards.
 Appearance descriptions name the current person only after confirmed preference readback; loading, saving and failure never claim a saved change. General has no assistant permission row.
 Assistant start proposals show the canonical plan input, one-run count, mode, browser and capture settings; Start run uses the app Button in both themes. Successful starts and cancellations collapse to a resolved line; uncertain outcomes keep the disabled card.
 Browser captures stay inline. A verified before/after pair sits under its declared submit action,

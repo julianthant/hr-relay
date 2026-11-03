@@ -40,7 +40,7 @@ export async function mountRelayOptions(initial) {
     const focusedMethod = document.activeElement?.closest('.relay-method-card')?.dataset.method;
     const methods = profile.methods;
     if (methods[selected].state === 'complete' && methods.touch.state !== 'complete') selected = 'touch';
-    $('transport').value = selected === 'key' ? 'usb' : 'internal';
+    $('transport').dataset.value = selected === 'key' ? 'usb' : 'internal';
     $('globalStatus').textContent = unavailable ? 'Setup unavailable' : Object.values(methods).some(method => method.state === 'unknown') ? 'Setup failed' : Object.values(methods).every(method => method.state === 'complete') ? 'Both methods completed' : Object.values(methods).some(method => method.state === 'unavailable') ? 'Setup failed' : Object.values(methods).some(method => method.state === 'pending') ? 'Pending' : Object.values(methods).some(method => method.state === 'complete') ? 'One method completed' : 'Sign-in methods not started';
     $('globalDetail').textContent = unavailable === 'action' ? 'Duo could not complete this setup action. Return to Relay to check setup.' : unavailable ? 'Setup authority is unavailable. Return to Relay.' : Object.values(methods).some(method => method.state === 'unknown') ? 'Relay could not confirm that setup completed. Review your Duo devices without repeating this attempt.' : Object.values(methods).every(method => method.state === 'complete') ? 'Both sign-in methods are verified. Return to Relay to finish your profile.' : Object.values(methods).some(method => method.state === 'pending') ? 'Complete the selected method in Duo. Capture alone does not prove enrollment.' : 'Open Duo in this same window. Relay uses your saved profile details to sign in once; complete MFA yourself.';
     const list = $('accountList'); list.replaceChildren(); list.setAttribute('aria-busy', 'false');
@@ -76,7 +76,11 @@ export async function mountRelayOptions(initial) {
       : selected === 'touch'
       ? 'Choose Touch ID in Duo. This method uses the native Mac prompt, with software interception disabled.'
       : 'Then select Add a device in Duo. FastDuo creates the software key only when Duo requests it.';
-    $('transport').disabled = selectionDisabled;
+    $('transport').setAttribute('aria-disabled', String(selectionDisabled));
+    for (const button of $('transport').querySelectorAll('button')) {
+      button.disabled = selectionDisabled;
+      button.setAttribute('aria-pressed', String(button.dataset.method === selected));
+    }
     $('startCapture').disabled = busy || unavailable || attempt.state !== 'idle';
     $('openLogin').disabled = busy || unavailable;
     $('captureState').hidden = !pending;
@@ -114,7 +118,7 @@ export async function mountRelayOptions(initial) {
     } catch { if ((!stateRead || generation === actionGeneration) && (type !== 'STATE' || !unavailable)) unavailable = type === 'STATE' ? 'state' : 'action'; }
     finally { if (stateRead) polling = false; else busy = false; render(); if (focusedMethod && document.activeElement === document.body) $('accountList').querySelector(`[data-method="${focusedMethod}"]`).focus({ preventScroll: true }); }
   }
-  $('transport').addEventListener('change', () => { selected = $('transport').value === 'usb' ? 'key' : 'touch'; render(); });
+  for (const button of $('transport').querySelectorAll('button')) button.addEventListener('click', () => { selected = button.dataset.method; render(); });
   $('openLogin').addEventListener('click', () => { void command('RELAY_OPEN_PORTAL'); });
   $('startCapture').addEventListener('click', () => { void command('RELAY_START', selected); });
   $('cancelCapture').addEventListener('click', () => { void command('RELAY_CANCEL', selected, profile.methods[selected].attemptId); });

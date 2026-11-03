@@ -906,6 +906,18 @@ const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }
 
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
+    { surface: "wire/queue-surface", path: "parent.label", origin: "repository-authored" },
+    { surface: "wire/queue-surface", path: "parent.title", origin: "captured-hr-value" },
+    { surface: "wire/dashboard-day", path: "queueSurfaces[].parent.label", origin: "repository-authored" },
+    { surface: "wire/dashboard-day", path: "queueSurfaces[].parent.title", origin: "captured-hr-value" },
+    { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].parent.label", origin: "repository-authored" },
+    { surface: "wire/stream-envelope", path: "payload.queueSurfaces[].parent.title", origin: "captured-hr-value" },
+    { surface: "wire/stream-envelope", path: "payload.replacement.parent.label", origin: "repository-authored" },
+    { surface: "wire/stream-envelope", path: "payload.replacement.parent.title", origin: "captured-hr-value" },
+    { surface: "wire/run-logs-stream", path: "envelope.payload.queueSurfaces[].parent.label", origin: "repository-authored" },
+    { surface: "wire/run-logs-stream", path: "envelope.payload.queueSurfaces[].parent.title", origin: "captured-hr-value" },
+    { surface: "wire/run-logs-stream", path: "envelope.payload.replacement.parent.label", origin: "repository-authored" },
+    { surface: "wire/run-logs-stream", path: "envelope.payload.replacement.parent.title", origin: "captured-hr-value" },
     { surface: 'wire/bootstrap', path: 'workflows[].start.requiredWorkbookTypeIds[]', origin: 'repository-authored' },
     ...PLANNED_OUTPUT_ORIGINS.flatMap(path => ['wire/planned-run-output', 'wire/start-plan'].map(surface => ({ surface,
       path: surface === 'wire/start-plan' ? `planned[].outputs[].${path}` : path, origin: 'captured-hr-value' as const }))),
@@ -2171,6 +2183,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/item-attempt-history.ts", state: "audited", reason: "the attempt-history wire serves retained per-item status and dates" },
     { module: "src/models/dashboard/native-path-picker.ts", state: "audited", reason: "the local native picker returns an operator-selected absolute pathname, never file contents" },
     { module: "src/models/dashboard/primitives.ts", state: "audited", reason: "shared wire primitives are carried by the surfaces that embed them" },
+    { module: "src/models/dashboard/queue-parent.ts", state: "no-surface", reason: "Only opaque run identity and closed visibility; complete Queue text leaves are audited through projection.ts." },
     { module: "src/models/dashboard/projection.ts", state: "audited", reason: "the queue row and day projection are the operator's main surface" },
     { module: "src/models/dashboard/run-detail.ts", state: "audited", reason: "run detail and its sections carry everything one run touched" },
     { module: "src/models/dashboard/ucpath-findings.ts", state: "no-surface", reason: "Retained findings are audited through their containing run-detail section on operator loopback." },

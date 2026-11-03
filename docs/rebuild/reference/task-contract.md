@@ -499,9 +499,10 @@ and refusal when closure is uncertain.
 ### 6.2 Dry runs
 
 `dryRun` belongs to the run envelope, never task input or context.
-`deriveDryRunSupport` in `src/workflow-kit/workflow.ts` derives support from transaction nodes.
-All transaction nodes must declare `stop-after-prepare`. A graph with no transaction, or a node
-marked unsupported, has no supported transaction preview.
+`workflowDryRunSupport` in `src/workflow-kit/workflow.ts` derives support from local transactions
+and registered descendants. All reachable transaction nodes must declare `stop-after-prepare`.
+A graph containing only reads has no standalone preview option; delegated read-only children keep
+ordinary typed output under the parent's dry-run flag.
 
 `executeDryRun` in `src/backend/runtime/writes/write-sequencer.ts` probes before staging.
 An already-present probe produces an honest preview without a prepare or subject observation.

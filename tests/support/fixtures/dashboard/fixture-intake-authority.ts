@@ -77,6 +77,7 @@ export async function createIntakeAuthority(profileFixture: () => Promise<BoundP
       clock, appVersion: "0.1.0", descriptorSetHash: descriptorSetHash([descriptor.contractFingerprint]),
       ledger: createTransactionHistory(database.authority),
       authority: {
+        queueParents: envelopes => database.authority.dependencies.parents(envelopes),
         listNotifications: () => [], listNotificationCheckpoints: () => [],
         listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),
         listGateResults: runId => database.authority.gateResults.listByRun(runId),

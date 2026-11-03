@@ -97,6 +97,45 @@ describe("delete — a terminal run leaves authority behind one tombstone", () =
 
 
 
+  it("deletes ordinary grouped children without inventing delegation authority", async () => {
+    const harness = await createHarness();
+    const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
+    const parent = harness.database.authority.runs.get(parentId); assert.ok(parent);
+    const childId = "aaaaaaaa-5555-4555-8555-aaaaaaaaaaaa";
+    const child = kernelRejectMemberRecord(parent, parentId, childId, "ordinary:delete", "kr-170000-5555", "members", NOW);
+    assert.equal(harness.database.authority.runs.enqueue(child).state, "inserted");
+    const parentVersion = settle(harness, parentId);
+    settle(harness, childId);
+    assert.deepEqual(harness.database.authority.dependencies.listByParentRun(parentId), []);
+    assert.deepEqual(harness.database.authority.delegationManifests.listByParentRun(parentId), []);
+    const deleted = harness.kernel.execute(runCommand("delete", parentId, parentVersion));
+    assert.equal(deleted.state, "applied");
+    if (deleted.state === "applied") assert.deepEqual(deleted.affectedTargets, [{ family: "run", runId: childId }, { family: "run", runId: parentId }]);
+    for (const runId of [childId, parentId]) {
+      assert.equal(harness.database.authority.runs.get(runId), undefined);
+      assert.ok(harness.database.authority.deletedRuns.get(runId));
+    }
+  });
+
+  it("refuses an ordinary child with a foreign trace before deleting either run", async () => {
+    const harness = await createHarness();
+    const parentId = startOne(harness, rejectActiveDescriptor, "10800000");
+    const parent = harness.database.authority.runs.get(parentId); assert.ok(parent);
+    const childId = "aaaaaaaa-6666-4666-8666-aaaaaaaaaaaa";
+    const child = kernelRejectMemberRecord(parent, parentId, childId, "foreign:delete", "kr-170000-6666", "members", NOW);
+    child.envelope.parent.tracePrefix = "kr-170000-ffff";
+    assert.equal(harness.database.authority.runs.enqueue(child).state, "inserted");
+    const parentVersion = settle(harness, parentId);
+    settle(harness, childId);
+    const generation = harness.database.getMeta().authorityGeneration;
+    assert.throws(() => harness.kernel.execute(runCommand("delete", parentId, parentVersion)), /ordinary-tree-child-binding-mismatch/u);
+    assert.equal(harness.database.getMeta().authorityGeneration, generation);
+    for (const runId of [childId, parentId]) {
+      assert.ok(harness.database.authority.runs.get(runId));
+      assert.equal(harness.database.authority.deletedRuns.get(runId), undefined);
+    }
+  });
+
   it("deletes a tree leaves-first, and refuses the tree while any member is not terminal", async () => {
     const harness = await createHarness();
     const parentId = startOne(harness, rejectActiveDescriptor, "10800000");

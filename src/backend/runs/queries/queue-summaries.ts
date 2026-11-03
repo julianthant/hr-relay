@@ -15,7 +15,7 @@ export function queryQueueSummaries(database:AuthorityDatabase,input:z.input<typ
       const batch=row.sessionId===null?null:database.authority.runSessions.get(row.sessionId);
       if(row.sessionId!==null && (batch===undefined || batch?.workflow!==row.workflow))throw new Error("run-summary-batch-unavailable");
       return {runId:row.runId,workflow:row.workflow,title:row.title,localDay:row.localDay,status:deriveRunStatus(row),
-        shape:row.shape,parentRunId:row.parentRunId,attempt:row.attempt,priority:row.priority,
+        shape:row.shape,parent:row.parent,attempt:row.attempt,priority:row.priority,
         startedAt:row.startedAt,endedAt:row.endedAt,durationMs:row.durationMs,warningCount:row.warningCount,
         session:batch===null||batch===undefined?null:{sessionId:batch.sessionId,groupInQueue:batch.groupInQueue,version:batch.version,startedAt:batch.startedAt},
         children:row.children,dependencyRunIds:row.dependencyRunIds};

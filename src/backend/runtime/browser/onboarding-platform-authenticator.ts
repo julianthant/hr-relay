@@ -7,8 +7,8 @@ export type OnboardingPlatformAuthenticator =
   | Readonly<{ mechanism: "native-platform" }>
   | Readonly<{ mechanism: "chromium-platform"; credential(credentialId: string, rpId: string, createdAt: string): Promise<DraftDuoPendingCredential> }>;
 
-export async function prepareOnboardingPlatformAuthenticator(context: BrowserContext, page: Page | Frame, platform: NodeJS.Platform = process.platform): Promise<OnboardingPlatformAuthenticator> {
-  const available = z.boolean().parse(await page.evaluate(async () => typeof PublicKeyCredential === "function"
+export async function prepareOnboardingPlatformAuthenticator(context: BrowserContext, page: Page | Frame, platform: NodeJS.Platform = process.platform, observedAvailable?: boolean): Promise<OnboardingPlatformAuthenticator> {
+  const available = observedAvailable ?? z.boolean().parse(await page.evaluate(async () => typeof PublicKeyCredential === "function"
     && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()));
   if (platform === "darwin" && available) return { mechanism: "native-platform" };
   const session = await context.newCDPSession(page);

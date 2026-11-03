@@ -1,5 +1,5 @@
 import {
-  WORKFLOW_MODULES,
+  READABLE_WORKFLOW_MODULES,
 } from "../../registries/workflow-registry.js";
 import { stepProofModuleOf } from "../../registries/step-proof-modules.js";
 
@@ -40,7 +40,7 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
 
       resolve: (workflowId) => {
 
-        const module = WORKFLOW_MODULES.find((candidate) => candidate.descriptor.id === workflowId)
+        const module = READABLE_WORKFLOW_MODULES.find((candidate) => candidate.descriptor.id === workflowId)
           ?? stepProofModuleOf(workflowId);
         if (module === undefined) return undefined;
         const { descriptor } = module;

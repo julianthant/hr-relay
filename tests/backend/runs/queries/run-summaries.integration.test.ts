@@ -34,13 +34,23 @@ import { ledgerCommitFixture } from "../../../support/fixtures/ledger-projection
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { atomicWriteCheckpoint } from "../../../support/helpers/timeline-write-fixture.js";
 
-import { RUN_SESSION } from "../../../support/fixtures/phase1f-run-fixtures.js";
 
 import { DatabaseSync } from "node:sqlite";
 import { activityDatePartAtInstant } from "../../../../src/models/dashboard/activity-volume.js";
 
 import { runtimeTimeZone } from "../../../../src/rules/time/clock.js";
 import { makeWorld, receiptWithWarningsOf } from "../../../support/helpers/backend/dashboard-harness.js";
+
+import { randomUUID } from "node:crypto";
+import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
+import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
+import { childPolicyModules, childExecutionStores } from "../../../support/fixtures/child-execution-workflows.js";
+import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
+import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
+import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
+import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
+import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 
 const profileFixtures = createProfileFixtureSet();
 afterAll(() => profileFixtures.close());
@@ -297,31 +307,38 @@ it("reads current heartbeats and publishes creation and presentation atomically"
     assert.deepEqual(f.db.readRunSummaries(),stable);
   }finally{await f.dispose();}
 });
-it("maintains parent rollups and dependencies while batch grouping stays a bounded current relation",async ()=>{
-  const f=await foundationFixture({ profileFixture: profileFixtures.create });try{
-    const batch={...RUN_SESSION,sessionId:id(5000),workflow:"person-lookup"};
-    f.db.authority.runSessions.insert(batch);
-    const parent=RunRecordSchema.parse({...f.run,envelope:{...f.run.envelope,runId:id(5001),itemId:id(5001),shape:"operation",enqueuedAt:NOW},sessionId:batch.sessionId,lifecycle:{state:"queued"},version:1,claimGeneration:0,createdAt:NOW,updatedAt:NOW});
-    f.db.authority.runs.enqueue(parent);
-    const child=RunRecordSchema.parse({...parent,envelope:{...parent.envelope,runId:id(5002),itemId:id(5002),shape:"operation-member",parent:{runId:parent.envelope.runId,tracePrefix:parent.envelope.traceId,edgeId:"member"}}});
-    f.db.authority.runs.enqueue(child);
-    const row=()=>f.db.readRunSummaries().find(row=>row.runId===parent.envelope.runId);
-    assert.deepEqual(row()?.children,[{runId:child.envelope.runId,state:"queued",outcome:null}]);
-    const policy={onChildFailed:"fail-parent",cascadeCancel:"cascade",afterChildRetry:"resume-parent",visibility:"inline"};
-    f.db.withAuthorityTransaction(()=>{
-      f.db.authority.delegationManifests.insert({manifestId:id(5003),parentRunId:parent.envelope.runId,edgeId:"member",inputSchemaHash:"a".repeat(64),resultSchemaHash:"a".repeat(64),cardinality:"one",join:"one",policy,children:[{dependencyId:id(5004),childRunId:child.envelope.runId,childItemId:child.envelope.itemId,canonicalInputFingerprint:"a".repeat(64)}],createdAt:NOW,manifestFingerprint:"a".repeat(64)});
-      f.db.authority.dependencies.insert({dependencyId:id(5004),manifestId:id(5003),edgeId:"member",parentRunId:parent.envelope.runId,childRunId:child.envelope.runId,childItemId:child.envelope.itemId,policy,state:"active",version:1,createdAt:NOW,updatedAt:NOW});
-    });
-    assert.deepEqual(row()?.dependencyRunIds,[child.envelope.runId]);
-    f.db.authority.runs.transition({runId:child.envelope.runId,expectedVersion:1,lifecycle:{state:"terminal",outcome:"cancelled",endedAt:NOW},now:NOW});
-    assert.deepEqual(row()?.children,[{runId:child.envelope.runId,state:"terminal",outcome:"cancelled"}]);
-    const query=()=>queryQueueSummaries(f.db,{limit:10,sessionId:batch.sessionId,topLevel:true});
-    assert.equal(query().items.length,1);assert.equal(query().items[0].session?.groupInQueue,false);
-    f.db.authority.runSessions.setGrouping(batch.sessionId,1,true);
-    assert.equal(query().items[0].session?.groupInQueue,true);
-    const report=queryActivitySummaries(f.db,{from:"2026-09-09",to:"2026-09-09",generatedAt:NOW},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>({systems:[]})}});
-    assert.equal(report.totalRuns,1);assert.equal(report.terminalRuns,0);
-  }finally{await f.dispose();}
+it("maintains parent rollups and dependencies while batch grouping stays a bounded current relation", async () => {
+  const world = createRunExecutorTestWorld(profileFixtures.create);
+  try {
+    const workflows = childPolicyModules("cascade");
+    const h = await world.executorHarness({ descriptor: workflows.root.descriptor, stores: childExecutionStores });
+    const { database, clock, path, stateRoot } = h.authority;
+    const patch = { "actor.label": { set: "Synthetic operator" } } as const;
+    assert.equal(executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
+      settings: createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, hostConfigFacts({}), clock), createCredentialStore({ stateRoot })) },
+    { commandId: randomUUID(), family: "settings", type: "apply-settings", source: "settings-surface", requestedBy: "local-operator",
+      requestedAt: clock.now().toISOString(), target: { expectedRevision: 1 },
+      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }).state, "applied");
+    const execution = canonicalChildExecution(h.deps, database, path, id => workflows.modules.find(module => module.descriptor.id === id)?.descriptor);
+    const parent = execution.start(workflows.root.descriptor, { emplId: "10800000", text: "summary relations", mode: "ok" }, { dryRun: false });
+    assert.ok(parent.sessionId);
+    const batch = database.authority.runSessions.get(parent.sessionId); assert.ok(batch);
+    assert.equal((await execution.step(parent, world.SIGNAL)).outcome.state, "yielded-delegation");
+    const child = database.authority.runs.listChildren(parent.envelope.runId)[0]; assert.ok(child);
+    const row = () => database.readRunSummaries().find(row => row.runId === parent.envelope.runId);
+    assert.deepEqual(row()?.children, [{ runId: child.envelope.runId, state: "queued", outcome: null }]);
+    assert.deepEqual(row()?.dependencyRunIds, [child.envelope.runId]);
+    assert.equal(execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard", requestedBy: "local-operator",
+      requestedAt: clock.now().toISOString(), target: { runId: child.envelope.runId, expectedVersion: child.version } }).state, "applied");
+    assert.deepEqual(row()?.children, [{ runId: child.envelope.runId, state: "terminal", outcome: "cancelled" }]);
+    const query = () => queryQueueSummaries(database, { limit: 10, sessionId: batch.sessionId, topLevel: true });
+    assert.equal(query().items.length, 1); assert.equal(query().items[0].session?.groupInQueue, false);
+    database.authority.runSessions.setGrouping(batch.sessionId, batch.version, true);
+    assert.equal(query().items[0].session?.groupInQueue, true);
+    const report = queryActivitySummaries(database, { from: clock.todayLocal(), to: clock.todayLocal(), generatedAt: clock.now().toISOString() },
+      { descriptors: { resolve: () => undefined }, ledger: { foldActivityRange: () => ({ systems: [] }) } });
+    assert.equal(report.totalRuns, 1); assert.equal(report.terminalRuns, 0);
+  } finally { await world.cleanup(); }
 });
 
 it("consumes relevant timeline cursors transactionally and exact replay does not rewrite",async ()=>{

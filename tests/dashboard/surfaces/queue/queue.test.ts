@@ -1,3 +1,4 @@
+import { isQueueMember } from "../../../../src/models/dashboard/queue-parent.js";
 import { createAwaitingQueueFixtures } from "../../../support/helpers/dashboard/awaiting-queue-fixtures.js";
 // @vitest-environment jsdom
 import assert_m0 from 'node:assert/strict';
@@ -12,7 +13,7 @@ import assert_m1 from "node:assert/strict";
 import { createElement as createElement_m1 } from "react";
 import { renderToStaticMarkup as renderToStaticMarkup_m1 } from "react-dom/server";
 import { describe as describe_m1,it as it_m1 } from "vitest";
-import { orderMembers as orderMembers_m1,type MemberSurfaceWire as MemberSurfaceWire_m1 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import { orderMembers as orderMembers_m1,type QueueSurfaceWire as MemberSurfaceWire_m1 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueueRow as QueueRow_m1 } from "../../../../src/dashboard/surfaces/queue/queue.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m1,type QueueSurfaceWire as QueueSurfaceWire_m1 } from "../../../../src/models/dashboard/projection.js";
 import { FIXTURE_NOW as FIXTURE_NOW_m1 } from "../../../parity/helpers/fixture-identity.js";
@@ -75,7 +76,7 @@ try {
 
   const operation = FIXTURE_DAY_WIRE_m0.queueSurfaces.find(row => row.surfaceKind === 'operation' && row.memberRunIds.length === 3);
   assert_m0.ok(operation && operation.surfaceKind === 'operation');
-  const members = FIXTURE_DAY_WIRE_m0.queueSurfaces.filter(row => row.surfaceKind === 'member' && operation.memberRunIds.includes(row.runId));
+  const members = FIXTURE_DAY_WIRE_m0.queueSurfaces.filter(row => isQueueMember(row) && operation.memberRunIds.includes(row.runId));
   const surfaces = [operation, ...members]; const label = () => 'Fixture'; const handlers = { onSelect() {} };
   const wells = new Set<string>();
   host = document.createElement('div'); document.body.append(host); root = createRoot_m0(host);
@@ -202,7 +203,7 @@ describe_m1("approved mixed queue presentation", () => {
   it_m1("shows the served group counter and ordered member statuses in Name/Status columns", () => {
     const operation = FIXTURE_DAY_WIRE_m1.queueSurfaces.find(row => row.surfaceKind === "operation" && row.memberRunIds.length === 3);
     assert_m1.ok(operation && operation.surfaceKind === "operation");
-    const members = FIXTURE_DAY_WIRE_m1.queueSurfaces.filter((row): row is MemberSurfaceWire_m1 => row.surfaceKind === "member" && operation.memberRunIds.includes(row.runId));
+    const members = FIXTURE_DAY_WIRE_m1.queueSurfaces.filter((row): row is MemberSurfaceWire_m1 => isQueueMember(row) && operation.memberRunIds.includes(row.runId));
     const host = render(operation, members);
     assert_m1.equal(host.querySelector('[data-queue-member-count]')?.textContent?.trim(), `${operation.memberRollup.terminal}/${operation.memberRollup.total}`);
     assert_m1.deepEqual([...host.querySelectorAll("th")].map(cell => cell.textContent), ["Name", "Status"]);

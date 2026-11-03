@@ -30,12 +30,14 @@ export type SystemHostWire = z.infer<typeof SystemHostWireSchema>;
 /** Whole-workflow preview support and its first preparation boundary. */
 export const DryRunPostureWireSchema = z.union([
   z.strictObject({ state: z.literal("supported"), firstTransactionNodeId: NodeIdSchema }),
+  z.strictObject({ state: z.literal("supported"), firstDelegationNodeId: NodeIdSchema }),
   z.strictObject({ state: z.literal("unsupported"), reason: z.literal("no-transaction-node") }),
   z.strictObject({
     state: z.literal("unsupported"),
     reason: z.literal("node-declares-unsupported"),
     nodeId: NodeIdSchema,
   }),
+  z.strictObject({ state: z.literal("unsupported"), reason: z.literal("descendant-declares-unsupported"), workflowId: WorkflowIdSchema, nodeId: NodeIdSchema }),
 ]);
 export type DryRunPostureWire = z.infer<typeof DryRunPostureWireSchema>;
 

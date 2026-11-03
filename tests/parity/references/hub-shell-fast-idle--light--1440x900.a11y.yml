@@ -41,9 +41,7 @@
   - heading "Add a security key" [level=2]
   - paragraph: Open Duo, approve with an existing method, then choose Other options → Manage devices.
   - text: Device type
-  - combobox "Device type":
-    - option "Security key" [selected]
-    - option "Touch ID"
+  - combobox "Device type": Security key
   - button "Open duo.ucsd.edu"
   - button "Start capture"
   - status: Capture alone does not mean the device is added.

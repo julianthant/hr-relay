@@ -1,4 +1,5 @@
 import { EidSchema } from "../../../src/rules/identity/ids.js";
+import type { ChildVisibility } from "../../../src/models/workflow/delegation-policy.js";
 import { z } from "zod";
 import { compileWorkflow, composeWorkflowModule, defineWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
@@ -93,12 +94,12 @@ export function childUnawaitedModules(cascadeCancel: "cascade" | "independent") 
 }
 
 
-export function childPolicyModules(cascadeCancel: "cascade" | "independent") {
+export function childPolicyModules(cascadeCancel: "cascade" | "independent", visibility: ChildVisibility = "inline") {
   const id = `fixture-child-policy-${cascadeCancel}`;
   const compiled = compileWorkflow(defineWorkflow({ ...common, id, code: "fcp",
     steps: ({ delegate, result }) => {
       const child = delegate({ id: "child", target: leaf, edgeId: "child", cardinality: "one", await: "terminal", join: "one",
-        policy: { ...policy, cascadeCancel } }, [],
+        policy: { ...policy, cascadeCancel, visibility } }, [],
         { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
       return { steps: [[{ key: "child", label: "Child" }, [child]]], result: result(Plan1Output, [child], ({ outputs }) => {
         if (outputs.child.state !== "done") throw new Error("child-not-done");

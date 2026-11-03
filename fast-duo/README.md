@@ -19,9 +19,14 @@ as `manifest.json`:
   the private profile draft. Its controls request state, open Duo, start, cancel
   or confirm an enrollment through the backend-owned browser broker.
 
-Use full Playwright Chromium (`channel: "chromium"`), including in headless
-workflow sessions. Playwright's headless shell cannot load extensions. Chromium
-140 or later is required by both manifests.
+Workflow sessions and non-macOS enrollment use full Playwright Chromium
+(`channel: "chromium"`); the headless shell cannot load extensions. macOS
+enrollment and its closure probes use installed, signed Google Chrome
+(`channel: "chrome"`) so native Touch ID can access its entitled keychain group.
+The owned enrollment context loads only its staged extension with
+`Extensions.loadUnpacked` over Playwright's private DevTools pipe. Chrome must be
+installed; a launch or load failure refuses setup without changing browser. Both
+manifests require Chromium 140 or later.
 
 ## Credentials and enrollment
 
@@ -33,12 +38,15 @@ before success. Closing setup clears that state.
 
 Enrollment binds the exact account, tab, frame, document, Duo origin and RP ID.
 Software registration waits for backend persistence and ceremony acknowledgments.
-Native Touch ID passes through with software interception disabled. When a successful platform
+Platform discovery prepares the verified top-level Duo page before replying to
+Duo's availability check. Native Touch ID passes through with software interception disabled. When a successful platform
 probe reports no authenticator, or the host is not macOS, Relay uses Chromium’s virtual internal authenticator
 and retains its key in canonical encrypted custody. A failed probe or native ceremony
 never triggers an emulated retry. A captured
 key becomes usable only after the required confirmation or exact credential
-request; an uncertain enrollment must not be repeated.
+request; request aborts, timeouts and scoped refusals retain UNKNOWN before another
+capture can start. Redacted hop events use the profile debug timeline and its
+development terminal mirror; an uncertain enrollment must not be repeated.
 
 ## Development
 

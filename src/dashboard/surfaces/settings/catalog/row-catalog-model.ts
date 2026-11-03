@@ -1,6 +1,7 @@
 /** The ROW-AND-PANEL vocabulary, as this build actually serves it.
  * The rebuild-demo carries a "Row & panel catalog" (legacy */
-import { ContainmentSchema, type QueueSurfaceWireSchema } from "../../../../models/dashboard/projection.js";
+import type { QueueSurfaceWireSchema } from "../../../../models/dashboard/projection.js";
+import { ChildVisibilitySchema, type ChildVisibility } from "../../../../models/workflow/delegation-policy.js";
 import { PanelKindSchema, type RunDetailSectionSchema } from "../../../../models/dashboard/primitives.js";
 import { sectionsForPanelKind } from "../../../../models/dashboard/run-detail.js";
 import type { z } from "zod";
@@ -24,7 +25,7 @@ export function parseCatalogView(raw: string | null): CatalogView | undefined {
 
 /** The row shapes the queue projection can produce, straight off the wire union. */
 export type RowSurfaceKind = QueueSurfaceWire["surfaceKind"];
-export type ContainmentKind = z.infer<typeof ContainmentSchema>;
+export type ContainmentKind = "root" | ChildVisibility;
 export type PanelKind = z.infer<typeof PanelKindSchema>;
 type RunDetailSection = z.infer<typeof RunDetailSectionSchema>;
 
@@ -46,10 +47,10 @@ const ROW_SURFACE: Record<RowSurfaceKind, RowSurfaceSpec> = {
   single: {
     key: "single",
     name: "Single run",
-    subject: "One run with no members and no parent — the ordinary row.",
-    producedWhen: "The run's own shape is single.",
+    subject: "One run without a visible member list.",
+    producedWhen: "The run presents a single row; its parent fact determines where it appears.",
     carries: [
-      "containment: root — it is counted in the day's totals",
+      "parent: null for a root, or one authenticated parent and visibility",
       "memberRunIds and memberRollup are absent: this shape has no members to roll up",
     ],
   },
@@ -60,34 +61,24 @@ const ROW_SURFACE: Record<RowSurfaceKind, RowSurfaceSpec> = {
     producedWhen: "The run's own shape is preview.",
     carries: [
       "The same field set as single — the shapes differ in what the run IS, not in what the row draws",
-      "containment: root",
+      "The parent fact determines whether it is a top-level row or a member",
     ],
   },
   operation: {
     key: "operation",
     name: "Operation group",
     subject: "A fan-out: one row standing for the members it delegated to.",
-    producedWhen: "The run's own shape is operation.",
+    producedWhen: "The native run is an operation, or it has visible inline children.",
     carries: [
       "memberRunIds[] — the exact member rows, never a count on its own",
       "memberRollup — total / terminal / failed, refused by the schema unless total equals the member ids",
       "memberPreview — the first few members BY NAME, derived from the member rows' own served titles, or an absent reason",
     ],
   },
-  member: {
-    key: "member",
-    name: "Member run",
-    subject: "One delegated child of a group, counted inside it instead of at top level.",
-    producedWhen: "The run's own shape is operation-member.",
-    carries: [
-      "containment: member — the schema refuses a member surface that says anything else",
-      "lineage: child — a member surface with no parent is refused outright",
-    ],
-  },
 };
 
 /** Display order. */
-export const ROW_SURFACE_ORDER: readonly RowSurfaceKind[] = ["single", "preview", "operation", "member"];
+export const ROW_SURFACE_ORDER: readonly RowSurfaceKind[] = ["single", "preview", "operation"];
 
 export function rowSurfaceSpecs(): readonly RowSurfaceSpec[] {
   return ROW_SURFACE_ORDER.map((key) => {
@@ -115,8 +106,8 @@ const CONTAINMENT: Record<ContainmentKind, ContainmentSpec> = {
     lives: "At the top level of the queue.",
     counts: "In the day's own totals.",
   },
-  member: {
-    key: "member",
+  inline: {
+    key: "inline",
     name: "Member",
     rule: "Created by a parent fanning out.",
     lives: "Nested inside the group, never at top level.",
@@ -129,10 +120,17 @@ const CONTAINMENT: Record<ContainmentKind, ContainmentSpec> = {
     lives: "In its OWN row in its own panel; the parent shows a chip.",
     counts: "In the day's totals, in its own right.",
   },
+  "hidden-unless-failed": {
+    key: "hidden-unless-failed",
+    name: "Hidden unless failed",
+    rule: "A child contributes a member line when it fails.",
+    lives: "Within its parent's operation group.",
+    counts: "In its parent's rollup when visible.",
+  },
 };
 
 export function containmentSpecs(): readonly ContainmentSpec[] {
-  return ContainmentSchema.options.map((key) => CONTAINMENT[key]);
+  return [CONTAINMENT.root, ...ChildVisibilitySchema.options.map(key => CONTAINMENT[key])];
 }
 
 export interface PanelKindSpec {
@@ -194,12 +192,12 @@ export const UNSERVED_VOCABULARY: readonly UnservedVocabulary[] = [
     why: "No wire field carries a variant. A row's identity here is its workflowId and its surfaceKind, and a ninth variant invented on this page would be a vocabulary the queue cannot honour.",
   },
   {
-    demo: "A fourth containment kind, rejected.",
-    why: "A submission the parent could not turn into work never becomes a run — fanOutQueuedRuns refuses the whole fan-out inside the caller's transaction — so no queue row could carry it. ContainmentSchema names three arms for that reason and gains the fourth with its first producer.",
+    demo: "A row for a refused submission.",
+    why: "A refused submission creates no run. Fan-out admission commits the complete declared set atomically.",
   },
   {
     demo: "A status ROLLUP PRECEDENCE chain, resolved first-match-wins over member statuses.",
-    why: "No module derives a group status from its members' statuses. memberRollup serves three counts, and a precedence chain drawn over them would be describing a fold this build does not run.",
+    why: "Run status comes from lifecycle and authenticated delegation waits. memberRollup supplies counts.",
   },
   {
     demo: "A per-workflow map — every workflow beside the row variants it puts in the queue.",

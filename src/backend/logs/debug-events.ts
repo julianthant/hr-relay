@@ -5,10 +5,12 @@ import { randomUUID } from "node:crypto";
 import { DebugEventSchema, debugEventLevel, type DebugEvent, type TimelineRepository, type TimelineAppend } from "../../models/events/timeline.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { localDatePart } from "../../rules/time/clock.js";
+import { developmentDebugMirrorEnabled } from "../../models/config/secrets.js";
 
 export function mirrorDebugEvent(record: Pick<TimelineAppend, "recordedAt" | "scope" | "workflow"> & { event: DebugEvent },
   options: { development?: boolean; writeStderr?: (line: string) => void } = {}): void {
-  if (!(options.development ?? process.execArgv.includes("--conditions=development")) || process.versions.electron !== undefined) return;
+  if (process.versions.electron !== undefined || process.argv.includes("--prod")
+    || !(options.development ?? (developmentDebugMirrorEnabled() || process.execArgv.includes("--conditions=development")))) return;
   const { category, phase, code, area, reason, correlationId } = record.event;
   (options.writeStderr ?? (line => { process.stderr.write(line); }))(JSON.stringify({ time: record.recordedAt,
     level: debugEventLevel(record.event), category, phase, code, area, reason, correlationId, scope: record.scope, workflow: record.workflow }) + "\n");

@@ -12,10 +12,9 @@ const uuid = (index: number) => `00000000-0000-4000-8000-${String(index).padStar
 const absent = (reason: string) => ({ state: 'absent', reason });
 const now = '2026-08-03T18:00:00.000Z';
 const base = QueueSurfaceWireSchema.parse({
-  runId: uuid(1), itemId: uuid(1), workflowId: 'performance-fixture', traceId: 'pf-100001-0001', attempt: 1, lineage: { state: 'root' },
+  runId: uuid(1), itemId: uuid(1), workflowId: 'performance-fixture', traceId: 'pf-100001-0001', attempt: 1, parent: null,
   actorId: 'fixture', appVersion: { state: 'present', value: '0.1.0' }, descriptorVersion: 1, descriptorHash: 'a'.repeat(64), configFingerprint: 'b'.repeat(64),
-  resolvedInstances: [], dryRun: true, priority: 'interactive', runNumber: { state: 'present', value: 1 }, session: absent('No session'),
-  containment: 'root', linkedRuns: [], facts: absent('No result'), startedAt: now, updatedAt: now, endedAt: absent('Not ended'), gateOpenedAt: absent('No gate'),
+  resolvedInstances: [], dryRun: true, priority: 'interactive', runNumber: { state: 'present', value: 1 }, session: absent('No session'), linkedRuns: [], facts: absent('No result'), startedAt: now, updatedAt: now, endedAt: absent('Not ended'), gateOpenedAt: absent('No gate'),
   displayName: absent('Not renamed'), title: 'Synthetic record', subtitle: absent('No subtitle'), status: 'queued', liveMessage: absent('No message'), warnings: absent('No warnings'),
   pipeline: [], panelKind: 'run', availableSections: ['logs'], actions: [], rowRevision: 1, surfaceKind: 'single',
 });

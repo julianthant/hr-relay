@@ -1,5 +1,6 @@
 
 import assert from "node:assert/strict";
+import { queueParentFixture } from "../../../support/helpers/dashboard/queue-parent-fixture.js";
 import { describe,it } from "vitest";
 import { z } from "zod";
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
@@ -84,7 +85,7 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
     workflowId: "person-lookup",
     traceId: "pl-120000-1111",
     attempt: 1,
-    lineage: facts.isChild ? { state: "child", parentRunId: uuid(3) } : { state: "root" },
+    parent: facts.isChild ? queueParentFixture(uuid(3), { visibility: "linked" }) : null,
     actorId: "local-operator",
     appVersion: { state: "present", value: "0.1.0" },
     descriptorVersion: 1,
@@ -95,9 +96,6 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
     priority: "interactive",
     runNumber: { state: "present", value: 1 },
     session: { state: "absent", reason: "This fixture has no run session." },
-    // A delegated child of a non-operation parent is `linked`: it keeps its own
-    // row, so `executeRetry` refusing it is the shape this fixture exercises.
-    containment: facts.isChild ? "linked" : "root",
     linkedRuns: [],
     facts: { state: "absent", reason: `run is ${status} and has no served facts in this fixture` },
     startedAt: NOW,
@@ -119,7 +117,7 @@ function surfaceFor(status: Status, over: Partial<QueueRowActionFacts> = {}): un
     availableSections: ["logs"],
     actions: queueRowActions(STANDARD_WORKFLOW_ACTIONS, facts),
     rowRevision: facts.rowRevision,
-    surfaceKind: facts.isChild ? "member" : "single",
+    surfaceKind: "single",
   });
 }
 

@@ -375,9 +375,11 @@ wrong-attempt freshness overrides, duplicate patches, and a patch aimed at the e
 authority-supplied attempt greater than the current attempt.
 
 `dryRun` is envelope state, not workflow input. `workflowDryRunSupport` derives support from all
-transaction nodes. A standalone graph with no transaction refuses preview as `no-transaction-node`; a graph
-with an unsupported transaction refuses as `node-declares-unsupported`. Otherwise `firstTransactionNodeId` names
-the first preparation boundary. `supportsDryRun` on an input-run surface is derived and cannot be authored.
+transaction nodes and the genuine descriptors bound by the workflow registry. A graph may prepare
+locally or delegate preparation to a registered descendant; `firstTransactionNodeId` or
+`firstDelegationNodeId` names that boundary. An unsupported transaction in the graph or its
+descendants refuses preview. A standalone graph containing only reads refuses as
+`no-transaction-node`. `supportsDryRun` on an input-run surface is derived and cannot be authored.
 
 A delegated child with no transaction inherits `dryRun: true` and executes its normal read-only
 graph, including its gates and nested delegation. It returns the normal typed observational result
@@ -386,10 +388,20 @@ and parent dry-run flags must match. This exception does not offer standalone re
 
 ### 2.1 Preview terminal result
 
-For a transaction preview, `executeClaimedRun` traverses the declared graph and stores `RunDryRunPreviewResult`, independently
-of the authored terminal derive. Every node has exercised, transaction-preview, unavailable or
-not-run accounting. Each transaction prepares, verifies and captures without invoking commit.
+For a transaction preview, `executeClaimedRun` traverses the declared graph and stores
+`RunDryRunPreviewResult`, independently of the authored terminal derive. A parent aggregating
+delegated preparation stores `RunDelegatedDryRunPreviewResult` with a distinct kind and schema hash.
+Every node has exercised, transaction-preview, delegation-preview, unavailable or not-run accounting.
+Each transaction prepares, verifies and captures without invoking commit.
 Existing completion may be observed at the durable lookup or read probe without restaging a form.
+
+An awaited preview child resolves through its authenticated native result, completion, manifest and
+settlement evidence. Its parent retains ordered grouped receipts and a delegation-preview step.
+The preview cannot supply a normal typed child output, ordinary parent result or single-child
+operation lineage. Tasks, gates and transactions requiring that unsubmitted output remain
+unavailable. Read-only children retain ordinary typed results. A dependency's stored `satisfied`
+state records resolution; the authenticated result schema and dry-run ancestry distinguish a
+preview from an ordinary result. Retry, cancellation, continuation and UNKNOWN fences still apply.
 
 A transaction may declare `previewBind` for dependencies whose real output does not exist until
 submit. It returns separately schema-checked prepare/commit inputs and labelled sample provenance.
@@ -408,6 +420,9 @@ Receipt derivation reports `DRY_RUN_PREVIEW`, empty workflow output and unknown 
 Full coverage means every declared node is accounted for; it does not mean every stage was
 exercised. The partial-coverage arm explicitly represents a historical first-boundary preview
 whose later stages were not recorded. It does not infer their membership from the current graph.
+Delegated dispatch without a terminal wait records partial coverage as `descendant-not-awaited`;
+it does not claim the child prepared. An empty fan-out retains its zero-member manifest without
+inventing child preparation. Previews never supply Saved output or write completion.
 
 ## 3. Graph execution
 
@@ -442,6 +457,10 @@ gate, or retry boundary between its arms and no independently resumable commit t
 `src/models/workflow/delegation-policy.ts` owns `onChildFailed`, `cascadeCancel`, `afterChildRetry`,
 and `visibility`. `src/models/workflow/delegation.ts` owns `planDelegationFanOut`,
 `assertDelegationReplayMatches`, and `joinDelegationOutcomes`.
+
+Authored delegates inherit an omitted visibility from `capabilities.delegationDisplay`, or `inline`
+when the workflow declares no default. An explicit edge visibility wins. The compiler resolves the
+default before planning, so native policy records always contain the full visibility value.
 
 Planning parses child inputs through the target schema before deriving stable child item ids.
 The fingerprint includes edge, target, cardinality, join, policy, and ordered children. Replay

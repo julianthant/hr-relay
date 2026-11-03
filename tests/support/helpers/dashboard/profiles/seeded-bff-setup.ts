@@ -144,6 +144,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
       descriptorSetHash: descriptorSetHash([CONTRACT_FINGERPRINT]),
       ledger: createTransactionHistory(database.authority),
       authority: {
+        queueParents: envelopes => database.authority.dependencies.parents(envelopes),
         listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
         listNotificationCheckpoints: (workflowId: string, itemId: string, nodeId: string, attempt: number) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
         listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),

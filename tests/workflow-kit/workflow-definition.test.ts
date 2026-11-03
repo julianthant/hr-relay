@@ -35,6 +35,27 @@ const { lookupInput, fixtureWorkflow } = createSearchWorkflowDefinitionFixtures(
 type Author = WorkflowAuthor<typeof PersonLookupInput>;
 
 describe("workflow definition compiler", () => {
+  for (const delegationDisplay of [undefined, "inline", "linked", "hidden-unless-failed"] as const) {
+    it(`uses workflow visibility ${String(delegationDisplay)} as the default and preserves every explicit edge choice`, () => {
+      const id = "visibility-default";
+      const definition = fixtureWorkflow(id, author => {
+        const children = ([undefined, "inline", "linked", "hidden-unless-failed"] as const).map((visibility, index) => author.delegate({
+          id: `child-${index}`, target: { id: WorkflowIdSchema.parse("person-lookup"), input: PersonLookupInput, result: z.strictObject({}) },
+          edgeId: `child-${index}`, cardinality: "one", await: "terminal", join: "one",
+          policy: { onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent",
+            ...(visibility === undefined ? {} : { visibility }) },
+        }, [], { bind: () => ({ emplId: "10800000" }), deriveChildItemId: () => ItemIdSchema.parse("00000000-0000-4000-8000-000000000fe2") }));
+        return { steps: [[{ key: "children", label: "Children" }, children]], result: author.result(z.strictObject({ state: z.literal("done") }), [], () => ({ state: "done" as const })) };
+      }, delegationDisplay);
+      const descriptor = compileWorkflow(definition, { manifest: fixtureBuildManifest([id]) }).descriptor;
+      const children = descriptorRuntimeNodes(descriptor).filter(node => node.kind === "child-run");
+      expect(children.map(node => node.policy.visibility)).toEqual([delegationDisplay ?? "inline", "inline", "linked", "hidden-unless-failed"]);
+      for (const child of children) expect(child.policy).toMatchObject({
+        onChildFailed: "fail-parent", cascadeCancel: "cascade", afterChildRetry: "resume-parent",
+      });
+    });
+  }
+
   it("preserves an omitted task label when sharing a step identity", () => {
     const step = defineWorkflowStep({ key: "searching", label: "Search for person" });
     const entries = defineStepEntries(step);

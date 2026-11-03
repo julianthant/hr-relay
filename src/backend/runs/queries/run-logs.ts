@@ -1,7 +1,6 @@
 import { containsDryRunSample } from "../../../models/workflow/dry-run.js";
-import { descriptorRuntimeNodes } from "../../../workflow-kit/workflow.js";
-import { RunDryRunPreviewResultSchema } from "../../../models/run/result.js";
-import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../../workflow-kit/workflow.js";
+import { readRunPreviewResult } from "../../../models/run/result.js";
 import { isLocalActionValueEligible } from "../../storage/events/note-timeline-writer.js";
 import { buildUiTaskLinks } from "../../systems/ui-task-links.js";
 import { LogDisplayRefusedError, LogIdentityRefusedError } from "../commands/refusals.js";
@@ -538,23 +537,27 @@ function dryRunPreviewForLogs(deps: RunDetailQueryDeps, authority: RunRecord) {
   if (!authority.envelope.dryRun) return undefined;
   if (deps.canonical === undefined) return DryRunPreviewWireSchema.parse({ state: "unavailable", reason: "preview-authority-unavailable" });
   const result = deps.canonical.database.authority.runResults.get(authority.envelope.runId);
-  if (result === undefined || result.resultSchemaHash !== deriveSchemaHash(RunDryRunPreviewResultSchema, "output")) {
+  const preview = result === undefined ? undefined : readRunPreviewResult(result);
+  const descriptor = deps.canonical.descriptors.resolve(authority.envelope.workflow);
+  if (result === undefined || preview === undefined) {
+    const support = descriptor?.contractFingerprint === authority.envelope.contractFingerprint ? workflowDryRunSupport(descriptor) : undefined;
+    if (authority.envelope.parent !== undefined && support?.state === "unsupported" && support.reason === "no-transaction-node") return undefined;
     return DryRunPreviewWireSchema.parse(authority.lifecycle.state !== "terminal" ? { state: "pending" }
       : { state: "unavailable", reason: authority.lifecycle.outcome === "done" ? "preview-result-unreadable" : "preview-not-completed" });
   }
-  const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
-  const descriptor = deps.canonical.descriptors.resolve(authority.envelope.workflow);
   return DryRunPreviewWireSchema.parse({ state: "available", coverage: preview.coverage.state, stages: preview.steps.map((step, index) => {
     const node = descriptor?.contractFingerprint === result.contractFingerprint ? descriptorRuntimeNodes(descriptor).find(node => node.id === step.nodeId) : undefined;
     const label = node?.kind === "task" ? node.label ?? node.uses.title : node?.kind === "transaction" ? node.label ?? node.prepare.uses.title : String(step.nodeId);
     const state = step.state === "not-run" ? "skipped" : step.state === "unavailable" || step.state === "transaction-preview" && step.preview.outcome.state !== "would-prepare" ? "unavailable" : "exercised";
     const samples = step.state === "transaction-preview" ? step.samples : [];
-    const detail = step.state === "not-run" ? step.reason : step.state === "unavailable" ? "Requires an unsubmitted result; this stage was not exercised."
+    const detail = step.state === "delegation-preview" ? "Previewed child changes without saving." : step.state === "not-run" ? step.reason : step.state === "unavailable" ? "Requires an unsubmitted result; this stage was not exercised."
         : step.state === "transaction-preview" ? step.preview.outcome.state === "would-prepare" ? "Filled, verified and captured without submitting."
         : "Existing completion observed; the form was not staged." : "Completed from recorded workflow evidence.";
     return { id: step.nodeId, label, state,
       ...(step.state === "transaction-preview" && step.preview.outcome.state === "would-prepare" ? { submitNotClicked: true } : {}),
-      detail: detail + (preview.coverage.state === "partial" && index === preview.steps.length - 1 ? " Historical partial preview; later stages were not recorded." : ""),
+      detail: detail + (preview.coverage.state === "partial" && index === preview.steps.length - 1
+        ? preview.coverage.reason === "historical-first-transaction-only" ? " Historical partial preview; later stages were not recorded."
+          : " Delegated work was dispatched without waiting for its preview." : ""),
       ...(samples.length === 0 ? {} : { sample: { label: "dry-run sample", value: samples.map(sample => `${sample.field}: ${canonicalJsonStringify(sample.value)}`).join("; ") } }),
     };
   }) });

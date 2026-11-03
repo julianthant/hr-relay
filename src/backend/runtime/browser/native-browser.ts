@@ -2,7 +2,7 @@ import type { BrowserProfileProbeFactory, BrowserProfileProbeOptions } from "../
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { z } from "zod";
 import { chromium, type BrowserContext } from "playwright";
-import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import { BrowserSessionClosureUnprovedError, BrowserProfileStillClosingError, type BrowserSessionCloseReason } from "../../../workflow-kit/session.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
@@ -45,25 +45,45 @@ export interface PersistentContextLauncher {
     nativeOnly?: true;
     disablePasswordManager?: true;
     defaultContextOptions?: true;
+    nativePlatform?: Readonly<{ closeProofMs: number }>;
   }>): Promise<BrowserContext>;
 }
 
 
 export const DEFAULT_BROWSER_LAUNCHER: PersistentContextLauncher = {
   async launch(input) {
-    return chromium.launchPersistentContext(input.profileDirectory, {
-      // The extension requires the full bundled Chromium; the headless shell
-      // cannot load one (fast-duo/README.md).
-      channel: "chromium",
+    const nativePlatform = process.platform === "darwin" ? input.nativePlatform : undefined;
+    const context = await chromium.launchPersistentContext(input.profileDirectory, {
+      // Touch ID needs signed Chrome; bundled full Chromium serves other sessions.
+      channel: nativePlatform ? "chrome" : "chromium",
       headless: input.headless,
       ...(input.timeoutMs === undefined ? {} : { timeout: input.timeoutMs }),
       acceptDownloads: input.acceptDownloads,
       ...(input.defaultContextOptions === true && input.nativeOnly !== true ? {} : { downloadsPath: input.downloadsPath, viewport: input.viewport }),
+      ...(nativePlatform && input.nativeOnly !== true ? { ignoreDefaultArgs: ["--disable-extensions"] } : {}),
       args: [
-        ...(input.nativeOnly === true ? ["--disable-extensions"] : [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`]),
+        ...(input.nativeOnly === true ? ["--disable-extensions"] : nativePlatform ? ["--enable-unsafe-extension-debugging"] : [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`]),
         ...(input.disablePasswordManager === true ? ["--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled"] : []),
       ],
     });
+    if (nativePlatform && input.nativeOnly !== true) {
+      const lifecycle = observeContextLifecycle(context);
+      try {
+        const browser = context.browser();
+        if (!browser) throw new Error("onboarding-extension-browser-unavailable");
+        const pipe = await browser.newBrowserCDPSession();
+        z.strictObject({ id: z.string().regex(/^[a-p]{32}$/u) }).parse(await pipe.send("Extensions.loadUnpacked", { path: input.extensionDirectory }));
+        await pipe.detach();
+      } catch (error) {
+        try {
+          await closeContextWithProof({ clock: systemClock, scheduler: createTimeoutDeadlineScheduler(systemClock), closeProofMs: nativePlatform.closeProofMs }, context, lifecycle, "onboarding extension", "profile-reset");
+        } catch (closureError) {
+          throw new NativeBrowserClosureUnprovedError([error, retainAuthoritySourceClosure([closureError], { directory: { context, profileDirectory: input.profileDirectory } })]);
+        }
+        throw error;
+      }
+    }
+    return context;
   },
 };
 
@@ -153,13 +173,14 @@ export async function runNativeContextProbe(input: NativeBrowserProbeInput): Pro
 }
 
 export function createNativeBrowserProbe(input: Parameters<BrowserProfileProbeFactory>[0] & Readonly<{
-  scheduler?: BrowserDeadlineScheduler; launcher?: PersistentContextLauncher;
+  scheduler?: BrowserDeadlineScheduler; launcher?: PersistentContextLauncher; nativePlatform?: true;
 }>): BrowserProfileProbeOptions {
   return Object.freeze({ signal: input.signal,
     async probe(profileRoot: string, profileDirectory: string): Promise<void> {
       z.number().positive().finite().parse(input.closeProofMs);
       await runNativeContextProbe({ ...input, profileRoot, scheduler: input.scheduler ?? createTimeoutDeadlineScheduler(input.clock),
         launch: { profileDirectory, extensionDirectory: "", downloadsPath: profileDirectory,
+          ...(input.nativePlatform ? { nativePlatform: { closeProofMs: input.closeProofMs } } : {}),
           viewport: { width: 800, height: 600 }, timeoutMs: input.launchTimeoutMs } });
     },
   });

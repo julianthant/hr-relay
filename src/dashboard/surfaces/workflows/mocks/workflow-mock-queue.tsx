@@ -8,7 +8,7 @@ import { mockApprovalError, mockNeedsReview, mockQueueStatus, mockRunLog, mockRu
 import { mockWorkflow } from "./workflow-mock-catalog.js";
 import { mockQueueId, mockQueueOutcomes, mockQueueSurface, mockQueueSurfaces } from "./workflow-queue-model.js";
 import { QueuePanel, type QueueFilterScope } from "../../queue/queue.js";
-import type { QueueSortKey } from "../../queue/queue-model.js";
+import type { QueueSortKey, QueueSurfaceWire } from "../../queue/queue-model.js";
 import { StatusBadge } from "../../shared/status/status.js";
 import { dsStatusOf } from "../../shared/status/status-model.js";
 import { reviewRecords, seedReviewRecords, type ReviewRecord } from "./workflow-review-model.js";
@@ -28,7 +28,7 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
   const queueRoot = useRef<HTMLDivElement>(null);
   const deleted = useRef(false);
   const deleteLauncher = useRef<HTMLElement | null>(null);
-  const surfaces = useMemo(() => mockQueueSurfaces(runs, anchorIso), [runs, anchorIso]);
+  const surfaces = useMemo(() => mockQueueSurfaces(runs, anchorIso, allRuns), [runs, anchorIso, allRuns]);
   const outcomes = useMemo(() => mockQueueOutcomes(runs), [runs]);
   const ids = useMemo(() => new Map(runs.map(run => [mockQueueId(run.id), run.id])), [runs]);
   const queueState = useMemo(() => ({
@@ -42,6 +42,11 @@ export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, on
       const target = ids.get(id);
       if (!target) throw new Error(`MOCK_QUEUE_RUN_UNKNOWN: ${id}`);
       onSelect(target);
+    },
+    onOpenParent: (parent: NonNullable<QueueSurfaceWire["parent"]>) => {
+      const target = allRuns.find(run => mockQueueId(run.id) === parent.runId);
+      if (target === undefined) throw new Error("MOCK_QUEUE_PARENT_UNAVAILABLE");
+      onSelect(target.id);
     },
     onPreviewAction: (action: "retry" | "delete", targets: readonly string[]) => {
       const id = ids.get(targets[0]);
@@ -92,7 +97,7 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
     return () => { if (frame !== undefined) cancelAnimationFrame(frame); };
   }, [recordsVisible]);
   const { workflowId, draft } = run;
-  const surface = useMemo(() => mockQueueSurface(run, anchorIso), [run, anchorIso]);
+  const surface = useMemo(() => mockQueueSurface(run, anchorIso, run.parentId === undefined ? undefined : runs.find(parent => parent.id === run.parentId)), [run, runs, anchorIso]);
   const sourcePages = useMemo(() => {
     if (!hasRecords) return {};
     const originals = seedReviewRecords({ workflowId, draft });

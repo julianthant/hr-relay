@@ -147,6 +147,14 @@ describe("runtime environment inventory coverage", () => {
     }
   });
 
+  it("pins development diagnostics to its exact flag and environment owner", () => {
+    for (const change of [{ key: "RELAY_UNKNOWN_DEBUG_FLAG" }, { owner: "src/backend/logs/debug-events.ts" }]) {
+      const altered = { ...RUNTIME_ENVIRONMENT_REGISTRY,
+        exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.map(spec => spec.key === "RELAY_DEV_DEBUG_MIRROR" ? { ...spec, ...change } : spec) };
+      assert.ok(auditRuntimeEnvironmentInventory(altered).length > 0);
+    }
+  });
+
   it("recognizes aliases, imports, destructuring, computed keys, bulk reads, writes, and deletes", () => {
     const source = [
       'import proc, { env as importedEnv } from "node:process";',

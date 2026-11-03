@@ -1,3 +1,4 @@
+import { isQueueMember } from "../../src/models/dashboard/queue-parent.js";
 
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, describe, it } from "vitest";
@@ -29,7 +30,7 @@ describe("the §7.4 dashboard perf fixture", () => {
     assert.equal(operations.length, 1);
     assert.equal(operations[0].runId, fixture.runIds.operationRun);
 
-    const members = wire.queueSurfaces.filter((surface) => surface.surfaceKind === "member");
+    const members = wire.queueSurfaces.filter((surface) => isQueueMember(surface));
     assert.equal(members.length, PERF_FIXTURE_PROFILE.operationMemberCount);
 
 

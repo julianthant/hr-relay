@@ -1,3 +1,4 @@
+import { isQueueTopLevel } from "../../../../../src/models/dashboard/queue-parent.js";
 
 import { mkdtempSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -83,8 +84,9 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
       expect(group.memberRollup.total).toBe(3);
     }
     const member = byId.get(server.runIds.memberRun);
-    expect(member?.surfaceKind).toBe("member");
-    expect(member?.lineage).toEqual({ state: "child", parentRunId: server.runIds.groupRun });
+    expect(member?.surfaceKind).toBe("single");
+    expect(member?.parent?.runId).toBe(server.runIds.groupRun);
+    expect(member?.parent?.visibility).toBe("inline");
   });
 
   it("keeps counts on the one path, excluding member surfaces", async () => {
@@ -92,7 +94,7 @@ describe("seeded parity BFF (adapter #2 — real machinery)", () => {
     const day = DashboardDayWireSchema.parse(
       await dashboardDay(server.baseUrl, server.day),
     );
-    const countable = day.queueSurfaces.filter((surface) => surface.surfaceKind !== "member");
+    const countable = day.queueSurfaces.filter((surface) => isQueueTopLevel(surface));
 
     const statuses = new Map<string, number>();
     for (const surface of countable) {

@@ -1,3 +1,4 @@
+import { isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
 import { fixtureIntakePresentation } from "../../../parity/helpers/fixture-intake-routes.js";
 import { fixturePreflightReport } from "../../../parity/helpers/fixture-preflight-routes.js";
 import { DEFAULT_DASHBOARD_PROFILE } from "../../../parity/helpers/fixture-profile.js";
@@ -92,7 +93,7 @@ describe("intake fixture corpus", () => {
 
 describe("parity fixture corpus", () => {
   it("keeps count semantics: statusCounts recount exactly from non-member surfaces", () => {
-    const countable = FIXTURE_DAY_WIRE.queueSurfaces.filter((surface) => surface.surfaceKind !== "member");
+    const countable = FIXTURE_DAY_WIRE.queueSurfaces.filter((surface) => isQueueTopLevel(surface));
     const recount = new Map<string, number>();
     for (const surface of countable) {
       recount.set(surface.status, (recount.get(surface.status) ?? 0) + 1);
@@ -139,8 +140,9 @@ describe("parity fixture corpus", () => {
       expect(operation.memberRollup.terminal).toBeLessThanOrEqual(operation.memberRollup.total);
       for (const memberId of operation.memberRunIds) {
         const member = byId.get(memberId);
-        expect(member?.surfaceKind).toBe("member");
-        expect(member?.lineage).toEqual({ state: "child", parentRunId: operation.runId });
+        expect(member?.surfaceKind).toBe("single");
+        expect(member?.parent?.runId).toBe(operation.runId);
+        expect(member?.parent?.visibility).toBe("inline");
       }
     }
   });

@@ -271,7 +271,11 @@ The first four paths and extension path are ordinary settings. State, evidence, 
 absolute path, cancellation, or explicit unavailable result. The native picker owns dialog bounds
 and field typing. A selection does not save settings or move app data. The route returns
 `NATIVE_PATH_HINT_INVALID` for an invalid hint. Missing picker composition reports `dialog-failed`;
-an occupied picker reports `busy`.
+an occupied picker reports `busy`. macOS uses `/usr/bin/osascript`; Windows uses the absolute
+`SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe` with one STA WinForms dialog.
+Windows dialog kind and canonical initial directory travel as UTF-8 JSON on stdin to fixed
+script code. Both helpers have bounded output and a 120-second limit; abort and timeout close
+the helper before releasing the dialog gate. Other platforms report `unsupported-platform`.
 
 ## 6. Credential access and storage
 
@@ -327,8 +331,13 @@ migrated names without reading their values. It reports retired canary names wit
 `workerBootstrapEnvironment` copies only `HRAUTO_HOST_PRIMARY_DISPLAY` and
 `WORKER_PROCESS_MECHANIC_KEYS`: `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`, `WINDIR`,
 `COMSPEC`, `PATHEXT`, `LANG`, `LC_ALL`, and `TZ`. `NODE_OPTIONS` and arbitrary parent bindings are
-excluded. Workers read operational credentials from the store themselves.
+excluded. Development worker launches add `RELAY_DEV_DEBUG_MIRROR=1` explicitly after filtering;
+production worker launches omit it even when the parent has it. Workers read operational credentials from the store themselves.
 The `secrets-single-source` architecture guard owns registered credential and environment access.
+`src/models/runtime/runtime-environment.ts` pins the exact `SystemRoot` read to the native path picker
+under the non-secret `process-mechanics` channel. That channel accepts only this key and owner;
+exact reader ownership names the same picker path. The worker's closed mechanics pass-through
+remains separately audited.
 
 `config/test-data.json` owns public subject declarations and safe fixtures.
 Ignored `config/test-data.local.json` owns private canary values and private document paths.
@@ -634,7 +643,7 @@ approved account surface is wired.
 
 ### Private onboarding custody
 
-Show setup browser opens one draft-owned full Chromium window on the Relay FastDuo extension's
+Show setup browser opens one draft-owned browser window (signed Google Chrome on macOS, full Chromium elsewhere) on the Relay FastDuo extension's
 existing setup page. Open duo.ucsd.edu opens a separate tab in that same context, acquires the
 original protected Details only after verifying the exact UCSD SSO document and form controls,
 then submits that pinned POST form once. Reopening focuses the owned tab; failed initialization
@@ -649,7 +658,7 @@ window. Failed attempt initialization must settle before closure; it is retained
 without preventing proved worker and browser cleanup. Reopening never rearms the failed attempt.
 The first attempt failure retains only its closed `kind` and `causeTag` values. The existing debug
 event writer records the same facts as a pinned Duo failure correlated to that attempt in the
-draft profile timeline. Raw exception messages, stacks, credentials and account values are excluded.
+draft profile timeline. Raw exception messages, stacks, credentials and account values are excluded. Interception, forwarding, backend receipt, reply, scoped refusal, abort and timeout stages use the same writer. Abort and timeout retain UNKNOWN, including before scope binding, and never permit another capture.
 The extension UI receives public draft status and exact attempt commands, never login credentials.
 Before enrollment capture is armed, verified native Duo documents may query capability support or
 pass a sign-in request to the captured browser implementation. This path exposes no software key,
@@ -658,7 +667,7 @@ enrollment, persisted credential, counter reservation or readiness proof.
 `profile-onboarding.ts` issues exact operation/generation/method attempts. Software FastDuo readiness
 requires native pending-key acknowledgement and ceremony plus either exact scoped operator CONFIRM
 or an observed exact-credential request; an unobserved portal acceptance remains false. Touch ID separately requires a platform ceremony with software interception disabled, actual Duo
-portal acceptance and operator confirmation. A successful platform-availability probe on macOS selects native
+portal acceptance and operator confirmation. The owned extension prepares platform discovery before answering Duo availability queries. macOS enrollment requires installed signed Chrome for its WebAuthn keychain entitlements; the staged extension loads through a private DevTools pipe. A successful platform-availability probe on macOS selects native
 Touch ID when available; explicit absence or a non-macOS host selects Chromium's virtual internal authenticator before
 the ceremony. A failed probe or native ceremony never triggers an emulated retry. Virtual platform
 keys enter the same encrypted Duo custody and must be ready before Finish. The retained receipt and

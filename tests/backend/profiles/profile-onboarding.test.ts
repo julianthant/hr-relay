@@ -40,6 +40,7 @@ for (const path of ["provider", "scope-loss"] as const) it(`persists and logs on
   const noSecretAccess = (): never => { throw new Error("unexpected secret access"); };
   const events: unknown[] = [];
   const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)),
+    onEvent: event => { events.push(event); },
     onFailure: (attempt, failure) => { events.push({ operationId: attempt.operationId, attemptId: attempt.attemptId, method: attempt.method, failure }); },
     failureDiagnostic: error => error instanceof ProfileOnboardingDuoProviderError ? { kind: error.kind, causeTag: error.reason } : { kind: "unknown", causeTag: "provider" },
     read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },

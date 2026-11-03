@@ -165,6 +165,7 @@ async function surface(): Promise<Surface> {
     descriptorSetHash: descriptorSetHash([intakeFixtureDescriptor.contractFingerprint]),
     ledger: createTransactionHistory(database.authority),
     authority: {
+      queueParents: envelopes => database.authority.dependencies.parents(envelopes),
       listNotifications: () => [],
       listNotificationCheckpoints: () => [],
       listCheckpoints: (workflowId, itemId) => database.authority.runCheckpoints.listByItem(workflowId, itemId),

@@ -1,4 +1,4 @@
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../workflow-kit/workflow.js";
+import { bindWorkflowDelegationTargets, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../workflow-kit/workflow.js";
 export { WORKFLOW_DESCRIPTORS } from "./generated-descriptors.js";
 export function createWorkflowDescriptorRegistry(
   publicDescriptors: readonly AnyWorkflowDescriptor[],
@@ -13,19 +13,7 @@ export function createWorkflowDescriptorRegistry(
   const children = new Map([...all].map(([id, descriptor]) => [id,
     descriptorRuntimeNodes(descriptor).flatMap(node => node.kind === "child-run" ? [String(node.target.id)] : []),
   ]));
-  const visiting = new Set<string>();
-  const qualified = new Set<string>();
-  const qualify = (id: string): void => {
-    if (visiting.has(id)) throw new Error(`workflow delegation cycle at ${id}`);
-    if (qualified.has(id)) return;
-    const targets = children.get(id);
-    if (targets === undefined) throw new Error(`workflow delegation target ${id} is not registered`);
-    visiting.add(id);
-    for (const target of targets) qualify(target);
-    visiting.delete(id);
-    qualified.add(id);
-  };
-  for (const id of all.keys()) qualify(id);
+  bindWorkflowDelegationTargets([...all.values()]);
 
   return Object.freeze({
     descriptors,

@@ -1110,6 +1110,7 @@ function rebuildStagedProjections(
         descriptorSetHash: setHash,
         ledger: createTransactionHistory(staged.authority),
         authority: {
+          queueParents: envelopes => staged.authority.dependencies.parents(envelopes),
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),
           latestNotificationSource: (notificationId) => staged.authority.notificationPublications.latest(notificationId),
           listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => staged.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),

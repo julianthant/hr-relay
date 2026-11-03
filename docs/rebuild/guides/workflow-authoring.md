@@ -271,6 +271,9 @@ A delegate declares `target: { id, input, result }`, `edgeId`, `cardinality`, `a
 `none/none`. It returns `DelegationManifestRef` without a wait or typed child outcomes after terminal
 waits. It uses child-run authority.
 
+Set `capabilities.delegationDisplay` for the workflow's default visibility. Omit an edge's
+`policy.visibility` to inherit it; an explicit edge choice wins. With neither setting, it is `inline`.
+
 Put independent delegates in the same parallel step when every fan-out must be admitted together.
 The runtime commits all of them before one claim release and waits for their awaited outcomes.
 Give each delegate its own target schemas, edge, policy and cardinality. A form needing only one
@@ -285,8 +288,12 @@ another retry requires another Resume. `block-parent` holds the same parent row 
 block through waiting ancestors. Approval gates remain visible only on their owning run.
 
 During a parent dry run, a delegated child with no transactions keeps the dry-run flag and returns
-its normal typed read-only observations. A child with an unsupported transaction refuses admission.
-Standalone read-only workflows still have no transaction-preview option.
+its normal typed read-only observations. Registered descendants that support preparation make a
+parent eligible for preview even when the parent has no local transaction. Awaited child previews
+aggregate as preview evidence; they cannot feed ordinary typed bindings or the authored terminal
+derive. Dependent stages remain unavailable. Dispatch without waiting records partial coverage.
+A child with an unsupported transaction refuses admission. Standalone read-only workflows still
+have no transaction-preview option. Declare the real child and transaction graph; support is derived.
 
 ## 9 · Add a task only when needed
 
@@ -335,7 +342,7 @@ Parity uses the fixed desktop presentation contract; do not update references to
 Follow the assigned brief's additional checks and resource limits.
 
 Use the signed-in dashboard Run surface for workflow execution. Select Dry Run only where the
-workflow graph supports a transaction preview; transaction-free reads use their ordinary mode.
+registered workflow graph supports local or delegated preparation; graphs containing only reads use their ordinary mode.
 Rehearsal declarations and test-target availability validate verification inputs, not authentication
 or permission to execute. Missing manifests and unavailable subjects remain explicit refusals;
 do not substitute a fixture or another subject.

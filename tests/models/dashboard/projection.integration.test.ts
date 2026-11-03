@@ -1,3 +1,4 @@
+import { isQueueTopLevel } from "../../../src/models/dashboard/queue-parent.js";
 import { createNotificationInboxTestWorld } from "../../support/helpers/backend/notification-inbox-world.js";
 import { createSeededDashboardWorld } from "../../support/helpers/seeded-dashboard-world.js";
 
@@ -149,7 +150,7 @@ afterEach(_afterEachFixture0);
     assert.equal(runIds.includes(uuidOf(7)), true);
     assert.equal(day.queueSurfaces.length, 9);
 
-    const topLevel = day.queueSurfaces.filter(({ surfaceKind }) => surfaceKind !== "member");
+    const topLevel = day.queueSurfaces.filter(isQueueTopLevel);
     const workflowTotal = day.workflowCounts.reduce((sum, { count }) => sum + count, 0);
     const statusTotal = day.statusCounts.reduce((sum, { count }) => sum + count, 0);
     assert.equal(workflowTotal, topLevel.length);

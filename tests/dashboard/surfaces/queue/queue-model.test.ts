@@ -1,3 +1,5 @@
+import { queueParentFixture } from "../../../support/helpers/dashboard/queue-parent-fixture.js";
+import { isQueueMember, isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
 import { createAwaitingQueueFixtures } from "../../../support/helpers/dashboard/awaiting-queue-fixtures.js";
 import assert_m0 from 'node:assert/strict';
 import { describe as describe_m0,it as it_m0 } from 'vitest';
@@ -22,7 +24,7 @@ import { describe as describe_m3,it as it_m3 } from "vitest";
 import {
 checkedByYouCount as checkedByYouCount_m3,
 toggleCheckedByYou as toggleCheckedByYou_m3,
-type MemberSurfaceWire as MemberSurfaceWire_m3
+type QueueSurfaceWire as MemberSurfaceWire_m3
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m3 } from "../../../parity/helpers/fixture-day.js";
 
@@ -54,7 +56,7 @@ import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m5 } from "../../../parity/helpers
 
 describe_m0('Relay presentation models', () => {
   it_m0('groups only Attention mode and shares flat sorting with keyboard navigation', () => {
-    const rows = FIXTURE_DAY_WIRE_m0.queueSurfaces.filter(row => row.surfaceKind !== 'member');
+    const rows = FIXTURE_DAY_WIRE_m0.queueSurfaces.filter(row => isQueueTopLevel(row));
     assert_m0.equal(queueDisplayGroups_m0(rows, 'attention', '2026-08-03T18:00:00Z').length, 4);
     for (const sort of ['newest', 'oldest', 'longest'] as const) {
       const groups = queueDisplayGroups_m0(rows, sort, '2026-08-03T18:00:00Z');
@@ -132,7 +134,7 @@ function surface(input: Record<string, unknown>) {
     workflowId: "person-lookup",
     traceId: "pl-120000-1111",
     attempt: 1,
-    lineage: { state: "root" },
+    parent: null,
     actorId: "local-operator",
     appVersion: { state: "present", value: "1.0.0" },
     descriptorVersion: 1,
@@ -143,7 +145,6 @@ function surface(input: Record<string, unknown>) {
   priority: "interactive",
   runNumber: { state: "present", value: 1 },
   session: { state: "absent", reason: "This fixture has no run session." },
-  containment: "root",
   linkedRuns: [],
   facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
     startedAt: NOW,
@@ -188,7 +189,7 @@ describe_m2("attentionRunIds — the band and the key cannot disagree", () => {
 
 
 const members = FIXTURE_DAY_WIRE_m3.queueSurfaces.filter(
-  (surface): surface is MemberSurfaceWire_m3 => surface.surfaceKind === "member",
+  (surface): surface is MemberSurfaceWire_m3 => isQueueMember(surface),
 );
 
 describe_m3("checked by you — local triage only", () => {
@@ -225,7 +226,7 @@ function surface(input: Record<string, unknown>) {
     workflowId: "person-lookup",
     traceId: "pl-120000-1111",
     attempt: 1,
-    lineage: { state: "root" },
+    parent: null,
     actorId: "local-operator",
     appVersion: { state: "present", value: "1.0.0" },
     descriptorVersion: 1,
@@ -237,7 +238,6 @@ function surface(input: Record<string, unknown>) {
     runNumber: { state: "present", value: 1 },
     session: { state: "absent", reason: "This fixture has no run session." },
 
-    containment: input.surfaceKind === "member" ? "member" : "root",
     linkedRuns: [],
     facts: { state: "absent", reason: "run is running and has not produced a terminal result" },
     startedAt: NOW,
@@ -308,11 +308,11 @@ describe_m4("member ordering", () => {
 
   it_m4("ranks doneWarnings with parked, and sinks cancelled below a clean done", () => {
     const members = [
-      surface({ runId: runId(1), surfaceKind: "member", status: "done", endedAt: { state: "present", value: NOW }, lineage: { state: "child", parentRunId: runId(9) } }),
-      surface({ runId: runId(2), surfaceKind: "member", status: "cancelled", endedAt: { state: "present", value: NOW }, lineage: { state: "child", parentRunId: runId(9) } }),
-      surface({ runId: runId(3), surfaceKind: "member", status: "queued", lineage: { state: "child", parentRunId: runId(9) } }),
-      surface({ runId: runId(4), surfaceKind: "member", status: "partial", endedAt: { state: "present", value: NOW }, lineage: { state: "child", parentRunId: runId(9) } }),
-      surface({ runId: runId(5), surfaceKind: "member", status: "failed", endedAt: { state: "present", value: NOW }, lineage: { state: "child", parentRunId: runId(9) } }),
+      surface({ runId: runId(1), surfaceKind: "single", status: "done", endedAt: { state: "present", value: NOW }, parent: queueParentFixture(runId(9)) }),
+      surface({ runId: runId(2), surfaceKind: "single", status: "cancelled", endedAt: { state: "present", value: NOW }, parent: queueParentFixture(runId(9)) }),
+      surface({ runId: runId(3), surfaceKind: "single", status: "queued", parent: queueParentFixture(runId(9)) }),
+      surface({ runId: runId(4), surfaceKind: "single", status: "partial", endedAt: { state: "present", value: NOW }, parent: queueParentFixture(runId(9)) }),
+      surface({ runId: runId(5), surfaceKind: "single", status: "failed", endedAt: { state: "present", value: NOW }, parent: queueParentFixture(runId(9)) }),
     ];
     const operation = surface({
       runId: runId(9),
@@ -333,10 +333,10 @@ describe_m4("member ordering", () => {
     const members = [3, 4, 5].map((n) =>
       surface({
         runId: runId(n),
-        surfaceKind: "member",
+        surfaceKind: "single",
         status: "failed",
         endedAt: { state: "present", value: NOW },
-        lineage: { state: "child", parentRunId: runId(9) },
+        parent: queueParentFixture(runId(9)),
       }),
     );
     const operation = surface({

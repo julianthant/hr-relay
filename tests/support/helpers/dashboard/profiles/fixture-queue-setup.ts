@@ -1,5 +1,6 @@
 import { personLookupDescriptor } from "../../registered-workflows.js";
-import { DashboardDayWireSchema, type DashboardDayWire, type QueueSurfaceWire } from "../../../../../src/models/dashboard/projection.js";
+import { DashboardDayWireSchema, QueueSurfaceWireSchema, type DashboardDayWire, type QueueSurfaceWire } from "../../../../../src/models/dashboard/projection.js";
+import { isQueueTopLevel } from "../../../../../src/models/dashboard/queue-parent.js";
 import { queueRowActions } from "../../../../../src/backend/runs/projections/queue-row-actions.js";
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
 import type * as FixtureNotificationsTypes from "../../../fixtures/dashboard/fixture-notifications.js";
@@ -13,7 +14,7 @@ interface SurfaceSeed {
   readonly seed: number;
   readonly status: Status;
   readonly title: string;
-  readonly surfaceKind?: "single" | "preview" | "member" | "operation";
+  readonly surfaceKind?: QueueSurfaceWire["surfaceKind"];
   readonly parentSeed?: number;
   readonly subtitle?: string | { absent: string };
   readonly liveMessage?: string | { absent: string };
@@ -60,7 +61,7 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
     return { state: "absent", reason } as const;
   }
 
-  function surfaceOf(input: SurfaceSeed): Record<string, unknown> {
+  function surfaceOf(input: SurfaceSeed, parent?: SurfaceSeed): Record<string, unknown> {
     const kind = input.surfaceKind ?? "single";
     const startedMinute = input.startedMinute ?? 40;
     // Different per row, and clamped so the fixture instants stay inside the
@@ -93,9 +94,9 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
       workflowId: WORKFLOW_ID,
       traceId: traceOf(input.seed),
       attempt: 1,
-      lineage: input.parentSeed === undefined
-        ? { state: "root" }
-        : { state: "child", parentRunId: uuidOf(input.parentSeed) },
+      parent: parent === undefined ? null : { runId: uuidOf(parent.seed), visibility: "inline", partitionDay: FIXTURE_DAY,
+        workflowId: WORKFLOW_ID, label: personLookupDescriptor.label, title: parent.title,
+        panelKind: parent.surfaceKind === "operation" ? "group" : "run", status: parent.status },
       actorId: "local-operator",
 
       appVersion: input.seed === 4
@@ -117,7 +118,6 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
         : { state: "present", value: input.seed },
       // Keep session absence in this corpus; no surface consumes the field.
       session: { state: "absent", reason: "This fixture has no run session." },
-      containment: kind === "member" ? "member" : "root",
       linkedRuns: [],
       facts: TERMINAL.has(input.status)
         ? { state: "absent", reason: "this run's evidence receipt records no output fact" }
@@ -138,7 +138,7 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
       liveMessage,
       warnings,
       pipeline: pipeline(input.pipeline ?? ["pending", "pending", "pending", "pending"]),
-      panelKind: kind === "operation" ? "group" : kind === "member" ? "member" : "run",
+      panelKind: kind === "operation" ? "group" : input.parentSeed === undefined ? "run" : "member",
       availableSections: input.status === "failed"
         ? ["logs", "receipt", "context-data", "context-attempts", "failure"]
         : ["logs", "receipt", "context-data", "context-attempts"],
@@ -150,7 +150,7 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
         isChild: input.parentSeed !== undefined,
         parkedWrite: false,
         memberCount: kind === "operation" ? (input.memberSeeds ?? []).length : 0,
-        isMember: kind === "member",
+        isMember: input.parentSeed !== undefined,
         // Every fixture row serves `displayName` absent (`:202`), so no reference
         // has ever photographed a named run — the label stays "Name this run…".
         named: false,
@@ -184,7 +184,7 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
         liveMessage: "1 member running", startedMinute: 30,
       },
       members: [
-        { seed: 21, status: "running", title: "EID 10611004", parentSeed: 20, surfaceKind: "member", pipeline: ["active", "pending", "pending", "pending"], startedMinute: 31 },
+        { seed: 21, status: "running", title: "EID 10611004", parentSeed: 20, surfaceKind: "single", pipeline: ["active", "pending", "pending", "pending"], startedMinute: 31 },
       ],
     },
     {
@@ -194,9 +194,9 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
         liveMessage: "2 of 3 members remaining", startedMinute: 28,
       },
       members: [
-        { seed: 31, status: "done", title: "Alvarez, Maria", parentSeed: 30, surfaceKind: "member", pipeline: ["done", "done", "done", "skipped"], startedMinute: 29 },
-        { seed: 32, status: "running", title: "EID 10480021", parentSeed: 30, surfaceKind: "member", pipeline: ["done", "active", "pending", "pending"], liveMessage: "Cross-verifying against CRM", startedMinute: 30 },
-        { seed: 33, status: "queued", title: "Okafor, Chinedu", parentSeed: 30, surfaceKind: "member", startedMinute: 30 },
+        { seed: 31, status: "done", title: "Alvarez, Maria", parentSeed: 30, surfaceKind: "single", pipeline: ["done", "done", "done", "skipped"], startedMinute: 29 },
+        { seed: 32, status: "running", title: "EID 10480021", parentSeed: 30, surfaceKind: "single", pipeline: ["done", "active", "pending", "pending"], liveMessage: "Cross-verifying against CRM", startedMinute: 30 },
+        { seed: 33, status: "queued", title: "Okafor, Chinedu", parentSeed: 30, surfaceKind: "single", startedMinute: 30 },
       ],
     },
     {
@@ -206,10 +206,10 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
         liveMessage: "1 member is waiting on you", startedMinute: 20,
       },
       members: [
-        { seed: 41, status: "done", title: "EID 10120933", parentSeed: 40, surfaceKind: "member", pipeline: ["done", "done", "done", "skipped"], startedMinute: 21 },
-        { seed: 42, status: "done", title: "EID 10577410", parentSeed: 40, surfaceKind: "member", pipeline: ["done", "done", "done", "skipped"], startedMinute: 21 },
-        { seed: 43, status: "failed", title: "Tran, Bao", parentSeed: 40, surfaceKind: "member", pipeline: ["done", "failed", "pending", "skipped"], startedMinute: 22 },
-        { seed: 44, status: "awaiting-approval", title: "Morrow, Bea", parentSeed: 40, surfaceKind: "member", pipeline: ["done", "blocked", "pending", "pending"], liveMessage: "Waiting on identity review", startedMinute: 22 },
+        { seed: 41, status: "done", title: "EID 10120933", parentSeed: 40, surfaceKind: "single", pipeline: ["done", "done", "done", "skipped"], startedMinute: 21 },
+        { seed: 42, status: "done", title: "EID 10577410", parentSeed: 40, surfaceKind: "single", pipeline: ["done", "done", "done", "skipped"], startedMinute: 21 },
+        { seed: 43, status: "failed", title: "Tran, Bao", parentSeed: 40, surfaceKind: "single", pipeline: ["done", "failed", "pending", "skipped"], startedMinute: 22 },
+        { seed: 44, status: "awaiting-approval", title: "Morrow, Bea", parentSeed: 40, surfaceKind: "single", pipeline: ["done", "blocked", "pending", "pending"], liveMessage: "Waiting on identity review", startedMinute: 22 },
       ],
     },
     {
@@ -225,7 +225,7 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
         status: "done",
         title: `EID 10${String(300100 + index)}`,
         parentSeed: 50,
-        surfaceKind: "member",
+        surfaceKind: "single",
         pipeline: ["done", "done", "done", "skipped"],
         startedMinute: 6,
       })),
@@ -245,14 +245,14 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
           status: "done",
           title: `EID 10${String(410200 + index)}`,
           parentSeed: 70,
-          surfaceKind: "member",
+          surfaceKind: "single",
           pipeline: ["done", "done", "done", "skipped"],
           startedMinute: 11,
         })),
-        { seed: 80, status: "failed", title: "Castillo, Ren", parentSeed: 70, surfaceKind: "member", pipeline: ["done", "failed", "pending", "skipped"], startedMinute: 12 },
-        { seed: 81, status: "failed", title: "EID 10990031", parentSeed: 70, surfaceKind: "member", pipeline: ["failed", "pending", "pending", "skipped"], startedMinute: 12 },
-        { seed: 82, status: "cancelled", title: "EID 10990032", parentSeed: 70, surfaceKind: "member", pipeline: ["done", "skipped", "skipped", "skipped"], startedMinute: 13 },
-        { seed: 83, status: "running", title: "Haddad, Lina", parentSeed: 70, surfaceKind: "member", pipeline: ["done", "active", "pending", "pending"], startedMinute: 14 },
+        { seed: 80, status: "failed", title: "Castillo, Ren", parentSeed: 70, surfaceKind: "single", pipeline: ["done", "failed", "pending", "skipped"], startedMinute: 12 },
+        { seed: 81, status: "failed", title: "EID 10990031", parentSeed: 70, surfaceKind: "single", pipeline: ["failed", "pending", "pending", "skipped"], startedMinute: 12 },
+        { seed: 82, status: "cancelled", title: "EID 10990032", parentSeed: 70, surfaceKind: "single", pipeline: ["done", "skipped", "skipped", "skipped"], startedMinute: 13 },
+        { seed: 83, status: "running", title: "Haddad, Lina", parentSeed: 70, surfaceKind: "single", pipeline: ["done", "active", "pending", "pending"], startedMinute: 14 },
       ],
     },
   ];
@@ -271,11 +271,11 @@ FIXTURE_NOTIFICATIONS: typeof FixtureNotificationsTypes.FIXTURE_NOTIFICATIONS;
 
   const rawSurfaces: Record<string, unknown>[] = [
     ...SINGLE_SEEDS.map((seed) => surfaceOf(seed)),
-    ...GROUPS.flatMap(({ group, members }) => [surfaceOf(group), ...members.map((member) => surfaceOf(member))]),
+    ...GROUPS.flatMap(({ group, members }) => [surfaceOf(group), ...members.map((member) => surfaceOf(member, group))]),
   ];
 
   const countableSurfaces = (surfaces: readonly Record<string, unknown>[]): Record<string, unknown>[] =>
-    surfaces.filter((surface) => surface.surfaceKind !== "member");
+    surfaces.filter(surface => isQueueTopLevel(QueueSurfaceWireSchema.parse(surface)));
 
   const TOP_LEVEL_COUNT = SINGLE_SEEDS.length + GROUPS.length;
 

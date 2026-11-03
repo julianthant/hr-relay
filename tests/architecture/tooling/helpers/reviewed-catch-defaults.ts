@@ -42,7 +42,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
       },
       {
         "kind": "promise",
-        "sha256": "64bf800505690b8b38425719d7092bddc523dc8b4ae4a43d2ed0647c42276bea",
+        "sha256": "b18f6bcd769dd3fee56c84ba773e02b7a28b0194cfd441de9b7a27c8b7a2e796",
         "occurrences": 1
       }
     ]

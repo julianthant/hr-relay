@@ -1,4 +1,4 @@
-import { createProfileFixtureSet } from "../../helpers/admission-fixture.js";
+import { createPreflightProfileFixtureSet } from "./profile-fixture.js";
 import nativeFs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { vi } from "vitest";
@@ -130,13 +130,14 @@ export async function executePreflightCorpus(transform?: (runners: readonly Pref
     assert.equal(manifest.fixture,"fixtures/preflight/environment-doctor.json");
     assert.deepEqual(manifest.requiredAssertions,[`reports-${fault.injection}`]);
   }
-  const profiles = createProfileFixtureSet();
   const executions:CorpusExecution[]=[];
   let actionCount=0, externalCommitCount=0;
   const launch = vi.spyOn(chromium,"launch").mockImplementation(()=>{actionCount++;throw new Error("Corpus attempted a browser launch");});
   const persistent = vi.spyOn(chromium,"launchPersistentContext").mockImplementation(()=>{actionCount++;throw new Error("Corpus attempted a persistent browser launch");});
   const spawn = vi.spyOn(childProcess,"spawn").mockImplementation(()=>{actionCount++;throw new Error("Corpus attempted a process launch");});
   const fetch = vi.spyOn(globalThis,"fetch").mockImplementation(()=>{externalCommitCount++;throw new Error("Corpus attempted an external request");});
+  try {
+  const profiles = await createPreflightProfileFixtureSet();
   try {
   for(const entry of preflightFaultCases()) {
     const f=await runtimeFixture(entry.dependency.capabilities, profiles.create);let undo:(()=>Promise<void>|void)|undefined;
@@ -156,5 +157,6 @@ export async function executePreflightCorpus(transform?: (runners: readonly Pref
     } finally {try {await undo?.();} finally {await f.close();}}
   }
   auditPreflightExecutions(executions);return executions;
-  } finally {launch.mockRestore();persistent.mockRestore();spawn.mockRestore();fetch.mockRestore();await profiles.close();}
+  } finally {await profiles.close();}
+  } finally {launch.mockRestore();persistent.mockRestore();spawn.mockRestore();fetch.mockRestore();}
 }

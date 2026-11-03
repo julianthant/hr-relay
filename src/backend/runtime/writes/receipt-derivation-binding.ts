@@ -2,13 +2,13 @@
 import { z } from "zod";
 import {
   descriptorRuntimeNodes,
-  workflowDryRunSupport,
+  workflowPreviewDependencyIds,
   workflowTerminalResultExecution,
   type AnyWorkflowDescriptor,
 } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import { RunDryRunPreviewResultSchema, terminalEvidenceResult, terminalDelegationDependencyRecord, type RunResultRecord, type DelegationTerminalEvidenceSchema } from "../../../models/run/result.js";
+import { readRunPreviewResult, terminalEvidenceResult, terminalDelegationDependencyRecord, type RunResultRecord, type DelegationTerminalEvidenceSchema } from "../../../models/run/result.js";
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
@@ -212,22 +212,16 @@ export function evaluateReceiptDerivationBinding(
     ));
   } else {
     // Preview terminal dependencies bind the preview boundary, not ordinary workflow success dependencies.
-    const dryRun = workflowDryRunSupport(descriptor);
-    const previewed = run.envelope.dryRun;
-    const preview = previewed ? RunDryRunPreviewResultSchema.parse(result.result.value) : undefined;
-    const firstDependencies = dryRun.state === "supported" ? descriptorRuntimeNodes(descriptor)
-      .find(node => String(node.id) === dryRun.firstTransactionNodeId)?.dependsOn ?? [] : [];
+    const preview = readRunPreviewResult(result);
     const declared = preview === undefined ? [...new Set([...workflowTerminalResultExecution(descriptor).dependsOn.map(String), ...delegationIds])]
-      : [...new Set([...firstDependencies.map(String), ...descriptorRuntimeNodes(descriptor)
-        .filter(node => node.kind === "task" && preview.steps.some(step => step.nodeId === node.id && step.state === "exercised"))
-        .map(node => String(node.id))])];
+      : [...new Set([...workflowPreviewDependencyIds(descriptor, preview.steps).map(String), ...delegationIds])];
     const retained = result.dependencies.map((dependency) => String(dependency.nodeId));
     checks.push(canonicalJsonStringify([...declared].sort()) === canonicalJsonStringify([...retained].sort())
       ? held("terminal-dependency-set", `both depend on [${declared.join(", ")}]`)
       : moved(
         "terminal-dependency-set",
         `the stored result was built from [${retained.join(", ")}] and this build's `
-        + `${run.envelope.dryRun ? "dry-run preview" : "terminal execution"} depends on `
+        + `${preview === undefined ? "terminal execution" : "dry-run preview"} depends on `
         + `[${declared.join(", ")}]; the mandatory-evidence set would move`,
       ));
   }

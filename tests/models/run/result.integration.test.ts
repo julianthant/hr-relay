@@ -229,6 +229,7 @@ afterEach(cleanup);
 
 
     const support = workflowDryRunSupport(writeFixtureDescriptor);
+    assert.ok(support.state === "supported" && "firstTransactionNodeId" in support);
     assert.equal(support.state === "supported" ? support.firstTransactionNodeId : "", transaction.nodeId);
 
 

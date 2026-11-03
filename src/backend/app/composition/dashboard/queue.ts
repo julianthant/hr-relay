@@ -19,6 +19,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
     ledger,
     reader: input.reader,
     authority: {
+      queueParents: envelopes => database.authority.dependencies.parents(envelopes),
       reviewAvailable: runId => database.withAuthorityReadSnapshot(() => {
         const current = input.reader.read(runId);
         return current.state === "present" && current.disposition === "live" && current.run.envelope.workflow === "ocr"

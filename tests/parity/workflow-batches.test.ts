@@ -12,7 +12,7 @@ for (const theme of ["light", "dark"] as const) {
 
 test(`workflow batches: separate rows for either served preference, ${theme}`, async ({ page }, _testInfo) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    const chosen = FIXTURE_DAY_WIRE.queueSurfaces.filter((row) => row.containment === "root" && (row.surfaceKind === "single" || row.surfaceKind === "preview")).slice(0, 3);
+    const chosen = FIXTURE_DAY_WIRE.queueSurfaces.filter((row) => row.parent === null && (row.surfaceKind === "single" || row.surfaceKind === "preview")).slice(0, 3);
     expect(chosen).toHaveLength(3);
     const ids = new Set(chosen.map((row) => row.runId));
     for (const grouped of [true, false]) {

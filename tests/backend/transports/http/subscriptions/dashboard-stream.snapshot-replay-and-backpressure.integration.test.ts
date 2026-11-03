@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { BackfillGapObservationSchema } from "../../../../../src/backend/runs/notifications/backfill-gap.js";
 import { createDashboardStreamHub,type DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { applyDashboardDayPatch } from "../../../../../src/dashboard/client/index.js";
+import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import type { DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import type { DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
 import { NotificationRecordSchema } from "../../../../../src/models/notifications/notifications.js";
@@ -156,6 +157,27 @@ describe("dashboard stream hub", () => {
 
     const fresh = w.projection.buildDashboardDayWire(DAY);
     assert.notEqual(local, undefined);
+    assert.deepEqual({ ...local, snapshotCursor: "pc:1" }, { ...fresh, snapshotCursor: "pc:1" });
+    connection.close();
+  });
+
+  it("refreshes a prior-day parent view when its later-day inline child changes", async () => {
+    const { w, hub } = await harness();
+    queuedEventOf(w, { seed: 71, shape: "operation", enqueuedAt: "2026-08-02T17:00:00.000Z" });
+    queuedEventOf(w, { seed: 72, shape: "operation-member", parentSeed: 71 });
+    const connection = await hub.connect({ day: "2026-08-02" });
+    let local: DashboardDayWire | undefined;
+    for (const envelope of connection.initial) local = applyEnvelope(local, envelope);
+    assert.equal(local?.queueSurfaces.find(row => row.runId === uuidOf(72))?.status, "queued");
+    const child = w.authority.getRun(uuidOf(72)); assert.ok(child);
+    w.authority.put(RunRecordSchema.parse({ ...child, version: child.version + 1, claimGeneration: 1,
+      lifecycle: { state: "running", workerId: "person-lookup-worker-1", claimedAt: w.clock.now().toISOString(), heartbeatAt: w.clock.now().toISOString() } }));
+    claimEventOf(w, 72);
+    const updates = await drain(connection);
+    assert.ok(updates.some(envelope => envelope.type === "snapshot"));
+    for (const envelope of updates) local = applyEnvelope(local, envelope);
+    assert.equal(local?.queueSurfaces.find(row => row.runId === uuidOf(72))?.status, "running");
+    const fresh = w.projection.buildDashboardDayWire("2026-08-02");
     assert.deepEqual({ ...local, snapshotCursor: "pc:1" }, { ...fresh, snapshotCursor: "pc:1" });
     connection.close();
   });

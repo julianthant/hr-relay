@@ -61,6 +61,7 @@ export const workflowModuleOf = registry.moduleOf;
 export const childWorkflowModuleOf = registry.childModuleOf;
 
 export const DESCRIPTORS: readonly AnyWorkflowDescriptor[] = registry.descriptors;
+export const READABLE_WORKFLOW_MODULES = Object.freeze([...WORKFLOW_MODULES, ...CHILD_ONLY_WORKFLOW_MODULES]);
 
 export const SERVER_REGISTRY = registry.publicRegistry;
 

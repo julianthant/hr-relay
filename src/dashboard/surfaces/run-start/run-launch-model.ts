@@ -223,7 +223,7 @@ async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardD
   const originMatches = (row: QueueSurfaceWire) => row.session.state === "present"
     && row.session.origin?.kind === "start-plan" && row.session.origin.startPlanId === command.target.startPlanId
     && row.session.origin.actorId === command.requestedBy;
-  const roots = rows.filter(row => originMatches(row) && row.lineage.state === "root");
+  const roots = rows.filter(row => originMatches(row) && row.parent === null);
   const rootIds = new Set(roots.map(row => row.runId));
   if (roots.length === 0
     || roots.some(row => !runs.includes(row.runId)) || (plan !== undefined && roots.length !== plan.planned.length)) {
@@ -243,7 +243,7 @@ async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardD
     }
     if (row.actorId !== command.requestedBy || row.configFingerprint !== command.payload.configFingerprint
       || row.descriptorHash !== command.payload.descriptorFingerprint || (plan !== undefined && row.dryRun !== plan.dryRun)
-      || (row.lineage.state === "child" && !rootIds.has(row.lineage.parentRunId))) {
+      || (row.parent !== null && !rootIds.has(row.parent.runId))) {
       return { state: "mismatch", evidence };
     }
   }
