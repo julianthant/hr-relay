@@ -528,7 +528,7 @@ export const ERROR_CATALOG = Object.freeze({
     "That email belongs to a different profile.",
     EmptyParametersSchema,
   ),
-  PROFILE_ACCOUNT_DELETION_REFUSED: catalogEntry("Relay could not complete account deletion. Sign-in is blocked while an erasure is unfinished; restart Relay to settle it safely.", EmptyParametersSchema),
+  PROFILE_ACCOUNT_DELETION_REFUSED: catalogEntry("Relay could not complete account deletion. If erasure has started, sign-in stays blocked; restart Relay to settle it safely.", EmptyParametersSchema),
   PROFILE_LOGOUT_BLOCKED: catalogEntry(
     "Log out waits until this profile's active work can stop.",
     EmptyParametersSchema,
@@ -558,6 +558,10 @@ export const ERROR_CATALOG = Object.freeze({
   ),
   RUNTIME_OLD_BUILD_ARTIFACTS: catalogEntry(
     "This installation contains runtime lock evidence from an older build. Offline maintenance is stopped and the evidence is preserved. Use the approved start-clean procedure.",
+    EmptyParametersSchema,
+  ),
+  STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE: catalogEntry(
+    "Windows backups, restore, backup removal, upgrades, migration and account deletion are unavailable until exclusive storage custody can be proved. Existing data is preserved.",
     EmptyParametersSchema,
   ),
   STORAGE_BACKUP_SOURCE_CHANGED: catalogEntry(

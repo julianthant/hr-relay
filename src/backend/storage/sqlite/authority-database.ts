@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { convertPersonPreferencesRow } from "./person-preferences-migration.js";
 import { readContinuationGate, validateRunContinuation } from "./run-continuation.js";
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
@@ -2633,6 +2634,7 @@ export class AuthorityDatabase implements Disposable {
 
   async onlineBackupTo(destinationPath: string): Promise<number> {
     this.#assertOpen();
+    assertMaintenanceCustodyAvailable("backup");
     const destination = z.string().min(1).parse(destinationPath);
     return sqliteBackup(this.#database, destination, { rate: 100 });
   }

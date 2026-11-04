@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { AccountDeletionRefusedError, captureAccountDeletion, publishAccountDeletion, resumeAccountDeletion } from "../maintenance/account-deletion.js";
 import { createHash,randomBytes,randomUUID } from "node:crypto";
 import {
@@ -264,6 +265,7 @@ export async function prepareFixedLayoutPublication(lease: InstallationLease, ma
   const { assertStoppedBackupClosure } = await import("../maintenance/profile-inventory.js");
   assertInstallationLease(lease); lease.assertHeld(); lease.assertOfflineMaintenance(operation);
   requireRuntimeAdmission(machine).assertExclusive();
+  assertMaintenanceCustodyAvailable("layout-migration");
   if (!(lease.lifetime instanceof RuntimeLifetimeLock)) fail("fixed-layout-root-required");
   const intent = FixedLayoutIntentSchema.parse(input), context = lease.readInstallationContext(), profiles = machine.readStartupProfileIds();
   if (intent.phase !== "moving" || intent.sourceWorkspace !== context.workspace || intent.operationId !== operation.operationId
@@ -295,6 +297,7 @@ export function recoverFixedLayoutPublication(targetWorkspace: string, lifetime:
   const intent = readFixedLayoutIntent(targetWorkspace);
   if (intent === undefined || intent.phase === "complete") fail("fixed-layout-recovery-missing");
   lifetime.assertExclusiveWorkspaceTarget(intent.sourceWorkspace);
+  assertMaintenanceCustodyAvailable("layout-migration");
   const operation = lifetime.beginOfflineMaintenance(intent.sourceWorkspace);
   let retain = false;
   try {
@@ -354,6 +357,7 @@ export function consumeFixedLayoutPublication(proof: FixedLayoutPublication, lif
   if (source === undefined || source.lifetime !== lifetime || source.consumed) fail("fixed-layout-publication-unissued");
   const intent = source.intent;
   lifetime.assertExclusiveWorkspaceTarget(intent.sourceWorkspace);
+  assertMaintenanceCustodyAvailable("layout-migration");
   if (activeAdmissions(join(intent.sourceWorkspace, CONTROL)).length !== 0 || activeAdmissions(join(intent.targetWorkspace, CONTROL)).length !== 0
     || canonicalJsonStringify(readFixedLayoutIntent(intent.targetWorkspace)) !== canonicalJsonStringify(intent)) fail("fixed-layout-publication-changed");
   const operation = lifetime.beginOfflineMaintenance(intent.sourceWorkspace);
@@ -1809,6 +1813,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       });
     },
     deleteProfileAccount(profileId: string, epoch: number): void {
+      assertHeld();
+      assertMaintenanceCustodyAvailable("account-deletion");
       const restore = this.beginOfflineMaintenance();
       try { mutate(() => {
         const guard = () => assertStoppedMachineMaintenance(this, restore);
@@ -1869,11 +1875,13 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     captureStoppedProfileUpgrade(profileId: string, purpose: "manual" | "startup" | "layout") {
       if (mode !== "exclusive") fail("profile-stopped-upgrade-exclusive-required");
       const id = z.uuid().parse(profileId);
+      assertHeld();
       const read = () => readProfileUpgradeAuthority(control, workspace, locator, id, assertHeld, purpose);
-      let original = read();
       const logout = purpose !== "manual" ? profileOperationInventory(locator.stateRoot).map(entry =>
         readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${entry.operationId}.json`), ProfileOperationSchema))
         .find((operation): operation is z.infer<typeof LogoutOperationSchema> => operation.kind === "logout" && operation.profileId === id && operation.phase !== "complete") : undefined;
+      if (purpose === "startup" && logout?.settlement !== undefined) assertMaintenanceCustodyAvailable("schema-upgrade");
+      let original = read();
       const guard = () => {
         if (read() !== original) fail("profile-stopped-upgrade-authority-changed");
       };
@@ -2517,6 +2525,16 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
   const lease = heldLease ?? acquireInstallation(workspace, "exclusive", lifetime, { stoppedControlForward: true, offlineOperation: restore }), locator = lease.locator, control = join(workspace, CONTROL);
   const markerPath = join(locator.stateRoot, "machine", "profile-registry-version.json"), controlPath = join(control, "profile-registry.json");
   const intentPath = join(control, "profile-control-upgrade.json"), backupDirectory = join(control, "profile-control-upgrades");
+  try {
+    const marker = readProfileEvidence(markerPath, z.strictObject({ schemaVersion: z.number().int() }));
+    if (marker.schemaVersion !== 8 || lstatMaybe(intentPath)) assertMaintenanceCustodyAvailable("schema-upgrade");
+  } catch (error) {
+    if (ownsLease) {
+      try { restore.release(); lease.release(); }
+      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: lease, restore }); }
+    }
+    throw error;
+  }
   const conversionOperationId = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath).operationId : randomUUID();
   const inventoryClaims = new Map<string, StoppedControlProfileInventory>();
   const inventorySnapshots = new Set<Readonly<{ dispose(): void }>>();
@@ -2596,6 +2614,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     async prepareBrowserInventory(plan: boolean, createProbe: BrowserProfileProbeFactory): Promise<void> {
       held();
       if (this.machineControlCurrent() && !this.upgradeIntentPresent()) return;
+      assertMaintenanceCustodyAvailable("schema-upgrade");
       const pending = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath) : undefined;
       if (pending !== undefined) {
         if (plan) fail("profile-control-upgrade-recovery-required");
@@ -2781,6 +2800,13 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       try {
       const prepared = withInstallationControl(control, () => {
         held();
+        if (this.machineControlCurrent() && !this.upgradeIntentPresent()) {
+          const registrations = readMachineRegistry(control, locator, false);
+          const runtimeAccess = registrations.profiles.some(row => row.registration.onboardingCompletion === undefined)
+            ? "onboarding-incomplete" as const : "unchanged" as const;
+          return { state: "current" as const, runtimeAccess, profileCount: registrations.profiles.length };
+        }
+        assertMaintenanceCustodyAvailable("schema-upgrade");
         const pending = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath) : undefined;
         const registrations = pending?.priorDocument ?? readProfileEvidence(registryPath,
           z.union([ProfileRegistryDocumentSchema, StoppedProfileRegistryDocumentSchema]));

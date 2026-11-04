@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { existsSync } from "node:fs";
 import { dirname,join,resolve } from "node:path";
 import { z } from "zod";
@@ -51,6 +52,7 @@ export async function backupStoppedAuthority(closure: StoppedBackupClosure, admi
     stopped.assertStoppedAuthorityBackup(join(stateRoot,"state.db"),processLockRoot);stopped.assertStateRoot(stateRoot);
     verifyHeld();
     requireStopped(stopped,input,clock,true);
+    assertMaintenanceCustodyAvailable("backup");
     const schemaVersion=AuthorityDatabase.inspectStoppedUpgrade(stopped,join(stateRoot,"state.db"),processLockRoot,clock).schemaVersion;
     const source=openAuthorityBackupSourceReadOnly(stopped,join(stateRoot,"state.db"),250,schemaVersion);
     let report: Awaited<ReturnType<AuthorityBackupService["request"]>> | undefined;
@@ -98,7 +100,9 @@ export async function upgradeStorage(browserClosure: ProfileBrowserClosure, admi
   if(input.plan)return report("planned");
   admission.assertOfflineMaintenance(restore);
     requireStopped(admission,input,clock);
-    if(inspection!==undefined){const again=AuthorityDatabase.inspectStoppedUpgrade(admission,path,input.processLockRoot,clock);
+    if(inspection!==undefined){
+      if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) assertMaintenanceCustodyAvailable("schema-upgrade");
+      const again=AuthorityDatabase.inspectStoppedUpgrade(admission,path,input.processLockRoot,clock);
       if(again.authorityGeneration!==inspection.authorityGeneration||again.authorityContentFingerprint!==inspection.authorityContentFingerprint)throw new Error("source-changed: re-plan upgrade");
       if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
         const closure = await prepareStoppedBackupClosure(browserClosure, admission, restore, clock, input.processLockRoot);
@@ -113,6 +117,7 @@ export async function upgradeStorage(browserClosure: ProfileBrowserClosure, admi
       }
       const pending = pendingDiagnosticArtifacts(admission);
       if (pending.length === 0) return report("already-upgraded");
+      assertMaintenanceCustodyAvailable("schema-upgrade");
       const reclaimedStages = AuthorityDatabase.reclaimStoppedDiagnostics(admission, path, input.processLockRoot, clock, restore);
       requireStopped(admission,input,clock);
       const final = inspectAuthorityBackupReadOnly(admission,path);

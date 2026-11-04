@@ -344,8 +344,21 @@ file IDs must agree with exact Node observations; unsafe numeric witnesses and u
 file-ID mappings refuse. Persisted numeric witnesses are not silently rounded or migrated.
 
 Both isolated SQLite observers import this same policy. Their source descriptors stay in the child;
-parent observations do not claim exclusive Windows source custody. Backup, restore and deletion
-retain their existing Windows refusals.
+parent observations do not claim exclusive Windows source custody.
+
+`storage/maintenance/custody-availability.ts` refuses Windows backup/export, restore, backup
+retirement, schema/control upgrade, layout migration and ready-account deletion before their
+source capture or effects. Private-path admission does not establish custody of streams, namespace
+membership or external handles. This is the reason these maintenance boundaries share one refusal.
+Current-schema boot, ordinary reads, login/logout and unpublished signup cleanup remain available.
+No pending retirement, no upgrade/continuation and genuinely new layout creation are no-work cases.
+
+After the transport, selected runtime, onboarding, profile and machine all close successfully,
+automatic shutdown backup reports `STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE` on Windows and the
+bootstrap releases its lifetime listener. The command fails explicitly; no backup success is
+reported. Any closure failure, mixed aggregate or unproved source custody retains the existing
+uncertain-runtime handling and lifetime. Authenticated account deletion refuses before logout,
+leaving the current session and credentials intact.
 
 Windows path flushing opens the exact object for writing with reparse-point handling, verifies its
 identity, calls `FlushFileBuffers` and checks handle closure. Failed native handles or security
