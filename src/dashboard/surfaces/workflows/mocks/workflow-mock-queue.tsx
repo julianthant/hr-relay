@@ -13,7 +13,7 @@ import { StatusBadge } from "../../shared/status/status.js";
 import { dsStatusOf } from "../../shared/status/status-model.js";
 import { reviewRecords, seedReviewRecords, type ReviewRecord } from "./workflow-review-model.js";
 import { reviewSourcePages } from "./workflow-review-source-model.js";
-import { WorkflowMockReview } from "./workflow-review.js";
+import { WorkflowMockReview } from "../../run-detail/review/review.js";
 import { documentSourcePages } from "./workflow-document-model.js";
 import { mockDeletionCopy, mockDeletionIds } from "./workflow-mock-model.js";
 

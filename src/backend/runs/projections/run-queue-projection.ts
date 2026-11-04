@@ -22,6 +22,7 @@ import {
   TERMINAL_QUEUE_STATUSES,
   type DashboardDayWire,
   type QueueSurfaceWire,
+  type QueueRecordMembers,
 } from "../../../models/dashboard/projection.js";
 import {
   ACTIVITY_SAMPLE_LIMIT,
@@ -33,6 +34,7 @@ import {
 import { DashboardDayPatchSchema } from "../../../models/dashboard/subscription.js";
 import {
   PositiveIntSchema,
+  LocalDateSchema,
   EidSchema,
   LOCAL_OPERATOR_ACTOR_ID,
   ProjectionCursorSchema,
@@ -144,6 +146,7 @@ export interface RunQueueProjectionDeps {
     queueParents(envelopes: readonly RunRecord["envelope"][]): ReadonlyMap<string, QueueParent | null>;
     delegationWait?(runId: string): DelegationWaitState | null;
     reviewAvailable?(runId: string): boolean;
+    recordMembers?(run: RunRecord, children: readonly RunRecord[]): QueueRecordMembers | undefined;
     /** Durable inbox rows served by day. */
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
     latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
@@ -284,14 +287,7 @@ function activityPeopleOf(personRows: readonly RunRecord[], read: ((runId:string
 const MEMBER_PREVIEW_LIMIT = 3;
 
 
-interface LinkedRunView {
-  readonly runId: string;
-  readonly partitionDay: string;
-  readonly workflowId: string;
-  readonly label: string;
-  readonly panelKind: QueueSurfaceWire["panelKind"];
-  readonly status: QueueSurfaceWire["status"];
-}
+type LinkedRunView = QueueSurfaceWire["linkedRuns"][number];
 
 
 // Exclude heartbeat timestamps and versions to avoid republishing each beat; served versions are not the CAS basis.
@@ -421,13 +417,17 @@ export class RunQueueProjection {
       if (tail.records.length === 0) return;
       const events = tail.records.filter((record) => record.payload.kind === "span")
         .map((record) => ({ event: SpanEventWireSchema.parse(record.payload.kind === "span" ? record.payload.event : undefined), line: timelineSpanLocation(record) }));
-      const snapshot = this.#canonicalSnapshot();
+      if (events.length === 0) return;
+      const runIds = new Set<string>();
+      let workerChanged = false;
       for (const { event, line } of events) {
         const affected = this.#fold(event, line);
         this.#cursorValue += 1;
         this.#recordRunLog(event, line);
-        this.#notify(affected, snapshot);
+        for (const runId of affected.runIds) runIds.add(runId);
+        workerChanged ||= affected.workerChanged;
       }
+      this.#notify({ runIds: [...runIds], workerChanged }, events.length > 1);
     } catch (error) {
       this.#degrade(`timeline ingest failed: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -721,88 +721,94 @@ export class RunQueueProjection {
   }
 
   // Row patches carry no count tuples; count changes require a snapshot.
-  #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, snapshot = this.#canonicalSnapshot()): void {
-    const changes: RunQueueProjectionChange[] = [];
-    let snapshotNeeded = affected.workerChanged;
-    let batchPresentationChanged = false;
-    let crossDayMembersChanged = false;
-    const { byId, children } = snapshot;
-    const context = this.#readContext(snapshot.runs);
-    const affectedIds = new Set(affected.runIds);
-    for (const runId of affected.runIds) {
-      const path = new Set<string>();
-      let current = byId.get(runId);
-      while (current?.envelope.parent !== undefined) {
-        if (path.has(current.envelope.runId)) throw new ProjectionDegradedError("delegation-ancestry-cycle");
-        path.add(current.envelope.runId);
-        affectedIds.add(current.envelope.parent.runId);
-        current = byId.get(current.envelope.parent.runId);
+  #notify(affected: { runIds: readonly string[]; workerChanged: boolean }, forceSnapshot = false): void {
+    const publications = this.#deps.reader.withRunTreeSnapshot([], () => {
+      const changes: RunQueueProjectionChange[] = [];
+      let snapshotNeeded = affected.workerChanged;
+      let batchPresentationChanged = false;
+      let crossDayMembersChanged = false;
+      const snapshot = this.#canonicalSnapshot();
+      const { byId, children } = snapshot;
+      const context = this.#readContext(snapshot.runs);
+      const affectedIds = new Set(affected.runIds);
+      for (const runId of affected.runIds) {
+        const path = new Set<string>();
+        let current = byId.get(runId);
+        while (current?.envelope.parent !== undefined) {
+          if (path.has(current.envelope.runId)) throw new ProjectionDegradedError("delegation-ancestry-cycle");
+          path.add(current.envelope.runId);
+          affectedIds.add(current.envelope.parent.runId);
+          current = byId.get(current.envelope.parent.runId);
+        }
       }
-    }
-    for (const runId of [...affectedIds]) for (const child of children.get(runId) ?? []) affectedIds.add(child.envelope.runId);
-    for (const runId of affectedIds) {
-      const row = this.#rows.get(runId);
-      const authority = byId.get(runId);
-      const previous = this.#notifiedRows.get(runId);
-      const previousStatus = previous?.status;
+      for (const runId of [...affectedIds]) for (const child of children.get(runId) ?? []) affectedIds.add(child.envelope.runId);
+      for (const runId of affectedIds) {
+        const row = this.#rows.get(runId);
+        const authority = byId.get(runId);
+        const previous = this.#notifiedRows.get(runId);
+        const previousStatus = previous?.status;
 
-      if (authority === undefined) {
-        if (previousStatus !== undefined) {
-          this.#notifiedRows.delete(runId);
+        if (authority === undefined) {
+          if (previousStatus !== undefined) {
+            this.#notifiedRows.delete(runId);
+            snapshotNeeded = true;
+          }
+          continue;
+        }
+        const day = localDatePart(new Date(authority.envelope.enqueuedAt));
+        const replacement = this.#surface(row, authority, children.get(runId) ?? [], context);
+        const batch = replacement.session;
+        if (batch.state === "present" && batch.presentation !== undefined
+          && this.#publishedBatchVersions.get(batch.sessionId) !== batch.presentation.version) {
+          // A row refresh can beat the poll. Its batch facts must move together
+          // for all members, never leak a new revision through one row patch.
+          batchPresentationChanged = true;
           snapshotNeeded = true;
         }
-        continue;
+        const countNeutral = !isQueueTopLevel(replacement)
+          ? previousStatus !== undefined
+          : previousStatus === replacement.status;
+        const surface = JSON.stringify(replacement);
+        this.#notifiedRows.set(runId, { status: replacement.status, surface });
+        if (!affected.runIds.includes(runId) && previous?.surface === surface) continue;
+        let holder = authority;
+        while (holder.envelope.parent !== undefined) {
+          if (this.#parentFact(context, holder)?.visibility === "linked") break;
+          const parent = byId.get(holder.envelope.parent.runId);
+          if (parent === undefined) throw new ProjectionDegradedError("queue-parent-source-unavailable");
+          if (localDatePart(new Date(parent.envelope.enqueuedAt)) !== day) crossDayMembersChanged = true;
+          holder = parent;
+        }
+        if (crossDayMembersChanged) snapshotNeeded = true;
+        if (!countNeutral) {
+          snapshotNeeded = true;
+          continue;
+        }
+        changes.push({
+          kind: "patch",
+          cursor: this.cursor(),
+          day,
+          patch: DashboardDayPatchSchema.parse({
+            operation: "replace-queue-surface",
+            target: { runId, rowRevision: replacement.rowRevision },
+            replacement,
+          }),
+        });
       }
-      const day = localDatePart(new Date(authority.envelope.enqueuedAt));
-      const replacement = this.#surface(row, authority, children.get(runId) ?? [], context);
-      const batch = replacement.session;
-      if (batch.state === "present" && batch.presentation !== undefined
-        && this.#publishedBatchVersions.get(batch.sessionId) !== batch.presentation.version) {
-        // A row refresh can beat the poll. Its batch facts must move together
-        // for all members, never leak a new revision through one row patch.
-        batchPresentationChanged = true;
-        snapshotNeeded = true;
-      }
-      const countNeutral = !isQueueTopLevel(replacement)
-        ? previousStatus !== undefined
-        : previousStatus === replacement.status;
-      const surface = JSON.stringify(replacement);
-      this.#notifiedRows.set(runId, { status: replacement.status, surface });
-      if (!affected.runIds.includes(runId) && previous?.surface === surface) continue;
-      let holder = authority;
-      while (holder.envelope.parent !== undefined) {
-        if (this.#parentFact(context, holder)?.visibility === "linked") break;
-        const parent = byId.get(holder.envelope.parent.runId);
-        if (parent === undefined) throw new ProjectionDegradedError("queue-parent-source-unavailable");
-        if (localDatePart(new Date(parent.envelope.enqueuedAt)) !== day) crossDayMembersChanged = true;
-        holder = parent;
-      }
-      if (crossDayMembersChanged) snapshotNeeded = true;
-      if (!countNeutral) {
-        snapshotNeeded = true;
-        continue;
-      }
-      changes.push({
-        kind: "patch",
-        cursor: this.cursor(),
-        day,
-        patch: DashboardDayPatchSchema.parse({
-          operation: "replace-queue-surface",
-          target: { runId, rowRevision: replacement.rowRevision },
-          replacement,
-        }),
-      });
-    }
-    if (snapshotNeeded) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint(snapshot.runs);
-    if (snapshotNeeded) changes.push({ kind: "snapshot", cursor: this.cursor() });
-    const publications: readonly RunQueueProjectionChange[] = batchPresentationChanged || crossDayMembersChanged
-      ? [{ kind: "snapshot", cursor: this.cursor() }]
-      : changes;
+      const snapshotOnly = forceSnapshot || batchPresentationChanged || crossDayMembersChanged
+        || changes.filter(change => change.kind === "patch").length > 1;
+      if (snapshotOnly) snapshotNeeded = true;
+      if (snapshotNeeded) this.#workerAuthorityFingerprint = this.#captureSharedAuthorityFingerprint(snapshot.runs);
+      if (snapshotNeeded) changes.push({ kind: "snapshot", cursor: this.cursor() });
+      const publications: readonly RunQueueProjectionChange[] = snapshotOnly
+        ? [{ kind: "snapshot", cursor: this.cursor() }]
+        : changes;
+      return publications;
+    });
     for (const change of publications) {
       for (const listener of this.#listeners) listener(change);
     }
   }
-
 
   #ownerFact(lease: WorkerLeaseRecord) {
     if (!isLiveWorker(lease)) return { state: "stopped" } as const;
@@ -1104,7 +1110,7 @@ export class RunQueueProjection {
   #runLink(context: QueueReadContext, run: RunRecord): LinkedRunView {
     const known = context.links.get(run.envelope.runId);
     if (known !== undefined) return known;
-    const link = { runId: run.envelope.runId, partitionDay: localDatePart(new Date(run.envelope.enqueuedAt)),
+    const link: LinkedRunView = { runId: run.envelope.runId, partitionDay: LocalDateSchema.parse(localDatePart(new Date(run.envelope.enqueuedAt))),
       workflowId: run.envelope.workflow, label: this.#deps.descriptors.resolve(run.envelope.workflow)?.label ?? run.envelope.workflow,
       panelKind: panelKindOf(run.envelope.shape, this.#deps.authority.reviewAvailable?.(run.envelope.runId) === true), status: this.#status(run) };
     context.links.set(run.envelope.runId, link);
@@ -1227,6 +1233,7 @@ export class RunQueueProjection {
     const warningVerdict = this.#warningVerdict(status, receipt);
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
     const reviewAvailable = this.#deps.authority.reviewAvailable?.(queued.runId) === true;
+    const recordMembers = this.#deps.authority.recordMembers?.(authority, children);
 
     const members = children.filter(member => isQueueMember({ parent: this.#parentFact(context, member), status: this.#status(member) }));
     const memberChildIds = members.map((member) => member.envelope.runId);
@@ -1314,13 +1321,14 @@ export class RunQueueProjection {
       }),
       rowRevision: authority.version,
     };
-    if (shape === "operation" || members.length > 0) {
+    if (shape === "operation" || members.length > 0 || recordMembers !== undefined) {
       return {
         warningVerdict,
         surface: QueueSurfaceWireSchema.parse({
           ...base,
           surfaceKind: "operation",
           memberRunIds: memberChildIds,
+          ...(recordMembers === undefined ? {} : { recordMembers }),
           memberRollup: {
             total: memberChildIds.length,
             terminal: terminalMembers.length,

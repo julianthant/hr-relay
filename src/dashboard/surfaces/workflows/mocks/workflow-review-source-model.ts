@@ -1,32 +1,5 @@
-import type { ReviewField, ReviewRecord } from "./workflow-review-model.js";
-
-export type ReviewSourcePage = Readonly<{ page: number; imageUrl: string; label?: string }>;
-
-export function reviewFieldGroups(record: ReviewRecord): readonly { title: string; fields: readonly ReviewField[] }[] {
-  const groups: { title: string; fields: ReviewField[] }[] = [];
-  for (const field of record.fields) {
-    const title = field.section ?? "Employee";
-    const previous = groups[groups.length - 1];
-    if (previous?.title === title) previous.fields.push(field);
-    else groups.push({ title, fields: [field] });
-  }
-  return groups;
-}
-
-export function reviewFieldBlocks(fields: readonly ReviewField[]): readonly (readonly ReviewField[])[] {
-  const blocks: ReviewField[][] = [];
-  for (const field of fields) {
-    const previous = blocks[blocks.length - 1];
-    if (field.kind === "boolean" && previous?.[0].kind === "boolean") previous.push(field);
-    else blocks.push([field]);
-  }
-  return blocks;
-}
-
-export function reviewFieldPresentation(field: ReviewField): { wide: boolean; multiline: boolean } {
-  const multiline = /\b(?:notes|comments|instructions|additional information)\b/iu.test(field.label);
-  return { wide: multiline || /\b(?:street|email|title|citizenship)\b/iu.test(field.label), multiline };
-}
+import type { ReviewRecord } from "./workflow-review-model.js";
+import { reviewFieldGroups, type ReviewSourcePage } from "../../run-detail/review/review-record-model.js";
 
 function escapeXml(value: string): string {
   return value.replace(/[&<>"']/gu, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&apos;" })[character]!);

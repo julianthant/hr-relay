@@ -1,5 +1,6 @@
 import { scaledMs } from "../../../support/time-scale.js";
 import { childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { readQueueRecordMembers } from "../../../../src/backend/runs/queries/ocr-record-members.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
@@ -76,6 +77,25 @@ it("ocr/approved-snapshot — consumes a corrected released record and admits it
     assert.equal(f.database.authority.runResults.get(child.envelope.runId), undefined);
     assert.deepEqual(f.database.authority.writeIntents.listByRun(child.envelope.runId), []);
   }
+  const readRows = (resolve = f.resolve) => f.database.withAuthorityReadSnapshot(() => {
+    const parent = f.database.authority.runs.get(f.parentRun.envelope.runId); assert.ok(parent);
+    return readQueueRecordMembers(f.database.authority, f.canonical.lifecycle, parent,
+      f.database.authority.runs.listChildren(parent.envelope.runId), resolve);
+  });
+  const rows = readRows(); assert.ok(rows);
+  assert.deepEqual(rows.members.map(row => row.statusLabel), ["Saving"]);
+  assert.deepEqual(rows.members.map(row => row.target.runId), children.map(child => child.envelope.runId));
+  const native = f.database.authority.dependencies.groups(f.parentRun.envelope.runId).find(({ group }) => group.invocation.nodeId === "members"); assert.ok(native);
+  assert.deepEqual(native.group.invocation.children.map(child => child.sourceRecordIds), selected.map(recordId => [recordId]));
+  const generation = f.database.getMeta().authorityGeneration;
+  const retained = readRows(id => {
+    const descriptor = f.resolve(id);
+    return descriptor?.id === "emergency-contact-member" ? { ...descriptor, version: descriptor.version + 1 } : descriptor;
+  });
+  assert.deepEqual(retained?.members.map(row => row.statusLabel), ["Running"]);
+  assert.deepEqual(retained?.members.map(row => row.childRunIds), rows.members.map(row => row.childRunIds));
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
+  assert.deepEqual(readRows(), rows);
   assert.equal(f.harness.sessions.opens(), 0);
 });
 it("authenticates record reads under an admitted member's actual claim and node, refusing task, claim, record, reference and later-draft substitutions", async () => {
@@ -218,6 +238,22 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
   assert.deepEqual(members.map(member => EmergencyContactMemberInputSchema.parse(member.input.parsed.value).record.recordId), selected);
   const ocrResult = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(ocrResult);
   assert.equal(readRunPreviewResult(ocrResult), undefined);
+  const pendingRows = f.database.withAuthorityReadSnapshot(() => {
+    const parent = f.database.authority.runs.get(f.parentRun.envelope.runId); assert.ok(parent);
+    return readQueueRecordMembers(f.database.authority, f.canonical.lifecycle, parent,
+      f.database.authority.runs.listChildren(parent.envelope.runId), f.resolve);
+  });
+  assert.ok(pendingRows);
+  assert.deepEqual(pendingRows.members.map(row => row.kind === "record" ? row.record.recordId : row.kind), review.records.map(record => record.recordId));
+  assert.deepEqual(pendingRows.members.map(row => row.statusLabel), ["Previewing", "Not approved", "Previewing"]);
+  for (const [index, row] of pendingRows.members.entries()) {
+    assert.ok(row.kind === "record");
+    if (index === 1) { assert.equal(row.target.section, "review"); continue; }
+    const member = members.find(member => EmergencyContactMemberInputSchema.parse(member.input.parsed.value).record.recordId === row.record.recordId);
+    assert.ok(member);
+    assert.equal(row.target.section, "logs"); assert.equal(row.target.runId, member.envelope.runId);
+    assert.ok(row.childRunIds.includes(member.envelope.runId));
+  }
   const result = await f.canonical.execute(f.parentRun, new AbortController().signal);
   assert.ok(result.run?.lifecycle.state === "terminal" && result.run.lifecycle.outcome === "done",
     JSON.stringify(result.outcomes.map(outcome => ({ state: outcome.state }))));
@@ -275,6 +311,9 @@ it("previews a nonempty parent through ordinary OCR, selected child preparations
   assert.deepEqual([...surface.memberRunIds].sort(), members.map(member => member.envelope.runId).sort());
   assert.deepEqual(surface.memberRollup, { total: 2, terminal: 2, failed: 0 });
   assert.deepEqual(surface.linkedRuns.map(link => link.runId), [f.run.envelope.runId]);
+  assert.deepEqual(surface.recordMembers?.members.map(row => row.kind === "record" ? row.record.recordId : row.kind), review.records.map(record => record.recordId));
+  assert.deepEqual(surface.recordMembers?.members.map(row => row.statusLabel), ["Previewed", "Not approved", "Previewed"]);
+  assert.ok(surface.recordMembers?.members.every(row => row.statusLabel !== "Saved"));
   const ocrSurface = projection.queueSurface(f.run.envelope.runId); assert.ok(ocrSurface);
   assert.equal(ocrSurface.parent?.runId, f.parentRun.envelope.runId);
   assert.equal(ocrSurface.parent?.visibility, "linked");

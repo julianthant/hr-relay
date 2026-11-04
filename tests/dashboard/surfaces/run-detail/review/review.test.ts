@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,expect,it } from "vitest";
 import { approveMockRun,initialMockDraft,mockRunsForDraft } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { WorkflowMockReview } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review.js";
+import { WorkflowMockReview } from "../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 
 const preparation = (id: "emergency-contact" | "onbase" | "oath-upload") => mockRunsForDraft(id, { ...initialMockDraft(id), files: [{ name: "fictional.pdf", size: 1024, digest: "fixture" }] }, 1);
 describe("complete workflow presentation mocks", () => {

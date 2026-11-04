@@ -27,7 +27,8 @@ import { FIXTURE_PARKED_WRITE } from "../../support/fixtures/dashboard/run-detai
 import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/bootstrap.js";
-import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
+import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
+import { queueParentFixture } from "../../support/helpers/dashboard/queue-parent-fixture.js";
 import { serverLocalDay } from "../../../src/dashboard/surfaces/shell/date-navigation-model.js";
 import { CommandExecutor, type CommandOutcome } from "../../../src/dashboard/app/commands/command-executor.js";
 import { CommandResultSchema, CommandRequestSchema, type CommandRequest } from "../../../src/rules/commands/commands.js";
@@ -110,6 +111,50 @@ function action(runId = RUN) {
 }
 
 describe("served Logs wiring", () => {
+  it("keeps child Retry in its own header and locks it to the exact pending or uncertain command", async () => {
+    const h = commandBindingFixture();
+    let selected: LogSelection = { ...selection(), row: QueueSurfaceWireSchema.parse({ ...selection().row,
+      parent: queueParentFixture(OTHER), status: "failed", endedAt: { state: "present", value: AT },
+      actions: [{ kind: "command", key: "retry", command: "retry", label: "Retry child", icon: "retry", intent: "neutral", placement: ["footer"], expectedVersion: selection().row.rowRevision }] }) };
+    const sent: CommandRequest[] = [];
+    let release: (() => void) | undefined;
+    const client: DashboardClient = { ...h.client, runDetail: async () => detail(selected),
+      runSection: async () => RunDetailSectionResponseSchema.parse({ section: "logs", payload: page() }),
+      executeCommand: async raw => {
+        sent.push(CommandRequestSchema.parse(raw));
+        if (sent.length === 1) await new Promise<void>(resolve => { release = resolve; });
+        throw new Error("Synthetic lost response");
+      } };
+    const scope = { ...h.binding.scope, client };
+    const binding: DashboardCommandBinding = { ...h.binding, scope, executor: new CommandExecutor(() => scope),
+      authority: { ...h.binding.authority, epoch: { ...h.binding.authority.epoch, client } } };
+    let pending: Promise<CommandOutcome> | undefined;
+    const render = () => createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding,
+      children: createElement(LogSample, { selection: selected, onAction: (action, target) => {
+        assert.equal(action.kind, "command");
+        assert.deepEqual(target, { runId: selected.row.runId, expectedVersion: selected.row.rowRevision });
+        pending = binding.executor.execute(CommandRequestSchema.parse({ family: "run", type: "retry", commandId: NOTE,
+          requestedAt: AT, requestedBy: scope.actorId, source: "run-detail", target }), { scope, readback: async () => ({ state: "mismatch", evidence: "Synthetic unconfirmed readback" }) });
+      } }) }) });
+    await mount(render());
+    const retry = document.querySelector<HTMLButtonElement>('header button[aria-label="Retry child"]'); assert.ok(retry);
+    assert.equal(retry.disabled, false);
+    await act(async () => retry.click());
+    assert.equal(sent.length, 1);
+    await act(async () => root?.render(render()));
+    assert.equal(retry.disabled, true);
+    assert.match(document.querySelector("header")?.textContent ?? "", /Pending/u);
+    await act(async () => { assert.ok(release); release(); await pending; root?.render(render()); });
+    const replay = [...document.querySelectorAll<HTMLButtonElement>("header button")].find(button => button.textContent === "Replay exact decision"); assert.ok(replay);
+    assert.equal(retry.disabled, true);
+    await act(async () => replay.click());
+    assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
+    selected = { ...selected, row: { ...selected.row, actions: [] } };
+    await act(async () => root?.render(render()));
+    assert.equal(document.querySelector('header button[aria-label="Retry child"]'), null);
+    await act(async () => replay.click());
+    assert.equal(sent.length, 2);
+  });
   it("reads exact detail and every immutable log cursor, preserving confirmed actions", async () => {
     const cursor = `lc:${"a".repeat(64)}:1`;
     const seen: string[] = [];
