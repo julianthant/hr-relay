@@ -6,6 +6,7 @@ name: Merge train
 on:
   push:
     branches: [staging]
+    paths-ignore: ['docs/roadmap/**']
   workflow_call:
     inputs:
       pr: {type: string, default: ""}
@@ -27,14 +28,14 @@ jobs:
       GH_TOKEN: ${{ secrets.TRAIN_TOKEN }}
       GH_REPO: ${{ github.repository }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.workflow_sha }}
           fetch-depth: 0
           filter: blob:none
           token: ${{ secrets.TRAIN_TOKEN }}
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
           cache: npm

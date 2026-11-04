@@ -60,7 +60,7 @@ revision. It is never an inference tool or a model-produced action. Normal comma
 validation, matching readback, refusal and UNKNOWN handling apply; a lost response does not cause an
 automatic retry or invented success.
 
-The explicit verification request uses the normal assistant respond route without `subjectRef`.
+Test assistant and the explicit verification command use the normal assistant respond route without `subjectRef`. Surrounding pasted whitespace is normalized. The button preserves the current draft and reports success or the named failure in the thread.
 The backend recognizes the exact command before inference policy, private input projection, context,
 subjects or tools. Recognized setup commands reject attachments before local file I/O or registration.
 The separate composer `canCompose` input may admit the served unverified account resource, while
@@ -244,6 +244,11 @@ version changes, affected dependencies, or write resolution, and its result carr
 Replay preserves the marker in `already-applied`. Unmarked empty results, tagged nonempty results,
 and marker claims for other requests refuse validation.
 
+A committed Start retains its applied result and run targets when worker startup fails. Its
+`workerStartup` field distinguishes refused startup from unknown startup without changing enqueue
+authority. Confirmed readback closes the Start dialog, clears the retained submission and shows the
+existing warning toast with the queued-run message. Startup failure remains a terminal diagnostic.
+
 A pre-dispatch validation failure can say Nothing was sent. A failure after dispatch is unknown:
 the backend may have recorded the command. Retain the original request/command identity and check
 that attempt before another submission. Unknown external writes remain parked and offer
@@ -293,6 +298,12 @@ Settings distinguishes persisted and active revisions. Ordinary saves debounce 7
 1200 ms, or flush when focus leaves the whole field. Pending attempts lock controls. Only matching
 acknowledgment and readback create a saved toast. Conflict, refusal, and uncertainty preserve the
 draft and original attempt, with explicit recovery rather than a blur-triggered retry.
+
+Readiness reads during an active Run preflight await that check's settlement. The previous report
+remains visible as checking, or the surface shows its checking state when there is no report.
+Actual read failures and invalidated authority remain explicit. A 200 expired-readiness response
+carries `PREFLIGHT_EVIDENCE_EXPIRED` with its last report; only that validated expected expiry is
+excluded from generic failed-read diagnostics.
 
 ## Paging, events, and reload
 
@@ -464,7 +475,7 @@ A workflow declares `plannedOutputs(input, references)` to project output facts 
 
 ## Local debug events
 
-`logs/debug-events.ts` is the debug timeline writer. Severity is derived from the persisted phase, reason and HTTP status for terminal output and diagnostics reads; no level is stored. Events retain redacted text, per-category size caps and the existing timeline retention. Development backend and worker launches mirror inserted events to stderr with time, level, category, phase, code, area, reason and structural IDs; messages, stacks and request values stay out of that mirror. Production builds do not mirror.
+`logs/debug-events.ts` is the debug timeline writer. Severity is derived from the persisted phase, reason and HTTP status for terminal output and diagnostics reads; no level is stored. Events retain redacted text, per-category size caps and the existing timeline retention. Development backend and worker launches mirror inserted events to stderr with time, level, category, phase, code, area, reason and structural IDs. HTTP events also retain method, registered route template and status in that mirror. Client routes, messages, stacks and request values stay out of the mirror. Production builds do not mirror.
 
 The shared HTTP response observer records returned refusals, failures and uncertain outcomes, including HTTP 200 envelopes, and failures mapped by the thrown-error handler. It records the registered route template and approved codes, never body values. Asynchronous ChatGPT authorization, worker process/transfer faults and provider failures use the same writer at their terminal owner. A logging failure remains a named unavailable response or retained runtime failure. Asynchronous authorization retains its original completion separately from a diagnostic fault; completion readback shows the catalogued `LOGGING_UNAVAILABLE` error without an unobserved rejection or authorization retry.
 

@@ -1,6 +1,7 @@
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { importSpreadsheetInWorker } from "./spreadsheet-import-client.js";
+import { spreadsheetImportError } from "./spreadsheet-import-model.js";
 import { SpreadsheetEditor } from "./spreadsheet-editor.js";
 import { decodeEditableWorkbook, type WorkbookType } from '../../../models/dashboard/workbooks.js';
 import type { WorkbookLibraryEntry, WorkbookLibraryVersion, WorkbookLibraryAction } from '../../../models/dashboard/workbook-library.js';
@@ -109,7 +110,7 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook, onOp
   const importFile = async (file: File) => {
     setBusy(true); setFileError("");
     try { const document = prepareSpreadsheetColumns(await importSpreadsheetInWorker(file.name, await file.arrayBuffer())); onWorkbook(document, true); setSelectedId(null); setImportView("columns"); navigation?.update({ spreadsheetImportSheet: document.sheets[0].id, spreadsheetImportColumnPage: 0, spreadsheetMapping: undefined }); setImportOpen(true); }
-    catch (error) { setFileError(error instanceof Error ? error.message : String(error)); }
+    catch (error) { setFileError(spreadsheetImportError(error)); }
     finally { setBusy(false); if (upload.current) upload.current.value = ""; }
   };
   const confirmImport = () => {

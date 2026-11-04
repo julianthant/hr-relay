@@ -1,4 +1,4 @@
-import { ChatGptResourceClosureUnprovedError } from '../../../src/backend/accounts/chatgpt-account-service.js';
+import { ChatGptAccountError, ChatGptResourceClosureUnprovedError } from '../../../src/backend/accounts/chatgpt-account-service.js';
 import { ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema, AssistantPermissionViewSchema } from '../../../src/models/dashboard/assistant.js';
 import { boundProfileCredentials, createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { composeSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
@@ -540,4 +540,21 @@ it('keeps pre-effect resource uncertainty visible even when verification is canc
   assert.equal(result.state, 'refused');
   if (result.state === 'refused') assert.equal(result.code, 'CHATGPT_RESOURCE_CLOSURE_UNPROVED');
   assert.equal(closure.cause, primary); assert.equal(f.calls(), 0); assert.equal(f.planned(), 0);
+});
+
+it.each(['CHATGPT_AUTH_UNAVAILABLE', 'CHATGPT_USAGE_UNAVAILABLE', 'CHATGPT_OCR_FAILED', 'CHATGPT_OCR_INCOMPLETE', 'CHATGPT_SERVICE_CLOSED', 'CHATGPT_ASSISTANT_REFUSED'] as const)('keeps %s capability failure visible instead of returning generic unavailability', async code => {
+  const f = fixture();
+  const service = createAssistantService({ ...f.options, verifySelectedModel: async () => { throw new ChatGptAccountError(code); } });
+  const result = await service.respond({ message: ASSISTANT_VERIFY_COMMAND }, new AbortController().signal);
+  assert.equal(result.state, 'refused'); if (result.state !== 'refused') throw Error('refusal required');
+  const expected = code === 'CHATGPT_ASSISTANT_REFUSED' ? 'ASSISTANT_CAPABILITY_FAILED' : code === 'CHATGPT_OCR_INCOMPLETE' ? 'ASSISTANT_RESPONSE_INCOMPLETE' : code === 'CHATGPT_OCR_FAILED' ? 'ASSISTANT_RESPONSE_FAILED' : code;
+  assert.equal(result.code, expected);
+  assert.equal(f.calls(), 0);
+});
+
+it('admits a pasted verification command with surrounding whitespace before the policy gate', async () => {
+  const f = fixture(); let verified = 0;
+  const service = createAssistantService({ ...f.options, modelPolicy: () => undefined, verifySelectedModel: async () => { verified++; } });
+  assert.equal((await service.respond({ message: '  /verify-assistant\n' }, new AbortController().signal)).state, 'answered');
+  assert.equal(verified, 1); assert.equal(f.calls(), 0);
 });

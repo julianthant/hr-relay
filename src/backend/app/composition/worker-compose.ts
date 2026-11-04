@@ -23,6 +23,7 @@ import { ActorIdSchema, CommandIdSchema, WorkerIdSchema } from "../../../rules/i
 import { composeRuntimePreflight } from "../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
 import { claimWithPreflight } from "../preflight/worker-admission.js";
+import { PreflightObservationChangedError } from "../../../rules/preflight/preflight-admission.js";
 import { createWorkerBrowserControl, createWorkerResetControl, createWorkerResetObserver } from "../../runtime/workers/worker-browser-control.js";
 import { checkParkedWrite } from "../../runtime/writes/write-recovery.js";
 import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
@@ -47,7 +48,7 @@ import { compileWorkflow, type WorkflowModule } from "../../../workflow-kit/work
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { childWorkflowModuleOf, DESCRIPTORS, SERVER_REGISTRY } from "../registries/workflow-registry.js";
 import type { MonotonicDeadlineHandle, MonotonicDeadlineScheduler } from "../../runtime/scheduling/deadline-scheduler.js";
-import { runWorkerLoop, type WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
+import { runWorkerLoop, WorkerLoopReportSchema, type WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
 import type { DuoCeremonyGateFactory } from "../../runtime/gates/duo-ceremony-gate.js";
 import type { WorkerBrowserSessionFactory, WorkerSessionManager } from "../../runtime/workers/worker-sessions.js";
 import { createWriteSequencer } from "../../runtime/writes/write-sequencer.js";
@@ -532,6 +533,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   let runtimeError: unknown;
   const cleanupErrors: unknown[] = [];
   let runtimeReport: WorkerLoopReport | undefined;
+  let bootRefusal: PreflightObservationChangedError | undefined;
   let resources: ReturnType<typeof createRunResourcesFactory> | undefined;
   let ocrAccount: ReturnType<typeof createChatGptAccountService> | undefined;
   let accountClosureProven = true;
@@ -592,8 +594,13 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
         });
       }));
     const scope = runtimePreflight.currentScope();
-    await runtimePreflight.admission.prepare(scope, input.stopSignal ?? new AbortController().signal);
-    runtimePreflight.admission.assertReady(runtimePreflight.currentScope());
+    try {
+      await runtimePreflight.admission.prepare(scope, input.stopSignal ?? new AbortController().signal);
+      runtimePreflight.admission.assertReady(runtimePreflight.currentScope());
+    } catch (error) {
+      if (error instanceof PreflightObservationChangedError) bootRefusal = error;
+      throw error;
+    }
 
   const scheduler = createTimeoutDeadlineScheduler(clock);
   const emitter = createTimelineEmitter({ repository: loggingRepository, clock });
@@ -933,10 +940,16 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
     if (report.closure === "unproved") debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(),
       area: "browser-session", code: "WORKER_SESSION_CLOSURE_UNPROVED", reason: "browser-closure-unproved" }, { kind: "worker", workerId });
   } catch (error) {
-    runtimeError = error;
+    const refusedBeforeEffects = bootRefusal !== undefined && error === bootRefusal;
+    if (refusedBeforeEffects) {
+      runtimeReport = WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes: [], stopped: "preflight-refused", closure: "proved",
+        preflightRefusal: { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED" } });
+    } else runtimeError = error;
     try {
       debugEvents.emit({ category: "worker", phase: "failed", correlationId: ids.uuid(), area: "worker-runtime",
-        code: "WORKER_RUNTIME_FAILED", reason: hasUncertainBrowserLaunch(error) ? "browser-closure-unproved" : "worker-failed" }, { kind: "worker", workerId });
+        code: refusedBeforeEffects ? "PREFLIGHT_OBSERVATION_CHANGED" : "WORKER_RUNTIME_FAILED",
+        reason: refusedBeforeEffects ? "operation-refused"
+          : hasUncertainBrowserLaunch(error) ? "browser-closure-unproved" : "worker-failed" }, { kind: "worker", workerId });
     } catch (loggingError) { cleanupErrors.push(loggingError); }
   } finally {
     try { await resources?.stop(); } catch (error) { cleanupErrors.push(error); }

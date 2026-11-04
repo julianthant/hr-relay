@@ -1,6 +1,6 @@
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { Clock } from "../../../rules/time/clock.js";
-import { PreflightAdmissionRefusal, type PreflightAdmission, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
+import { PreflightAdmissionRefusal, PreflightEvidenceExpiredError, type PreflightAdmission, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
 import { PreflightRerunCommandRequestSchema, PreflightRerunCommandResultWireSchema, PreflightSelectionSchema, type PreflightReadinessWire, type PreflightSelection } from "../../../models/preflight/preflight-contract.js";
 import type { createPreflightAuthority } from "../../../models/preflight/preflight.js";
 import type { InstanceSelection } from "../../../models/run/envelope.js";
@@ -39,9 +39,12 @@ export function createPreflightReportService(input: Readonly<{
         previous = report;
         if (input.runtime.currentScope().configFingerprint !== report.configFingerprint) throw new PreflightAdmissionRefusal("stale", "Settings changed; re-check readiness.");
         const age = input.clock.nowMs() - Date.parse(report.checkedAt);
-        if (age < 0 || age >= 60_000) throw new PreflightAdmissionRefusal("stale", "Preflight evidence expired; re-check readiness.");
+        if (age < 0) throw new PreflightAdmissionRefusal("stale", "Preflight evidence is dated in the future; re-check readiness.");
+        if (age >= 60_000) throw new PreflightEvidenceExpiredError(report);
         return { state: "present", report };
       } catch (error) {
+        if (error instanceof PreflightEvidenceExpiredError) return { state: "unavailable", code: "PREFLIGHT_EVIDENCE_EXPIRED",
+          reason: error.message, lastCompleted: error.report };
         if (error instanceof PreflightAdmissionRefusal) return { state: "unavailable", reason: error.message, ...(previous === undefined ? {} : { lastCompleted: previous }) };
         throw error;
       }

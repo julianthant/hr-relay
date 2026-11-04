@@ -366,10 +366,17 @@ the served account once. Superseded requests cannot publish into another convers
 Chat files retains its composer and uses version-bound workbook registration and reads. Attachment
 open/download reads its exact CAS revision through the shared client's revision lookup, independent
 of operator named versions. The model,
-effort, approval and voice controls remain unavailable; setup uses the existing composer, with no new
-component. The explicit parity composition supplies approved mock conversations and sample workflow
-scenes; product failures never select those producers. Chat titles and drafts are local to the mounted
-shell.
+effort, approval and voice controls remain unavailable. The served model and effort labels come from
+the selected person’s preference; setup changes use the existing composer command. Test assistant
+above the composer explicitly runs the same public capability verification without replacing an
+unsent draft. Named verification failures remain in the conversation and never enable inference. The explicit parity composition supplies approved mock conversations and sample workflow
+scenes; product failures never select those producers. Chat titles, selected chat, text drafts and displayed replies survive refresh in the current browser
+tab’s session storage, scoped only after the server verifies the selected person. Another person’s
+key is never adopted. Saved text confers no command or model authority: restored pending requests
+remain unknown, review proposals expire, and verification proof is never restored. File bodies and
+executable action identities are not saved. Storage failures remain visible without erasing data.
+Deleting a chat retires its controller before removing history. Pending decisions become unknown;
+their late success or failure cannot write history, revive the chat or replay the action.
 
 For a currently selected served Queue run, send `start selected workflow` to propose the same
 workflow for that run's canonical subject input. The model receives a request-scoped opaque reference,
@@ -493,8 +500,14 @@ labelled with their current row. Inserted columns have a null source coordinate.
 
 Editable XLSX imports include hidden and filtered rows. Worksheet/table filter rules are not imported.
 Excel table filter metadata is removed only from a private parsing copy; original
-bytes stay unchanged. Standard worksheet dimensions retain selected trailing blank rows and columns;
-malformed ranges or worksheet references refuse, and declared extents count toward the workbook size limit.
+bytes stay unchanged. Imports admit up to 250,000 populated cells across the workbook; null and empty
+string cells do not count, while zero, false and formulas do. The editable grid is separately bounded
+to 500,000 cell positions. Standard worksheet dimensions retain selected trailing blank rows and columns
+when the grid fits. Otherwise imports trim only empty trailing padding, preserve all values and their
+coordinates, and flag the trimmed metadata to refuse master mutation. A populated extent beyond the
+grid bound refuses without dropping values. Malformed ranges or worksheet references still refuse.
+Import errors show the populated count, limit and recovery advice without internal codes.
+Column styles that extend to Excel's last column do not enlarge the imported data grid.
 Values, supported fills, number formats, hyperlink URLs/text and rich-text runs survive library
 save, reopen and XLSX export, while malformed table XML refuses import. The shared browser-safe
 `rules/spreadsheets/workbook-io.ts` boundary uses `@shbernal/ts-xlsx` and retains hyperlink tooltips.
@@ -510,6 +523,8 @@ Undo/Redo, mapping edits, and Excel workbook or current-sheet CSV export. Render
 50 rows and 20 columns, but search covers the full sheet. History keeps 50 versions. Stable-field
 read/write helpers preserve headers, formatting, and row identity; invalid patches refuse atomically.
 Busy states disable conflicting controls, cancellation is explicit, and file errors remain visible.
+Row and column insertion availability uses workbook-wide populated and grid limits, including each
+new column's nonempty header. Blank rows consume grid positions without consuming populated cells.
 
 Durable library storage, OCR roster matching, Person Lookup fallback, and workflow roster updates
 remain producer/authority wiring. A locally exported copy is not proof of a workflow write. A roster
@@ -556,7 +571,7 @@ pending until the download settles and reports refusal without starting another 
 
 ## Explorer
 
-Served Explorer uses registered timeline groups with declared operator fields as one step per group and system. It displays only their fictional example strings and safe field provenance, with explicit definition-preview copy. Groups without operator fields retain task labels, purposes and operator action text without raw contract fieldsets. Exact graph, frozen operation and source lineage validation remains internal; no run values are inferred.
+Person Lookup and Separations declare read-only Explorer walkthroughs in their registered workflow definitions. The query serves their node-bound steps, forms, actions, fictional examples, preview choices and field sources to the existing timeline components. Preview choices change only local presentation; they never approve gates or execute work. Definition admission requires complete registered-node coverage, and the renderer retains graph, operation and source-lineage validation before projecting the walkthrough. Person Lookup shows its current single-person Search and Match paths; delegation nodes remain absent. Other workflows use their registered timeline groups and operator fields, or declared task labels, purposes and actions. No run values are inferred.
 
 Explorer mounts in Settings and describes itself as fictional preview data. Its workflow picker
 uses stable fixture IDs and the shared catalog. Local scenario/choice controls alter the preview's
@@ -631,6 +646,16 @@ continuation after its handler await, returns that action as unknown. An ambiguo
 transport has no fabricated action identity and disables retry; the operator checks the current inbox
 before a new request. A confirmation-required proposal does not execute or imply
 operator approval.
+
+The finite run-read allowlist supports `run status` and selected-run explanation phrases. Its adapter
+in `app/composition/dashboard/assistant.ts` uses the existing canonical run-detail dependencies,
+admits the exact selected run revision and checks currentness across inference. Only an opaque
+request reference reaches the model. The final local reply quotes the canonical status, gate,
+outcome and the newest exact subset of at most ten timeline events that fits the quotation bound,
+with an explicit omitted-event count and exact run/revision/source/digest citations. Currentness
+still checks all ten recent candidates, including those omitted from the quotation.
+Forged citations, changed evidence and text-only claims refuse. The adapter is available for direct
+injection; the production `compose.ts` call site still awaits its assigned integration phase.
 
 `context.ts` projects the finite plain help artifact. Run
 `tsx scripts/build/generate-assistant-knowledge.ts` and its `--check` mode to generate and verify

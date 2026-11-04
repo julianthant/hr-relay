@@ -453,8 +453,11 @@ Logs row-resolution dispatch remain integrations owned by Runs; this library API
 `@shbernal/ts-xlsx` for XLSX and the existing CSV parser/writer. Downloads omit selected hidden columns; the intake export retains and marks
 them, using saved document and ZIP timestamps. Formula inputs retain cached values and the formula
 presence flag; exported copies contain values. Theme/fill, rich text, links, number formats, typed dates,
-worksheet dimensions and named structural refusals remain part of this boundary. Import records
-unsupported metadata through namespace-aware OOXML admission. Master edits, keyed writes and Sync
+worksheet dimensions and named structural refusals remain part of this boundary. The shared rules admit
+at most 250,000 populated cells and 500,000 editable grid positions for both import and
+saved-document validation. Oversized empty trailing padding is trimmed
+without changing value coordinates and marks the workbook unsuitable for master mutation.
+Import records unsupported metadata through namespace-aware OOXML admission. Master edits, keyed writes and Sync
 refuse formula-bearing workbooks or unsupported metadata with `WORKBOOK_METADATA_UNSUPPORTED`.
 standalone Excel error cells also carry this flag because their display text loses the error type.
 Clearing an incoming flag cannot bypass the stored master's refusal. The default Calibri font and

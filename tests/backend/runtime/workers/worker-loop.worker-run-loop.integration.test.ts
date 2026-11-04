@@ -6,6 +6,7 @@ import { afterEach, describe, it, vi } from "vitest";
 import { runWorkerLoop, WorkerLoopReportSchema } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { UUID_5, UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { EXECUTOR_WORKER_ID, healthyCrmDriver, healthyUcpathDriver, personLookupQueuedRun, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 
 const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
@@ -13,6 +14,16 @@ const {loopHarness, cleanup } = createWorkerDirectiveTestWorld();
 afterEach(async () => { vi.restoreAllMocks(); await cleanup(); });
 
 describe("worker run loop", () => {
+  it("stops with a typed preflight refusal before sessions or execution and never repeats the claim", async () => {
+    const h = await loopHarness(); let claims = 0;
+    const report = await runWorkerLoop({ ...h.deps, claimNext: () => {
+      claims++; return { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: RunIdSchema.parse(RUN_ID) };
+    } });
+    assert.deepEqual(report, { workerId: h.deps.workerId, workflowId: h.deps.workflowId, outcomes: [], stopped: "preflight-refused",
+      closure: "proved", preflightRefusal: { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: RUN_ID } });
+    assert.equal(claims, 1); assert.equal(h.sessions.opens("ucpath"), 0); assert.equal(h.sessions.opens("crm"), 0);
+    assert.ok(h.emitter.events().some(event => event.t === "span.ended" && event.kind === "worker" && event.outcome === "failed"));
+  });
   it("drains two queued items sequentially — one active item — and closes sessions at stop", async () => {
     const harness = await loopHarness();
     const { database } = harness.authority;

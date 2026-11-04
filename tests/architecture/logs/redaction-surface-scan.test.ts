@@ -79,7 +79,7 @@ describe("redaction surface scan — the declaration audit", () => {
   for (const id of ["wire/run-logs-stream", "wire/run-detail-section", "wire/stream-envelope", "wire/ocr-command-result"]) {
     it(`reviews every OCR leaf and refuses missing origins or foreign egress (${id})`, () => {
       const origins = SURFACE_LEAF_ORIGINS.filter(entry => entry.surface === id && (entry.path.includes(".ocr.") || id === "wire/ocr-command-result"));
-      assert.equal(origins.length, id === "wire/ocr-command-result" ? 8 : 49);
+      assert.equal(origins.length, id === "wire/ocr-command-result" ? 10 : 49);
       const surface = REDACTION_SURFACES.find(surface => surface.id === id); assert.ok(surface);
       assert.equal(surface.egress, "operator-loopback");
       const sameSurfaceOrigins = SURFACE_LEAF_ORIGINS.filter(candidate => candidate.surface === id);
@@ -220,6 +220,18 @@ describe("redaction surface scan — the declaration audit", () => {
       ["wire/run-detail-section", "payload.rows[].displayFields[].label", "repository-authored"],
       ["wire/workflow-explorer", "workflows[].timeline[].operatorFields[].example", "repository-authored"],
       ["wire/workflow-explorer", "workflows[].definitionPreview.groups[].description", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].walkthrough.choices[].key", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].walkthrough.choices[].label", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].walkthrough.choices[].options[][]", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].walkthrough.completion", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].walkthrough.sources", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].walkthrough.sourceVariants[].sources", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].walkthrough.sourceVariants[].when", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].walkthrough.steps[].nodes[]", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].walkthrough.steps[].parts[]", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].walkthrough.steps[].stopWhen", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].walkthrough.steps[].title", "repository-authored"],
+      ["wire/workflow-explorer", "workflows[].walkthrough.steps[].when", "repository-authored"],
     ] as const;
     for (const [surface, path, origin] of reviewed) {
       const entry = SURFACE_LEAF_ORIGINS.find(entry => entry.surface === surface && entry.path === path);

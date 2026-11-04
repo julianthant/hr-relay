@@ -122,6 +122,17 @@ describe("separate event and admitted proof workflows", () => {
     const releaseTrigger = release.split("\npermissions:\n")[0];
     expect(ciTrigger).toContain("branches: [staging]");
     expect(ciTrigger).not.toContain("workflow_dispatch:");
+    expect(ciTrigger).not.toContain("push:");
+    expect(load("merge-train").split("\non:\n")[1]?.split("\npermissions:")[0]).toBe(`  push:
+    branches: [staging]
+    paths-ignore: ['docs/roadmap/**']
+  workflow_call:
+    inputs:
+      pr: {type: string, default: ""}
+      conclusion: {type: string, default: ""}
+    secrets:
+      TRAIN_TOKEN: {required: true}
+`);
     expect(releaseTrigger).toContain("branches: [main]");
     expect(releaseTrigger).toContain("workflow_dispatch:");
     expect(ci).not.toContain("release.yml");
@@ -176,7 +187,7 @@ describe("separate event and admitted proof workflows", () => {
 
   it("retains native/bootstrap budgets, post-failure groups and exact file membership", () => {
     const windows = job(full, "windows");
-    expect(windows.indexOf("git config --global core.autocrlf false")).toBeLessThan(windows.indexOf("uses: actions/checkout@v4"));
+    expect(windows.indexOf("git config --global core.autocrlf false")).toBeLessThan(windows.indexOf("uses: actions/checkout@v7"));
     expect(windows).toContain("git config --global core.autocrlf false");
     expect(windows).toContain("shell: bash");
     expect(windows).not.toMatch(/ram-tmp|mdutil|sysctl|memory_pressure|continue-on-error/u);
@@ -346,7 +357,7 @@ describe("cancelled admitted source work", () => {
       assert.ok(code);
       return Boolean(runInNewContext(code, { cancelled: () => cancelled, always: () => true }));
     };
-    expect(inner).toContain("uses: actions/checkout@v4");
+    expect(inner).toContain("uses: actions/checkout@v7");
     expect(inner).toContain("run: npm ci");
     expect(outer).not.toContain("actions/checkout");
     expect(outer).not.toContain("npm ci");

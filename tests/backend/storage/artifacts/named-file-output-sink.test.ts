@@ -1,6 +1,7 @@
+import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
@@ -133,4 +134,30 @@ it("refuses changed staging before preparing or publishing the output", async ()
     await assert.rejects(f.sink.project(f.request), /staged-bytes-changed/u);
     assert.equal(existsSync(f.path), false); assert.equal(f.prepared(), undefined);
   } finally { f.close(); }
+});
+
+
+it.skipIf(process.platform !== "linux")("publishes named output with exact high file and directory IDs", async () => {
+  const f = await fixture(), restore = forceExactFileMetadata(f.directory);
+  try {
+    assert.deepEqual(await f.sink.project(f.request), { contentSha256: f.artifact.sha256, artifact: f.artifact });
+    assert.deepEqual(readFileSync(f.path), f.bytes);
+    const inode = (1n << 54n) + (lstatSync(f.path, { bigint: true }).ino << 2n), directoryInode = (1n << 54n) + (lstatSync(f.directory, { bigint: true }).ino << 2n);
+    const stage = join(f.directory, `.relay-${f.request.row.outboxId}-0.tmp`);
+    for (const source of ["path", "descriptor"] as const) assert.ok(restore.observations.some(observation =>
+      observation.path === stage && observation.source === source && observation.inode === inode), `missing exact stage ${source} identity`);
+    assert.ok(restore.observations.some(observation => observation.path === f.directory && observation.inode === directoryInode));
+  } finally { restore(); f.close(); }
+});
+
+for (const target of ["directory", "stage"] as const) it.skipIf(process.platform !== "linux")(`refuses an adjacent high-ID named output ${target} substitution`, async () => {
+  let substituted = false;
+  const f = await fixture(point => { if (point === "staged") substituted = true; });
+  const restore = forceExactFileMetadata(f.directory, (path, info) => {
+    if (substituted && (target === "directory" ? path === f.directory : path.endsWith(".tmp"))) { assert.equal(Number(info.ino), Number(info.ino + 1n)); info.ino += 1n; }
+  });
+  try {
+    await assert.rejects(f.sink.project(f.request), target === "directory" ? /directory-custody-changed/u : /staged-bytes-changed/u);
+    assert.equal(existsSync(f.path), false); assert.equal(f.prepared(), undefined);
+  } finally { restore(); f.close(); }
 });
