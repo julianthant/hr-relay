@@ -26,7 +26,8 @@ performance. The operator authorizes release PRs from
 
 ## Merge train and automatic fixes
 
-`.github/workflows/merge-train.yml` runs on every push to `staging`, and CI calls it as its final job.
+Push roadmap-only commits (`docs/roadmap/**`) straight to `staging` to skip staging CI and the merge train.
+`.github/workflows/merge-train.yml` runs on other pushes to `staging`, and CI calls it as its final job.
 It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then merges
 `staging` into every open, non-draft, same-repository PR by `julianthant` into `staging` that lacks it, whatever its
 labels or auto-merge state, so every update starts CI on the latest `staging`; per-PR supersession cancels the older run. Auto-merge then lands whichever PR passes first. A PR it cannot update gets
