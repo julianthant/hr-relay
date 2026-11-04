@@ -1,8 +1,9 @@
+import type { RunRecord } from "../models/run/record.js";
 import { WorkbookReferenceLookupSchema, type WorkbookReferenceLookup, type RunWorkbookReference } from "../models/dashboard/workbooks.js";
 import { PlannedRunOutputSchema, type PlannedRunOutput } from "../models/dashboard/run-outputs.js";
 import type { RunContinuation } from "../models/run/continuation.js";
 import { WorkbookIdSchema } from "../models/dashboard/workbooks.js";
-import { lifecycleCommandId } from "../rules/commands/lifecycle-command-id.js";
+import { delegationInvocationCommandId } from "../rules/commands/lifecycle-command-id.js";
 import { sha256Hex } from "../rules/validation/sha256.js";
 import type { RerunValueMappingSpec } from "../models/workflow/rerun-values.js";
 import {
@@ -573,6 +574,28 @@ const RUN_RESULT_AUTHORIZATIONS = new WeakMap<
   object,
   Readonly<{ result: string; currentRun: string }>
 >();
+
+const DELEGATION_REFRESH_AUTHORIZATIONS = new WeakMap<object, Readonly<{ descriptor: AnyWorkflowDescriptor; run: string }>>();
+
+export function authorizeWorkflowDelegationRefresh(descriptor: AnyWorkflowDescriptor, run: RunRecord): object | undefined {
+  const state = projectionStateOf(descriptor);
+  if (descriptor.id !== run.envelope.workflow || descriptor.version !== run.envelope.descriptorVersion
+    || descriptor.contractFingerprint !== run.envelope.contractFingerprint) throw new Error("delegation-refresh-definition-mismatch");
+  if (descriptorRuntimeNodes(descriptor).some(node => node.kind === "child-run") && state.targets === undefined) throw new Error("delegation-refresh-target-authority-unavailable");
+  const support = workflowDryRunSupport(descriptor);
+  if (support.state !== "unsupported" || support.reason !== "no-transaction-node") return undefined;
+  const authorization = Object.freeze({});
+  DELEGATION_REFRESH_AUTHORIZATIONS.set(authorization,{ descriptor, run: canonicalJsonStringify(run) });
+  return authorization;
+}
+
+export function assertWorkflowDelegationRefreshAuthorization(authorization: object | undefined, run: RunRecord): AnyWorkflowDescriptor {
+  const bound = authorization === undefined ? undefined : DELEGATION_REFRESH_AUTHORIZATIONS.get(authorization);
+  if (bound === undefined || bound.run !== canonicalJsonStringify(run)) throw new Error("delegation-refresh-factory-authorization-unavailable");
+  const support = workflowDryRunSupport(bound.descriptor);
+  if (support.state !== "unsupported" || support.reason !== "no-transaction-node") throw new Error("delegation-refresh-transactions-unsupported");
+  return bound.descriptor;
+}
 
 // WeakMap membership authenticates the result; copied tokens carry no authority.
 export function assertWorkflowRunResultAuthorization(
@@ -1389,7 +1412,7 @@ export function defineWorkflowDescriptor<
       if (entry.state === "delegation-resolved") {
         const node = nodeByIdOrThrow(id, nodes, entry.nodeId, purpose);
         if (node.kind !== "child-run" || sourceParent === undefined || entry.edgeId !== node.edgeId
-          || entry.invocationCommandId !== lifecycleCommandId("delegation-invocation", { runId: sourceParent.runId, attempt: sourceParent.attempt, nodeId: node.id })
+          || entry.invocationCommandId !== delegationInvocationCommandId({ runId: sourceParent.runId, attempt: sourceParent.attempt, nodeId: node.id, revision: entry.manifest.revision })
           || entry.manifest.cardinality !== node.cardinality || entry.manifest.join !== node.join
           || canonicalJsonStringify(entry.manifest.policy) !== canonicalJsonStringify(node.policy)
           || entry.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")

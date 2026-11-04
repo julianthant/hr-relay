@@ -92,6 +92,7 @@ export interface ReceiptWriteEvidence {
 }
 
 export interface ReceiptBuildInput {
+  readonly settlementVersion?: number;
   readonly descriptor: AnyWorkflowDescriptor;
   /** The TERMINAL run record. A non-terminal run has no settled verdict. */
   readonly run: unknown;
@@ -398,7 +399,7 @@ export function deriveRunEvidenceReceipt(
   });
   if (binding.state === "incompatible") throw new Error(binding.message);
 
-  const receiptId = deriveEvidenceReceiptId(envelope.runId, envelope.attempt);
+  const receiptId = deriveEvidenceReceiptId(envelope.runId, envelope.attempt, input.settlementVersion);
   const generatedAt = lifecycle.endedAt;
   const entryId = (
     kind: Parameters<typeof deriveEvidenceEntryId>[1],
@@ -1008,6 +1009,7 @@ export function assertEvidenceRefsResolve(receipt: RunEvidenceReceipt): void {
 
 /** What the ensure step needs from authority. Reads only, plus the one insert. */
 export interface EvidenceReceiptStore {
+  refreshedSettlementVersion?(runId: string): number | undefined;
   getRun(runId: string): unknown;
   getResult(runId: string): unknown;
   getFailure(failureId: string): unknown;
@@ -1048,6 +1050,7 @@ export function ensureRunEvidenceReceipt(
     descriptor,
     run,
     result: store.getResult(runId),
+    ...(store.refreshedSettlementVersion === undefined ? {} : { settlementVersion: store.refreshedSettlementVersion(runId) }),
     ...(lifecycle.failureId === undefined ? {} : { failure: store.getFailure(lifecycle.failureId) }),
     checkpoints: store.listCheckpointsByRun(runId),
     writes: store.listWritesByRun(runId),

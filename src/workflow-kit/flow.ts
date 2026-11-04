@@ -9,7 +9,7 @@ import type {
   AnyTaskContract,
 } from "../models/task/task-contract.js";
 import { NodeIdSchema } from "../rules/identity/ids.js";
-import type { DelegationEdgeId, ItemId, NodeId } from "../rules/identity/ids.js";
+import type { DelegationEdgeId, ItemId, NodeId, StableRecordId } from "../rules/identity/ids.js";
 import type { RetryPolicy } from "../models/sessions/session.js";
 import { parseNodeCondition } from "../models/workflow/node-condition.js";
 import type { NodeConditionSpec } from "../models/workflow/node-condition.js";
@@ -143,6 +143,7 @@ export type ChildRunOpts<
   | Readonly<{
     label?: string;
     dependsOn: D;
+    sourceRecordIds?: (scope: ScopeFor<InputSchema, S, D>) => readonly (readonly StableRecordId[])[];
     edgeId: DelegationEdgeId;
     cardinality: "one";
     bind: (scope: ScopeFor<InputSchema, S, D>) => z.input<Target["input"]>;
@@ -154,6 +155,7 @@ export type ChildRunOpts<
   | Readonly<{
     label?: string;
     dependsOn: D;
+    sourceRecordIds?: (scope: ScopeFor<InputSchema, S, D>) => readonly (readonly StableRecordId[])[];
     edgeId: DelegationEdgeId;
     cardinality: "many";
     bind: (scope: ScopeFor<InputSchema, S, D>) => readonly z.input<Target["input"]>[];
@@ -165,6 +167,7 @@ export type ChildRunOpts<
   | Readonly<{
     label?: string;
     dependsOn: D;
+    sourceRecordIds?: (scope: ScopeFor<InputSchema, S, D>) => readonly (readonly StableRecordId[])[];
     edgeId: DelegationEdgeId;
     cardinality: "one" | "many";
     bind: (scope: ScopeFor<InputSchema, S, D>) =>
@@ -608,6 +611,7 @@ function makeBuilder(state: MutableFlowState): unknown {
     childRun(id: string, target: AnyWorkflowRef, opts: {
       label?: string;
       dependsOn: readonly string[];
+      sourceRecordIds?: (scope: never) => readonly (readonly StableRecordId[])[];
       edgeId: DelegationEdgeId;
       cardinality: "one" | "many";
       bind: (scope: never) => unknown;
@@ -625,6 +629,7 @@ function makeBuilder(state: MutableFlowState): unknown {
         target,
         cardinality: opts.cardinality,
         bind: opts.bind,
+        ...(opts.sourceRecordIds === undefined ? {} : { sourceRecordIds: opts.sourceRecordIds }),
         deriveChildItemId: opts.deriveChildItemId,
         await: opts.await,
         join: opts.join,

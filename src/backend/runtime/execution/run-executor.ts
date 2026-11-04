@@ -655,7 +655,8 @@ export async function executeClaimedRun(
         consequence: { kind: "done", result: built.record },
       });
       requireLifecycleApplied(deps.lifecycle.terminalize({ kind: "success",
-        commandId: lifecycleCommandId("success", { runId, resultDigest: built.record.resultDigest }),
+        commandId: lifecycleCommandId("success", { runId, resultDigest: built.record.resultDigest,
+          ...(current.delegationRefresh === undefined ? {} : { refreshCommandId: current.delegationRefresh.commandId, claimGeneration: current.claimGeneration }) }),
         terminal: { result: built.record, authorization },
       }, descriptor, built.authorization));
       return RunExecutionOutcomeSchema.parse({ state: "done", runId });

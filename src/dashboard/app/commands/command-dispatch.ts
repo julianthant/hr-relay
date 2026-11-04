@@ -438,6 +438,7 @@ export async function verifyShellCommandEffect(
     const next = recovered[0];
     if (next.descriptorHash !== root.descriptorHash || next.configFingerprint !== root.configFingerprint || next.dryRun !== root.dryRun) return mismatch(rows);
     for (const row of rows) {
+      if (root.parent !== null && next.parent?.runId === root.parent.runId && row.runId === root.parent.runId) continue;
       let current = row;
       const visited = new Set<string>();
       while (current.runId !== root.runId && current.runId !== next.runId) {

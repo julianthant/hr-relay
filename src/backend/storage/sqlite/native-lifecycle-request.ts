@@ -1,6 +1,6 @@
 import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
 import { z } from "zod";
-import { DelegationAdmissionRequestSchema, DelegationInvocationRequestSchema, DelegationSettlementRequestSchema, DelegationRetryRequestSchema } from "./delegation-contracts.js";
+import { DelegationAdmissionRequestSchema, DelegationInvocationRequestSchema, DelegationSettlementRequestSchema, DelegationRefreshRequestSchema, DelegationRetryRequestSchema } from "./delegation-contracts.js";
 import { PublicRerunPlanSchema, SourceBoundRunSchema } from "../../../models/run/rerun.js";
 import { RunLifecycleCommandRecordSchema } from "../../../rules/commands/commands.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -14,6 +14,7 @@ const schemas = {
   "delegation-invocation": DelegationInvocationRequestSchema,
   "delegation-admission": DelegationAdmissionRequestSchema,
   "delegation-settlement": DelegationSettlementRequestSchema,
+  "delegation-refresh": DelegationRefreshRequestSchema, DelegationRefreshRequestSchema,
   "delegation-retry": DelegationRetryRequestSchema,
   "worker-standing-recovery": WorkerStandingRecoveryRequestSchema,
   "worker-verification-admission":WorkerVerificationAdmissionRequestSchema, "worker-verification-retirement":WorkerVerificationRetirementRequestSchema,
@@ -26,7 +27,7 @@ const schemas = {
 export function validateNativeLifecycleRequest(input: unknown): void {
   const command = RunLifecycleCommandRecordSchema.parse(input);
   if (!Object.hasOwn(schemas,command.operation)) throw new Error("run-lifecycle-operation-unavailable");
-  const operation = z.enum(["application-admission","pause","resume","acknowledge-pause","delegation-invocation","delegation-admission","delegation-settlement","delegation-retry","create","claim-next","transition","recover-crash","renew-claim","worker-transition","worker-admission","worker-standing-recovery","worker-verification-admission","worker-verification-retirement","terminalize","requeue","retry","restart","recover","delete","purge"]).parse(command.operation);
+  const operation = z.enum(["application-admission","pause","resume","acknowledge-pause","delegation-invocation","delegation-admission","delegation-settlement","delegation-refresh","delegation-retry","create","claim-next","transition","recover-crash","renew-claim","worker-transition","worker-admission","worker-standing-recovery","worker-verification-admission","worker-verification-retirement","terminalize","requeue","retry","restart","recover","delete","purge"]).parse(command.operation);
   const parsed = schemas[operation].parse(command.request);
   if (z.object({commandId:z.string()}).parse(parsed).commandId !== command.commandId
     || canonicalJsonStringify(parsed) !== canonicalJsonStringify(command.request)

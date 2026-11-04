@@ -300,3 +300,9 @@ Workflow execution uses the signed-in dashboard Run and its canonical start-plan
 `transports/http/routes/debug-responses.ts` observes terminal HTTP failure responses through the existing debug writer.
 
 Task contract modules follow each task ID suffix: Emergency Contact uses `models/workflows/emergency-contact/read-result.ts`; its member uses `read-approved-contact.ts` and `read-contact-plan.ts`, with shared plan data in `contact-plan.ts`. OCR snapshot and record tasks use separate `models/processing/ocr/read-approved-snapshot.ts` and `read-approved-record.ts` modules; `approved-snapshot.ts` owns their shared transport protocol. UCPath contact tasks each use their task suffix module, while `models/systems/ucpath/contact-contract.ts` owns shared contact schemas, policy and idempotency.
+
+`src/backend/storage/sqlite/run-settlement-row.ts` owns the physical result settlement columns, retained terminal context and current settlement selection shared by native reads, summaries and search. Results and receipts retain immutable applied-version identities; active runs expose no earlier settlement as their current output.
+
+`src/backend/storage/sqlite/delegation-refresh.ts` owns same-row read-only parent refresh admission, accepted retry cohorts and their native wakeup evidence. The run service admits descriptor authority and reports synchronous parent version changes through the command audit; dependency reconciliation settles the cohort.
+
+`src/backend/storage/sqlite/delegation-authority.ts` owns current and retained membership selection, revision/reuse custody and scoped authentication proofs. `src/rules/commands/lifecycle-command-id.ts` owns deterministic initial and revised invocation identities shared by factories and native admission.

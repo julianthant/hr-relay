@@ -106,7 +106,7 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
             throw new Error("delegation-manifest-plan-mismatch");
           }
           const authenticated = authority.authority.dependencies.authenticateGroup(manifest);
-          const children = authenticated.children.map(({ entry, child, dependency }, index) => {
+          const children = authenticated.children.map(({ entry, child, dependency, terminal }, index) => {
             assertChildBinding(parent, child, context, target);
             if (child.envelope.descriptorVersion !== target.version || child.envelope.contractFingerprint !== target.contractFingerprint
               || child.input.ingressSchemaHash !== manifest.inputSchemaHash
@@ -116,7 +116,7 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
               || dependency.childItemId !== entry.childItemId || child.envelope.itemId !== entry.childItemId
               || dependency.manifestId !== manifest.manifestId || dependency.edgeId !== manifest.edgeId
               || canonicalJsonStringify(dependency.policy) !== canonicalJsonStringify(plan.policy)) throw new Error("delegation-dependency-binding-mismatch");
-            return { child, dependency };
+            return { child, dependency, terminal };
           });
           if (admitted.state === "released") continue;
           assertHeldParent(batch, parent);
@@ -124,9 +124,10 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
             values[node.id] = DelegationManifestRefSchema.parse({ manifestId: manifest.manifestId, edgeId: manifest.edgeId, childCount: children.length });
             continue;
           }
-          const settled = children.map(({ child, dependency }) => {
+          const settled = children.map(({ child: currentChild, dependency, terminal }) => {
+            const child = terminal?.run ?? currentChild;
             if (child.lifecycle.state !== "terminal") throw new Error("delegation-child-not-terminal");
-            const result = RunResultRecordSchema.parse(authority.authority.runResults.get(child.envelope.runId));
+            const result = RunResultRecordSchema.parse(terminal?.result ?? authority.authority.runResults.get(child.envelope.runId));
             switch (child.lifecycle.outcome) {
               case "done": {
                 if (dependency.state !== "satisfied") throw new Error("delegation-dependency-unsettled");

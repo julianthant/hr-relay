@@ -81,7 +81,7 @@ export function inspectStorageRecovery(admission: Readonly<Pick<RuntimeAdmission
 type Eligibility = Extract<RestoreCandidate, {state: "verified-compatible"}>["restoreEligibility"];
 export function inspectRestoreEligibility(admission: RuntimeAdmission,input: {schemaVersion:number; backupPath:string; backupSha256:string;stateRoot:string;authorityAvailable:boolean}):Eligibility {
  admission.assertLive();
- if(![8,9,10,11,12,13,14,15,16,CURRENT_AUTHORITY_SCHEMA_VERSION].includes(input.schemaVersion))return {state:"unsupported",reason:"The backup uses an unsupported authority schema. Preserve it and use its compatible release."};
+ if(![8,9,10,11,12,13,14,15,16,17,18,19,CURRENT_AUTHORITY_SCHEMA_VERSION].includes(input.schemaVersion))return {state:"unsupported",reason:"The backup uses an unsupported authority schema. Preserve it and use its compatible release."};
  if(!input.authorityAvailable)return {state:"unavailable",reason:"Current authority could not be inspected safely. Preserve it before recovery."};
  return {state:"eligible"};
 }
