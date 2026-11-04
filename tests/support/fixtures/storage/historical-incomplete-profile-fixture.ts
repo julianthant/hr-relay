@@ -1,5 +1,5 @@
 import { removeSchema16PersonPreferences } from "./person-preferences-predecessor.js";
-import { restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "./historical-run-schema.js";
+import { restoreSchema19RunSettlementFixture, restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "./historical-run-schema.js";
 import { restorePreReadingArtifactRetention } from "./pre-reading-artifact-retention.js";
 import { createNativeBrowserProbe } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { restoreEmptyPreMasterWorkbookFixture } from "../../helpers/workbooks/pre-master-schema.js";
@@ -34,7 +34,7 @@ import { canonicalJsonStringify } from "../../../../src/rules/validation/canonic
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture, boundProfileCredentials } from "../../helpers/admission-fixture.js";
 
-export async function createHistoricalRegisteredProfileFixture(options: { sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14; workspace?: string; lifetime?: RuntimeLifetimeLock }) {
+export async function createHistoricalRegisteredProfileFixture(options: { sourceVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 19; workspace?: string; lifetime?: RuntimeLifetimeLock }) {
   assert.equal(Entry, FakeKeyringEntry, "historical fixture requires the actual fake keychain before backend imports");
   const lifetime = options.lifetime ?? await RuntimeLifetimeLock.acquire(0);
   const fixture = await createBoundProfileFixture({ pending: "onboarding", lifetime, ...(options.workspace === undefined ? {} : { workspace: options.workspace }) });
@@ -76,8 +76,9 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
   let failure: { error: unknown } | undefined;
   try {
     database.exec("PRAGMA foreign_keys=ON; BEGIN EXCLUSIVE");
-    restoreSchema18WorkbookReferenceFixture(database);
-    removeEmptySchema18WorkbookCatalog(database);
+    if (options.sourceVersion === 19) restoreSchema19RunSettlementFixture(database);
+    else restoreSchema18WorkbookReferenceFixture(database);
+    if (options.sourceVersion < 18) removeEmptySchema18WorkbookCatalog(database);
     if (options.sourceVersion < 14) removeEmptyExclusiveSessionLeaseFixture(database);
     if (options.sourceVersion < 13) restoreEmptyPreMasterWorkbookFixture(database);
     for (const table of ["assistant_actions", "assistant_chats", "assistant_grants"]) assert.equal(database.prepare(`SELECT count(*) AS count FROM ${table}`).get()?.count, 0);
@@ -86,9 +87,9 @@ export async function createHistoricalRegisteredProfileFixture(options: { source
       assert.ok(editor); database.exec(editor);
     }
     if (options.sourceVersion < 9) database.exec("DROP TABLE assistant_model_preference");
-    removeEmptySchema17OcrReview(database);
-    removeSchema16PersonPreferences(database);
-    removeSchema15RunPause(database);
+    if (options.sourceVersion < 17) removeEmptySchema17OcrReview(database);
+    if (options.sourceVersion < 16) removeSchema16PersonPreferences(database);
+    if (options.sourceVersion < 15) removeSchema15RunPause(database);
     if (options.sourceVersion < 12) restorePreReadingArtifactRetention(database);
     database.prepare("UPDATE database_states SET schema_version=? WHERE id=1").run(options.sourceVersion);
     database.exec(`PRAGMA user_version=${options.sourceVersion}; COMMIT`);

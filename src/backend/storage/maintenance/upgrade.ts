@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { existsSync } from "node:fs";
 import { dirname,join,resolve } from "node:path";
 import { z } from "zod";
@@ -51,6 +52,7 @@ export async function backupStoppedAuthority(closure: StoppedBackupClosure, admi
     stopped.assertStoppedAuthorityBackup(join(stateRoot,"state.db"),processLockRoot);stopped.assertStateRoot(stateRoot);
     verifyHeld();
     requireStopped(stopped,input,clock,true);
+    assertMaintenanceCustodyAvailable("backup");
     const schemaVersion=AuthorityDatabase.inspectStoppedUpgrade(stopped,join(stateRoot,"state.db"),processLockRoot,clock).schemaVersion;
     const source=openAuthorityBackupSourceReadOnly(stopped,join(stateRoot,"state.db"),250,schemaVersion);
     let report: Awaited<ReturnType<AuthorityBackupService["request"]>> | undefined;
@@ -98,7 +100,9 @@ export async function upgradeStorage(browserClosure: ProfileBrowserClosure, admi
   if(input.plan)return report("planned");
   admission.assertOfflineMaintenance(restore);
     requireStopped(admission,input,clock);
-    if(inspection!==undefined){const again=AuthorityDatabase.inspectStoppedUpgrade(admission,path,input.processLockRoot,clock);
+    if(inspection!==undefined){
+      if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) assertMaintenanceCustodyAvailable("schema-upgrade");
+      const again=AuthorityDatabase.inspectStoppedUpgrade(admission,path,input.processLockRoot,clock);
       if(again.authorityGeneration!==inspection.authorityGeneration||again.authorityContentFingerprint!==inspection.authorityContentFingerprint)throw new Error("source-changed: re-plan upgrade");
       if (inspection.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) {
         const closure = await prepareStoppedBackupClosure(browserClosure, admission, restore, clock, input.processLockRoot);
@@ -113,6 +117,7 @@ export async function upgradeStorage(browserClosure: ProfileBrowserClosure, admi
       }
       const pending = pendingDiagnosticArtifacts(admission);
       if (pending.length === 0) return report("already-upgraded");
+      assertMaintenanceCustodyAvailable("schema-upgrade");
       const reclaimedStages = AuthorityDatabase.reclaimStoppedDiagnostics(admission, path, input.processLockRoot, clock, restore);
       requireStopped(admission,input,clock);
       const final = inspectAuthorityBackupReadOnly(admission,path);
@@ -215,7 +220,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
   const inspect = () => AuthorityDatabase.inspectStoppedUpgrade(owner, path, processLockRoot, clock);
   const inspectInventory = () => readStoppedProfileUpgradeInventory({ machine, admission: owner, hostFacts: input.hostFacts, clock, browserClosure });
   const initial = inspect();
-  const closure = !input.plan && [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].includes(initial.schemaVersion)
+  const closure = !input.plan && [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19].includes(initial.schemaVersion)
     ? await prepareStoppedBackupClosure(browserClosure, owner, restore, clock, processLockRoot) : undefined;
   let inventory = inspectInventory();
   const revalidate = (backup?: VerifiedBackup) => {
@@ -235,7 +240,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
     await owner.completeStartupUpgradeLogout();
     return report("already-upgraded");
   }
-  if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].includes(initial.schemaVersion)) throw new Error("profile-stopped-upgrade-version-refused");
+  if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19].includes(initial.schemaVersion)) throw new Error("profile-stopped-upgrade-version-refused");
   if (closure === undefined) throw new StorageBackupClosureUnprovedError();
   const backed = await backupStoppedAuthority(closure, owner, owner.stateRoot, clock, processLockRoot, restore, "schema-migration");
   if (backed.manifests.length !== 1) throw new Error("profile-stopped-upgrade-single-backup-required");
