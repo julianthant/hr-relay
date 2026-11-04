@@ -3,7 +3,7 @@ import { isQueueMember, isQueueTopLevel } from "../../../../src/models/dashboard
 import { createAwaitingQueueFixtures } from "../../../support/helpers/dashboard/awaiting-queue-fixtures.js";
 import assert_m0 from 'node:assert/strict';
 import { describe as describe_m0,it as it_m0 } from 'vitest';
-import { queueDisplayGroups as queueDisplayGroups_m0,visibleRunIds as visibleRunIds_m0 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import { queueDisplayGroups as queueDisplayGroups_m0,visibleQueueKeys as visibleQueueKeys_m0 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m0 } from "../../../parity/helpers/fixture-queue.js";
 
 import assert_m1 from "node:assert/strict";
@@ -16,7 +16,7 @@ queueRowAccessibleName as queueRowAccessibleName_m1
 
 import assert_m2 from "node:assert/strict";
 import { describe as describe_m2,it as it_m2 } from "vitest";
-import { attentionRunIds as attentionRunIds_m2 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import { attentionQueueKeys as attentionQueueKeys_m2 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m2 } from "../../../../src/models/dashboard/projection.js";
 
 import assert_m3 from "node:assert/strict";
@@ -31,12 +31,13 @@ import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m3 } from "../../../parity/helpers
 import assert_m4 from "node:assert/strict";
 import { describe as describe_m4,it as it_m4 } from "vitest";
 import {
-attentionRunIds as attentionRunIds_m4,
+attentionQueueKeys as attentionQueueKeys_m4,
 bandOf as bandOf_m4,
 filterQueueSurfaces as filterQueueSurfaces_m4,
 groupQueueAttempts as groupQueueAttempts_m4,
+queueMemberPresentation as queueMemberPresentation_m4,
 sortQueueBand as sortQueueBand_m4,
-visibleRunIds as visibleRunIds_m4
+visibleQueueKeys as visibleQueueKeys_m4
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m4 } from "../../../../src/models/dashboard/projection.js";
 
@@ -65,7 +66,7 @@ describe_m0('Relay presentation models', () => {
       const durations = ordered.map(row => Date.parse(row.endedAt.state === 'present' ? row.endedAt.value : '2026-08-03T18:00:00Z') - Date.parse(row.startedAt));
       if (sort === 'longest') assert_m0.deepEqual(durations, [...durations].sort((a,b) => b-a));
       else { const dates = ordered.map(row => Date.parse(row.startedAt)); assert_m0.deepEqual(dates, [...dates].sort((a,b) => sort === 'oldest' ? a-b : b-a)); }
-      assert_m0.deepEqual(visibleRunIds_m0(rows, sort, '2026-08-03T18:00:00Z'), ordered.map(row => String(row.runId)));
+      assert_m0.deepEqual(visibleQueueKeys_m0(rows, sort, '2026-08-03T18:00:00Z'), ordered.map(row => String(row.runId)));
     }
   });
 });
@@ -166,7 +167,7 @@ function surface(input: Record<string, unknown>) {
   });
 }
 
-describe_m2("attentionRunIds — the band and the key cannot disagree", () => {
+describe_m2("attentionQueueKeys — the band and the key cannot disagree", () => {
   it_m2("selects exactly the NEEDS YOU band's rows, in the drawn order", () => {
     const rows = [
       surface({ runId: runId(1), status: "running" }),
@@ -180,7 +181,7 @@ describe_m2("attentionRunIds — the band and the key cannot disagree", () => {
     ];
     // `awaiting-approval` and `blocked` are the two statuses the band draws;
     // the order is the band's, so the waiting row precedes the parked one.
-    assert_m2.deepEqual(attentionRunIds_m2(rows, "attention", NOW), [runId(2), runId(4)]);
+    assert_m2.deepEqual(attentionQueueKeys_m2(rows, "attention", NOW), [runId(2), runId(4)]);
   });
 });
 }
@@ -323,7 +324,7 @@ describe_m4("member ordering", () => {
       memberPreview: { state: "absent", reason: "this fixture names no member subjects" },
     });
     assert_m4.deepEqual(
-      visibleRunIds_m4([operation, ...members], "attention", NOW),
+      visibleQueueKeys_m4([operation, ...members], "attention", NOW),
       [runId(9), runId(5), runId(4), runId(3), runId(2), runId(1)],
     );
   });
@@ -347,7 +348,7 @@ describe_m4("member ordering", () => {
       memberRollup: { total: 3, terminal: 3, failed: 3 },
       memberPreview: { state: "absent", reason: "this fixture names no member subjects" },
     });
-    assert_m4.deepEqual(visibleRunIds_m4([operation, ...members], "attention", NOW), [
+    assert_m4.deepEqual(visibleQueueKeys_m4([operation, ...members], "attention", NOW), [
       runId(9),
       runId(3),
       runId(4),
@@ -357,6 +358,14 @@ describe_m4("member ordering", () => {
 });
 
 describe_m4("logical item attempt grouping", () => {
+  it_m4("uses the member's served lookup outcome words", () => {
+    const member = settled({ runId: runId(1), status: "done", outcome: { label: "Active", tone: "success" } });
+    const item = groupQueueAttempts_m4([member])[0]; assert_m4.ok(item);
+    const line = queueMemberPresentation_m4({ kind: "run", key: item.key, item });
+    assert_m4.equal(line.statusLabel, "Active");
+    assert_m4.equal(line.statusAccessibleLabel, "Active");
+    assert_m4.equal(line.native?.surface, member);
+  });
   it_m4("keeps selected-day attempts under one item and scopes identity by workflow", () => {
     const first = settled({ runId: runId(1), itemId: runId(8), attempt: 1, status: "failed" });
     const retry = settled({ runId: runId(2), itemId: runId(8), attempt: 2, status: "done" });
@@ -367,7 +376,7 @@ describe_m4("logical item attempt grouping", () => {
     assert_m4.deepEqual(groups[0]?.attempts.map((row) => row.attempt), [2, 1]);
     assert_m4.equal(groups[0]?.representative.runId, retry.runId);
     assert_m4.equal(groups[1]?.representative.workflowId, "other-workflow");
-    assert_m4.deepEqual(visibleRunIds_m4([first, retry]), [first.runId, retry.runId]);
+    assert_m4.deepEqual(visibleQueueKeys_m4([first, retry]), [first.runId, retry.runId]);
   });
 
   it_m4("numbers the day's runs by start time, including a run in progress", () => {
@@ -415,7 +424,7 @@ describe_m4("logical item attempt grouping", () => {
   it_m4("does not promote historical attention over the selected item's current attempt", () => {
     const failed = settled({ runId: runId(1), itemId: runId(8), attempt: 1, status: "failed" });
     const retry = settled({ runId: runId(2), itemId: runId(8), attempt: 2, status: "done" });
-    assert_m4.deepEqual(attentionRunIds_m4([failed, retry]), []);
+    assert_m4.deepEqual(attentionQueueKeys_m4([failed, retry]), []);
   });
 });
 

@@ -211,6 +211,15 @@ export function createRetainedDashboardMockFixtures() {
   ],
   "src/backend/runs/queries/run-detail.ts": [
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:review\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:buildRunDetail\"],\"authority.envelope.workflow===\\\"ocr\\\"\"]"
+  ],
+  "src/backend/runs/queries/ocr-record-members.ts": [
+    "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:readOcrRecordSource\"],\"owner?.envelope.workflow!==\\\"ocr\\\"\"]",
+    "[\"person-lookup\",[\"StringLiteral:\",\"ConditionalExpression:\",\"VariableDeclaration:family\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"ArrowFunction:\",\"CallExpression:\",\"VariableDeclaration:lookups\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:readOcrRecordSource\"],\"group.invocation.nodeId===\\\"lookup-identities\\\"?\\\"person-lookup\\\":\\\"i9-lookup\\\"\"]",
+    "[\"i9-lookup\",[\"StringLiteral:\",\"ConditionalExpression:\",\"VariableDeclaration:family\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"ArrowFunction:\",\"CallExpression:\",\"VariableDeclaration:lookups\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:readOcrRecordSource\"],\"group.invocation.nodeId===\\\"lookup-identities\\\"?\\\"person-lookup\\\":\\\"i9-lookup\\\"\"]",
+    "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:readOcrRecordPresentation\"],\"owner.envelope.workflow!==\\\"ocr\\\"\"]",
+    "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:readQueueRecordMembers\"],\"run.envelope.workflow===\\\"ocr\\\"\"]",
+    "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"ArrowFunction:\",\"CallExpression:\",\"PrefixUnaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:readQueueRecordMembers\"],\"child.envelope.workflow===\\\"ocr\\\"\"]",
+    "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"ArrowFunction:\",\"CallExpression:\",\"PropertyAccessExpression:flatMap\",\"CallExpression:\",\"ArrowFunction:\",\"CallExpression:\",\"VariableDeclaration:sources\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:readQueueRecordMembers\"],\"member.child.envelope.workflow===\\\"ocr\\\"\"]"
   ]
 };
 

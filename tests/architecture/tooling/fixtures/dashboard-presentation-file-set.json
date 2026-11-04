@@ -56,6 +56,7 @@
   "src/dashboard/surfaces/run-detail/logs/log-sample.tsx",
   "src/dashboard/surfaces/run-detail/logs/log-screenshots.tsx",
   "src/dashboard/surfaces/run-detail/logs/log-timeline.tsx",
+  "src/dashboard/surfaces/run-detail/review/review.tsx",
   "src/dashboard/surfaces/run-start/launch-presentation.css",
   "src/dashboard/surfaces/run-start/run-launch-layout.tsx",
   "src/dashboard/surfaces/run-start/run-launch.tsx",
@@ -128,6 +129,5 @@
   "src/dashboard/surfaces/workflows/mocks/workflow-harness-tag.tsx",
   "src/dashboard/surfaces/workflows/mocks/workflow-mock-queue.tsx",
   "src/dashboard/surfaces/workflows/mocks/workflow-mock-run.tsx",
-  "src/dashboard/surfaces/workflows/mocks/workflow-pdf-input.tsx",
-  "src/dashboard/surfaces/workflows/mocks/workflow-review.tsx"
+  "src/dashboard/surfaces/workflows/mocks/workflow-pdf-input.tsx"
 ]

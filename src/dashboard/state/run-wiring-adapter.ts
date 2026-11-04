@@ -625,6 +625,9 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         actorId: envelope.requestedBy, source: "run-detail", commandId: envelope.commandId, requestedAt: envelope.requestedAt, childRetry: detail.childRetry });
       return composed.state === "ready" && canonicalJsonStringify(composed.request) === canonicalJsonStringify(envelope);
     }
+    if (envelope.family === "run" && envelope.type === "retry" && row.parent !== null) return envelope.target.runId === row.runId
+      && envelope.target.expectedVersion.valueOf() === row.rowRevision.valueOf()
+      && row.actions.some(action => action.kind === "command" && action.command === "retry" && action.expectedVersion === row.rowRevision);
     if (envelope.family === "run" && envelope.type === "resolve-workbook-reference-row") {
       const choice = workbookWrites?.section === "workbook-writes" ? workbookWrites.payload.referenceChoices?.find(choice => choice.resolution.state === "available"
         && canonicalJsonStringify(choice.resolution.target) === canonicalJsonStringify(envelope.target)) : undefined;
@@ -660,7 +663,7 @@ export function useRunWiring(client: DashboardClient, selection: LogSelection, b
         commandId: envelope.commandId, requestedAt: envelope.requestedAt,
         ...(envelope.type === "recheck-write" ? { transactionId: envelope.payload.transactionId } : {}) }) : undefined;
     return composed?.state === "ready" && canonicalJsonStringify(composed.request) === canonicalJsonStringify(envelope);
-  }, [matchesGate, parked, failure, correctionCommand, row.runId, row.rowRevision, workbookWrites, detail]);
+  }, [matchesGate, parked, failure, correctionCommand, row.runId, row.rowRevision, row.parent, row.actions, workbookWrites, detail]);
   const commandApplies = useCallback((attempt: NonNullable<typeof command>) => attempt.state === "pending" || attempt.state === "uncertain"
     || matchesDecision(attempt.envelope) || (attempt.state === "settled" && attempt.envelope.family === "run" && attempt.envelope.type !== "resolve-workbook-reference-row" && parked === undefined
       && row.rowRevision > attempt.envelope.target.expectedVersion) || (attempt.state === "settled" && attempt.envelope.family === "gate" && detailGate?.state === "resolved"

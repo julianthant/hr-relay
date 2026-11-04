@@ -1,6 +1,6 @@
 import { OcrReviewRecordSchema } from "./review-record.js";
 import { z } from "zod";
-import { admitOcrExtraction } from "./extraction.js";
+import { admitOcrExtraction, type AdmittedRecord } from "./extraction.js";
 import { OcrResultSchema } from "../workflows/ocr/result.js";
 import { CommandIdSchema, EidSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema, RunIdSchema, StableRecordIdSchema } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -14,6 +14,12 @@ export const OcrSourceUploadSchema = z.strictObject({
   fileName: z.string().min(1).max(255), uploadedAt: IsoInstantSchema, uploadedBy: z.literal("local-operator"),
 });
 
+export function ocrRecordName(fields: AdmittedRecord): string | null {
+  const name = fields.answers.find(answer => ["employee.name", "printedName"].includes(answer.path));
+  if (name?.state === "read") return String(name.value);
+  const first = fields.answers.find(answer => answer.path === "firstName"), last = fields.answers.find(answer => answer.path === "lastName");
+  return first?.state === "read" && last?.state === "read" ? `${last.value}, ${first.value}` : null;
+}
 export function initialOcrReviewRecords(seed: z.output<typeof OcrResultSchema>) {
   return seed.review.records.map(record => {
     const identities = seed.identities.filter(identity => identity.recordIds.includes(record.recordId));
@@ -22,7 +28,7 @@ export function initialOcrReviewRecords(seed: z.output<typeof OcrResultSchema>) 
     const documentName = record.subjectName === null ? null : personMatchKey(record.subjectName);
     const observedName = status?.details.name == null ? null : personMatchKey(status.details.name);
     const observed = status?.ucpathSelection === "resolved" && status.details.ucpath === "Found"
-      && status.details.foundInUcpath === true && documentName !== null && documentName === observedName
+      && status.details.foundInUcpath !== false && documentName !== null && documentName === observedName
       ? EidSchema.parse(status.details.eid) : null;
     const fieldEid = record.fields.answers.find(answer => ["employee.employeeId", "employeeId"].includes(answer.path));
     const conflicting = observed !== null && fieldEid?.state === "read" && fieldEid.value !== observed;

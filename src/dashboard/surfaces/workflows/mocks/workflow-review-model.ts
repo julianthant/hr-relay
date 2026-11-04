@@ -2,17 +2,8 @@ import type { MockRun } from "./workflow-mock-model.js";
 import { mockOnbaseDocumentType, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { mockDocumentFixture } from "./workflow-document-model.js";
 
-// Review shapes and selection rules copied from legacy@9bb973672666b9267569a22d3fa0af722e4c5e87
-// src/dashboard/components/ocr/{EcRecordView,OathRecordView,VerifyRecordView,types,approval-selection}.
-export type ReviewField = Readonly<{ key: string; label: string; value: string; kind?: "date" | "boolean" | "relationship"; section?: string; readOnly?: boolean }>;
-export type ReviewRecord = Readonly<{
-  id: string; page: number; kind: "oath" | "contact" | "verify" | "i9" | "separation";
-  fields: readonly ReviewField[]; selected: boolean; unknown?: boolean;
-  match: "matched" | "unresolved" | "manual"; warnings: readonly string[];
-  targetWorkflowId?: MockWorkflowId;
-  i9Section?: 1 | 2; manualEntry?: boolean; sourcePageCount?: number;
-}>;
-export const REVIEW_RELATIONSHIPS = ["Parent", "Sibling", "Spouse", "Domestic Partner Adult", "Domestic Partner Child", "Child", "Grandchild", "Grand Parent", "Other Relative", "Friend", "Neighbor", "Roommate", "Ward", "Medical Provider", "Emerg/Detention/Arrest Contact", "Contact if Detained/Arrested", "Other"];
+import type { ReviewField, ReviewRecordView } from "../../run-detail/review/review-record-model.js";
+export type ReviewRecord = ReviewRecordView & Readonly<{ targetWorkflowId?: MockWorkflowId; match: "matched" | "unresolved" | "manual" }>;
 const field = (key: string, label: string, value: string, kind?: ReviewField["kind"], section?: string): ReviewField => ({ key, label, value, ...(kind ? { kind } : {}), ...(section ? { section } : {}) });
 function extractedReviewRecords(run: Pick<MockRun, "workflowId" | "draft">, useFixture = true): readonly ReviewRecord[] {
   const fixture = mockDocumentFixture(run.draft);

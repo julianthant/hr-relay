@@ -6,6 +6,7 @@ import {
 } from "../../../storage/sqlite/index.js";
 
 import { createRunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
+import { readQueueRecordMembers } from "../../../runs/queries/ocr-record-members.js";
 import { readOcrReviewAuthority } from "../../../runs/lifecycle/ocr-review-authority.js";
 
 export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; ownsWorker?: (lease: WorkerLeaseRecord) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> }) {
@@ -20,6 +21,8 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
     reader: input.reader,
     authority: {
       queueParents: envelopes => database.authority.dependencies.parents(envelopes),
+      recordMembers: (run, children) => database.withAuthorityReadSnapshot(() => readQueueRecordMembers(database.authority, input.reader,
+        run, children, id => descriptors.resolve(id))),
       reviewAvailable: runId => database.withAuthorityReadSnapshot(() => {
         const current = input.reader.read(runId);
         return current.state === "present" && current.disposition === "live" && current.run.envelope.workflow === "ocr"
