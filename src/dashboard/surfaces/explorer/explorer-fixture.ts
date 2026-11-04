@@ -1,4 +1,5 @@
-import type { FieldSource, FlowField, FlowPart, FlowStep, PreviewScenario } from "./explorer-flow-model.js";
+import type { PreviewScenario } from "./explorer-flow-model.js";
+import type { FieldSource, FlowField, FlowPart, FlowStep } from "../../../models/workflow/explorer-preview.js";
 
 // Presentation fixture transcribed from the approved revision 5 artboard. It has no execution authority.
 export const EXPLORER_PREVIEW_TITLE = "Separations";
