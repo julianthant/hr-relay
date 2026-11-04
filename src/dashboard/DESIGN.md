@@ -104,6 +104,9 @@ Assistant setup uses a compact Test assistant row above the retained composer. C
 Browser captures stay inline. A verified before/after pair sits under its declared submit action,
 with equal cards and captions below; incomplete or ambiguous capture associations remain visible.
 
+Sessions Add workers progress and success use toasts; inline feedback retains refusals and outcome checks.
+Required browser slots without an observed session read “Not opened”; observed health failures stay “Unavailable”.
+
 ## Motion
 
 `dsMotion.base` is a 140ms color/fill/edge transition. `fast` is a 90ms command hover/press,

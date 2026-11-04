@@ -4,7 +4,8 @@ import { ERROR_CATALOG } from "../../../../src/models/failures/error-catalog.js"
 import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { WORKER_STOP_REASON_LABEL } from "../../../../src/dashboard/surfaces/sessions/session-panel-model.js";
 // @vitest-environment jsdom
-import { act, createElement } from "react";
+import { act, createElement, type ComponentProps } from "react";
+import { ToastProvider } from "../../../../src/dashboard/ds/ui.js";
 import { createRoot } from "react-dom/client";
 import { vi } from "vitest";
 import { SessionPanel } from "../../../../src/dashboard/surfaces/sessions/session-panel.js";
@@ -19,6 +20,10 @@ import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../src/m
 import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
 import { buildWorkflowCatalog } from "../../../../src/dashboard/surfaces/workflows/workflow-catalog-model.js";
 import { FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../../parity/helpers/fixture-day.js";
+
+function SessionPanelWithToasts(props: ComponentProps<typeof SessionPanel>) {
+  return createElement(ToastProvider, null, createElement(SessionPanel, props));
+}
 
 const catalog = buildWorkflowCatalog([], true, previewFixtureSources([]));
 const now = FIXTURE_NOW;
@@ -209,7 +214,7 @@ it("hydrates mounted Remove after remount, retains original through outage/new f
     return { state: "pending", commandId: command.commandId };
   });
   const host = document.createElement("div"); document.body.append(host); let root = createRoot(host);
-  const render = () => root.render(createElement(SessionPanel, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
   const click = async (label: string) => {
     const button = [...document.querySelectorAll("button")].find(button => (button.getAttribute("aria-label") ?? button.textContent?.trim()) === label);
     assert(button, label); await act(async () => button.click());
@@ -256,7 +261,7 @@ it("hydrates a newer native pending Stop over settled local Pause without unlock
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const h = harness(); h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], state: "running" }] }));
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  const render = () => root.render(createElement(SessionPanel, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
   try {
     await act(async () => render());
     await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Pause"]')!.click());
@@ -322,7 +327,7 @@ it("maps unavailable served authority/catalog to fixed text while retaining diag
   const error = new DashboardClientError({ kind: "network", message: "private transport diagnostic" });
   const base = h.binding();
   try {
-    await act(async () => root.render(createElement(SessionPanel, { catalog, source: "served", open: true, onOpenChange() {}, binding: { ...base, dayState: { ...base.dayState, day: { state: "failed", error } } } })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", open: true, onOpenChange() {}, binding: { ...base, dayState: { ...base.dayState, day: { state: "failed", error } } } })));
     assert.match(document.body.textContent ?? "", /Session information is unavailable/); assert.doesNotMatch(document.body.textContent ?? "", /private transport diagnostic/);
     assert.equal(error.message, "private transport diagnostic");
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
@@ -333,9 +338,9 @@ it("maps a cached ready card to fixed unavailable when the mounted catalog remov
   const h = harness(); const binding = h.binding();
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(SessionPanel, { catalog, source: "served", binding, open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding, open: true, onOpenChange() {} })));
     assert.equal(document.querySelectorAll("article").length, 1);
-    await act(async () => root.render(createElement(SessionPanel, { catalog: [], source: "served", binding, open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog: [], source: "served", binding, open: true, onOpenChange() {} })));
     assert.equal(document.querySelectorAll("article").length, 0);
     assert.match(document.body.textContent ?? "", /Session information is unavailable/);
     assert.doesNotMatch(document.body.textContent ?? "", /SESSION_WORKFLOW_UNREGISTERED|person-lookup/);
@@ -380,7 +385,7 @@ it.each(["present", "unavailable"] as const)("renders starting browser requireme
   h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...h.day().workerCards[0], state: "starting", browsers: [], browserRequirements: requirements }] }));
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(SessionPanel, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
     const article = host.querySelector("article"); assert(article);
     if (requirementState === "present") {
       assert.deepEqual([...article.querySelectorAll("li")].map(item => item.textContent), ["UCPATHOpening", "KUALIOpening"]);
@@ -402,7 +407,7 @@ it("refreshes only observed physical sessions through required presentation slot
   const observed = { sessionId: physicalId, system: "crm", openedAt: now, observation: { state: "present", health: "authenticated", observedAt: now, browserMode: "headed", configFingerprint: "a".repeat(64) } };
   h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, browserRequirements: { state: "present", systems: ["crm", "ucpath"] }, browsers: [observed] }] }));
   const view = sessionsFromDay(h.day(), catalog, now); assert(view.state === "ready");
-  assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", "ready"], ["UCPATH", "unavailable"]]);
+  assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", "ready"], ["UCPATH", "unopened"]]);
   const requiredId = view.workers[0].browsers[1].id;
   assert.notEqual(requiredId, physicalId);
   const schedule = new IdleSessionSchedule(); schedule.sync(view, 0);
@@ -442,7 +447,7 @@ it.each(["outside-day", "empty", "skipped", "cancelled"] as const)("shows the se
   const reason = scenario === "outside-day" ? "Run timeline is not served on this day" : scenario === "empty" ? "No steps are served for this run" : "The current timeline contains states unavailable in this view";
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
-    await act(async () => root.render(createElement(SessionPanel, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+    await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
     const article = host.querySelector("article"); assert(article);
     assert(article.textContent?.includes(reason), "the active worker must visibly explain its exact served timeline refusal");
     assert.equal(article.querySelector('[role="progressbar"]'), null);
@@ -455,7 +460,7 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
   const h = harness(); const card = h.day().workerCards[0];
   const row = h.day().queueSurfaces.find(row => row.workflowId === card.workflowId); assert(row);
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  const render = () => root.render(createElement(SessionPanel, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
+  const render = () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} }));
   try {
     h.setDay(DashboardDayWireSchema.parse({ ...h.day(), workerCards: [{ ...card, state: "running", currentRun: { state: "present", runId: row.runId, traceId: row.traceId } }],
       queueSurfaces: [{ ...row, pipeline: [{ id: "served-active", label: "Served active step", state: "active" }] }] }));
@@ -470,6 +475,34 @@ it("retains valid current-run timelines and ordinary no-run phases without rende
       if (state === "idle") assert.match(host.textContent ?? "", /Ready for the next run/);
       if (state === "starting") assert.match(host.textContent ?? "", /Preparing worker/);
       if (state === "failed") assert(host.textContent?.includes(WORKER_STOP_REASON_LABEL.crashed));
+    }
+  } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+});
+
+it("distinguishes unopened browser requirements from observed unavailable health", async () => {
+  const day = dayWith(); const card = day.workerCards[0];
+  for (const [state, expected] of [["idle", "unopened"], ["starting", "starting"]] as const) {
+    const view = sessionsFromDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card, state,
+      browserRequirements: { state: "present", systems: ["crm", "ucpath"] }, browsers: [] }] }), catalog, now);
+    assert(view.state === "ready");
+    assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", expected], ["UCPATH", expected]]);
+    assert.equal(view.workers[0].problem, undefined);
+  }
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const h = harness(day);
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    for (const observation of [undefined, { state: "unavailable", reason: "Browser health was not served" },
+      { state: "present", health: "unknown", observedAt: now, browserMode: "headed", configFingerprint: "a".repeat(64) },
+      { state: "present", health: "failed", observedAt: now, browserMode: "headed", configFingerprint: "a".repeat(64) }]) {
+      h.setDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card,
+        browserRequirements: { state: "present", systems: ["crm", "ucpath"] }, browsers: [{ sessionId: uuidOf(9200), system: "crm", openedAt: now, observation }] }] }));
+      const view = sessionsFromDay(h.day(), catalog, now); assert(view.state === "ready");
+      assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", "unavailable"], ["UCPATH", "unopened"]]);
+      await act(async () => root.render(createElement(SessionPanelWithToasts, { catalog, source: "served", binding: h.binding(), open: true, onOpenChange() {} })));
+      assert.deepEqual([...host.querySelectorAll("article li")].map(item => item.textContent), ["CRMUnavailable", "UCPATHNot opened"]);
+      assert.match(host.querySelector("article")?.textContent ?? "", /No run assigned.*Ready for the next run/s);
+      assert.equal(h.sent.length, 0);
     }
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
