@@ -954,13 +954,16 @@ function prepareUnpublishedDraftAbort(control: string, locator: RuntimeLocator, 
     || document.activeProfileId !== null || document.profiles.some(row => row.profileId === operation.profileId)) fail("profile-draft-abort-invalid");
   const root = join(locator.stateRoot, "profiles", operation.profileId), operationPath = join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`),
     headPath = join(locator.stateRoot, "machine", "credential-keys", `${operation.profileId}.json`);
+  const headFile = capture.head === undefined ? undefined : readPrivateFile(headPath, { label: "lock", maxBytes: 25 * 1024 * 1024 });
   if (capture.head === undefined) {
     if (operation.credentials.phase !== "planned" || operation.onboarding?.attempts.length !== 0 || capture.membership.length !== 0 || capture.databases.length !== 0
       || lstatMaybe(root) || lstatMaybe(headPath)) fail("profile-draft-abort-uninitialized-source-changed");
     credentialKeyCustody.assertAbsent({ installationId: locator.installationId, profileId: operation.profileId, keyId: operation.credentials.keyId });
+  } else if (headFile === undefined) {
+    if (lstatMaybe(root)) fail("profile-draft-abort-head-changed");
+    credentialKeyCustody.assertAbsent({ installationId: locator.installationId, profileId: operation.profileId, keyId: operation.credentials.keyId });
   } else {
-    const headFile = readPrivateFile(headPath, { label: "lock", maxBytes: 25 * 1024 * 1024 });
-    if (headFile === undefined || canonicalJsonStringify({ ...numericFileIdentity(headFile.identity), digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
+    if (canonicalJsonStringify({ ...numericFileIdentity(headFile.identity), digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
     const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(headFile.bytes)));
     if (head.state !== "erased" || head.installationId !== locator.installationId || head.profileId !== operation.profileId
       || head.key.installationId !== head.installationId || head.key.profileId !== head.profileId || head.key.keyId !== operation.credentials.keyId
@@ -988,6 +991,7 @@ function prepareUnpublishedDraftAbort(control: string, locator: RuntimeLocator, 
   }
   return () => {
     if (rootPresent) { rmSync(root, { recursive: true }); fsyncPath(dirname(root)); }
+    if (headFile !== undefined) { unlinkSync(headPath); fsyncPath(dirname(headPath)); }
     if (operationPresent) { unlinkSync(operationPath); fsyncPath(dirname(operationPath)); }
     atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document));
     unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
@@ -1398,7 +1402,12 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           lifetime.assertStartupWorkspace(workspace);
           coldLogoutObservations.set(operation.operationId, logoutIdentity(operation));
         }
-        removals.push(...captureCanonicalCredentialStartupLocks(lifetime, workspace, priorLocator.stateRoot, priorLocator.installationId));
+        const registered = new Set(readProfilePublicationSource(control, priorLocator).document.profiles.map(row => row.profileId));
+        const operating = new Set(profileOperationInventory(priorLocator.stateRoot)
+          .map(entry => readProfileEvidence(join(machine, "operations", `${entry.operationId}.json`), ProfileOperationSchema).profileId));
+        const publishing = lstatMaybe(join(control, "profile-publication.json")) !== undefined;
+        removals.push(...captureCanonicalCredentialStartupLocks(lifetime, workspace, priorLocator.stateRoot, priorLocator.installationId,
+          profileId => !publishing && !registered.has(profileId) && !operating.has(profileId)));
       }
       for (const name of [".profile-ops.lock", ".profile-registry.lock"]) {
         if (lstatMaybe(join(machine, name)) === undefined) continue;

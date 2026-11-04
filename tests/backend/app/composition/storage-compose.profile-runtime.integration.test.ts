@@ -80,7 +80,7 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
   const fields = { firstName: "Synthetic", lastName: "Operator", email: "profile@ucsd.edu", password: "synthetic-profile-password", createdAt: clock.now().toISOString() };
-  const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(() => fields.email), admission: machine, clock, hostFacts: { primaryDisplay: null } });
+  const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(), admission: machine, clock, hostFacts: { primaryDisplay: null } });
   try {
 
     const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(fields)); assert.equal(active.state, "active");

@@ -20,7 +20,6 @@ import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/r
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { ProfileVerifierDocumentSchema } from "../../../../../src/models/profiles/profile.js";
-import { CanonicalCredentialHeadSchema } from "../../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import type { DraftDuoCapability, ProfileOnboardingDuoProvider } from "../../../../../src/backend/profiles/onboarding-duo.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
@@ -152,7 +151,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
       async start(attempt, bind, _reportFailure) {
         assert.equal(providerActive, false); providerActive = true;
         const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
-          accountName: "fixture@ucsd.edu", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
+          origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
         const credentialId = attempt.method === "key" ? "Zml4dHVyZS1zb2Z0d2FyZS1rZXk" : "fixture-native-touch";
         if (attempt.method === "key") {
           keyCapture.capability = capability;
@@ -268,9 +267,7 @@ it("aborts an unpublished pre-enrollment draft through erasure before accepting 
     const cancelled = await post("/api/v1/profile/onboarding/cancel", { operationId: draft.operationId }, cookie);
     assert.equal(cancelled.status, 200); assert.deepEqual(PublicProfileStateSchema.parse(await cancelled.json()), { state: "signed-out" });
     assert.equal(f.machine.readProfileRegistry().profiles.length, 0); assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
-    const erased = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${draft.profileId}.json`), "utf8")));
-    assert.equal(erased.state, "erased"); assert.equal(erased.profileId, draft.profileId);
-    assert.equal(erased.installationId, f.machine.locator.installationId);
+    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "credential-keys", `${draft.profileId}.json`)), false);
     assert.equal(existsSync(join(f.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`)), false);
     assert.equal(existsSync(join(f.machine.stateRoot, "machine", "erasures", `${draft.profileId}.json`)), false);
     assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId)), false);
@@ -394,7 +391,7 @@ for (const fault of ["prior-request", "transport-cancellation"] as const) it(`dr
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, held: Promise<unknown> | undefined;
   try {
     runtime = await composeDashboardApplication({ lifetimeLock: controllerLock, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
-      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu"), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const signup = await finishPublicSignUp(base);
     assert.equal(PublicProfileStateSchema.parse(await signup.json()).state, "active");
@@ -459,7 +456,7 @@ it("revokes retained selected producers before a genuine in-flight public transp
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, held: Promise<unknown> | undefined, stopping: Promise<void> | undefined;
   try {
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
-      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu"), env: {} });
+      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {} });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const signup = await finishPublicSignUp(base);
     assert.equal(PublicProfileStateSchema.parse(await signup.json()).state, "active");

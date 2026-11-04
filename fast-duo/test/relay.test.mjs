@@ -415,10 +415,21 @@ for (const kind of ['bind', 'persist', 'software-created', 'sign', 'exact-reques
   });
 }
 
-for (const names of [[], ['alex@example.edu', 'other@example.edu']]) test(`missing or ambiguous isolated account observations cannot bind: ${names.length}`,  async () => {
+for (const names of [[], ['alex@example.edu'], ['other@example.edu', 'alex@example.edu']]) test(`page-visible accounts do not gate enrollment in Relay's own Duo session: ${JSON.stringify(names)}`, async () => {
   const w = world(); w.scope.accountNames = names;
+  await w.worker.install({ method: 'touch', nowMs: 1000 });
+  const operation = w.worker.receive(enrollment('platform'), SENDER);
+  const bind = await acknowledge(w.worker, 'bind', { accountId: ACCOUNT });
+  assert.equal('username' in bind.data, false);
+  assert.equal((await operation).native, true);
+  await w.worker.stop();
+});
+
+test('an enrollment without a usable Duo account name cannot bind', async () => {
+  const w = world();
   await w.worker.install({ method: 'key', nowMs: 1000 });
-  await assert.rejects(w.worker.receive(enrollment(), SENDER), /ONBOARDING_DUO_SCOPE/);
+  const message = enrollment(); message.request.username = 'Display Name';
+  await assert.rejects(w.worker.receive(message, SENDER), /ONBOARDING_DUO_SCOPE/);
   await w.worker.stop();
 });
 
