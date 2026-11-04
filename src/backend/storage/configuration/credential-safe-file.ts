@@ -481,12 +481,18 @@ export function companionCredentialEntries(directory: string, record: "protected
 
 export function unpublishedDraftAbortMembership(root: string) {
   const entries: { path: string; directory: boolean; device: number; inode: number; size: number; mode: number; modified: number; changed: number }[] = [];
+  // Match numeric Stats' fractional milliseconds in persisted journals.
+  const milliseconds = (nanoseconds: bigint): number => {
+    const seconds = (nanoseconds < 0n ? nanoseconds - 999_999_999n : nanoseconds) / 1_000_000_000n;
+    return Number(seconds) * 1_000 + Number(nanoseconds - seconds * 1_000_000_000n) / 1_000_000;
+  };
   const visit = (path: string): void => {
     const info = fileStatus(path);
     if (info.isSymbolicLink() || !info.isFile() && !info.isDirectory() || info.isFile() && privateFileNumber(info.nlink) !== 1
       || privatePathRejects(path, info, "group-write")) throw new Error("profile-draft-abort-membership-unsafe");
     entries.push({ path: relative(root, path), directory: info.isDirectory(), ...numericFileIdentity({ device: info.dev, inode: info.ino }), size: privateFileNumber(info.size),
-      mode: privateFileNumber(info.mode), modified: Number(info.mtimeMs), changed: Number(info.ctimeMs) });
+      mode: privateFileNumber(info.mode), modified: "mtimeNs" in info ? milliseconds(info.mtimeNs) : info.mtimeMs,
+      changed: "ctimeNs" in info ? milliseconds(info.ctimeNs) : info.ctimeMs });
     if (info.isDirectory()) for (const name of readdirSync(path).sort()) visit(join(path, name));
   };
   visit(root); return entries;
