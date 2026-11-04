@@ -669,13 +669,14 @@ async function runLogout(): Promise<void> {
     }
   };
   syncBuiltinESMExports();
-  const startLogout = () => {
+  const startLogout = async () => {
     if (cold) {
       const authorized = runtime.session.authorizeLogoutContinuation(fields);
       assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("cold fault verifier refused");
       assert.equal(authorized.resume().state, "cancelling");
     } else {
       assert.ok(active?.state === "active" && context !== undefined);
+      await runtime.drainForLogout(active.token);
       assert.equal(runtime.session.logOut(active.token, { at: fields.at }).state, "cancelling");
       assert.throws(() => context.protectedSecrets.read()); assert.throws(() => runtime.selectedContext(active.token));
     }
@@ -694,7 +695,7 @@ async function runLogout(): Promise<void> {
       assert.deepEqual(owner.assertPendingLogoutSettlementDatabase(join(owner.stateRoot, "state.db")), readOperation());
       throw refusal;
     };
-    startLogout();
+    await startLogout();
     await assert.rejects(runtime.awaitClosurePreparation(profileId), error => hasUnprovedSourceClosure(error) && contains(error, refusal));
     assert.equal(probes, 1);
     const operation = readOperation(); assert.equal(operation.settlement, undefined);
@@ -740,7 +741,7 @@ async function runLogout(): Promise<void> {
     await liveProcess.closed; assert.equal(liveProcess.child.connected, false); assert.equal(liveProcess.diagnostics.stderrBytes, 0);
   } };
   let observationRefused = false;
-  if (scenario !== "logout-snapshot-disposal") startLogout();
+  if (scenario !== "logout-snapshot-disposal") await startLogout();
   if (scenario === "logout-process-root-copy") fs.writeFileSync(join(workspace, rebuildRuntimeIsolation.processLockRoot, "unexpected-copy"), "synthetic", { mode: 0o600 });
   if (scenario === "logout-unknown-copy") fs.writeFileSync(join(root, "profiles", profileId, "unexpected-copy"), "synthetic", { mode: 0o600 });
   if (scenario === "logout-process-observation") {
@@ -781,7 +782,7 @@ async function runLogout(): Promise<void> {
       remove(target, options);
     };
     syncBuiltinESMExports();
-    startLogout();
+    await startLogout();
     await assert.rejects(runtime.awaitClosurePreparation(profileId), error => hasUnprovedSourceClosure(error) && contains(error, injected));
     assert.ok(snapshot && source && identity && bytes); assert.equal(source, join(snapshot, "authority.sqlite"));
     assert.equal(nativeInspection, true); assert.equal(nativeClosed, true); assert.equal(disposals, 1);

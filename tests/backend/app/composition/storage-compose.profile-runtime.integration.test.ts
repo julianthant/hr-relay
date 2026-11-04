@@ -111,6 +111,7 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
     assert.equal((await runtime.session.revalidateAuthority(active.token, captured.snapshot)).state, "available");
     assert.equal((await runtime.session.revalidateAuthority(active.token, { ...captured.snapshot })).state, "refused");
     assert.equal(context.database.getMeta().profileId, active.profileId);
+    await runtime.drainForLogout(active.token);
     const logout = runtime.session.logOut(active.token, { at: clock.now().toISOString() });
     assert.equal(logout.state, "cancelling");
     const operation = runtime.session.logoutOperations()[0]; assert.ok(operation);
