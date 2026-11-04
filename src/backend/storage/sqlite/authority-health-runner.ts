@@ -5,8 +5,10 @@ import type { PreflightRunner, PreflightRunnerContext } from "../../../models/pr
 import { PreflightObservationSchema } from "../../../models/preflight/preflight.js";
 import { PreflightCheckIdSchema } from "../../../models/preflight/preflight-contract.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
+import { PreflightObservationChangedError } from "../../../rules/preflight/preflight-admission.js";
 import {
   doctorAuthorityStorage,
+  StorageDoctorObservationChangedError,
   StorageDoctorOptionsSchema,
 } from "./storage-doctor.js";
 
@@ -27,7 +29,10 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
 
   async run(context: PreflightRunnerContext) {
     if (context.signal.aborted) throw new Error("authority.health preflight was aborted before inspection");
-    const report = await doctorAuthorityStorage(this.#admission, this.#options, this.#clock, this.#credentials);
+    const report = await doctorAuthorityStorage(this.#admission, this.#options, this.#clock, this.#credentials).catch((error: unknown) => {
+      if (error instanceof StorageDoctorObservationChangedError) throw new PreflightObservationChangedError({ cause: error });
+      throw error;
+    });
     if (context.signal.aborted) throw new Error("authority.health preflight was aborted during inspection");
     const protectedSummary = report.protectedSettings.state === "available"
       ? report.protectedSettings.entries.map(({ name, present }) => `${name}=${present ? "present" : "absent"}`).join(", ")

@@ -14,6 +14,8 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { composeWorkerRuntime, parseWorkerArguments } from "../../../../src/backend/app/composition/worker-compose.js";
+import { PreflightObservationChangedError } from "../../../../src/rules/preflight/preflight-admission.js";
+import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
@@ -34,6 +36,21 @@ const {NOW, POOL_INDEX_1, repoRootWithState, seedQueuedRun, reopen, captureSynth
 
 afterEach(cleanup);
 const POOL_INDEX_2 = PositiveIntSchema.parse(2);
+
+it("returns a typed changed-observation report at boot with no browser or claim effects", async () => {
+  const { repoRoot, stateRoot } = await repoRootWithState(); const clock = manualClock(new Date(NOW));
+  seedQueuedRun(stateRoot, clock, personLookupQueuedRun());
+  const sessions = happySessionHarness(); let observations = 0;
+  const input = composeInput({ repoRoot, clock, sessions, poolIndex: POOL_INDEX_1 });
+  const report = await composeWorkerRuntime({ ...input,
+    preflightRunnerFactory: selected => healthyRuntimePreflightRunners(selected).map(runner => runner.check !== "authority.health" ? runner : {
+      ...runner, async run() { observations++; throw new PreflightObservationChangedError(); },
+    }) });
+  assert.equal(report.stopped, "preflight-refused"); assert.equal(report.closure, "proved"); assert.deepEqual(report.outcomes, []);
+  assert.equal(observations, 1); assert.equal(sessions.opens("ucpath"), 0); assert.equal(sessions.opens("crm"), 0);
+  const database = reopen(stateRoot, clock);
+  assert.equal(database.authority.runs.get(RUN_ID)?.lifecycle.state, "queued");
+});
 
 function persistUnjournaledWorkerSettings(repoRoot: string, clock: TestClock, patch: unknown) {
   patch = settingsSetOperations(patch);

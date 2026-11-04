@@ -8,11 +8,12 @@ import type { ActorId } from "../../../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { debugTimelineFixture } from "../../../../support/helpers/backend/debug-timeline-fixture.js";
 
-function fixture(failAppend = false) {
+function fixture(failAppend = false, lines?: string[]) {
   const { records, repository } = debugTimelineFixture();
   const app = new Hono<{ Variables: { requestActorId: ActorId } }>();
   registerDebugResponses(app, createDebugEventWriter({ repository: failAppend ? { ...repository, append() { throw new Error("append-failed"); } } : repository,
-    clock: manualClock(new Date("2026-11-03T00:00:00.000Z")), build: "test" }));
+    clock: manualClock(new Date("2026-11-03T00:00:00.000Z")), build: "test",
+    ...(lines === undefined ? {} : { development: true, writeStderr: (line: string) => { lines.push(line); } }) }));
   app.onError((_error, c) => c.json({ state: "error", code: "DASHBOARD_READ_FAILED", message: "PRIVATE_NAME" }, 500));
   app.get("/api/v1/runs/:runId", c => c.json({ state: "refused", code: "PROFILE_SESSION_STALE",
     message: "PRIVATE_NAME", eid: "PRIVATE_EID", password: "PRIVATE_CREDENTIAL" }, 409));
@@ -27,6 +28,14 @@ function fixture(failAppend = false) {
 }
 
 describe("HTTP terminal diagnostics", () => {
+  it("mirrors the registered template while excluding incoming path, query and response values", async () => {
+    const lines: string[] = []; const { app } = fixture(false, lines);
+    await app.request("/api/v1/runs/PRIVATE_PATH_CANARY?token=PRIVATE_QUERY_CANARY");
+    assert.equal(lines.length, 1);
+    const mirror = JSON.parse(lines[0]) as Record<string, unknown>;
+    assert.equal(mirror.method, "GET"); assert.equal(mirror.route, "/api/v1/runs/:runId"); assert.equal(mirror.status, 409);
+    assert.equal(lines.join("").includes("PRIVATE_"), false);
+  });
   it.each(["/api/v1/runs/PRIVATE_NAME", "/thrown", "/unknown", "/binary", "/malformed"])("records %s once without response or request values", async path => {
     const { app, records } = fixture();
     const response = await app.request(path);

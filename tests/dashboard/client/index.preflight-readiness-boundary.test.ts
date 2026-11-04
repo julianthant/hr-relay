@@ -5,6 +5,7 @@ import { createPreflightReadinessResource,preflightReadinessResource } from "../
 import type { PreflightReadinessWire } from "../../../src/models/preflight/preflight-contract.js";
 import { buildPreflightReport,requiredPreflightChecks } from "../../../src/models/preflight/preflight.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
+import { projectPreflight } from "../../../src/dashboard/surfaces/settings/preflight/settings-preflight-model.js";
 
 const clock = manualClock(new Date("2026-09-19T12:00:00Z"));
 const identity = { configFingerprint: "a".repeat(64), descriptorFingerprint: "b".repeat(64) };
@@ -81,6 +82,35 @@ it("preserves a changed-fingerprint report only as unavailable history", async (
   assert.equal(observed.state, "unavailable");
   if (observed.state !== "unavailable") throw new Error("changed report accepted");
   assert.deepEqual(observed.lastCompleted, previous);
+});
+
+for (const priorReport of [true, false]) it(`keeps checking visible with ${priorReport ? "a previous report" : "no previous report"} when an automatic read arrives during Run preflight`, async () => {
+  const pending = Promise.withResolvers<Response>(); let reads = 0, completed = false;
+  const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async url => {
+    if (String(url).endsWith("/preflight/rerun")) return pending.promise;
+    reads++;
+    return response(reads === 1 && priorReport || completed ? { state: "present", report } : { state: "unavailable", reason: "Preflight not available." });
+  } });
+  const resource = createPreflightReadinessResource(client, identity);
+  await resource.read();
+  const checking = resource.rerun(command);
+  const automatic = resource.read();
+  try {
+    assert.equal(reads, 1, "an automatic read must await the active check instead of exposing its temporary missing evidence");
+    assert.equal(resource.snapshot().state, "running");
+    const projected = projectPreflight(resource.snapshot(), Date.parse(report.checkedAt));
+    assert.equal(projected.state, priorReport ? "refreshing" : "running");
+    if (priorReport) {
+      assert.equal(projected.state, "refreshing");
+      if (projected.state !== "refreshing") throw new Error("previous report must remain while checking");
+      assert.deepEqual(projected.report, report);
+    }
+  } finally {
+    completed = true;
+    pending.resolve(response({ state: "completed", commandId: command.commandId, report }));
+    await Promise.all([checking, automatic]);
+  }
+  assert.equal(resource.snapshot().state, "present");
 });
 
 it("keeps the last report visible only as history during a rerun and after transport failure", async () => {

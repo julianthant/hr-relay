@@ -50,7 +50,7 @@ export function createPreflightReadinessResource(client: PreflightQueries, ident
     },
     rerun: (request: unknown) => {
       pending = undefined;
-      return observe(async isCurrent => {
+      const checking = observe(async isCurrent => {
         const command = PreflightRerunCommandRequestSchema.parse(request);
         if (command.target.expectedConfigFingerprint !== identity.configFingerprint
           || command.target.expectedDescriptorFingerprint !== identity.descriptorFingerprint
@@ -60,7 +60,9 @@ export function createPreflightReadinessResource(client: PreflightQueries, ident
         if (!isCurrent()) return { state: "unavailable", reason: ERROR_CATALOG.PREFLIGHT_RUNTIME_CHANGED.text };
         // Replay preserves the historical command result; only readback certifies current freshness.
         return readWithDeadline(() => client.readPreflight(identity.selection), "PREFLIGHT_READ_UNAVAILABLE");
-      });
+      }).finally(() => { if (pending === checking) pending = undefined; });
+      pending = checking;
+      return checking;
     },
   });
 }

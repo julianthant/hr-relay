@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ERROR_CATALOG } from "../failures/error-catalog.js";
-import { BulkRunCommandResponseSchema, CommandRejectionCodeSchema } from "../../rules/commands/commands.js";
+import { PreflightReadinessWireSchema } from "../preflight/preflight-contract.js";
+import { BulkRunCommandResponseSchema, CommandRejectionCodeSchema, CommandResultSchema } from "../../rules/commands/commands.js";
 export const DashboardErrorReportSchema = z.strictObject({
   reportId: z.uuid(), clientId: z.string().min(1).max(128), release: z.string().min(1).max(128),
   route: z.string().min(1).max(512), surface: z.string().min(1).max(128), code: z.string().min(1).max(128),
@@ -13,6 +14,9 @@ const FailureOutcomeSchema = z.object({ state: z.enum(["error", "failed", "refus
 const TRANSPORT_CODES = new Set(["SCHEMA_INVALID", "INTERNAL_FAILURE", "REQUEST_IDENTITY_REFUSED", "ROUTE_NOT_FOUND", "SECTION_UNAVAILABLE", "PROJECTION_DEGRADED", "DEBUG_REPORT_INVALID", "DEBUG_REPORT_RATE_LIMIT", "DEBUG_REPORT_SIZE_LIMIT"]);
 
 export function debugFailureOutcome(value: unknown, status = 200) {
+  const readiness = status === 200 ? PreflightReadinessWireSchema.safeParse(value) : undefined;
+  if (readiness?.success && readiness.data.state === "unavailable" && readiness.data.code === "PREFLIGHT_EVIDENCE_EXPIRED"
+    && readiness.data.lastCompleted !== undefined) return undefined;
   if (z.object({ state: z.literal("signed-out"), remoteRevocation: z.literal("unconfirmed") }).safeParse(value).success) {
     return { code: "CHATGPT_AUTH_UNAVAILABLE", reason: "remote-revocation-unconfirmed" };
   }
@@ -27,6 +31,12 @@ export function debugFailureOutcome(value: unknown, status = 200) {
 }
 
 export function debugFailureOutcomes(value: unknown, status = 200): (NonNullable<ReturnType<typeof debugFailureOutcome>> & { correlationId?: string })[] {
+  const command = CommandResultSchema.safeParse(value);
+  if (command.success && (command.data.state === "applied" || command.data.state === "already-applied") && command.data.workerStartup !== undefined) {
+    const startup = command.data.workerStartup;
+    return [{ code: startup.code, reason: startup.state === "unknown" ? "outcome-unknown" : "operation-refused",
+      correlationId: startup.commandId ?? command.data.commandId }];
+  }
   const bulk = BulkRunCommandResponseSchema.safeParse(value);
   if (bulk.success && bulk.data.state === "vector") return bulk.data.results.flatMap(result => {
     if (result.outcome === "applied") return [];

@@ -43,7 +43,7 @@ import {
   dsIcon,
   dsText,
 } from "../../ds/ui.js";
-import type { CommandResult } from "../../../rules/commands/commands.js";
+import type { CommandResult, RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import { settleCommandResult } from "../../app/commands/command-result.js";
 import {
   inputRunValueNoun,
@@ -269,7 +269,7 @@ export function RunStartDialog({
   panelWorkflowId: string;
   /** echoed from bootstrap; the server matches it against the request identity */
   actorId: string;
-  onApplied?: (workflowId: string, count?: number) => void;
+  onApplied?: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
   /** Hand intake the picker’s workflow, never the panel’s incidental scope. */
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
@@ -609,7 +609,10 @@ export function RunStartDialog({
         if (outcome.kind === "confirmed") {
           dismissLaunchRecovery(window.sessionStorage, command);
           finalRequest.current = null; setRecovery(null); setPlan(null); setResult(null); setBusy(false);
-          onApplied?.(command.target.workflowId, plan?.planned.length);
+          const reply = outcome.reply;
+          const workerStartup = reply !== undefined && "state" in reply && (reply.state === "applied" || reply.state === "already-applied")
+            ? reply.workerStartup : undefined;
+          onApplied?.(command.target.workflowId, plan?.planned.length, workerStartup);
           onOpenChange(false);
           ++launchInstance.current;
         } else {
@@ -1124,7 +1127,7 @@ export function RunStartSurfaces({
   catalog: readonly WorkflowCatalogEntry[];
   panelWorkflowId: string;
   actorId: string;
-  onApplied?: (workflowId: string, count?: number) => void;
+  onApplied?: (workflowId: string, count?: number, workerStartup?: RunWorkerStartupFailure) => void;
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;

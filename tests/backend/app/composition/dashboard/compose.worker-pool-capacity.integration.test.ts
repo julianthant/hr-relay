@@ -458,18 +458,35 @@ describe("dashboard launch creates bounded worker capacity", () => {
       throw new Error("injected-spawn-uncertainty");
     } }) });
     const commands = launchCommands(h); const { request } = dashboardLaunch(h);
-    await assert.rejects(commands.submit(request), /Runs queued .*worker startup .*spawn/);
+    const first = await commands.submit(request);
+    assert.equal(first.state, "applied");
+    if (first.state !== "applied") throw new Error("enqueue must retain its applied result");
+    assert.equal(first.workerStartup?.state, outcome === "refused" ? "refused" : "unknown");
+    assert.equal(first.workerStartup?.code, "RUN_QUEUED_WORKER_UNAVAILABLE");
+    assert.match(first.workerStartup?.message ?? "", /queued.*do not start.*again/iu);
+    assert.match(first.workerStartup?.detail ?? "", /spawn/u);
     assert.equal(h.database.authority.runs.listByWorkflow(WORKFLOW).length, 1);
     const id = runCapacityCommandId(request.commandId, "spawn-worker", 1);
     assert.equal(h.database.authority.workerControls.get(id)?.phase.state, outcome);
-    await assert.rejects(commands.submit(request), /Runs queued .*worker startup .*spawn/);
+    const replay = await commands.submit(request);
+    assert.equal(replay.state, "already-applied");
+    if (replay.state !== "already-applied") throw new Error("replay must retain its original enqueue");
+    assert.equal(replay.workerStartup?.state, first.workerStartup?.state);
+    assert.equal(replay.workerStartup?.commandId, first.workerStartup?.commandId);
+    assert.equal(replay.workerStartup?.code, first.workerStartup?.code);
+    assert.equal(replay.workerStartup?.message, first.workerStartup?.message);
+    assert.deepEqual(replay.affectedTargets, first.affectedTargets);
     assert.equal(calls, 1);
   });
 
   it("reports replay without startup admission as unknown when no usable worker remains", async () => {
     const h = await openControlHarness(); const { request } = dashboardLaunch(h);
     assert.equal(h.kernel.execute(request).state, "applied");
-    await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup status unknown/);
+    const replay = await launchCommands(h).submit(request);
+    assert.equal(replay.state, "already-applied");
+    if (replay.state !== "already-applied") throw new Error("enqueue replay required");
+    assert.equal(replay.workerStartup?.state, "unknown");
+    assert.match(replay.workerStartup?.message ?? "", /queued.*do not start.*again/iu);
     assert.equal(h.children.length, 0); assert.equal(h.database.authority.workerControls.list().length, 0);
   });
 
@@ -500,7 +517,11 @@ describe("dashboard launch creates bounded worker capacity", () => {
     h.database.authority.workerSlots.allocate({ workflow: WORKFLOW, poolIndex: 1, commandId: child.commandId, now: NOW });
     h.database.authority.workerControls.admit({ commandId: child.commandId, request: child, scope: `worker-pool:${WORKFLOW}`,
       executorId: nextCommandId(), admittedAt: NOW, expiresAt: "2026-08-26T09:03:00.000Z", basisVersion: 1, phase: { state: "admitted" } });
-    await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker-control-admitted/);
+    const replay = await launchCommands(h).submit(request);
+    assert.equal(replay.state, "already-applied");
+    if (replay.state !== "already-applied") throw new Error("enqueue replay required");
+    assert.equal(replay.workerStartup?.state, "unknown");
+    assert.match(replay.workerStartup?.detail ?? "", /worker-control-admitted/u);
     assert.equal(h.children.length, 0);
     assert.equal(h.database.authority.workerControls.get(child.commandId)?.phase.state, "admitted");
   });
