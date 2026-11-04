@@ -221,3 +221,7 @@ export function workerBootstrapEnvironment(env: NodeJS.ProcessEnv = process.env)
   }
   return Object.freeze(result);
 }
+
+export function windowsLocalApplicationData(): string | undefined {
+  return process.env.LOCALAPPDATA;
+}

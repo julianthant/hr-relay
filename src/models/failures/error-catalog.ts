@@ -13,6 +13,7 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  APPLICATION_DATA_WORKSPACE_REFUSED: catalogEntry("Relay could not verify the Windows application data location. Restore a valid LOCALAPPDATA host setting before restarting Relay. Existing files have been preserved.", EmptyParametersSchema),
   WINDOWS_PRIVATE_PATH_REFUSED: catalogEntry("Windows storage permissions, identity or durability could not be verified. Preserve the files and resolve the storage failure before restarting Relay.", EmptyParametersSchema),
   CRM_DOCUMENT_SOURCE_UNAVAILABLE: catalogEntry("CRM document records could not be verified. Review the requested people and their latest onboarding records.", EmptyParametersSchema),
   CRM_DOCUMENT_REFERENCE_UNAVAILABLE: catalogEntry("CRM identities could not be bound to the selected spreadsheet version and its legal/lived names. Review the retained reference and row choices.", EmptyParametersSchema),
