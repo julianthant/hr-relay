@@ -58,7 +58,6 @@ import { useDashboardCommandBinding, useDashboardClient } from "../../state/clie
 import {
   TypedInput,
   EnqueueResultBanner,
-  LockedFact,
   PlanRefusals,
   RunFlagChips,
   StepOmissionFactsForm,
@@ -66,8 +65,6 @@ import {
 import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adapter.js";
 import { SYSTEM_LABEL, type BrowserSystemId } from "../shared/status/system-chip-model.js";
 import {
-  ENQUEUE_POLICY_MEANING,
-  ENQUEUE_POLICY_REASON,
   foldStepOmissionFacts,
   forcedStepOmissions,
   initialStepOmissionDraft,
@@ -973,8 +970,7 @@ export function RunStartDialog({
                     {supportsDryRun && <Switch checked={dryRun} onCheckedChange={next => setDryRunRequested(next === true)} label="Dry run" description="Fill and check every step without submitting." />}
                     <RequiredCaptureStatus state="required" />
                   </>}
-                  references={referenceControls(requiredTypes.filter(typeId => typeId !== rowCapability?.typeId))}
-                  fixedFacts={workflow && <><LockedFact label="Active policy" value={ENQUEUE_POLICY_MEANING[workflow.enqueue]} reason={ENQUEUE_POLICY_REASON} /><LockedFact label="Workflow version" value={versionTag(workflow.version)} reason="Fixed by the selected workflow." /></>}>
+                  references={referenceControls(requiredTypes.filter(typeId => typeId !== rowCapability?.typeId))}>
 
                 </RunOptionsLayout>
               )}
