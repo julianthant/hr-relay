@@ -3842,35 +3842,39 @@ export class AuthorityDatabase implements Disposable {
   }
 
   #assertCurrentExecution(runId: string, claim: z.infer<typeof RunClaimTokenSchema>, allowAdmittedReset = false): void {
-    this.#admission.assertProfileRuntime();
-    const run = this.#readRunRow(runId), held = run === undefined ? undefined : runClaim(run);
-    const lifetime = run !== undefined && "workerLifetime" in run.lifecycle ? run.lifecycle.workerLifetime : undefined;
-    const slot = this.authority.workerSlots.get(claim.workerId), lease = this.authority.workerLeases.get(claim.workerId);
-    if (run === undefined || held?.workerId !== claim.workerId || held.claimGeneration !== claim.claimGeneration
-      || lifetime === undefined || slot === undefined || slot.retiredAt !== null || lease === undefined
-      || lifetime.membershipRevision !== slot.membershipRevision || lifetime.leaseGeneration !== lease.leaseGeneration
-      || lease.workflow !== slot.workflow || lease.processId !== process.pid
-      || !isLiveWorker(lease) || lease.lifecycle.state === "stopping"
-      || (!allowAdmittedReset && this.authority.workerControls.resetForWorker(claim.workerId) !== undefined)
-      || this.authority.workerControls.lifecycleForWorker(claim.workerId) !== undefined
-      || this.authority.workerControls.initializingForWorker(claim.workerId, lease.leaseGeneration) !== undefined
-      || this.authority.workerSlots.recovery(claim.workerId) !== undefined
-      || this.authority.workerSlots.verification(claim.workerId) !== undefined
-      || !authenticateDescendantHome(this.authority, run, slot.workflow)) throw new WorkerControlRefusal("worker-execution-lost");
+    const previous = this.#delegationReadSnapshot;
+    this.#delegationReadSnapshot ??= { waits: new Map(), groups: new Map() };
+    try {
+      this.#admission.assertProfileRuntime();
+      const run = this.#readRunRow(runId), held = run === undefined ? undefined : runClaim(run);
+      const lifetime = run !== undefined && "workerLifetime" in run.lifecycle ? run.lifecycle.workerLifetime : undefined;
+      const slot = this.authority.workerSlots.get(claim.workerId), lease = this.authority.workerLeases.get(claim.workerId);
+      if (run === undefined || held?.workerId !== claim.workerId || held.claimGeneration !== claim.claimGeneration
+        || lifetime === undefined || slot === undefined || slot.retiredAt !== null || lease === undefined
+        || lifetime.membershipRevision !== slot.membershipRevision || lifetime.leaseGeneration !== lease.leaseGeneration
+        || lease.workflow !== slot.workflow || lease.processId !== process.pid
+        || !isLiveWorker(lease) || lease.lifecycle.state === "stopping"
+        || (!allowAdmittedReset && this.authority.workerControls.resetForWorker(claim.workerId) !== undefined)
+        || this.authority.workerControls.lifecycleForWorker(claim.workerId) !== undefined
+        || this.authority.workerControls.initializingForWorker(claim.workerId, lease.leaseGeneration) !== undefined
+        || this.authority.workerSlots.recovery(claim.workerId) !== undefined
+        || this.authority.workerSlots.verification(claim.workerId) !== undefined
+        || !authenticateDescendantHome(this.authority, run, slot.workflow)) throw new WorkerControlRefusal("worker-execution-lost");
 
-    const visited = new Set<string>();
-    let current = run;
-    for (;;) {
-      if (visited.has(current.envelope.runId)) throw new Error("delegation-ancestry-cycle");
-      visited.add(current.envelope.runId);
-      if (!allowAdmittedReset && this.authority.workerControls.resetForRun(current.envelope.runId) !== undefined) throw new WorkerControlRefusal("worker-execution-lost");
-      if (current.envelope.parent === undefined) break;
-      const edge = delegationEdgeForChild(this.authority, current.envelope.parent.runId, current.envelope.runId);
-      if (edge.policy.cascadeCancel === "independent") break;
-      const parent = this.authority.runs.get(current.envelope.parent.runId);
-      if (parent === undefined) throw new Error("delegation-parent-unavailable");
-      current = parent;
-    }
+      const visited = new Set<string>();
+      let current = run;
+      for (;;) {
+        if (visited.has(current.envelope.runId)) throw new Error("delegation-ancestry-cycle");
+        visited.add(current.envelope.runId);
+        if (!allowAdmittedReset && this.authority.workerControls.resetForRun(current.envelope.runId) !== undefined) throw new WorkerControlRefusal("worker-execution-lost");
+        if (current.envelope.parent === undefined) break;
+        const edge = delegationEdgeForChild(this.authority, current.envelope.parent.runId, current.envelope.runId);
+        if (edge.policy.cascadeCancel === "independent") break;
+        const parent = this.authority.runs.get(current.envelope.parent.runId);
+        if (parent === undefined) throw new Error("delegation-parent-unavailable");
+        current = parent;
+      }
+    } finally { this.#delegationReadSnapshot = previous; }
   }
 
   #assertTerminalClaim(
