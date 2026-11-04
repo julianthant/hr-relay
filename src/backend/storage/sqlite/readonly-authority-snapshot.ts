@@ -1,6 +1,8 @@
-import { privatePathRejects } from "../private-path.js";
+import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
+import { createPrivateDirectory, privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
 import { z } from "zod";
+import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { workerBootstrapEnvironment } from "../../../models/config/secrets.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
@@ -37,7 +39,7 @@ const identity = stats => [stats.dev, stats.ino, stats.mode, stats.size, stats.m
 const inspect = path => {
   try {
     const stats = lstatSync(path, { bigint: true });
-    if (!stats.isFile() || stats.isSymbolicLink()) throw new Error("authority-readonly-source-unsafe");
+    if (!stats.isFile() || ${process.platform === "win32" ? 'stats.nlink !== 1n || privatePathRejects(path, stats, "group-write")' : "stats.isSymbolicLink()"}) throw new Error("authority-readonly-source-unsafe");
     return stats;
   } catch (error) {
     if (error.code === "ENOENT") return undefined;
@@ -119,7 +121,10 @@ export function createReadonlyAuthoritySnapshot(sourcePath: string) {
 }
 
 function copyReadonlyAuthoritySnapshot(sourcePath: string) {
-  const directory = mkdtempSync(join(realpathSync(tmpdir()), "relay-readonly-authority-"));
+  const directory = process.platform === "win32"
+    ? join(realpathSync(tmpdir()), `relay-readonly-authority-${randomUUID()}`)
+    : mkdtempSync(join(realpathSync(tmpdir()), "relay-readonly-authority-"));
+  if (process.platform === "win32") createPrivateDirectory(directory, { mode: 0o700 });
   const path = join(directory, "authority.sqlite");
   const sources: Array<{ path: string; suffix: string; stats: BigIntStats | undefined }> = [];
   let disposed = false;
@@ -154,7 +159,7 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string) {
       }
       if (suffix === "-journal" && source.stats.size > 0n) throw new Error("authority-readonly-source-journal-unsettled");
     }
-    const copy = spawnSync(process.execPath, ["--input-type=commonjs", "-e", copySnapshotScript, path,
+    const copy = spawnSync(process.execPath, ["--input-type=commonjs", "-e", process.platform === "win32" ? windowsObserverPolicyPrelude("snapshot") + copySnapshotScript : copySnapshotScript, path,
       JSON.stringify(sources.map(source => ({ path: source.path, suffix: source.suffix,
         expected: source.stats === undefined ? null : identity(source.stats) })))], { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
     const copyFailed = () => new Error("authority-readonly-snapshot-copy-failed", {

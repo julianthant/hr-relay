@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runInNewContext } from "node:vm";
 import { it, vi } from "vitest";
-import { fsyncPath, privatePathRejects, replacePrivateFile, writePrivateStage, type PrivacyRule } from "../../../src/backend/storage/private-path.js";
+import { fsyncPath, posixPrivatePathRejects, privatePathRejects, replacePrivateFile, writePrivateStage, type PrivacyRule } from "../../../src/backend/storage/private-path.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../src/backend/storage/source-closure.js";
 
 function stat(mode: number, uid: number | bigint = process.getuid?.() ?? 1000, symlink = false) {
@@ -109,9 +109,9 @@ it("checks bigint metadata without narrowing owner identity", () => {
   assert.equal(privatePathRejects("/fixture", { mode: 0o600n, dev: 1n, ino: 1n, uid: (1n << 64n) + uid, isSymbolicLink: () => false }, "file-0600"), true);
 });
 
-it("executes the same privacy policy in a descriptor observer without module dependencies", () => {
+it("executes the same POSIX privacy policy in a descriptor observer without module dependencies", () => {
   for (const [uid, expected] of [[501, false], [502, true]] as const) {
-    const observed: unknown = runInNewContext(`(${privatePathRejects.toString()})("/fixture", {
+    const observed: unknown = runInNewContext(`(${posixPrivatePathRejects.toString()})("/fixture", {
       mode: 0o600, uid: ${String(uid)}, dev: 1, ino: 1, isSymbolicLink() { return false; }
     }, "file-0600")`, { process: { getuid: () => 501 } });
     assert.equal(observed, expected);
