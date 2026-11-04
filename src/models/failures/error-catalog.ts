@@ -551,6 +551,10 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   PROFILE_FLAT_STORE_MIGRATION_FAILED: catalogEntry("Relay could not verify the old store backup and start a clean profile installation. Startup is stopped; remaining data is preserved.", EmptyParametersSchema),
+  PROFILE_SIGN_UP_OTHER_SIGNED_IN: catalogEntry(
+    "Another profile is still signed in on this computer. Log in to it and log out, then create the new profile.",
+    EmptyParametersSchema,
+  ),
   PROFILE_TRANSITION_BLOCKED: catalogEntry(
     "Sign in waits until the other profile is logged out.",
     EmptyParametersSchema,

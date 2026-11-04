@@ -192,6 +192,21 @@ describe("profile session", () => {
     assert.equal(readFileSync(join(root, "profiles", alex.profileId, "credentials", "protected.json"), "utf8").includes("secret-one"), false);
   });
 
+  it("tells sign-up that a profile left signed in must log out first", async () => {
+    const root = await temp();
+    const session = createProfileSession({ machineRoot: root });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
+    assert.equal(alex.state, "active");
+    const refused = createProfileSession({ machineRoot: root }).signUp({
+      firstName: "Sam", lastName: "Ortiz", email: "sam@ucsd.edu", password: "secret-two", createdAt: "2026-09-06T12:01:00.000Z",
+    });
+    assert.equal(refused.state, "refused");
+    if (refused.state === "refused") assert.equal(refused.code, "PROFILE_SIGN_UP_OTHER_SIGNED_IN");
+    assert.equal((JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: unknown[] }).profiles.length, 1);
+  });
+
   it("refuses non-letter initials before creating a profile", async () => {
     const root = await temp();
     const session = createProfileSession({ machineRoot: root });
