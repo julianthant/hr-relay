@@ -48,7 +48,7 @@ async function optionsFixture(page: Page, unavailable = false) {
   return { fixture, commands, closed };
 }
 
-for (const theme of ["light", "dark"] as const) test(`Fast Duo sign-in method picker ${theme}`, {
+for (const theme of ["light", "dark"] as const) test(`Fast Duo setup cards choose the method ${theme}`, {
   annotation: [{ type: "required-a11y-evidence", description: `fast-duo-options-${theme}.a11y.yml` }],
 }, async ({ page }, info) => {
   const errors: string[] = [];
@@ -57,16 +57,14 @@ for (const theme of ["light", "dark"] as const) test(`Fast Duo sign-in method pi
   await page.emulateMedia({ colorScheme: theme });
   await optionsFixture(page);
   await page.goto("https://extension-fixture.invalid/options.html");
-  const picker = page.getByRole("group", { name: "Sign-in method", exact: true });
-  const key = picker.getByRole("button", { name: "Security key", exact: true });
-  const touch = picker.getByRole("button", { name: "Touch ID", exact: true });
+  const key = page.locator('.relay-method-card[data-method="key"]'), touch = page.locator('.relay-method-card[data-method="touch"]');
   await expect(key).toBeEnabled(); await expect(key).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("select")).toHaveCount(0);
+  await expect(page.locator("select")).toHaveCount(0); await expect(page.locator("#transport")).toHaveCount(0);
+  await expect(page.locator("button.primary:visible")).toHaveCount(1);
   await touch.focus(); await page.keyboard.press("Enter");
-  await expect(touch).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator('.relay-method-card[data-method="touch"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(touch).toHaveAttribute("aria-pressed", "true"); await expect(page.locator("#editorTitle")).toHaveText("Set up Touch ID");
   await key.focus(); await page.keyboard.press("Space");
-  await expect(key).toHaveAttribute("aria-pressed", "true");
+  await expect(key).toHaveAttribute("aria-pressed", "true"); await expect(page.locator("#editorTitle")).toHaveText("Set up Security key");
   await key.blur();
   await captureParityPair(page, resolve("tests/parity/references"), { stateId: "fast-duo-options", theme, viewport: "1440x900",
     adapter: "fixture", fixtureId: "fast-duo-options", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
@@ -81,24 +79,25 @@ test("Fast Duo setup keeps completion order, pending fences and Return failures 
 }, async ({ page }, info) => {
   const { fixture, commands, closed } = await optionsFixture(page);
   await page.goto("https://extension-fixture.invalid/options.html");
-  const start = page.locator("#startCapture"), returning = page.getByRole("button", { name: "Return to Relay", exact: true });
-  await expect(start).toBeEnabled();
+  const start = page.locator("#primaryAction"), returning = page.locator("#returnRelay");
+  await expect(start).toBeEnabled(); await expect(start).toHaveText("Set up Security key");
   fixture.returnRefused = true; await returning.click();
-  await expect(page.getByRole("alert")).toHaveText("Could not bring Relay forward. Select its window to review setup; do not repeat an unconfirmed attempt.");
-  await expect(start).toBeDisabled();
+  await expect(page.getByRole("alert")).toHaveText("Could not bring Relay forward. Select its window to review setup.");
+  await expect(start).toBeEnabled();
   fixture.returnRefused = false; await returning.click(); await expect(page.getByRole("alert")).toBeHidden(); await expect(start).toBeEnabled();
-  await page.getByRole("group", { name: "Sign-in method", exact: true }).getByRole("button", { name: "Touch ID", exact: true }).click();
+  await page.locator('.relay-method-card[data-method="touch"]').click();
   fixture.profile = ProfileOnboardingStateSchema.parse({ ...fixture.profile, methods: { key: idle, touch: complete } });
-  await expect(page.locator('#transport [data-method="key"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('.relay-method-card[data-method="key"]')).toHaveAttribute("aria-pressed", "true");
   await expect(start).toHaveText("Set up Security key"); await expect(page.locator("button.primary:visible")).toHaveCount(1);
   const attemptId = "00000000-0000-4000-8000-000000000003";
   fixture.profile = ProfileOnboardingStateSchema.parse({ ...fixture.profile, methods: { key: { ...idle, state: "pending", attemptId }, touch: complete } });
-  await expect(start).toBeHidden(); await expect(page.locator("#transport button").nth(0)).toBeDisabled(); await expect(page.locator("#transport button").nth(1)).toBeDisabled();
+  await expect(start).toHaveText("Show Duo"); await expect(page.locator(".relay-method-card").first()).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Cancel setup", exact: true })).toBeVisible();
   fixture.profile = ProfileOnboardingStateSchema.parse({ ...fixture.profile, methods: { key: { ...fixture.profile.methods.key, ceremonyObserved: true }, touch: complete } });
   const confirm = page.getByRole("button", { name: "Duo added this device", exact: true });
   await expect(confirm).toBeEnabled(); await expect(page.locator("button.primary:visible")).toHaveCount(1);
   fixture.confirmReply = ProfileOnboardingStateSchema.parse({ ...fixture.profile, step: "ready", methods: { key: complete, touch: complete } });
-  await confirm.click(); await expect(returning).toHaveClass("primary"); await expect(start).toBeHidden();
+  await confirm.click(); await expect(start).toHaveText("Return to Relay"); await expect(returning).toBeHidden();
   await page.getByRole("button", { name: "Close setup tab", exact: true }).click();
   await expect.poll(() => closed).toEqual([9]);
   expect(commands.filter(command => command.type === "RELAY_RETURN")).toEqual([{ type: "RELAY_RETURN" }, { type: "RELAY_RETURN" }]);
@@ -112,7 +111,7 @@ test("Fast Duo setup can close its own tab when initial state is unavailable", {
 }, async ({ page }, info) => {
   const { closed } = await optionsFixture(page, true);
   await page.goto("https://extension-fixture.invalid/options.html");
-  await expect(page.locator("#globalStatus")).toHaveText("Setup unavailable");
+  await expect(page.locator("#editorTitle")).toHaveText("Setup unavailable");
   await expect(page.locator("#accountList")).toHaveAttribute("aria-busy", "false");
   await expect(page.getByText("Setup details are unavailable.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Return to Relay", exact: true })).toBeDisabled();

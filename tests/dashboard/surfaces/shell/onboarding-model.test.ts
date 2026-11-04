@@ -394,14 +394,15 @@ for (const recovery of ["same", "foreign-operation", "foreign-profile", "signed-
 });
 
 it("maps each Duo method state to its approved label, note and track without inventing completion", () => {
-  assert.deepEqual(duoMethodLabels, { idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Unknown", unavailable: "Unavailable" });
+  assert.deepEqual(duoMethodLabels, { idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Not confirmed", unavailable: "Unavailable" });
   for (const method of ["key", "touch"] as const) {
     for (const state of ["idle", "pending", "complete", "unknown", "unavailable"] as const) {
       const { note, track } = duoMethodPresentation(method, state);
       const failed = state === "unknown" || state === "unavailable";
       assert.deepEqual(track.map(step => step.label), ["Started", failed ? "Not confirmed" : "Added in Duo", "Confirmed by Relay"]);
       assert.deepEqual(track.map(step => step.tone), state === "idle" ? ["off", "off", "off"] : state === "complete" ? ["complete", "complete", "complete"] : ["complete", failed ? "failed" : "pending", "off"]);
-      assert.equal(note, failed ? "Relay could not confirm that setup completed. Review your Duo devices; do not repeat this attempt."
+      assert.equal(note, state === "unknown" ? "Relay could not confirm this attempt. In Duo, open Manage devices and remove any device you do not recognize, then start over."
+        : state === "unavailable" ? "Relay cannot set up this method from here. Return to Relay to check setup."
         : state === "complete" ? "This sign-in method is verified. No further enrollment is needed."
         : state === "pending" ? method === "key" ? "Waiting for Duo security key enrollment." : "Waiting for Duo to add Touch ID."
         : method === "key" ? "Fast Duo creates the software key only when Duo requests it." : "Choose Touch ID or Windows Hello in Duo.");

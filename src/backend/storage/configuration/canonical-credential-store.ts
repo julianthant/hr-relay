@@ -26,7 +26,7 @@ export class CanonicalCredentialError extends Error {
     super(ERROR_CATALOG[code].text, options); this.name = "CanonicalCredentialError";
   }
 }
-type HoldCode = "CREDENTIAL_CONVERSION_COUNTER_UNPROVED" | "CREDENTIAL_CONVERSION_REQUIRED" | "CREDENTIAL_CONVERSION_UNSUPPORTED" | "CREDENTIAL_CREATE_KEY_MISSING" | "CREDENTIAL_OPERATION_PENDING";
+type HoldCode = "CREDENTIAL_ABANDONED_SIGNUP_HELD" | "CREDENTIAL_CONVERSION_COUNTER_UNPROVED" | "CREDENTIAL_CONVERSION_REQUIRED" | "CREDENTIAL_CONVERSION_UNSUPPORTED" | "CREDENTIAL_CREATE_KEY_MISSING" | "CREDENTIAL_OPERATION_PENDING";
 export class CredentialMaintenanceHold extends Error {
   constructor(readonly code: HoldCode, options?: ErrorOptions) {
     super(ERROR_CATALOG[code].text, options); this.name = "CredentialMaintenanceHold";
@@ -357,8 +357,26 @@ function inspectCanonicalNamespace(paths: ReturnType<typeof canonicalPaths>, hea
   }
 }
 
+function captureAbandonedSignUpHead(paths: ReturnType<typeof fixedCanonicalPaths>, directory: string, installationId: string,
+  profileId: string, guard: () => void): () => void {
+  const held = (cause?: unknown) => new CredentialMaintenanceHold("CREDENTIAL_ABANDONED_SIGNUP_HELD", cause === undefined ? undefined : { cause });
+  if (lstatSync(paths.operationPath, { throwIfNoEntry: false }) !== undefined || lstatSync(paths.records.duo, { throwIfNoEntry: false }) !== undefined
+    || readdirSync(directory).some(name => name.startsWith(`.${profileId}.`) && name !== `.${profileId}.writer.lock` && name !== `.${profileId}.chatgpt.lock`)) throw held();
+  const file = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
+  if (file === undefined) throw held();
+  const head = CanonicalCredentialHeadSchema.safeParse(parse(file.bytes));
+  if (!head.success || head.data.state !== "erased" || head.data.installationId !== installationId || head.data.profileId !== profileId
+    || head.data.key.installationId !== installationId || head.data.key.profileId !== profileId) throw held();
+  try { credentialKeyCustody.assertAbsent({ installationId, profileId, keyId: head.data.key.keyId }); } catch (cause) { throw held(cause); }
+  return () => {
+    guard();
+    if (!readPrivateFile(paths.headPath, { label: "lock", maxBytes })?.bytes.equals(file.bytes)) throw held();
+    removeExactPath(paths.headPath, file.identity, false, "credential-abandoned-head-changed"); fsyncPath(directory);
+  };
+}
+
 export function captureCanonicalCredentialStartupLocks(lifetime: RuntimeLifetimeLock, workspace: string,
-  machineRoot: string, installationId: string): readonly (() => void)[] {
+  machineRoot: string, installationId: string, abandonable: (profileId: string) => boolean): readonly (() => void)[] {
   if (!(lifetime instanceof RuntimeLifetimeLock)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
   const assertCurrent = () => lifetime.assertStartupWorkspace(workspace);
   const directory = join(machineRoot, "machine", "credential-keys"), operations = join(machineRoot, "machine", "credential-operations");
@@ -378,8 +396,19 @@ export function captureCanonicalCredentialStartupLocks(lifetime: RuntimeLifetime
     }
   }
   for (const profileId of profiles) {
-    const paths = fixedCanonicalPaths(machineRoot, join(machineRoot, "profiles", profileId), { installationId, profileId });
+    const profileRoot = join(machineRoot, "profiles", profileId), paths = fixedCanonicalPaths(machineRoot, profileRoot, { installationId, profileId });
     guard();
+    if (abandonable(profileId) && lstatSync(profileRoot, { throwIfNoEntry: false }) === undefined) removals.push(captureAbandonedSignUpHead(paths, directory, installationId, profileId, guard));
+    else inspectStartupProfile(paths, profileId);
+    for (const suffix of ["writer", "chatgpt"]) {
+      guard();
+      const remove = capturePriorPrivateFileLock(directory, `.${profileId}.${suffix}.lock`);
+      if (remove !== undefined) removals.push(() => { guard(); remove(); });
+    }
+  }
+  guard(); return removals;
+
+  function inspectStartupProfile(paths: ReturnType<typeof fixedCanonicalPaths>, profileId: string): void {
     for (const path of [directory, operations, dirname(paths.records.protected), dirname(paths.records.duo)]) {
       if (!noSymlinkAncestry(path, ancestry)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       statDirectory(path, "canonical credential directory", 0o700);
@@ -416,13 +445,7 @@ export function captureCanonicalCredentialStartupLocks(lifetime: RuntimeLifetime
           || readdirSync(directory).some(name => name.startsWith(`.${profileId}.`) && name !== `.${profileId}.writer.lock`)) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
       }
     }
-    for (const suffix of ["writer", "chatgpt"]) {
-      guard();
-      const remove = capturePriorPrivateFileLock(directory, `.${profileId}.${suffix}.lock`);
-      if (remove !== undefined) removals.push(() => { guard(); remove(); });
-    }
   }
-  guard(); return removals;
 }
 
 export function captureCanonicalCredentialPublication(machine: RuntimeAdmission, profile: RuntimeAdmission,

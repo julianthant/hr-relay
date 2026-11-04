@@ -26,7 +26,7 @@ async function fixture() {
   let lifetime = await RuntimeLifetimeLock.acquire(0), machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
   mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   let email = "other@ucsd.edu";
-  const runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts: { primaryDisplay: null }, onboardingDuo: syntheticOnboardingDuo(() => email) });
+  const runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts: { primaryDisplay: null }, onboardingDuo: syntheticOnboardingDuo() });
   async function signUp(address: string) {
     email = address;
     const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp({ firstName: "Fixture", lastName: "Operator", email,
