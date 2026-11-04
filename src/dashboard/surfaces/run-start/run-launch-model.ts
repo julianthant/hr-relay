@@ -1,6 +1,6 @@
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { StartCommandRequestSchema, CommandIdentityConflictError, type CommandRequest, type BulkRunCommandOutcome, type CommandResult } from "../../../rules/commands/commands.js";
+import { StartCommandRequestSchema, CommandIdentityConflictError, type CommandRequest, type BulkRunCommandOutcome, type CommandResult, type RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import type { DashboardCommandBinding } from "../../app/dashboard-app-model.js";
 import type { CommandOutcome, CommandReadbackVerification } from "../../app/commands/command-executor.js";
 import { canonicalJsonStringify, type JsonValue } from "../../../rules/validation/canonical-json.js";
@@ -249,4 +249,12 @@ async function verifyRunLaunchReadback(client: Pick<DashboardClient, "dashboardD
   }
   if (superseded.some(target => !runs.includes(target.runId))) return { state: "mismatch", evidence };
   return { state: "matched", evidence: { ...evidence, createdRuns: roots.map(row => row.runId) } };
+}
+
+export function runLaunchAppliedToast(input: Readonly<{ label: string; count?: number; rerun: boolean; workerStartup?: RunWorkerStartupFailure }>) {
+  if (input.workerStartup !== undefined) return { tone: "warning" as const,
+    title: input.workerStartup.state === "refused" ? "Run queued; worker unavailable" : "Run queued; worker status unknown",
+    description: input.workerStartup.message };
+  return { tone: "success" as const, title: input.count === undefined ? "Run submission confirmed" : input.rerun ? "Rerun started"
+    : input.count === 1 ? "Run started" : `${input.count} runs started`, description: input.label };
 }
