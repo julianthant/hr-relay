@@ -19,7 +19,7 @@ import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { spawn } from "node:child_process";
 import { z } from "zod";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
@@ -276,6 +276,24 @@ describe("profile session", () => {
     assert.equal(machineAdmissions.get(root)?.readProfileRegistry().activeProfileId, alex.profileId);
     saveCredentialsFixture(root, alex.profileId, { ucpathPassword: { set: "secret-one" } });
     assert.equal(createProfileSession({ machineRoot: root }).resumeSignedInProfile({ at: "2026-09-06T12:06:00.000Z" }).state, "active");
+  });
+
+  it("surfaces a credential read failure during resume and keeps the signed-in profile resumable", async () => {
+    const root = await temp();
+    const session = createProfileSession({ machineRoot: root });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
+    assert.equal(alex.state, "active");
+    if (alex.state !== "active") return;
+    const path = join(root, "profiles", alex.profileId, "credentials", "protected.json"), before = readFileSync(path);
+    const restarted = createProfileSession({ machineRoot: root });
+    chmodSync(path, 0o000);
+    try { assert.throws(() => restarted.resumeSignedInProfile({ at: "2026-09-06T12:05:00.000Z" })); }
+    finally { chmodSync(path, 0o600); }
+    assert.deepEqual(readFileSync(path), before);
+    assert.equal(machineAdmissions.get(root)?.readProfileRegistry().activeProfileId, alex.profileId);
+    assert.equal(restarted.resumeSignedInProfile({ at: "2026-09-06T12:06:00.000Z" }).state, "active");
   });
 
   it("refuses non-letter initials before creating a profile", async () => {
