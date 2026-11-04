@@ -147,6 +147,24 @@ describe("runtime environment inventory coverage", () => {
     }
   });
 
+  it("pins the user-path LOCALAPPDATA authority to its exact host-storage owner", () => {
+    const spec = RUNTIME_ENVIRONMENT_EXACT.find(candidate => candidate.key === "LOCALAPPDATA");
+    assert.ok(spec?.disposition === "active");
+    assert.equal(spec.classification, "direct-identifier"); assert.equal(spec.channel, "host-storage");
+    const arbitrary = { ...RUNTIME_ENVIRONMENT_REGISTRY,
+      exact: [...RUNTIME_ENVIRONMENT_REGISTRY.exact, { ...spec, key: "RELAY_OTHER_HOST_STORAGE" }],
+      exactReaderOwners: [...RUNTIME_ENVIRONMENT_REGISTRY.exactReaderOwners, { key: "RELAY_OTHER_HOST_STORAGE", paths: ["src/models/config/secrets.ts"] }] };
+    assert.match(auditRuntimeEnvironmentInventory(arbitrary).join("\n"), /RELAY_OTHER_HOST_STORAGE retains forbidden active host-storage environment ownership/u);
+    const wrongOwner = { ...RUNTIME_ENVIRONMENT_REGISTRY,
+      exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.map(candidate => candidate.key === "LOCALAPPDATA"
+        ? { ...candidate, owner: "src/backend/app/config/runtime-isolation.ts" } : candidate) };
+    assert.match(auditRuntimeEnvironmentInventory(wrongOwner).join("\n"), /LOCALAPPDATA is owned by .* expected src\/models\/config\/secrets\.ts/u);
+    const wrongClassification = { ...RUNTIME_ENVIRONMENT_REGISTRY,
+      exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.map(candidate => candidate.key === "LOCALAPPDATA"
+        ? { ...candidate, classification: "non-secret-config" } : candidate) };
+    assert.match(auditRuntimeEnvironmentInventory(wrongClassification).join("\n"), /LOCALAPPDATA retains forbidden active host-storage environment ownership/u);
+  });
+
   it("pins development diagnostics to its exact flag and environment owner", () => {
     for (const change of [{ key: "RELAY_UNKNOWN_DEBUG_FLAG" }, { owner: "src/backend/logs/debug-events.ts" }]) {
       const altered = { ...RUNTIME_ENVIRONMENT_REGISTRY,

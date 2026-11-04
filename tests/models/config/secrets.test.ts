@@ -5,7 +5,7 @@ import {
 HOST_PRIMARY_DISPLAY_ENV,
 type HostPrimaryDisplayObservation
 } from "../../../src/models/config/host-display.js";
-import { hostAwareResolutionEnvironment, windowsSystemRoot } from "../../../src/models/config/secrets.js";
+import { hostAwareResolutionEnvironment, windowsSystemRoot, workerBootstrapEnvironment } from "../../../src/models/config/secrets.js";
 const DETECTED: HostPrimaryDisplayObservation = { state: "detected", screenWidth: 1512, screenHeight: 982, source: "system_profiler" };
 
 describe("host display default", () => {
@@ -30,4 +30,9 @@ describe("Windows process mechanics", () => {
     vi.stubEnv("SystemRoot", "invalid-root");
     assert.equal(windowsSystemRoot(), "invalid-root");
   });
+});
+
+it("keeps the host LOCALAPPDATA authority out of worker bootstrap inheritance", () => {
+  assert.deepEqual(workerBootstrapEnvironment({ LOCALAPPDATA: "synthetic-host-path", PATH: "synthetic-path", [HOST_PRIMARY_DISPLAY_ENV]: "none" }),
+    { PATH: "synthetic-path", [HOST_PRIMARY_DISPLAY_ENV]: "none" });
 });
