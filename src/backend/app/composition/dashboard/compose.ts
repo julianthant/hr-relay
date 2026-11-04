@@ -1381,6 +1381,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     transitioning = true;
     try {
       if (active !== undefined) {
+        await profileRuntime.drainForLogout(active.token);
         const result = profileRuntime.session.logOut(active.token, { at: clock.now().toISOString() });
         if (result.state !== "cancelling" || result.operationId === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
         pending = { sessionId: active.sessionId, operationId: result.operationId, profileId: active.profileId, runtime: active.runtime, deleting };
