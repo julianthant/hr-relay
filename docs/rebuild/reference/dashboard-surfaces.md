@@ -125,6 +125,9 @@ Top-level Queue, calendar, notifications and Activity populations include roots 
 Visibility filtering precedes bounded pagination. An unloaded inline or hidden child never becomes a
 standalone row. Cross-workflow members stay under their parent; parent and linked chips retain exact
 workflow and day coordinates. Native parent authority still governs actions and deletion eligibility.
+Linked Queue navigation rechecks the destination day, run detail and workflow identity. Native child
+rows can open Logs and existing gate review without public catalog selection or a source-policy switch.
+The served OCR Records editor remains a separate wiring requirement.
 
 The product's workflow preview mounts `WorkflowMockQueue` and local `MockRun` state. Retry opens
 Rerun with the exact source. Local deletion removes the selected runs and clears their Logs/Records
