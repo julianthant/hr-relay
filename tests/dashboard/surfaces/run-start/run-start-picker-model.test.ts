@@ -16,7 +16,7 @@ describe("shared run catalog", () => {
   it("keeps all registered workflows visible and marks delegated entries unavailable for direct launch", () => {
     expect(ids()).toHaveLength(15);
     expect(ids("OCR")).toEqual(["ocr"]); expect(ids("i-9")).toEqual(["i9-lookup", "i9-check-start"]);
-    expect(catalog.filter(flow => flow.launch.state === "unavailable").map(flow => flow.id).sort()).toEqual(["i9-lookup", "sharepoint-download"]);
+    expect(catalog.filter(flow => flow.launch.state === "unavailable").map(flow => flow.id).sort()).toEqual(["i9-lookup", "ocr", "sharepoint-download"]);
   });
   it("uses served capability instead of restoring a preview launch when served input is absent", () => {
     const absent: RunStartWorkflow = { ...served[0], inputRun: { state: "absent", reason: "Delegation only" } };
