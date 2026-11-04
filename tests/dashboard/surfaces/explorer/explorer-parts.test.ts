@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { act,createElement } from "react";
 import { createRoot,type Root } from "react-dom/client";
 import { afterEach,describe,it,vi } from "vitest";
-import { DEFAULT_COMMENTS,DEFAULT_SCENARIO,type FlowStep } from "../../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
+import { DEFAULT_COMMENTS, DEFAULT_SCENARIO } from "../../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
+import type { FlowStep } from "../../../../src/models/workflow/explorer-preview.js";
 import { ExplorerParts } from "../../../../src/dashboard/surfaces/explorer/explorer-parts.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
