@@ -193,6 +193,7 @@ export function createTimelineRepository(ports: TimelineRepositoryPorts): Timeli
       return ports.mutate(() => {
         const result = prepare(
           `DELETE FROM timeline_events WHERE retention_class = 'ordinary'
+            AND kind <> 'gate.resolved'
             AND retention_date < CASE WHEN json_extract(payload_json,'$.payload.event.category')='sse'
               AND json_extract(payload_json,'$.payload.event.phase')='settled' THEN date(?,'+23 days') ELSE ? END
             AND NOT EXISTS (SELECT 1 FROM runs r WHERE r.id=timeline_events.run_id AND r.state<>'terminal')
