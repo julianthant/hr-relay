@@ -6,12 +6,15 @@ import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, Drop
 import { ASSISTANT_APPROVALS, ASSISTANT_EFFORTS, ASSISTANT_MODELS, useComposer, type ComposerMenu, type ComposerValue, type ComposerDraftPort } from './composer-model.js';
 import { readAssistantAttachment, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
 import './composer-input.css';
+import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 
-export function ComposerInput({ onSend, onAttachFile, onOpenChatFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey }: AssistantPorts & {
-  settlementKey?: string; preview?: boolean; onEdit?: (value: string) => void; onSend: (value: ComposerValue) => Promise<boolean>; disabled?: boolean; initialText?: string; autoFocus?: boolean; draft?: ComposerDraftPort;
+export function ComposerInput({ onSend, onAttachFile, onOpenChatFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey, modelPreference }: AssistantPorts & {
+  modelPreference?: AssistantModelPreferenceView['preference']; settlementKey?: string; preview?: boolean; onEdit?: (value: string) => void; onSend: (value: ComposerValue) => Promise<boolean>; disabled?: boolean; initialText?: string; autoFocus?: boolean; draft?: ComposerDraftPort;
 }) {
   const composer = useComposer({ onSend, initialText, draft, settlementKey });
   const id = useId();
+  const displayedModel = preview ? composer.model : modelPreference?.slug ?? 'Model unavailable';
+  const displayedEffort = preview ? composer.effort : modelPreference?.effort ?? 'Effort unavailable';
   const focusMessageOnClose = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [attaching, setAttaching] = useState(false);
@@ -45,10 +48,10 @@ export function ComposerInput({ onSend, onAttachFile, onOpenChatFile, disabled =
         {menu('approval', composer.approval, approvalIcon, <><DropdownMenuLabel className="hub-menu-title">How should Relay actions be approved?</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.approval} onValueChange={composer.setApproval}>
           {ASSISTANT_APPROVALS.map(item => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={item.label} value={item.label}><span className="hub-option-copy"><span>{item.label}</span><small>{item.description}</small></span></DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup></>)}
-        {menu('model', `Model: ${composer.model}`, <><span>{composer.model}</span><ChevronDown aria-hidden /></>, <><DropdownMenuLabel className="hub-menu-title">Select model</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.model} onValueChange={composer.setModel}>
+        {menu('model', `Model: ${displayedModel}`, <><span>{displayedModel}</span><ChevronDown aria-hidden /></>, <><DropdownMenuLabel className="hub-menu-title">Select model</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.model} onValueChange={composer.setModel}>
           {ASSISTANT_MODELS.map((value, index) => <DropdownMenuGroup key={value}>{index === 1 ? <DropdownMenuSeparator className="hub-menu-separator" /> : null}<DropdownMenuRadioItem closeOnClick className="hub-menu-option" value={value}><span className="hub-option-copy"><span>{value}</span>{index === 0 ? <small>Recommended set of models</small> : null}</span></DropdownMenuRadioItem></DropdownMenuGroup>)}
         </DropdownMenuRadioGroup></>, 'sm')}
-        {menu('effort', `Thinking effort: ${composer.effort}`, <><span>{composer.effort}</span><ChevronDown aria-hidden /></>, <><DropdownMenuLabel className="hub-menu-title">Thinking effort</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.effort} onValueChange={composer.setEffort}>
+        {menu('effort', `Thinking effort: ${displayedEffort}`, <><span>{displayedEffort}</span><ChevronDown aria-hidden /></>, <><DropdownMenuLabel className="hub-menu-title">Thinking effort</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.effort} onValueChange={composer.setEffort}>
           {ASSISTANT_EFFORTS.map(value => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={value} value={value}><span className="hub-option-copy">{value}</span></DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup></>, 'sm')}
         {menu('voice', 'Voice input', <Mic aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">Voice input</DropdownMenuLabel><p className="hub-caption hub-voice-note">Voice recording is simulated in this UI mock.</p><DropdownMenuItem className="hub-menu-option" onSelect={() => { focusMessageOnClose.current = true; composer.setText('Check the current employment details for Alex Rivera.'); }}><Mic aria-hidden /><span className="hub-option-copy"><span>Use sample transcript</span><small>Add a sample request to the composer</small></span></DropdownMenuItem></>)}

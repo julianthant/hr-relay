@@ -386,10 +386,17 @@ the served account once. Superseded requests cannot publish into another convers
 Chat files retains its composer and uses version-bound workbook registration and reads. Attachment
 open/download reads its exact CAS revision through the shared client's revision lookup, independent
 of operator named versions. The model,
-effort, approval and voice controls remain unavailable; setup uses the existing composer, with no new
-component. The explicit parity composition supplies approved mock conversations and sample workflow
-scenes; product failures never select those producers. Chat titles and drafts are local to the mounted
-shell.
+effort, approval and voice controls remain unavailable. The served model and effort labels come from
+the selected person’s preference; setup changes use the existing composer command. Test assistant
+above the composer explicitly runs the same public capability verification without replacing an
+unsent draft. Named verification failures remain in the conversation and never enable inference. The explicit parity composition supplies approved mock conversations and sample workflow
+scenes; product failures never select those producers. Chat titles, selected chat, text drafts and displayed replies survive refresh in the current browser
+tab’s session storage, scoped only after the server verifies the selected person. Another person’s
+key is never adopted. Saved text confers no command or model authority: restored pending requests
+remain unknown, review proposals expire, and verification proof is never restored. File bodies and
+executable action identities are not saved. Storage failures remain visible without erasing data.
+Deleting a chat retires its controller before removing history. Pending decisions become unknown;
+their late success or failure cannot write history, revive the chat or replay the action.
 
 For a currently selected served Queue run, send `start selected workflow` to propose the same
 workflow for that run's canonical subject input. The model receives a request-scoped opaque reference,
@@ -651,6 +658,16 @@ continuation after its handler await, returns that action as unknown. An ambiguo
 transport has no fabricated action identity and disables retry; the operator checks the current inbox
 before a new request. A confirmation-required proposal does not execute or imply
 operator approval.
+
+The finite run-read allowlist supports `run status` and selected-run explanation phrases. Its adapter
+in `app/composition/dashboard/assistant.ts` uses the existing canonical run-detail dependencies,
+admits the exact selected run revision and checks currentness across inference. Only an opaque
+request reference reaches the model. The final local reply quotes the canonical status, gate,
+outcome and the newest exact subset of at most ten timeline events that fits the quotation bound,
+with an explicit omitted-event count and exact run/revision/source/digest citations. Currentness
+still checks all ten recent candidates, including those omitted from the quotation.
+Forged citations, changed evidence and text-only claims refuse. The adapter is available for direct
+injection; the production `compose.ts` call site still awaits its assigned integration phase.
 
 `context.ts` projects the finite plain help artifact. Run
 `tsx scripts/build/generate-assistant-knowledge.ts` and its `--check` mode to generate and verify

@@ -2,7 +2,7 @@ import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.j
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
 import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantFunctionNamespaceSchema, AssistantActionDecisionSchema, AssistantActionResultSchema, AssistantActionProposalSchema, type AssistantActionProposal, type AssistantActionDecision, type AssistantActionResult,
-  type AssistantFailureCode, type AssistantResult, type AssistantInputItem, AssistantCitationSchema, AssistantPermissionViewSchema, type AssistantPermissionView } from "../../models/dashboard/assistant.js";
+  type AssistantFailureCode, type AssistantResult, type AssistantInputItem, AssistantCitationSchema, AssistantPermissionViewSchema, type AssistantPermissionView, type AssistantLocalEvidenceCitation } from "../../models/dashboard/assistant.js";
 import { ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { AssistantContextError, type AssistantContext } from "./context.js";
@@ -24,7 +24,8 @@ export interface AssistantModelPolicySnapshot {
   readonly policy: AssistantModelPolicy;
   isCurrent(): boolean;
 }
-export type AssistantFunctionOutcome = Readonly<{ kind: "continue"; output: JsonValue }> | Readonly<{ kind: "complete"; result: AssistantResult }>;
+export type AssistantFunctionOutcome = Readonly<{ kind: "continue"; output: JsonValue }> | Readonly<{ kind: "complete"; result: AssistantResult;
+  validateLocalCitation?: (citation: AssistantLocalEvidenceCitation) => AssistantLocalEvidenceCitation }>;
 export interface AssistantFunctionContext {
   readonly request: z.infer<typeof AssistantRequestSchema>;
   readonly context: AssistantContext;
@@ -52,7 +53,7 @@ export interface AssistantServiceOptions {
   readonly clock: Clock;
   readonly subjects?: AssistantSubjectBroker;
   readonly planner?: AssistantPlanner;
-  readonly projectInput?: (request: z.infer<typeof AssistantRequestSchema>) => Readonly<{ completion?: "answer" | "canonical-action"; input: JsonValue; citations: readonly z.infer<typeof AssistantCitationSchema>[] }>;
+  readonly projectInput?: (request: z.infer<typeof AssistantRequestSchema>) => Readonly<{ completion?: "answer" | "canonical-action" | "canonical-read"; input: JsonValue; citations: readonly z.infer<typeof AssistantCitationSchema>[] }>;
   readonly decideAction?: (input: AssistantActionDecision, signal: AbortSignal) => AssistantActionResult | Promise<AssistantActionResult>;
   readonly bindFunctions?: (context: AssistantFunctionContext, signal: AbortSignal) => Promise<readonly AssistantFunctionSet[]>;
 }
@@ -106,10 +107,12 @@ export function createAssistantService(options: AssistantServiceOptions) {
     },
     async respond(input: unknown, signal: AbortSignal): Promise<AssistantResult> {
       let effect: AssistantActionProposal | undefined;
+      let verifying = false;
       try {
         const request = AssistantRequestSchema.safeParse(input);
         if (!request.success) return refused("ASSISTANT_INVALID");
-        if (request.data.message === ASSISTANT_VERIFY_COMMAND) {
+        if (request.data.message.trim() === ASSISTANT_VERIFY_COMMAND) {
+          verifying = true;
           if (options.verifySelectedModel === undefined) return refused('ASSISTANT_UNAVAILABLE');
           signal.throwIfAborted();
           await options.verifySelectedModel(signal);
@@ -163,7 +166,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           history.push(...turn.output);
           const calls = turn.output.filter(item => item.type === "function_call"), messages = turn.output.filter(item => item.type === "message");
           if (calls.length === 0) {
-            if (projected.completion === "canonical-action") return refused("ASSISTANT_PROPOSAL_REFUSED");
+            if (projected.completion === "canonical-action" || projected.completion === "canonical-read") return refused("ASSISTANT_PROPOSAL_REFUSED");
             if (messages.length !== 1) return refused("ASSISTANT_INVALID");
             const text = messages[0].content.map(part => part.text).join("");
             assertAuthority();
@@ -190,7 +193,13 @@ export function createAssistantService(options: AssistantServiceOptions) {
           assertAuthority();
           if (outcome.kind === "complete") {
             const result = AssistantResultSchema.parse(outcome.result);
-            const validated = result.state === "answered" ? { ...result, citations: result.citations.map(citation => context.citation(citation)) } : result;
+            const validated = result.state === "answered" ? { ...result, citations: result.citations.map(citation => {
+              if (!("kind" in citation)) return context.citation(citation);
+              if (outcome.validateLocalCitation === undefined) throw new AssistantContextError("ASSISTANT_CONTEXT_UNAVAILABLE");
+              const validated = outcome.validateLocalCitation(citation);
+              if (canonicalJsonStringify(validated) !== canonicalJsonStringify(citation)) throw new AssistantContextError("ASSISTANT_CONTEXT_UNAVAILABLE");
+              return validated;
+            }) } : result;
             assertAuthority();
             return validated;
           }
@@ -209,13 +218,18 @@ export function createAssistantService(options: AssistantServiceOptions) {
           if (error.code === "CHATGPT_USAGE_LIMIT") return refused("ASSISTANT_USAGE_LIMIT");
           if (error.code === "CHATGPT_PLAN_DISABLED") return refused("ASSISTANT_PLAN_DISABLED");
           if (error.code === "CHATGPT_ACCOUNT_EXPIRED") return refused("ASSISTANT_ACCOUNT_EXPIRED");
-          if (error.code === "CHATGPT_ASSISTANT_REFUSED") return refused("ASSISTANT_RESPONSE_REFUSED");
+          if (error.code === "CHATGPT_ASSISTANT_REFUSED") return refused(verifying ? "ASSISTANT_CAPABILITY_FAILED" : "ASSISTANT_RESPONSE_REFUSED");
           if (error.code === "CHATGPT_OCR_CANCELLED") return refused("ASSISTANT_CANCELLED");
+          if (error.code === "CHATGPT_OCR_INCOMPLETE") return refused("ASSISTANT_RESPONSE_INCOMPLETE");
+          if (error.code === "CHATGPT_OCR_FAILED") return refused("ASSISTANT_RESPONSE_FAILED");
+          if (error.code === "CHATGPT_OCR_INVALID") return refused("ASSISTANT_INVALID");
+          const code = z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureCode, ...AssistantFailureCode[]]).safeParse(error.code);
+          if (code.success) return refused(code.data);
         }
         if (error instanceof AssistantLocalIntentError) return refused("ASSISTANT_PROPOSAL_REFUSED");
         if (error instanceof AssistantContextError) return refused(error.code);
         if (error instanceof z.ZodError) return refused("ASSISTANT_INVALID");
-        return refused("ASSISTANT_UNAVAILABLE");
+        return refused(verifying ? "ASSISTANT_VERIFICATION_FAILED" : "ASSISTANT_UNAVAILABLE");
       }
     },
   });
