@@ -16,7 +16,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `docs/roadmap/index.html` | Generated roadmap site. |
 | `fast-duo/` | Dashboard-owned Chromium enrollment and backend-signed workflow login runtimes. |
 | `scripts/build/` | Workflow registry generation, manifest-only source-tool preparation and independent checks; `generated-outputs.ts` owns merge-train regeneration paths and commands, and `merge-generated-conflicts.ts` resolves generated conflicts in temporary worktrees. |
-| `scripts/dev/` | Dashboard launch and secure environment bootstrap. |
+| `scripts/dev/` | Dashboard launch and secure environment bootstrap. `relay.ts` owns the Windows production launcher and private loopback stop broker; `relay-backend.ts` reports shutdown only after bootstrap releases its lifetime. Root `relay.cmd` selects portable Node. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
 | `scripts/test/` | Suite measurement, shared typed CI selection/proof/timing-history policy (`ci-plan.ts`), duration-balanced CI file selection, shared full-Chromium installation preflight (`chromium-preflight.ts`), direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |

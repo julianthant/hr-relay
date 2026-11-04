@@ -118,6 +118,16 @@ Start the backend first, and restart Vite after restarting the backend to renew 
 Development debug events stay in the local profile database and also print redacted metadata to
 the backend terminal. Production builds do not mirror debug events to the terminal.
 
+On Windows, build the production dashboard with `npm run web:build`. In Command Prompt, set
+`RELAY_NODE` to the full path of your portable Node 26 `node.exe`, then run `relay.cmd` from the
+checkout. The default is `tools\node\node.exe` inside the checkout. Relay opens its local dashboard
+in a dedicated Edge app window. Keep the launcher console open; use `relay.cmd stop` in a second
+console to wait for active work and stop the backend. You can then close the Edge window.
+
+The launcher stores its private stop capability and Edge profile under `%LOCALAPPDATA%\Relay\launcher`.
+Windows backups, restore, schema upgrades and account deletion remain unavailable. Use fresh state
+for schema trials and preserve existing folders.
+
 ## License
 
 [MIT](LICENSE)
