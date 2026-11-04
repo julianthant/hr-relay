@@ -1,6 +1,7 @@
 import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND } from '../../../models/dashboard/assistant.js';
 import type { AssistantActionIdentity, AssistantActionProposal } from "../../../models/dashboard/assistant.js";
 import type { AssistantFailureCode } from "../../../models/dashboard/assistant.js";
+export const ASSISTANT_UNKNOWN_NOTICE = 'Action outcome is unknown. Check the current run or notification state before starting a new request. Do not retry this request.';
 export interface AssistantSource {
   readonly id: string;
   readonly title: string;

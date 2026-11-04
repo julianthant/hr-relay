@@ -11,6 +11,7 @@ import { requireTrustRun } from "../runs/trust/run-reader.js";
 import type { StartPlanService } from "../runs/commands/start-plan-service.js";
 import type { DashboardCommandService } from "../runs/commands/command-service.js";
 import { selectActiveRunSettings } from "../runs/settings/run-settings.js";
+import { hasProtectedSubject } from "../runs/start/protected-input.js";
 import type { createAssistantAuthorization } from "./authorization.js";
 import { AssistantLocalIntentError, type AssistantFunctionContext, type AssistantFunctionSet } from "./service.js";
 
@@ -28,10 +29,10 @@ export function createAssistantWorkflowStarts(input: Readonly<{
     input.assertCurrent();
     const reference = Selection.parse(request.subjectRef), runId = reference.slice(4, 40), version = Number(reference.slice(41));
     const run = requireTrustRun(input.runs, runId), workflowId = run.envelope.workflow;
-    if (run.version !== version || !input.served(workflowId) || run.input.parsed.protectedBindings.length > 0) throw new AssistantLocalIntentError("assistant-selected-run-stale");
+    if (run.version !== version || !input.served(workflowId) || hasProtectedSubject(run.input.parsed.protectedBindings)) throw new AssistantLocalIntentError("assistant-selected-run-stale");
     const descriptor = input.descriptors.resolve(workflowId);
-    if (descriptor === undefined || descriptor.protectedInputs !== undefined && descriptor.protectedInputs.length > 0
-      || descriptor.version !== run.envelope.descriptorVersion || descriptor.contractFingerprint !== run.envelope.contractFingerprint) throw new AssistantLocalIntentError("assistant-workflow-unavailable");
+    if (descriptor === undefined || descriptor.version !== run.envelope.descriptorVersion
+      || descriptor.contractFingerprint !== run.envelope.contractFingerprint) throw new AssistantLocalIntentError("assistant-workflow-unavailable");
     const support = workflowDryRunSupport(descriptor);
     if (support.state !== "supported" && support.reason !== "no-transaction-node") throw new AssistantLocalIntentError("assistant-workflow-preview-unavailable");
     return { run, descriptor, dryRun: support.state === "supported" };
@@ -72,8 +73,8 @@ export function createAssistantWorkflowStarts(input: Readonly<{
           await input.plans.prepare?.(request, invocationSignal);
           invocationSignal.throwIfAborted(); invocationContext.assertCurrent(); captured.assertCurrent();
           const planned = input.plans.plan(request), plan = input.database.authority.startPlans.get(planned.startPlanId);
-          if (plan === undefined || plan.refused.length > 0 || plan.planned.length !== 1 || plan.planned[0].input.schemaHash !== run.input.parsed.schemaHash
-            || canonicalJsonStringify(plan.planned[0].input.value) !== canonicalJsonStringify(run.input.parsed.value)
+          if (plan === undefined || plan.refused.length > 0 || plan.planned.length !== 1
+            || canonicalJsonStringify(plan.planned[0].input) !== canonicalJsonStringify(run.input.parsed)
             || plan.stepOmissions !== undefined || plan.rerun !== undefined) throw new AssistantLocalIntentError("assistant-workflow-plan-refused");
           const command = StartCommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: input.clock.now().toISOString(),
             requestedBy: input.actorId, source: "assistant", family: "start", type: "start-run",
@@ -118,6 +119,7 @@ export function createAssistantWorkflowStarts(input: Readonly<{
       input.authorization.approve(issued.chat, decision.actionId, decision.revision);
       try {
         const result = await input.authorization.consumeStart(issued.chat, decision.actionId, () => issued.assertCurrent(), command => input.commands.submit(command));
+        issued.assertCurrent(); signal.throwIfAborted();
         return result.state === "applied" ? { state: "applied", actionId: decision.actionId }
           : { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
       } catch { return { state: "unknown", actionId: decision.actionId }; }
