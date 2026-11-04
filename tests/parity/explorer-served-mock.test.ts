@@ -1,8 +1,7 @@
 import { PNG } from "pngjs";
 import { WorkflowBootstrapPrimitiveSchema } from "../../src/models/dashboard/bootstrap.js";
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { writeFileSync } from "node:fs";
 import { expect } from "@playwright/test";
 import { test } from "./helpers/fixtures.js";
 import { PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -61,11 +60,9 @@ for (const attribute of ["light", "dark"] as const) for (const width of [1024, 1
           const screenshotPath = info.outputPath(screenshotName);
           const screenshot = await target.screenshot({ path: screenshotPath, animations: "disabled" });
           await info.attach(screenshotName, { path: screenshotPath, contentType: "image/png" });
-          if (process.env.RELAY_EXPLORER_EVIDENCE_DIR) {
-            mkdirSync(process.env.RELAY_EXPLORER_EVIDENCE_DIR, { recursive: true });
-            writeFileSync(join(process.env.RELAY_EXPLORER_EVIDENCE_DIR, screenshotName), screenshot);
-            writeFileSync(join(process.env.RELAY_EXPLORER_EVIDENCE_DIR, `${name}-${preview.id}-${state}.a11y.yml`), tree);
-          }
+          const treeName = `${name}-${preview.id}-${state}.a11y.yml`;
+          const treePath = info.outputPath(treeName);
+          writeFileSync(treePath, tree);
           captures.push({ tree, screenshot });
         }
         if (preview.id === "default") {
