@@ -30,6 +30,11 @@ export function SpreadsheetTypeDialog({ open, onOpenChange, type, workbook, retu
   const validation = spreadsheetTypeError(name, columns);
   const [error, setError] = useState(pending ? 'This type change is not yet confirmed. Check its result before editing it.' : ''), [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState(pending);
   const [id] = useState(() => crypto.randomUUID());
+  const addHeader = () => {
+    const column = spreadsheetTypeColumn(header), existing = columns.find(item => item.id === column.id);
+    if (existing) { setError(`“${header}” is already included as “${existing.name}”. The existing column is unchanged.`); return; }
+    setColumns(current => [...current, column]); setHeader(''); setError('');
+  };
   const save = async () => {
     if (validation) { setError(validation); return; }
     setBusy(true); setError('');
@@ -53,7 +58,7 @@ export function SpreadsheetTypeDialog({ open, onOpenChange, type, workbook, retu
           <Button aria-label={`Remove column ${index + 1}`} onClick={() => setColumns(current => current.filter(item => item.id !== column.id))}>Remove</Button>
         </div>)}
         <Button onClick={() => setColumns(current => [...current, spreadsheetTypeColumn()])}>Add column</Button>
-        {headers.length > 0 && <div className="hub-sheets-header-suggestions"><Field label="Imported workbook headers"><Select value={header} onChange={event => setHeader(event.target.value)}><option value="">Choose a header</option>{headers.map(value => <option key={value} value={value}>{value}</option>)}</Select></Field><Button disabled={!header} onClick={() => { setColumns(current => [...current, spreadsheetTypeColumn(header)]); setHeader(''); }}>Add selected header</Button></div>}
+        {headers.length > 0 && <div className="hub-sheets-header-suggestions"><Field label="Imported workbook headers"><Select value={header} onChange={event => setHeader(event.target.value)}><option value="">Choose a header</option>{headers.map(value => <option key={value} value={value}>{value}</option>)}</Select></Field><Button disabled={!header} onClick={addHeader}>Add selected header</Button></div>}
       </fieldset>
       {error && <Banner tone="danger" title="Type not saved">{error}</Banner>}
     </DialogBody>
