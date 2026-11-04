@@ -289,3 +289,16 @@ it('normalizes pasted verification whitespace and cancels the public test withou
   assert.equal(c.snapshot().messages.some(message => message.text === 'Late test result'), false);
   c.action({ type: 'verify' }); assert.equal(calls.length, 2);
 });
+
+it('allows Test assistant again after the operator cancels a proposal', async () => {
+  let requests = 0;
+  const c = createAssistantController({ async assistantRespond(request) { requests++; return request.message === ASSISTANT_VERIFY_COMMAND ? { state: 'answered', text: 'Verified', citations: [] } : actionProposal; },
+    async assistantDecide(input) { return { state: 'cancelled', actionId: input.actionId }; } }, { authority: 'current' });
+  c.action({ type: 'edit', value: 'mark notifications read' }); c.action({ type: 'send' });
+  await vi.waitFor(() => assert.equal(c.snapshot().turn.state, 'proposal'));
+  c.action({ type: 'cancel' });
+  await vi.waitFor(() => { const turn = c.snapshot().turn; assert.equal(turn.state, 'proposal'); if (turn.state === 'proposal') assert.equal(turn.disposition, 'cancelled'); });
+  c.action({ type: 'verify' });
+  await vi.waitFor(() => assert.equal(requests, 2));
+  assert.equal(c.snapshot().verification?.state, 'passed');
+});

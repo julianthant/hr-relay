@@ -54,6 +54,11 @@ export type AssistantAction =
   | { readonly type: 'fail' | 'uncertain'; readonly requestId: number }
   | { readonly type: 'action-state'; readonly id: string; readonly disposition: 'confirming' | 'confirmed' | 'cancelled' | 'stale' | 'unknown'; readonly message?: AssistantMessage };
 
+export function assistantCanVerify(turn: AssistantTurn): boolean {
+  return turn.state !== 'waiting' && turn.state !== 'unknown'
+    && (turn.state !== 'proposal' || turn.disposition !== 'review' && turn.disposition !== 'confirming' && turn.disposition !== 'unknown');
+}
+
 export function assistantReducer(state: AssistantState, action: AssistantAction): AssistantState {
   const turn = state.turn;
   switch (action.type) {
@@ -69,7 +74,7 @@ export function assistantReducer(state: AssistantState, action: AssistantAction)
       return { ...state, sequence: requestId, messages: [...state.messages, { id: `operator-${requestId}`, role: 'operator', text: state.draft }], turn: { state: 'waiting', requestId, prompt: state.draft } };
     }
     case 'verify': {
-      if (turn.state === 'waiting' || turn.state === 'unknown' || turn.state === 'proposal') return state;
+      if (!assistantCanVerify(turn)) return state;
       const requestId = state.sequence + 1;
       return { ...state, sequence: requestId, messages: [...state.messages, { id: `operator-${requestId}`, role: 'operator', text: 'Test assistant' }],
         turn: { state: 'waiting', requestId, prompt: ASSISTANT_VERIFY_COMMAND } };

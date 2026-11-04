@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, Check, ChevronDown, CircleAlert, Copy, FileCheck2, 
 import { Button, Disclosure, FloatingSurface, IconButton, Popover, PopoverClose, PopoverTrigger, Textarea, Tooltip } from '../../ds/ui.js';
 import { OverlayLayerPresence } from '../../ds/primitives/primitives-overlay.js';
 import { dsFocus, dsIcon, dsLayer } from '../../ds/theme/tokens.js';
-import { ASSISTANT_STARTERS, assistantConfirmRefusal, type AssistantAction, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
+import { ASSISTANT_STARTERS, assistantCanVerify, assistantConfirmRefusal, type AssistantAction, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
 import './assistant.css';
 
 export function AssistantPanel({ state, revision, accountAvailable, canCompose = accountAvailable, showTestAssistant = false, onAction, onMockConfirm, defaultOpen = false, confirmRefusal, statusText = 'Mock preview', footnote = 'Scripted preview · Synthetic data · No runs start', onOpenSettings, launcherBottom, accountHeading = 'ChatGPT not connected', accountNotice = 'Review the connection in Settings. This mock cannot sign in.' }: {
@@ -120,7 +120,7 @@ export function AssistantPanel({ state, revision, accountAvailable, canCompose =
           </div>
           <form className="assistant-composer" onSubmit={event => { event.preventDefault(); if (canCompose && !waiting && !uncertain && state.draft.trim()) dispatchAndFocus('send'); }}>
             {!accountAvailable && <div className="assistant-account" role="alert"><CircleAlert aria-hidden size={15} /><div><strong>{accountHeading}</strong><p>{accountNotice}</p></div></div>}
-            {showTestAssistant && <Button size="sm" variant="ghost" disabled={!canCompose || waiting || uncertain || turn.state === 'proposal'} onClick={() => onAction({ type: 'verify' })}>Test assistant</Button>}
+            {showTestAssistant && <Button size="sm" variant="ghost" disabled={!canCompose || !assistantCanVerify(turn)} onClick={() => onAction({ type: 'verify' })}>Test assistant</Button>}
             <div className="assistant-input-card">
               <Textarea ref={composer} className="assistant-compose-input" aria-label="Message" placeholder="Send a message…" rows={2} value={state.draft} onChange={event => onAction({ type: 'edit', value: event.target.value })} onKeyDown={event => {
                 if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }
