@@ -430,7 +430,8 @@ export function createProfileSession(input: {
   }
 
   function admitSignedIn(row: ProfileRegistryRow, at: ReturnType<typeof IsoInstantSchema.parse>,
-    credentialsMatch: (entries: ReturnType<ReturnType<typeof storeFor>["read"]>["entries"]) => boolean): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
+    credentialsMatch: (entries: ReturnType<ReturnType<typeof storeFor>["read"]>["entries"]) => boolean,
+    endSelectionOnFailure = true): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
     const finishing = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === row.profileId && entry.onboarding !== undefined);
     if (finishing.length > 1) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
     for (const operation of finishing) {
@@ -452,7 +453,9 @@ export function createProfileSession(input: {
     try {
       const record = storeFor(row.profileId).read();
       if (!credentialsMatch(record.entries)) {
-        registry.advanceSession(null); sessions.clear(); releaseOrdinary(row.profileId);
+        sessions.clear();
+        if (endSelectionOnFailure) registry.advanceSession(null);
+        releaseOrdinary(row.profileId);
         return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
       }
       verifiers.clearFailures(row.profileId);
@@ -460,7 +463,7 @@ export function createProfileSession(input: {
       return active;
     } catch (error) {
       sessions.clear();
-      try { registry.advanceSession(null); if (!hasUnprovedSourceClosure(error)) releaseOrdinary(row.profileId); }
+      try { if (endSelectionOnFailure) registry.advanceSession(null); if (!hasUnprovedSourceClosure(error)) releaseOrdinary(row.profileId); }
       catch (cleanup) { throw new AggregateError([error, cleanup], "profile sign-in and selection closure failed", { cause: cleanup }); }
       throw error;
     }
@@ -744,7 +747,12 @@ export function createProfileSession(input: {
         if (row.registration.onboardingCompletion === undefined) return refusal("PROFILE_TRANSITION_BLOCKED");
         const pending = openLogout(row.profileId);
         if (row.lifecycle === "cancelling" || pending !== undefined) return cancelling(pending?.operationId);
-        return admitSignedIn(row, at, entries => entries.ucpathUserId !== undefined && entries.ucpathPassword !== undefined);
+        return admitSignedIn(row, at, entries => {
+          const email = entries.ucpathUserId?.value, password = entries.ucpathPassword?.value;
+          if (email === undefined || password === undefined) return false;
+          const identified = verifiers.identify(email);
+          return identified !== "unknown" && identified.profileId === row.profileId && verifiers.passwordMatches(row.profileId, password);
+        }, false);
       });
     },
     changePassword(): ProfileRefusal {

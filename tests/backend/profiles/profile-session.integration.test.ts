@@ -12,7 +12,7 @@ import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifet
 import { finishProfileOnboarding, readyProfileOnboarding, createBoundProfileFixture, createSyntheticProfileSession as realCreateProfileSession } from "../../support/helpers/admission-fixture.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { spawn } from "node:child_process";
@@ -41,6 +41,18 @@ function readAuthenticatedCredentialFixture(machineRoot: string, profileId: stri
   try {
     const frame = createCanonicalCredentials(owner).readRecord("protected"); assert.ok(frame);
     return frame.value;
+  } finally { owner.release(); }
+}
+function saveCredentialsFixture(machineRoot: string, profileId: string, entries: z.input<typeof ProtectedSettingsApplyInputSchema>["entries"]): void {
+  const machine = machineAdmissions.get(machineRoot); assert.ok(machine);
+  const owner = machine.admitProfile(profileId);
+  try {
+    const store = createCredentialStore({ admission: owner, stateRoot: owner.stateRoot });
+    const applied = store.apply(ProtectedSettingsApplyInputSchema.parse({
+      commandId: randomUUID(), commandFingerprint: "b".repeat(64), expectedRevision: store.read().revision,
+      protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), updatedAt: "2026-09-06T12:03:00.000Z", entries,
+    }));
+    assert.equal(applied.state, "applied");
   } finally { owner.release(); }
 }
 type TestSession = ReturnType<typeof realCreateProfileSession>;
@@ -224,6 +236,44 @@ describe("profile session", () => {
     assert.equal((await settleLogout(restarted, restarted.logOut(resumed.token, { at: "2026-09-06T12:06:00.000Z" }))).state, "signed-out");
     const after = createProfileSession({ machineRoot: root }).resumeSignedInProfile({ at: "2026-09-06T12:07:00.000Z" });
     assert.equal(after.state, "refused");
+  });
+
+  it.each([
+    ["a different username", { ucpathUserId: { set: "sam@ucsd.edu" } }],
+    ["a different password", { ucpathPassword: { set: "secret-two" } }],
+  ] as const)("refuses to resume with %s saved in Settings and keeps the signed-in profile", async (_name, entries) => {
+    const root = await temp();
+    const session = createProfileSession({ machineRoot: root });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
+    assert.equal(alex.state, "active");
+    if (alex.state !== "active") return;
+    const original = { ucpathUserId: { set: "alex@ucsd.edu" }, ucpathPassword: { set: "secret-one" } };
+    saveCredentialsFixture(root, alex.profileId, entries);
+    const refused = createProfileSession({ machineRoot: root }).resumeSignedInProfile({ at: "2026-09-06T12:05:00.000Z" });
+    assert.equal(refused.state, "refused");
+    assert.equal(machineAdmissions.get(root)?.readProfileRegistry().activeProfileId, alex.profileId);
+    saveCredentialsFixture(root, alex.profileId, original);
+    const corrected = createProfileSession({ machineRoot: root }).resumeSignedInProfile({ at: "2026-09-06T12:06:00.000Z" });
+    assert.equal(corrected.state, "active");
+    if (corrected.state === "active") assert.equal(corrected.profileId, alex.profileId);
+  });
+
+  it("keeps the signed-in profile resumable after a resume that found its saved credentials missing", async () => {
+    const root = await temp();
+    const session = createProfileSession({ machineRoot: root });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
+    assert.equal(alex.state, "active");
+    if (alex.state !== "active") return;
+    saveCredentialsFixture(root, alex.profileId, { ucpathPassword: { clear: true } });
+    const refused = createProfileSession({ machineRoot: root }).resumeSignedInProfile({ at: "2026-09-06T12:05:00.000Z" });
+    assert.equal(refused.state, "refused");
+    assert.equal(machineAdmissions.get(root)?.readProfileRegistry().activeProfileId, alex.profileId);
+    saveCredentialsFixture(root, alex.profileId, { ucpathPassword: { set: "secret-one" } });
+    assert.equal(createProfileSession({ machineRoot: root }).resumeSignedInProfile({ at: "2026-09-06T12:06:00.000Z" }).state, "active");
   });
 
   it("refuses non-letter initials before creating a profile", async () => {
