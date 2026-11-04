@@ -1,5 +1,5 @@
+import { fileStatus } from "../file-identity.js";
 import type { BrowserRoot } from "../browser-root-contract.js";
-import { lstatSync } from "node:fs";
 import { dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
 import { ProfileBrowserRootRefusalError,requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
@@ -65,7 +65,7 @@ function assertBrowserRoot(root: string, path: string): void {
   if (!isAbsolute(path) || resolve(path) !== path || child === "" || child === ".." || child.startsWith(`..${sep}`) || isAbsolute(child)) throw new ProfileBrowserRootRefusalError();
   if (["credentials", "backups", "artifacts", "logs", "scratch", "state.db", "state.db-wal", "state.db-shm"].includes(child.split(sep)[0] ?? "")) throw new ProfileBrowserRootRefusalError();
   for (let current = path;; current = dirname(current)) {
-    const info = lstatSync(current, { throwIfNoEntry: false });
+    const info = fileStatus(current, true);
     if (info !== undefined && (!info.isDirectory() || info.isSymbolicLink() || privatePathRejects(current, info, "group-write"))) throw new ProfileBrowserRootRefusalError();
     if (current === root) break;
   }

@@ -1,3 +1,4 @@
+import { fileModified, fileChanged, fileStatus } from "../file-identity.js";
 import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
 import { posixPrivatePathRejects, privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
@@ -12,7 +13,7 @@ import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { outermostOperationProof } from "../configuration/credential-safe-file.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, isSupportedStoppedAuthoritySchemaVersion } from "./migrations.js";
 export function countUcsdLoginRows(path: string): number | "unreadable" | "absent" {
-  const info = lstatSync(path, { throwIfNoEntry: false });
+  const info = fileStatus(path, true);
   if (info === undefined) return "absent";
   if (!info.isFile()) return "unreadable";
   let database: DatabaseSync | undefined;
@@ -73,18 +74,18 @@ export function readProfileDatabaseBinding(path: string):
 
 function captureProfileDatabaseBinding(path: string) {
   requireDatabaseSourcePath(path);
-  const before = lstatSync(path, { throwIfNoEntry: false });
+  const before = fileStatus(path, true);
   if (before === undefined) throw new Error("profile-database-binding-required");
-  if (!before.isFile() || before.nlink !== 1 || privatePathRejects(path, before, "group-write")) throw new Error("profile-database-identity-invalid");
+  if (!before.isFile() || (before.nlink !== 1 && before.nlink !== 1n) || privatePathRejects(path, before, "group-write")) throw new Error("profile-database-identity-invalid");
   const snapshot = createReadonlyAuthoritySnapshot(path);
   const failures: unknown[] = [];
   try {
     const binding = readProfileDatabaseBindingCopy(snapshot.path);
     const assertUnchanged = () => {
       snapshot.assertUnchanged();
-      const after = lstatSync(path);
-      if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs
-        || before.ctimeMs !== after.ctimeMs || after.nlink !== 1) throw new Error("profile-database-identity-changed");
+      const after = fileStatus(path);
+      if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || fileModified(before) !== fileModified(after)
+        || fileChanged(before) !== fileChanged(after) || (after.nlink !== 1 && after.nlink !== 1n)) throw new Error("profile-database-identity-changed");
     };
     assertUnchanged();
     return Object.freeze({ binding, path: snapshot.path, assertUnchanged, dispose: snapshot.dispose });
@@ -121,9 +122,9 @@ export function captureCanonicalProfileBinding(path: string, expected: ProfileDa
 function readProfileDatabaseBindingCopy(path: string):
   { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
   requireDatabaseSourcePath(path);
-  const before = lstatSync(path, { throwIfNoEntry: false });
+  const before = fileStatus(path, true);
   if (before === undefined) throw new Error("profile-database-binding-required");
-  if (!before.isFile() || before.nlink !== 1 || privatePathRejects(path, before, "group-write")) throw new Error("profile-database-identity-invalid");
+  if (!before.isFile() || (before.nlink !== 1 && before.nlink !== 1n) || privatePathRejects(path, before, "group-write")) throw new Error("profile-database-identity-invalid");
   const database = new DatabaseSync(path, { readOnly: true });
   const read = (): ReturnType<typeof readProfileDatabaseBindingCopy> => {
     const version = database.prepare("PRAGMA user_version").get();
@@ -132,9 +133,9 @@ function readProfileDatabaseBindingCopy(path: string):
       || application?.application_id !== AUTHORITY_APPLICATION_ID) throw new Error("profile-database-schema-mismatch");
     const boundVersion = z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20)]).safeParse(version.user_version);
     const binding = boundVersion.success ? ProfileDatabaseBindingSchema.parse(database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get()) : undefined;
-    const after = lstatSync(path);
-    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs
-      || before.ctimeMs !== after.ctimeMs || after.nlink !== 1) throw new Error("profile-database-identity-changed");
+    const after = fileStatus(path);
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || fileModified(before) !== fileModified(after)
+      || fileChanged(before) !== fileChanged(after) || (after.nlink !== 1 && after.nlink !== 1n)) throw new Error("profile-database-identity-changed");
     if (binding === undefined) {
       if (typeof version.user_version !== "number" || !isSupportedStoppedAuthoritySchemaVersion(version.user_version) || version.user_version >= 7) throw new Error("profile-database-schema-mismatch");
       return { schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]).parse(version.user_version), state: "unbound" };
