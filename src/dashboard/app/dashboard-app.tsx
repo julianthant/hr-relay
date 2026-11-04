@@ -160,12 +160,13 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
   const onboardingProfile = useRef<string | undefined>(undefined);
+  const onboardingRoute = route.onboarding;
   useEffect(() => {
     if (session?.state === PROFILE_ONBOARDING_STATE) onboardingProfile.current = session.profileId;
-    else if (session?.state === "active" && session.duoState === "ready" && onboardingProfile.current === session.profileId) {
+    else if (session?.state === "active" && session.duoState === "ready" && (onboardingProfile.current === session.profileId || profileSource === "served" && onboardingRoute !== undefined)) {
       onboardingProfile.current = undefined; setRoute({ start: false });
     } else if (session?.state === "signed-out") onboardingProfile.current = undefined;
-  }, [session, setRoute]);
+  }, [session, setRoute, profileSource, onboardingRoute]);
   const preferencesMode: Parameters<typeof createPersonPreferences>[0] = profileSource === "mock" ? "preview" : session?.state === "active" && session.duoState === "ready" ? "person" : "signed-out";
   const preferenceRequest = useMemo(() => ({ client: profileClient, profileId, profileEpoch, mode: preferencesMode }), [profileClient, profileId, profileEpoch, preferencesMode]);
   const preferences = useMemo(() => previewPreferences ?? createPersonPreferences(preferenceRequest.mode), [preferenceRequest, previewPreferences]);
@@ -205,8 +206,8 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       ) : route.onboardingSetup !== undefined && profileSource === "served" && session?.state === PROFILE_ONBOARDING_STATE ? (
         <OnboardingSetup page="fast" port={publicProfile.port} />
       ) : profileSource === "served" && (publicProfile.failure || session !== undefined && (session.state !== "active" || session.duoState !== "ready")) ? (
-        <Onboarding step={session?.state === PROFILE_ONBOARDING_STATE ? session.step : session?.state === "active" ? "duo" : route.onboarding === "signup" ? "signup" : "login"}
-          authenticated={session?.state === "active"} port={publicProfile.port}
+        <Onboarding step={session?.state === PROFILE_ONBOARDING_STATE ? session.step : session?.state === "active" ? "duo" : session?.state === "signed-out" && session.resumable ? "login" : route.onboarding === "signup" || route.onboarding !== "login" && session?.state === "signed-out" && session.signUpRequired ? "signup" : "login"}
+          authenticated={session?.state === "active"} port={publicProfile.port} resumable={session?.state === "signed-out" && session.resumable === true}
           problem={publicProfile.failure ? operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE")
             : session?.state === "refused" || session?.state === "error" ? operatorFailureSentence(session.code)
               : session?.state === "cancelling" ? operatorFailureSentence("PROFILE_LOGOUT_BLOCKED") : undefined}

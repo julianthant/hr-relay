@@ -36,6 +36,7 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
   ocrCommandResult(runId: string, commandId: string, signal?: AbortSignal): Promise<ReturnType<typeof OcrCommandResultWireSchema.parse>>;
   readProfileSession(): Promise<PublicProfileState>;
   signInProfile(request: ProfileLoginRequest): Promise<PublicProfileState>;
+  resumeProfile(): Promise<PublicProfileState>;
   signUpProfile(request: ProfileSignUpRequest): Promise<PublicProfileState>;
   logOutProfile(): Promise<PublicProfileState>;
   deleteProfileAccount(request: DeleteProfileAccountRequest): Promise<PublicProfileState>;
@@ -96,6 +97,9 @@ export function createDashboardClient(input: Readonly<{
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/sign-in", {
         method: "POST", body: JSON.stringify(ProfileLoginRequestSchema.parse(request)),
       })).body);
+    },
+    async resumeProfile() {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/resume", { method: "POST", body: "{}" })).body);
     },
     async signUpProfile(request: ProfileSignUpRequest) {
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/sign-up", {

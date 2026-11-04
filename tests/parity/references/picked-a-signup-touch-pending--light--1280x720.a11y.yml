@@ -17,12 +17,11 @@
       - button "Duo setup"
     - listitem:
       - button "Ready" [disabled]
-  - heading "Touch ID" [level=1]
-  - paragraph: Enrollment is in progress. Continue in the existing Duo page; do not start this method again.
-  - text: Security key Not started Touch ID Pending
-  - region "Next action":
-    - heading "Pending" [level=2]
-    - paragraph: Continue the current enrollment in Duo. Showing the browser does not start another attempt.
+  - heading "Set up Duo" [level=1]
+  - paragraph: Finish adding Touch ID in the setup browser. Relay moves on when Duo shows it was added.
+  - list "Duo methods":
+    - listitem: Security key Not started
+    - listitem: Touch ID Pending
   - status: "Security key: Not started · Touch ID: Pending"
   - button "Cancel sign-up"
   - button "Show setup browser"
