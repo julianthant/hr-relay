@@ -44,12 +44,13 @@ for (const custody of ["ready", "retained", "missing"] as const) it(`requires ${
     const draft = session.signUp({ email, firstName: "Fixture", lastName: "Operator", password: "disposable-fixture-password", createdAt: systemClock.now().toISOString() });
     if (draft.state !== "onboarding") throw new Error("private draft required");
     for (const method of ["key", "touch"] as const) {
-      const started = await session.startOnboardingDuo(draft.token, draft.operationId, method), id = started.methods[method].attemptId; assert.ok(id);
       if (method === "touch" && !retained) {
-        assert.throws(() => session.confirmOnboardingDuo(draft.token, draft.operationId, method, id));
+        await assert.rejects(session.startOnboardingDuo(draft.token, draft.operationId, method));
+        assert.equal(session.readOnboarding(draft.token, draft.operationId).methods.touch.state, "unknown");
         assert.equal(session.readOnboarding(draft.token, draft.operationId).step, "duo");
         assert.deepEqual(machine.readProfileRegistry().profiles, []); return;
       }
+      const started = await session.startOnboardingDuo(draft.token, draft.operationId, method), id = started.methods[method].attemptId; assert.ok(id);
       session.confirmOnboardingDuo(draft.token, draft.operationId, method, id);
     }
     const ready = session.readOnboarding(draft.token, draft.operationId);
@@ -68,5 +69,10 @@ for (const custody of ["ready", "retained", "missing"] as const) it(`requires ${
       assert.equal(credentials.length, 2); assert.ok(credentials.every(credential => credential.state === "ready"));
       assert.ok(credentials.some(credential => credential.authenticator?.transport === "internal"));
     } finally { owner.release(); }
-  } finally { await session.closeOnboarding(); session.close(); machine.release(); rmSync(root, { recursive: true, force: true }); }
+  } finally {
+    await session.closeOnboarding();
+    if (retained) session.close();
+    else assert.throws(() => session.close(), (error: unknown) => error instanceof AggregateError && error.message === "profile-onboarding-custody-unproved");
+    machine.release(); rmSync(root, { recursive: true, force: true });
+  }
 });

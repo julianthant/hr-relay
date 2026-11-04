@@ -290,6 +290,11 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
       assert.deepEqual(outcome, { state: "created", attachment: scenario === "platform" ? "platform" : "cross-platform" });
       const state = profile.session.readOnboarding(draft.token, draft.operationId).methods[method];
       assert.equal(state.state, "pending"); assert.equal(state.ceremonyObserved, true); assert.equal(state.operatorConfirmed, false);
+      await page.evaluate(heading => { const element = document.createElement("h2"); element.textContent = heading; document.body.append(element); },
+        scenario === "platform" ? "Added Touch ID (Chrome)" : "Added security key");
+      await expect.poll(() => profile.session.readOnboarding(draft.token, draft.operationId).methods[method].state).toBe("complete");
+      const done = profile.session.readOnboarding(draft.token, draft.operationId).methods[method];
+      assert.equal(done.portalAccepted, true); assert.equal(done.operatorConfirmed, false);
     }
     const debugAdmission = machine.admitProfile(draft.profileId);
     try {

@@ -90,11 +90,8 @@ export async function mountRelayOptions(initial) {
     if (Object.values(methods).every(method => method.state === 'complete')) return { title: 'Both methods added', instruction: 'Security key and Touch ID are verified. Return to Relay to finish sign-up.', action: 'Return to Relay', run: () => command('RELAY_RETURN') };
     if (attempt.state === 'unavailable') return { title: `${label} unavailable`, instruction: 'Relay cannot set up this method from here. Return to Relay to check setup.', action: 'Return to Relay', run: () => command('RELAY_RETURN') };
     if (attempt.state === 'unknown') return { title: `Check ${label} in Duo`, instruction: 'Relay could not confirm this attempt. In Duo, open Manage devices and remove any device you do not recognize, then start over.', action: `Start ${label} over`, run: () => start(selected) };
-    if (attempt.state === 'pending' && attempt.ceremonyObserved) {
-      const waiting = selected === 'touch' && !attempt.portalAccepted;
-      return { title: `Confirm ${label}`, instruction: waiting ? `Waiting for Duo to show that ${label} was added.` : 'Duo should now say the device was added. Confirm it here to finish this method.',
-        action: 'Duo added this device', disabled: waiting, run: () => command('RELAY_CONFIRM', selected, attempt.attemptId) };
-    }
+    if (attempt.state === 'pending' && attempt.ceremonyObserved) return { title: `Finishing ${label}`, instruction: `Relay finishes this method when Duo shows that ${label} was added. If Duo already lists it and this page has not moved on, confirm it here.`,
+      action: 'Duo added this device', run: () => command('RELAY_CONFIRM', selected, attempt.attemptId) };
     if (attempt.state === 'pending') return { title: `Add ${label} in Duo`, instruction: `In Duo, approve the sign-in on your phone. Then choose Other options, Manage devices, Add a device, ${duoOption[selected]}.`, action: 'Show Duo', run: () => command('RELAY_OPEN_PORTAL') };
     return { title: `Set up ${label}`, instruction: `Relay opens Duo and signs you in. You then add ${duoOption[selected]} as a new device.`, action: `Set up ${label}`, run: () => start(selected) };
   }

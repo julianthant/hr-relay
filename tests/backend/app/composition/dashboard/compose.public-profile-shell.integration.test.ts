@@ -37,7 +37,7 @@ async function finishPublicSignUp(base: string): Promise<Response> {
     const pending = PublicProfileStateSchema.parse(await started.json());
     assert.equal(pending.state, "onboarding");
     if (pending.state !== "onboarding") throw new Error("fixture actual Duo attempt required");
-    assert.equal(pending.methods[method].state, "pending");
+    assert.equal(pending.methods[method].state, method === "touch" ? "complete" : "pending");
     const confirmed = await post("/api/v1/profile/onboarding/duo/confirm", {
       operationId: draft.operationId, method, attemptId: pending.methods[method].attemptId, operatorConfirmed: true }, cookie);
     const result = PublicProfileStateSchema.parse(await confirmed.json());
@@ -204,7 +204,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     const touch = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/start", { operationId: draft.operationId, method: "touch" }, draftCookie)).json());
     if (touch.state !== "onboarding" || touch.methods.touch.attemptId === undefined) throw new Error("fixture touch draft required");
     assert.equal(closedAttempts, 1);
-    assert.equal(touch.methods.touch.state, "pending");
+    assert.equal(touch.methods.touch.state, "complete");
     const ready = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/onboarding/duo/confirm", {
       operationId: draft.operationId, method: "touch", attemptId: touch.methods.touch.attemptId, operatorConfirmed: true }, draftCookie)).json());
     assert.equal(ready.state, "onboarding");

@@ -117,7 +117,7 @@
   });
   const checkAcceptance = async () => {
     if (!registration || accepted) return;
-    const pattern = registration.method === 'touch' ? /^Added (?:Touch ID|Windows Hello)$/ : /^Added security key$/;
+    const pattern = registration.method === 'touch' ? /^Added (?:Touch ID|Windows Hello)(?: \([^()]{1,40}\))?$/ : /^Added security key(?: \([^()]{1,40}\))?$/;
     const success = [...document.querySelectorAll('h1, h2, [role="heading"]')].filter(element =>
       element.getClientRects().length && pattern.test(element.textContent.trim()) && priorHeadings.get(element) !== element.textContent.trim());
     if (success.length !== 1) return;

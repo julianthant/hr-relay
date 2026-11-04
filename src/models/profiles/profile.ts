@@ -188,8 +188,9 @@ export function assertFinishedProfileOnboarding(operation: SignUpOperation): voi
     const attempt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
     if (attempt?.state !== "complete" || attempt.scope?.accountId !== draft.accountId || attempt.providerClosedAt === undefined
       || attempt.ceremony === undefined || attempt.portal !== undefined && attempt.ceremony.credentialId !== attempt.portal.credentialId
-      || (method === "key" ? attempt.ceremony.mechanism !== "fast-duo" || attempt.operatorConfirmedAt === undefined && attempt.portal?.acceptance !== "exact-credential-request"
-        : attempt.portal?.acceptance !== "portal-accepted" || (attempt.ceremony.mechanism !== "native-platform" && attempt.ceremony.mechanism !== "chromium-platform") || !attempt.ceremony.softwareInterceptionDisabled || attempt.operatorConfirmedAt === undefined)) {
+      || attempt.operatorConfirmedAt === undefined && attempt.portal?.acceptance !== "portal-accepted" && !(method === "key" && attempt.portal?.acceptance === "exact-credential-request")
+      || (method === "key" ? attempt.ceremony.mechanism !== "fast-duo"
+        : (attempt.ceremony.mechanism !== "native-platform" && attempt.ceremony.mechanism !== "chromium-platform") || !attempt.ceremony.softwareInterceptionDisabled)) {
       throw new Error("profile-onboarding-incomplete");
     }
   }

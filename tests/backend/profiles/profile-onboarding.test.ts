@@ -23,7 +23,9 @@ it("requires distinct served completion facts for both methods before Ready", ()
   assert.equal(ProfileOnboardingStateSchema.safeParse(ready).success, true);
   assert.equal(ProfileOnboardingStateSchema.safeParse({ ...ready, methods: { ...ready.methods, key: { ...complete, portalAccepted: false } } }).success, true);
   assert.equal(ProfileOnboardingStateSchema.safeParse({ ...ready, methods: { ...ready.methods, touch: { ...complete, ceremonyObserved: false } } }).success, false);
-  assert.equal(ProfileOnboardingStateSchema.safeParse({ ...ready, methods: { ...ready.methods, touch: { ...complete, operatorConfirmed: false, exactCredentialRequestObserved: true } } }).success, false);
+  assert.equal(ProfileOnboardingStateSchema.safeParse({ ...ready, methods: { ...ready.methods, touch: { ...complete, operatorConfirmed: false } } }).success, true);
+  assert.equal(ProfileOnboardingStateSchema.safeParse({ ...ready, methods: { ...ready.methods, touch: { ...complete, portalAccepted: false } } }).success, true);
+  assert.equal(ProfileOnboardingStateSchema.safeParse({ ...ready, methods: { ...ready.methods, touch: { ...complete, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: true } } }).success, false);
   assert.equal(ProfileOnboardingStateSchema.safeParse({ ...ready, methods: { ...ready.methods, key: { ...complete, operatorConfirmed: false, exactCredentialRequestObserved: true } } }).success, true);
   assert.equal(ProfileOnboardingStateSchema.safeParse({ ...ready, methods: { ...ready.methods, touch: { ...complete, state: "pending" } } }).success, false);
 });

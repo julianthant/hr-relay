@@ -80,12 +80,12 @@ export function createProfileOnboarding(input: {
   function completeIfProved(receipt: SignUpDuoAttempt): SignUpDuoAttempt {
     if (receipt.ceremony === undefined || receipt.scope === undefined) return receipt;
     if (receipt.portal !== undefined && receipt.ceremony.credentialId !== receipt.portal.credentialId) return unavailable();
-    const confirmed = receipt.operatorConfirmedAt !== undefined || receipt.method === "key" && receipt.portal?.acceptance === "exact-credential-request";
+    const confirmed = receipt.operatorConfirmedAt !== undefined || receipt.portal?.acceptance === "portal-accepted"
+      || receipt.method === "key" && receipt.portal?.acceptance === "exact-credential-request";
     if (!confirmed) return receipt;
     if (receipt.method === "key") {
       if (receipt.ceremony.mechanism !== "fast-duo") return unavailable();
-    } else if (receipt.portal?.acceptance !== "portal-accepted") return receipt;
-    else if ((receipt.ceremony.mechanism !== "native-platform" && receipt.ceremony.mechanism !== "chromium-platform") || !receipt.ceremony.softwareInterceptionDisabled) return unavailable();
+    } else if ((receipt.ceremony.mechanism !== "native-platform" && receipt.ceremony.mechanism !== "chromium-platform") || !receipt.ceremony.softwareInterceptionDisabled) return unavailable();
     return { ...receipt, state: "complete" };
   }
   function settleAttempt(attempt: DraftDuoAttempt): void {

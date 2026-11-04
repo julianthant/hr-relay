@@ -170,9 +170,12 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     if (credentialId !== session.credentialId || !session.requestId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     if (request.kind === "portal-accepted" && requestId !== session.requestId || request.kind === "exact-request" && session.attempt.method !== "key") throw new ProfileOnboardingDuoProviderError("refused", "scope");
     const enrollmentRequestId = session.requestId;
-    await scoped(session, () => capability.recordPortalAcceptance({ credentialId, requestId: enrollmentRequestId,
-      acceptance: request.kind === "portal-accepted" ? "portal-accepted" : "exact-credential-request" }));
-    current(session); session.accepted = true;
+    await scoped(session, async () => {
+      await capability.recordPortalAcceptance({ credentialId, requestId: enrollmentRequestId,
+        acceptance: request.kind === "portal-accepted" ? "portal-accepted" : "exact-credential-request" });
+      session.accepted = true;
+    });
+    current(session);
     return { observed: true };
   }
 
@@ -193,6 +196,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
 
   function reportFailure(session: ProviderSession, error: unknown): Promise<void> {
     if (session.reporting) return session.reporting;
+    if (session.accepted) { session.revoked = true; clearTimeout(session.expiry); return Promise.resolve(); }
     session.revoked = true;
     clearTimeout(session.expiry);
     const failure = error instanceof ProfileOnboardingDuoProviderError
@@ -228,7 +232,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           if (expired) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
           await session.reporting;
           if (session.retentionFailed) throw session.failure ?? new ProfileOnboardingDuoProviderError("unknown", "provider");
-          if (session.capability && session.credentialId && !session.accepted) await session.capability.retainUnknown({ kind: "unknown", causeTag: "browser-lifetime" });
+          if (session.capability && keyMayExist(session) && !session.accepted) await session.capability.retainUnknown({ kind: "unknown", causeTag: "browser-lifetime" });
           if (expired) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
           if (!session.worker) throw new ProfileOnboardingDuoProviderError("unknown", "worker");
           if (!browser?.contextClosed) {
