@@ -1,9 +1,10 @@
+import { fileModified, fileChanged, fileStatus, descriptorStatus, privateFileNumber } from "../storage/file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../storage/maintenance/custody-availability.js";
 import { captureCanonicalDraftErasure,eraseCanonicalDraftCredentials,initializeCanonicalCredentials } from "../storage/configuration/canonical-credential-store.js";
 import { privatePathRejects } from "../storage/private-path.js";
 
 import { createHash,randomUUID } from "node:crypto";
-import { closeSync,constants,existsSync,fstatSync,lstatSync,mkdirSync,openSync,readdirSync,readFileSync,realpathSync,rmSync } from "node:fs";
+import { closeSync,constants,existsSync,lstatSync,mkdirSync,openSync,readdirSync,readFileSync,realpathSync,rmSync } from "node:fs";
 import { basename,dirname,join,relative,resolve } from "node:path";
 import { createNativeBrowserProbe,NativeBrowserClosureUnprovedError } from "../runtime/browser/native-browser.js";
 
@@ -142,7 +143,7 @@ export function createProfileSession(input: {
     for (const name of readdirSync(directory)) {
       if (!name.endsWith(".json")) continue;
       const path = join(directory, name);
-      const info = lstatSync(path);
+      const info = fileStatus(path);
       if (!info.isFile() || info.isSymbolicLink()) throw new Error("profile operation is malformed");
       const parsed = z.union([SignUpOperationSchema, LogoutOperationSchema]).safeParse(JSON.parse(readFileSync(path, "utf8")));
       if (!parsed.success) throw new Error("profile operation is malformed");
@@ -867,18 +868,18 @@ export function createProfileSession(input: {
           session.admission.assertStateRoot(path);
           const ancestry = new Map<string, DirectoryIdentity>();
           if (!noSymlinkAncestry(dirname(path), ancestry)) throw new Error("profile file read refused");
-          const expected = lstatSync(path);
-          if (!expected.isFile() || expected.isSymbolicLink() || expected.nlink !== 1
+          const expected = fileStatus(path);
+          if (!expected.isFile() || expected.isSymbolicLink() || privateFileNumber(expected.nlink) !== 1
             || privatePathRejects(path, expected, "owner")) throw new Error("profile file read refused");
           const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
           try {
             const matches = (observed: typeof expected) => observed.isFile() && !observed.isSymbolicLink()
               && observed.dev === expected.dev && observed.ino === expected.ino && observed.size === expected.size
               && observed.mode === expected.mode && observed.uid === expected.uid && observed.nlink === expected.nlink
-              && observed.mtimeMs === expected.mtimeMs && observed.ctimeMs === expected.ctimeMs;
-            if (!noSymlinkAncestry(dirname(path), ancestry) || !matches(fstatSync(descriptor))) throw new Error("profile file read refused");
+              && fileModified(observed) === fileModified(expected) && fileChanged(observed) === fileChanged(expected);
+            if (!noSymlinkAncestry(dirname(path), ancestry) || !matches(descriptorStatus(descriptor))) throw new Error("profile file read refused");
             const bytes = readFileSync(descriptor);
-            if (!matches(fstatSync(descriptor)) || !matches(lstatSync(path)) || bytes.byteLength !== expected.size
+            if (!matches(descriptorStatus(descriptor)) || !matches(fileStatus(path)) || bytes.byteLength !== privateFileNumber(expected.size)
               || !noSymlinkAncestry(dirname(path), ancestry)) throw new Error("profile file read refused");
             session.admission.assertStateRoot(path);
             const current = requireSession(token);

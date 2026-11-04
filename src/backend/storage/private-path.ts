@@ -1,4 +1,4 @@
-import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, renameSync, writeFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, renameSync, writeFileSync, type BigIntStats } from "node:fs";
 import { dirname } from "node:path";
 import { assertWindowsNoReparse, assertWindowsPrivateParent, createWindowsPrivateDirectory, flushWindowsPath, windowsPrivatePathRejects } from "./windows-private-path.js";
 import { retainAuthoritySourceClosure } from "./source-closure.js";
@@ -54,9 +54,9 @@ export function writePrivateStage(path: string, bytes: Uint8Array): void {
     assertWindowsPrivateParent(dirname(path));
     const descriptor = openSync(path, "wx", 0o600);
     let primary: { error: unknown } | undefined;
-    let identity: ReturnType<typeof fstatSync> | undefined;
+    let identity: BigIntStats | undefined;
     try {
-      identity = fstatSync(descriptor);
+      identity = fstatSync(descriptor, { bigint: true });
       if (privatePathRejects(path, fstatSync(descriptor, { bigint: true }), "file-0600")) throw new Error("private-stage-unsafe");
       writeFileSync(descriptor, bytes); fsyncSync(descriptor);
     } catch (error) { primary = { error }; }
