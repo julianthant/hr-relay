@@ -532,7 +532,10 @@ export function authorityMutationCases({ prepareRunning, terminalFailureRequest,
         const run = db.authority.runs.get(RUN_ID);
         if (run === undefined) throw new Error("result generation fixture lost its run");
         const terminal = terminalSuccessRequest(db, run);
-        db.terminalizeSuccess(terminal.request, terminal.factoryAuthorization);
+        const report = db.terminalizeSuccess(terminal.request, terminal.factoryAuthorization);
+        assert.equal(db.authority.runResults.get(run.envelope.runId)?.createdAt,terminal.request.result.createdAt);
+        assert.equal(db.authority.runResults.getSettlement(run.envelope.runId,report.authorization.expectedVersion + 1)?.run.updatedAt,
+          terminal.request.authorization.authorizedAt);
       },
     },
     {

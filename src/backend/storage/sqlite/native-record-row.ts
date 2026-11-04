@@ -66,7 +66,7 @@ export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: u
   const extras: Record<string,string | number | null> = {};
   if (schemaVersion >= 20 && table === "run_results") {
     const terminal = runSettlementContext(row);
-    if (terminal.lifecycle.state !== "terminal" || terminal.lifecycle.endedAt !== object.createdAt
+    if (terminal.lifecycle.state !== "terminal"
       || ([["runId","runId"],["workflow","workflowId"],["attempt","attempt"],["descriptorVersion","descriptorVersion"],
         ["contractFingerprint","contractFingerprint"],["configSnapshotId","configSnapshotId"],["configFingerprint","configFingerprint"]] as const).some(
         ([field,key]) => Reflect.get(terminal.envelope,field) !== object[key])) throw new Error("run-settlement-result-mismatch");

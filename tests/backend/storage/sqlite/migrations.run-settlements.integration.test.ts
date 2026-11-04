@@ -2,6 +2,7 @@ import { restoreSchema19RunSettlementFixture } from "../../../support/fixtures/s
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { nativeOrdinaryRecordFromRow } from "../../../../src/backend/storage/sqlite/native-record-row.js";
 import { readRunSettlementRow, runSettlementContext } from "../../../../src/backend/storage/sqlite/run-settlement-row.js";
@@ -29,7 +30,10 @@ it("migrates an authenticated terminal result and receipt without changing their
   const previous = new DatabaseSync(":memory:", { enableForeignKeyConstraints: false });
   try {
     for (const migration of SQLITE_MIGRATIONS.filter(value => value.version <= 19)) for (const sql of migration.statements) previous.exec(sql);
-    const columns = runRecordColumns(run);
+    const endedAt = new Date(Date.parse(result.createdAt) + 1000).toISOString();
+    const terminalContext = RunRecordSchema.parse({ ...run, lifecycle: { ...run.lifecycle, endedAt }, updatedAt: endedAt,
+      completion: { ...run.completion, authorizedAt: endedAt } });
+    const columns = runRecordColumns(terminalContext);
     previous.prepare(`INSERT INTO runs (${Object.keys(columns).join(",")}) VALUES (${Object.keys(columns).map(() => "?").join(",")})`).run(...Object.values(columns));
     const resultJson = canonicalJsonStringify(result), receiptJson = canonicalJsonStringify(receipt);
     previous.prepare("INSERT INTO run_results VALUES(?,?,?,?,?,?)").run(result.runId,result.workflowId,result.attempt,result.resultDigest,resultJson,result.createdAt);
@@ -50,7 +54,9 @@ it("migrates an authenticated terminal result and receipt without changing their
     assert.equal(row.id, `${run.envelope.runId}:${version}`);
     assert.equal(row.settlement_version, version);
     assert.equal(row.payload_json, resultJson);
-    assert.deepEqual(runSettlementContext(row), run);
+    assert.deepEqual(runSettlementContext(row), terminalContext);
+    assert.equal(row.created_at,result.createdAt);
+    assert.notEqual(runSettlementContext(row).updatedAt,result.createdAt);
     assert.deepEqual(nativeOrdinaryRecordFromRow("run_results",row), result);
     const retained = previous.prepare("SELECT * FROM run_receipts WHERE id=?").get(receipt.receiptId); assert.ok(retained);
     assert.equal(retained.payload_json, receiptJson);
