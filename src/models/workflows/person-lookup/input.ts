@@ -1,4 +1,4 @@
-import { titleCasePersonName } from "../../fields/cell-coercion.js";
+import { collapseWhitespace, titleCasePersonName } from "../../fields/cell-coercion.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../failures/error-catalog.js";
 import { z } from "zod";
 import { CANONICAL_FIELDS } from "../../fields/registry.js";
@@ -48,7 +48,8 @@ export function parsePersonLookupRequest(text: string, options: Readonly<{
   mode?: "search" | "match"; crmCheck?: boolean; includeCrmDates?: boolean;
 }> = {}): readonly PersonLookupInputValue[] {
   const mode = options.mode ?? "search";
-  const entries = text.split(mode === "match" ? /;/u : /[;\n]/u).map((entry) => entry.trim()).filter(Boolean);
+  const entries = text.split(mode === "match" ? /;/u : /[;\n]/u)
+    .map((entry) => mode === "search" ? collapseWhitespace(entry) : entry.trim()).filter(Boolean);
   if (entries.length === 0) throw new Error("Person Lookup input is empty.");
   const people = new Map<string, PersonLookupInputValue>();
   for (const entry of entries) {
