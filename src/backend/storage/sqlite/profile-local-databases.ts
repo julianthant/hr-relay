@@ -1,4 +1,5 @@
-import { privatePathRejects } from "../private-path.js";
+import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
+import { posixPrivatePathRejects, privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { lstatSync, type BigIntStats } from "node:fs";
@@ -165,11 +166,11 @@ export function assertProfileRestoreDatabaseBinding(path: string, expected: Prof
 
 // Source SQLite descriptors belong to the observer process, never a live writer process.
 const liveBindingScript = `
-import { DatabaseSync } from "node:sqlite";
-import { constants, openSync, closeSync, lstatSync, fstatSync, readSync } from "node:fs";
-import { dirname } from "node:path";
+const { DatabaseSync } = require("node:sqlite");
+const { constants, openSync, closeSync, lstatSync, fstatSync, readSync } = require("node:fs");
+const { dirname } = require("node:path");
 const [path, expected, schema, application] = process.argv.slice(1);
-const { privatePathRejects } = await import(process.argv[5]);
+${process.platform === "win32" ? "" : `const privatePathRejects = ${posixPrivatePathRejects.toString()};`}
 const identity = stats => [stats.dev, stats.ino, stats.mode, stats.uid, stats.nlink].join(":");
 const inspect = file => {
   const stats = lstatSync(file, { bigint: true, throwIfNoEntry: false });
@@ -201,8 +202,7 @@ const checkWalHeader = (file, stats) => {
 const check = descriptor => {
   let ancestor = dirname(path);
   for (;;) {
-    const info = lstatSync(ancestor, { bigint: true });
-    if (!info.isDirectory() || privatePathRejects(ancestor, info, "ancestor")) throw new Error("profile-database-identity-invalid");
+    ${process.platform === "win32" ? 'const info = lstatSync(ancestor, { bigint: true }); if (!info.isDirectory() || privatePathRejects(ancestor, info, "ancestor"))' : "if (!lstatSync(ancestor).isDirectory())"} throw new Error("profile-database-identity-invalid");
     const parent = dirname(ancestor);
     if (parent === ancestor) break;
     ancestor = parent;
@@ -254,8 +254,8 @@ export function assertLiveProfileDatabaseBinding(path: string, expected: Profile
   const proofKey = `live-binding:${path}:${expected.installationId}:${expected.profileId}`;
   const proofWitness = `${witness}:${before.size}:${before.mtimeNs}`;
   if (proof?.slots.get(proofKey) === proofWitness) return;
-  const observed = spawnSync(process.execPath, ["--input-type=module", "-e", liveBindingScript, "--import=tsx", path, witness,
-    String(CURRENT_AUTHORITY_SCHEMA_VERSION), String(AUTHORITY_APPLICATION_ID), new URL("../private-path.js", import.meta.url).href],
+  const observed = spawnSync(process.execPath, ["--input-type=commonjs", "-e", process.platform === "win32" ? windowsObserverPolicyPrelude("binding") + liveBindingScript : liveBindingScript, path, witness,
+    String(CURRENT_AUTHORITY_SCHEMA_VERSION), String(AUTHORITY_APPLICATION_ID)],
   { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
   if (observed.error !== undefined || observed.signal !== null) throw new Error("profile-database-observation-failed", {
     cause: observed.error ?? { status: observed.status, signal: observed.signal },

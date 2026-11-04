@@ -1,3 +1,4 @@
+import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
 import { createPrivateDirectory, privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
 import { z } from "zod";
@@ -31,15 +32,14 @@ function inspect(path: string): BigIntStats | undefined {
 
 // Closing a source descriptor in the SQLite process releases that process's inode locks.
 const copySnapshotScript = `
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, writeSync } from "node:fs";
-const { privatePathRejects } = await import(process.argv[3]);
+const { closeSync, constants, fstatSync, lstatSync, openSync, readSync, writeSync } = require("node:fs");
 const destinationPath = process.argv[1];
 const sources = JSON.parse(process.argv[2]);
 const identity = stats => [stats.dev, stats.ino, stats.mode, stats.size, stats.mtimeNs, stats.ctimeNs].join(":");
 const inspect = path => {
   try {
     const stats = lstatSync(path, { bigint: true });
-    if (!stats.isFile() || stats.nlink !== 1n || privatePathRejects(path, stats, "group-write")) throw new Error("authority-readonly-source-unsafe");
+    if (!stats.isFile() || ${process.platform === "win32" ? 'stats.nlink !== 1n || privatePathRejects(path, stats, "group-write")' : "stats.isSymbolicLink()"}) throw new Error("authority-readonly-source-unsafe");
     return stats;
   } catch (error) {
     if (error.code === "ENOENT") return undefined;
@@ -159,9 +159,9 @@ function copyReadonlyAuthoritySnapshot(sourcePath: string) {
       }
       if (suffix === "-journal" && source.stats.size > 0n) throw new Error("authority-readonly-source-journal-unsettled");
     }
-    const copy = spawnSync(process.execPath, ["--input-type=module", "-e", copySnapshotScript, "--import=tsx", path,
+    const copy = spawnSync(process.execPath, ["--input-type=commonjs", "-e", process.platform === "win32" ? windowsObserverPolicyPrelude("snapshot") + copySnapshotScript : copySnapshotScript, path,
       JSON.stringify(sources.map(source => ({ path: source.path, suffix: source.suffix,
-        expected: source.stats === undefined ? null : identity(source.stats) }))), new URL("../private-path.js", import.meta.url).href], { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
+        expected: source.stats === undefined ? null : identity(source.stats) })))], { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
     const copyFailed = () => new Error("authority-readonly-snapshot-copy-failed", {
       cause: copy.error ?? { status: copy.status, signal: copy.signal },
     });

@@ -15,6 +15,10 @@ export interface PathStat {
 
 export function privatePathRejects(path: string, stat: PathStat, rule: PrivacyRule): boolean {
   if (process.platform === "win32") return windowsPrivatePathRejects(path, stat, rule);
+  return posixPrivatePathRejects(path, stat, rule);
+}
+
+export function posixPrivatePathRejects(_path: string, stat: PathStat, rule: PrivacyRule): boolean {
   if (stat.isSymbolicLink() || typeof process.getuid !== "function") return true;
   const owner = BigInt(stat.uid), current = BigInt(process.getuid());
   const mode = Number(stat.mode);
