@@ -1,3 +1,4 @@
+import { assertUpgradedRunSettlementRows } from "../../../support/fixtures/storage/historical-run-schema.js";
 import { removeSchema16PersonPreferences, prePreferencesSettingsRow } from "../../../support/fixtures/storage/person-preferences-predecessor.js";
 import { PREFERENCES_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { restoreSchema18WorkbookReferenceFixture, removeEmptySchema18WorkbookCatalog, removeEmptySchema17OcrReview, removeSchema15RunPause, removeEmptyExclusiveSessionLeaseFixture } from "../../../support/fixtures/storage/historical-run-schema.js";
@@ -193,6 +194,7 @@ it("upgrades a genuinely READY bound profile with exact preference conversion, r
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else if (table === "run_results" || table === "run_receipts") assertUpgradedRunSettlementRows(table, after[table] ?? [], before);
       else assert.deepEqual(after[table]?.map(row => prePreferencesSettingsRow(table, row)), rows.map(row => ({ ...row })));
     }
     assert.equal(after.database_upgrades?.length, (before.database_upgrades?.length ?? 0) + 1);
@@ -313,6 +315,7 @@ it.each([8, 11, 12, 13, 14, 15, 16] as const)("automatically upgrades schema %s 
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else if (table === "run_results" || table === "run_receipts") assertUpgradedRunSettlementRows(table, after[table] ?? [], before);
       else assert.deepEqual(after[table]?.map(row => sourceVersion < 16 ? prePreferencesSettingsRow(table, row) : { ...row }), rows.map(row => ({ ...row })));
     }
     assert.equal(after.database_upgrades?.length, (before.database_upgrades?.length ?? 0) + 1);
@@ -524,6 +527,7 @@ it.each([9, 10, 11, 12, 13, 14, 15, 16, 17, 18] as const)("upgrades supported sc
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, pause_state: null })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else if (table === "run_results" || table === "run_receipts") assertUpgradedRunSettlementRows(table, after[table] ?? [], before);
       else assert.deepEqual(after[table]?.map(row => sourceVersion < 16 ? prePreferencesSettingsRow(table, row) : { ...row }), rows.map(row => ({ ...row })));
     }
     const fresh = f.machine.admitProfile(f.binding.profileId);
@@ -663,6 +667,7 @@ it.each(workbookFormats.flatMap(format => (["run", "terminal-run", "plan", "cons
     for (const [table, rows] of Object.entries(before)) {
       if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
       else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
+      else if (table === "run_results" || table === "run_receipts") assertUpgradedRunSettlementRows(table, after[table] ?? [], before);
       else assert.deepEqual(after[table], rows);
     }
   } finally { await f.close(); }

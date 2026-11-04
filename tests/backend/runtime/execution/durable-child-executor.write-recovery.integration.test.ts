@@ -1,4 +1,5 @@
-import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
+import { readDelegationEvidence, readDelegationInvocationEvidence, readDelegationScopeEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { buildRunPreviewResult, buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { afterAll } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
@@ -11,7 +12,7 @@ import { taskId } from "../../../../src/rules/identity/ids.js";
 import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
 import { resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
-import { descriptorRuntimeNodes, workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, authorizeWorkflowDelegationRefresh, assertWorkflowDelegationRefreshAuthorization, workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/descriptor-registry.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { randomUUID } from "node:crypto";
@@ -31,7 +32,7 @@ import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 
-import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, RunResultRecordSchema, deriveRunResultDigest, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../../src/models/run/result.js";
+import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, RunResultRecordSchema, delegationDependencyRecord, deriveRunResultDigest, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../../src/models/run/result.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { Plan1Output, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
 
@@ -311,6 +312,11 @@ it("joins ordinary read and prepared write branches into a preview without deriv
   const read = children.find(child => child.envelope.workflow === plan1Leaf.descriptor.id);
   const write = children.find(child => child.envelope.workflow === childCrashWrite.descriptor.id);
   assert.ok(read && write);
+  const refresh = authorizeWorkflowDelegationRefresh(plan1Leaf.descriptor,read); assert.ok(refresh);
+  assert.equal(assertWorkflowDelegationRefreshAuthorization(refresh,read),plan1Leaf.descriptor);
+  assert.throws(() => assertWorkflowDelegationRefreshAuthorization({},read), /delegation-refresh-factory-authorization-unavailable/);
+  assert.throws(() => assertWorkflowDelegationRefreshAuthorization(refresh,RunRecordSchema.parse({ ...read, version: read.version + 1 })), /delegation-refresh-factory-authorization-unavailable/);
+  assert.equal(authorizeWorkflowDelegationRefresh(parallelChildWriteRecoveryRoot.descriptor,done.run),undefined);
   const readResult = f.database.authority.runResults.get(read.envelope.runId);
   const writeResult = f.database.authority.runResults.get(write.envelope.runId);
   const parentResult = f.database.authority.runResults.get(f.run.envelope.runId);
@@ -324,6 +330,20 @@ it("joins ordinary read and prepared write branches into a preview without deriv
   assert.equal(parentResult.operationLineage, undefined);
   assert.equal(writeResult.operationLineage, undefined);
   const evidence = ["read", "write"].map(nodeId => readDelegationEvidence(f.database.authority, f.run.envelope.runId, nodeId));
+  for (const entry of evidence) assert.deepEqual(readDelegationInvocationEvidence(f.database.authority, entry.invocationCommandId), entry);
+  assert.throws(() => readDelegationInvocationEvidence(f.database.authority, randomUUID()), /delegation-invocation-authority-unavailable/);
+  const first = evidence[0], other = evidence[1]; assert.ok(first && other);
+  const otherCommand = f.database.authority.lifecycleJournal.getCommand(other.invocationCommandId); assert.ok(otherCommand);
+  assert.throws(() => readDelegationInvocationEvidence({ ...f.database.authority,
+    lifecycleJournal: { ...f.database.authority.lifecycleJournal,
+      getCommand: id => id === first.invocationCommandId ? otherCommand : f.database.authority.lifecycleJournal.getCommand(id) },
+  }, first.invocationCommandId), /delegation-invocation-binding-mismatch/);
+  const references = evidence.map(entry => ({ kind: "delegation" as const, nodeId: entry.nodeId, receipt: delegationDependencyRecord(entry) }));
+  const parent = done.run;
+  assert.deepEqual(readDelegationScopeEvidence(f.database.authority, parent, references), references.map(entry => ({ nodeId: entry.nodeId, delegation: entry.receipt })));
+  assert.throws(() => readDelegationScopeEvidence(f.database.authority, read, references), /delegation-scope-outcome-mismatch/);
+  assert.throws(() => readDelegationScopeEvidence(f.database.authority, parent,
+    references.map(entry => ({ ...entry, nodeId: entry.nodeId === first.nodeId ? other.nodeId : first.nodeId }))), /delegation-scope-outcome-mismatch/);
   const { completion, ...retained } = done.run; assert.ok(completion?.kind === "done");
   const running = { ...retained, lifecycle: { state: "running", workerId: WRITE_FIXTURE_WORKER_ID,
     claimedAt: f.clock.now().toISOString(), heartbeatAt: f.clock.now().toISOString() } };
@@ -343,7 +363,8 @@ it("joins ordinary read and prepared write branches into a preview without deriv
   const changedRun = { ...write, completion: { ...write.completion, resultDigest: changedResult.resultDigest } };
   assert.throws(() => readDelegationEvidence({ ...repositories,
     runs: { ...repositories.runs, get: id => id === write.envelope.runId ? changedRun : repositories.runs.get(id) },
-    runResults: { ...repositories.runResults, get: id => id === write.envelope.runId ? changedResult : repositories.runResults.get(id) },
+    runResults: { ...repositories.runResults, get: id => id === write.envelope.runId ? changedResult : repositories.runResults.get(id),
+      getInitialSettlement: id => id === write.envelope.runId ? { run: changedRun, result: changedResult } : repositories.runResults.getInitialSettlement(id) },
   }, f.run.envelope.runId, "write"), /delegation-settlement-authority-unavailable/);
   assert.throws(() => readDelegationEvidence({ ...repositories,
     runs: { ...repositories.runs, get: id => id === write.envelope.runId ? { ...write, envelope: { ...write.envelope, dryRun: false } } : repositories.runs.get(id) },

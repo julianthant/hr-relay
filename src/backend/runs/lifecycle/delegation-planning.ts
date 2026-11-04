@@ -30,7 +30,8 @@ export function canonicalDelegationChild(context: ChildRunContext, target: AnyWo
 export function planCanonicalDelegation(context: ChildRunContext, target: AnyWorkflowDescriptor) {
   const { node } = context;
   return planDelegationFanOut({ edgeId: node.edgeId, target: node.target, cardinality: node.cardinality, join: node.join,
-    policy: node.policy, bound: node.bind(context.scope), deriveChildItemId: input => {
+    policy: node.policy, bound: node.bind(context.scope),
+    ...(node.sourceRecordIds === undefined ? {} : { sourceRecordIds: node.sourceRecordIds(context.scope) }), deriveChildItemId: input => {
       const { canonicalItemId } = canonicalDelegationChild(context, target, input);
       return node.deriveChildItemId(input, Object.freeze({ canonicalItemId }));
     } });

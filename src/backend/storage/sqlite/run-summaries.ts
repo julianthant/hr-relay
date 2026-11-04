@@ -1,3 +1,4 @@
+import { CURRENT_RUN_SETTLEMENT_SQL } from "./run-settlement-row.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { timelineEventFromRow } from "./timeline-repository.js";
 import { FailureResolutionSchema } from "../../../models/trust/failure-resolution.js";
@@ -35,7 +36,12 @@ export function createRunSummaries(database: DatabaseSync, waitState: (run: RunR
     const sources=(table:"run_results"|"run_receipts"|"run_failures")=>{
       const grouped=new Map<string,unknown>();
       const resolutions=new Map<string,unknown>();
-      for(const raw of selectSources(table,"run_id","ORDER BY run_id")) {
+      const selectedRows = table === "run_failures" ? selectSources(table,"run_id","ORDER BY run_id")
+        : database.prepare(`SELECT source.* FROM ${table} source JOIN runs run ON run.id=source.run_id
+          JOIN run_results settlement ON settlement.run_id=run.id ${table === "run_receipts" ? "AND settlement.settlement_version=source.settlement_version" : "AND settlement.id=source.id"}
+          WHERE ${CURRENT_RUN_SETTLEMENT_SQL} ${selected === undefined ? "" : "AND source.run_id IN (SELECT value FROM json_each(?))"} ORDER BY source.run_id`)
+          .all(...(selected === undefined ? [] : [ids]));
+      for(const raw of selectedRows) {
         const record=nativeOrdinaryRecordFromRow(table,raw);
         const row=z.object({run_id:z.string()}).parse(raw);
         if(grouped.has(row.run_id))throw new Error("summary-source-ambiguous");
