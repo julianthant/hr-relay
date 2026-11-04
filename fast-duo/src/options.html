@@ -8,20 +8,14 @@
 <div id="message" role="status" class="notice" hidden></div>
 <section id="accountsPage">
 <div class="page-heading"><div><h1>Duo setup for Relay</h1><p>Add and verify Security key and Touch ID.</p></div></div>
-<div class="status-strip"><span id="statusSymbol" class="status-symbol"><img src="icons/shield-check.svg" alt=""></span><div><strong id="globalStatus">Checking setup…</strong><p id="globalDetail">Relay is checking your sign-in methods.</p></div></div>
 <div class="workspace">
 <section aria-labelledby="accountListHeading"><div class="section-heading"><h2 id="accountListHeading">Relay sign-in methods</h2><span id="accountCount" class="muted"></span></div><div id="accountList" class="account-list" aria-busy="true"><p class="empty">Loading…</p></div></section>
 <aside class="setup-panel" aria-labelledby="editorTitle">
-<div id="editor"><div class="section-heading"><h2 id="editorTitle" tabindex="-1">Set up a sign-in method</h2></div>
-<div id="connection">
-<ol class="relay-setup-steps">
-<li><span class="relay-step-number" aria-hidden="true">1</span><div><strong>Choose a method</strong><div id="transport" class="relay-method-picker" role="group" aria-label="Sign-in method"><button type="button" class="secondary" data-method="key" aria-pressed="true" disabled>Security key</button><button type="button" class="secondary" data-method="touch" aria-pressed="false" disabled>Touch ID</button></div><p class="field-help">Add each method once.</p></div></li>
-<li><span class="relay-step-number" aria-hidden="true">2</span><div><strong>Open Duo</strong><p>Sign in and approve with an existing device.</p><button id="openLogin" class="secondary full" disabled>Open duo.ucsd.edu</button></div></li>
-<li><span class="relay-step-number" aria-hidden="true">3</span><div><strong>Add your device</strong><p>In Duo, choose Other options → Manage devices. Start setup here, then choose Add a device.</p><button id="startCapture" class="primary full" disabled>Set up selected method</button><p class="fine-print">Relay checks that it is your Duo account.</p></div></li>
-</ol>
-</div>
-<div id="captureState" class="capture-state" hidden><strong id="captureTitle"></strong><p id="captureText"></p><button id="cancelCapture" class="secondary" disabled>Cancel setup</button></div>
-<div id="pendingKeys"></div>
+<div id="editor">
+<h2 id="editorTitle" tabindex="-1">Set up Security key</h2>
+<p id="instruction" class="relay-instruction"></p>
+<button id="primaryAction" type="button" class="primary full" disabled>Set up Security key</button>
+<button id="cancelCapture" type="button" class="quiet full" hidden>Cancel setup</button>
 <div class="relay-return-actions"><button id="returnRelay" type="button" class="secondary" disabled>Return to Relay</button><button id="closeSetup" type="button" class="quiet">Close setup tab</button></div>
 </div></aside>
 </div>

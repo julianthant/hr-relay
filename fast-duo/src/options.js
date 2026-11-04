@@ -17,8 +17,8 @@ try {
   if (!initial?.success || initial.result?.relaySetup !== true) throw new Error('RELAY_SETUP_UNAVAILABLE');
   await mountRelayOptions(initial.result.profile);
 } catch {
-  document.getElementById('globalStatus').textContent = 'Setup unavailable';
-  document.getElementById('globalDetail').textContent = 'Open setup again from Relay.';
+  document.getElementById('editorTitle').textContent = 'Setup unavailable';
+  document.getElementById('instruction').textContent = 'Open setup again from Relay.';
   document.getElementById('accountCount').textContent = 'Unavailable';
   const list = document.getElementById('accountList');
   list.setAttribute('aria-busy', 'false');

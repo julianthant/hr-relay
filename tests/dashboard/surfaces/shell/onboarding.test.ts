@@ -191,7 +191,7 @@ it("the served consent dialog closes when its displayed attempt is replaced", as
 });
 
 
-it("unknown enrollment copy never directs adding the uncertain method again", async () => {
+it("unknown enrollment copy directs checking Duo before starting that method over", async () => {
   const host = document.createElement("div"), root = createRoot(host);
   const method = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
   const onboarding = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const,
@@ -202,9 +202,9 @@ it("unknown enrollment copy never directs adding the uncertain method again", as
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
     assert.equal(host.querySelector("h1")?.textContent, "Security key");
-    assert.match(host.textContent ?? "", /Security keyUnknown/);
+    assert.match(host.textContent ?? "", /Security keyNot confirmed/);
     assert.doesNotMatch(host.textContent ?? "", /outcome unknown|Needs review|may already have been added/);
-    assert.match(host.textContent ?? "", /without repeating this attempt/);
+    assert.match(host.textContent ?? "", /remove any device you do not recognize, then start it over in the setup browser/);
     assert.doesNotMatch(host.textContent ?? "", /Security key is next|Start with a security key|then add a security key|Security key and Touch ID not added/);
     for (const state of ["pending", "unavailable"] as const) {
       const currentPort = { ...port, unavailable: false, onboarding: { ...onboarding, methods: { ...onboarding.methods, key: { ...onboarding.methods.key, state } } } };
@@ -222,7 +222,7 @@ it("both served setup pages keep method outcomes visible without offering anothe
   const calls: string[] = [];
   const unavailable = async () => ({ state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const });
   try {
-    for (const page of ["fast", "duo"] as const) for (const [state, label] of [["idle", "Not started"], ["pending", "Pending"], ["complete", "Completed"], ["unknown", "Unknown"], ["unavailable", "Unavailable"]] as const) {
+    for (const page of ["fast", "duo"] as const) for (const [state, label] of [["idle", "Not started"], ["pending", "Pending"], ["complete", "Completed"], ["unknown", "Not confirmed"], ["unavailable", "Unavailable"]] as const) {
       const port: ServedOnboardingPort = { source: "served", validate: mockOnboardingPort.validate,
         onboarding: { state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo",
           methods: { key: { ...method, state, attemptId: "00000000-0000-4000-8000-000000000003" }, touch: method } },
@@ -238,7 +238,7 @@ it("both served setup pages keep method outcomes visible without offering anothe
         assert.ok(capture); assert.equal(capture.disabled, true);
         await act(async () => capture.click());
         assert.equal(calls.length, 0);
-        if (page === "fast") assert.match(host.textContent ?? "", /without repeating this attempt/);
+        if (page === "fast") assert.match(host.textContent ?? "", /then start over from the setup browser/);
       }
     }
   } finally { await act(async () => root.unmount()); host.remove(); }
