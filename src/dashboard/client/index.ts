@@ -61,7 +61,9 @@ export function createDashboardClient(input: Readonly<{
 }>): DashboardClient {
   const surface = input.surface;
   const clientId = crypto.randomUUID();
-  const profileSessionListeners = new Set<() => void>();
+  const profileSessionListeners = new Set<Readonly<{ listener: () => void }>>();
+  let profileAuthority: Readonly<Pick<Extract<PublicProfileState, { state: "active" }>, "profileId" | "epoch">> | undefined;
+  let activation = { pending: false };
   const reportFailure = (failure: NonNullable<ReturnType<typeof debugFailureOutcome>> & { route: string }): void => {
     if (surface === undefined) return;
     void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard",
@@ -69,14 +71,29 @@ export function createDashboardClient(input: Readonly<{
       message: "Dashboard request did not complete successfully" })
       .catch(() => { window.reportError(new DashboardReportDeliveryError()); });
   };
-  const transport = createDashboardTransport({ ...input, onProfileSessionStale: () => { for (const listener of profileSessionListeners) listener(); },
+  const transport = createDashboardTransport({ ...input, captureProfileSessionStale: () => {
+    const dispatchedAuthority = profileAuthority, recipients = [...profileSessionListeners];
+    return () => {
+      if (dispatchedAuthority !== profileAuthority) return;
+      for (const recipient of recipients) if (profileSessionListeners.has(recipient)) recipient.listener();
+    };
+  },
     ...(surface === undefined ? {} : { onFailure: reportFailure }) });
+  const activateProfile = async (path: string, init: RequestInit): Promise<PublicProfileState> => {
+    const request = { pending: true }; activation = request;
+    try {
+      const state = parseProfileState((await transport.requestJsonResponse(path, init)).body);
+      if (activation === request && state.state === "active") profileAuthority = { profileId: state.profileId, epoch: state.epoch };
+      return state;
+    } finally { request.pending = false; }
+  };
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
   const client: DashboardClient = {
     subscribeProfileSessionStale(listener) {
-      profileSessionListeners.add(listener);
-      return () => { profileSessionListeners.delete(listener); };
+      const recipient = { listener };
+      profileSessionListeners.add(recipient);
+      return () => { profileSessionListeners.delete(recipient); };
     },
     async ocrCommandResult(runId, commandId, signal) {
       const result = OcrCommandResultWireSchema.parse(await transport.requestJson(`/api/v1/runs/${encodeURIComponent(RunIdSchema.parse(runId))}/ocr/commands/${encodeURIComponent(commandId)}`,
@@ -98,20 +115,24 @@ export function createDashboardClient(input: Readonly<{
       return transport.resolveUrl(`/api/v1/runs/${encodeURIComponent(RunIdSchema.parse(runId))}/ocr/pages/${PositiveIntSchema.parse(sourcePage)}?revision=${PositiveIntSchema.parse(revision)}`);
     },
     async readProfileSession() {
-      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/state")).body);
+      const dispatchedAuthority = profileAuthority, requestedActivation = activation;
+      const state = parseProfileState((await transport.requestJsonResponse("/api/v1/profile/state")).body);
+      if (dispatchedAuthority === profileAuthority && requestedActivation === activation && !activation.pending && state.state === "active"
+        && (state.profileId !== profileAuthority?.profileId || state.epoch !== profileAuthority.epoch)) profileAuthority = { profileId: state.profileId, epoch: state.epoch };
+      return state;
     },
     async signInProfile(request: ProfileLoginRequest) {
-      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/sign-in", {
+      return activateProfile("/api/v1/profile/sign-in", {
         method: "POST", body: JSON.stringify(ProfileLoginRequestSchema.parse(request)),
-      })).body);
+      });
     },
     async resumeProfile() {
-      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/resume", { method: "POST", body: "{}" })).body);
+      return activateProfile("/api/v1/profile/resume", { method: "POST", body: "{}" });
     },
     async signUpProfile(request: ProfileSignUpRequest) {
-      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/sign-up", {
+      return activateProfile("/api/v1/profile/sign-up", {
         method: "POST", body: JSON.stringify(ProfileSignUpRequestSchema.parse(request)),
-      })).body);
+      });
     },
     async deleteProfileAccount(request) {
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/delete-account", {
@@ -122,9 +143,9 @@ export function createDashboardClient(input: Readonly<{
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/logout", { method: "POST", body: "{}" })).body);
     },
     async completeProfileOnboarding(request) {
-      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/complete", {
+      return activateProfile("/api/v1/profile/onboarding/complete", {
         method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
-      })).body);
+      });
     },
     async cancelProfileOnboardingDuo(request) {
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/cancel", {

@@ -55,15 +55,15 @@ export function createDashboardTransport(input: Readonly<{
   baseUrl: string;
   fetchImpl?: FetchLike;
   onFailure?: (failure: NonNullable<ReturnType<typeof debugFailureOutcome>> & { route: string }) => void;
-  onProfileSessionStale?: () => void;
+  captureProfileSessionStale?: () => () => void;
 }>): DashboardTransport {
   const baseUrl = input.baseUrl.replace(/\/$/, "");
   const baseOrigin = new URL(baseUrl).origin;
   const fetchImpl: FetchLike = input.fetchImpl ?? ((url, init) => fetch(url, init));
-  const observeProfileSession = (path: string, status: number, body: unknown): void => {
+  const observeProfileSession = (path: string, status: number, body: unknown, notify: (() => void) | undefined): void => {
     if (status !== 401 || /^\/api\/v1\/profile\//u.test(path) || path === "/api/v1/debug/errors") return;
     const parsed = PublicProfileStateSchema.safeParse(body);
-    if (parsed.success && parsed.data.state === "refused" && parsed.data.code === "PROFILE_SESSION_STALE") input.onProfileSessionStale?.();
+    if (parsed.success && parsed.data.state === "refused" && parsed.data.code === "PROFILE_SESSION_STALE") notify?.();
   };
 
   /** Every non-GET request carries the transport's own Origin. A browser sets
@@ -76,6 +76,7 @@ export function createDashboardTransport(input: Readonly<{
     || (path === "/api/v1/commands/bulk" && status === 422);
 
   const sendUnbounded = async (path: string, init?: RequestInit): Promise<JsonResponse> => {
+    const notify = input.captureProfileSessionStale?.();
     let response: Response;
     try {
       response = await fetchImpl(`${baseUrl}${path}`, {
@@ -93,7 +94,7 @@ export function createDashboardTransport(input: Readonly<{
     const body: unknown = await response.json().catch((error: unknown) => {
       throw httpError(response.status, { unparseable: String(error) });
     });
-    observeProfileSession(path, response.status, body);
+    observeProfileSession(path, response.status, body, notify);
     return Object.freeze({ status: response.status, ok: response.ok, body });
   };
 
@@ -145,6 +146,7 @@ export function createDashboardTransport(input: Readonly<{
     requestJsonResponse: send,
 
     async requestBinary(path: string, init?: RequestInit): Promise<BinaryResponse> {
+      const notify = input.captureProfileSessionStale?.();
       try {
       let response: Response;
       try {
@@ -164,7 +166,7 @@ export function createDashboardTransport(input: Readonly<{
         const body: unknown = await response.json().catch((error: unknown) => {
           throw httpError(response.status, { unparseable: String(error) });
         });
-        observeProfileSession(path, response.status, body);
+        observeProfileSession(path, response.status, body, notify);
         throw httpError(response.status, body);
       }
       return Object.freeze({ headers: response.headers, bytes: await response.arrayBuffer() });
@@ -185,6 +187,7 @@ export function createDashboardTransport(input: Readonly<{
         onMessage: (message: SseMessage) => void;
       }>,
     ): StreamHandle {
+      const notify = input.captureProfileSessionStale?.();
       const controller = new AbortController();
       const done = (async (): Promise<void> => {
         let response: Response;
@@ -205,7 +208,7 @@ export function createDashboardTransport(input: Readonly<{
         }
         if (!response.ok || response.body === null) {
           const body: unknown = await response.json().catch(() => ({ unparseable: true }));
-          observeProfileSession(path, response.status, body);
+          observeProfileSession(path, response.status, body, notify);
           throw httpError(response.status, body);
         }
         const reader = response.body.getReader();

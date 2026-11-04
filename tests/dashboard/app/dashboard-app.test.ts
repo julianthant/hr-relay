@@ -296,6 +296,54 @@ describe_m1("served signed-out appearance", () => {
 describe_m1("served sign-up Finish", () => {
   afterEach_m1(_afterEachFixture0);
 
+  it_m1("keeps a fresh Run draft mounted when an old protected response arrives after resume", async () => {
+    window.history.replaceState(null, "", "/");
+    const old = Promise.withResolvers<Response>(), dispatched = Promise.withResolvers<void>(), publicRead = Promise.withResolvers<Response>();
+    let defer = false, restarted = false, holdPublic = false, invalidateFresh = false, resumes = 0, reads = 0;
+    const active = (epoch: number) => ({ state: "active", profileId: "00000000-0000-4000-8000-000000000002", duoState: "ready", epoch });
+    const stale = () => Response.json({ state: "refused", code: "PROFILE_SESSION_STALE" }, { status: 401 });
+    const live = createDashboardClient_m2({ baseUrl: "http://fixture.test", fetchImpl: async url => {
+      const path = new URL(url).pathname;
+      if (path.endsWith("/state")) {
+        reads++; if (holdPublic) return publicRead.promise;
+        return Response.json(restarted && resumes === 0 ? { state: "signed-out", resumable: true } : active(1 + resumes));
+      }
+      if (path.endsWith("/resume")) { resumes++; return Response.json(active(1 + resumes)); }
+      if (path.endsWith("/bootstrap")) {
+        if (defer) { defer = false; dispatched.resolve(); return old.promise; }
+        if (restarted && resumes === 0 || invalidateFresh) return stale();
+        return Response.json(APP_BOOTSTRAP);
+      }
+      throw new Error(`unexpected draft-preservation request ${path}`);
+    } });
+    const client: DashboardClient_m1 = { ...appClient(), bootstrap: () => live.bootstrap(), readProfileSession: () => live.readProfileSession(),
+      resumeProfile: () => live.resumeProfile(), subscribeProfileSessionStale: listener => live.subscribeProfileSessionStale(listener) };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => assert_m1.ok(document.querySelector(".dashboard-shell")));
+    defer = true; const pending = assert_m1.rejects(client.bootstrap()); await dispatched.promise;
+    try {
+      restarted = true;
+      await act_m1(async () => { await assert_m1.rejects(client.bootstrap()); });
+      await vi_m1.waitFor(() => { assert_m1.equal(resumes, 1); assert_m1.ok(document.querySelector(".dashboard-shell")); });
+      await act_m1(async () => { document.querySelector<HTMLButtonElement>('[aria-label="Start a run"]')?.click(); });
+      const dialog = document.querySelector('[role="dialog"]'); assert_m1.ok(dialog);
+      const workflow = [...dialog.querySelectorAll("button")].find(button => button.textContent?.includes("Person Lookup"));
+      assert_m1.ok(workflow); await act_m1(async () => workflow.click());
+      const draft = dialog.querySelector<HTMLTextAreaElement | HTMLInputElement>('[aria-label="Input"] textarea, [aria-label="Input"] input:not([type="checkbox"])');
+      assert_m1.ok(draft, "the actual Run input must be mounted");
+      const setter = Object.getOwnPropertyDescriptor(draft instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype, "value")?.set?.bind(draft);
+      assert_m1.ok(setter);
+      await act_m1(async () => { setter("10873698"); draft.dispatchEvent(new Event("input", { bubbles: true })); });
+      assert_m1.equal(draft.value, "10873698"); holdPublic = true;
+      await act_m1(async () => { old.resolve(stale()); await pending; });
+      assert_m1.equal(draft.isConnected, true, "an old protected response must not unmount the fresh Run draft");
+      assert_m1.equal(draft.value, "10873698"); assert_m1.equal(reads, 2);
+      invalidateFresh = true;
+      await act_m1(async () => { await assert_m1.rejects(client.bootstrap()); });
+      assert_m1.equal(reads, 3); assert_m1.equal(draft.isConnected, false); assert_m1.equal(resumes, 1);
+    } finally { old.resolve(stale()); publicRead.resolve(Response.json(active(2))); await pending; }
+  });
+
   it_m1("reconciles an already-open dashboard after a stale cookie and resumes through fresh public authority", async () => {
     window.history.replaceState(null, "", "/");
     let restarted = false, resumes = 0, refusedReads = 0;

@@ -10,7 +10,7 @@ import { usePublicProfileSession } from "../../../../src/dashboard/surfaces/shel
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const active = (epoch = 1) => PublicProfileStateSchema.parse({ state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch, duoState: "ready" });
 
-async function fixture(response: () => Response = () => Response.json({ state: "refused", code: "PROFILE_SESSION_STALE" }, { status: 401 })) {
+async function fixture(response: () => Response | Promise<Response> = () => Response.json({ state: "refused", code: "PROFILE_SESSION_STALE" }, { status: 401 })) {
   let reads = 0, resumes = 0;
   let current: () => Promise<PublicProfileState> = async () => active();
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => {
@@ -77,4 +77,29 @@ it("preserves an unavailable reconciliation as failure without inferring sign-ou
     assert.equal(f.reads(), 2); assert.equal(f.session().failure, true);
     assert.equal(f.resumes(), 0); assert.equal(f.session().state, undefined);
   } finally { await f.close(); }
+});
+
+it("ignores an old protected 401 released after successful recovery while a new request still reconciles", async () => {
+  const oldResponse = Promise.withResolvers<Response>(), publicResponse = Promise.withResolvers<PublicProfileState>();
+  let requests = 0;
+  const stale = () => Response.json({ state: "refused", code: "PROFILE_SESSION_STALE" }, { status: 401 });
+  const f = await fixture(() => ++requests === 1 ? oldResponse.promise : stale());
+  const oldFailure = assert.rejects(f.client.bootstrap());
+  try {
+    f.next(async () => ({ state: "signed-out", resumable: true }));
+    await f.reject();
+    await act(async () => { await f.session().port.resume(); });
+    assert.deepEqual(f.session().state, active(2));
+    const recovered = f.session().state;
+    f.next(() => publicResponse.promise);
+    await act(async () => { oldResponse.resolve(stale()); await oldFailure; });
+    assert.equal(f.reads(), 2, "an old protected response must not read current public authority again");
+    assert.equal(f.session().state, recovered, "old authority must not clear the active recovered selection");
+    await f.reject();
+    assert.equal(f.reads(), 3); assert.equal(f.session().state, undefined);
+    await act(async () => { publicResponse.resolve({ state: "signed-out", resumable: true }); });
+    assert.equal(requests, 3); assert.equal(f.resumes(), 1);
+  } finally {
+    oldResponse.resolve(stale()); publicResponse.resolve({ state: "signed-out" }); await oldFailure; await f.close();
+  }
 });
