@@ -1,21 +1,12 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
-import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
-import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
-import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
-import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { queryQueueSummaries } from "../../../../src/backend/runs/queries/queue-summaries.js";
 import { childExecutionParallelRoot as root, childExecutionParallelModules as modules, childExecutionStores, childWaitModules, childPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
-import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
-import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
-import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
+import { createDelegationExecutionWorld } from "../../../support/helpers/backend/delegation-execution-world.js";
 import { plan1TransientFailureStores } from "../../../support/fixtures/plan1-operation-workflows.js";
 
-import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";
@@ -25,29 +16,16 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { DelegationAdmissionRequestSchema } from "../../../../src/backend/storage/sqlite/delegation-contracts.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
-import { readDelegationWait } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
+import { readDelegationEvidence, readDelegationWait } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
 import { partition } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { isQueueMember, isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
 
-const world = createRunExecutorTestWorld();
+const world = createDelegationExecutionWorld({ root,modules });
 afterEach(world.cleanup);
 
-async function fixture(stores = childExecutionStores, mode: "ok" | "fail" = "ok", workflows: { root: { descriptor: AnyWorkflowDescriptor }; modules: readonly { descriptor: AnyWorkflowDescriptor }[] } = { root, modules }) {
-  const { root, modules } = workflows;
-  const h = await world.executorHarness({ descriptor: root.descriptor, stores });
-  const { database, clock, path, stateRoot } = h.authority;
-  const patch = { "actor.label": { set: "Synthetic operator" } } as const;
-  assert.equal(executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
-    settings: createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, hostConfigFacts({}), clock), createCredentialStore({ stateRoot })) },
-  { commandId: randomUUID(), family: "settings", type: "apply-settings", source: "settings-surface", requestedBy: "local-operator",
-    requestedAt: clock.now().toISOString(), target: { expectedRevision: 1 },
-    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }).state, "applied");
-  const execution = canonicalChildExecution(h.deps, database, path, id => modules.find(module => module.descriptor.id === id)?.descriptor);
-  const run = execution.start(root.descriptor, { emplId: "10800000", text: "parallel", mode }, { dryRun: false });
-  return { ...h.authority, execution, run, modules };
-}
+const fixture = world.fixture;
 
 for (const choice of [
   { visibility: "inline", topLevel: false, pendingMember: true, doneMember: true, failedMember: true },

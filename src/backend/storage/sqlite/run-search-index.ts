@@ -1,3 +1,4 @@
+import { CURRENT_RUN_SETTLEMENT_SQL } from "./run-settlement-row.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -86,6 +87,7 @@ function safeSubject(database: DatabaseSync, run: RunRecord, declaration: z.infe
 }
 
 export function createRunSearchIndex(database: DatabaseSync) {
+  const schemaVersion = z.object({ user_version: z.number() }).parse(database.prepare("PRAGMA user_version").get()).user_version;
   const prepareTemporaryState = () => {
     database.exec("CREATE TEMP TABLE IF NOT EXISTS search_actor_dirty(run_id TEXT PRIMARY KEY) WITHOUT ROWID");
     database.exec("CREATE TEMP TABLE IF NOT EXISTS search_declarations(id TEXT PRIMARY KEY,json TEXT NOT NULL) WITHOUT ROWID");
@@ -130,7 +132,10 @@ export function createRunSearchIndex(database: DatabaseSync) {
     return SearchMetadataSchema.parse({ subject: safeSubject(database, run, declaration),
       actor: actors.length === 0 ? { state: "unavailable", reason: "not-recorded" } : { state: "available", value: actors[0] },
       version: run.envelope.descriptorVersion, failureCode: failure?.code ?? null,
-      evidence: { receipt: exists("run_receipts"), failure: failure !== null, diagnostic: exists("diagnostic_snapshots") } });
+      evidence: { receipt: schemaVersion < 20 ? exists("run_receipts")
+        : database.prepare(`SELECT 1 FROM run_receipts receipt JOIN run_results settlement ON settlement.run_id=receipt.run_id
+          AND settlement.settlement_version=receipt.settlement_version JOIN runs run ON run.id=settlement.run_id
+          WHERE receipt.run_id=? AND ${CURRENT_RUN_SETTLEMENT_SQL} LIMIT 1`).get(id) !== undefined, failure: failure !== null, diagnostic: exists("diagnostic_snapshots") } });
   };
   const validateCoverage = (readRun: typeof runRecordFromRow = runRecordFromRow) => {
     const current = publication();

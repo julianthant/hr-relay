@@ -13,6 +13,8 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  APPLICATION_DATA_WORKSPACE_REFUSED: catalogEntry("Relay could not verify the Windows application data location. Restore a valid LOCALAPPDATA host setting before restarting Relay. Existing files have been preserved.", EmptyParametersSchema),
+  WINDOWS_PRIVATE_PATH_REFUSED: catalogEntry("Windows storage permissions, identity or durability could not be verified. Preserve the files and resolve the storage failure before restarting Relay.", EmptyParametersSchema),
   CRM_DOCUMENT_SOURCE_UNAVAILABLE: catalogEntry("CRM document records could not be verified. Review the requested people and their latest onboarding records.", EmptyParametersSchema),
   CRM_DOCUMENT_REFERENCE_UNAVAILABLE: catalogEntry("CRM identities could not be bound to the selected spreadsheet version and its legal/lived names. Review the retained reference and row choices.", EmptyParametersSchema),
   CRM_DOCUMENT_DOWNLOAD_FAILED: catalogEntry("CRM documents could not be downloaded and verified. No document collection was published.", EmptyParametersSchema),
@@ -44,6 +46,7 @@ export const ERROR_CATALOG = Object.freeze({
   BLANK_ROW_UNAVAILABLE: catalogEntry("UCPath did not provide exactly one blank row for this contact.", EmptyParametersSchema),
   CONTACT_NAME_LOST: catalogEntry("UCPath did not retain the staged contact name. No contact was saved.", EmptyParametersSchema),
   STAGED_EFFECT_MISMATCH: catalogEntry("UCPath did not retain the exact staged contact fields. No contact was saved.", EmptyParametersSchema),
+  SAVED_EFFECT_MISMATCH: catalogEntry("UCPath Save could not be confirmed against the complete approved contact plan. The write requires operator resolution.", EmptyParametersSchema),
   CONTACT_SAVE_UNAVAILABLE: catalogEntry("Emergency Contact Save is unavailable. Use Dry Run to review the prepared contact plan.", EmptyParametersSchema),
   CONTACT_APPROVED_PLAN_CONFLICT: catalogEntry("The approved selection contains conflicting primary contact plans for an employee. Select one intended contact per employee or correct the OCR records, then approve again.", EmptyParametersSchema),
   CONTACT_APPROVED_FIELDS_INVALID: catalogEntry("The approved contact fields cannot form a complete UCPath contact plan. Correct and approve the OCR record again.", EmptyParametersSchema),

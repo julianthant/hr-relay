@@ -498,3 +498,22 @@ it("verifies an explicit recovery's new item attempt without expecting the immut
   correctItem = false;
   assert.equal((await verifyShellCommandEffect(client, FIXTURE_DAY_WIRE.day, command, reply)).state, "mismatch");
 });
+
+it("reads back a recovered child's authenticated parent and rejects unrelated acknowledgement targets", async () => {
+  const { FIXTURE_DAY_WIRE } = await import("../../../support/fixtures/dashboard/fixture-queue.js");
+  const base = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent === null); assert.ok(base);
+  const parentId = "88888888-8888-4888-8888-888888888888", nextId = "99999999-9999-4999-8999-999999999999";
+  const parent = { ...base, runId: parentId, traceId: "pl-120001-8888", itemId: parentId, rowRevision: base.rowRevision + 1, actions: [] };
+  const source = { ...base, parent: { runId: parentId, visibility: "linked" as const, partitionDay: FIXTURE_DAY_WIRE.day, workflowId: parent.workflowId, label: parent.title, title: parent.title, panelKind: parent.panelKind, status: parent.status } };
+  const next = { ...source, runId: nextId, traceId: "pl-120002-9999", attempt: source.attempt + 1, rowRevision: 1, actions: [] };
+  const unrelated = { ...parent, runId: "66666666-6666-4666-8666-666666666666", traceId: "pl-120003-6666" };
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => Response.json({ ...FIXTURE_DAY_WIRE,
+    queueSurfaces: [...FIXTURE_DAY_WIRE.queueSurfaces.filter(row => row.runId !== source.runId), source, parent, next, unrelated] }) });
+  const command = CommandRequestSchema.parse({ family: "run", type: "recover-run", commandId: "77777777-7777-4777-8777-777777777777", source: "queue",
+    requestedBy: "local-operator", requestedAt: "2026-08-03T12:00:00.000Z", target: { runId: source.runId, expectedVersion: source.rowRevision } });
+  const reply = CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
+    affectedTargets: [nextId, source.runId, parentId].map(runId => ({ family: "run", runId })) });
+  assert.equal((await verifyShellCommandEffect(client,FIXTURE_DAY_WIRE.day,command,reply)).state,"matched");
+  const extra = CommandResultSchema.parse({ ...reply, affectedTargets: [...("affectedTargets" in reply ? reply.affectedTargets : []), { family: "run", runId: unrelated.runId }] });
+  assert.equal((await verifyShellCommandEffect(client,FIXTURE_DAY_WIRE.day,command,extra)).state,"mismatch");
+});

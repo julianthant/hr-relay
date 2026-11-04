@@ -1,6 +1,6 @@
 import type { RunRecordRefusal } from "../../../models/config/authority.js";
 
-import { CreateRunRequestSchema, lifecycleCommandId, requireLifecycleApplied, type RunRecordService } from "./run-record-service.js";
+import { CreateRunRequestSchema, lifecycleCommandId, requireLifecycleApplied, type RelatedRunChange, type RunRecordService } from "./run-record-service.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../models/config/runtime-generation.js";
 import type { RunEnvelope } from "../../../models/run/envelope.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
@@ -173,13 +173,25 @@ export function fanOutQueuedRuns(
     const outcome = lifecycle.create(create, publication);
     if (outcome.state === "refused") refuse("run lifecycle refused", outcome.refusal);
     const record = requireLifecycleApplied(outcome);
-    runs.push(record);
-    for (const child of lifecycle.continueDelegations(record, envelope.commandId)) {
+    const related: RelatedRunChange[] = [];
+    for (const child of lifecycle.continueDelegations(record, envelope.commandId, related)) {
+      const current = repositories.runs.get(child.envelope.runId);
+      if (current === undefined) throw new Error("run-fan-out-result-unavailable");
       affectedTargets.push(runTarget(child.envelope.runId));
-      versionChanges.push({ target: runTarget(child.envelope.runId), before: 0, after: child.version });
+      versionChanges.push({ target: runTarget(child.envelope.runId), before: 0, after: current.version });
     }
+    const final = repositories.runs.get(record.envelope.runId);
+    if (final === undefined) throw new Error("run-fan-out-result-unavailable");
+    runs.push(final);
     affectedTargets.push(runTarget(record.envelope.runId));
-    versionChanges.push({ target: runTarget(record.envelope.runId), before: 0, after: record.version });
+    versionChanges.push({ target: runTarget(record.envelope.runId), before: 0, after: final.version });
+    for (const change of related) {
+      const previous = versionChanges.findIndex(row => row.target.family === "run" && row.target.runId === change.runId);
+      if (previous < 0) {
+        affectedTargets.push(runTarget(change.runId));
+        versionChanges.push({ target: runTarget(change.runId), before: change.before, after: change.after });
+      } else versionChanges[previous] = { ...versionChanges[previous], after: change.after };
+    }
   }
   return Object.freeze({ affectedTargets, versionChanges, runs });
 }

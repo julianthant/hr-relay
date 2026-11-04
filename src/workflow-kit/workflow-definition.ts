@@ -1,3 +1,4 @@
+import type { StableRecordId } from "../rules/identity/ids.js";
 import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
 import type { JsonValue } from "../rules/validation/canonical-json.js";
@@ -254,6 +255,7 @@ interface ParallelEntry<Id extends string, Output> extends WorkflowEntry<Id, Out
 
 interface DelegateEntry<Id extends string, Output> extends WorkflowEntry<Id, Output, false> {
   readonly kind: "delegate";
+  readonly sourceRecordIds?: (scope: unknown) => readonly (readonly StableRecordId[])[];
   readonly label?: string;
   readonly target: AnyWorkflowRef;
   readonly edgeId: string;
@@ -364,6 +366,7 @@ export interface WorkflowAuthor<InputSchema extends z.ZodType> {
     identity: Identity,
     references: References,
     binds: Readonly<{
+      sourceRecordIds?: (scope: WorkflowEntryScope<InputSchema, References>) => readonly (readonly StableRecordId[])[];
       bind: (scope: WorkflowEntryScope<InputSchema, References>) =>
         Identity["cardinality"] extends "one"
           ? z.input<Identity["target"]["input"]>
@@ -558,6 +561,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(delegationDisplay: ChildV
       references: readonly AnyWorkflowEntry[],
       binds: Readonly<{
         bind: (scope: never) => unknown;
+        sourceRecordIds?: (scope: never) => readonly (readonly StableRecordId[])[];
         deriveChildItemId: (input: never, context: ChildRunIdentityContext) => ItemId;
       }>,
     ) {
@@ -576,6 +580,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(delegationDisplay: ChildV
           + "typed child-run shapes: one/terminal/one, many/terminal/all, many/terminal/all-settled, or */none/none",
         );
       }
+      const sourceRecordIds = binds.sourceRecordIds;
       const entry: DelegateEntry<string, unknown> = {
         entryKind: "workflow-entry",
         kind: "delegate",
@@ -591,6 +596,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(delegationDisplay: ChildV
         join: identity.join,
         policy,
         bind: (scope) => binds.bind(scope as never),
+        ...(sourceRecordIds === undefined ? {} : { sourceRecordIds: (scope: unknown) => sourceRecordIds(scope as never) }),
         deriveChildItemId: (input, context) => binds.deriveChildItemId(input as never, context),
       };
       return Object.freeze(entry);
@@ -1001,6 +1007,7 @@ interface RuntimeFlowBuilder {
     edgeId: string;
     cardinality: "one" | "many";
     bind: (scope: unknown) => unknown;
+    sourceRecordIds?: (scope: unknown) => readonly (readonly StableRecordId[])[];
     deriveChildItemId: (input: unknown, context: ChildRunIdentityContext) => ItemId;
     await: "none" | "terminal";
     join: "one" | "all" | "all-settled" | "none";
@@ -1073,6 +1080,7 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
         edgeId: entry.edgeId,
         cardinality: entry.cardinality,
         bind: entry.bind,
+        ...(entry.sourceRecordIds === undefined ? {} : { sourceRecordIds: entry.sourceRecordIds }),
         deriveChildItemId: entry.deriveChildItemId,
         await: entry.await,
         join: entry.join,

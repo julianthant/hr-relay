@@ -15,9 +15,11 @@ release pull request.
 | `staging` | `static`, `privacy`, `unit`, `integration`, `architecture`, `parity` |
 | `main` | the `staging` checks, plus `release` |
 
-The expensive `release` job runs only on PRs from `staging` into `main`, after the other checks.
+The expensive `release-batch` job runs only on PRs from `staging` into `main`, after the other checks.
 The required top-level `release` summary also runs for other heads targeting `main` and fails their
-head validation, so a skipped expensive job cannot satisfy main protection.
+head validation, so omitted expensive work cannot satisfy main protection for an invalid source.
+Valid Markdown-only omissions pass after proof validation; manual releases validate routine proofs
+without a PR source-head restriction.
 The expensive job’s isolated macOS runner builds the web bundle, runs coverage alone, then
 performance. The operator authorizes release PRs from
 `staging` to `main`, and syncs `main` back into `staging` after merging.
@@ -27,8 +29,7 @@ performance. The operator authorizes release PRs from
 `.github/workflows/merge-train.yml` runs on every push to `staging`, and CI calls it as its final job.
 It labels a PR `train-failed` when its CI fails and clears the label when CI passes. It then merges
 `staging` into every open, non-draft, same-repository PR by `julianthant` into `staging` that lacks it, whatever its
-labels or auto-merge state, so every PR re-runs CI on the latest `staging`; CI cancels each PR's
-older in-progress run. Auto-merge then lands whichever PR passes first. A PR it cannot update gets
+labels or auto-merge state, so every update starts CI on the latest `staging`; per-PR supersession cancels the older run. Auto-merge then lands whichever PR passes first. A PR it cannot update gets
 `merge-conflict`. If GitHub's update reports a conflict, the train attempts a merge in a temporary
 worktree. Conflicts exclusively in `scripts/build/generated-outputs.ts`'s registered outputs are
 resolved by running the generators against the combined sources. Catalog conflicts must be wholly
@@ -53,7 +54,7 @@ session runs, red PRs wait; nothing red merges. The operator watches only `needs
 CI takes Node from `package.json` engines and caches npm. Run portable suites on Ubuntu for staging
 pull requests. Run platform-native proofs and Desktop parity in CI only for a full release
 started by the operator: a `staging` → `main` pull request or a manual full-release dispatch. Only the operator
-may start such a run; agents must never dispatch or rerun `ci.yml`. Between releases, run
+may start such a run; agents must never dispatch or rerun CI workflows. Between releases, run
 Windows-native tests locally on Windows and macOS-native tests locally on the Mac when load is low.
 Keep native files out of Ubuntu shards. Native proofs and the padded-receipt storage upgrade run in separate single-worker invocations, preserving their
 existing deadlines under duration-based assignment. Native integration jobs first verify the
@@ -70,16 +71,32 @@ same serial/storage separation and native membership. Windows uses explicit Bash
 Windows Node/npm, the runner temp directory and Windows Chromium installation. Before checkout,
 it disables Git automatic line-ending conversion to preserve fixture bytes and shell scripts.
 
-`ci.yml` retains per-PR or per-dispatch-branch cancellation, and queues its reusable `ci-checks.yml`
-job in the shared `ci-runners` concurrency group with `queue: max`. GitHub admits one pipeline at
-a time without a waiting runner. Completion, failure or cancellation releases admission; no polling
-job can occupy a runner needed by an older run. GitHub orders this queue by when pipelines start
-waiting, rather than guaranteeing workflow creation-time order, and accepts at most 100 pending
-pipelines. Queue overflow cancels additional arrivals. The merge train remains outside admission.
-The seven required check names remain top-level summaries of the corresponding pipeline results;
-unit always runs, including after cancellation, and also requires a successful complete pipeline,
-including timing publication. This mandatory gate prevents skipped cancellation summaries from
-allowing an incomplete pipeline to merge. Other cancelled summaries and the merge train may stop.
+`ci.yml` runs only for staging pull requests and calls portable-only `ci-checks.yml`. Its required
+top parity job is a plain passing omission, and its existing merge-train call follows the six
+required summaries. `release.yml` runs only for main pull requests or operator manual releases and
+alone calls `release-checks.yml`, which owns portable, macOS/Windows native, Desktop parity and
+release-batch jobs. Staging never references or loads a release/native workflow call.
+
+Both event entries use per-PR/manual-branch supersession with a workflow/PR-or-ref concurrency
+group and `cancel-in-progress: true`. New pushes cancel older runs for that same key. Each entry
+queues one complete reusable check call in the shared `ci-runners` job-level FIFO with `queue: max`
+and `cancel-in-progress: false`. That admitted call holds all proofs, selected batch and timing
+publication until its callee finishes; the callees never reacquire admission. GitHub orders waiting
+calls by arrival, accepts at most 100 pending calls, and cancels extra arrivals on overflow.
+
+CI-invoked merge train is outside the admitted call, after the six top summaries, while remaining
+inside parent per-PR supersession. The standalone staging-push train remains separate. Batch
+repair pushes to avoid redundant CI work.
+
+`scripts/test/ci-plan.ts` owns typed selection/proof/timing-history policy. Both timed callees
+retain explicit test budgets. Their final `unit` runs unless cancelled and validates every mandatory
+proof, selected batch and timing publication, excluding downstream train to avoid a cycle.
+Cancellation stops that inner checkout/install work. The always-running outer
+required `unit` additionally requires the called pipeline and its inner unit output to succeed,
+so cancelled, skipped, failed or missing results cannot merge. Required names stay `static`,
+`privacy`, `unit`, `integration`, `architecture` and `parity` on staging, plus `release` on main.
+Release parity validates its real callee output; staging parity remains a plain successful omission.
+Other cancelled summaries and the train may stop.
 
 Run static, privacy and affected portable unit, integration and architecture suites for ready PRs
 into `staging`. For PRs from `staging` into `main`, add selected native proofs, parity and release.
@@ -91,10 +108,13 @@ repeat CI; Markdown-only PRs run static and privacy. A deliberately omitted suit
 summary, while failed change detection or any failed/cancelled selected group fails its summary.
 Markdown-only release PRs omit coverage and perf.
 
-Every admitted run downloads the latest successful run's retained `ci-timings` artifact before
-selecting files. Its immutable `ci-balancing` artifact gives every shard identical duration inputs.
-After successful runner groups, CI merges their per-file reports into those inherited timings and
-publishes `ci-timings` for the next run. Report names include the runner OS and selection group;
+Timing discovery enumerates registered workflow IDs for the exact `ci.yml` and `release.yml` paths,
+then orders their successful histories together, newest first, excluding the current run. An
+unregistered new release workflow is not queried. Unexpected API failures fail CI; a valid absence
+of retained reports selects the committed seed. Every admitted run downloads the newest retained
+eligible `ci-timings` artifact before selecting files. Its immutable `ci-balancing` artifact gives every shard identical duration inputs.
+After mandatory proof validation succeeds, each workflow merges its portable/native file reports
+into inherited timings and publishes `ci-timings` for the next run. Report names include the runner OS and selection group;
 when both platforms report one file, the slower duration wins independently of artifact order.
 Measurements for omitted suites remain intact.
 Without a retained artifact, CI explicitly uses the committed `scripts/test/ci-durations.json` seed;

@@ -20,7 +20,7 @@ import {
   NonNegativeIntSchema,
   RunIdSchema,
 } from "../../rules/identity/ids.js";
-import type { DelegationEdgeId, FailureId, ItemId, NodeId, RunId, WorkflowId } from "../../rules/identity/ids.js";
+import type { DelegationEdgeId, FailureId, ItemId, NodeId, RunId, StableRecordId, WorkflowId } from "../../rules/identity/ids.js";
 import type { RetryPolicy } from "../sessions/session.js";
 import type { DelegationPolicy } from "./delegation-policy.js";
 import type { NodeCondition } from "./node-condition.js";
@@ -242,27 +242,28 @@ export interface ChildRunIdentityContext {
   readonly canonicalItemId: ItemId;
 }
 
-interface ChildRunNodeBase<Target extends AnyWorkflowRef> extends GraphNodeBase {
+interface ChildRunNodeBase<Scope, Target extends AnyWorkflowRef> extends GraphNodeBase {
   readonly kind: "child-run";
+  readonly sourceRecordIds?: (scope: Scope) => readonly (readonly StableRecordId[])[];
   readonly edgeId: DelegationEdgeId;
   readonly target: Target;
   readonly deriveChildItemId: (input: z.output<Target["input"]>, context: ChildRunIdentityContext) => ItemId;
   readonly policy: DelegationPolicy;
 }
 export type ChildRunNode<Scope, Target extends AnyWorkflowRef> =
-  | (ChildRunNodeBase<Target> & Readonly<{
+  | (ChildRunNodeBase<Scope, Target> & Readonly<{
     cardinality: "one";
     bind: (scope: Scope) => z.input<Target["input"]>;
     await: "terminal";
     join: "one";
   }>)
-  | (ChildRunNodeBase<Target> & Readonly<{
+  | (ChildRunNodeBase<Scope, Target> & Readonly<{
     cardinality: "many";
     bind: (scope: Scope) => readonly z.input<Target["input"]>[];
     await: "terminal";
     join: "all" | "all-settled";
   }>)
-  | (ChildRunNodeBase<Target> & Readonly<{
+  | (ChildRunNodeBase<Scope, Target> & Readonly<{
     cardinality: "one" | "many";
     bind: (scope: Scope) => z.input<Target["input"]> | readonly z.input<Target["input"]>[];
     await: "none";

@@ -555,6 +555,7 @@ export const RunLifecycleCommandOperationSchema = z.enum([
   "delegation-admission",
   "delegation-settlement",
   "delegation-retry",
+  "delegation-refresh",
   "create",
   "claim-next",
   "transition",

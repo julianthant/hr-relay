@@ -271,7 +271,11 @@ The first four paths and extension path are ordinary settings. State, evidence, 
 absolute path, cancellation, or explicit unavailable result. The native picker owns dialog bounds
 and field typing. A selection does not save settings or move app data. The route returns
 `NATIVE_PATH_HINT_INVALID` for an invalid hint. Missing picker composition reports `dialog-failed`;
-an occupied picker reports `busy`.
+an occupied picker reports `busy`. macOS uses `/usr/bin/osascript`; Windows uses the absolute
+`SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe` with one STA WinForms dialog.
+Windows dialog kind and canonical initial directory travel as UTF-8 JSON on stdin to fixed
+script code. Both helpers have bounded output and a 120-second limit; abort and timeout close
+the helper before releasing the dialog gate. Other platforms report `unsupported-platform`.
 
 ## 6. Credential access and storage
 
@@ -317,6 +321,37 @@ SQLite precommit proofs cover registry/verifier/control evidence, registry opera
 
 Offline restore replaces SQLite only. It preserves current canonical head/key/generation/floors and credentials, and retains existing source/stage/suspect, settings and UNKNOWN-write proofs. Same-machine native key absence refuses. Same-person restore candidate checks bind immutable IDs, current paths, and verified manifest facts before replacement.
 
+### Private paths on Windows
+
+`storage/private-path.ts` is the shared privacy and flush boundary. POSIX systems use owner IDs
+and mode bits. Windows loads pinned Koffi only when a native operation is needed and observes NTFS
+owner SIDs, DACLs, file identity and reparse metadata through native handles. Null, malformed or
+unsupported ACLs, uncertain identities and all reparse points refuse. Security observations are fresh.
+
+Application paths require the current token's owner SID. Private access is limited to that SID,
+SYSTEM and Administrators; private directories also require safe inheritable ACEs. The `group-write`
+and `owner-write-only` rules permit other principals to read managed data while refusing mutation.
+Ancestors may be
+owned by those principals or the exact TrustedInstaller service SID. Other principals may read and
+traverse ancestors and create sibling directories, but cannot replace descendants or change security.
+Inherit-only ACEs do not grant access to the ancestor itself. Unsupported ACE types refuse rather
+than approximating their effective access.
+
+New private directories receive a protected inheritable DACL during native creation. Existing unsafe
+directories are refused. Private stages verify safe parent inheritance and the created descriptor
+before writing bytes. Windows ancestry retains bigint identities. Native volume serial and 64-bit
+file IDs must agree with exact Node observations; unsafe numeric witnesses and unsupported 128-bit
+file-ID mappings refuse. Persisted numeric witnesses are not silently rounded or migrated.
+
+Both isolated SQLite observers import this same policy. Their source descriptors stay in the child;
+parent observations do not claim exclusive Windows source custody. Backup, restore and deletion
+retain their existing Windows refusals.
+
+Windows path flushing opens the exact object for writing with reparse-point handling, verifies its
+identity, calls `FlushFileBuffers` and checks handle closure. Failed native handles or security
+allocations remain retained through the existing source-closure error. A successful native flush
+does not establish rename, journal-recovery or power-loss durability for Windows maintenance.
+
 ### Environment and private test inputs
 
 The secure bootstrap does not load `.env` or `.env.providers`. Provider families and their file
@@ -330,6 +365,17 @@ migrated names without reading their values. It reports retired canary names wit
 excluded. Development worker launches add `RELAY_DEV_DEBUG_MIRROR=1` explicitly after filtering;
 production worker launches omit it even when the parent has it. Workers read operational credentials from the store themselves.
 The `secrets-single-source` architecture guard owns registered credential and environment access.
+`windowsLocalApplicationData()` in `secrets.ts` alone reads `LOCALAPPDATA`, registered as a
+direct-identifier `host-storage` authority. It is read only by Windows host selection and is excluded
+from worker bootstrap keys; workers receive the admitted workspace over genuine IPC. Config paths
+supplied with an admitted state/artifact pair are derived from that pair without resolving host
+workspace authority again; source asset paths remain repository-owned.
+
+`src/models/runtime/runtime-environment.ts` pins the exact `SystemRoot` read to `windowsSystemRoot` in
+`src/models/config/secrets.ts` under the non-secret `process-mechanics` channel. That channel accepts
+only this key and canonical owner; exact reader ownership names the same path. The native path
+picker consumes the accessor and validates the returned root before launching PowerShell. The worker's
+closed mechanics pass-through remains separately audited.
 
 `config/test-data.json` owns public subject declarations and safe fixtures.
 Ignored `config/test-data.local.json` owns private canary values and private document paths.
@@ -341,8 +387,13 @@ Application settings, credentials, and environment files are not test-input fall
 
 ## Installation roots, boot, and maintenance
 
-`applicationDataWorkspace()` uses the OS user's home directory and fixes the macOS workspace at
-`~/Library/Application Support/Relay`, independently of cwd and `HOME`. Source and bundled entrypoints
+`applicationDataWorkspace()` selects `%LOCALAPPDATA%\Relay` on Windows and the OS user's
+`~/Library/Application Support/Relay` on macOS and other POSIX hosts, independently of cwd and `HOME`.
+Its discriminated host facts admit only the authority for that platform. Windows requires a canonical
+drive-letter path: missing values, relative/UNC/device paths and Win32 normalization aliases refuse with
+`APPLICATION_DATA_WORKSPACE_REFUSED` before application state I/O. There is no home fallback, old-state
+migration, copy or deletion. Native SID/DACL, NTFS identity and reparse checks still govern actual
+Windows storage admission. Source and bundled entrypoints
 use that workspace; repository paths select code and assets. Explicit private test workspaces remain
 separate from operator data. `rebuildRuntimeIsolation` defines the inner `.tracker/data` state root,
 its `artifacts`, `browsers`, and `locks` directories, backend port `3938`, lifetime lock port `3939`,
@@ -399,7 +450,7 @@ Fresh workbook storage contains one General type seed. Incomplete-profile invent
 The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 and 18. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 19` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 20` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during

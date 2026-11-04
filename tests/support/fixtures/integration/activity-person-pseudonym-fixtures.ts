@@ -1,9 +1,9 @@
+import { runSettlementColumns } from "../../../../src/backend/storage/sqlite/run-settlement-row.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createRunSearchIndex } from "../../../../src/backend/storage/sqlite/run-search-index.js";
 import { IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { ucpathPendingTransactionSetDigest } from "../../../../src/models/systems/ucpath/delete-pending-terminations.js";
 import { DatabaseSync } from "node:sqlite";
-import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import {
   deriveRunResultDigest,
@@ -163,10 +163,11 @@ export function seedSeparationsRunAuthority(
     const keys = Object.keys(row).filter(key => key !== "id");
     raw.prepare(`UPDATE runs SET ${keys.map(key => `${key}=?`).join(",")} WHERE id=?`)
       .run(...keys.map(key => row[key as keyof typeof row]), run.envelope.runId);
-    if (result !== undefined) raw.prepare(`INSERT INTO run_results
-      (run_id,workflow,attempt,result_digest,payload_json,created_at) VALUES (?,?,?,?,?,?)`)
-      .run(result.runId, result.workflowId, result.attempt, result.resultDigest,
-        canonicalJsonStringify(result), result.createdAt);
+    if (result !== undefined) {
+      const settlement = runSettlementColumns(run, result);
+      raw.prepare(`INSERT INTO run_results (${Object.keys(settlement).join(",")}) VALUES (${Object.keys(settlement).map(() => "?").join(",")})`)
+        .run(...Object.values(settlement));
+    }
     for (const trigger of triggers) raw.exec(trigger.sql);
     let publication = search.rebuild({ restart: true, limit: 500 }, database.getMeta().authorityGeneration, run.updatedAt);
     while (publication.state === "building") publication = search.rebuild({ restart: false, limit: 500 }, database.getMeta().authorityGeneration, run.updatedAt);

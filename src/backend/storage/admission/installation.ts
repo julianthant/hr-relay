@@ -2,7 +2,7 @@ import { AccountDeletionRefusedError, captureAccountDeletion, publishAccountDele
 import { createHash,randomBytes,randomUUID } from "node:crypto";
 import {
 closeSync,constants,existsSync,fstatSync,
-lstatSync,mkdirSync,openSync,readFileSync,
+lstatSync,openSync,readFileSync,
 readdirSync,realpathSync,renameSync,rmSync,rmdirSync,unlinkSync,writeFileSync
 } from "node:fs";
 import { basename,dirname,isAbsolute,join,relative,resolve } from "node:path";
@@ -17,7 +17,7 @@ import { createProfileVerifiers,preparedProfileVerifierPepperWitness,verifyPrepa
 import { SourceRecordSchema,file as backupFile,hash as backupHash,profileAuthorityFileWitnesses,retainedStorageBackup } from "../maintenance/existing-data-backup-files.js";
 import { FlatStartCleanIntentSchema,assertFlatStartCleanCredentials,assertFlatStartCleanFiles,flatStartCleanPlan,readFlatStartCleanSource,type FlatStartCleanIntent } from "../maintenance/flat-start-clean.js";
 import type { StoppedBackupClosure } from "../maintenance/profile-inventory.js";
-import { fsyncPath,privatePathRejects,replacePrivateFile,writePrivateStage } from "../private-path.js";
+import { createPrivateDirectory,fsyncPath,privatePathRejects,replacePrivateFile,writePrivateStage } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError,assertSourceClosuresProved,hasUnprovedSourceClosure,rememberUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { AuthorityDatabase,type StartupLogoutConversion } from "../sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
@@ -324,7 +324,7 @@ function moveFixedLayoutFiles(operation: OfflineMaintenanceOperation, intent: Fi
   }
   held();
   if (lstatSync(join(source, "data"), { throwIfNoEntry: false }) === undefined) {
-    mkdirSync(join(source, "data"), { mode: 0o700 }); fsyncPath(source);
+    createPrivateDirectory(join(source, "data"), { mode: 0o700 }); fsyncPath(source);
   }
   const fence = join(source, "data", ".runtime-source-fence.json");
   if (lstatSync(fence, { throwIfNoEntry: false }) === undefined) {
@@ -410,27 +410,27 @@ function assertKnownDefaults(workspace: string, pair: RuntimePair): void {
   if (pair.stateRoot !== resolve(workspace, rebuildRuntimeIsolation.stateRoot) || pair.artifactRoot !== resolve(workspace, rebuildRuntimeIsolation.artifactRoot)) fail("first adoption requires the known default root pair");
 }
 function privateDirectory(path: string): void {
-  const stat = lstatSync(path);
+  const stat = lstatSync(path, { bigint: true });
   if (!stat.isDirectory() || privatePathRejects(path, stat, "directory-0700")) fail(`unsafe directory ${path}`);
 }
 function dataDirectory(path: string): void {
-  const stat = lstatSync(path);
+  const stat = lstatSync(path, { bigint: true });
   if (!stat.isDirectory() || privatePathRejects(path, stat, "owner-write-only")) fail(`unsafe data root ${path}`);
 }
 function privateFile(path: string): void {
-  const stat = lstatSync(path);
-  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || privatePathRejects(path, stat, "file-0600")) fail(`unsafe file ${path}`);
+  const stat = lstatSync(path, { bigint: true });
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1n || privatePathRejects(path, stat, "file-0600")) fail(`unsafe file ${path}`);
 }
 function readStrict<T>(path: string, schema: z.ZodType<T>): T {
   privateFile(path);
-  const expected = lstatSync(path);
+  const expected = lstatSync(path, { bigint: true });
   const fd = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   let result: { value: T } | undefined;
   let primary: { error: unknown } | undefined;
   let descriptorIdentity = expected;
   try {
-    const stat = fstatSync(fd); descriptorIdentity = stat;
-    if (!stat.isFile() || stat.nlink !== 1 || privatePathRejects(path, stat, "file-0600")) fail(`unsafe file ${path}`);
+    const stat = fstatSync(fd, { bigint: true }); descriptorIdentity = stat;
+    if (!stat.isFile() || stat.nlink !== 1n || privatePathRejects(path, stat, "file-0600")) fail(`unsafe file ${path}`);
     result = { value: schema.parse(JSON.parse(readFileSync(fd, "utf8"))) };
   } catch (error) { primary = { error }; }
   try { closeSync(fd); }
@@ -472,7 +472,7 @@ function preflightPair(pair: RuntimePair): void {
 }
 function ensureRoot(path: string): void {
   preflightRoot(path);
-  if (!lstatMaybe(path)) { mkdirSync(path, { recursive: true, mode: 0o700 }); fsyncPath(resolve(path, "..")); }
+  if (!lstatMaybe(path)) { createPrivateDirectory(path, { recursive: true, mode: 0o700 }); fsyncPath(resolve(path, "..")); }
   dataDirectory(path);
 }
 function markerPath(root: string): string { return join(root, MARKER); }
@@ -1145,7 +1145,7 @@ function flatStartCleanPepper(control: string, locator: RuntimeLocator, intent: 
 
 function initializeMachineRegistry(control: string, locator: RuntimeLocator, flat?: FlatStartCleanIntent): void {
   const directory = join(locator.stateRoot, "machine");
-  if (!lstatMaybe(directory)) { mkdirSync(directory, { mode: 0o700 }); fsyncPath(locator.stateRoot); }
+  if (!lstatMaybe(directory)) { createPrivateDirectory(directory, { mode: 0o700 }); fsyncPath(locator.stateRoot); }
   privateDirectory(directory);
   const allowed = ["browser-roots.json", "profile-registry-version.json", "profiles.json", "profile-verifiers.json", "profile-pepper"];
   if (readdirSync(directory).some(name => !allowed.includes(name))) fail("profile-machine-initialization-membership-refused");
@@ -1194,7 +1194,7 @@ function adopt(control: string, workspace: string, defaultPair: RuntimePair, ver
   if (fresh && machine) {
     const processLockRoot = fixedLockRoot(workspace);
     assertNoSymlinkComponents(processLockRoot);
-    mkdirSync(processLockRoot, { mode: 0o700 });
+    createPrivateDirectory(processLockRoot, { mode: 0o700 });
     privateDirectory(processLockRoot);
     fsyncPath(dirname(processLockRoot));
     initializeMachineRegistry(control, { schemaVersion: 3, installationId, generation: 0, ...pair });
@@ -1448,9 +1448,9 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       fail("fresh authority requires initializer and verifier");
     }
     const parent = dirname(control);
-    if (lstatMaybe(parent) === undefined) { mkdirSync(parent, { mode: 0o700 }); fsyncPath(workspace); }
+    if (lstatMaybe(parent) === undefined) { createPrivateDirectory(parent, { mode: 0o700 }); fsyncPath(workspace); }
     privateDirectory(parent);
-    mkdirSync(control, { mode: 0o700 }); fsyncPath(parent);
+    createPrivateDirectory(control, { mode: 0o700 }); fsyncPath(parent);
   }
   privateDirectory(control);
   const localAdmission: LocalAdmission = Object.freeze({ mode });
@@ -1535,7 +1535,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         : { kind: "write" as const, operation: ProfileOperationSchema.parse(input) };
       const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
       current(); atomicJson(join(control, "profile-publication.json"), { kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document, operation });
-      if (!lstatMaybe(directory)) { current(); mkdirSync(directory, { mode: 0o700 }); fsyncPath(dirname(directory)); }
+      if (!lstatMaybe(directory)) { current(); createPrivateDirectory(directory, { mode: 0o700 }); fsyncPath(dirname(directory)); }
       privateDirectory(directory);
       const id = operation.kind === "write" ? operation.operation.operationId : operation.operationId, path = join(directory, `${id}.json`);
       current();
@@ -2210,7 +2210,7 @@ export interface StoppedControlProfileInventory { readonly profileId: string }
 
 const stoppedControlInventories = new WeakMap<StoppedControlProfileInventory, Readonly<{
   binding: z.infer<typeof ProfileDatabaseBindingSchema>; stateRoot: string; artifactRoot: string; machineRoot: string; locator: RuntimeLocator;
-  schemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19; conversionOperationId: string; backupDirectory: string;
+  schemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20; conversionOperationId: string; backupDirectory: string;
   pendingPlan(): CanonicalCredentialConversionPlan | undefined;
   assertCanonicalConversion(operationId: string, digest: string): void;
   assertCanonicalPublication(operationId: string, digest: string): void;
@@ -2642,7 +2642,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
               ControlUpgradeCommonSchema.shape.sourceEvidence.parse(sourceEvidence);
               assertControlUpgradeReceiptCapacity({ schemaVersion: 3, operationId, installationId: locator.installationId,
                 phase: "preparing", credentials: [], backups: [], browsers, prior, current, priorDocument, document, retained, sourceEvidence }, 12 * 256);
-              if (!lstatMaybe(backupDirectory)) { mkdirSync(backupDirectory, { mode: 0o700 }); fsyncPath(control); }
+              if (!lstatMaybe(backupDirectory)) { createPrivateDirectory(backupDirectory, { mode: 0o700 }); fsyncPath(control); }
               privateDirectory(backupDirectory);
               const prefix = join(backupDirectory, operationId), originals = [registryPath, controlPath, markerPath].map(path => {
                 const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 }); if (file === undefined) fail("profile-control-upgrade-evidence-missing"); return file;
@@ -2732,9 +2732,9 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       };
       const binding = ProfileDatabaseBindingSchema.parse({ installationId: locator.installationId, profileId });
       const databaseBinding = readProfileDatabaseBinding(join(locator.stateRoot, "profiles", profileId, "state.db"));
-      if (databaseBinding.state !== "bound" || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19].includes(databaseBinding.schemaVersion)
+      if (databaseBinding.state !== "bound" || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].includes(databaseBinding.schemaVersion)
         || canonicalJsonStringify(databaseBinding.binding) !== canonicalJsonStringify(binding)) fail("profile-control-upgrade-database-schema-unsupported");
-      const schemaVersion = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19)]).parse(databaseBinding.schemaVersion);
+      const schemaVersion = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20)]).parse(databaseBinding.schemaVersion);
       const pendingPlan = () => {
         held();
         const receipt = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath) : undefined;

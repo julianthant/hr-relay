@@ -1,4 +1,5 @@
-import { privatePathRejects } from "../private-path.js";
+import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
+import { posixPrivatePathRejects, privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { createReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { lstatSync, type BigIntStats } from "node:fs";
@@ -58,7 +59,7 @@ function isUcsdIdentity(value: string | undefined): boolean {
 
 
 export function readProfileDatabaseBinding(path: string):
-  { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
+  { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
   const snapshot = captureProfileDatabaseBinding(path);
   const failures: unknown[] = [];
   try { snapshot.assertUnchanged(); } catch (error) { failures.push(error); }
@@ -118,7 +119,7 @@ export function captureCanonicalProfileBinding(path: string, expected: ProfileDa
 }
 
 function readProfileDatabaseBindingCopy(path: string):
-  { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
+  { readonly schemaVersion: 1 | 2 | 3 | 4 | 5 | 6; readonly state: "unbound" } | { readonly schemaVersion: 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20; readonly state: "bound"; readonly binding: ProfileDatabaseBinding } {
   requireDatabaseSourcePath(path);
   const before = lstatSync(path, { throwIfNoEntry: false });
   if (before === undefined) throw new Error("profile-database-binding-required");
@@ -129,7 +130,7 @@ function readProfileDatabaseBindingCopy(path: string):
     const application = database.prepare("PRAGMA application_id").get();
     if ((version?.user_version !== CURRENT_AUTHORITY_SCHEMA_VERSION && (typeof version?.user_version !== "number" || !isSupportedStoppedAuthoritySchemaVersion(version.user_version)))
       || application?.application_id !== AUTHORITY_APPLICATION_ID) throw new Error("profile-database-schema-mismatch");
-    const boundVersion = z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19)]).safeParse(version.user_version);
+    const boundVersion = z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20)]).safeParse(version.user_version);
     const binding = boundVersion.success ? ProfileDatabaseBindingSchema.parse(database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get()) : undefined;
     const after = lstatSync(path);
     if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs
@@ -138,7 +139,7 @@ function readProfileDatabaseBindingCopy(path: string):
       if (typeof version.user_version !== "number" || !isSupportedStoppedAuthoritySchemaVersion(version.user_version) || version.user_version >= 7) throw new Error("profile-database-schema-mismatch");
       return { schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]).parse(version.user_version), state: "unbound" };
     }
-    return { schemaVersion: z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19)]).parse(version.user_version), state: "bound", binding };
+    return { schemaVersion: z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20)]).parse(version.user_version), state: "bound", binding };
   };
   let result: ReturnType<typeof readProfileDatabaseBindingCopy> | undefined;
   let primary: { error: unknown } | undefined;
@@ -169,7 +170,7 @@ const { DatabaseSync } = require("node:sqlite");
 const { constants, openSync, closeSync, lstatSync, fstatSync, readSync } = require("node:fs");
 const { dirname } = require("node:path");
 const [path, expected, schema, application] = process.argv.slice(1);
-const privatePathRejects = ${privatePathRejects.toString()};
+${process.platform === "win32" ? "" : `const privatePathRejects = ${posixPrivatePathRejects.toString()};`}
 const identity = stats => [stats.dev, stats.ino, stats.mode, stats.uid, stats.nlink].join(":");
 const inspect = file => {
   const stats = lstatSync(file, { bigint: true, throwIfNoEntry: false });
@@ -201,7 +202,7 @@ const checkWalHeader = (file, stats) => {
 const check = descriptor => {
   let ancestor = dirname(path);
   for (;;) {
-    if (!lstatSync(ancestor).isDirectory()) throw new Error("profile-database-identity-invalid");
+    ${process.platform === "win32" ? 'const info = lstatSync(ancestor, { bigint: true }); if (!info.isDirectory() || privatePathRejects(ancestor, info, "ancestor"))' : "if (!lstatSync(ancestor).isDirectory())"} throw new Error("profile-database-identity-invalid");
     const parent = dirname(ancestor);
     if (parent === ancestor) break;
     ancestor = parent;
@@ -253,7 +254,7 @@ export function assertLiveProfileDatabaseBinding(path: string, expected: Profile
   const proofKey = `live-binding:${path}:${expected.installationId}:${expected.profileId}`;
   const proofWitness = `${witness}:${before.size}:${before.mtimeNs}`;
   if (proof?.slots.get(proofKey) === proofWitness) return;
-  const observed = spawnSync(process.execPath, ["--input-type=commonjs", "-e", liveBindingScript, path, witness,
+  const observed = spawnSync(process.execPath, ["--input-type=commonjs", "-e", process.platform === "win32" ? windowsObserverPolicyPrelude("binding") + liveBindingScript : liveBindingScript, path, witness,
     String(CURRENT_AUTHORITY_SCHEMA_VERSION), String(AUTHORITY_APPLICATION_ID)],
   { encoding: "utf8", maxBuffer: 64 * 1024, env: workerBootstrapEnvironment() });
   if (observed.error !== undefined || observed.signal !== null) throw new Error("profile-database-observation-failed", {
