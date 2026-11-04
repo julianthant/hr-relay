@@ -5,12 +5,27 @@ import { startRebuildRuntime } from "../../../src/backend/app/composition/runtim
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { runRelayBackend } from "../../../scripts/dev/relay-backend.js";
 import { StorageMaintenanceCustodyUnavailableError } from "../../../src/backend/storage/maintenance/custody-availability.js";
+import koffi from "koffi";
+import { windowsSystemRoot } from "../../../src/models/config/secrets.js";
 
 const directory = process.argv[2];
 if (directory === undefined) throw new Error("fixture-directory-required");
 const release = join(directory, "release");
 const mode = process.argv[3];
-writeFileSync(join(directory, "child.json"), JSON.stringify({ pid: process.pid }));
+let consoleProcesses: number[] | undefined;
+if (process.platform === "win32") {
+  const system = windowsSystemRoot(); if (system === undefined) throw new Error("system-root-required");
+  const kernel = koffi.load(join(system, "System32", "kernel32.dll"));
+  const handle: unknown = kernel.func("uintptr_t __stdcall GetConsoleWindow()")();
+  if (typeof handle !== "number" && typeof handle !== "bigint") throw new Error("console-membership-unproved");
+  if (BigInt(handle) === 0n) consoleProcesses = [];
+  else {
+    const buffer = Buffer.alloc(4096), count: unknown = kernel.func("uint32 __stdcall GetConsoleProcessList(_Out_ void *, uint32)")(buffer, 1024);
+    if (typeof count !== "number" || !Number.isSafeInteger(count) || count <= 0 || count > 1024) throw new Error("console-membership-unproved");
+    consoleProcesses = Array.from({ length: count }, (_, index) => buffer.readUInt32LE(index * 4));
+  }
+}
+writeFileSync(join(directory, "child.json"), JSON.stringify({ pid: process.pid, ...(consoleProcesses === undefined ? {} : { consoleProcesses }) }));
 if (mode === "disconnected") {
   if (process.disconnect === undefined) throw new Error("fixture-disconnect-required");
   process.disconnect();

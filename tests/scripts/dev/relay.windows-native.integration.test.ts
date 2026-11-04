@@ -5,7 +5,6 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import koffi from "koffi";
 import { describe, it, vi } from "vitest";
 import { z } from "zod";
 import { openRelayWindow } from "../../../scripts/dev/relay.js";
@@ -22,19 +21,22 @@ function systemPath(name: string): string {
 describe.skipIf(process.platform !== "win32")("Windows launcher surface", () => {
   it("survives closing the launcher console and finishes a held write in its detached backend", async () => {
     const root = mkdtempSync(join(tmpdir(), "relay-console-"));
-    const parent = spawn(systemPath("conhost.exe"), ["-ForceNoHandoff", "--", process.execPath, "--import", testProcessImport(),
+    const parent = spawn(systemPath("conhost.exe"), ["--headless", "--", process.execPath, "--import", testProcessImport(),
       fileURLToPath(new URL("../../support/processes/relay-launcher-parent.ts", import.meta.url)), root, testProcessImport()],
-    { detached: true, windowsHide: false, stdio: "ignore" });
+    { detached: true, windowsHide: true, stdio: ["pipe", "pipe", "pipe"] });
+    parent.stdout.resume(); parent.stderr.resume();
     let backendPid: number | undefined;
     try {
       await vi.waitFor(() => { assert.ok(existsSync(join(root, "ready"))); }, { timeout: scaledMs(5000) });
-      const owner = z.strictObject({ pid: z.number().int().positive(), consolePid: z.number().int().positive(), handle: z.string().regex(/^\d+$/u) })
+      const owner = z.strictObject({ pid: z.number().int().positive(), consolePid: z.number().int().positive() })
         .parse(JSON.parse(readFileSync(join(root, "console.json"), "utf8")));
-      backendPid = z.strictObject({ pid: z.number().int().positive() }).parse(JSON.parse(readFileSync(join(root, "child.json"), "utf8"))).pid;
-      assert.equal(owner.consolePid, parent.pid); assert.notEqual(owner.handle, "0");
-      const user = koffi.load(systemPath("user32.dll"));
-      assert.notEqual(user.func("int __stdcall PostMessageW(uintptr_t, uint32, uintptr_t, intptr_t)")(BigInt(owner.handle), 0x0010, 0, 0), 0);
-      await vi.waitFor(() => { assert.notEqual(parent.exitCode === null && parent.signalCode === null, true); }, { timeout: scaledMs(5000) });
+      const backend = z.strictObject({ pid: z.number().int().positive(), consoleProcesses: z.array(z.number().int().positive()) })
+        .parse(JSON.parse(readFileSync(join(root, "child.json"), "utf8")));
+      backendPid = backend.pid;
+      assert.equal(owner.consolePid, parent.pid);
+      parent.stdin.end();
+      await vi.waitFor(() => { assert.equal(observePid(owner.pid).state, "gone"); }, { timeout: scaledMs(5000) });
+      assert.equal(backend.consoleProcesses.includes(owner.pid), false, "the backend must not share the launcher's console");
       await vi.waitFor(() => { assert.ok(existsSync(join(root, "draining"))); }, { timeout: scaledMs(5000) });
       assert.equal(observePid(backendPid).state, "alive");
       assert.equal(existsSync(join(root, "committed")), false);
@@ -43,6 +45,7 @@ describe.skipIf(process.platform !== "win32")("Windows launcher surface", () => 
       await vi.waitFor(() => { assert.equal(observePid(backendPid!).state, "gone"); }, { timeout: scaledMs(5000) });
     } finally {
       writeFileSync(join(root, "release"), "release");
+      if (!parent.stdin.writableEnded) parent.stdin.end();
       if (parent.exitCode === null && parent.signalCode === null) parent.kill();
       if (backendPid !== undefined) await vi.waitFor(() => { assert.equal(observePid(backendPid!).state, "gone"); }, { timeout: scaledMs(5000) });
       rmSync(root, { recursive: true, force: true });
