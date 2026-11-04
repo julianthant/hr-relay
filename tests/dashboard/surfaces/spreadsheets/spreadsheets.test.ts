@@ -105,6 +105,28 @@ async function importDraft() {
   await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })));
   await click('Import selected columns');
 }
+it.each([
+  ['SPREADSHEET_SIZE_UNSUPPORTED: This workbook has 250,001 populated cells. Relay supports up to 250,000 populated cells per workbook. Split the data into smaller files and import them separately.', /250,001 populated cells.*250,000.*Split/su],
+  ['SPREADSHEET_TOO_LARGE: maximum file size is 20 MB.', /larger than 20 MB.*Split/su],
+  ['SPREADSHEET_FORMAT_UNSUPPORTED: choose XLSX or CSV.', /Choose an XLSX or CSV file/su],
+  ['SPREADSHEET_WORKER_FAILED', /save a new XLSX or CSV copy/su],
+])('shows actionable import feedback for %s and permits another file', async (message, expected) => {
+  const w = world(), p = await page(w.client);
+  vi.mocked(importSpreadsheetInWorker).mockRejectedValueOnce(new Error(message));
+  const input = document.querySelector<HTMLInputElement>('input[type=file]'); assert(input);
+  const file = new File(['fixture'], 'Rejected.xlsx'); Object.defineProperty(file, 'arrayBuffer', { value: async () => new ArrayBuffer(0) });
+  Object.defineProperty(input, 'files', { value: [file], configurable: true });
+  await act(async () => input.dispatchEvent(new Event('change', { bubbles: true })));
+  const alert = document.querySelector('[role=alert]'); assert(alert);
+  assert.match(alert.textContent ?? '', expected);
+  assert.doesNotMatch(alert.textContent ?? '', /SPREADSHEET_/u);
+  assert.equal(p.latest().book, null);
+  assert.equal(w.calls.filter(call => call.method === 'POST').length, 0);
+  assert.equal(input.disabled, false);
+  await importDraft();
+  assert(p.latest().book);
+  assert(!document.querySelector('[role=alert]'));
+});
 it('keeps an imported draft local until Save, adopts the generated ID and preserves local undo/redo', async () => {
   const w = world(); const p = await page(w.client); await importDraft(); assert.equal(w.calls.filter(call => call.method === 'POST').length, 0); assert.equal(p.latest().book?.libraryId, undefined);
   await edit('Ada'); await click('Save'); assert.match(document.body.textContent, /Saved · version 1/); assert.equal(p.latest().book?.libraryId, 'generated'); assert.equal(p.view().spreadsheet, 'generated'); assert.equal(w.calls.filter(call => call.method === 'POST').length, 1);

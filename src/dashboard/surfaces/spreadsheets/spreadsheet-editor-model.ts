@@ -1,6 +1,20 @@
 import { cellText, type SheetCell, type SheetRow, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { displayExtractedDate, formatInstantDate } from "../../lib/date-format.js";
 import { spreadsheetField, spreadsheetValueMatches } from './spreadsheet-fields-model.js';
+import { populatedSpreadsheetValue, workbookSizeIssue } from '../../../rules/spreadsheets/workbook-size.js';
+
+export function spreadsheetInsertionAvailability(document: EditableWorkbook, sheet: EditableSheet | undefined) {
+  if (!sheet) return { row: false, column: false };
+  let populatedCells = 0, gridCells = 0;
+  for (const entry of document.sheets) {
+    gridCells += entry.width * entry.rows.length;
+    for (const row of entry.rows) for (const cell of row.cells) if (populatedSpreadsheetValue(cell.value)) populatedCells++;
+  }
+  return {
+    row: workbookSizeIssue(populatedCells, gridCells + sheet.width) === undefined,
+    column: workbookSizeIssue(populatedCells + 1, gridCells + sheet.rows.length) === undefined,
+  };
+}
 
 export function spreadsheetForeground(background: string | undefined): string | undefined {
   const hex = background?.match(/#[0-9a-f]{6}/i)?.[0];
