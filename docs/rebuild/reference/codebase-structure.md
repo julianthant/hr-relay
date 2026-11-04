@@ -303,3 +303,5 @@ Task contract modules follow each task ID suffix: Emergency Contact uses `models
 `src/backend/storage/sqlite/run-settlement-row.ts` owns the physical result settlement columns, retained terminal context and current settlement selection shared by native reads, summaries and search. Results and receipts retain immutable applied-version identities; active runs expose no earlier settlement as their current output.
 
 `src/backend/storage/sqlite/delegation-refresh.ts` owns same-row read-only parent refresh admission, accepted retry cohorts and their native wakeup evidence. The run service admits descriptor authority and reports synchronous parent version changes through the command audit; dependency reconciliation settles the cohort.
+
+`src/backend/storage/sqlite/delegation-authority.ts` owns current and retained membership selection, revision/reuse custody and scoped authentication proofs. `src/rules/commands/lifecycle-command-id.ts` owns deterministic initial and revised invocation identities shared by factories and native admission.

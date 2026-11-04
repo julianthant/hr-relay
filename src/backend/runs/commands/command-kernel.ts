@@ -15,7 +15,7 @@ import { ASSISTANT_INPUT_PROJECTION_VERSION,assistantKnowledgeArtifact } from ".
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
-import { captureDelegationResume,delegationResumeCommandId,retainedDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
 import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { admitWorkerLifecycle,admitWorkerReset } from "../../storage/sqlite/worker-control.js";
 import { admitWorkerPoolRoster,requireWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
@@ -783,21 +783,17 @@ function executeCancel(
   const dependencyIds: string[] = [];
   const visited = new Set<string>([current.envelope.runId]);
   const walk = (parent: RunRecord): void => {
-    const members = retainedDelegationManifests(repositories, parent.envelope.runId)
-      .flatMap(manifest => repositories.dependencies.members(manifest.manifestId));
+    const groups = retainedDelegationManifests(repositories,parent.envelope.runId).map(manifest => ({ manifest, group: { children: repositories.dependencies.members(manifest.manifestId) } }));
+    const currentIds = new Set(currentDelegationManifests(repositories,parent.envelope.runId).map(manifest => String(manifest.manifestId)));
     for (const child of repositories.runs.listChildren(parent.envelope.runId)) {
       const childRunId = child.envelope.runId;
       if (visited.has(childRunId)) {
         throw new Error(`run ${childRunId} appears twice in the dependency tree under ${request.target.runId}`);
       }
       visited.add(childRunId);
-      const edge = members.find(member => member.history.includes(childRunId))?.dependency;
-      if (edge === undefined) {
-        throw new Error(
-          `run ${childRunId} is a child of ${parent.envelope.runId} but has no dependency edge in authority; `
-          + "the tree is inconsistent, so no target was cancelled",
-        );
-      }
+      const selected = selectDelegationGroupForChild(groups,currentIds,childRunId);
+      const edge = selected?.group.children.find(member => member.history.includes(childRunId))?.dependency;
+      if (edge === undefined) throw new Error(`run ${childRunId} is a child of ${parent.envelope.runId} but has no dependency edge in authority; the tree is inconsistent, so no target was cancelled`);
       if (edge.policy.cascadeCancel !== "cascade") continue;
       dependencyIds.push(edge.dependencyId);
       if (!isTerminalRunState(child.lifecycle)) targets.push({ run: child, dependencyId: edge.dependencyId });

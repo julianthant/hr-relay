@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { RunContinuationRefusedError } from "./run-continuation.js";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
 import type { AuthorityRepositories } from "./authority-database.js";
 import { DelegationRefreshRequestSchema, DelegationRetryRequestSchema } from "./delegation-contracts.js";
@@ -57,6 +58,10 @@ export function authenticateDelegationRefresh(repositories: RefreshEvidenceRepos
     if (previous.appliedVersion > root.request.expectedVersion) throw new Error("delegation-refresh-previous-version-mismatch");
     const terminal = repositories.runResults.getSettlement(run.envelope.runId,previous.appliedVersion);
     if (terminal?.run.completion?.kind !== "done" || terminal.run.envelope.contractFingerprint !== root.request.definitionFingerprint) throw new Error("delegation-refresh-previous-result-unavailable");
+  } else if (previous.kind === "refresh") {
+    const predecessor = refreshCommand(repositories,previous.commandId);
+    if (predecessor.version >= root.version) throw new Error("delegation-refresh-previous-version-mismatch");
+    authenticateDelegationRevisionRefresh(repositories,run,{ refreshCommandId: previous.commandId, settlementCommandId: previous.settlementCommandId },root.request.expectedVersion);
   } else {
     const parked = repositories.lifecycleJournal.getCommand(previous.parkCommandId);
     const audit = repositories.lifecycleJournal.findAuditByCommand(previous.parkCommandId);
@@ -87,21 +92,33 @@ export function authenticateDelegationRefresh(repositories: RefreshEvidenceRepos
   }
 }
 
+export function authenticateDelegationRevisionRefresh(repositories: RefreshEvidenceRepositories, parent: RunRecord,
+  revision: Readonly<{ refreshCommandId: string; settlementCommandId: string }>, appliedVersion: number) {
+  const settled = refreshCommand(repositories,revision.settlementCommandId);
+  if (settled.request.phase !== "settle" || settled.request.rootCommandId !== revision.refreshCommandId
+    || settled.request.runId !== parent.envelope.runId || settled.version > appliedVersion) throw new Error("delegation-revision-refresh-unavailable");
+  const root = refreshCommand(repositories,revision.refreshCommandId);
+  if (root.request.phase !== "admit") throw new Error("delegation-revision-refresh-unavailable");
+  authenticateDelegationRefresh(repositories,RunRecordSchema.parse({ ...parent,
+    delegationRefresh: { commandId: revision.refreshCommandId, nodeId: root.request.nodeId,
+      phase: "settled", retryCommandIds: settled.request.retryCommandIds } }));
+}
+
 export function assertDelegationRefreshEligible(repositories: AuthorityRepositories, parent: RunRecord, authorization: object | undefined) {
   assertWorkflowDelegationRefreshAuthorization(authorization, parent);
   authenticateDelegationRefresh(repositories, parent);
   if (repositories.ocrReviews.snapshots(parent.envelope.runId).length !== 0 || parent.cancelRequested === true
     || repositories.workerControls.resetForRun(parent.envelope.runId) !== undefined
     || repositories.writeIntents.listByRun(parent.envelope.runId).length !== 0
-    || repositories.gateResults.listByRun(parent.envelope.runId).length !== 0) throw new Error("delegation-refresh-owner-ineligible");
-  if (parent.lifecycle.state === "queued" && parent.delegationRefresh?.phase === "waiting") return;
+    || repositories.gateResults.listByRun(parent.envelope.runId).length !== 0) throw new RunContinuationRefusedError("delegation-refresh-owner-ineligible");
+  if (parent.lifecycle.state === "queued" && parent.delegationRefresh !== undefined) return;
   if (parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "done" && parent.completion?.kind === "done") {
     const result = repositories.runResults.get(parent.envelope.runId);
     if (result !== undefined && result.resultDigest === parent.completion.resultDigest && terminalEvidenceResult(result) === undefined) return;
   }
   const lifecycle = parent.lifecycle;
   if (lifecycle.state === "parked-gate" && repositories.gateResults.listByRun(parent.envelope.runId).every(gate => gate.gateId !== lifecycle.gateId)) return;
-  throw new Error("delegation-refresh-owner-ineligible");
+  throw new RunContinuationRefusedError("delegation-refresh-owner-ineligible");
 }
 
 function applyRefresh(repositories: AuthorityRepositories, parent: RunRecord, request: RefreshRequest, now: string, next: RunRecord, write: (run: RunRecord) => void) {
@@ -136,7 +153,8 @@ export function admitDelegationRefresh(repositories: AuthorityRepositories, retr
     const previous = parent.lifecycle.state === "terminal" && parent.completion !== undefined ? { kind: "terminal", appliedVersion: parent.completion.expectedVersion + 1 }
       : parent.lifecycle.state === "parked-gate" ? { kind: "gate", gateId: parent.lifecycle.gateId,
         parkCommandId: repositories.lifecycleJournal.findGatePark(parent.envelope.runId, parent.lifecycle.gateId, parent.version)?.commandId }
-        : undefined;
+        : parent.delegationRefresh?.phase === "settled" ? { kind: "refresh", commandId: parent.delegationRefresh.commandId,
+          settlementCommandId: lifecycleCommandId("delegation-refresh-settle", { rootCommandId: parent.delegationRefresh.commandId, retryCommandIds: parent.delegationRefresh.retryCommandIds }) } : undefined;
     request = DelegationRefreshRequestSchema.parse({ ...base, phase: "admit", commandId: lifecycleCommandId("delegation-refresh-admit", retry.commandId),
       retryCommandId: retry.commandId, nodeId: invocation.nodeId, previous });
   }

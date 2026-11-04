@@ -1,4 +1,4 @@
-import { authenticateDelegationGroup, childTerminalSettlement, delegationCancellationAvailability, retainedDelegationManifests } from "./delegation-authority.js";
+import { authenticateDelegationGroup, childTerminalSettlement, delegationCancellationAvailability, currentDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema } from "./delegation-contracts.js";
 import { DelegationTerminalEvidenceSchema } from "../../../models/run/result.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
@@ -10,10 +10,10 @@ import type { TerminalDependencyEvidence } from "../../../models/run/result.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
 export function continuationDelegationGroups(repositories: AuthorityRepositories, envelope: RunEnvelope) {
-  const groups = new Map<string, { manifest: ReturnType<typeof retainedDelegationManifests>[number]; group: ReturnType<typeof authenticateDelegationGroup> }>();
+  const groups = new Map<string, { manifest: ReturnType<typeof currentDelegationManifests>[number]; group: ReturnType<typeof authenticateDelegationGroup> }>();
   for (const source of [...validateRunContinuation(repositories, envelope)].reverse()) {
     if (source.envelope.runId === envelope.runId) continue;
-    for (const manifest of retainedDelegationManifests(repositories, source.envelope.runId)) {
+    for (const manifest of currentDelegationManifests(repositories, source.envelope.runId)) {
       const group = authenticateDelegationGroup(repositories, manifest);
       const key = `${group.invocation.nodeId}/${manifest.edgeId}`;
       const previous = groups.get(key);
@@ -38,7 +38,7 @@ export class AuthenticatedRunContinuation {
   }
 
   dependency(nodeId: string, edgeId: string, historical = false) {
-    const own = retainedDelegationManifests(this.repositories, this.envelope.runId)
+    const own = currentDelegationManifests(this.repositories, this.envelope.runId)
       .filter(manifest => manifest.edgeId === edgeId)
       .map(manifest => ({ manifest, group: authenticateDelegationGroup(this.repositories, manifest) }))
       .filter(({ group }) => group.invocation.nodeId === nodeId);

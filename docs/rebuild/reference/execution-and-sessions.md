@@ -108,6 +108,11 @@ refresh every waiting ancestor. A manual retry pauses its parent through the exi
 Resume binds its native command identity to the exact completed retry receipts before another claim. Delegated Retry uses
 the same checkpoint, transaction and uncertain-write validation as checkpoint recovery.
 
+Fan-out revisions retain an unbroken native predecessor chain. A consumed result cites an exact
+settlement, while current joins use the current member set. Cancellation and worker admission keep
+custody of retained physical children. A read reused by a new review keeps its original observation
+time; rebuilding the review cannot make an expired lookup fresh.
+
 Queue parentage derives from authenticated native manifests and their complete retry histories.
 Read-only snapshots share authenticated groups only for identical canonical manifest content and
 return isolated copies. Wait results share the same synchronous snapshot lifetime. Neither cache

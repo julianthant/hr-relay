@@ -114,7 +114,7 @@ import { assertWorkflowRunResultAuthorization,descriptorRuntimeNodes,workflowPro
 import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
 import type { VerifiedBackup } from "./backup-service.js";
 import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegationRefresh } from "./delegation-refresh.js";
-import { assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
+import { currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
 import { AUTHORITY_APPLICATION_ID,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
@@ -257,7 +257,7 @@ type DependencyRepository = Readonly<{
   settle(input: unknown): z.infer<typeof DependencyRecordSchema>;
   reconcile(parentRunId: string, now: string): void;
   members(manifestId: string): ReturnType<typeof authenticateDelegationGroup>["children"];
-  groups(parentRunId: string): ReturnType<typeof continuationDelegationGroups>;
+  groups(parentRunId: string, selection?: "current" | "retained"): ReturnType<typeof continuationDelegationGroups>;
   childHistory(dependencyId: string): readonly string[];
   lifecycleEdgeForChild(parentRunId: string, childRunId: string): z.infer<typeof DependencyRecordSchema> | undefined;
   edgeForChild(parentRunId: string, childRunId: string): z.infer<typeof DependencyRecordSchema>;
@@ -4016,7 +4016,11 @@ export class AuthorityDatabase implements Disposable {
     const preview = readRunPreviewResult(result);
     if (preview !== undefined && !current.envelope.dryRun) throw new Error("terminal-preview-dry-run-required");
     const continuation = current.envelope.continuation === undefined ? undefined : AuthenticatedRunContinuation.authenticate(this.authority, current.envelope);
-    const invocations = this.authority.lifecycleJournal.listDelegationInvocations(current.envelope.runId);
+    const invocations = currentDelegationManifests(this.authority,current.envelope.runId,current.version).map(manifest => {
+      const invocation = this.authority.lifecycleJournal.findDelegationInvocation(manifest.manifestId);
+      if (invocation === undefined) throw new Error("delegation-invocation-authority-unavailable");
+      return invocation;
+    });
     const receipts = result.dependencies.filter(dependency => dependency.state === "child-resolved" || dependency.state === "delegation-resolved");
     const receiptIds = receipts.filter(dependency => dependency.parentRunId === current.envelope.runId).map(dependency => dependency.state === "delegation-resolved" ? dependency.invocationCommandId
       : lifecycleCommandId("delegation-invocation", { runId: current.envelope.runId, attempt: current.envelope.attempt, nodeId: dependency.nodeId }));
@@ -4027,7 +4031,7 @@ export class AuthorityDatabase implements Disposable {
       if (dependency.state === "child-resolved" || dependency.state === "delegation-resolved") {
         const evidence = dependency.parentRunId === current.envelope.runId
           ? readDelegationInvocationEvidence(this.authority, dependency.state === "delegation-resolved" ? dependency.invocationCommandId
-            : lifecycleCommandId("delegation-invocation", { runId: current.envelope.runId, attempt: current.envelope.attempt, nodeId: dependency.nodeId }))
+            : lifecycleCommandId("delegation-invocation", { runId: current.envelope.runId, attempt: current.envelope.attempt, nodeId: dependency.nodeId }),new Set(),dependency)
           : continuation?.delegation(String(dependency.nodeId), String(dependency.edgeId));
         if (evidence === undefined || evidence.parentRunId !== dependency.parentRunId) throw new Error("terminal-continuation-delegation-unavailable");
         if (canonicalJsonStringify(terminalDelegationDependencyRecord(evidence)) !== canonicalJsonStringify(dependency)
@@ -5251,10 +5255,10 @@ export class AuthorityDatabase implements Disposable {
       dependencies: Object.freeze({
         authenticateGroup: (manifest: DelegationManifest) => this.#readDelegationGroup(manifest),
         parents: (envelopes: readonly RunRecord["envelope"][]) => readQueueParents(this.authority, envelopes),
-        groups: (parentRunId: string) => {
+        groups: (parentRunId: string, selection: "current" | "retained" = "current") => {
           const parent = this.authority.runs.get(parentRunId);
           if (parent === undefined) throw new Error("delegation-parent-unavailable");
-          const own = retainedDelegationManifests(this.authority, parentRunId)
+          const own = (selection === "retained" ? retainedDelegationManifests : currentDelegationManifests)(this.authority, parentRunId)
             .map(manifest => ({ manifest, group: this.authority.dependencies.authenticateGroup(manifest) }));
           const keys = new Set(own.map(({ group }) => `${group.invocation.nodeId}/${group.invocation.edgeId}`));
           return [...own, ...continuationDelegationGroups(this.authority, parent.envelope)

@@ -537,7 +537,7 @@ export function delegationDependencyRecord(evidence: Extract<TerminalDependencyE
 export function terminalDelegationDependencyRecord(evidence: Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>): z.infer<typeof ChildTerminalDependencySchema> | z.infer<typeof DelegationTerminalDependencySchema> {
   const single = singleDelegationResult(evidence);
   const child = evidence.children[0]?.run;
-  if (evidence.manifest.cardinality !== "one" || evidence.manifest.join !== "one" || single === undefined || child === undefined) return delegationDependencyRecord(evidence);
+  if (evidence.manifest.revision !== undefined || evidence.manifest.cardinality !== "one" || evidence.manifest.join !== "one" || single === undefined || child === undefined) return delegationDependencyRecord(evidence);
   return ChildTerminalDependencySchema.parse({ state: "child-resolved", nodeId: evidence.nodeId, parentRunId: evidence.parentRunId,
     edgeId: evidence.edgeId, child: { runId: child.envelope.runId, itemId: child.envelope.itemId, workflowId: child.envelope.workflow,
       attempt: child.envelope.attempt, descriptorVersion: child.envelope.descriptorVersion, contractFingerprint: child.envelope.contractFingerprint,

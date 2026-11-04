@@ -1223,7 +1223,7 @@ export class RunRecordService {
   private parentRefreshAuthorization(repositories: AuthorityRepositories, child: RunRecord) {
     const parent = child.envelope.parent === undefined ? undefined : repositories.runs.get(child.envelope.parent.runId);
     if (parent === undefined || !(parent.lifecycle.state === "parked-gate" || parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "done"
-      || parent.lifecycle.state === "queued" && parent.delegationRefresh?.phase === "waiting")) return;
+      || parent.lifecycle.state === "queued" && parent.delegationRefresh !== undefined)) return;
     const descriptor = this.dependencies.resolveDescriptor?.(parent.envelope.workflow);
     return descriptor === undefined ? undefined : authorizeWorkflowDelegationRefresh(descriptor, parent);
   }

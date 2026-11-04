@@ -42,7 +42,10 @@ export const DependencyRecordSchema = z.strictObject({
   }
 });
 
+export const DelegationReadReuseSchema = z.strictObject({ manifestId: DelegationManifestIdSchema, dependencyId: DependencyIdSchema, runId: RunIdSchema, appliedVersion: PositiveIntSchema });
+
 const DelegatedChildManifestEntrySchema = z.strictObject({
+  reuse: DelegationReadReuseSchema.optional(),
   dependencyId: DependencyIdSchema,
   childRunId: RunIdSchema,
   childItemId: ItemIdSchema,
@@ -51,6 +54,7 @@ const DelegatedChildManifestEntrySchema = z.strictObject({
 
 /** Three shapes the manifest record needs: `policy` recorded, `join` with all four arms, and `children` allowed to be empty for a zero-child fan-out. */
 export const DelegationManifestSchema = z.strictObject({
+  revision: z.strictObject({ previousInvocationCommandId: CommandIdSchema, previousManifestId: DelegationManifestIdSchema, refreshCommandId: CommandIdSchema, settlementCommandId: CommandIdSchema }).optional(),
   manifestId: DelegationManifestIdSchema,
   parentRunId: RunIdSchema,
   edgeId: DelegationEdgeIdSchema,

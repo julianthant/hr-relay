@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RefreshedRunSettlementSchema } from "../../../rules/workflow/dependencies.js";
+import { DelegationReadReuseSchema, RefreshedRunSettlementSchema } from "../../../rules/workflow/dependencies.js";
 import { CommandIdSchema, DelegationEdgeIdSchema, DelegationManifestIdSchema, DependencyIdSchema, FingerprintSchema, GateIdSchema, IsoInstantSchema, ItemIdSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema, StableRecordIdSchema, WorkflowIdSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 import { DelegationTerminalDependencySchema } from "../../../models/run/result.js";
 import { DelegationPolicySchema } from "../../../models/workflow/delegation-policy.js";
@@ -12,6 +12,7 @@ export const DelegationScopeEvidenceSchema = z.array(z.discriminatedUnion("kind"
   ]));
 
 export const DelegationInvocationRequestSchema = z.strictObject({
+  revision: z.strictObject({ previousInvocationCommandId: CommandIdSchema, refreshCommandId: CommandIdSchema, settlementCommandId: CommandIdSchema }).optional(),
   commandId: CommandIdSchema,
   runId: RunIdSchema,
   attempt: PositiveIntSchema,
@@ -32,7 +33,7 @@ export const DelegationInvocationRequestSchema = z.strictObject({
   join: z.enum(["one", "all", "all-settled", "none"]),
   policy: DelegationPolicySchema,
   planFingerprint: FingerprintSchema,
-  children: z.array(z.strictObject({ childItemId: ItemIdSchema, canonicalInputFingerprint: FingerprintSchema, sourceRecordIds: z.array(StableRecordIdSchema).min(1).optional() })),
+  children: z.array(z.strictObject({ reuse: DelegationReadReuseSchema.optional(), childItemId: ItemIdSchema, canonicalInputFingerprint: FingerprintSchema, sourceRecordIds: z.array(StableRecordIdSchema).min(1).optional() })),
 });
 
 export const DelegationAdmissionRequestSchema = z.strictObject({
@@ -78,6 +79,7 @@ export const DelegationRefreshRequestSchema = z.discriminatedUnion("phase", [
     previous: z.discriminatedUnion("kind", [
       z.strictObject({ kind: z.literal("terminal"), appliedVersion: PositiveIntSchema }),
       z.strictObject({ kind: z.literal("gate"), gateId: GateIdSchema, parkCommandId: CommandIdSchema }),
+      z.strictObject({ kind: z.literal("refresh"), commandId: CommandIdSchema, settlementCommandId: CommandIdSchema }),
     ]) }),
   z.strictObject({ ...DelegationRefreshBase, phase: z.literal("extend"), rootCommandId: CommandIdSchema,
     retryCommandId: CommandIdSchema, nodeId: NodeIdSchema }),

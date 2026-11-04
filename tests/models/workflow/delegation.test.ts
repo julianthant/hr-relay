@@ -10,7 +10,7 @@ joinDelegationOutcomes,
 planDelegationFanOut,
 } from "../../../src/models/workflow/delegation.js";
 import type { ChildRunOutcome,WorkflowRef } from "../../../src/models/workflow/graph.js";
-import type { ItemId } from "../../../src/rules/identity/ids.js";
+import type { ItemId, StableRecordId } from "../../../src/rules/identity/ids.js";
 import {
 DelegationEdgeIdSchema,
 EidSchema,
@@ -122,6 +122,9 @@ describe("delegation fan-out planning", () => {
     assert.throws(() => plan([a, a]), /delegation-source-membership-invalid/);
     assert.throws(() => planDelegationFanOut({ edgeId: EDGE, target: CHILD, cardinality: "many", join: "all", policy: POLICY,
       bound: [{ eid: "10800001" }], deriveChildItemId: byEid, sourceRecordIds: [] }), /delegation-source-membership-count-mismatch/);
+    const missing = new Array<readonly StableRecordId[]>(1);
+    assert.throws(() => planDelegationFanOut({ edgeId: EDGE, target: CHILD, cardinality: "many", join: "all", policy: POLICY,
+      bound: [{ eid: "10800001" }], deriveChildItemId: byEid, sourceRecordIds: missing }), /delegation-source-membership-invalid/);
   });
 
   it("makes the policy part of the plan fingerprint", () => {

@@ -82,6 +82,7 @@ export function planDelegationFanOut<Target extends AnyWorkflowRef>(
     }
     seen.add(childItemId);
     const sources = request.sourceRecordIds?.[index]?.map(id => StableRecordIdSchema.parse(id));
+    if (request.sourceRecordIds !== undefined && sources === undefined) throw new Error("delegation-source-membership-invalid");
     if (sources !== undefined && (sources.length === 0 || new Set(sources).size !== sources.length)) throw new Error("delegation-source-membership-invalid");
     children.push({
       ...(sources === undefined ? {} : { sourceRecordIds: sources.toSorted() }),

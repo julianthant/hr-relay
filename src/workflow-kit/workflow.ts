@@ -3,7 +3,7 @@ import { WorkbookReferenceLookupSchema, type WorkbookReferenceLookup, type RunWo
 import { PlannedRunOutputSchema, type PlannedRunOutput } from "../models/dashboard/run-outputs.js";
 import type { RunContinuation } from "../models/run/continuation.js";
 import { WorkbookIdSchema } from "../models/dashboard/workbooks.js";
-import { lifecycleCommandId } from "../rules/commands/lifecycle-command-id.js";
+import { delegationInvocationCommandId } from "../rules/commands/lifecycle-command-id.js";
 import { sha256Hex } from "../rules/validation/sha256.js";
 import type { RerunValueMappingSpec } from "../models/workflow/rerun-values.js";
 import {
@@ -1412,7 +1412,7 @@ export function defineWorkflowDescriptor<
       if (entry.state === "delegation-resolved") {
         const node = nodeByIdOrThrow(id, nodes, entry.nodeId, purpose);
         if (node.kind !== "child-run" || sourceParent === undefined || entry.edgeId !== node.edgeId
-          || entry.invocationCommandId !== lifecycleCommandId("delegation-invocation", { runId: sourceParent.runId, attempt: sourceParent.attempt, nodeId: node.id })
+          || entry.invocationCommandId !== delegationInvocationCommandId({ runId: sourceParent.runId, attempt: sourceParent.attempt, nodeId: node.id, revision: entry.manifest.revision })
           || entry.manifest.cardinality !== node.cardinality || entry.manifest.join !== node.join
           || canonicalJsonStringify(entry.manifest.policy) !== canonicalJsonStringify(node.policy)
           || entry.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")

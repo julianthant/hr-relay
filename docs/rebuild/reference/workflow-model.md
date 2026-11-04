@@ -504,6 +504,17 @@ owner; registered leaves, retained invocations and continuation evidence prove c
 membership. All admissions share the held claim and parent version, and exactly one requeue receipt
 proves the release. These facts derive the wait without changing stored record shapes.
 
+A trusted read-only parent refresh may revise a fan-out through a new immutable invocation and
+manifest. Each revision cites its immediate predecessor and the settled retry cohort. Joins and
+review inputs select the current member set; retained receipts keep their exact invocation,
+member attempts and settlement versions. Removed members retain their original control history.
+A rebuilt review checkpoint receives a new binding even when its lookup inputs are identical.
+
+Reuse requires the same canonical input, explicit individual source-record set, target contract,
+configuration and fresh authenticated observations. Otherwise admission creates a new read. It
+never retries a successful write or changes an earlier manifest. A ready parent can accept another
+retry cohort before being claimed; an executing refresh refuses a concurrent child retry.
+
 ### 3.3 Conditions
 
 `src/models/workflow/node-condition.ts` owns `NodeConditionSpec`, `evaluateNodeCondition`, and

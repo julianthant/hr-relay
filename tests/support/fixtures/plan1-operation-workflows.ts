@@ -35,7 +35,11 @@ export const plan1Contract = defineTaskContract({ id: taskId("ocr/extract-form-p
     { id: "optional-read", kind: "read-field", valueSlot: "provider-state" },
   ] },
 });
-const createPlan1Task = (shouldFail: (input: z.output<typeof Plan1Input>) => boolean, onRun?: (input: z.output<typeof Plan1Input>) => void) => defineTask(plan1Contract, { sessions: [], async run({ input, ctx }) {
+const { __sealed: _sealed, ...plan1ReadDefinition } = plan1Contract;
+export const plan1ExpiringContract = defineTaskContract({ ...plan1ReadDefinition,
+  freshness: { defaultMaxAgeMs: 1000, defaultOverride: "forbidden" } });
+type Plan1ReadContract = typeof plan1Contract | typeof plan1ExpiringContract;
+const createPlan1Task = (shouldFail: (input: z.output<typeof Plan1Input>) => boolean, onRun?: (input: z.output<typeof Plan1Input>) => void, contract: Plan1ReadContract = plan1Contract) => defineTask(contract, { sessions: [], async run({ input, ctx }) {
   onRun?.(input);
   const confirm = (id: string, expected: string) => input.mode === "confirmed" ? { id: `verify-${id}`, targetId: `verify-${id}`, verify: async (value: string) => value === expected } : undefined;
   await runDeclaredAction({ id: "consume-text", kind: "read", targetId: "consume-text" }, async () => input.text, (value) => value, confirm("consume-text", input.text));
@@ -51,6 +55,11 @@ const createPlan1Task = (shouldFail: (input: z.output<typeof Plan1Input>) => boo
 } });
 export const plan1Task = createPlan1Task(input => input.mode === "fail");
 export const plan1Stores = defineTaskStoreRegistry([defineServiceStore("ocr", { observe: plan1Task })], { scenarioIds: [scenario], tasks: [{ id: plan1Contract.id, effect: "read" }] });
+export function plan1ExpiringFailureStores(shouldFail: (input: z.output<typeof Plan1Input>) => boolean) {
+  return defineTaskStoreRegistry([defineServiceStore("ocr", { observe: createPlan1Task(shouldFail,undefined,plan1ExpiringContract) })],
+    { scenarioIds: [scenario], tasks: [{ id: plan1Contract.id, effect: "read" }] });
+}
+export const plan1ExpiringStores = plan1ExpiringFailureStores(input => input.mode === "fail");
 export function plan1ControlledFailureStores(shouldFail: (input: z.output<typeof Plan1Input>) => boolean) {
   return defineTaskStoreRegistry([defineServiceStore("ocr", { observe: createPlan1Task(shouldFail) })], { scenarioIds: [scenario], tasks: [{ id: plan1Contract.id, effect: "read" }] });
 }
@@ -69,18 +78,21 @@ const common = { version: 1, code: "fpo", label: "Plan 1 synthetic workflow", ic
   presentation: { title: () => "Plan 1 synthetic workflow" }, scenarios: ["fixture-plan1/happy"] as const, role: defineWorkflowRole({ kind: "standalone" }) };
 const policy = { onChildFailed: "fail-parent" as const, cascadeCancel: "cascade" as const, afterChildRetry: "resume-parent" as const, visibility: "inline" as const };
 const bindings = [{ slot: "text", value: { kind: "run-input" as const, path: "text" } }];
-export const plan1Leaf = compileWorkflow(defineWorkflow({ ...common, id: ids[0], operationDisplay: { capability: "complete", version: 1, invocations: [
+function plan1ReadLeaf(id: string, contract: Plan1ReadContract) { return compileWorkflow(defineWorkflow({ ...common, id, operationDisplay: { capability: "complete", version: 1, invocations: [
   { id: "first-operation", entryId: "first", contractRole: "task", occurrencePath: ["first"], bindings },
   { id: "second-operation", entryId: "second", contractRole: "task", occurrencePath: ["second"], bindings },
 ], presentation: [{ id: "first-node", kind: "operation", invocationId: "first-operation" }, { id: "second-node", kind: "operation", invocationId: "second-operation" }] }, steps: ({ task, result }) => {
-  const first = task({ id: "first", contract: plan1Contract, replay: "checkpoint" }, [], ({ input }) => input);
-  const second = task({ id: "second", contract: plan1Contract, replay: "checkpoint" }, [], ({ input }) => input);
+  const first = task({ id: "first", contract, replay: "checkpoint" }, [], ({ input }) => input);
+  const second = task({ id: "second", contract, replay: "checkpoint" }, [], ({ input }) => input);
   return { steps: [[{ key: "first", label: "First" }, [first]], [{ key: "second", label: "Second" }, [second]]], result: result(Plan1Output, [first, second], ({ outputs }) => ({ ...outputs.first, disposition: `${outputs.first.disposition}/${outputs.second.providerState}` }), [
     { path: "eid", source: { kind: "task-output", entryId: "first", path: "eid" } },
     { path: "providerState", source: { kind: "task-output", entryId: "second", path: "providerState" } },
     { path: "disposition", source: { kind: "derived", inputs: [{ id: "first", source: { kind: "task-output", entryId: "first", path: "disposition" } }, { id: "second", source: { kind: "task-output", entryId: "second", path: "providerState" } }] } },
   ]) };
-} }), { manifest });
+} }), { manifest }); }
+export const plan1Leaf = plan1ReadLeaf(ids[0],plan1Contract);
+export const plan1ExpiringLeaf = plan1ReadLeaf("fixture-plan1-expiring-leaf",plan1ExpiringContract);
+
 const leafRef = { id: plan1Leaf.descriptor.id, input: Plan1Input, result: Plan1Output };
 export const plan1Child = compileWorkflow(defineWorkflow({ ...common, id: ids[1], operationDisplay: { capability: "complete", version: 1, invocations: [], presentation: [{ id: "nested-node", kind: "delegate", entryId: "nested", targetWorkflowId: leafRef.id }] }, steps: ({ delegate, result }) => {
   const child = delegate({ id: "nested", target: leafRef, edgeId: "plan1-nested", cardinality: "one", await: "terminal", join: "one", policy }, [], { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
