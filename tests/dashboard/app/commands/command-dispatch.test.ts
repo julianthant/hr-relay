@@ -44,7 +44,7 @@ function commandAction(input: Record<string, unknown>): CommandAction {
 const CONTEXT = { actorId: "local-operator", source: "run-detail" } as const;
 
 it("composes only the exact served child retry at its current revision", () => {
-  const action = ActionDescriptorWireSchema.parse({ key: "retry-child", label: "Retry", kind: "command", command: "retry",
+  const action = RunDetailWireSchema.shape.childRetry.unwrap().parse({ key: "retry-child", label: "Retry", kind: "command", command: "retry",
     expectedVersion: 3, intent: "neutral", icon: "retry", placement: ["banner"] });
   assert.ok(action.kind === "command");
   const target = { runId: runId(1), expectedVersion: 3 };

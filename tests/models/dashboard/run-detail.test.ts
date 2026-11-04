@@ -20,6 +20,10 @@ it("binds the child retry action to a failed child and its exact served revision
     { ...candidate, header: { ...candidate.header, status: "done" } },
     { ...candidate, childRetry: { ...candidate.childRetry, expectedVersion: DETAIL.rowRevision + 1 } },
     { ...candidate, childRetry: { ...candidate.childRetry, command: "restart" } },
+    { ...candidate, childRetry: { ...candidate.childRetry, label: "Unreviewed text" } },
+    { ...candidate, childRetry: { ...candidate.childRetry, detail: "Unreviewed text" } },
+    { ...candidate, childRetry: { ...candidate.childRetry, confirm: { title: "Confirm", confirmLabel: "Retry", tone: "neutral" } } },
+    { ...candidate, childRetry: { ...candidate.childRetry, navigate: { kind: "self", runId: RUN_2 } } },
   ]) assert.equal(RunDetailWireSchema.safeParse(changed).success, false);
 });
 
