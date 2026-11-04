@@ -310,6 +310,21 @@ describe_m1("served sign-up Finish", () => {
 
 
 
+  it_m1.each(["login", "signup"] as const)("a successful automatic resume from the %s URL opens the dashboard shell", async onboarding => {
+    window.history.replaceState(null, "", `/?onboarding=${onboarding}`);
+    const active = { state: "active" as const, profileId: "00000000-0000-4000-8000-000000000002", duoState: "ready" as const, epoch: 7 };
+    let resumed = 0;
+    const client = { ...appClient(),
+      readProfileSession: async () => resumed > 0 ? active : { state: "signed-out" as const, signUpRequired: false, resumable: true as const },
+      resumeProfile: async () => { resumed++; return active; } };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => {
+      assert_m1.equal(resumed, 1);
+      assert_m1.equal(new URLSearchParams(window.location.search).has("onboarding"), false);
+      assert_m1.equal(["Log in to Relay", "Create your profile"].includes(document.querySelector("h1")?.textContent ?? ""), false);
+    }, { timeout: 3000 });
+  });
+
   it_m1("a tab whose resume lost the race adopts the winner's session once it is in place", async () => {
     window.history.replaceState(null, "", "/");
     const active = { state: "active" as const, profileId: "00000000-0000-4000-8000-000000000002", duoState: "ready" as const, epoch: 7 };

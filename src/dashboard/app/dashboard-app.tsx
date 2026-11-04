@@ -160,12 +160,13 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
   const onboardingProfile = useRef<string | undefined>(undefined);
+  const onboardingRoute = route.onboarding;
   useEffect(() => {
     if (session?.state === PROFILE_ONBOARDING_STATE) onboardingProfile.current = session.profileId;
-    else if (session?.state === "active" && session.duoState === "ready" && onboardingProfile.current === session.profileId) {
+    else if (session?.state === "active" && session.duoState === "ready" && (onboardingProfile.current === session.profileId || profileSource === "served" && onboardingRoute !== undefined)) {
       onboardingProfile.current = undefined; setRoute({ start: false });
     } else if (session?.state === "signed-out") onboardingProfile.current = undefined;
-  }, [session, setRoute]);
+  }, [session, setRoute, profileSource, onboardingRoute]);
   const preferencesMode: Parameters<typeof createPersonPreferences>[0] = profileSource === "mock" ? "preview" : session?.state === "active" && session.duoState === "ready" ? "person" : "signed-out";
   const preferenceRequest = useMemo(() => ({ client: profileClient, profileId, profileEpoch, mode: preferencesMode }), [profileClient, profileId, profileEpoch, preferencesMode]);
   const preferences = useMemo(() => previewPreferences ?? createPersonPreferences(preferenceRequest.mode), [preferenceRequest, previewPreferences]);
