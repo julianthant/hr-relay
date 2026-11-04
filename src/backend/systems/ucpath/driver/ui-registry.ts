@@ -1504,11 +1504,13 @@ export const UCPATH_PENDING_READ_RECIPES = Object.freeze(z.strictObject({
 export const UCPATH_PENDING_CONTACT_RECIPES = deepFreeze({
   status: "pending-live-verification",
   path: "/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1",
+  searchEid: "#PERALL_SEC_SRCH_EMPLID",
   displayedEid: "#PERSON_NPC_VW_EMPLID",
   displayedName: "#PERSON_NAME_NAME",
-  names: 'input[id^="EMERGENCY_CNTCT_CONTACT_NAME$"]',
-  viewToggle: '[id="$ICField2$hviewall$0"]',
-  counter: '[id="$ICField2$hrow$0"]',
+  grid: '[id="$ICField2$scrolli$0"]',
+  names: '[id="$ICField2$scrolli$0"] input[id^="EMERGENCY_CNTCT_CONTACT_NAME$"]',
+  viewToggle: '[id="$ICField2$scrolli$0"] :is(a, span.PSHEADERHYPERLINKD)',
+  counter: '[id="$ICField2$scrolli$0"] span.PSGRIDCOUNTER',
   busy: "#WAIT_win0",
   rowFields: {
     name: "EMERGENCY_CNTCT_CONTACT_NAME",
@@ -1520,6 +1522,12 @@ export const UCPATH_PENDING_CONTACT_RECIPES = deepFreeze({
   },
   addressFields: [
     ["address1", "Address 1"], ["address2", "Address 2"], ["city", "City"],
-    ["state", "State"], ["postalCode", "Postal"], ["country", "Country"],
+    ["state", "State"], ["postalCode", "Postal"],
   ] as const,
+  countryDisplay: 'span[id^="DERIVED_ADDRESS_COUNTRY$"]',
+  readOnlyControls: {
+    address3: "#DERIVED_ADDRESS_ADDRESS3",
+    county: "#DERIVED_ADDRESS_COUNTY",
+    samePhoneAsEmployee: 'input[id^="EMERGENCY_CNTCT_SAME_PHONE_EMPL$"][type="checkbox"]',
+  },
 });
