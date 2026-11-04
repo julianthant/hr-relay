@@ -8,20 +8,20 @@ describe("runtime environment inventory", () => {
     assert.equal(Object.isFrozen(RUNTIME_ENVIRONMENT_REGISTRY.exact), true);
   });
 
-  it("registers the native picker's exact SystemRoot process mechanic", () => {
+  it("registers the canonical accessor for the picker's exact SystemRoot process mechanic", () => {
     assert.deepEqual(RUNTIME_ENVIRONMENT_REGISTRY.exact.find(spec => spec.key === "SystemRoot"), {
       key: "SystemRoot", classification: "non-secret-config", disposition: "active", channel: "process-mechanics",
-      owner: "src/backend/transports/http/native-path-picker.ts", documented: true,
+      owner: "src/models/config/secrets.ts", documented: true,
     });
     assert.deepEqual(RUNTIME_ENVIRONMENT_REGISTRY.exactReaderOwners.find(reader => reader.key === "SystemRoot"),
-      { key: "SystemRoot", paths: ["src/backend/transports/http/native-path-picker.ts"] });
+      { key: "SystemRoot", paths: ["src/models/config/secrets.ts"] });
     assert.equal(isRegisteredEnvironmentKey("SystemRoot"), true);
   });
 
   it("rejects an unapproved active process mechanic even with the picker registration present", () => {
     const unknown = { ...RUNTIME_ENVIRONMENT_REGISTRY, exact: [...RUNTIME_ENVIRONMENT_REGISTRY.exact,
       { key: "UNAPPROVED_OS_ROOT", classification: "non-secret-config", disposition: "active", channel: "process-mechanics",
-        owner: "src/backend/transports/http/native-path-picker.ts", documented: false }] };
+        owner: "src/models/config/secrets.ts", documented: false }] };
     assert.match(auditRuntimeEnvironmentInventory(unknown).join("\n"),
       /UNAPPROVED_OS_ROOT retains forbidden active process-mechanics environment ownership/u);
   });
@@ -34,16 +34,16 @@ describe("runtime environment inventory", () => {
     const changed = { ...RUNTIME_ENVIRONMENT_REGISTRY, exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.map(spec =>
       spec.key === "SystemRoot" ? { ...spec, ...mutation } : spec) };
     assert.match(auditRuntimeEnvironmentInventory(changed).join("\n"),
-      /SystemRoot must retain the native path picker's non-secret process-mechanics ownership/u);
+      /SystemRoot must retain the canonical accessor's non-secret process-mechanics ownership/u);
   });
 
-  it("requires the exact picker reader without additional production owners", () => {
-    for (const paths of [["src/models/config/host-display.ts"],
-      ["src/backend/transports/http/native-path-picker.ts", "src/models/config/host-display.ts"]]) {
+  it("requires the exact canonical reader without additional production owners", () => {
+    for (const paths of [["src/backend/transports/http/native-path-picker.ts"], ["src/models/config/host-display.ts"],
+      ["src/models/config/secrets.ts", "src/models/config/host-display.ts"]]) {
       const changed = { ...RUNTIME_ENVIRONMENT_REGISTRY,
         exactReaderOwners: RUNTIME_ENVIRONMENT_REGISTRY.exactReaderOwners.map(reader =>
           reader.key === "SystemRoot" ? { ...reader, paths } : reader) };
-      assert.match(auditRuntimeEnvironmentInventory(changed).join("\n"), /SystemRoot exact reader must be solely the native path picker/u);
+      assert.match(auditRuntimeEnvironmentInventory(changed).join("\n"), /SystemRoot exact reader must be solely the canonical environment accessor/u);
     }
   });
 
@@ -61,7 +61,7 @@ describe("runtime environment inventory", () => {
       exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.filter(spec => spec.key !== "SystemRoot"),
       exactReaderOwners: RUNTIME_ENVIRONMENT_REGISTRY.exactReaderOwners.filter(reader => reader.key !== "SystemRoot") };
     assert.match(auditRuntimeEnvironmentInventory(missing).join("\n"),
-      /SystemRoot must retain the native path picker's non-secret process-mechanics ownership/u);
+      /SystemRoot must retain the canonical accessor's non-secret process-mechanics ownership/u);
   });
 
   it("rejects missing migrated settings and stale model environment metadata", () => {

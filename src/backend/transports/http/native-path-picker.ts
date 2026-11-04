@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { lstatSync } from "node:fs";
 import { dirname, isAbsolute, join, parse, relative, resolve, sep, win32 } from "node:path";
 import type { NativePathField, NativePathPickerRequest, NativePathPickerResponse } from "../../../models/dashboard/native-path-picker.js";
+import { windowsSystemRoot } from "../../../models/config/secrets.js";
 
 const TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_BYTES = 8192;
@@ -154,7 +155,7 @@ export function createNativePathPicker(options: Readonly<{ platform?: NodeJS.Pla
       try {
         let result: PickerProcessResult;
         if (platform === "win32") {
-          const systemRoot = process.env.SystemRoot;
+          const systemRoot = windowsSystemRoot();
           if (systemRoot === undefined || !/^[a-z]:\\/iu.test(systemRoot) || win32.resolve(systemRoot) !== systemRoot
             || /[\0\r\n]/u.test(systemRoot)) return { state: "unavailable", field: request.field, reason: "dialog-failed" };
           result = await execute(win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),

@@ -334,10 +334,11 @@ migrated names without reading their values. It reports retired canary names wit
 excluded. Development worker launches add `RELAY_DEV_DEBUG_MIRROR=1` explicitly after filtering;
 production worker launches omit it even when the parent has it. Workers read operational credentials from the store themselves.
 The `secrets-single-source` architecture guard owns registered credential and environment access.
-`src/models/runtime/runtime-environment.ts` pins the exact `SystemRoot` read to the native path picker
-under the non-secret `process-mechanics` channel. That channel accepts only this key and owner;
-exact reader ownership names the same picker path. The worker's closed mechanics pass-through
-remains separately audited.
+`src/models/runtime/runtime-environment.ts` pins the exact `SystemRoot` read to `windowsSystemRoot` in
+`src/models/config/secrets.ts` under the non-secret `process-mechanics` channel. That channel accepts
+only this key and canonical owner; exact reader ownership names the same path. The native path
+picker consumes the accessor and validates the returned root before launching PowerShell. The worker's
+closed mechanics pass-through remains separately audited.
 
 `config/test-data.json` owns public subject declarations and safe fixtures.
 Ignored `config/test-data.local.json` owns private canary values and private document paths.
