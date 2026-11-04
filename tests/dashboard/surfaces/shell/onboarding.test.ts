@@ -374,3 +374,23 @@ it("resumes the profile still signed in once and keeps the normal login form", a
     assert.equal(resumed, 1);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+it("a tab whose resume lost the race to another tab adopts the winner's session", async () => {
+  const active = { state: "active", profileId: "00000000-0000-4000-8000-000000000002", duoState: "ready", epoch: 7 };
+  let cookie = false;
+  const fetchImpl = async (input: RequestInfo | URL) => {
+    const path = new URL(input instanceof Request ? input.url : input.toString()).pathname;
+    if (path === "/api/v1/profile/resume") {
+      if (cookie) return Response.json({ state: "refused", code: "PROFILE_TRANSITION_BLOCKED" }, { status: 409 });
+      cookie = true; return Response.json(active);
+    }
+    return Response.json(cookie ? active : { state: "signed-out", resumable: true });
+  };
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl });
+  const settledA: string[] = [], settledB: string[] = [];
+  const winner = createServedOnboardingPort(client, state => settledA.push(state.state));
+  const loser = createServedOnboardingPort(client, state => settledB.push(state.state));
+  assert.equal((await winner.resume()).state, "active");
+  assert.equal((await loser.resume()).state, "active");
+  assert.deepEqual(settledB, ["active"]);
+});

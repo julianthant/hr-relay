@@ -78,7 +78,12 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
       const result = await client.confirmProfileOnboardingDuo({ operationId: scope.operationId, method: scope.method, attemptId: scope.attemptId, operatorConfirmed: true });
       return accept(result);
     },
-    async resume() { return accept(await client.resumeProfile(), true); },
+    async resume() {
+      const result = await client.resumeProfile();
+      if (result.state !== "refused" && result.state !== "error") return accept(result, true);
+      const shared = await client.readProfileSession().catch(() => undefined);
+      return accept(shared?.state === "active" ? shared : result, true);
+    },
     async submit(step, details) {
       const result = step === "signup" ? await client.signUpProfile(details) : await client.signInProfile({ email: details.email, password: details.password });
       if (step === "signup" && result.state !== PROFILE_ONBOARDING_STATE && result.state !== "refused" && result.state !== "error") throw new Error("ONBOARDING_DRAFT_REQUIRED");

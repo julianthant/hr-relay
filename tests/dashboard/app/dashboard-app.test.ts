@@ -305,6 +305,17 @@ describe_m1("served sign-up Finish", () => {
 
 
 
+  it_m1("opens the sign-up form from the Sign up link after a refused login", async () => {
+    window.history.replaceState(null, "", "/");
+    const client = { ...appClient(), readProfileSession: async () => ({ state: "refused" as const, code: "PROFILE_SIGN_IN_REFUSED" as const }) };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+    await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
+    await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Log in")?.click(); });
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+  });
+
   it_m1("opens sign-up on a computer with no profiles", async () => {
     window.history.replaceState(null, "", "/");
     const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: true }) };
