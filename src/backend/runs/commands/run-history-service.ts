@@ -19,7 +19,10 @@ export function createRunHistoryService(input: { database: AuthorityDatabase; li
     return result;
   };
   return {
-    status: () => input.lifecycle.historyStatus(),
+    status() {
+      if (input.database.resumeRunDeletionFiles() > 0) input.afterClear();
+      return input.lifecycle.historyStatus();
+    },
     clear: request => settle(input.lifecycle.clearHistory(request)),
     check: request => settle(input.lifecycle.clearHistoryResult(request)),
   };

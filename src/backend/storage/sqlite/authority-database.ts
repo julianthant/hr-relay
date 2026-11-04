@@ -1632,7 +1632,7 @@ function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion:
   return { settingsAuthority, configSnapshots, slots, browsers, controls, verificationProfiles: readWorkerVerificationProfiles(database, slots) };
 }
 
-function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>) {
+function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>, artifactRoot: string) {
   const browserProfiles = browserProfileInventory(database, inspection.schemaVersion);
   const reservations = readWorkerReservationCustody(database, browserProfiles.slots, browserProfiles.controls);
   const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
@@ -1641,13 +1641,13 @@ function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typ
   const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
   const exclusiveSessionLeases = inspection.schemaVersion >= 14 ? database.prepare("SELECT * FROM exclusive_session_leases ORDER BY id").all().map(exclusiveSessionLeaseFromRow) : [];
   const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
-  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, ...browserProfiles, reservations, leases, runs, writeIntents, duoLeases, exclusiveSessionLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, ...browserProfiles, reservations, leases, runs, writeIntents, duoLeases, exclusiveSessionLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database, artifactRoot) });
 }
 
-function flatQueuedRunCancellationInventory(database: DatabaseSync, assertResourcesClosed: (facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) => void) {
+function flatQueuedRunCancellationInventory(database: DatabaseSync, artifactRoot: string, assertResourcesClosed: (facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) => void) {
   const inspection = inspectNativeAuthority(database, 6);
   if (inspection.installationId !== undefined || inspection.profileId !== undefined) throw new Error("queued-run-cancellation-binding-refused");
-  const facts = maintenanceInventory(database, inspection);
+  const facts = maintenanceInventory(database, inspection, artifactRoot);
   const candidates = facts.runs.filter(run => run.lifecycle.state !== "terminal");
   for (const run of candidates) {
     if (run.lifecycle.state !== "queued" || run.claimGeneration !== 0 || runClaim(run) !== undefined
@@ -1920,15 +1920,22 @@ export class CredentialContextRequiredError extends Error {
   }
 }
 
-function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, candidate?: ArtifactRef): readonly ArtifactRef[] {
+function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artifactRoot: string, candidate?: ArtifactRef): readonly ArtifactRef[] {
       const references = new Map<string, ArtifactRef>();
       const deletions = database.prepare("SELECT * FROM deleted_runs").all().map(deletedRunFromRow);
       const retainedCandidates = artifactReferencesIn([
-        ...deletions.flatMap(deletion => deletion.files.filter(file => file.disposition === "retain").map(file => file.ref)),
+        ...deletions.flatMap(deletion => deletion.files.filter(file => file.disposition === "retain" || deletion.cleanupState === "pending").map(file => file.ref)),
         ...(candidate === undefined ? [] : [candidate]),
       ]);
       for (const deletion of deletions) if (deletion.cleanupState === "pending") {
-        for (const file of deletion.files) if (file.disposition === "remove") references.set(file.ref.sha256, file.ref);
+        for (const file of deletion.files) if (file.disposition === "remove") {
+          try { fileStatus(join(artifactRoot, `${file.ref.sha256}.artifact`)); }
+          catch (error) {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
+            throw error;
+          }
+          references.set(file.ref.sha256, file.ref);
+        }
       }
       const visit = (value: unknown): void => {
         for (const ref of retainedCandidates) if (containsDeletionArtifactReference(value, ref)) references.set(ref.sha256, ref);
@@ -2115,7 +2122,17 @@ export class AuthorityDatabase implements Disposable {
     credentials?: CredentialStore,
   ): AuthorityDatabase {
     admission.assertProfileRuntime();
-    return new AuthorityDatabase(admission, input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks, credentials);
+    const options = AuthorityDatabaseOptionsSchema.parse(input);
+    const database = new AuthorityDatabase(admission, options, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks, credentials);
+    if (options.openMode !== "read-write") return database;
+    try {
+      database.resumeRunDeletionFiles();
+      return database;
+    } catch (error) {
+      try { database.close(); }
+      catch (closeError) { throw retainAuthoritySourceClosure([error, closeError], { database, admission }); }
+      throw error;
+    }
   }
 
   static readIncompleteOnboardingInventory(admission: RuntimeAdmission) {
@@ -2128,7 +2145,7 @@ export class AuthorityDatabase implements Disposable {
       if (canonicalJsonStringify(names) !== canonicalJsonStringify(expected)) throw new Error("profile-incomplete-inventory-schema-mismatch");
       const counts = Object.freeze(AUTHORITY_TABLE_REGISTRY.map(table => Object.freeze({ table: table.name,
         count: z.strictObject({ count: z.number().int().safe().nonnegative() }).parse(database.prepare(`SELECT COUNT(*) AS count FROM ${table.name}`).get()).count })));
-      const artifactReferenceCount = readManagedArtifactReferencesFromDatabase(database).length;
+      const artifactReferenceCount = readManagedArtifactReferencesFromDatabase(database, owner.artifactRoot).length;
       const initialWorkbookTypeOnly = hasOnlyInitialWorkbookType(database);
       const pristineTable = (row: typeof counts[number]) => row.table === "database_states" || row.table === "database_upgrades"
         || (row.table === "workbook_types" ? initialWorkbookTypeOnly : row.count === 0);
@@ -2175,7 +2192,7 @@ export class AuthorityDatabase implements Disposable {
       if (inspection.schemaVersion === 6
         ? inspection.installationId !== undefined || inspection.profileId !== undefined
         : inspection.installationId !== binding?.installationId || inspection.profileId !== binding?.profileId) throw new Error("profile-maintenance-binding-mismatch");
-      return maintenanceInventory(database, inspection);
+      return maintenanceInventory(database, inspection, owner.artifactRoot);
     });
   }
 
@@ -2226,7 +2243,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   static async readFlatQueuedRunCancellation(path: string) {
-    return withReadonlyAuthoritySnapshot(path, database => flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed));
+    return withReadonlyAuthoritySnapshot(path, database => flatQueuedRunCancellationInventory(database, join(dirname(path), "artifacts"), assertCredentialCopyResourcesClosed));
   }
 
   // This finite native6 command cannot grant ordinary profile runtime authority.
@@ -2256,7 +2273,7 @@ export class AuthorityDatabase implements Disposable {
     try {
       database.exec("BEGIN IMMEDIATE");
       try {
-        const inventory = flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed);
+        const inventory = flatQueuedRunCancellationInventory(database, join(dirname(path), "artifacts"), assertCredentialCopyResourcesClosed);
         if (inventory.digest !== expectedDigest) throw new Error("queued-run-cancellation-capture-changed");
         const now = clock.now().toISOString();
         for (const current of inventory.candidates) {
@@ -3049,7 +3066,7 @@ export class AuthorityDatabase implements Disposable {
 
   readManagedArtifactReferences(candidate?: ArtifactRef): readonly ArtifactRef[] {
     this.#assertOpen();
-    return this.#withReadSnapshot(() => readManagedArtifactReferencesFromDatabase(this.#database, candidate));
+    return this.#withReadSnapshot(() => readManagedArtifactReferencesFromDatabase(this.#database, this.#admission.artifactRoot, candidate));
   }
 
   static reclaimStoppedDiagnostics(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock,
@@ -3059,7 +3076,7 @@ export class AuthorityDatabase implements Disposable {
     return withAuthorityDatabaseReadOnly(admission, path, database => {
       const inspection = inspectNormalAuthority(database), binding = admission.profileBinding;
       if (inspection.installationId !== binding.installationId || inspection.profileId !== binding.profileId) throw new Error("profile-maintenance-binding-mismatch");
-      return reclaimDiagnosticStages(admission, ref => readManagedArtifactReferencesFromDatabase(database, ref).some(reference => reference.id === ref.id || reference.sha256 === ref.sha256), operation);
+      return reclaimDiagnosticStages(admission, ref => readManagedArtifactReferencesFromDatabase(database, admission.artifactRoot, ref).some(reference => reference.id === ref.id || reference.sha256 === ref.sha256), operation);
     });
   }
 
@@ -3657,12 +3674,13 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  resumeRunDeletionFiles(): void {
+  resumeRunDeletionFiles(): number {
     if (this.#transactionDepth !== 0) throw new Error("run-deletion-cleanup-requires-committed-receipt");
     this.#admission.assertWritable();
     const pending = this.#database.prepare("SELECT * FROM deleted_runs WHERE cleanup_state='pending' ORDER BY deleted_at,run_id").all()
       .map(row=>deletedRunFromRow(row).receipt);
     for (const receipt of pending) this.settleRunDeletionFiles({runId:receipt.runId,commandId:receipt.commandId});
+    return pending.length;
   }
 
   settleRunDeletionFiles(input: unknown): "complete" {

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ArtifactRefSchema, type ArtifactRef } from "../../../../src/models/artifacts/artifacts.js";
 import { findProfileFixtureAdmission } from "../../../support/helpers/admission-fixture.js";
+import { enumerateProfileCredentialMembership } from "../../../../src/backend/storage/maintenance/profile-inventory.js";
 import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
 import { ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { deletedRunFromRow } from "../../../../src/backend/storage/sqlite/deleted-run-row.js";
@@ -14,7 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { createRunHistoryService } from "../../../../src/backend/runs/commands/run-history-service.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
-import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createContentAddressedArtifactWriter, removeArtifactDeletionFile } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { ClearRunHistoryRequestSchema } from "../../../../src/models/dashboard/run-history.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
@@ -68,12 +69,12 @@ async function fixture() {
         sensitivity: "redacted", width: 1, height: 1 }] });
     return join(profile.admission.artifactRoot, `${ref.sha256}.artifact`);
   };
-  const ordinary = async (run: ReturnType<typeof seed>, shared?: ArtifactRef) => {
+  const ordinary = async (run: ReturnType<typeof seed>, shared?: ArtifactRef, nodeId = "render-page") => {
     const writer = createContentAddressedArtifactWriter({ admission: profile.admission }); await writer.ready;
-    const ref = shared ?? await writer.put(Buffer.from(`ordinary rendered page ${run.envelope.runId}`), { mediaType: "image/png" });
+    const ref = shared ?? await writer.put(Buffer.from(`ordinary rendered page ${run.envelope.runId} ${nodeId}`), { mediaType: "image/png" });
     const output = ExtractPdfPagesOutputSchema.parse({ pageCount: 1, pages: [{ sourcePage: 1, image: ref }] });
     const checkpoint = RunCheckpointRecordSchema.parse({ workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
-      runId: run.envelope.runId, nodeId: "render-page", attempt: run.envelope.attempt, claimGeneration: 1,
+      runId: run.envelope.runId, nodeId, attempt: run.envelope.attempt, claimGeneration: 1,
       output: { schemaHash: HASH_A, value: output }, descriptorVersion: run.envelope.descriptorVersion,
       contractFingerprint: run.envelope.contractFingerprint, implFingerprint: HASH_A, provenance: [], writtenAt: NOW });
     database.authority.runCheckpoints.insert(checkpoint);
@@ -183,7 +184,7 @@ describe("clear all run history", () => {
     expect(f.database.authority.runs.get(run.envelope.runId)).toBeDefined();
   });
 
-  it("retains confirmed write evidence and transaction history through clear and reopen", async () => {
+  it.each(["complete", "restart-pending"])("retains confirmed write evidence and transaction history through clear and reopen: %s", async cleanup => {
     const w = await historyWorld({ terminalize: true });
     try {
       const admission = findProfileFixtureAdmission(dirname(w.path)); if (admission === undefined) throw new Error("missing fixture admission");
@@ -194,6 +195,12 @@ describe("clear all run history", () => {
       w.database.authority.runCheckpoints.insert({workflowId: run.envelope.workflow, itemId: run.envelope.itemId, runId: run.envelope.runId,
         nodeId: "artifact-proof", attempt: run.envelope.attempt, claimGeneration: 1, output: {schemaHash: HASH_A, value: {artifact: ref}},
         descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, implFingerprint: HASH_A, provenance: [], writtenAt: HISTORY_NOW});
+      if (cleanup === "restart-pending") for (const nodeId of ["first", "second"]) {
+        const artifact = await writer.put(Buffer.from(`restart cleanup ${nodeId}`), {mediaType: "image/png"});
+        w.database.authority.runCheckpoints.insert({workflowId: run.envelope.workflow, itemId: run.envelope.itemId, runId: run.envelope.runId,
+          nodeId, attempt: run.envelope.attempt, claimGeneration: 1, output: {schemaHash: HASH_A, value: {artifact}},
+          descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, implFingerprint: HASH_A, provenance: [], writtenAt: HISTORY_NOW});
+      }
       const permanent = () => {
         using raw = new DatabaseSync(w.path, { readOnly: true });
         return ["write_intents", "write_attempts"].map(table => raw.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
@@ -207,8 +214,26 @@ describe("clear all run history", () => {
         expect(lifecycle.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: cancelled.run.version,
           claim: { workerId: cancelled.run.lifecycle.workerId, claimGeneration: cancelled.run.claimGeneration }, endedAt: HISTORY_NOW }, personLookupDescriptor).state).toBe("applied");
       }
-      const service = createRunHistoryService({ database: w.database, lifecycle, afterClear() {} });
-      expect(service.clear(command)).toEqual({ state: "cleared", commandId: command.commandId, deletedRuns: 3 });
+      if (cleanup === "restart-pending") {
+        expect(lifecycle.clearHistory(command)).toEqual({ state: "cleared", commandId: command.commandId, deletedRuns: 3 });
+        let files;
+        {
+          using raw = new DatabaseSync(w.path, { readOnly: true });
+          files = deletedRunFromRow(raw.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(run.envelope.runId)).files.filter(file => file.disposition === "remove");
+        }
+        expect(files).toHaveLength(2);
+        const first = files[0], second = files[1]; if (first === undefined || second === undefined) throw new Error("missing cleanup fixture files");
+        expect(removeArtifactDeletionFile(admission, first)).toBe("removed");
+        expect(existsSync(join(admission.artifactRoot, `${second.ref.sha256}.artifact`))).toBe(true);
+        w.reopen();
+        const reconstructed = createRunHistoryService({database: w.database,
+          lifecycle: new RunRecordService({ database: w.database, clock: capturedInstantClock(HISTORY_NOW), ids: sequentialIdFactory(), publishQueued() {} }), afterClear() {}});
+        expect(reconstructed.status()).toEqual({state: "available", finishedRuns: 0, activeRuns: 0});
+        for (const file of files) expect(existsSync(join(admission.artifactRoot, `${file.ref.sha256}.artifact`))).toBe(false);
+      } else {
+        const service = createRunHistoryService({ database: w.database, lifecycle, afterClear() {} });
+        expect(service.clear(command)).toEqual({ state: "cleared", commandId: command.commandId, deletedRuns: 3 });
+      }
       expect(permanent()).toEqual(before);
       expect(existsSync(join(admission.artifactRoot, `${ref.sha256}.artifact`))).toBe(true);
       expect(w.database.readManagedArtifactReferences()).toContainEqual(ref);
@@ -216,7 +241,7 @@ describe("clear all run history", () => {
         using raw = new DatabaseSync(w.path, { readOnly: true });
         const manifest = deletedRunFromRow(raw.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(run.envelope.runId));
         expect(manifest.cleanupState).toBe("complete");
-        expect(manifest.files).toMatchObject([{ ref, disposition: "retain" }]);
+        expect(manifest.files).toContainEqual(expect.objectContaining({ ref, disposition: "retain" }));
       }
       expect(w.history.query({ from: "2026-07-01", to: "2026-12-01" }).rows).toHaveLength(2);
       w.reopen(); expect(permanent()).toEqual(before);
@@ -321,8 +346,9 @@ it("rejects replaced ordinary artifact bytes and recovers only the originally ca
   const manifest = f.rows("deleted_runs"); writeFileSync(file, Buffer.concat([bytes, Buffer.from("\n")]));
   expect(()=>f.service().check(command)).toThrow("artifact-deletion-captured-bytes-mismatch");
   expect(f.rows("deleted_runs")).toEqual(manifest);
-  f.reopen(); expect(()=>f.service().check(command)).toThrow("artifact-deletion-captured-bytes-mismatch");
-  writeFileSync(file, bytes); expect(f.service().check(command).state).toBe("cleared"); expect(existsSync(file)).toBe(false);
+  expect(()=>f.reopen()).toThrow("artifact-deletion-captured-bytes-mismatch");
+  expect(f.rows("deleted_runs")).toEqual(manifest);
+  writeFileSync(file, bytes); f.reopen(); expect(f.service().check(command).state).toBe("cleared"); expect(existsSync(file)).toBe(false);
   expect(f.database.readManagedArtifactReferences()).not.toContainEqual(ref);
 });
 
@@ -346,4 +372,97 @@ it("does not let purged diagnostics on a retained run pin a live ordinary artifa
   expect(f.database.settleRunDeletionFiles({runId: first.envelope.runId, commandId: command.commandId})).toBe("complete");
   expect(existsSync(file)).toBe(false);
   expect(f.database.authority.runs.get(retained.envelope.runId)).toBeDefined();
+});
+
+it.each(["before-unlink", "partly-removed"])("recovers %s manifests on runtime reconstruction without the browser command", async interruption => {
+  const f = await fixture(), root = f.seed(), child = f.seed(undefined, root);
+  const first = await f.ordinary(child, undefined, "first"), second = await f.ordinary(child, undefined, "second");
+  const retained = await f.ordinary(root);
+  const library = createWorkbookLibraryService({repository: f.database.authority.workbooks, clock: capturedInstantClock(NOW), sync: unexpectedWorkbookSync});
+  const workbook = library.create({name: "Retained.xlsx", themes: [], hasFormulas: false, sheets: [{id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [{id: "row", cells: [{value: "Retained"}]}]}]});
+  f.database.authority.intakeSessions.create({reservedManifestId: randomUUID(), intakeSessionId: randomUUID(), actorId: "local-operator", workflow: root.envelope.workflow,
+    artifact: retained.ref, workbookSource: {libraryId: workbook.libraryId, version: workbook.version}, sheet: "Sheet", headerRowIndex: 0,
+    bindings: [], constants: [], corrections: [], exclusions: [], state: "mapping", validation: {state: "none"}, version: 1, createdAt: NOW, updatedAt: NOW});
+  if (interruption === "partly-removed") {
+    f.fileFault(true);
+    expect(() => f.service().clear(request())).toThrow("history-file-fault");
+    f.fileFault(false);
+  } else expect(f.lifecycle().clearHistory(request())).toMatchObject({state: "cleared", deletedRuns: 2});
+  const original = f.rows("deleted_runs").map(deletedRunFromRow);
+  expect(original.some(manifest => manifest.cleanupState === "pending")).toBe(true);
+  expect([first, second].filter(artifact => existsSync(artifact.file))).toHaveLength(interruption === "partly-removed" ? 1 : 2);
+  const later = f.seed(); const laterFile = await f.ordinary(later); await f.ordinary(later, retained.ref, "shared-library");
+  const before = ["runs", "commands", "command_audits", "artifacts", "workbook_library"].map(table => [table, f.rows(table)]);
+  f.reopen();
+  const reconstructed = f.service();
+  expect(reconstructed.status()).toEqual({state: "available", finishedRuns: 1, activeRuns: 0});
+  expect([first, second].every(artifact => !existsSync(artifact.file))).toBe(true);
+  expect(existsSync(retained.file)).toBe(true); expect(existsSync(laterFile.file)).toBe(true);
+  expect(["runs", "commands", "command_audits", "artifacts", "workbook_library"].map(table => [table, f.rows(table)])).toEqual(before);
+  const completed = f.rows("deleted_runs").map(deletedRunFromRow);
+  expect(completed.map(({cleanupState: _state, ...manifest}) => manifest)).toEqual(original.map(({cleanupState: _state, ...manifest}) => manifest));
+  expect(completed.every(manifest => manifest.cleanupState === "complete")).toBe(true);
+  const inventory = f.database.readProfileResourceCustody().artifactReferences;
+  expect(inventory).toContainEqual(retained.ref); expect(inventory).toContainEqual(laterFile.ref);
+  expect(inventory).not.toContainEqual(first.ref); expect(inventory).not.toContainEqual(second.ref);
+  f.reopen(); expect(f.service().status()).toMatchObject({finishedRuns: 1});
+});
+
+it("inventories only still-present pending files after a partial unlink, preserving the exact manifest", async () => {
+  const f = await fixture(), root = f.seed();
+  const first = await f.ordinary(root, undefined, "first"), second = await f.ordinary(root, undefined, "second");
+  f.fileFault(true); expect(() => f.service().clear(request())).toThrow("history-file-fault"); f.fileFault(false);
+  const manifest = f.rows("deleted_runs").map(deletedRunFromRow);
+  expect(manifest[0]?.files).toHaveLength(2); expect(manifest[0]?.cleanupState).toBe("pending");
+  const present = [first, second].filter(artifact => existsSync(artifact.file));
+  expect(present).toHaveLength(1);
+  expect(f.database.readManagedArtifactReferences()).toEqual(present.map(artifact => artifact.ref));
+  expect(f.database.readProfileResourceCustody().artifactReferences).toEqual(present.map(artifact => artifact.ref));
+  const membership = enumerateProfileCredentialMembership(f.profile.admission, f.database.readProfileResourceCustody(), join(f.profile.stateRoot, "browsers"), {
+    workerDirectory() { throw new Error("no fixture browser membership"); },
+  });
+  expect(membership.identities.filter(entry => entry.path.endsWith(".artifact")).map(entry => entry.path)).toEqual(present.map(artifact => artifact.file));
+  expect(f.rows("deleted_runs").map(deletedRunFromRow)).toEqual(manifest);
+});
+
+it("keeps read-only inspection passive and never sweeps unowned files during reconstruction", async () => {
+  const f = await fixture(), root = f.seed(), artifact = await f.ordinary(root);
+  expect(f.lifecycle().clearHistory(request()).state).toBe("cleared");
+  const unknown = join(f.profile.admission.artifactRoot, `${"f".repeat(64)}.artifact`);
+  writeFileSync(unknown, "unowned bytes", {mode: 0o600});
+  using inspection = AuthorityDatabase.open({path: f.profile.path, busyTimeoutMs: 250, migrationOwner: "history-read-only-test", openMode: "storage-doctor-read-only-no-migrate"});
+  expect(existsSync(artifact.file)).toBe(true);
+  expect(f.rows("deleted_runs").map(deletedRunFromRow)[0]?.cleanupState).toBe("pending");
+  inspection.close(); f.reopen();
+  expect(existsSync(artifact.file)).toBe(false); expect(readFileSync(unknown, "utf8")).toBe("unowned bytes");
+  expect(() => enumerateProfileCredentialMembership(f.profile.admission, f.database.readProfileResourceCustody(), join(f.profile.stateRoot, "browsers"), {
+    workerDirectory() { throw new Error("no fixture browser membership"); },
+  })).toThrow("profile-inventory-artifact-unowned");
+});
+
+it("discovers pending cleanup from status after browser request state is discarded", async () => {
+  const f = await fixture(), root = f.seed();
+  const first = await f.ordinary(root, undefined, "first"), second = await f.ordinary(root, undefined, "second");
+  f.fileFault(true); expect(() => f.service().clear(request())).toThrow("history-file-fault");
+  expect(() => f.service().status()).toThrow("history-file-fault");
+  const before = ["commands", "command_audits"].map(table => f.rows(table)), refreshed = f.refreshed;
+  expect([first, second].filter(artifact => existsSync(artifact.file))).toHaveLength(1);
+  f.fileFault(false);
+  expect(f.service().status()).toEqual({state: "available", finishedRuns: 0, activeRuns: 0});
+  expect(f.refreshed).toBe(refreshed + 1);
+  expect([first, second].every(artifact => !existsSync(artifact.file))).toBe(true);
+  expect(f.rows("deleted_runs").map(deletedRunFromRow).every(manifest => manifest.cleanupState === "complete")).toBe(true);
+  expect(["commands", "command_audits"].map(table => f.rows(table))).toEqual(before);
+});
+
+it("does not reuse completed removal metadata for a later file with identical content", async () => {
+  const f = await fixture(), root = f.seed();
+  const writer = createContentAddressedArtifactWriter({admission: f.profile.admission}); await writer.ready;
+  const bytes = Buffer.from("identical content after completed cleanup"), original = await writer.put(bytes, {mediaType: "image/png"});
+  await f.ordinary(root, original); expect(f.service().clear(request()).state).toBe("cleared");
+  const replacement = await writer.put(bytes, {mediaType: "image/png"});
+  expect(replacement.sha256).toBe(original.sha256); expect(replacement.id).not.toBe(original.id);
+  const later = f.seed(); const retained = await f.ordinary(later, replacement);
+  expect(f.database.readManagedArtifactReferences()).toEqual([replacement]);
+  f.reopen(); expect(existsSync(retained.file)).toBe(true); expect(f.database.readManagedArtifactReferences()).toEqual([replacement]);
 });
