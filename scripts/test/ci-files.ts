@@ -8,6 +8,7 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/scripts/dev/relay.windows-native.integration.test.ts",
   "tests/backend/storage/maintenance/custody-availability.windows-native.integration.test.ts",
   "tests/backend/storage/private-path.windows-native.integration.test.ts",
+  "tests/backend/storage/private-path.macos-native.integration.test.ts",
   "tests/backend/storage/windows-private-path.windows-native.integration.test.ts",
   "tests/backend/storage/sqlite/profile-local-databases.windows-native.integration.test.ts",
   "tests/backend/storage/maintenance/account-deletion.integration.test.ts",

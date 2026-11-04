@@ -333,7 +333,8 @@ function restoreBrowserCensus(admission: RuntimeAdmission, scope: "browser-roots
         if (!child.isDirectory() || child.name !== "sharepoint") throw new ProfileRestoreBrowserCustodyUnprovedError();
         addProfile(profileRoot, join(path, child.name));
       }
-    } else if (/^onboarding-(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-){3}g[1-9]\d*$/u.test(name)) addProfile(profileRoot, path);
+    } else if (rows.some(row => row.owner.kind === "signup" && join(binding.machineRoot, row.profileRoot) === profileRoot
+      && join(binding.machineRoot, row.directory) === path)) addProfile(profileRoot, path);
     else throw new ProfileRestoreBrowserCustodyUnprovedError();
   }
   if (rows.length !== profiles.length || rows.some(row => !profiles.some(profile => profile.profileDirectory === join(binding.machineRoot, row.directory)))) throw new ProfileRestoreBrowserCustodyUnprovedError();

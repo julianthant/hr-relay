@@ -68,7 +68,10 @@ async function withStoppedMachineStorage<Result>(workspace: string, lifetime: Ru
   work: (machine: RuntimeAdmission, owned: RuntimeAdmission[]) => Promise<Result>): Promise<Result> {
   const machine = StorageAdmission.acquireStoppedMachineControlMaintenance(workspace, lifetime), owned: RuntimeAdmission[] = [];
   let outcome: { value: Result } | undefined, primary: { error: unknown } | undefined;
-  try { outcome = { value: await work(machine, owned) }; }
+  try {
+    await machine.upgradeBrowserRoots(createNativeBrowserProbe, systemClock);
+    outcome = { value: await work(machine, owned) };
+  }
   catch (error) { primary = { error }; }
   if (primary !== undefined && hasUnprovedSourceClosure(primary.error)) {
     machine.retainSourceClosure(primary.error);

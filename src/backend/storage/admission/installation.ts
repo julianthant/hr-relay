@@ -34,7 +34,7 @@ import { systemClock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { BrowserRootsSchema,type BrowserRootsDocument } from "../browser-root-contract.js";
+import { BrowserRootsSchema,parseStoppedBrowserRootUpgradeSource,type BrowserRootsDocument } from "../browser-root-contract.js";
 import type { BrowserProfileProbeFactory } from "../browser-roots.js";
 import { StoppedCredentialErasureHeadSchema as CredentialErasureHeadSchema,StoppedCredentialKeyWitnessSchema as CredentialKeyWitnessSchema,StoppedDuoContinuityRowSchema as DuoContinuityRowSchema,readStoppedCredentialConversion,releaseStoppedCredentialConversion,type StoppedDuoContinuityRow as DuoContinuityRow,type StoppedControlCredentialAttestation } from "../configuration/credential-conversion.js";
 import { captureCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
@@ -1158,7 +1158,7 @@ function initializeMachineRegistry(control: string, locator: RuntimeLocator, fla
     else if (canonicalJsonStringify(readStrict(path, z.unknown())) !== canonicalJsonStringify(value)) fail("profile-machine-initialization-changed");
   };
   const document = ProfileRegistryDocumentSchema.parse({ schemaVersion: 3, installationId: locator.installationId, revision: 0, profiles: [], activeProfileId: null, sessionGeneration: 0 });
-  publish(join(directory, "browser-roots.json"), BrowserRootsSchema.parse({ schemaVersion: 1, installationId: locator.installationId, revision: 0, nextGeneration: 1, roots: [] }));
+  publish(join(directory, "browser-roots.json"), BrowserRootsSchema.parse({ schemaVersion: 2, installationId: locator.installationId, revision: 0, nextHandle: 1, nextGeneration: 1, roots: [] }));
   publish(join(directory, "profile-registry-version.json"), { schemaVersion: 8 });
   publish(join(directory, "profiles.json"), document);
   publish(join(directory, "profile-verifiers.json"), { schemaVersion: 1, profiles: [] });
@@ -1295,7 +1295,9 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
   if (stoppedForward) upgradeRestoreControl(control, locator);
   const marker = readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
   if (marker.schemaVersion === 8) {
-    const browsers = readProfileEvidence(join(machine, "browser-roots.json"), BrowserRootsSchema);
+    if (!stoppedForward && lstatMaybe(join(control, "browser-root-upgrade.json"))) fail("browser-root-upgrade-pending");
+    const browsers = stoppedForward ? parseStoppedBrowserRootUpgradeSource(readProfileEvidence(join(machine, "browser-roots.json"), z.unknown()))
+      : readProfileEvidence(join(machine, "browser-roots.json"), BrowserRootsSchema);
     if (browsers.installationId !== locator.installationId) fail("browser-registry-installation-mismatch");
   }
   const pending = join(control, "profile-control-upgrade.json");
@@ -2646,11 +2648,11 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         if (!plan) {
           const { planStoppedBrowserRoots, probeStoppedControlBrowserRoots } = await import("../browser-roots.js");
           if (pending === undefined) {
-            let browsers: BrowserRootsDocument = BrowserRootsSchema.parse({ schemaVersion: 1, installationId: locator.installationId, revision: 0, nextGeneration: 1, roots: [] });
+            let browsers: BrowserRootsDocument = BrowserRootsSchema.parse({ schemaVersion: 2, installationId: locator.installationId, revision: 0, nextHandle: 1, nextGeneration: 1, roots: [] });
             for (const [index, claim] of claims.entries()) {
               const admission = admissions[index]; if (admission === undefined) fail("profile-control-upgrade-inventory-required");
-              const planned = planStoppedBrowserRoots(admission, claim, browsers.nextGeneration, systemClock);
-              browsers = BrowserRootsSchema.parse({ ...browsers, nextGeneration: planned.nextGeneration, roots: [...browsers.roots, ...planned.roots] });
+              const planned = planStoppedBrowserRoots(admission, claim, browsers.nextGeneration, browsers.nextHandle, systemClock);
+              browsers = BrowserRootsSchema.parse({ ...browsers, nextHandle: planned.nextHandle, nextGeneration: planned.nextGeneration, roots: [...browsers.roots, ...planned.roots] });
             }
             const document = convertedProfileRegistry(locator, priorDocument), current = convertedProfileControl(locator, prior, document), operationId = conversionOperationId;
             withInstallationControl(control, () => {
