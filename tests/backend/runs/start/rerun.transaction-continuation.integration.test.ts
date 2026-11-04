@@ -251,7 +251,7 @@ it("refuses missing or foreign native child receipt authority before transaction
   const h = await fixture([3], childReceiptDescriptor, undefined, [sourceBoundReadDescriptor]), before = effects(h);
   const repositories = h.database.authority;
   assert.throws(() => validateCompletedTransactionContinuations({ ...repositories,
-    runResults: { ...repositories.runResults, get: () => undefined } }, h.descriptor, h.failed));
+    runResults: { ...repositories.runResults, get: () => undefined, getInitialSettlement: () => undefined, getSettlement: () => undefined } }, h.descriptor, h.failed));
   const actual = repositories.dependencies.evidence(h.failed.envelope.runId, "child");
   assert.throws(() => validateCompletedTransactionContinuations({ ...repositories,
     dependencies: { ...repositories.dependencies, evidence: () => ({ ...actual, parentRunId: RunIdSchema.parse(randomUUID()) }) } }, h.descriptor, h.failed),

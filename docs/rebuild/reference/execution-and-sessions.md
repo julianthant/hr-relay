@@ -98,12 +98,20 @@ evidence, and authenticated continuation receipts bind reused leaves. Each branc
 executor authenticates the complete release proof after the await. Missing branches, changed
 bindings or an unproved release fail before parent continuation; UNKNOWN writes never redispatch.
 
-A released delegation wait retains its run, attempt, queue position and enqueue time. Dashboard
+A released delegation wait retains its run, attempt, queue position and enqueue time.
+A read-only parent refresh retains those identities too. Its waiting phase cannot claim a worker;
+settlement of the accepted retry cohort records one native wakeup. Retry/Recover audits include
+actual synchronous parent version changes, while a later wakeup retains its own journal identity. Dashboard
 reads authenticate the release and derive `running` at its owning step, or `blocked` when an awaited
 descendant holds a `block-parent` edge. Approval stays on the run that owns the gate. Child changes
 refresh every waiting ancestor. A manual retry pauses its parent through the existing pause control;
 Resume binds its native command identity to the exact completed retry receipts before another claim. Delegated Retry uses
 the same checkpoint, transaction and uncertain-write validation as checkpoint recovery.
+
+Fan-out revisions retain an unbroken native predecessor chain. A consumed result cites an exact
+settlement, while current joins use the current member set. Cancellation and worker admission keep
+custody of retained physical children. A read reused by a new review keeps its original observation
+time; rebuilding the review cannot make an expired lookup fresh.
 
 Queue parentage derives from authenticated native manifests and their complete retry histories.
 Read-only snapshots share authenticated groups only for identical canonical manifest content and
@@ -805,3 +813,5 @@ continue to retain custody.
 - OnBase's concrete driver and login binding require live operator acceptance; fixture retrieval semantics do not establish live selector validity.
 - Unbound browser systems need their driver and verified login binding before a workflow can use them.
 - A workflow that declares `session:"fresh"` needs its node-ordering proof in addition to the manager's close-before-open tests.
+
+Native results retain the exact terminal run context under `(runId, appliedVersion)`. Result creation and terminal authorization carry independent timestamps; retained run context uses its terminal authorization time. Receipts bind that same settlement. Current reads select the completion’s native applied version, or the exact terminal lifecycle evidence; an active run has no current settled output. Initial result and receipt payload bytes and initial receipt identities remain unchanged. Refreshed settlements receive distinct receipt identities; exact historical result reads authenticate the retained terminal authorization and its native command.

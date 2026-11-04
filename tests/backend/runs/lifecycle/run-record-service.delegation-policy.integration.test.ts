@@ -1,4 +1,5 @@
 import * as delegationAuthority from "../../../../src/backend/storage/sqlite/delegation-authority.js";
+import * as commandRows from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { DatabaseSync } from "node:sqlite";
 import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
@@ -131,14 +132,17 @@ it("authenticates each sibling issuance once during native child eligibility wit
     invocationCommandId: invocation.commandId, index,
   }), 0]));
   const generation = f.database.getMeta().authorityGeneration;
-  f.database.withAuthorityTransaction(repositories => {
-    assert.equal(delegatedCandidateEligible({ ...repositories, lifecycleJournal: { ...repositories.lifecycleJournal,
-      getCommand: commandId => {
-        if (reads.has(commandId)) reads.set(commandId, (reads.get(commandId) ?? 0) + 1);
-        return repositories.lifecycleJournal.getCommand(commandId);
-      },
-    } }, children[0], f.root.envelope.workflow, id => f.modules.find(module => module.descriptor.id === id)?.descriptor), true);
-  });
+  const probe = vi.spyOn(commandRows,"commandFromRow");
+  try {
+    f.database.withAuthorityTransaction(repositories => {
+      probe.mockClear();
+      assert.equal(delegatedCandidateEligible(repositories, children[0], f.root.envelope.workflow,
+        id => f.modules.find(module => module.descriptor.id === id)?.descriptor), true);
+      for (const result of probe.mock.results) if (result.type === "return" && reads.has(result.value.commandId)) {
+        reads.set(result.value.commandId,(reads.get(result.value.commandId) ?? 0) + 1);
+      }
+    });
+  } finally { probe.mockRestore(); }
   assert.deepEqual([...reads.values()], [1, 1]);
   assert.equal(f.database.getMeta().authorityGeneration, generation);
 });

@@ -2,7 +2,7 @@ import type { RunRecord } from "../../../models/run/record.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
-import { authenticateDelegationGroup, retainedDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { delegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import type { RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
@@ -32,12 +32,9 @@ export function delegatedCandidateEligible(repositories: AuthorityRepositories, 
   for (const [index, child] of ancestry.slice(0, -1).entries()) {
     const parent = ancestry[index + 1];
     if (parent === undefined) throw new Error("delegation-parent-unavailable");
-    const matches = retainedDelegationManifests(repositories, parent.envelope.runId)
-      .map(manifest => ({ manifest, group: authenticateDelegationGroup(repositories, manifest) }))
-      .flatMap(({ manifest, group }) => group.children.filter(member => child === candidate ? member.child.envelope.runId === child.envelope.runId : member.history.includes(child.envelope.runId))
-        .map(member => ({ manifest, invocation: group.invocation, member })));
-    if (matches.length !== 1) throw new Error("delegation-dispatch-membership-unavailable");
-    const { manifest, invocation } = matches[0];
+    const { manifest, group } = delegationGroupForChild(repositories,parent.envelope.runId,child.envelope.runId);
+    if (child === candidate && !group.children.some(member => member.child.envelope.runId === child.envelope.runId)) throw new Error("delegation-dispatch-membership-unavailable");
+    const { invocation } = group;
     if (parent.cancelRequested === true && manifest.policy.cascadeCancel !== "independent") return false;
     const producer = resolveDescriptor(parent.envelope.workflow), target = resolveDescriptor(child.envelope.workflow);
     const node = producer === undefined ? undefined : descriptorRuntimeNodes(producer).find(node => node.id === invocation.nodeId);
