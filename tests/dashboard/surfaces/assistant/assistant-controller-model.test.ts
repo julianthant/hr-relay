@@ -264,3 +264,28 @@ it('binds selected-run workflow proposals to the current selection and confirms 
   assert.equal(confirms, 1);
   c.action({ type: 'confirm' }); assert.equal(confirms, 1);
 });
+
+it('tests explicitly without overwriting the draft, shows the named failure and permits another public test', async () => {
+  const calls: AssistantRequest[] = [];
+  let failTransport = false;
+  const c = createAssistantController({ async assistantRespond(request) { calls.push(request); if (failTransport) throw Error('private transport details');
+    return { state: 'refused', code: 'ASSISTANT_CAPABILITY_FAILED', message: 'ignored server prose' }; } }, { authority: 'current', subjectRef: 'private-selection' });
+  c.action({ type: 'edit', value: 'unsent draft' }); c.action({ type: 'verify' });
+  await vi.waitFor(() => assert.equal(c.snapshot().verification?.state, 'failed'));
+  assert.deepEqual(calls, [{ message: ASSISTANT_VERIFY_COMMAND }]); assert.equal(c.snapshot().draft, 'unsent draft');
+  assert.equal(c.snapshot().messages.at(-1)?.code, 'ASSISTANT_CAPABILITY_FAILED');
+  failTransport = true; c.action({ type: 'verify' });
+  await vi.waitFor(() => assert.equal(c.snapshot().messages.at(-1)?.code, 'ASSISTANT_VERIFICATION_FAILED'));
+  assert.equal(c.snapshot().turn.state, 'idle'); assert.equal(JSON.stringify(c.snapshot()).includes('private transport'), false);
+});
+
+it('normalizes pasted verification whitespace and cancels the public test without creating an unknown action', async () => {
+  const reply = pending(), calls: AssistantRequest[] = [];
+  const c = createAssistantController({ async assistantRespond(request) { calls.push(request); return reply.promise; } }, { authority: 'current', subjectRef: 'private' });
+  c.action({ type: 'edit', value: '  /verify-assistant\n' }); c.action({ type: 'send' });
+  assert.deepEqual(calls, [{ message: ASSISTANT_VERIFY_COMMAND }]);
+  c.action({ type: 'cancel' }); assert.equal(c.snapshot().turn.state, 'cancelled');
+  reply.settle({ state: 'answered', text: 'Late test result', citations: [] }); await Promise.resolve(); await Promise.resolve();
+  assert.equal(c.snapshot().messages.some(message => message.text === 'Late test result'), false);
+  c.action({ type: 'verify' }); assert.equal(calls.length, 2);
+});

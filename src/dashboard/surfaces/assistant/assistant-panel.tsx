@@ -7,10 +7,10 @@ import { dsFocus, dsIcon, dsLayer } from '../../ds/theme/tokens.js';
 import { ASSISTANT_STARTERS, assistantConfirmRefusal, type AssistantAction, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
 import './assistant.css';
 
-export function AssistantPanel({ state, revision, accountAvailable, canCompose = accountAvailable, onAction, onMockConfirm, defaultOpen = false, confirmRefusal, statusText = 'Mock preview', footnote = 'Scripted preview · Synthetic data · No runs start', onOpenSettings, launcherBottom, accountHeading = 'ChatGPT not connected', accountNotice = 'Review the connection in Settings. This mock cannot sign in.' }: {
+export function AssistantPanel({ state, revision, accountAvailable, canCompose = accountAvailable, showTestAssistant = false, onAction, onMockConfirm, defaultOpen = false, confirmRefusal, statusText = 'Mock preview', footnote = 'Scripted preview · Synthetic data · No runs start', onOpenSettings, launcherBottom, accountHeading = 'ChatGPT not connected', accountNotice = 'Review the connection in Settings. This mock cannot sign in.' }: {
   state: AssistantState;
   revision: string;
-  accountAvailable: boolean; canCompose?: boolean;
+  accountAvailable: boolean; canCompose?: boolean; showTestAssistant?: boolean;
   onAction: (action: AssistantAction) => void;
   onMockConfirm?: (proposal: AssistantMockProposal) => void;
   confirmRefusal?: string;
@@ -118,8 +118,9 @@ export function AssistantPanel({ state, revision, accountAvailable, canCompose =
             </div>
             {awayFromLatest && <button type="button" className={`assistant-latest ${dsFocus}`} onClick={() => { followLatest.current = true; transcript.current?.scrollTo({ top: transcript.current.scrollHeight }); composer.current?.focus({ preventScroll: true }); }}><ArrowDown aria-hidden size={14} />Jump to latest</button>}
           </div>
-          <form className="assistant-composer" onSubmit={event => { event.preventDefault(); if (accountAvailable && !waiting && !uncertain && state.draft.trim()) dispatchAndFocus('send'); }}>
+          <form className="assistant-composer" onSubmit={event => { event.preventDefault(); if (canCompose && !waiting && !uncertain && state.draft.trim()) dispatchAndFocus('send'); }}>
             {!accountAvailable && <div className="assistant-account" role="alert"><CircleAlert aria-hidden size={15} /><div><strong>{accountHeading}</strong><p>{accountNotice}</p></div></div>}
+            {showTestAssistant && <Button size="sm" variant="ghost" disabled={!canCompose || waiting || uncertain || turn.state === 'proposal'} onClick={() => onAction({ type: 'verify' })}>Test assistant</Button>}
             <div className="assistant-input-card">
               <Textarea ref={composer} className="assistant-compose-input" aria-label="Message" placeholder="Send a message…" rows={2} value={state.draft} onChange={event => onAction({ type: 'edit', value: event.target.value })} onKeyDown={event => {
                 if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form?.requestSubmit(); }

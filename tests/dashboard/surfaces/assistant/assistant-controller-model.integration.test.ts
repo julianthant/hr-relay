@@ -177,9 +177,9 @@ it('renders the existing served action card with truthful local facts and confir
   const cardLabel = card.getAttribute('aria-label'); assert.ok(cardLabel !== null);
   assert.equal(cardLabel, "Proposed action details");
   assert.ok(card.textContent?.includes(actionLabel));
-  assert.match(host.textContent ?? '', /Model, effort and voice controls are unavailable/u);
-  assert.match(host.textContent ?? '', /Review and confirm each proposed change/u);
-  assert.match(host.textContent ?? '', /Select a served run and send “start selected workflow” to propose its subject/u);
+  assert.ok([...host.querySelectorAll('button')].some(button => button.textContent === 'Test assistant'));
+  assert.match(host.textContent ?? '', /Review this proposal. No action has been applied/u);
+  assert.doesNotMatch(host.textContent ?? '', /start selected workflow|Model, effort and voice controls are unavailable/u);
   assert.match(card.textContent ?? '', /SubjectNone/u); assert.match(card.textContent ?? '', /Local notification/u);
   assert.equal(card.textContent?.includes('Dry run'), false); assert.equal(card.textContent?.includes('Alex Rivera'), false);
   const confirm = [...card.querySelectorAll('button')].find(button => button.textContent === 'Confirm'); assert.ok(confirm); assert.equal(confirm.disabled, false);

@@ -1,4 +1,11 @@
 import { AssistantSubjectSchema, type AssistantSubject } from '../../../../models/dashboard/assistant.js';
+import { AssistantLocalEvidenceCitationSchema, type AssistantLocalEvidenceCitation } from '../../../../models/dashboard/assistant.js';
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
+import { buildRunDetail, type RunDetailQueryDeps } from '../../../runs/queries/run-detail.js';
+import type { AssistantReadAllowlist } from '../../../assistant/tools.js';
+import { AssistantContextError } from '../../../assistant/context.js';
+import { TargetNotFoundError } from '../../../runs/commands/refusals.js';
 import type { SchemaBoundCanonicalValue } from '../../../../models/validation/schema-bound-value.js';
 import { deriveSchemaHash } from '../../../../models/validation/schema-bound-value.js';
 import { canonicalJsonStringify, JsonValueSchema } from '../../../../rules/validation/canonical-json.js';
@@ -9,6 +16,52 @@ import type { AssistantPlanner, AssistantPlanningContext } from '../../../assist
 import type { AssistantSubjectBroker } from '../../../assistant/service.js';
 import { selectActiveRunSettings } from '../../../runs/settings/run-settings.js';
 import type { AuthorityDatabase } from '../../../storage/sqlite/authority-database.js';
+
+export function createAssistantReadAllowlist(options: Readonly<{ runDetail: RunDetailQueryDeps; assertCurrent(): void }>): AssistantReadAllowlist {
+  return {
+    selectedRun(subjectRef) {
+      const selection = /^run_([a-f0-9-]{36})_([1-9][0-9]*)$/u.exec(subjectRef ?? '');
+      if (selection === null || !z.uuid().safeParse(selection[1]).success || !Number.isSafeInteger(Number(selection[2]))) throw new AssistantContextError('ASSISTANT_READ_UNAVAILABLE');
+      const runId = selection[1], rowRevision = Number(selection[2]);
+      function project() {
+        options.assertCurrent();
+        const detail = (() => {
+          try { return buildRunDetail(options.runDetail, runId); }
+          catch (error) { if (error instanceof TargetNotFoundError) throw new AssistantContextError('ASSISTANT_READ_UNAVAILABLE'); throw error; }
+        })();
+        if (detail.runId !== runId || detail.rowRevision !== rowRevision) throw new AssistantContextError('ASSISTANT_READ_STALE');
+        const events = detail.timeline.events.slice(-10).map(({ native, at, label, state, notRun }) => ({ native: native ?? null, at, label, state, notRun }));
+        const sources = { status: detail.header, gate: detail.gate, outcome: detail.outcome,
+          timeline: { total: detail.timeline.events.length, events } };
+        const citations = Object.entries(sources).map(([source, value]) => {
+          const quote = canonicalJsonStringify(value);
+          return AssistantLocalEvidenceCitationSchema.parse({ kind: 'local-run', runId, rowRevision, source, quote,
+            digest: createHash('sha256').update(canonicalJsonStringify({ runId, rowRevision, source, quote })).digest('hex') });
+        });
+        options.assertCurrent();
+        return { detail, citations };
+      }
+      const captured = project(), identity = canonicalJsonStringify(captured.citations);
+      const assertCurrent = () => {
+        if (canonicalJsonStringify(project().citations) !== identity) throw new AssistantContextError('ASSISTANT_READ_STALE');
+      };
+      const { header, gate, outcome } = captured.detail;
+      const events = captured.detail.timeline.events;
+      const lines = [`${header.title}: ${header.status}.`, `Workflow: ${header.workflowId}. Attempt: ${header.attempt}.`,
+        gate.state === 'open' ? `Waiting for operator review: ${gate.label}.` : gate.state === 'resolved' ? `Operator review: ${gate.resolution} by ${gate.resolvedBy}.` : `Review: ${gate.reason}.`,
+        outcome.state === 'terminal' ? `Outcome: ${outcome.result}${outcome.rehearsal === true ? ' (dry-run preview)' : ''}. Completed: ${outcome.completedAt}.` : `Outcome unavailable: ${outcome.reason}.`,
+        events.length === 0 ? 'No timeline events are recorded.' : `Latest recorded steps (${Math.min(10, events.length)} of ${events.length}):\n${events.slice(-10).map(event => `${event.at} · ${event.label}: ${event.state}${event.notRun.state === 'present' ? ` (${event.notRun.reason})` : ''}`).join('\n')}`,
+        'These are local recorded facts. They do not authorize an action or prove an external transaction beyond its recorded outcome.'];
+      return { text: lines.join('\n\n'), citations: captured.citations, assertCurrent,
+        validateCitation(value: AssistantLocalEvidenceCitation) {
+          assertCurrent();
+          const parsed = AssistantLocalEvidenceCitationSchema.parse(value);
+          if (!captured.citations.some(citation => canonicalJsonStringify(citation) === canonicalJsonStringify(parsed))) throw new AssistantContextError('ASSISTANT_CONTEXT_UNAVAILABLE');
+          return parsed;
+        } };
+    },
+  };
+}
 
 export function createAssistantPlanningAdapters(options: Readonly<{
   database: Pick<AuthorityDatabase, 'authority' | 'withAuthorityReadSnapshot' | 'getMeta'>;
