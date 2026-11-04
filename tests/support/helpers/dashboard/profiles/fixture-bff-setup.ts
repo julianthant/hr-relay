@@ -125,7 +125,7 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
     if (input.preflightScenario) registerFixturePreflightRoutes(app, profile, input.preflightScenario);
     else app.get("/api/v1/preflight", c => c.json({ state: "unavailable", reason: "This shell fixture does not compose runtime readiness." }));
 
-    registerFixtureStorageRoutes({ app });
+    registerFixtureStorageRoutes({ app, runHistory: input.runHistory });
 
     registerFixtureExplorerRoutes({ app });
 
@@ -190,6 +190,7 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
       diagnosticFixture?: "restricted-jpeg";
       runCaptureScenario?: "evidence";
       preflightScenario?: FixtureBffOptions["preflightScenario"];
+      runHistory?: FixtureBffOptions["runHistory"];
     }>,
   ): Promise<FixtureServer> {
 
@@ -200,6 +201,7 @@ registerFixtureStorageRoutes: typeof FixtureStorageRoutesTypes.registerFixtureSt
       ...(input.diagnosticFixture === undefined ? {} : { diagnosticFixture: input.diagnosticFixture }),
       ...(input.runCaptureScenario === undefined ? {} : { runCaptureScenario: input.runCaptureScenario }),
       ...(input.preflightScenario === undefined ? {} : { preflightScenario: input.preflightScenario }),
+      ...(input.runHistory === undefined ? {} : { runHistory: input.runHistory }),
     });
     const openStreams = new Set<ServerResponse>();
     const artifactExchanges: FixtureArtifactExchange[] = [];

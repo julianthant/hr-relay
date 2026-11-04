@@ -12,6 +12,8 @@ type Admission =
   | { readonly inline: string };
 
 const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
+  "/api/v1/storage/run-history/clear": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/storage/run-history/result": { guard: "operatorMutationIngressGuard" },
   "/api/v1/assistant/respond": { guard: "operatorMutationIngressGuard" },
   "/api/v1/assistant/action": { guard: "operatorMutationIngressGuard" },
   "/api/v1/debug/errors": { guard: "operatorMutationIngressGuard" },

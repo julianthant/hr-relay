@@ -12,7 +12,7 @@ import { ProtectedSettingsNameSchema } from "../../src/models/config/protected-s
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const evidence = `storage-presentation-${theme.name}-${width}.a11y.yml`;
-  test(`Storage keeps its card layout without run history @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidence }] }, async ({ page }, info) => {
+  test(`Storage keeps its checks beside run history @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidence }] }, async ({ page }, info) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -47,6 +47,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("group", { name: "Connections", exact: true })).toContainText("Not checked");
       await expect(surface.getByRole("button", { name: "Technical details", exact: true })).toHaveCount(0);
       await expect(surface.getByRole("group", { name: "Data store summary", exact: true })).toContainText("Not checked");
+      await expect(surface.getByRole("button", { name: "Clear run history", exact: true })).toBeDisabled();
       expect(requests).toBe(0);
       await run.click();
       await expect(recovery).toContainText("Interrupted");
@@ -55,7 +56,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(pending.locator(".ds-result-row-side")).toHaveText("3");
       await expect(surface.locator(".diagnostic-storage-table,.diagnostic-storage-row-disclosure")).toHaveCount(0);
       await expect(primary.locator(".ds-result-row button")).toHaveCount(0);
-      expect(await surface.innerText()).not.toMatch(/Run history|Schema v27|record-digest|span_stream|00000000|authority-restore|Showing the last completed/u);
+      expect(await surface.innerText()).not.toMatch(/Schema v27|record-digest|span_stream|00000000|authority-restore|Showing the last completed/u);
       const stamp = surface.getByRole("group", { name: "Data store summary", exact: true }).locator("time");
       await expect(stamp).toHaveAttribute("dateTime", interrupted.checkedAt);
       for (const row of await primary.getByRole("listitem").all()) {
@@ -97,7 +98,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(run).toBeEnabled();
       await surface.getByRole("alert").getByRole("button", { name: "Diagnostic details", exact: true }).click();
       await expect(surface.getByRole("region", { name: "Check error diagnostics", exact: true })).toHaveText(ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text);
-      expect(await surface.innerText()).not.toMatch(/Run history|span_stream|record-digest/u);
+      expect(await surface.innerText()).not.toMatch(/span_stream|record-digest/u);
       expect(requests).toBe(3);
       expect(errors).toEqual([]);
       await attachShellA11y(page, info, evidence);

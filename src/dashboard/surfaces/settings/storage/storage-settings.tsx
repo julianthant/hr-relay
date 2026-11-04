@@ -1,14 +1,15 @@
 import { ShieldAlert } from "lucide-react";
-import { type ReactNode } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import type { StorageDoctorWire } from "../../../../models/dashboard/storage.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
-import { Badge,Banner,BodySection,Button,Disclosure,FormGroup,PageHeading,ResultRow,StatusDot,dsIcon } from "../../../ds/ui.js";
+import { Badge,Banner,BodySection,Button,Dialog,DialogContent,DialogFooter,Disclosure,FormGroup,PageHeading,ResultRow,StatusDot,dsIcon } from "../../../ds/ui.js";
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { SkeletonText } from "../../shared/loading/loading.js";
 import "../../shared/run-evidence/diagnostic-presentation.css";
 import { fmtClock,fmtInstantDay } from "../../shared/status/format.js";
 import type { StorageHealthSummary } from "./storage-settings-model.js";
 import { useStorageDoctor } from "./storage-settings-model.js";
+import { useRunHistory } from "./run-history-model.js";
 
 const AUTHORITY_HAZARD = ERROR_CATALOG.STORAGE_AUTHORITY_UNAVAILABLE.text;
 
@@ -119,8 +120,11 @@ function credentialResult(report: StorageDoctorWire | undefined, key: typeof CRE
   return { tone: "neutral", value: entry.present ? "Present" : "Not set" };
 }
 
-export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
+export function StorageSection({ storage, onHistoryCleared }: { storage: StorageHealthSummary; onHistoryCleared?: () => void }) {
   const { doctor, runDoctor } = useStorageDoctor();
+  const history = useRunHistory(onHistoryCleared);
+  const [confirming, setConfirming] = useState(false);
+  const historyTrigger = useRef<HTMLButtonElement>(null);
   const show = useDelayedLoading(doctor.state === "reading");
   const report = doctor.state === "reading" ? undefined : doctor.report;
   const pending = report === undefined && (doctor.state === "reading" || doctor.state === "running" || doctor.state === "failed" && !doctor.neverRun);
@@ -166,5 +170,20 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
         {CREDENTIAL_CHECKS.map(check => <CheckRow pending={pending} loading={show} key={check.key} name={check.name} description={check.description} result={credentialResult(report, check.key)} />)}
         {report?.protectedSettings.state === "unavailable" && <div className="diagnostic-check-detail"><DiagnosticFindings name="Connections" result={{ tone: "unavailable", value: "Unavailable", detail: report.protectedSettings.cause.summary }} /></div>}
       </CheckGroup>
+      <BodySection title="Run history"><FormGroup label="Run history">
+        <div className="hub-settings-row">
+          <div><div className="hub-row-label">Clear run history</div><span className="hub-row-note">{history.description}</span></div>
+          <div className="hub-setting-control"><Button ref={historyTrigger} variant="dangerGhost" disabled={storage.authority !== "healthy" || history.disabled}
+            onClick={() => history.unknown ? void history.clear() : setConfirming(true)}>{history.checking ? "Checking…" : history.pending ? "Clearing…" : history.unknown ? "Check clear result" : "Clear run history"}</Button></div>
+        </div>
+        {history.message && <p role="status" className="px-[var(--ds-space-loose)] pb-[var(--ds-space-cozy)]">{history.message}</p>}
+        <Dialog open={confirming} onOpenChange={setConfirming}>
+          <DialogContent title="Clear run history?" description="All finished runs, logs, screenshots and run evidence will be removed. Spreadsheets, settings, credentials, your account and write-safety records are kept. This can’t be undone." size="sm"
+            onCloseAutoFocus={event => { event.preventDefault(); historyTrigger.current?.focus(); }}>
+            <DialogFooter><Button variant="secondary" autoFocus onClick={() => setConfirming(false)}>Cancel</Button><Button variant="danger" disabled={history.disabled || storage.authority !== "healthy"}
+              onClick={() => { setConfirming(false); void history.clear(); }}>Clear run history</Button></DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </FormGroup></BodySection>
   </section>;
 }

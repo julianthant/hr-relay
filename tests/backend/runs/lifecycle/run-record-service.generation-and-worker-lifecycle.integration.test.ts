@@ -63,6 +63,41 @@ describe("canonical run-record service", () => {
       return result;
     };
 
+    const historyCommand = { commandId: commandId() };
+    assert.deepEqual(measure("historyStatus", 0, () => service.historyStatus()),
+      { state: "available", finishedRuns: 0, activeRuns: 0 });
+    assert.deepEqual(measure("clearHistoryResult", 0, () => service.clearHistoryResult(historyCommand)),
+      { state: "not-recorded", commandId: historyCommand.commandId });
+    assert.equal(database.authority.lifecycleJournal.getCommand(historyCommand.commandId), undefined);
+    assert.equal(database.authority.lifecycleJournal.findAuditByCommand(historyCommand.commandId), undefined);
+    const historyRun = measure("create", 1, () => created(service, {
+      ...request, commandId: commandId(), matchKey: "coverage-history",
+      descriptorVersion: personLookupDescriptor.version, contractFingerprint: personLookupDescriptor.contractFingerprint,
+    }));
+    assert.deepEqual(measure("historyStatus", 0, () => service.historyStatus()),
+      { state: "available", finishedRuns: 0, activeRuns: 1 });
+    assert.deepEqual(measure("clearHistory", 0, () => service.clearHistory(historyCommand)),
+      { state: "refused", commandId: historyCommand.commandId, reason: "active-runs" });
+    assert.deepEqual(measure("clearHistoryResult", 0, () => service.clearHistoryResult(historyCommand)),
+      { state: "not-recorded", commandId: historyCommand.commandId });
+    assert.equal(database.authority.lifecycleJournal.getCommand(historyCommand.commandId), undefined);
+    assert.equal(database.authority.lifecycleJournal.findAuditByCommand(historyCommand.commandId), undefined);
+    const historyTerminal = measure("transition", 1, () => service.transition({
+      commandId: commandId(), runId: historyRun.envelope.runId, expectedVersion: historyRun.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
+    }));
+    assert.equal(historyTerminal.state, "applied");
+    assert.deepEqual(measure("historyStatus", 0, () => service.historyStatus()),
+      { state: "available", finishedRuns: 1, activeRuns: 0 });
+    const historyResult = measure("clearHistory", 1, () => service.clearHistory(historyCommand));
+    assert.deepEqual(historyResult, { state: "cleared", commandId: historyCommand.commandId, deletedRuns: 1 });
+    assert.equal(database.authority.runs.get(historyRun.envelope.runId), undefined);
+    assert.equal(database.authority.deletedRuns.get(historyRun.envelope.runId)?.commandId, historyCommand.commandId);
+    assert.deepEqual(measure("historyStatus", 0, () => service.historyStatus()),
+      { state: "available", finishedRuns: 0, activeRuns: 0 });
+    assert.deepEqual(measure("clearHistory", 0, () => service.clearHistory(historyCommand)), historyResult);
+    assert.deepEqual(measure("clearHistoryResult", 0, () => service.clearHistoryResult(historyCommand)), historyResult);
+
     const sourceResult = measure("create", 1, () => service.create({
       ...request,
       commandId: commandId(),
@@ -71,6 +106,9 @@ describe("canonical run-record service", () => {
     }));
     if (sourceResult.state !== "applied") throw new Error("coverage create refused");
     let source = sourceResult.run;
+    assert.deepEqual(measure("clearHistory", 0, () => service.clearHistory(historyCommand)), historyResult);
+    assert.deepEqual(measure("clearHistoryResult", 0, () => service.clearHistoryResult(historyCommand)), historyResult);
+    assert.deepEqual(database.authority.runs.get(source.envelope.runId), source);
     const paused = measure("pause", 1, () => service.pause({ commandId: commandId(), runId: source.envelope.runId, expectedVersion: source.version }));
     if (paused.state !== "applied") throw new Error("coverage pause refused");
     const resumed = measure("resumePaused", 1, () => service.resumePaused({ commandId: commandId(), runId: source.envelope.runId, expectedVersion: paused.run.version }));

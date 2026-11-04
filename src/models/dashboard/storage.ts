@@ -110,7 +110,7 @@ const DeletedSpanAuthorityWireSchema = z.strictObject({
   runId: RunIdSchema,
   workflow: WorkflowIdSchema,
   traceId: TraceIdSchema,
-  origin: z.enum(["queue", "archive"]),
+  origin: z.enum(["queue", "archive", "storage"]),
   commandId: CommandIdSchema,
   deletedAt: IsoInstantSchema,
 });
