@@ -670,6 +670,9 @@ refuses release. There are no geocode election, endpoint or PID files.
 `storage/browser-roots.ts` owns the private `machine/browser-roots.json` registry outside person
 SQLite. Reads and publications share the registry mutex, so readers inspect only settled publications.
 Its strict bounded document records actual worker, signup or command ownership and launch generations.
+Schema 2 assigns monotone, never-reused numeric handles. Signup roots use `browsers/onboarding/r<base36 handle>`;
+their full operation, person, account and provider-generation binding stays in the registry. Reopening
+the same registered owner keeps its handle; cleanup retires it. Unregistered physical targets refuse.
 Each launch and native acquisition records intent before Chromium starts. A fresh full-Chromium
 probe must acquire and close the exact profile before reuse or removal; saved closed/observed states
 do not authorize effects. One row remains excluded through native closure, the awaited effect and

@@ -15,7 +15,7 @@ import { ProfileOnboardingDuoProviderError } from "../runtime/browser/onboarding
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
 import { type RuntimeAdmission } from "../storage/admission/admission.js";
-import { assertPrivateProfilePath,createBrowserRoots,onboardingProfileDirectory } from "../storage/browser-roots.js";
+import { assertPrivateProfilePath,createBrowserRoots } from "../storage/browser-roots.js";
 import { assertCredentialStoreOwner,createCredentialStore,CredentialStoreCommitUncertainError,initialDocument,type CredentialStoreHooks } from "../storage/configuration/credential-store.js";
 import { hasUnprovedSourceClosure } from '../storage/source-closure.js';
 import { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
@@ -660,25 +660,28 @@ export function createProfileSession(input: {
       const operations = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.onboarding !== undefined);
       if (operations.length === 0) return;
       const browserRoot = join(machineRoot, "browsers", "onboarding");
+      const browserRoots = createBrowserRoots(admission);
       const bound=operations.map(operation=>{
         const draft=operation.onboarding;
         if(draft===undefined)throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-        return {operation,profileDirectory:onboardingProfileDirectory(browserRoot,{...operation,accountId:draft.accountId,generation:draft.generation})};
+        const rootInput = browserRoots.signupRoot({ profileId: operation.profileId, profileRoot: browserRoot, credentialFingerprint: null,
+          owner: { kind: "signup", operationId: operation.operationId, accountId: draft.accountId, providerGeneration: draft.generation } }, true);
+        return {operation,rootInput};
       });
       assertPrivateProfilePath(machineRoot,browserRoot);
       const rootInfo=lstatSync(browserRoot,{throwIfNoEntry:false});
       if(rootInfo!==undefined&&(!rootInfo.isDirectory()||rootInfo.isSymbolicLink()
-        ||readdirSync(browserRoot).some(name=>!bound.some(entry=>basename(entry.profileDirectory)===name)))) {
+        ||readdirSync(browserRoot).some(name=>!bound.some(entry=>entry.rootInput !== undefined && basename(entry.rootInput.profileDirectory)===name)))) {
         throw new NativeBrowserClosureUnprovedError([new Error("abandoned-onboarding-browser-membership-unavailable")]);
       }
       const clock=input.clock??systemClock;
       const config=resolveConfigWithProvenance({},{primaryDisplay:null},clock,{stateRoot:machineRoot,artifactRoot:admission.artifactRoot}).config;
-      const present=bound.filter(entry=>{
-        if(lstatSync(entry.profileDirectory,{throwIfNoEntry:false})!==undefined)return true;
+      const present=bound.flatMap(entry=>{
+        if(entry.rootInput !== undefined && lstatSync(entry.rootInput.profileDirectory,{throwIfNoEntry:false})!==undefined)return [{ ...entry, rootInput: entry.rootInput }];
         if(entry.operation.onboarding?.finish===undefined&&entry.operation.onboarding?.abort===undefined) {
           throw new NativeBrowserClosureUnprovedError([new Error("abandoned-onboarding-browser-missing-without-owned-cleanup")]);
         }
-        return false;
+        return [];
       });
       const assertBound=()=>{
         admission.assertLive();
@@ -688,15 +691,10 @@ export function createProfileSession(input: {
         }
       };
       assertBound();
-      const browserRoots = createBrowserRoots(admission);
       for (const entry of present) {
-        const draft = entry.operation.onboarding;
-        if (draft === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-        await browserRoots.withUnused(entry.profileDirectory, createNativeBrowserProbe({ clock, scheduler: createTimeoutDeadlineScheduler(clock),
+        await browserRoots.withUnused(entry.rootInput.profileDirectory, createNativeBrowserProbe({ clock, scheduler: createTimeoutDeadlineScheduler(clock),
           closeProofMs: config.browser.closeProofMs, launchTimeoutMs: config.timeouts.sessionAcquireMs, signal: new AbortController().signal }),
-        async ({ remove }) => { assertBound(); remove(); }, { profileId: entry.operation.profileId, profileRoot: browserRoot,
-          profileDirectory: entry.profileDirectory, credentialFingerprint: null, owner: { kind: "signup", operationId: entry.operation.operationId,
-            accountId: draft.accountId, providerGeneration: draft.generation } });
+        async ({ remove }) => { assertBound(); remove(); }, entry.rootInput);
         assertBound();
       }
       assertBound();

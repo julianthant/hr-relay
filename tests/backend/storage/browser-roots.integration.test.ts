@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { it } from "vitest";
 import { testProcessImport } from "../../support/compiled-process.js";
 import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
-import { createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions, onboardingProfileDirectory, admitCommandBrowser, commandProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
+import { createBrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions, admitCommandBrowser, commandProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
 import { BrowserRootsSchema } from "../../../src/backend/storage/browser-root-contract.js";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -246,11 +246,12 @@ for (const phase of ["publishing", "abort"] as const)
       const owner = { kind: "signup" as const, operationId: operation.operationId, accountId: operation.onboarding.accountId,
         providerGeneration: operation.onboarding.generation };
       const profileRoot = join(f.machine.stateRoot, "browsers", "onboarding");
-      const input: BrowserRootLaunchInput = { profileId: operation.profileId, profileRoot,
-        profileDirectory: onboardingProfileDirectory(profileRoot, { operationId: owner.operationId, profileId: operation.profileId,
-          accountId: owner.accountId, generation: owner.providerGeneration }), credentialFingerprint: null, owner };
-      const roots = createBrowserRoots(f.machine), options = createNativeBrowserProbe({ clock, scheduler, closeProofMs: 100, launchTimeoutMs: 100,
-        signal: new AbortController().signal, launcher: browser.fakeLauncher().launcher });
+      const roots = createBrowserRoots(f.machine), options = createNativeBrowserProbe({ clock, scheduler,
+        closeProofMs: 100, launchTimeoutMs: 100, signal: new AbortController().signal, launcher: browser.fakeLauncher().launcher });
+      const allocated = roots.beginSignupLaunch({ profileId: operation.profileId, profileRoot, credentialFingerprint: null, owner });
+      mkdirSync(allocated.input.profileDirectory, { recursive: true, mode: 0o700 });
+      allocated.closing(); allocated.closed();
+      const input = allocated.input;
       await roots.probe(input, options);
       const updated = SignUpOperationSchema.parse(phase === "publishing" ? { ...operation, phase } : { ...operation,
         onboarding: { ...operation.onboarding, abort: { operationId: randomUUID(), generation: operation.credentials.generation + 1 } } });

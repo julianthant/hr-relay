@@ -620,6 +620,7 @@ export async function resumeAutomaticAuthorityRestore(input: Readonly<{
   const binding = admission.readAuthorityRestore(input.operationId);
   assertRestoreRootMembership(admission.stateRoot, binding.operationId);
   if (restoreRetainedFilesDigest(admission.stateRoot) !== binding.retainedFilesDigest) throw new Error("restore-retained-files-changed");
+  if (restoreBrowserMembershipDigest(admission) !== binding.browserMembershipDigest) throw new Error("restore-browser-membership-changed");
   await probeAutomaticRestoreBrowsersClosed(admission, input.processLockRoot, operation, input.clock ?? systemClock, input.browserClosure);
   if (restoreBrowserMembershipDigest(admission) !== binding.browserMembershipDigest) throw new Error("restore-browser-membership-changed");
   const verified = await verifyBackupManifestAtPath(admission, binding.manifestPath);

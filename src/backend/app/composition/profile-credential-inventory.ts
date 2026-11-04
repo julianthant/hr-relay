@@ -242,7 +242,7 @@ export function composeStoppedControlCredentialInventory(input: Readonly<{ claim
           : facts.settingsAuthority.record.saved?.settings ?? facts.settingsAuthority.record.initialization.settings.settings;
         const config = resolveConfigWithProvenance(settings, input.hostFacts, input.clock,
           { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config;
-        const browserPlan = source.browserPlan() ?? planStoppedBrowserRoots(admission, input.claim, 1, input.clock);
+        const browserPlan = source.browserPlan() ?? planStoppedBrowserRoots(admission, input.claim, 1, 1, input.clock);
         if (browserPlan.roots.some(row => row.profileId === source.binding.profileId && (row.launch.state !== "closed" || row.native?.phase !== "observed"))) throw new Error("profile-control-upgrade-browser-closure-unproved");
         const membership = enumerateProfileCredentialMembership(admission, facts, config.paths.browserProfileRoot, profileBrowserClosure, undefined, stages);
         const backups = membership.manifests.map(path => verifyStoppedBackupManifestAtPath(admission, path));
