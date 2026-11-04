@@ -40,8 +40,9 @@ export function createRelayWorker(api, reportEvent) {
     try { return await api.tabs.sendMessage(tabId, { type: 'RELAY_OBSERVE' }, { documentId }); }
     catch (cause) { throw new Error('ONBOARDING_DUO_SCOPE', { cause }); }
   }
-  async function observe(sender) {
+  async function observe(sender, username) {
     requireSender(sender);
+    if (typeof username !== 'string' || !/^[a-z0-9][a-z0-9._@+-]{0,127}$/i.test(username.trim())) throw new Error('ONBOARDING_DUO_SCOPE_USERNAME');
     const tab = await api.tabs.get(sender.tab.id);
     requireCurrent();
     if (tab.id !== sender.tab.id || tab.url !== sender.url) throw new Error('ONBOARDING_DUO_SCOPE_DOCUMENT');
@@ -50,17 +51,17 @@ export function createRelayWorker(api, reportEvent) {
     const after = await api.tabs.get(tab.id);
     if (after.url !== tab.url || observed?.url !== tab.url || observed.origin !== sender.origin
       || observed.documentActive !== true || !Number.isSafeInteger(observed.accountRevision) || observed.accountRevision < 0
-      || !Array.isArray(observed.accountNames) || observed.accountNames.length !== 1
-      || typeof observed.accountNames[0] !== 'string' || !/^[a-z0-9][a-z0-9._@+-]{0,127}$/i.test(observed.accountNames[0])) throw new Error('ONBOARDING_DUO_SCOPE_ACCOUNT');
+      || !Array.isArray(observed.accountNames)
+      || observed.accountNames.some(name => typeof name !== 'string' || accountKey(name) !== accountKey(username))) throw new Error('ONBOARDING_DUO_SCOPE_ACCOUNT');
     const confirmed = await documentObservation(tab.id, sender.documentId);
     requireCurrent();
     if (canonicalJson(confirmed) !== canonicalJson(observed)) throw new Error('ONBOARDING_DUO_SCOPE');
     return { documentId: sender.documentId, tabId: tab.id, url: tab.url, origin: observed.origin,
-      accountName: normalizeUsername(observed.accountNames[0]), accountRevision: observed.accountRevision };
+      accountName: normalizeUsername(username), accountRevision: observed.accountRevision };
   }
   async function assertScope() {
     if (!pending) throw new Error('ONBOARDING_DUO_SCOPE');
-    const actual = await observe(pending.sender);
+    const actual = await observe(pending.sender, pending.scope.accountName);
     for (const key of ['documentId', 'tabId', 'url', 'origin', 'accountName', 'accountRevision']) {
       if (actual[key] !== pending.scope[key]) throw new Error('ONBOARDING_DUO_SCOPE');
     }
@@ -91,8 +92,7 @@ export function createRelayWorker(api, reportEvent) {
       intercept({ requestId: data.requestId }, sender);
       await reportEvent({ stage: 'forwarded', requestId: data.requestId });
       if (pending) throw new Error('ONBOARDING_DUO_ALREADY_STARTED');
-      const scope = await observe(sender);
-      if (typeof data.username !== 'string' || accountKey(data.username) !== accountKey(scope.accountName)) throw new Error('ONBOARDING_DUO_SCOPE_USERNAME');
+      const scope = await observe(sender, data.username);
       pending = { scope, sender, requestId: data.requestId };
       const binding = await checked(() => call('bind', { documentId: scope.documentId, tabId: scope.tabId,
         origin: scope.origin, rpId: data.rpId, username: scope.accountName }));

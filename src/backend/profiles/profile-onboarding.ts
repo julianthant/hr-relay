@@ -198,6 +198,8 @@ export function createProfileOnboarding(input: {
       const prior = before.attempts.filter(entry => entry.generation === before.generation && entry.method !== method && entry.providerClosedAt === undefined);
       if (prior.some(entry => entry.state !== "complete")) return unavailable();
       for (const receipt of prior) await owner.cancelAttempt(operationId, receipt.method, receipt.attemptId);
+      for (const receipt of before.attempts.filter(entry => entry.generation === before.generation && entry.method === method
+        && entry.state === "closed" && entry.providerClosedAt === undefined && leases.has(entry.attemptId))) await owner.cancelAttempt(operationId, method, receipt.attemptId);
       const attempt = input.update(operationId, operation => {
         const draft = requiredDraft(operation);
         if (draft.abort !== undefined || draft.finish !== undefined) return unavailable();
