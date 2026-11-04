@@ -70,7 +70,7 @@ import { protectedSubjectDisplay } from "../start/protected-input.js";
 import { assertRunRecoveryCommandScope,planDelegatedRetry,planRunRecovery } from "../start/recovery-plan.js";
 import { authenticateWorkbookReferenceExecution } from "../workbooks.js";
 import { admitDelegation } from "./delegation-admission.js";
-import { assertOcrRecoverySnapshotCurrent } from "./ocr-review-authority.js";
+import { assertOcrChildRetryCurrent,assertOcrRecoverySnapshotCurrent } from "./ocr-review-authority.js";
 import { delegatedCandidateEligible,runRuntimeMatches } from "./run-claim-admission.js";
 
 const TERMINAL_SELF_EDGE_REFUSAL = "terminal has no self-edge; a settled outcome is settled";
@@ -382,6 +382,8 @@ export class RunRecordService {
           || current.run.envelope.workflow !== "ocr") throw new OcrReviewRefusedError();
         assertCanonicalRunCommandScope(repositories, source);
         if (runClaim(current.run) !== undefined || current.run.lifecycle.state === "parked-write"
+          || current.run.lifecycle.state === "queued" && current.run.delegationRefresh !== undefined
+            && repositories.gateResults.get(`${request.runId}:approve-records`) === undefined
           || current.run.lifecycle.state === "terminal" && ["cancelled", "discarded", "superseded"].includes(current.run.lifecycle.outcome)) return refused({ reason: "invalid-state" });
         const result = repositories.runs.advanceRevision({ runId: request.runId, expectedVersion: request.expectedVersion,
           now: this.dependencies.clock.now().toISOString() });
@@ -1066,6 +1068,7 @@ export class RunRecordService {
       if (source.disposition !== "live" || run.lifecycle.state !== "terminal") return refused({ reason: "invalid-state" });
       if (repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return refused({ reason: "policy-refused" });
       if (run.envelope.parent !== undefined && restart) return refused({ reason: "policy-refused" });
+      assertOcrChildRetryCurrent(repositories, this, run);
       const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, { ...request, refreshAuthorization: this.parentRefreshAuthorization(repositories, run) });
       if (delegation !== undefined && (repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
         || request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint)) return refused({ reason: "runtime-stale" });
@@ -1154,6 +1157,7 @@ export class RunRecordService {
       if (repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return refused({ reason: "policy-refused" });
       if (run.envelope.parent !== undefined && run.lifecycle.outcome === "interrupted")
         throw new RunContinuationRefusedError("run-recovery-interrupted-child-terminal-proof-unavailable");
+      assertOcrChildRetryCurrent(repositories, this, run, request.continuationOwner);
       const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, { ...request, refreshAuthorization: this.parentRefreshAuthorization(repositories, run) });
       if (delegation !== undefined && (request.continuationOwner === undefined
         && repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId

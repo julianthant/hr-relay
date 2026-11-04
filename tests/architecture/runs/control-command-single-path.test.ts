@@ -302,7 +302,7 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
       'existence.state!=="present"', 'existence.disposition!=="live"', 'existence.run.envelope.workflow!=="ocr"',
       'latest.sourceRunId!==runId', 'record===undefined', 'record.sourceRunId!==runId', 'record.revision!==revision', 'checkpoint===undefined', 'checkpoint.runId!==runId',
       '!same(checkpoint.output.value,record.seed)', 'record.origin.digest!==sha256Hex(canonicalJsonStringify(checkpoint))',
-      '!same(record.origin.checkpoint,timelineCheckpointReference(checkpoint))', '!same(record.records,initialOcrReviewRecords(record.seed))',
+      '!same(record.origin.checkpoint,timelineCheckpointReference(checkpoint))', '!same(record.records,rebuilt.records)',
       'previous===undefined', 'request?.family!=="ocr-review"', 'request.commandId!==record.origin.commandId', 'request.requestedBy!=="local-operator"', 'request.source!=="dashboard"',
       'audit?.result.state!=="applied"', 'audit.result.commandId!==request.commandId', '!same(audit.request,request)',
       '!same(reviseOcrReview(previous,request,record.createdAt),record)',
@@ -312,7 +312,8 @@ const DELEGATION_AUDIT_READS: Readonly<Record<string, readonly DelegationAuditRe
       'existence.run.version<change.after', 'audit.completedAt!==record.createdAt',
       'mutation.sourceCommandId!==request.commandId', 'mutation.runId!==runId', 'mutation.ocrReviewRevision!==revision',
       'Number(mutation.expectedVersion)!==Number(change.before)',
-    ], calls: ['authenticateOcrOperator(repositories,reader,existence.run)', 'CanonicalTransitionRequestSchema.parse(command.request)'] },
+    ], calls: ['authenticateOcrOperator(repositories,reader,existence.run)', 'CanonicalTransitionRequestSchema.parse(command.request)'],
+      bindings: { rebuilt: 'rebuildOcrReviewRecords(record.seed,previous)' } },
     { owner: "readOcrSnapshotsAuthority", id: "snapshot.snapshotId", guards: [
       'snapshot.sourceRunId!==review.run.envelope.runId', 'revision===undefined', 'snapshot.reviewDigest!==ocrReviewDigest(revision)',
       '!snapshot.selectedRecordIds.every(id=>revision.records.some(record=>record.recordId===id))',
@@ -551,6 +552,18 @@ describe("finite native delegation audit read ownership", () => {
         for (const proof of spec.calls ?? []) {
           const call = proofNodes.filter(ts.isCallExpression).find(node => node.getText(parsed).replace(/\s+/gu, "") === proof); assert.ok(call);
           mutants.push(mutate(call, "undefined"));
+        }
+      }
+      for (const spec of specs.filter(value => value.owner === "readOcrReviewAuthority")) {
+        const owner = parsed.statements.filter(ts.isFunctionDeclaration).find(fn => fn.name?.text === spec.owner); assert.ok(owner?.body);
+        const declarations: ts.VariableDeclaration[] = [];
+        function variables(node: ts.Node): void { if (ts.isVariableDeclaration(node)) declarations.push(node); ts.forEachChild(node, variables); }
+        variables(owner.body);
+        for (const name of Object.keys(spec.bindings ?? {})) {
+          const binding = declarations.find(node => ts.isIdentifier(node.name) && node.name.text === name); assert.ok(binding?.initializer);
+          mutants.push(mutate(binding.initializer, "undefined"));
+          mutants.push(mutate(binding.initializer, "rebuildOcrReviewRecords(record.seed, undefined)"));
+          mutants.push(mutate(binding.initializer, "{ records: initialOcrReviewRecords(record.seed) }"));
         }
       }
       if (path === "src/backend/runs/workbooks.ts") {
