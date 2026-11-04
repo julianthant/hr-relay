@@ -12,8 +12,6 @@
 - main:
   - heading "Duo setup for Relay" [level=1]
   - paragraph: Add and verify Security key and Touch ID.
-  - strong: Open Duo to begin
-  - paragraph: Approve with an existing device, then add the methods you need for Relay.
   - region "Relay sign-in methods":
     - heading "Relay sign-in methods" [level=2]
     - text: 0 of 2 completed
@@ -34,24 +32,10 @@
         - listitem: Confirmed by Relay
       - text: Ready to add in Duo.
     - paragraph: Progress stays in sync with Relay.
-  - complementary "Set up a sign-in method":
-    - heading "Set up a sign-in method" [level=2]
-    - list:
-      - listitem:
-        - strong: Choose a method
-        - group "Sign-in method":
-          - button "Security key" [pressed]
-          - button "Touch ID"
-        - paragraph: Add each method once.
-      - listitem:
-        - strong: Open Duo
-        - paragraph: Sign in and approve with an existing device.
-        - button "Open duo.ucsd.edu"
-      - listitem:
-        - strong: Add your device
-        - paragraph: In Duo, choose Other options → Manage devices. Start setup here, then choose Add a device.
-        - button "Set up Security key"
-        - paragraph: Relay checks that it is your Duo account.
+  - complementary "Set up Security key":
+    - heading "Set up Security key" [level=2]
+    - paragraph: Relay opens Duo and signs you in. You then add Security key as a new device.
+    - button "Set up Security key"
     - button "Return to Relay"
     - button "Close setup tab"
 - contentinfo: Fast Duo / 0.3.0 Continue in Relay when both methods are added.
