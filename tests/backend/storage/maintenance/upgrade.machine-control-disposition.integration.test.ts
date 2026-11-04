@@ -3,7 +3,7 @@ import { AuthorityBackupManifestSchema } from "../../../../src/backend/storage/s
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { ChatGptCredentialRecordSchema, type ChatGptCredentialRecord } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { RuntimeLifetimeLock, type OfflineMaintenanceOperation } from "../../../../src/backend/storage/admission/lifetime-lock.js";
-import { BrowserRootsSchema } from "../../../../src/backend/storage/browser-root-contract.js";
+import { BrowserRootsSchema, StoppedBrowserRootsV1Schema } from "../../../../src/backend/storage/browser-root-contract.js";
 import { acquireStoppedProfileControlUpgrade } from "../../../../src/backend/storage/admission/installation.js";
 import { retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
@@ -259,7 +259,8 @@ it("retains unbound schema2 suspect files and refuses conversion before control 
   } finally { await f.close(); }
 });
 
-for (const boundary of ["registry", "control", "marker"] as const) it(`retains the runtime hold through cold machine-control ${boundary} publication recovery`, async () => {
+for (const browserFormat of ["current", "predecessor"] as const)
+for (const boundary of ["registry", "control", "marker"] as const) it(`retains the runtime hold through cold machine-control ${boundary} publication recovery with ${browserFormat} browsers`, async () => {
   const f = await priorFormatFixture(), original = sourceBytes(f), maintenance = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
   const rename = nativeFs.renameSync; let fired = false;
   const fault = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, target) => {
@@ -272,20 +273,37 @@ for (const boundary of ["registry", "control", "marker"] as const) it(`retains t
   assert.equal(fired, true);
   assert.equal(existsSync(join(f.workspace, ".tracker", "control", "profile-control-upgrade.json")), true);
   maintenance.release();
-  let cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  if (browserFormat === "predecessor") {
+    const intent = join(f.workspace, ".tracker", "control", "profile-control-upgrade.json");
+    const captured = z.record(z.string(), z.unknown()).parse(JSON.parse(readFileSync(intent, "utf8")));
+    const current = BrowserRootsSchema.parse(captured.browsers), { nextHandle: _nextHandle, ...prior } = current;
+    assert.deepEqual(current.roots, []);
+    const browsers = StoppedBrowserRootsV1Schema.parse({ ...prior, schemaVersion: 1, roots: [] });
+    const operationId = z.uuid().parse(captured.operationId);
+    const stage = join(f.workspace, ".tracker", "control", "profile-control-upgrades", `${operationId}.browser.stage`);
+    const path = existsSync(stage) ? stage : join(f.machineRoot, "browser-roots.json");
+    writeFileSync(path, canonicalJsonStringify(browsers), { mode: 0o600 });
+    writeFileSync(intent, canonicalJsonStringify({ ...captured, browsers,
+      browserStage: { ...z.record(z.string(), z.unknown()).parse(captured.browserStage), digest: createHash("sha256").update(readFileSync(path)).digest("hex") } }), { mode: 0o600 });
+  }
+  let coldLifetime = f.lifetime;
+  if (browserFormat === "predecessor") { await f.lifetime.close(); coldLifetime = await RuntimeLifetimeLock.acquire(0); }
+  let cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, coldLifetime);
+  if (browserFormat === "predecessor") assert.equal(await cold.upgradeBrowserRoots(createNativeBrowserProbe, systemClock), "deferred");
   const recovered = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
   assert.equal(recovered.state, "upgraded"); assert.equal(recovered.runtimeAccess, "onboarding-incomplete"); assert.equal(recovered.profileCount, 1);
+  if (browserFormat === "predecessor") assert.equal(await cold.upgradeBrowserRoots(createNativeBrowserProbe, systemClock), "upgraded");
   assertCanonicalCredentialConversion(f, recovered.receiptId, cold);
   cold.release();
-  cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, f.lifetime);
+  cold = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.workspace, coldLifetime);
   const current = await upgradeStoppedMachineControl(cold, { plan: false, hostFacts }, systemClock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
   assert.deepEqual(current, { state: "current", runtimeAccess: "onboarding-incomplete", profileCount: 1 });
   assert.throws(() => cold.admitProfile(f.profileId), /offline-maintenance-busy/u);
   for (const source of original) assert.equal(readFileSync(source.path).equals(source.bytes), true);
   cold.release();
-  const machine = acquireEntrypointAdmission(f.workspace, "exclusive", f.lifetime);
+  const machine = acquireEntrypointAdmission(f.workspace, "exclusive", coldLifetime);
   try { assert.throws(() => machine.admitProfile(f.profileId), /profile-storage-claim-unavailable/u); }
-  finally { machine.release(); await f.close(); }
+  finally { machine.release(); if (coldLifetime !== f.lifetime) await coldLifetime.close(); await f.close(); }
 });
 
 it("converts settled control3 and preserves exact completed historical upgrade artifacts", async () => {

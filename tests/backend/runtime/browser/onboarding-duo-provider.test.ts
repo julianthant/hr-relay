@@ -101,7 +101,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     close: async () => { closed = true; if (!missingCloseEvent) for (const listener of listeners) listener(); if (!blockedPump) { waiter?.(null); waiter = undefined; } browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
   const relayTarget = platform === "win32" ? { platform: "win32" as const, processId: 72, windowHandle: "8192" }
     : { platform: "darwin" as const, processId: 72 };
-  const realProvider = createProfileOnboardingDuoProvider({ browserRoots: mockBrowserRootPort().browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50, platform,
+  const browserRoots = mockBrowserRootPort().browserRoots;
+  const realProvider = createProfileOnboardingDuoProvider({ browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50, platform,
     focus: { async captureRelay() { capturedRelay++; if (captureFailure) throw captureFailure; return relayTarget; }, async show(owned) { assert.equal(owned, context); osFocusCount++; },
       async returnToRelay(target) { assert.equal(target, relayTarget); returnedRelay++; } },
     launcher: { launch: async input => {
@@ -158,7 +159,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     else requests.push(request);
     return result;
   }
-  return { sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+  return { seedRoot(other = owner) { return browserRoots.beginSignupLaunch({ profileId: other.profileId, profileRoot: browserRoot, credentialFingerprint: null,
+      owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
     sendBrowser(kind: string) {
       const id = randomUUID(), request = { id, kind };
       const response = new Promise(resolve => replies.set(id, resolve));
@@ -188,7 +190,7 @@ describe("draft Duo provider", () => {
     try {
       await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError
         && error.kind === "unavailable" && error.reason === "provider" && error.cause === failure);
-      assert.equal(w.launches(), 0); assert.equal(existsSync(onboardingProfileDirectory(w.browserRoot, w.owner)), false);
+      assert.equal(w.launches(), 0); assert.equal(existsSync(onboardingProfileDirectory(w.browserRoot, 1)), false);
     } finally { await w.cleanup(); }
   });
   for (const method of ["next", "browserNext"] as const) it(`retains browser lifetime and the original cause when ${method} terminates before context closure`, async () => {
@@ -234,7 +236,7 @@ describe("draft Duo provider", () => {
   for(const pathKind of ["random","old-generation","changed-owner"] as const)it(`refuses an unbound ${pathKind} directory without effects`,async()=>{
     const w=world();
     const directory=pathKind==="random"?join(w.browserRoot,"onboarding-Abc123")
-      :onboardingProfileDirectory(w.browserRoot,{...w.owner,...(pathKind==="old-generation"?{generation:w.owner.generation+1}:{accountId:randomUUID()})});
+      :w.seedRoot({...w.owner,...(pathKind==="old-generation"?{generation:w.owner.generation+1}:{accountId:randomUUID()})});
     mkdirSync(directory,{mode:0o700});const retained=join(directory,"retained.txt");writeFileSync(retained,"retained browser data");
     try{
       await assert.rejects(w.rawProvider.showBrowser(w.owner),error=>error instanceof ProfileOnboardingDuoProviderError&&error.kind==="unknown");
@@ -242,7 +244,7 @@ describe("draft Duo provider", () => {
     }finally{await w.cleanup();}
   });
   for(const failure of ["busy","unproved","owner-drift","owner-fields"] as const)it(`keeps the exact existing profile before ${failure} reuse refusal`,async()=>{
-    const w=world(),directory=onboardingProfileDirectory(w.browserRoot,w.owner);
+    const w=world(),directory=w.seedRoot();
     mkdirSync(directory,{mode:0o700});const retained=join(directory,"retained.txt");writeFileSync(retained,"retained browser data");
     if(failure==="busy")w.refuseNative();
     if(failure==="unproved")w.withholdCloseEvent();
@@ -253,12 +255,12 @@ describe("draft Duo provider", () => {
       assert.equal(w.nativeProbes(),1);assert.equal(w.launches(),0);assert.equal(readFileSync(retained,"utf8"),"retained browser data");assert.deepEqual(w.calls,[]);
     }finally{await w.closeBrowser();await w.cleanup();}
   });
-  it("reuses only the canonical owner path after native closure and keeps completed cleanup absent",async()=>{
-    const w=world(),directory=onboardingProfileDirectory(w.browserRoot,w.owner);
+  it("replaces a registered root only after native closure and keeps retired handles absent",async()=>{
+    const w=world(),directory=w.seedRoot();
     mkdirSync(directory,{mode:0o700});writeFileSync(join(directory,"retained.txt"),"old browser data");
     try{
       await w.rawProvider.showBrowser(w.owner);
-      assert.equal(w.profile(),directory);assert.equal(w.nativeProbes(),1);assert.equal(w.launches(),1);assert.equal(existsSync(join(directory,"retained.txt")),false);
+      assert.notEqual(w.profile(),directory);assert.equal(existsSync(directory),false);assert.equal(w.nativeProbes(),1);assert.equal(w.launches(),1);assert.equal(existsSync(join(directory,"retained.txt")),false);
       assert.deepEqual(await w.rawProvider.closeBrowser(w.owner),{state:"closed"});assert.equal(existsSync(directory),false);assert.equal(w.nativeProbes(),2);
       await w.rawProvider.showBrowser(w.owner);assert.equal(w.nativeProbes(),2);assert.equal(w.launches(),2);
       assert.deepEqual(await w.rawProvider.closeBrowser(w.owner),{state:"closed"});assert.equal(existsSync(directory),false);assert.equal(w.nativeProbes(),3);

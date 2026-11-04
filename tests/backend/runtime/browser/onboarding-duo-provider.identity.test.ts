@@ -35,19 +35,19 @@ function fixture() {
   const provider = createProfileOnboardingDuoProvider({ browserRoot, extensionDirectory: root,
     browserRoots: mockBrowserRootPort().browserRoots, clock: manualClock(new Date("2026-10-01T00:00:00Z")), closeProofMs: 50,
     focus: { captureRelay: capture, show: unexpected, returnToRelay: unexpected } });
-  return { browserRoot, profileDirectory: onboardingProfileDirectory(browserRoot, owner), reached, capture, owner, provider };
+  return { browserRoot, profileDirectory: onboardingProfileDirectory(browserRoot, 1), reached, capture, owner, provider };
 }
 it("uses actual Windows bigint root metadata before reaching the existing focus boundary", async () => {
   const f = fixture(); vi.spyOn(process, "platform", "get").mockReturnValue("win32");
   const stat = vi.spyOn(fs, "lstatSync"); syncBuiltinESMExports();
   await assert.rejects(f.provider.showBrowser(f.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.cause === f.reached);
   assert.equal(f.capture.mock.calls.length, 1); assert.equal(policy.observations, 1);
-  assert.deepEqual(stat.mock.calls, [[f.browserRoot, { bigint: true }], [f.profileDirectory, { throwIfNoEntry: false }]]);
+  assert.deepEqual(stat.mock.calls, [[f.browserRoot, { bigint: true }]]);
 });
 it.skipIf(process.platform === "win32")("keeps the POSIX root observation signature and public focus failure", async () => {
   const f = fixture(), stat = vi.spyOn(fs, "lstatSync"); syncBuiltinESMExports();
   await assert.rejects(f.provider.showBrowser(f.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.cause === f.reached);
-  assert.deepEqual(stat.mock.calls, [[f.browserRoot], [f.profileDirectory, { throwIfNoEntry: false }]]); assert.equal(f.capture.mock.calls.length, 1);
+  assert.deepEqual(stat.mock.calls, [[f.browserRoot]]); assert.equal(f.capture.mock.calls.length, 1);
 });
 for (const invalid of ["policy", "file", "symlink"] as const) it(`refuses a Windows ${invalid} root before focus or browser launch`, async () => {
   const f = fixture();

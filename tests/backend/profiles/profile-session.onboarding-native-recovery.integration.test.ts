@@ -28,7 +28,7 @@ import type { DraftDuoBrowserOwner, DraftDuoCapability, ProfileOnboardingDuoProv
 import { ProfileOnboardingDuoProviderError } from "../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import { CanonicalCredentialHeadSchema } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
-import { createBrowserRoots, onboardingProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
+import { createBrowserRoots } from "../../../src/backend/storage/browser-roots.js";
 import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
 import { scaledMs } from "../../support/time-scale.js";
 
@@ -52,15 +52,15 @@ it("refuses a canonical Chromium orphan after owner SIGKILL before erasure, then
   assert.ok(operation.onboarding);
   const owner={operationId:operation.operationId,profileId:operation.profileId,accountId:operation.onboarding.accountId,generation:operation.onboarding.generation};
   const root=join(machine.stateRoot,"browsers","onboarding");mkdirSync(root,{recursive:true,mode:0o700});
-  createBrowserRoots(machine).beginLaunch({ profileId: operation.profileId, profileRoot: root, profileDirectory: onboardingProfileDirectory(root, owner),
+  const allocated = createBrowserRoots(machine).beginSignupLaunch({ profileId: operation.profileId, profileRoot: root,
     credentialFingerprint: null, owner: { kind: "signup", operationId: owner.operationId, accountId: owner.accountId, providerGeneration: owner.generation } });
-  const worker=fork(join(process.cwd(),"tests/support/processes/onboarding-native-orphan-owner.ts"),[root,JSON.stringify(owner)],{execArgv:["--import",testProcessImport()],stdio:["ignore","pipe","pipe","ipc"]});
+  const worker=fork(join(process.cwd(),"tests/support/processes/onboarding-native-orphan-owner.ts"),[allocated.input.profileDirectory],{execArgv:["--import",testProcessImport()],stdio:["ignore","pipe","pipe","ipc"]});
   worker.stdout?.resume();worker.stderr?.resume();
   let browser:Browser|undefined,browserPid:number|undefined;
   let primary:{error:unknown}|undefined;
   try{
     const ready=z.strictObject({state:z.literal("ready"),directory:z.string(),endpoint:z.url(),browserPid:z.number().int().positive()}).parse((await once(worker,"message"))[0]);
-    assert.equal(ready.directory,onboardingProfileDirectory(root,owner));browserPid=ready.browserPid;
+    assert.equal(ready.directory,allocated.input.profileDirectory);browserPid=ready.browserPid;
     browser=await chromium.connectOverCDP(ready.endpoint);
     const exited=once(worker,"exit");worker.kill("SIGKILL");assert.deepEqual(await exited,[null,"SIGKILL"]);
     const before={operation:readFileSync(f.operationPath),key:readFileSync(f.keyPath),protected:readFileSync(f.protectedPath),database:readFileSync(f.databasePath)};
@@ -119,9 +119,9 @@ function retainDraftBrowserDirectory(f: Awaited<ReturnType<typeof privateDraftFi
   const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "operations", `${operationId}.json`), "utf8")));
   assert.ok(operation.onboarding);
   const root = join(f.machine.stateRoot, "browsers", "onboarding");
-  const profileDirectory = onboardingProfileDirectory(root, { ...operation, accountId: operation.onboarding.accountId, generation: operation.onboarding.generation });
-  createBrowserRoots(f.machine).beginLaunch({ profileId: operation.profileId, profileRoot: root, profileDirectory, credentialFingerprint: null,
+  const allocated = createBrowserRoots(f.machine).beginSignupLaunch({ profileId: operation.profileId, profileRoot: root, credentialFingerprint: null,
     owner: { kind: "signup", operationId, accountId: operation.onboarding.accountId, providerGeneration: operation.onboarding.generation } });
+  const profileDirectory = allocated.input.profileDirectory;
   mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
 }
 

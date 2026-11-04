@@ -12,7 +12,7 @@ import { z } from "zod";
 import { BrowserDocumentIdSchema, PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../models/config/duo-credential-store.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { onboardingProfileDirectory, type BrowserRoots, type BrowserRootLaunch, type BrowserRootLaunchInput } from "../../storage/browser-roots.js";
+import { type BrowserRoots, type BrowserRootLaunch, type BrowserRootLaunchInput, type SignupBrowserRootInput } from "../../storage/browser-roots.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
 import { ProfileOnboardingDuoEventSchema, type ProfileOnboardingDuoFailure } from "../../../models/profiles/profile.js";
@@ -375,14 +375,14 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     } catch { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root"); }
     const ownerIdentity={operationId:owner.operationId,profileId:owner.profileId,accountId:owner.accountId,generation:owner.generation};
     const assertOwner=()=>{owner.assertCurrent();if(!sameOwner(owner,ownerIdentity))throw new ProfileOnboardingDuoProviderError("refused","scope");};
-    const profileDirectory=onboardingProfileDirectory(options.browserRoot,ownerIdentity);
-    if(readdirSync(options.browserRoot).some(name=>name!==basename(profileDirectory))) {
+    const request: SignupBrowserRootInput = { profileId: owner.profileId, profileRoot: options.browserRoot,
+      credentialFingerprint: null, owner: { kind: "signup", operationId: owner.operationId, accountId: owner.accountId, providerGeneration: owner.generation } };
+    const prior = options.browserRoots.signupRoot(request);
+    if(readdirSync(options.browserRoot).some(name=>prior === undefined || name!==basename(prior.profileDirectory))) {
       throw new ProfileOnboardingDuoProviderError("unknown","browser-root");
     }
-    const rootInput: BrowserRootLaunchInput = { profileId: owner.profileId, profileRoot: options.browserRoot, profileDirectory,
-      credentialFingerprint: null, owner: { kind: "signup", operationId: owner.operationId, accountId: owner.accountId, providerGeneration: owner.generation } };
-    if (lstatSync(profileDirectory, { throwIfNoEntry: false }) !== undefined) {
-      await options.browserRoots.withUnused(profileDirectory, probeOptions, async ({ remove }) => { assertOwner(); remove(); }, rootInput);
+    if (prior !== undefined && lstatSync(prior.profileDirectory, { throwIfNoEntry: false }) !== undefined) {
+      await options.browserRoots.withUnused(prior.profileDirectory, probeOptions, async ({ remove }) => { assertOwner(); remove(); }, prior);
       assertOwner();
     }
     assertOwner();
@@ -390,7 +390,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       throw new ProfileOnboardingDuoProviderError("unavailable", "provider", error);
     });
     assertOwner();
-    const launch = options.browserRoots.beginLaunch(rootInput);
+    const launch = options.browserRoots.beginSignupLaunch(request), rootInput = launch.input, profileDirectory = rootInput.profileDirectory;
     const session: OwnedBrowser = { owner, profileDirectory, launch, rootInput, revoked: false, contextClosed: false, launchStarted: false, platforms: new Map(), relayTarget };
     browser = session;
     session.startup = (async () => {
