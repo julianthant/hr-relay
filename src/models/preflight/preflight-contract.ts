@@ -6,6 +6,7 @@ import {
   CommandIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
+  RunIdSchema,
   SourceSurfaceIdSchema,
   WorkflowIdSchema,
 } from "../../rules/identity/ids.js";
@@ -85,9 +86,15 @@ export const PreflightSelectionSchema = z.strictObject({
 export type PreflightSelection = z.infer<typeof PreflightSelectionSchema>;
 export const PreflightReadinessWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("present"), report: PreflightReportWireSchema }),
-  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1), lastCompleted: PreflightReportWireSchema.optional() }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1),
+    code: z.literal("PREFLIGHT_EVIDENCE_EXPIRED").optional(), lastCompleted: PreflightReportWireSchema.optional() }),
 ]);
 export type PreflightReadinessWire = z.infer<typeof PreflightReadinessWireSchema>;
+
+export const WorkerPreflightRefusalSchema = z.strictObject({
+  state: z.literal("preflight-refused"), code: z.literal("PREFLIGHT_OBSERVATION_CHANGED"), runId: RunIdSchema.optional(),
+});
+export type WorkerPreflightRefusal = z.infer<typeof WorkerPreflightRefusalSchema>;
 
 export const PreflightRerunCommandRequestSchema = z.strictObject({
   commandId: CommandIdSchema,

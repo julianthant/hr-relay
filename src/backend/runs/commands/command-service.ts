@@ -6,6 +6,7 @@ import {
   BulkRunCommandRequestSchema,
   BulkRunCommandResponseSchema,
   CommandRequestSchema,
+  CommandResultSchema,
   type BulkRunCommandOutcome,
   type BulkRunCommandResponse,
   type CommandResult,
@@ -13,7 +14,8 @@ import {
 import type { CommandKernel } from "./command-kernel.js";
 import type { RunQueueProjection } from "../projections/run-queue-projection.js";
 import { errorText } from "../lifecycle/support.js";
-import type { RunWorkerCapacity } from "./run-worker-capacity.js";
+import { RunWorkerStartupError, type RunWorkerCapacity } from "./run-worker-capacity.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
@@ -94,7 +96,15 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
     if (previous !== undefined) await previous;
     try {
       const result = executeOne(request);
-      await deps.startWorkerCapacity.ensure(request, result);
+      try { await deps.startWorkerCapacity.ensure(request, result); }
+      catch (error) {
+        if (result.state !== "applied" && result.state !== "already-applied") throw error;
+        const workerStartup = error instanceof RunWorkerStartupError ? error.failure : {
+          state: "unknown" as const, code: "RUN_QUEUED_WORKER_UNAVAILABLE" as const,
+          message: ERROR_CATALOG.RUN_QUEUED_WORKER_UNAVAILABLE.text, detail: errorText(error),
+        };
+        return CommandResultSchema.parse({ ...result, workerStartup });
+      }
       return result;
     } finally {
       if (startTails.get(key) === current) startTails.delete(key);
