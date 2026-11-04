@@ -209,6 +209,9 @@ export function useMockDuoSetup(enabled = true) {
   };
 }
 
+type ProfileAccountDeletion = { state: "idle" } | { state: "deleting" } | { state: "uncertain" }
+  | { state: "refused"; code: Extract<PublicProfileState, { state: "refused" | "error" }>["code"] };
+
 export function usePublicProfileSession(client: DashboardClient, enabled: boolean) {
   const [settlement, setSettlement] = useState<{ client: DashboardClient; state?: PublicProfileState; failure: boolean }>();
   const state = enabled && settlement?.client === client ? settlement.state : undefined;
@@ -216,6 +219,12 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
   const generation = useRef(0);
   const live = useRef(false);
   const busy = useRef(false);
+  const active = state?.state === "active" ? state : undefined;
+  const selection = useMemo(() => ({ client, enabled, profileId: active?.profileId, epoch: active?.epoch, duoState: active?.duoState }), [client, enabled, active?.profileId, active?.epoch, active?.duoState]);
+  const currentSelection = useRef(selection); currentSelection.current = selection;
+  const [deletion, setDeletion] = useState<{ selection: typeof selection; outcome: ProfileAccountDeletion }>();
+  const deletionRef = useRef<typeof deletion>(undefined);
+  const accountDeletion: ProfileAccountDeletion = deletion?.selection === selection ? deletion.outcome : { state: "idle" };
   const settle = useCallback((value: PublicProfileState) => {
     setSettlement(current => {
       const retained = current?.client === client && current.state?.state === PROFILE_ONBOARDING_STATE && (value.state === "refused" || value.state === "error");
@@ -305,8 +314,27 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       start: method => run(port => port.start(method)), confirmDuo: scope => run(port => port.confirmDuo(scope)),
     };
   }, [client, onboarding, scope, settle, settleRead, failure]);
-  return { state, failure, port,
+  return { state, failure, port, accountDeletion,
+    deleteAccount: async (): Promise<void> => {
+      if (!live.current || currentSelection.current !== selection || active?.duoState !== "ready" || busy.current || deletionRef.current?.selection === selection) return;
+      const request = ++generation.current; busy.current = true;
+      const publish = (outcome: ProfileAccountDeletion) => {
+        const value = { selection, outcome }; deletionRef.current = value; setDeletion(value);
+      };
+      const current = () => live.current && generation.current === request && currentSelection.current === selection;
+      publish({ state: "deleting" });
+      try {
+        const value = await client.deleteProfileAccount({ confirmed: true });
+        if (!current()) return;
+        if (value.state === "signed-out") settle(value);
+        else if (value.state === "refused" || value.state === "error") publish({ state: "refused", code: value.code });
+        else publish({ state: "uncertain" });
+      } catch {
+        if (current()) publish({ state: "uncertain" });
+      } finally { if (generation.current === request) busy.current = false; }
+    },
     logout: async (): Promise<void> => {
+      if (deletionRef.current?.selection === selection) return;
       const request = ++generation.current; busy.current = true;
       try { const value = await client.logOutProfile(); if (live.current && generation.current === request) settle(value); }
       catch { if (live.current && generation.current === request) setSettlement({ client, failure: true }); }

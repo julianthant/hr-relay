@@ -104,7 +104,7 @@ function PathsContent({ editor }: { editor: Editor }) {
   </>;
 }
 
-export function CompactSettingsSection({ editor, sectionId, appearance }: { editor: Editor; sectionId: "general" | "paths"; appearance?: ReactNode }) {
+export function CompactSettingsSection({ editor, sectionId, appearance, deleteAccount }: { editor: Editor; sectionId: "general" | "paths"; appearance?: ReactNode; deleteAccount?: ReactNode }) {
   return <section className="settings-compact-page">
     <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and account controls." : "Where Relay saves files on this Mac."} />
     {sectionId === "general" && <ChatGptAccountSettings />}
@@ -113,7 +113,7 @@ export function CompactSettingsSection({ editor, sectionId, appearance }: { edit
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} sectionId={sectionId} />
       : sectionId === "paths" ? <div className="settings-compact-form"><div className="ds-body-stack"><PathsContent editor={editor} /></div></div>
       : editor.editor.state === "loading" && <SettingsSectionSkeleton section={sectionId} contentOnly />}
-    {sectionId === "general" && <DeleteAccountControl presentation={{ state: "unavailable" }} />}
+    {sectionId === "general" && (deleteAccount ?? <DeleteAccountControl presentation={{ state: "unavailable" }} />)}
   </section>;
 }
 
@@ -133,9 +133,10 @@ export function DeleteAccountControl({ presentation }: { presentation: DeleteAcc
   const [confirming, setConfirming] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const deleting = presentation.state === "deleting";
+  const failed = presentation.state === "refused" || presentation.state === "uncertain";
   return <BodySection title="Account"><FormGroup label="Account">
     <div className="hub-settings-row">
-      <div><div className="hub-row-label">Delete account</div><span className="hub-row-note" role={deleting ? "status" : undefined}>{deleting ? "Deleting your account; erasure is not complete." : presentation.state === "unavailable" ? "Account deletion is unavailable. Try again when connected." : "Remove your data and credentials from this Mac."}</span></div>
+      <div><div className="hub-row-label">Delete account</div><span className="hub-row-note" role={failed ? "alert" : deleting ? "status" : undefined}>{failed ? presentation.message : deleting ? "Deleting your account; erasure is not complete." : presentation.state === "unavailable" ? "Account deletion is unavailable. Try again when connected." : "Remove your data and credentials from this Mac."}</span></div>
       <div className="hub-setting-control"><Button ref={trigger} variant="dangerGhost" disabled={presentation.state !== "ready"} onClick={() => setConfirming(true)}>{deleting ? "Deleting…" : "Delete account"}</Button></div>
     </div>
     <Dialog open={confirming && presentation.state === "ready"} onOpenChange={setConfirming}>
