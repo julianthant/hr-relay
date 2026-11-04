@@ -709,8 +709,12 @@ Source snapshot removal, isolated binding/login-copy database close, authenticat
 The signed-out profile state reports `signUpRequired` for an empty installation. Sign-up creates a
 private draft and publishes the person only after both Duo methods and Finish are proved.
 
-The confirmed `POST /api/v1/profile/delete-account` command uses the normal logout drain and native
-settlement first. Only the completed exact-person logout can authorize deletion; ordinary logout
+The confirmed `POST /api/v1/profile/delete-account` command requires the confirmation's
+`expectedProfileId` and `expectedEpoch`. The server compares both against the cookie-authenticated
+selection before acquiring its transition lock, with no intervening await. A mismatch refuses before
+logout drainage, detach, backup or erasure. Pending deletion retains the original confirmed epoch for
+the same comparison on continuation. The command then uses the normal logout drain and native
+settlement. Only the completed exact-person logout can authorize deletion; ordinary logout
 continues to retain credentials. `maintenance/account-deletion.ts` owns the installation journal
 `account-deletion.json`, with exact file/directory membership, native key metadata, and prior/next
 registry, verifier and browser documents. Stopped custody and process closure precede erasure.

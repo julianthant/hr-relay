@@ -11,9 +11,9 @@ import { CompactSettingsSection } from "../general/ui-settings-records-general-p
 import { PerformanceSettingsSection } from "../general/ui-settings-records-performance.js";
 import { useSettingsFormFocus } from "./settings-autosave-model.js";
 
-export function EditableSettingsSection({ editor, sectionId, appearance }: { editor: ReturnType<typeof useEditableSettings>; sectionId: string; appearance?: ReactNode }) {
+export function EditableSettingsSection({ editor, sectionId, appearance, deleteAccount }: { editor: ReturnType<typeof useEditableSettings>; sectionId: string; appearance?: ReactNode; deleteAccount?: ReactNode }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
-  if (sectionId === "general" || sectionId === "paths") return <CompactSettingsSection editor={editor} sectionId={sectionId} appearance={appearance} />;
+  if (sectionId === "general" || sectionId === "paths") return <CompactSettingsSection editor={editor} sectionId={sectionId} appearance={appearance} deleteAccount={deleteAccount} />;
   if (sectionId === "performance") return <PerformanceSettingsSection editor={editor} />;
   if (sectionId === "providers") return <Banner tone="info" title="Provider settings retired">ChatGPT sign-in is available in General.</Banner>;
   if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
