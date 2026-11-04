@@ -407,7 +407,8 @@ their late success or failure cannot write history, revive the chat or replay th
 For a currently selected served Queue run, send `start selected workflow` to propose the same
 workflow for that run's canonical subject input. The model receives a request-scoped opaque reference,
 workflow ID and execution mode; subject values remain local. Read-only graphs use Live read, and
-transaction graphs require supported dry-run traversal. Protected inputs and stale definitions refuse.
+transaction graphs require supported dry-run traversal. Protected test subjects and stale definitions refuse;
+configured protected fields remain local to the canonical planner with exact retained input/binding checks.
 The existing proposal card shows Start, the canonical input, one run, mode, browser, captures and expiry, with plan identity/fingerprints in its disclosure. Start run checks the selected run/version,
 person/session, current Settings, canonical plan, grant, revision and expiry, then submits through the
 same command service as Run, including worker capacity. Not now starts nothing. Confirmed starts and cancellations collapse to a resolved line. Lost dispatch remains
@@ -669,9 +670,16 @@ Generated commands and their canonical audits carry `source: assistant`. Lost co
 remain unknown without automatic retry. Automatic execution retains its actual issued action identity
 before entering consumption; any authority/cancellation loss after effect entry, including the service
 continuation after its handler await, returns that action as unknown. An ambiguously lost respond
-transport has no fabricated action identity and disables retry; the operator checks the current inbox
+transport has no fabricated action identity and disables retry; the operator checks current run or notification state
 before a new request. A confirmation-required proposal does not execute or imply
 operator approval.
+Confirmed workflow starts recheck their retained authority and cancellation after command dispatch
+settles. A late invalidation returns UNKNOWN even when the canonical audit proves the start applied;
+the issued action remains consumed and cannot replay.
+Configured protected fields are resolved only by the canonical start planner. Its complete input and
+protected binding identities must match the selected run. Protected test subjects still refuse before
+inference. The provider receives only workflow/mode metadata and a fresh opaque reference;
+Separations proposals always use the canonical dry-run mode.
 
 The finite run-read allowlist supports `run status` and selected-run explanation phrases. Its adapter
 in `app/composition/dashboard/assistant.ts` uses the existing canonical run-detail dependencies,
