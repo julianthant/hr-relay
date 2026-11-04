@@ -10,7 +10,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { BrowserRootsSchema } from "../browser-root-contract.js";
 import { CanonicalCredentialHeadSchema } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
-import { readPrivateFile, removeExactPath } from "../configuration/credential-safe-file.js";
+import { numericFileIdentity, readPrivateFile, removeExactPath } from "../configuration/credential-safe-file.js";
 import { fsyncPath, replacePrivateFile, writePrivateStage } from "../private-path.js";
 import { FixedLayoutEntrySchema, fixedLayoutEntries } from "./fixed-layout.js";
 import { proveProfileRootsUnused } from "./process-closure.js";
@@ -41,7 +41,7 @@ function read(path: string) {
   return file;
 }
 function json(path: string): unknown { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(read(path).bytes)); }
-function witness(path: string) { const file = read(path); return { ...file.identity, digest: digest(file.bytes) }; }
+function witness(path: string) { const file = read(path); return { ...numericFileIdentity(file.identity), digest: digest(file.bytes) }; }
 function write(path: string, value: unknown): void {
   const stage = `${path}.account-deletion.tmp`, bytes = Buffer.from(canonicalJsonStringify(value));
   if (lstatSync(stage, { throwIfNoEntry: false }) === undefined) writePrivateStage(stage, bytes);

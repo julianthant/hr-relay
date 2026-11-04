@@ -1,5 +1,5 @@
 import { createHash,randomUUID } from "node:crypto";
-import { closeSync,constants,existsSync,fstatSync,lstatSync,openSync,readdirSync,readSync,realpathSync,type Stats } from "node:fs";
+import { closeSync,constants,existsSync,fstatSync,lstatSync,openSync,readdirSync,readSync,realpathSync,type Stats,type BigIntStats } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename,dirname,isAbsolute,join,parse,relative,resolve } from "node:path";
 import { z } from "zod";
@@ -13,7 +13,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { captureCanonicalCredentialPublication,captureStoppedCanonicalCredentialHead,captureStoppedIncompleteCredentials } from "../configuration/canonical-credential-store.js";
-import { ensureChildDirectory,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { fileIdentityObservation,privateFileNumber,ensureChildDirectory,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { authenticateDocument } from "../configuration/credential-store.js";
 import { validateDuoKeyPair } from "../configuration/duo-signing.js";
 import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js";
@@ -1543,15 +1543,15 @@ export class RuntimeAdmission {
     const sources = ["", "-wal", "-shm", "-journal"].map(suffix => {
       const sourcePath = `${path}${suffix}`;
       const value = readPrivateFile(sourcePath, { label: "authority database", maxBytes: 512 * 1024 * 1024 });
-      const identity = (info: Stats | undefined) => info === undefined ? undefined : {
-        device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid, links: info.nlink,
-        size: info.size, modified: info.mtimeMs, changed: info.ctimeMs };
+      const identity = (info: Stats | BigIntStats | undefined) => info === undefined ? undefined : {
+        ...fileIdentityObservation({ device: info.dev, inode: info.ino }), mode: privateFileNumber(info.mode), owner: privateFileNumber(info.uid), links: privateFileNumber(info.nlink),
+        size: privateFileNumber(info.size), modified: "mtimeNs" in info ? info.mtimeNs.toString() : info.mtimeMs, changed: "ctimeNs" in info ? info.ctimeNs.toString() : info.ctimeMs };
       return { sourcePath, before: canonicalJsonStringify(identity(value?.stat) ?? null), identity };
     });
     const assertHeld = () => {
       assertSource();
       if (lease.flatStoreMigrationPending()) return;
-      for (const source of sources) if (canonicalJsonStringify(source.identity(lstatSync(source.sourcePath, { throwIfNoEntry: false })) ?? null) !== source.before) throw new Error("flat-backup-source-changed");
+      for (const source of sources) if (canonicalJsonStringify(source.identity(process.platform === "win32" ? lstatSync(source.sourcePath, { bigint: true, throwIfNoEntry: false }) : lstatSync(source.sourcePath, { throwIfNoEntry: false })) ?? null) !== source.before) throw new Error("flat-backup-source-changed");
     };
     const child = new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release: () => this.release() },
       root, join(root, "artifacts"), [path], "flat-backup", "exclusive", this.#locator, undefined, this, undefined, undefined,

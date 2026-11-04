@@ -4,7 +4,7 @@ import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.j
 import { DuoEnrollmentScopeSchema } from "../../../models/config/duo-credential-store.js";
 import { createDecipheriv, createHash } from "node:crypto";
 import { join } from "node:path";
-import { readPrivateFile, withOperationProof } from "./credential-safe-file.js";
+import { sameDirectory, numericFileIdentity, readPrivateFile, withOperationProof } from "./credential-safe-file.js";
 import { credentialKeyCustody, CredentialKeyCustodyError } from "./credential-key-custody.js";
 import { authenticateDocument, CredentialDocumentSchema, type CredentialDocument } from "./credential-store.js";
 import { ChatGptCredentialRecordSchema } from "./chatgpt-credential-repository.js";
@@ -123,7 +123,7 @@ const decodeSource = (bytes: Uint8Array): unknown => JSON.parse(new TextDecoder(
 function sourceFile(path: string, expected?: z.infer<typeof PhysicalWitnessSchema>, limit = maxSourceBytes) {
   const file = readPrivateFile(path, { label: "protected.json", maxBytes: limit });
   if (file === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-  const witness = { ...file.identity, digest: sourceHash(file.bytes) };
+  const witness = { ...numericFileIdentity(file.identity), digest: sourceHash(file.bytes) };
   if (expected !== undefined && canonicalJsonStringify(witness) !== canonicalJsonStringify(expected)) throw new Error("profile-control-upgrade-credential-source-changed");
   return { ...file, witness };
 }
@@ -155,7 +155,7 @@ function readStoppedCredentialKey(source: Extract<ReturnType<RuntimeAdmission["r
     catch (error) { if (!(error instanceof CredentialKeyCustodyError) || error.code !== "CREDENTIAL_KEYCHAIN_MISSING") throw error; }
   }
   const witnessedDigest = metadata.success && metadata.data.legacyWitness === true ? sourceHash(encodePrivate(keyDocument)) : sourceHash(keyFile.bytes);
-  if (keyFile.identity.device !== source.key.file.device || keyFile.identity.inode !== source.key.file.inode
+  if (!sameDirectory(keyFile.identity, source.key.file)
     || witnessedDigest !== source.key.file.digest) throw new Error("profile-control-upgrade-credential-source-changed");
   return { key, identity, keyDocument };
 }
@@ -188,8 +188,7 @@ export function inspectStoppedCredentialSource(admission: RuntimeAdmission, clai
     } else {
       const journalFile = sourceFile(journalPath, source.head.journal, 64_000), anchorFile = sourceFile(`${journalPath}.authority`, source.head.anchor, 4096);
       const journal = StoppedErasureJournal.parse(decodeSource(journalFile.bytes)), anchor = StoppedErasureAnchor.parse(decodeSource(anchorFile.bytes));
-      if (journal.epoch !== source.head.epoch || anchor.epoch !== journal.epoch || anchor.device !== journalFile.identity.device
-        || anchor.inode !== journalFile.identity.inode || journal.pending !== undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
+      if (journal.epoch !== source.head.epoch || anchor.epoch !== journal.epoch || !sameDirectory(anchor, journalFile.identity) || journal.pending !== undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
       erased = journal.erasedValueIds; retired = journal.retiredCommandIds;
     }
     const protectedFile = sourceFile(join(source.stateRoot, "credentials", "protected.json")), envelope = ProtectedEnvelope.parse(decodeSource(protectedFile.bytes));
@@ -202,7 +201,7 @@ export function inspectStoppedCredentialSource(admission: RuntimeAdmission, clai
     const duoFile = readPrivateFile(duoPath, { label: "protected.json", maxBytes: maxSourceBytes });
     let duoDocument: unknown;
     if (duoRow.state !== "never-initialized") {
-      if (duoFile === undefined || canonicalJsonStringify({ ...duoFile.identity, digest: sourceHash(duoFile.bytes) }) !== canonicalJsonStringify(duoRow.document)) throw new Error("duo-document-custody-changed");
+      if (duoFile === undefined || canonicalJsonStringify({ ...numericFileIdentity(duoFile.identity), digest: sourceHash(duoFile.bytes) }) !== canonicalJsonStringify(duoRow.document)) throw new Error("duo-document-custody-changed");
       const sealed = StoppedDuoDocumentEnvelopeSchema.parse(decodeSource(duoFile.bytes));
       if (sealed.installationId !== source.binding.installationId || sealed.profileId !== source.binding.profileId || sealed.keyId !== identity.keyId
         || sealed.revision !== duoRow.revision) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");

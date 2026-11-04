@@ -11,7 +11,7 @@ import { ConfigSchema } from "../../../models/config/schema.js";
 import { LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument } from "../../../models/profiles/profile.js";
 import { CanonicalCredentialConversionPlanSchema,CanonicalCredentialHeadSchema,CanonicalCredentialOperationSchema,CanonicalCredentialPublicationSourceSchema,CanonicalCredentialRestoreSnapshotSchema,CredentialMaintenanceHold,captureCanonicalCredentialStartupLocks,publishStoppedCanonicalCredentials,type CanonicalCredentialConversionPlan } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
-import { capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock } from "../configuration/credential-safe-file.js";
+import { sameDirectory, numericFileIdentity, fileIdentityObservation, capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock } from "../configuration/credential-safe-file.js";
 import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js";
 import { createProfileVerifiers,preparedProfileVerifierPepperWitness,verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { SourceRecordSchema,file as backupFile,hash as backupHash,profileAuthorityFileWitnesses,retainedStorageBackup } from "../maintenance/existing-data-backup-files.js";
@@ -707,7 +707,7 @@ function assertProfileCredentialKeyMembership(locator: RuntimeLocator, heads: re
       const { legacyWitness: _legacyWitness, ...native } = metadata;
       bytes = Buffer.from(encodePrivate(credentialKeyCustody.read(native)));
     }
-    if (file.identity.device !== anchor.file.device || file.identity.inode !== anchor.file.inode
+    if (!sameDirectory(file.identity, anchor.file)
       || createHash("sha256").update(bytes).digest("hex") !== anchor.file.digest) fail("profile-credential-key-unowned");
   }
 }
@@ -876,7 +876,7 @@ function assertOnboardingFinishPublicationDocument(locator: RuntimeLocator,
   const current = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), SignUpOperationSchema);
   if (canonicalJsonStringify(current) !== canonicalJsonStringify(operation)) fail("profile-onboarding-finish-operation-changed");
   const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
-  if (pepper === undefined || pepper.bytes.length !== 32 || pepper.identity.device !== intent.pepper.device || pepper.identity.inode !== intent.pepper.inode
+  if (pepper === undefined || pepper.bytes.length !== 32 || !sameDirectory(pepper.identity, intent.pepper)
     || createHash("sha256").update(pepper.bytes).digest("hex") !== intent.pepper.digest) fail("profile-onboarding-finish-pepper-changed");
 }
 
@@ -960,7 +960,7 @@ function prepareUnpublishedDraftAbort(control: string, locator: RuntimeLocator, 
     credentialKeyCustody.assertAbsent({ installationId: locator.installationId, profileId: operation.profileId, keyId: operation.credentials.keyId });
   } else {
     const headFile = readPrivateFile(headPath, { label: "lock", maxBytes: 25 * 1024 * 1024 });
-    if (headFile === undefined || canonicalJsonStringify({ ...headFile.identity, digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
+    if (headFile === undefined || canonicalJsonStringify({ ...numericFileIdentity(headFile.identity), digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
     const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(headFile.bytes)));
     if (head.state !== "erased" || head.installationId !== locator.installationId || head.profileId !== operation.profileId
       || head.key.installationId !== head.installationId || head.key.profileId !== head.profileId || head.key.keyId !== operation.credentials.keyId
@@ -1071,7 +1071,7 @@ function profileObservation(control: string, locator: RuntimeLocator): string {
     assertNoSymlinkComponents(path);
     const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
     if (file === undefined) fail("profile-registry-evidence-missing");
-    return { path, device: file.identity.device, inode: file.identity.inode,
+    return { path, ...fileIdentityObservation(file.identity),
       digest: createHash("sha256").update(file.bytes).digest("hex") };
   });
   return canonicalJsonStringify({ files, operations });
@@ -1116,7 +1116,7 @@ function readProfileUpgradeAuthority(control: string, workspace: string, locator
         if (path !== pending && signup?.credentials.phase !== "planned" && signup?.onboarding?.abort === undefined) fail("profile-stopped-upgrade-evidence-required");
         return { path, state: "absent" };
       }
-      return { path, identity: file.identity, digest: createHash("sha256").update(file.bytes).digest("hex") };
+      return { path, identity: fileIdentityObservation(file.identity), digest: createHash("sha256").update(file.bytes).digest("hex") };
     });
   if (profileObservation(control, locator) !== before || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-stopped-upgrade-observation-changed");
   assertHeld();
@@ -2010,10 +2010,10 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (canonicalJsonStringify(current) !== canonicalJsonStringify(operation)) fail("profile-pending-logout-operation-changed");
         const observation = profileObservation(control, locator);
         const publication = readPrivateFile(join(control, "profile-publication.json"), { label: "lock", maxBytes: 1_048_576 });
-        const pending = publication === undefined ? { absent: true } : { device: publication.identity.device, inode: publication.identity.inode,
+        const pending = publication === undefined ? { absent: true } : { ...fileIdentityObservation(publication.identity),
           digest: createHash("sha256").update(publication.bytes).digest("hex") };
         assertHeld();
-        return canonicalJsonStringify({ document, observation, pending, operationIdentity: file.identity });
+        return canonicalJsonStringify({ document, observation, pending, operationIdentity: fileIdentityObservation(file.identity) });
       };
       const read = (publication?: ProfilePublicationRead) => {
         if (publication === undefined) return mutate(() => observe(readMachineRegistry(control, locator, false)));
@@ -2242,7 +2242,7 @@ function controlUpgradeFile(path: string, maxBytes = 1_048_576) {
   assertNoSymlinkComponents(path);
   const file = readPrivateFile(path, { label: "lock", maxBytes });
   if (file === undefined) fail("profile-control-upgrade-evidence-missing");
-  return { device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") };
+  return { ...numericFileIdentity(file.identity), digest: createHash("sha256").update(file.bytes).digest("hex") };
 }
 
 function retainedControlUpgradeEntry(directory: string, name: string, installationId: string): z.infer<typeof RetainedControlUpgradeEntrySchema> {
@@ -2370,7 +2370,7 @@ function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typ
       join(root, "credentials", "protected.json"), join(root, "credentials", "chatgpt-account.json")].map(path => {
       const file = readPrivateFile(path, { label: "protected.json", maxBytes: 25 * 1024 * 1024 });
       const actual = file === undefined ? { state: "absent" as const } : { state: "present" as const,
-        ...file.identity, digest: createHash("sha256").update(file.bytes).digest("hex") };
+        ...numericFileIdentity(file.identity), digest: createHash("sha256").update(file.bytes).digest("hex") };
       if (conversion === undefined) return { path, file: actual };
       const head = dirname(path) === join(machine, "credential-keys");
       const planned = head ? conversion.priorHead : conversion.files.find(file => file.kind === (basename(path) === "protected.json" ? "protected" : "chatgpt"))?.prior;
