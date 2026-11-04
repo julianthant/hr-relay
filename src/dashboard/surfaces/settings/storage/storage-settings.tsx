@@ -33,7 +33,7 @@ export function StorageBanner({ storage, onOpenSettings }: {
 }
 
 type CheckTone = "pass" | "attention" | "unavailable" | "neutral";
-interface CheckResult { tone: CheckTone; value: string; summary?: string; overview?: ReactNode; evidence?: string; detail?: string }
+interface CheckResult { tone: CheckTone; value: string; summary?: string; evidence?: string; detail?: string }
 const NOT_CHECKED: CheckResult = { tone: "neutral", value: "Not checked" };
 
 function CheckRow({ name, description, result, findings = false, pending = false, loading = false }: { name: string; description: string; result: CheckResult; findings?: boolean; pending?: boolean; loading?: boolean }) {
@@ -44,9 +44,8 @@ function CheckRow({ name, description, result, findings = false, pending = false
       : <Badge tone={result.tone === "attention" ? "warning" : "danger"}>{result.value}</Badge>;
   return <div className="diagnostic-check-entry" role="listitem">
     <ResultRow label={name} description={result.summary ?? description} value={pending ? loading && <SkeletonText className="w-20" /> : status} />
-    {(result.overview !== undefined || (findings && result.detail !== undefined)) && <div className="diagnostic-check-detail diagnostic-storage-detail">
-      {result.overview}
-      {findings && <DiagnosticFindings name={name} result={result} />}
+    {findings && result.detail !== undefined && <div className="diagnostic-check-detail diagnostic-storage-detail">
+      <DiagnosticFindings name={name} result={result} />
     </div>}
   </div>;
 }
@@ -104,12 +103,7 @@ function upgradeResult(report?: StorageDoctorWire): CheckResult {
   const upgrades = report.authorityUpgrades;
   if (upgrades.state === "unavailable") return { tone: "unavailable", value: "Unavailable", summary: ERROR_CATALOG.STORAGE_UPDATE_HISTORY_UNAVAILABLE.text, detail: upgrades.cause.summary };
   if (upgrades.state === "absent") return { tone: "neutral", value: "No history", summary: upgrades.reason === "pre-journal-schema" ? "Update history wasn't recorded for this older data store." : "No storage updates have been recorded." };
-  const labels = { baseline: "Starting version recorded", planned: "Update planned", committed: "Update applied", settled: "Update completed" };
-  return { tone: "pass", value: "Recorded", summary: "Recorded changes to your saved data.", overview: <Disclosure summary="Update history" className="diagnostic-storage-disclosure">
-    <ul className="diagnostic-storage-updates">{upgrades.phases.map((phase, index) => <li key={index}>
-      <span>{labels[phase.phase]}</span><time dateTime={phase.recordedAt}>{fmtInstantDay(phase.recordedAt)} {fmtClock(phase.recordedAt)}</time>
-    </li>)}</ul>
-  </Disclosure> };
+  return { tone: "pass", value: "Recorded", summary: "Recorded changes to your saved data." };
 }
 function countResult(report: StorageDoctorWire | undefined, key: typeof COUNT_CHECKS[number]["key"]): CheckResult {
   if (report === undefined) return NOT_CHECKED;

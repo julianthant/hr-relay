@@ -79,9 +79,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(await surface.innerText()).not.toMatch(/authority-restore/u);
       await expect(pending).toContainText("Accepted actions that have not finished.");
       await expect(pending.locator(".ds-badge")).toHaveCount(0);
-      await primary.getByRole("button", { name: "Update history", exact: true }).click();
-      await expect(surface.locator(".diagnostic-storage-updates")).toContainText("Update completed");
-      await expect(surface.locator(".diagnostic-storage-updates time")).toHaveAttribute("dateTime", interrupted.checkedAt);
+      await expect(primary.getByText("Recorded", { exact: true })).toBeVisible();
+      await expect(primary.getByRole("button", { name: "Update history", exact: true })).toHaveCount(0);
+      await expect(surface.locator(".diagnostic-storage-updates")).toHaveCount(0);
 
       await run.click();
       await expect(recovery).toContainText("No unfinished storage operations.");

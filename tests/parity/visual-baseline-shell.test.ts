@@ -368,8 +368,9 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(storage).toContainText("Present");
       await expect(storage).toContainText("Not set");
 
-      await storage.getByText("Update history", { exact: true }).click();
-      await expect(storage.getByText("Update completed", { exact: true })).toBeVisible();
+      await expect(storage.getByText("Recorded", { exact: true })).toBeVisible();
+      await expect(storage.getByRole("button", { name: "Update history", exact: true })).toHaveCount(0);
+      await expect(storage.getByText("Update completed", { exact: true })).toHaveCount(0);
 
       await attachShellA11y(page, info, evidence("storage", theme, width));
     } finally { releaseLatest?.(); releaseDoctor?.(); await server.close(); }

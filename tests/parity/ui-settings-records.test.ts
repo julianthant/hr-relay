@@ -23,8 +23,9 @@ for (const theme of PARITY_THEMES) test(`Settings body switch thumbs remain on t
   await gotoSettingsDiscardingDraft(page, "general");
   await expect(page.getByRole("heading", { name: "General", level: 1 })).toBeVisible();
   const switches = page.locator(".settings-tab-body .ds-switch-row");
-  await expect(switches).toHaveCount(3);
-  for (const name of ["Dark theme", "Animations", "Run without a browser window"]) await expect(switches.getByRole("switch", { name: new RegExp(`^${name} `, "u") })).toHaveCount(1);
+  await expect(switches).toHaveCount(2);
+  await expect(page.getByRole("button", { name: /^Switch to (?:light|dark) theme$/u })).toHaveCount(1);
+  for (const name of ["Animations", "Run without a browser window"]) await expect(switches.getByRole("switch", { name: new RegExp(`^${name}(?: |$)`, "u") })).toHaveCount(1);
   const positions = await switches.evaluateAll(rows => rows.map(row => {
     const track = row.querySelector(".ds-switch-control")?.getBoundingClientRect();
     const thumbElement = row.querySelector(".ds-switch-thumb");
@@ -37,7 +38,7 @@ for (const theme of PARITY_THEMES) test(`Settings body switch thumbs remain on t
     expect(position.thumbRight).toBeLessThanOrEqual(position.trackRight);
     expect(position.color).toBe("rgb(255, 255, 255)");
   }
-  expect(positions.filter(position => position.checked)).toHaveLength(3);
+  expect(positions.filter(position => position.checked)).toHaveLength(2);
   const evidenceName = `settings-switch-thumb-${theme.name}.a11y.yml`;
   const tree = await page.locator("body").ariaSnapshot();
   info.annotations.push({ type: `a11y-attachment-sha256:${evidenceName}`, description: createHash("sha256").update(tree).digest("hex") });
