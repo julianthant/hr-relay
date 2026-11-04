@@ -11,6 +11,7 @@ import { createErrorCatalogFailure, formatErrorCatalogFailure } from '../../../m
 import { sessionsFromDay } from './sessions-view-model.js';
 import { useIdleSessionRefresh } from './session-idle-model.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useToasts } from '../../ds/ui.js';
 import type { WorkflowCatalogEntry } from '../workflows/workflow-catalog-model.js';
 import { sessionWorkerAuthorityKey, type SessionControl, type SessionsViewState } from './sessions-view-model.js';
 
@@ -271,4 +272,15 @@ export function useSessionPreviewCommands(initial: SessionsViewState, catalog: r
     },
     check: (target: string) => { const operation = operationsRef.current[target]; if (operation?.state === 'uncertain') void perform(operation.request, true); },
   };
+}
+
+export function useSessionAddFeedback(operation?: SessionPreviewOperation) {
+  const { toast, dismiss } = useToasts();
+  useEffect(() => {
+    if (operation?.state === 'pending') {
+      const id = toast({ tone: 'info', title: operation.message, duration: 0 });
+      return () => dismiss(id);
+    }
+    if (operation?.state === 'confirmed') toast({ tone: 'success', title: operation.message });
+  }, [operation, toast, dismiss]);
 }

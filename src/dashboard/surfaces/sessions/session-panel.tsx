@@ -2,7 +2,7 @@ import type { WorkflowCatalogEntry } from "../workflows/workflow-catalog-model.j
 import { useMemo, useRef } from "react";
 import { SessionsView } from "./sessions-view.js";
 import { createFixtureSessionPort, sessionsSample } from "./sessions-fixture.js";
-import { createSessionPreviewPort, useSessionPreviewCommands, type SessionCommandBinding } from "./session-preview-command-model.js";
+import { createSessionPreviewPort, useSessionAddFeedback, useSessionPreviewCommands, type SessionCommandBinding } from "./session-preview-command-model.js";
 import { sessionsFromDay, sessionsUnavailable, type SessionsViewState } from "./sessions-view-model.js";
 
 export function SessionPanel({ catalog, open, onOpenChange, settingsOpen, onSettings, source = "served", binding }: { catalog: readonly WorkflowCatalogEntry[]; open: boolean; onOpenChange: (open: boolean) => void; settingsOpen?: boolean; onSettings?: () => void; source?: "served" | "mock"; binding?: SessionCommandBinding }) {
@@ -20,6 +20,7 @@ export function SessionPanel({ catalog, open, onOpenChange, settingsOpen, onSett
     return createFixtureSessionPort(fixture!, catalog, scenario ?? 'normal');
   }, [source, fixture, catalog]);
   const commands = useSessionPreviewCommands(initial, catalog, source === "served" ? servedPort : fixturePort!, binding === undefined || source === "mock" ? undefined : { snapshot: binding.dayState.day, scope: binding.scope, actorId: binding.scope.actorId, records: binding.dayState.day.state === "loaded" ? binding.dayState.day.value.workerOperations : undefined });
+  useSessionAddFeedback(commands.operations.add);
   const data = commands.data;
   const display = useMemo((): SessionsViewState => {
     if (data.state !== "ready") return data;

@@ -342,6 +342,10 @@ timeline, and footer controls. Running offers Pause, paused offers Resume, faile
 non-idle offers Stop, and idle offers Remove worker. Pending/uncertain operations lock duplicate
 commands and offer a check of the original attempt. Removing a card returns focus to the strip toggle.
 
+Add workers progress and confirmed success appear only as toast notifications. Refusals, uncertain
+outcomes and the original attempt’s Check outcome action remain in the panel. Pending progress
+toasts stay until settlement or panel unmount.
+
 Add workers selects workflow and count with increment/decrement controls. The count is bounded
 from 1 to 20 in this preview. The dialog and strip are presentation, not evidence of backend pool
 admission. Backend pool, worker lease, patch cursor, browser session, and ownership/generation are
@@ -353,8 +357,9 @@ or unmount cancels eligibility. Only a matching acknowledgment rearms the timer;
 uncertain requests do not automatically resubmit. The current refresh port is a mock.
 
 Browser requirements describe stable declared slots independently of observed open sessions.
-An unopened requirement has no session ID, age, or health. Do not derive an empty requirement set
-from an empty open-session list. Actual worker-service wiring replaces both producer and port.
+An unopened requirement has no session ID, age, or health. Cards label it “Not opened” (“Opening”
+while the worker starts), reserving “Unavailable” for observed sessions without verified health.
+Do not derive an empty requirement set from an empty open-session list. Actual worker-service wiring replaces both producer and port.
 
 ## Assistant
 
