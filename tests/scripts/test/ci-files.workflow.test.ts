@@ -122,6 +122,17 @@ describe("separate event and admitted proof workflows", () => {
     const releaseTrigger = release.split("\npermissions:\n")[0];
     expect(ciTrigger).toContain("branches: [staging]");
     expect(ciTrigger).not.toContain("workflow_dispatch:");
+    expect(ciTrigger).not.toContain("push:");
+    expect(load("merge-train").split("\non:\n")[1]?.split("\npermissions:")[0]).toBe(`  push:
+    branches: [staging]
+    paths-ignore: ['docs/roadmap/**']
+  workflow_call:
+    inputs:
+      pr: {type: string, default: ""}
+      conclusion: {type: string, default: ""}
+    secrets:
+      TRAIN_TOKEN: {required: true}
+`);
     expect(releaseTrigger).toContain("branches: [main]");
     expect(releaseTrigger).toContain("workflow_dispatch:");
     expect(ci).not.toContain("release.yml");
