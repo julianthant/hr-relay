@@ -9,7 +9,28 @@ export type ReviewRecordView = Readonly<{
 }>;
 export const REVIEW_RELATIONSHIPS = ["Parent", "Sibling", "Spouse", "Domestic Partner Adult", "Domestic Partner Child", "Child", "Grandchild", "Grand Parent", "Other Relative", "Friend", "Neighbor", "Roommate", "Ward", "Medical Provider", "Emerg/Detention/Arrest Contact", "Contact if Detained/Arrested", "Other"];
 
-export type ReviewSourcePage = Readonly<{ page: number; imageUrl: string; label?: string }>;
+export type ReviewSourcePage = Readonly<{ page: number; imageUrl: string; identity?: string; label?: string }>;
+
+export interface RecordReviewProps {
+  readonly runId: string;
+  readonly subject: string;
+  readonly cards: readonly { record: ReviewRecordView; name: string; original?: ReviewRecordView; pages: readonly ReviewSourcePage[];
+    disposition?: Readonly<{ label: string; tone: "success" | "neutral" }>; approvalError?: string }[];
+  readonly readOnly: boolean;
+  readonly discarded: boolean;
+  readonly selectedCount: number;
+  readonly disabled?: boolean;
+  readonly actionsDisabled?: boolean;
+  readonly approvalError?: string;
+  readonly focusId?: string;
+  readonly onEditField?: (recordId: string, key: string, value: string) => void;
+  readonly onCommit?: () => void;
+  readonly onChange?: (record: ReviewRecordView) => void;
+  readonly onAdd?: () => string;
+  readonly onApprove?: () => void;
+  readonly onDiscard?: () => void;
+  readonly onRestore?: () => void;
+}
 
 export function reviewFieldGroups(record: ReviewRecordView): readonly { title: string; fields: readonly ReviewField[] }[] {
   const groups: { title: string; fields: ReviewField[] }[] = [];

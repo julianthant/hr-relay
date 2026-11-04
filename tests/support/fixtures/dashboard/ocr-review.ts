@@ -14,7 +14,7 @@ export function ocrReviewPageFixture(runId: string = SOURCE_RUN_ID, revision = 1
     origin: revision === 1 ? { kind: "checkpoint", key: "fixture-read-result", digest: "a".repeat(64),
       checkpoint: { workflowId: "ocr", itemId: READING_ID, nodeId: "read-result", attempt: 1, claimGeneration: 1, runId, outputDigest: "a".repeat(64), writtenAt: READ_AT } }
       : { kind: "command", commandId: "00000000-0000-4000-8000-000000000108" } });
-  return ReviewPageSchema.parse({ runId, ocr: { revision: review, digest: "a".repeat(64), approvedSnapshots: [] },
+  return ReviewPageSchema.parse({ runId, ocr: { revision: review, digest: "a".repeat(64), approvedSnapshots: [], editing: { state: "unavailable", reason: "run-busy" } },
     records: review.records.map((record, index) => ({ runId, recordId: `00000000-0000-4000-8000-${String(index + 500).padStart(12, "0")}`,
       recordRevision: revision, label: index === 0 ? "Example, Avery" : "Example, Robin", state: "pending", evidence: [`artifact:${source.manifest.pages[index].image.id}`] })) });
 }

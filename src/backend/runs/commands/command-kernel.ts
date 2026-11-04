@@ -295,6 +295,7 @@ export interface CommandKernelDependencies {
 
   readonly appVersion: string;
   readonly descriptors: WorkflowDescriptorResolver;
+  readonly readableDescriptors?: WorkflowDescriptorResolver;
   readonly writeResolution: WriteResolutionExecutor;
   readonly workerRuntime: WorkerPoolRuntimeAdoption;
   readonly intakeParser: IntakeParser;
@@ -390,7 +391,7 @@ function resolveDescriptorOrReject(
   request: CommandRequest,
   workflowId: string,
 ): AnyWorkflowDescriptor {
-  const descriptor = dependencies.descriptors.resolve(workflowId);
+  const descriptor = (request.family === "gate" ? dependencies.readableDescriptors ?? dependencies.descriptors : dependencies.descriptors).resolve(workflowId);
   if (descriptor === undefined) {
     reject(request, "target-not-found", `workflow ${workflowId} is not registered; the command names an unknown target`);
   }

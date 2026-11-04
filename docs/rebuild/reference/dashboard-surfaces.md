@@ -289,7 +289,8 @@ is live. Only Sessions Add workers adds more.
 Records opens within the workflow's Logs body. Each record card pairs its source PDF page with
 included/excluded state and grouped fields. Source page selection, zoom out/in, and Fit page keep
 actual page identity. Missing or failed source images say so. Aspect ratio comes from loaded image
-dimensions. The record heading receives arrival focus; Add record focuses its Employee ID.
+dimensions. The record heading receives arrival focus. The preview's Add record focuses its Employee ID;
+served Records edits existing extracted records only.
 
 The parent form type controls the fields. Manual mode begins with blank predefined records.
 Every current OCR shape omits Notes. Employee IDs must match `^10\d{6}$`; invalid IDs, unknown
@@ -299,18 +300,24 @@ bind their section pages. Relationship and boolean controls retain their closed 
 
 Selected valid records contribute to the approval count. Delegated OCR requires explicit approval
 before downstream outcomes. Approved inputs become read-only and immutable. Standalone OCR has no
-downstream approval; its Records remain editable after completion, with durable revision-bound
-persistence still requiring backend wiring. Discarded review can restore with Ctrl+Z/Cmd+Z while
+downstream approval; its existing Records remain editable after completion when current authority
+permits corrections. Discarded review can restore with Ctrl+Z/Cmd+Z while
 focus remains in Records; typing fields keep native undo. Approval cannot be undone this way.
 
 Roster and document-type choices share one row. Direct document choices exclude Verify. Field
 matching must use canonical spreadsheet bindings; no match or multiple matches remains explicit.
-Backend Person Lookup/matching, immutable approval persistence, and roster updates are separate
-wiring requirements. Current Records edits and transitions are local mock state.
+Backend Person Lookup/matching and roster updates are separate wiring requirements. The served
+Records toggle uses the native record count. Fields and selection save through revision-bound OCR
+commands; approval resolves the native gate with an immutable selected-record snapshot. Pending
+edits block approval. Stale, busy, retained-contract and approved authority cannot edit. An uncertain
+save retains its exact command and offers read-only Check result without sending it again. Local
+drafts and uncertainty survive panel remounts within the same person/client epoch. Conflicting drafts
+remain visible until the operator discards them. Footer Discard and Ctrl+Z restore the exact prior
+selected set; deselecting every record alone leaves the editor open.
 
 Served OCR Logs expose failed-child Retry in the header. When changed record evidence invalidates
 earlier corrections or review choices, the existing warning banner names the source page and revision.
-These warnings do not mount the served Records editor.
+The Records toggle opens the shared editor in the existing Logs body.
 
 ## Notifications
 
