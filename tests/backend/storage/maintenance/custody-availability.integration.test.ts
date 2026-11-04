@@ -309,9 +309,9 @@ it("refuses direct Windows account deletion before credential capture and preser
   } finally { observed.mockRestore(); syncBuiltinESMExports(); await f.close(); }
 });
 
-it("refuses a Windows registered-profile schema upgrade before a backup or upgrade is published", async () => {
+it.each([14, 19] as const)("refuses a Windows registered-profile schema %s upgrade before a backup or upgrade is published", async sourceVersion => {
   host.platform = "linux";
-  const f = await createHistoricalRegisteredProfileFixture({ sourceVersion: 14 });
+  const f = await createHistoricalRegisteredProfileFixture({ sourceVersion });
   const before = files(f.workspace), open = nativeFs.openSync;
   const keyPath = join(f.workspace, rebuildRuntimeIsolation.stateRoot, "machine", "credential-keys", `${f.binding.profileId}.json`);
   let credentialOpens = 0;
@@ -328,7 +328,8 @@ it("refuses a Windows registered-profile schema upgrade before a backup or upgra
     assert.equal(credentialOpens, 0, "unavailable schema upgrade must refuse before capturing the credential head");
     observed.mockRestore(); syncBuiltinESMExports();
     assert.deepEqual(files(f.workspace), before, "Windows schema upgrade must preserve the exact source, credentials and recovery inventory");
-    assert.ok(failure instanceof Error && failure.cause instanceof StorageMaintenanceCustodyUnavailableError);
+    assert.ok(failure instanceof Error && failure.cause instanceof StorageMaintenanceCustodyUnavailableError,
+      failure instanceof Error ? String(failure.cause) : String(failure));
   } finally { observed.mockRestore(); syncBuiltinESMExports(); await f.close(); }
 });
 
