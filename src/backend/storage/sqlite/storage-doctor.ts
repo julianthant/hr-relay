@@ -631,10 +631,21 @@ function authorityIdentityState(read: AuthorityIdentityRead): string {
   return read.state === "available" ? "available" : read.cause.code;
 }
 
+export class StorageDoctorObservationChangedError extends Error {
+  constructor(options: ErrorOptions) {
+    super("authority changed while the storage doctor awaited external evidence (initial=available; final=available)", options);
+    this.name = "StorageDoctorObservationChangedError";
+  }
+}
+
 function authorityIdentityChanged(
   initial: AuthorityIdentityRead,
   final: AuthorityIdentityRead,
 ): Error {
+  if (initial.state === "available" && final.state === "available"
+    && final.identity.authorityGeneration > initial.identity.authorityGeneration) {
+    return new StorageDoctorObservationChangedError({ cause: { initial, final } });
+  }
   return new Error(
     `authority changed while the storage doctor awaited external evidence (initial=${authorityIdentityState(initial)}; final=${authorityIdentityState(final)})`,
     { cause: { initial, final } },

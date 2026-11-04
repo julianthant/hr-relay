@@ -11,7 +11,7 @@ import { afterAll, it, vi } from "vitest";
 import { composeWorkerProcessControl } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
-import { doctorAuthorityStorage } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
+import { doctorAuthorityStorage, StorageDoctorObservationChangedError } from "../../../../src/backend/storage/sqlite/storage-doctor.js";
 import { composeRuntimePreflight } from "../../../../src/backend/app/preflight/runtime-admission.js";
 import { createRuntimePreflightRunners } from "../../../../src/backend/app/preflight/runtime-runners.js";
 import { claimWithPreflight, preflightSessionFactory } from "../../../../src/backend/app/preflight/worker-admission.js";
@@ -31,7 +31,7 @@ import { type RuntimeCapability } from "../../../../src/models/preflight/preflig
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { CommandRequestSchema } from "../../../../src/rules/commands/commands.js";
 import { ActorIdSchema, FingerprintSchema, WorkerIdSchema } from "../../../../src/rules/identity/ids.js";
-import { PreflightAdmissionRefusal, PreflightAdmissionScopeSchema } from "../../../../src/rules/preflight/preflight-admission.js";
+import { PreflightAdmissionRefusal, PreflightAdmissionScopeSchema, PreflightObservationChangedError } from "../../../../src/rules/preflight/preflight-admission.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
@@ -216,6 +216,31 @@ try {
     } });
   assert.equal(preparations, 1); assert.equal(claimed.state, "applied");
 } finally { await _afterEachFixture0(); }
+});
+
+it("returns a changed observation before browser preparation or claim, without repeating the detector", async () => {
+  let changed = false, observations = 0, preparations = 0;
+  try {
+    const h = await harness(runners => runners.map(runner => runner.check !== "authority.health" ? runner : {
+      ...runner, async run(context) {
+        if (changed) { observations++; throw new PreflightObservationChangedError(); }
+        return runner.run(context);
+      },
+    }));
+    await h.plans.prepare?.(h.ingress, signal()); const plan = h.plans.plan(h.ingress);
+    assert.equal(h.kernel.execute(h.command(plan)).state, "applied");
+    const original = h.database.authority.runs.listByWorkflow(plan.workflowId)[0]; assert.ok(original);
+    const { workerId, workerLifetime } = testAdmittedWorker(h.database, h.clock, { path: join(h.stateRoot, "state.db"),
+      workflow: plan.workflowId, poolIndex: 1, browserSystems: ["ucpath", "crm"] });
+    const request = { commandId: randomUUID(), workflow: plan.workflowId, workerId, workerLifetime, runtimeConfig: selectRunRuntime(h.database.authority) };
+    changed = true;
+    const result = await claimWithPreflight({ preflight: h.preflight, signal: signal(),
+      claim: admit => h.lifecycle.claimNext(request, admit), prepareRun: async () => { preparations++; } });
+    assert.deepEqual(result, { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: original.envelope.runId });
+    assert.equal(observations, 1); assert.equal(preparations, 0);
+    assert.deepEqual(h.database.authority.runs.get(original.envelope.runId), original);
+    assert.equal(h.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
+  } finally { await _afterEachFixture0(); }
 });
 
 for (const change of ["selection", "version", "cancel", "abort"] as const) it(`rechecks ${change} changes made during async browser preparation before claiming`, async () => {
@@ -544,7 +569,7 @@ it("opens CRM during authority writes while the full doctor still rejects mixed 
     assert.ok(h.database.getMeta().authorityGeneration > generation);
     release.resolve();
     const doctorError = await doctorOutcome;
-    assert.ok(doctorError instanceof Error);
+    assert.ok(doctorError instanceof StorageDoctorObservationChangedError);
     assert.match(doctorError.message, /authority changed while the storage doctor awaited external evidence/u);
     assert.equal(await openOutcome, reachedBrowser);
     assert.equal(opens, 2);
@@ -560,8 +585,8 @@ it("opens CRM during authority writes while the full doctor still rejects mixed 
     });
     release.resolve();
     const fullError = await doctorOutcome;
-    assert.ok(fullError instanceof PreflightAdmissionRefusal && fullError.reason === "unavailable");
-    assert.ok(fullError.cause instanceof Error);
+    assert.ok(fullError instanceof PreflightObservationChangedError && fullError.reason === "observation-changed");
+    assert.ok(fullError.cause instanceof StorageDoctorObservationChangedError);
     assert.match(fullError.cause.message, /authority changed while the storage doctor awaited external evidence/u);
   } finally {
     release.resolve();
