@@ -1,3 +1,4 @@
+import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { readDelegationEvidence, readDelegationInvocationEvidence, readDelegationScopeEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { buildRunPreviewResult, buildRunResult } from "../../../../src/backend/runs/lifecycle/run-result.js";
 import { afterAll } from "vitest";
@@ -11,7 +12,7 @@ import { taskId } from "../../../../src/rules/identity/ids.js";
 import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
 import { resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
-import { descriptorRuntimeNodes, workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
+import { descriptorRuntimeNodes, authorizeWorkflowDelegationRefresh, assertWorkflowDelegationRefreshAuthorization, workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/descriptor-registry.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { randomUUID } from "node:crypto";
@@ -311,6 +312,11 @@ it("joins ordinary read and prepared write branches into a preview without deriv
   const read = children.find(child => child.envelope.workflow === plan1Leaf.descriptor.id);
   const write = children.find(child => child.envelope.workflow === childCrashWrite.descriptor.id);
   assert.ok(read && write);
+  const refresh = authorizeWorkflowDelegationRefresh(plan1Leaf.descriptor,read); assert.ok(refresh);
+  assert.equal(assertWorkflowDelegationRefreshAuthorization(refresh,read),plan1Leaf.descriptor);
+  assert.throws(() => assertWorkflowDelegationRefreshAuthorization({},read), /delegation-refresh-factory-authorization-unavailable/);
+  assert.throws(() => assertWorkflowDelegationRefreshAuthorization(refresh,RunRecordSchema.parse({ ...read, version: read.version + 1 })), /delegation-refresh-factory-authorization-unavailable/);
+  assert.equal(authorizeWorkflowDelegationRefresh(parallelChildWriteRecoveryRoot.descriptor,done.run),undefined);
   const readResult = f.database.authority.runResults.get(read.envelope.runId);
   const writeResult = f.database.authority.runResults.get(write.envelope.runId);
   const parentResult = f.database.authority.runResults.get(f.run.envelope.runId);
@@ -357,7 +363,8 @@ it("joins ordinary read and prepared write branches into a preview without deriv
   const changedRun = { ...write, completion: { ...write.completion, resultDigest: changedResult.resultDigest } };
   assert.throws(() => readDelegationEvidence({ ...repositories,
     runs: { ...repositories.runs, get: id => id === write.envelope.runId ? changedRun : repositories.runs.get(id) },
-    runResults: { ...repositories.runResults, get: id => id === write.envelope.runId ? changedResult : repositories.runResults.get(id) },
+    runResults: { ...repositories.runResults, get: id => id === write.envelope.runId ? changedResult : repositories.runResults.get(id),
+      getInitialSettlement: id => id === write.envelope.runId ? { run: changedRun, result: changedResult } : repositories.runResults.getInitialSettlement(id) },
   }, f.run.envelope.runId, "write"), /delegation-settlement-authority-unavailable/);
   assert.throws(() => readDelegationEvidence({ ...repositories,
     runs: { ...repositories.runs, get: id => id === write.envelope.runId ? { ...write, envelope: { ...write.envelope, dryRun: false } } : repositories.runs.get(id) },

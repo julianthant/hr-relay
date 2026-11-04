@@ -483,7 +483,10 @@ appears only on that child; waiting ancestors remain `running`. Queue status fil
 before pagination, so released parents are never counted or selected as queued work. Queue, Logs
 and Activity use the same authenticated wait facts.
 
-`resume-parent` makes a completed retry eligible for joining. `manual-parent-resume` pauses the
+`resume-parent` makes a completed retry eligible for joining. For a genuine transaction-free
+parent at an unresolved gate or completed before approval, accepting a joined child retry opens a
+waiting refresh on the same run and attempt. One native wakeup follows settlement of every accepted
+replacement. Approved snapshots and resolved gates cannot reopen through this operation. `manual-parent-resume` pauses the
 waiting parent through its existing pause control while the replacement child can execute. Resume
 requires terminal evidence for every current manual retry and binds its native command identity to the exact dependency, child,
 attempt and result digest. A later retry needs its own acknowledgement. Resume keeps the parent's
@@ -515,7 +518,10 @@ execution evaluate the same condition; a skipped gate creates no operator decisi
 `src/models/run/record.ts` defines the durable states `queued`, `claimed`, `validating`, `running`,
 `parked-gate`, `parked-write`, and `terminal`. Terminal outcomes are `done`, `failed`, `cancelled`,
 `discarded`, `interrupted`, and `superseded`. `runTransitionViolation` checks legal edges.
-Only a terminal `interrupted` run may return to `queued`. An ordinary retry creates another run.
+A terminal `interrupted` run may return to `queued`. An ordinary retry creates another run.
+An authenticated read-only delegation refresh can also return an unapproved completed parent to
+`queued` on its existing row. It retains the earlier terminal result and receipt as immutable
+settlements; current output remains unavailable until the refreshed execution settles.
 
 A gate records its typed result separately from checkpoints. The executor emits `gate.opened`,
 closes sessions, and persists `parked-gate` with `gateId` and `resumeAt`. Resolution requeues the

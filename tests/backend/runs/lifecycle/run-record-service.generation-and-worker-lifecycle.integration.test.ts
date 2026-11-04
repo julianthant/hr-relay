@@ -463,7 +463,7 @@ describe("current settings selection",()=>{
     const f=await settingsFixture();
     try{
       const source=f.create(),terminal=requireLifecycleApplied(f.service.transition({commandId:UUID_5,
-        runId:source.envelope.runId,expectedVersion:source.version,lifecycle:{state:"terminal",outcome:"cancelled",endedAt:NOW}}));
+        runId:source.envelope.runId,expectedVersion:source.version,lifecycle:{state:"terminal",outcome:"cancelled",endedAt:f.clock.now().toISOString()}}));
       assert.equal(f.save({"timeouts.taskMs":{set:90000}}).state,"applied");
       const selected=f.database.authority.runtimeConfig.get();assert.ok(selected);
       const request={commandId:"83000000-0000-4000-8000-000000000091",runId:terminal.envelope.runId,

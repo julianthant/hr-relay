@@ -10,6 +10,7 @@ import type { RunRecord } from "../../../../src/models/run/record.js";
 export function restoreSchema19RunSettlementFixture(database: DatabaseSync): void {
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 20);
   assert.equal(database.prepare("SELECT count(*) AS count FROM (SELECT run_id FROM run_results GROUP BY run_id HAVING count(*)>1)").get()?.count, 0);
+  database.exec("DROP TRIGGER runs_completion_immutable");
   for (const table of ["run_receipts", "run_results"]) for (const suffix of ["no_replace", "immutable", "owner_delete"]) database.exec(`DROP TRIGGER ${table}_${suffix}`);
   database.exec("ALTER TABLE run_receipts RENAME TO fixture_run_receipts; ALTER TABLE run_results RENAME TO fixture_run_results");
   const baseline = SQLITE_MIGRATIONS[0].statements[0];
@@ -26,6 +27,9 @@ export function restoreSchema19RunSettlementFixture(database: DatabaseSync): voi
     assert.ok(definition);
     database.exec(definition);
   }
+  const completionTrigger = baseline.match(/CREATE TRIGGER runs_completion_immutable[\s\S]*?END;/)?.[0];
+  assert.ok(completionTrigger);
+  database.exec(completionTrigger);
   database.exec("UPDATE database_states SET schema_version=19; PRAGMA user_version=19");
 }
 

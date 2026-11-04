@@ -169,3 +169,13 @@ export const childSettledReviewRoot = compileWorkflow(defineWorkflow({ ...common
   } }), { manifest });
 export const childSettledReviewModules = { root: childSettledReviewRoot,
   modules: [composeWorkflowModule(plan1Leaf,plan1Stores.stores),composeWorkflowModule(childSettledReviewRoot,plan1Stores.stores)] };
+
+export const childSettledObservationRoot = compileWorkflow(defineWorkflow({ ...common, id: "fixture-child-settled-observation", code: "fso",
+  steps: ({ delegate, result }) => {
+    const members = delegate({ id: "members", target: leaf, edgeId: "members", cardinality: "many", await: "terminal", join: "all-settled",
+      policy: { ...policy, onChildFailed: "allow-partial" } }, [],
+    { bind: ({ input }) => [input, { ...input, emplId: EidSchema.parse("10800001") }], deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+    return { steps: [[{ key: "members", label: "Members" }, [members]]], result: result(Plan1Input,[],({ input }) => input) };
+  } }), { manifest });
+export const childSettledObservationModules = { root: childSettledObservationRoot,
+  modules: [composeWorkflowModule(plan1Leaf,plan1Stores.stores),composeWorkflowModule(childSettledObservationRoot,plan1Stores.stores)] };

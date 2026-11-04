@@ -34,7 +34,7 @@ import { completionFromAuthorization } from "../../../models/run/completion.js";
 import { DeletedRunRecordSchema,RunDeleteInputSchema,type DeletedRunRecord } from "../../../models/run/deleted-run.js";
 import { RunRecordSchema,runClaim,runTransitionViolation,type RunRecord } from "../../../models/run/record.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
-import { RunResultRecordSchema, readRunPreviewResult,createRunTerminalEvidenceResult,deriveCheckpointOutputDigest,deriveCheckpointProvenanceDigest,deriveTerminalFailureDigest,terminalDelegationDependencyRecord,terminalGateDependencyRecord,terminalEvidenceResult,type RunResultRecord } from "../../../models/run/result.js";
+import { RunResultRecordSchema, readRunPreviewResult,createRunTerminalEvidenceResult,deriveCheckpointOutputDigest,deriveCheckpointProvenanceDigest,deriveTerminalFailureDigest,terminalDelegationDependencyRecord,terminalGateDependencyRecord,refreshedRunSettlement,terminalEvidenceResult,type RunResultRecord } from "../../../models/run/result.js";
 import { RunSessionRecordSchema,type RunSessionRecord } from "../../../models/run/session.js";
 import { StartPlanRecordSchema,isStartPlanExpired,type StartPlanRecord } from "../../../models/run/start-plan.js";
 import { FailureTerminalAuthorizationRecordSchema,TerminalAuthorizationRecordSchema,type TerminalAuthorizationRecord } from "../../../models/run/terminal-authorization.js";
@@ -86,7 +86,7 @@ import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { runRecordColumns,runRecordFromRow,transitionRunRecord,updateRunRecord } from "./run-record-row.js";
 import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
-import { ApplicationAdmissionRequestSchema, CanonicalClaimNextRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerControlRequestSchema,WorkerLifecycleRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,WorkerStandingRecoveryRequestSchema,WorkerStartOutcomeSchema,WorkerStartRequestSchema,WorkerUpdateOutcomeSchema,WorkerVerificationAdmissionRequestSchema,WorkerVerificationRetirementRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type WorkerStartOutcome,type WorkerUpdateOutcome } from "./run-store-contracts.js";
+import { ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema, CanonicalClaimNextRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerControlRequestSchema,WorkerLifecycleRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,WorkerStandingRecoveryRequestSchema,WorkerStartOutcomeSchema,WorkerStartRequestSchema,WorkerUpdateOutcomeSchema,WorkerVerificationAdmissionRequestSchema,WorkerVerificationRetirementRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type WorkerStartOutcome,type WorkerUpdateOutcome } from "./run-store-contracts.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { readAppSettings, migratePersonPreferences } from "./settings-storage.js";
@@ -113,6 +113,7 @@ import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeas
 import { assertWorkflowRunResultAuthorization,descriptorRuntimeNodes,workflowProjections,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
 import type { VerifiedBackup } from "./backup-service.js";
+import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegationRefresh } from "./delegation-refresh.js";
 import { assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
@@ -214,6 +215,7 @@ type RunLifecycleJournalRepository = Readonly<{
   insertAudit(input: unknown): ImmutableInsertResult<z.infer<typeof RunLifecycleCommandAuditRecordSchema>>;
   findAuditByCommand(commandId: string): z.infer<typeof AuthorityCommandAuditRecordSchema> | undefined;
   findContinuationIssue(runId: string, appliedVersion?: number): z.infer<typeof RunLifecycleCommandAuditRecordSchema> | undefined;
+  findDelegationParentHold(runId: string, sourceCommandId: string, appliedVersion: number): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   findRunOrigin(runId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   findGatePark(runId: string, gateId: string, throughVersion: number): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   findCancellation(runId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
@@ -250,7 +252,8 @@ type DependencyRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof DependencyRecordSchema>>;
   get(dependencyId: string): z.infer<typeof DependencyRecordSchema> | undefined;
   listByParentRun(parentRunId: string): readonly z.infer<typeof DependencyRecordSchema>[];
-  activateRetry(input: unknown, now: string): void;
+  activateRetry(input: unknown, now: string, refreshAuthorization?: object): void;
+  refreshAfterRetry(input: unknown, authorization: object, now: string): RunRecord;
   settle(input: unknown): z.infer<typeof DependencyRecordSchema>;
   reconcile(parentRunId: string, now: string): void;
   members(manifestId: string): ReturnType<typeof authenticateDelegationGroup>["children"];
@@ -1126,16 +1129,36 @@ function assertRefreshedReceiptSettlement(database: DatabaseSync, record: RunEvi
     || run.lifecycle.state !== "terminal" || record.generatedAt !== run.lifecycle.endedAt) throw new Error("receipt-settlement-binding-mismatch");
 }
 
-function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRecord, readRun = runRecordFromRow, retainedRun?: RunRecord): void {
+function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRecord, readRun = runRecordFromRow, retainedRun?: RunRecord, refreshPath = new Set<string>()): void {
   const evidence = terminalEvidenceResult(record);
   const rawRun = database.prepare("SELECT * FROM runs WHERE id=?").get(record.runId);
   if (rawRun === undefined) throw new Error("terminal-evidence-run-missing");
   const current = readRun(rawRun), run = retainedRun ?? current;
   if (run.version > current.version || canonicalJsonStringify(run.input) !== canonicalJsonStringify(current.input)
     || canonicalJsonStringify(run.envelope) !== canonicalJsonStringify({ ...current.envelope, priority: run.envelope.priority })) throw new Error("run-settlement-owner-mismatch");
+  if (run.delegationRefresh !== undefined) {
+    const key = `${run.envelope.runId}:${run.version}`;
+    if (refreshPath.has(key)) throw new Error("delegation-refresh-settlement-cycle");
+    const path = new Set(refreshPath).add(key);
+    authenticateDelegationRefresh({
+      lifecycleJournal: {
+        getCommand: commandId => { const row = database.prepare("SELECT * FROM commands WHERE id=?").get(commandId); return row === undefined ? undefined : AuthorityCommandRecordSchema.parse(commandFromRow(row)); },
+        findAuditByCommand: commandId => { const row = database.prepare("SELECT * FROM command_audits WHERE command_id=?").get(commandId); return row === undefined ? undefined : AuthorityCommandAuditRecordSchema.parse(nativeOrdinaryRecordFromRow("command_audits",row)); },
+      },
+      delegationManifests: { get: manifestId => { const row = database.prepare("SELECT * FROM run_delegations WHERE id=?").get(manifestId); return row === undefined ? undefined : DelegationManifestSchema.parse(nativeOrdinaryRecordFromRow("run_delegations",row)); } },
+      runResults: { getSettlement: (runId, version) => {
+        const row = readRunSettlementRow(database,runId,version);
+        if (row === undefined) return undefined;
+        const result = RunResultRecordSchema.parse(nativeOrdinaryRecordFromRow("run_results",row)), terminal = runSettlementContext(row);
+        assertTerminalEvidenceOwner(database,result,readRun,terminal,path);
+        return { run: terminal, result };
+      } },
+    },run);
+  }
   if (retainedRun !== undefined && run.completion !== undefined) {
     if (current.completion?.expectedVersion === run.completion.expectedVersion) {
-      if (canonicalJsonStringify(current.completion) !== canonicalJsonStringify(run.completion)) throw new Error("run-settlement-completion-mismatch");
+      if (canonicalJsonStringify(current.completion) !== canonicalJsonStringify(run.completion)
+        || canonicalJsonStringify(current.delegationRefresh ?? null) !== canonicalJsonStringify(run.delegationRefresh ?? null)) throw new Error("run-settlement-completion-mismatch");
     } else {
       const rows = database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
         AND json_extract(request_json,'$.operation')='terminalize'
@@ -3447,7 +3470,7 @@ export class AuthorityDatabase implements Disposable {
       this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
       const existingAuthorization = this.#completionAuthorization(current);
       const existing = this.#readRecord("run_failures", request.failure.failureId, FailureRecordSchema);
-      const existingResult = this.#readRecord("run_results", request.failure.runId, RunResultRecordSchema);
+      const existingResult = this.authority.runResults.get(request.failure.runId);
       if (existingAuthorization !== undefined || existing !== undefined || existingResult !== undefined) {
         if (existingAuthorization === undefined || existing === undefined || existingResult === undefined) {
           throw new Error(`run ${request.failure.runId} has a partial failure terminal settlement`);
@@ -3547,7 +3570,7 @@ export class AuthorityDatabase implements Disposable {
         commandId: command.commandId, auditId: audit.auditId,
         requestFingerprint: command.requestFingerprint, appliedVersion: audit.result.appliedVersion,
       });
-      const existing = this.#readRecord("run_results", result.runId, RunResultRecordSchema);
+      const existing = this.authority.runResults.get(result.runId);
       if (existing === undefined) this.#insertRunResult(result, RunRecordSchema.parse({ ...run, version: audit.result.appliedVersion, updatedAt: result.createdAt }));
       else if (canonicalJsonStringify(existing) !== canonicalJsonStringify(result)) throw new Error("terminal-evidence-result-mismatch");
       assertTerminalEvidenceOwner(this.#database,result);
@@ -3562,7 +3585,7 @@ export class AuthorityDatabase implements Disposable {
       this.#assertResultMatchesRun(request.result, current);
       this.#assertTerminalAuthorizationMatchesRun(request.authorization, current);
       const existingAuthorization = this.#completionAuthorization(current);
-      const existingResult = this.#readRecord("run_results", request.result.runId, RunResultRecordSchema);
+      const existingResult = this.authority.runResults.get(request.result.runId);
       if (existingAuthorization !== undefined || existingResult !== undefined) {
         if (existingAuthorization === undefined || existingResult === undefined) {
           throw new Error(`run ${request.result.runId} has a partial completion/result settlement`);
@@ -5086,6 +5109,23 @@ export class AuthorityDatabase implements Disposable {
             || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)) throw new Error("run-continuation-issue-unavailable");
           return audit;
         },
+        findDelegationParentHold: (runId: string, sourceCommandId: string, appliedVersion: number) => {
+          const retries = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+            AND json_extract(request_json,'$.operation')='delegation-retry'
+            AND json_extract(request_json,'$.request.sourceCommandId')=?
+            AND json_extract(request_json,'$.request.continuationOwner.runId')=?`).all(sourceCommandId,runId);
+          for (const row of retries) {
+            const retry = RunLifecycleCommandRecordSchema.parse(commandFromRow(row));
+            const command = this.authority.lifecycleJournal.getCommand(lifecycleCommandId("delegation-manual-pause",retry.commandId));
+            if (command === undefined || !("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "pause") continue;
+            const request = CanonicalPauseRequestSchema.parse(command.request);
+            const audit = this.authority.lifecycleJournal.findAuditByCommand(command.commandId);
+            if (request.runId === runId && request.expectedVersion + 1 === appliedVersion && audit !== undefined && "kind" in audit
+              && audit.kind === "run-lifecycle" && audit.result.kind === "run" && audit.result.runId === runId && audit.result.appliedVersion === appliedVersion
+              && canonicalJsonStringify(audit.request) === canonicalJsonStringify(command)) return command;
+          }
+          return undefined;
+        },
         findRunOrigin: (runId: string) => {
           const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
             AND json_extract(request_json,'$.operation') IN ('create','retry','restart','recover')
@@ -5254,14 +5294,18 @@ export class AuthorityDatabase implements Disposable {
             for (const { child, dependency } of repositories.dependencies.members(manifest.manifestId)) {
               const terminal = childTerminalSettlement(child, repositories);
               if (terminal === undefined || dependency.state !== "active") continue;
+              const settlement = refreshedRunSettlement(child, terminal.result);
               repositories.dependencies.settle({ commandId: lifecycleCommandId("delegation-settlement", {
-                dependencyId: dependency.dependencyId, childRunId: child.envelope.runId, childAttempt: child.envelope.attempt, resultDigest: terminal.result.resultDigest }),
+                dependencyId: dependency.dependencyId, childRunId: child.envelope.runId, childAttempt: child.envelope.attempt, resultDigest: terminal.result.resultDigest, ...(settlement === undefined ? {} : { settlement }) }),
               dependencyId: dependency.dependencyId, expectedVersion: dependency.version, runId: child.envelope.runId,
-              childAttempt: child.envelope.attempt, resultDigest: terminal.result.resultDigest, state: terminal.state, now });
+              childAttempt: child.envelope.attempt, resultDigest: terminal.result.resultDigest, state: terminal.state, now, ...(settlement === undefined ? {} : { settlement }) });
             }
           }
+          settleDelegationRefresh(repositories, parentRunId, now, run => this.#writeRunRow(run, "update"));
         }),
-        activateRetry: (input: unknown, now: string) => this.withAuthorityTransaction(repositories => {
+        refreshAfterRetry: (input: unknown, authorization: object, now: string) => this.withAuthorityTransaction(repositories =>
+          admitDelegationRefresh(repositories, DelegationRetryRequestSchema.parse(input), authorization, now, run => this.#writeRunRow(run, "update"))),
+        activateRetry: (input: unknown, now: string, refreshAuthorization?: object) => this.withAuthorityTransaction(repositories => {
           const request = DelegationRetryRequestSchema.parse(input);
           const previous = repositories.runs.get(request.previousRunId), next = repositories.runs.get(request.replacementRunId);
           if (previous === undefined || next === undefined) throw new Error("delegation-retry-run-unavailable");
@@ -5272,7 +5316,7 @@ export class AuthorityDatabase implements Disposable {
             commandId = lifecycleCommandId(source.type === "recover-run" ? "operator-recover-run" : "operator-retry", request.sourceCommandId);
           } else commandId = lifecycleCommandId("continuation-child-retry", { ownerRunId: request.continuationOwner.runId, previousRunId: request.previousRunId });
           const proof = prepareDelegationRetry(repositories, previous, { sourceCommandId: request.sourceCommandId,
-            commandId,
+            commandId, refreshAuthorization,
             ...(request.continuationOwner === undefined ? {} : { continuationOwner: request.continuationOwner }) });
           const dependency = proof.child.dependency;
           assertDelegationReplacement(this.authority, proof.child.original, previous, next);
@@ -5284,7 +5328,8 @@ export class AuthorityDatabase implements Disposable {
             || request.resultDigest !== proof.terminal.result.resultDigest || request.replacementAttempt !== next.envelope.attempt
             || request.planFingerprint !== proof.group.manifest.manifestFingerprint || canonicalJsonStringify(request.policy) !== canonicalJsonStringify(dependency.policy)
             || next.envelope.retryOf !== previous.envelope.runId || next.lifecycle.state !== "queued" || next.version !== 1) throw new Error("delegation-retry-binding-mismatch");
-          const record = DependencyRecordSchema.parse({ ...dependency, state: "active", version: dependency.version + 1, updatedAt: now });
+          const { settlement: _settlement, ...withoutSettlement } = dependency;
+          const record = DependencyRecordSchema.parse({ ...withoutSettlement, state: "active", version: dependency.version + 1, updatedAt: now });
           this.#authorityWrite("delegation_dependencies", () => {
             const changes = sqliteChanges(this.#database.prepare("UPDATE delegation_dependencies SET payload_json=? WHERE id=? AND payload_json=?")
               .run(canonicalJsonStringify(record), dependency.dependencyId, canonicalJsonStringify(dependency)).changes);
@@ -5302,7 +5347,7 @@ export class AuthorityDatabase implements Disposable {
           const terminal = childTerminalSettlement(selected.child, repositories);
           if (terminal === undefined || terminal.state !== request.state || terminal.result.resultDigest !== request.resultDigest
             || request.commandId !== lifecycleCommandId("delegation-settlement", { dependencyId: request.dependencyId,
-              childRunId: request.runId, childAttempt: request.childAttempt, resultDigest: request.resultDigest })) throw new Error("delegation-settlement-evidence-mismatch");
+              childRunId: request.runId, childAttempt: request.childAttempt, resultDigest: request.resultDigest, ...(request.settlement === undefined ? {} : { settlement: request.settlement }) })) throw new Error("delegation-settlement-evidence-mismatch");
           const fingerprint = sha256Hex(`hrauto:run-lifecycle-command:v1\0delegation-settlement\0${canonicalJsonStringify(request)}`);
           const previous = repositories.lifecycleJournal.getCommand(request.commandId);
           if (previous !== undefined) {
@@ -5314,7 +5359,9 @@ export class AuthorityDatabase implements Disposable {
             return current;
           }
           if (current.version !== request.expectedVersion || current.state !== "active") throw new Error("delegation-dependency-cas-conflict");
-          const record = DependencyRecordSchema.parse({ ...current, state: request.state, version: current.version + 1, updatedAt: request.now });
+          const expectedSettlement = refreshedRunSettlement(selected.child, terminal.result);
+          if (canonicalJsonStringify(request.settlement ?? null) !== canonicalJsonStringify(expectedSettlement ?? null)) throw new Error("delegation-settlement-version-mismatch");
+          const record = DependencyRecordSchema.parse({ ...current, state: request.state, ...(request.settlement === undefined ? {} : { settlement: request.settlement }), version: current.version + 1, updatedAt: request.now });
           this.#authorityWrite("delegation_dependencies", () => {
             const changes = sqliteChanges(this.#database.prepare("UPDATE delegation_dependencies SET payload_json=? WHERE id=? AND payload_json=?")
               .run(canonicalJsonStringify(record), current.dependencyId, canonicalJsonStringify(current)).changes);
@@ -5881,14 +5928,17 @@ export class AuthorityDatabase implements Disposable {
         if (eligible !== undefined && (!authenticateDescendantHome(this.authority, candidate, slot.workflow) || !eligible(candidate))) continue;
         if (candidate.envelope.continuation !== undefined && continuationDelegationGroups(this.authority, candidate.envelope)
           .some(({ group }) => group.children.some(({ child }) => child.lifecycle.state !== "terminal"))) continue;
+        authenticateDelegationRefresh(this.authority, candidate);
         this.authority.dependencies.reconcile(candidate.envelope.runId, request.now);
+        const reconciled = this.authority.runs.get(candidate.envelope.runId);
+        if (reconciled?.delegationRefresh?.phase === "waiting") continue;
         if (this.authority.dependencies.readiness(candidate.envelope.runId, candidate.cancelRequested === true ? "cancel" : "join").state !== "ready") continue;
         const notBefore = candidate.lifecycle.state === "queued" ? candidate.lifecycle.notBefore : undefined;
         if (notBefore !== undefined && Date.parse(notBefore) > Date.parse(request.now)) {
           if (nextEligibleAt === undefined || Date.parse(notBefore) < Date.parse(nextEligibleAt)) nextEligibleAt = notBefore;
           continue;
         }
-        current = candidate;
+        current = reconciled ?? candidate;
         break;
       }
       if (current === undefined) return RunClaimOutcomeSchema.parse(nextEligibleAt === undefined

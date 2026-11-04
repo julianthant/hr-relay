@@ -65,7 +65,7 @@ import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-read
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { activeRunsForItem,fanOutQueuedRuns,requireApplied,runTarget,type TargetReference,type VersionChange } from "../lifecycle/run-fan-out.js";
-import { lifecycleCommandId,type RunMutationOutcome,type RunRecordService } from "../lifecycle/run-record-service.js";
+import { lifecycleCommandId,type RelatedRunChange,type RunMutationOutcome,type RunRecordService } from "../lifecycle/run-record-service.js";
 import { dryRunRefusalMessage,resolveInstances,supportsDryRun } from "../start/plan.js";
 import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
 
@@ -447,11 +447,14 @@ function lifecycleRefusal(request: CommandRequest, refusal: RunRecordRefusal): n
   }
 }
 
-function lifecycleRun(request: CommandRequest, outcome: RunMutationOutcome | RunExistence): RunRecord {
+function lifecycleRun(request: CommandRequest, outcome: RunMutationOutcome | RunExistence, relatedRunChanges?: RelatedRunChange[]): RunRecord {
   if (outcome.state === "refused") lifecycleRefusal(request, outcome.refusal);
   if (outcome.state === "deleted") reject(request, "target-deleted", "run was deleted");
   if (outcome.state === "absent") reject(request, "target-not-found", "run does not exist");
-  if ((outcome.state === "applied" || outcome.state === "applied-already") && "run" in outcome) return outcome.run;
+  if ((outcome.state === "applied" || outcome.state === "applied-already") && "run" in outcome) {
+    relatedRunChanges?.push(...outcome.relatedRunChanges ?? []);
+    return outcome.run;
+  }
   throw new Error(`unexpected operator lifecycle result: ${outcome.state}`);
 }
 
@@ -621,6 +624,7 @@ function executeRecover(
   const publication = { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({
     title: planning.title(current.input.parsed.value), subtitle: planning.subtitle(current.input.parsed.value),
   })), actorId: request.requestedBy };
+  const relatedRunChanges: RelatedRunChange[] = [];
   let record: RunRecord;
   let children: readonly RunRecord[];
   try {
@@ -630,18 +634,14 @@ function executeRecover(
       runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
       runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
       sourceCommandId: request.commandId,
-    }, descriptor, publication));
-    children = dependencies.lifecycle.continueDelegations(record, request.commandId);
+    }, descriptor, publication), relatedRunChanges);
+    children = dependencies.lifecycle.continueDelegations(record, request.commandId, relatedRunChanges);
   } catch (error) {
     if (error instanceof RerunRefusedError || error instanceof RunContinuationRefusedError)
       reject(request, "RUN_CONTINUATION_REFUSED", ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);
     throw error;
   }
-  return applied(request, [runTarget(record.envelope.runId), runTarget(current.envelope.runId),
-    ...children.map(child => runTarget(child.envelope.runId))], [
-    { target: runTarget(record.envelope.runId), before: 0, after: record.version },
-    ...children.map(child => ({ target: runTarget(child.envelope.runId), before: 0, after: child.version })),
-  ]);
+  return recoveryApplication(request, repositories, record, current, children, relatedRunChanges);
 }
 
 function executeRetry(
@@ -691,6 +691,7 @@ function executeRetry(
   const planning = workflowPlanning(descriptor);
   const value = current.input.parsed?.value;
   if (value === undefined) throw new Error("retry source lacks canonical input");
+  const relatedRunChanges: RelatedRunChange[] = [];
   let record: RunRecord;
   let children: readonly RunRecord[] = [];
   try {
@@ -699,18 +700,32 @@ function executeRetry(
       runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
       runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
       sourceCommandId: request.commandId,
-    }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({ title: planning.title(value), subtitle: planning.subtitle(value) })), actorId: request.requestedBy }));
-    if (current.envelope.parent !== undefined) children = dependencies.lifecycle.continueDelegations(record, request.commandId);
+    }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({ title: planning.title(value), subtitle: planning.subtitle(value) })), actorId: request.requestedBy }), relatedRunChanges);
+    if (current.envelope.parent !== undefined) children = dependencies.lifecycle.continueDelegations(record, request.commandId, relatedRunChanges);
   } catch (error) {
     if (current.envelope.parent !== undefined && (error instanceof RerunRefusedError || error instanceof RunContinuationRefusedError))
       reject(request, "RUN_CONTINUATION_REFUSED", ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);
     throw error;
   }
-  return applied(request, [runTarget(record.envelope.runId), runTarget(request.target.runId), ...children.map(child => runTarget(child.envelope.runId))], [
-    { target: runTarget(record.envelope.runId), before: 0, after: record.version },
-    ...children.map(child => ({ target: runTarget(child.envelope.runId), before: 0, after: child.version })),
-  ]);
+  return recoveryApplication(request, repositories, record, current, children, relatedRunChanges);
 
+}
+
+function recoveryApplication(request: CommandRequest, repositories: AuthorityRepositories, record: RunRecord, original: RunRecord,
+  children: readonly RunRecord[], related: readonly RelatedRunChange[]) {
+  const targets = new Map([record, original, ...children].map(run => [run.envelope.runId,runTarget(run.envelope.runId)]));
+  const changes = new Map<string, VersionChange>();
+  for (const run of [record, ...children]) {
+    const current = repositories.runs.get(run.envelope.runId);
+    if (current === undefined) throw new Error("delegation-recovery-result-unavailable");
+    changes.set(run.envelope.runId,{ target: runTarget(run.envelope.runId), before: 0, after: current.version });
+  }
+  for (const change of related) {
+    targets.set(change.runId,runTarget(change.runId));
+    const previous = changes.get(change.runId);
+    changes.set(change.runId,{ target: runTarget(change.runId), before: previous?.before ?? change.before, after: change.after });
+  }
+  return applied(request,[...targets.values()],[...changes.values()]);
 }
 
 interface CancelTarget {

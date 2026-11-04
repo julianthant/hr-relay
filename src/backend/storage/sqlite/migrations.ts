@@ -836,6 +836,9 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     `DROP TABLE workbook_reference_upgrade_guard`,
   ] },
   { version: 20, statements: [
+    "DROP TRIGGER runs_completion_immutable",
+
+
     "DROP TRIGGER run_receipts_no_replace", "DROP TRIGGER run_receipts_immutable", "DROP TRIGGER run_receipts_owner_delete",
     "DROP TRIGGER run_results_no_replace", "DROP TRIGGER run_results_immutable", "DROP TRIGGER run_results_owner_delete",
     "ALTER TABLE run_receipts RENAME TO previous_run_receipts",
@@ -873,6 +876,33 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     `CREATE TRIGGER run_receipts_immutable BEFORE UPDATE ON run_receipts BEGIN SELECT RAISE(ABORT,'retained-evidence-immutable'); END`,
     `CREATE TRIGGER run_receipts_owner_delete BEFORE DELETE ON run_receipts
       WHEN NOT EXISTS(SELECT 1 FROM deleted_runs WHERE run_id=OLD.run_id) BEGIN SELECT RAISE(ABORT,'owner-deletion-required'); END`,
+    `CREATE TRIGGER runs_completion_immutable BEFORE UPDATE ON runs
+        WHEN NOT (OLD.state='terminal' AND OLD.outcome='done' AND NEW.state='queued'
+          AND NEW.version=OLD.version+1 AND NEW.claim_generation=OLD.claim_generation
+          AND json_type(NEW.lifecycle_json,'$.completion') IS NULL
+          AND json_extract(NEW.lifecycle_json,'$.delegationRefresh.phase')='waiting'
+          AND EXISTS(SELECT 1 FROM commands command JOIN run_results result ON result.run_id=OLD.id
+            WHERE command.id=json_extract(NEW.lifecycle_json,'$.delegationRefresh.commandId')
+              AND command.family='run-lifecycle'
+              AND json_extract(command.request_json,'$.operation')='delegation-refresh'
+              AND json_extract(command.request_json,'$.request.phase')='admit'
+              AND json_extract(command.request_json,'$.request.runId')=OLD.id
+              AND json_extract(command.request_json,'$.request.expectedVersion')=OLD.version
+              AND json_extract(command.request_json,'$.request.previous.kind')='terminal'
+              AND json_extract(command.request_json,'$.request.previous.appliedVersion')=result.settlement_version
+              AND result.settlement_version=json_extract(OLD.lifecycle_json,'$.completion.expectedVersion')+1))
+        AND ((json_type(OLD.lifecycle_json, '$.completion') IS 'object' AND (
+            json_extract(NEW.lifecycle_json, '$.completion') IS NOT json_extract(OLD.lifecycle_json, '$.completion')
+            OR json_extract(NEW.lifecycle_json, '$.lifecycle') IS NOT json_extract(OLD.lifecycle_json, '$.lifecycle')
+            OR NEW.claim_generation IS NOT OLD.claim_generation))
+          OR (json_type(OLD.lifecycle_json, '$.completion') IS NULL AND json_type(NEW.lifecycle_json, '$.completion') IS 'object' AND (
+            OLD.state NOT IN ('claimed','validating','running')
+            OR json_extract(NEW.lifecycle_json, '$.completion.claim.workerId') IS NOT OLD.owner_worker_id
+            OR json_extract(NEW.lifecycle_json, '$.completion.claim.claimGeneration') IS NOT OLD.claim_generation
+            OR json_extract(NEW.lifecycle_json, '$.completion.expectedVersion') IS NOT OLD.version
+            OR NEW.version IS NOT OLD.version + 1
+            OR json_extract(NEW.lifecycle_json, '$.updatedAt') IS NOT json_extract(NEW.lifecycle_json, '$.completion.authorizedAt')))
+         ) BEGIN SELECT RAISE(ABORT,'runs-completion-immutable'); END;`,
   ] },
 ]);
 

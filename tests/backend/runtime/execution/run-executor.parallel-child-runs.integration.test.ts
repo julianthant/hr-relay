@@ -9,11 +9,11 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { queryQueueSummaries } from "../../../../src/backend/runs/queries/queue-summaries.js";
-import { childExecutionParallelRoot as root, childExecutionParallelModules as modules, childExecutionStores, childWaitModules, childPolicyModules, childSettledReviewModules } from "../../../support/fixtures/child-execution-workflows.js";
+import { childExecutionParallelRoot as root, childExecutionParallelModules as modules, childExecutionStores, childWaitModules, childPolicyModules, childSettledReviewModules, childSettledObservationModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
-import { plan1TransientFailureStores } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { plan1ControlledFailureStores, plan1TransientFailureStores } from "../../../support/fixtures/plan1-operation-workflows.js";
 
 import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
@@ -22,7 +22,7 @@ import { createOperatorRunDetail } from "../../../../src/backend/app/composition
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
 import { gateNodeViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
+import { authorizeWorkflowDelegationRefresh, assertWorkflowDelegationRefreshAuthorization, bindWorkflowDelegationTargets, descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { DelegationAdmissionRequestSchema } from "../../../../src/backend/storage/sqlite/delegation-contracts.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
 import { readDelegationEvidence, readDelegationScopeEvidence, readDelegationWait } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
@@ -36,6 +36,7 @@ afterEach(world.cleanup);
 
 async function fixture(stores = childExecutionStores, mode: "ok" | "fail" = "ok", workflows: { root: { descriptor: AnyWorkflowDescriptor }; modules: readonly { descriptor: AnyWorkflowDescriptor }[] } = { root, modules }) {
   const { root, modules } = workflows;
+  bindWorkflowDelegationTargets(modules.map(module => module.descriptor));
   const h = await world.executorHarness({ descriptor: root.descriptor, stores });
   const { database, clock, path, stateRoot } = h.authority;
   const patch = { "actor.label": { set: "Synthetic operator" } } as const;
@@ -342,6 +343,8 @@ it("authenticates a retained all-settled scope before and after its failed membe
   await f.execution.execute(f.run, world.SIGNAL);
   await f.execution.step(f.run, world.SIGNAL);
   const parent = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(parent?.lifecycle.state === "parked-gate");
+  const refresh = authorizeWorkflowDelegationRefresh(childSettledReviewModules.root.descriptor,parent); assert.ok(refresh);
+  assert.equal(assertWorkflowDelegationRefreshAuthorization(refresh,parent),childSettledReviewModules.root.descriptor);
   const failed = f.database.authority.runs.listChildren(parent.envelope.runId)[0];
   assert.ok(failed?.lifecycle.state === "terminal" && failed.lifecycle.outcome === "failed");
   const retained = readDelegationEvidence(f.database.authority,parent.envelope.runId,"members");
@@ -353,12 +356,73 @@ it("authenticates a retained all-settled scope before and after its failed membe
   const originalScope = readRetainedScope();
   assert.equal(f.execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "retry", source: "dashboard", requestedBy: "local-operator",
     requestedAt: f.clock.now().toISOString(), target: { runId: failed.envelope.runId, expectedVersion: failed.version } }).state, "applied");
+  const waiting = f.database.authority.runs.get(parent.envelope.runId); assert.equal(waiting?.delegationRefresh?.phase,"waiting");
+  assert.deepEqual(waiting?.envelope,parent.envelope);
   assert.deepEqual(readRetainedScope(), originalScope);
   assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "done");
+  assert.equal(f.database.authority.runs.get(parent.envelope.runId)?.delegationRefresh?.phase,"settled");
   assert.deepEqual(readRetainedScope(), originalScope);
   assert.notEqual(readDelegationEvidence(f.database.authority,parent.envelope.runId,retained.nodeId).children[0]?.run.envelope.runId, citation.members[0]?.runId);
   const foreign = DelegationTerminalDependencySchema.parse({ ...citation, members: citation.members.map(member => ({ ...member, runId: randomUUID() })) });
   assert.throws(() => readDelegationScopeEvidence(f.database.authority,parent,[{ kind: "delegation", nodeId: retained.nodeId, receipt: foreign }]), /delegation-cited-member-unavailable/);
+  assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state,"parked-gate");
+  assert.deepEqual(f.database.authority.runs.get(parent.envelope.runId)?.envelope,parent.envelope);
+});
+
+it("refreshes a completed read-only joined parent on the same row and retains its original terminal result", async () => {
+  const f = await fixture(plan1TransientFailureStores(() => {}),"fail",childSettledObservationModules);
+  await f.execution.execute(f.run,world.SIGNAL);
+  await f.execution.step(f.run,world.SIGNAL);
+  await f.execution.step(f.run,world.SIGNAL);
+  const parent = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(parent?.completion?.kind === "done");
+  const original = f.database.authority.runResults.get(parent.envelope.runId); assert.ok(original);
+  const failed = f.database.authority.runs.listChildren(parent.envelope.runId)[0]; assert.ok(failed?.lifecycle.state === "terminal" && failed.lifecycle.outcome === "failed");
+  const command = { commandId: randomUUID(), family: "run" as const, type: "retry" as const, source: "dashboard" as const,
+    requestedBy: "local-operator" as const, requestedAt: f.clock.now().toISOString(), target: { runId: failed.envelope.runId, expectedVersion: failed.version } };
+  const first = f.execution.kernel.execute(command); assert.equal(first.state,"applied");
+  const waiting = f.database.authority.runs.get(parent.envelope.runId); assert.equal(waiting?.delegationRefresh?.phase,"waiting");
+  assert.deepEqual(waiting?.envelope,parent.envelope);
+  assert.equal(f.database.authority.runResults.get(parent.envelope.runId),undefined);
+  assert.deepEqual(f.database.authority.runResults.getInitialSettlement(parent.envelope.runId)?.result,original);
+  const audit = f.database.authority.commandAudits.findByCommand(command.commandId); assert.ok(audit);
+  assert.ok(audit.versionChanges.some(change => change.target.family === "run" && change.target.runId === parent.envelope.runId && Number(change.before) === Number(parent.version) && change.after === waiting?.version));
+  const replay = f.execution.kernel.execute(command); assert.deepEqual(replay,{ ...first, state: "already-applied" });
+  assert.equal(f.database.authority.runs.get(parent.envelope.runId)?.version,waiting?.version);
+  assert.equal((await f.execution.step(f.run,world.SIGNAL)).outcome.state,"done");
+  const ready = f.database.authority.runs.get(parent.envelope.runId); assert.equal(ready?.delegationRefresh?.phase,"settled");
+  f.database.authority.dependencies.reconcile(parent.envelope.runId,f.clock.now().toISOString());
+  assert.equal(f.database.authority.runs.get(parent.envelope.runId)?.version,ready?.version);
+  assert.equal((await f.execution.step(f.run,world.SIGNAL)).outcome.state,"done");
+  const refreshed = f.database.authority.runs.get(parent.envelope.runId); assert.ok(refreshed?.completion?.kind === "done");
+  assert.deepEqual(refreshed.envelope,parent.envelope);
+  assert.deepEqual(f.database.authority.runResults.getInitialSettlement(parent.envelope.runId)?.result,original);
+  assert.ok(refreshed.completion.expectedVersion > parent.completion.expectedVersion);
+  assert.deepEqual(f.database.authority.runResults.getSettlement(parent.envelope.runId,refreshed.completion.expectedVersion + 1)?.result, f.database.authority.runResults.get(parent.envelope.runId));
+});
+
+it("releases a refreshed parent only after every accepted child retry settles", async () => {
+  let fail = true;
+  const f = await fixture(plan1ControlledFailureStores(() => fail),"fail",childSettledObservationModules);
+  await f.execution.execute(f.run,world.SIGNAL);
+  await f.execution.step(f.run,world.SIGNAL);
+  await f.execution.step(f.run,world.SIGNAL);
+  const parent = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(parent?.completion?.kind === "done");
+  const failed = f.database.authority.runs.listChildren(parent.envelope.runId);
+  assert.equal(failed.length,2);
+  assert.ok(failed.every(child => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed"));
+  fail = false;
+  for (const child of failed) assert.equal(f.execution.kernel.execute({ commandId: randomUUID(), family: "run", type: "retry", source: "dashboard",
+    requestedBy: "local-operator", requestedAt: f.clock.now().toISOString(), target: { runId: child.envelope.runId, expectedVersion: child.version } }).state,"applied");
+  const waiting = f.database.authority.runs.get(parent.envelope.runId); assert.equal(waiting?.delegationRefresh?.retryCommandIds.length,2);
+  assert.equal(waiting?.delegationRefresh?.phase,"waiting");
+  assert.equal((await f.execution.step(f.run,world.SIGNAL)).outcome.state,"done");
+  assert.equal(f.database.authority.runs.get(parent.envelope.runId)?.version,waiting?.version);
+  assert.equal(f.database.authority.runs.get(parent.envelope.runId)?.delegationRefresh?.phase,"waiting");
+  assert.equal((await f.execution.step(f.run,world.SIGNAL)).outcome.state,"done");
+  const ready = f.database.authority.runs.get(parent.envelope.runId); assert.equal(ready?.delegationRefresh?.phase,"settled");
+  assert.equal(ready?.version,(waiting?.version ?? 0)+1);
+  assert.deepEqual(ready?.envelope,parent.envelope);
+  assert.equal((await f.execution.step(f.run,world.SIGNAL)).outcome.state,"done");
 });
 
 it("holds a retried child at existing Paused/Resume until the exact completed attempt is acknowledged", async () => {

@@ -51,6 +51,9 @@ const createPlan1Task = (shouldFail: (input: z.output<typeof Plan1Input>) => boo
 } });
 export const plan1Task = createPlan1Task(input => input.mode === "fail");
 export const plan1Stores = defineTaskStoreRegistry([defineServiceStore("ocr", { observe: plan1Task })], { scenarioIds: [scenario], tasks: [{ id: plan1Contract.id, effect: "read" }] });
+export function plan1ControlledFailureStores(shouldFail: (input: z.output<typeof Plan1Input>) => boolean) {
+  return defineTaskStoreRegistry([defineServiceStore("ocr", { observe: createPlan1Task(shouldFail) })], { scenarioIds: [scenario], tasks: [{ id: plan1Contract.id, effect: "read" }] });
+}
 export function plan1TransientFailureStores(onRun: (input: z.output<typeof Plan1Input>) => void) {
   let failed = false;
   const task = createPlan1Task(input => {

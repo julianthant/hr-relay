@@ -1,3 +1,4 @@
+import type { RunRecord } from "../models/run/record.js";
 import { WorkbookReferenceLookupSchema, type WorkbookReferenceLookup, type RunWorkbookReference } from "../models/dashboard/workbooks.js";
 import { PlannedRunOutputSchema, type PlannedRunOutput } from "../models/dashboard/run-outputs.js";
 import type { RunContinuation } from "../models/run/continuation.js";
@@ -573,6 +574,28 @@ const RUN_RESULT_AUTHORIZATIONS = new WeakMap<
   object,
   Readonly<{ result: string; currentRun: string }>
 >();
+
+const DELEGATION_REFRESH_AUTHORIZATIONS = new WeakMap<object, Readonly<{ descriptor: AnyWorkflowDescriptor; run: string }>>();
+
+export function authorizeWorkflowDelegationRefresh(descriptor: AnyWorkflowDescriptor, run: RunRecord): object | undefined {
+  const state = projectionStateOf(descriptor);
+  if (descriptor.id !== run.envelope.workflow || descriptor.version !== run.envelope.descriptorVersion
+    || descriptor.contractFingerprint !== run.envelope.contractFingerprint) throw new Error("delegation-refresh-definition-mismatch");
+  if (descriptorRuntimeNodes(descriptor).some(node => node.kind === "child-run") && state.targets === undefined) throw new Error("delegation-refresh-target-authority-unavailable");
+  const support = workflowDryRunSupport(descriptor);
+  if (support.state !== "unsupported" || support.reason !== "no-transaction-node") return undefined;
+  const authorization = Object.freeze({});
+  DELEGATION_REFRESH_AUTHORIZATIONS.set(authorization,{ descriptor, run: canonicalJsonStringify(run) });
+  return authorization;
+}
+
+export function assertWorkflowDelegationRefreshAuthorization(authorization: object | undefined, run: RunRecord): AnyWorkflowDescriptor {
+  const bound = authorization === undefined ? undefined : DELEGATION_REFRESH_AUTHORIZATIONS.get(authorization);
+  if (bound === undefined || bound.run !== canonicalJsonStringify(run)) throw new Error("delegation-refresh-factory-authorization-unavailable");
+  const support = workflowDryRunSupport(bound.descriptor);
+  if (support.state !== "unsupported" || support.reason !== "no-transaction-node") throw new Error("delegation-refresh-transactions-unsupported");
+  return bound.descriptor;
+}
 
 // WeakMap membership authenticates the result; copied tokens carry no authority.
 export function assertWorkflowRunResultAuthorization(

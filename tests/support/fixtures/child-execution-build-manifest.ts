@@ -21,7 +21,7 @@ export const childExecutionBuildManifest = parseBuildManifest({ kind: "hrauto-re
     ...["fixture-plan1-leaf", "fixture-plan1-child", "fixture-plan1-parent"]
       .map(id => entry(id, "tests/support/fixtures/plan1-operation-workflows.ts")),
     ...["fixture-child-runtime-nested", "fixture-child-runtime-root", "fixture-child-runtime-parallel", "fixture-child-policy-cascade", "fixture-child-policy-independent",
-      "fixture-child-mixed-policy", "fixture-child-settled-review", "fixture-child-continuation", "fixture-child-unawaited-independent", "fixture-child-unawaited-cascade"]
+      "fixture-child-mixed-policy", "fixture-child-settled-review", "fixture-child-settled-observation", "fixture-child-continuation", "fixture-child-unawaited-independent", "fixture-child-unawaited-cascade"]
       .concat(["fixture-child-wait-gate-leaf", ...["gate", "blocked", "manual", "manual-recovery"].flatMap(mode => [`fixture-child-wait-${mode}-middle`, `fixture-child-wait-${mode}-root`])])
       .map(id => entry(id, "tests/support/fixtures/child-execution-workflows.ts")),
     ...["fixture-child-crash-write", "fixture-child-crash-write-root", "fixture-child-prerequisites-root", "fixture-parallel-child-write-recovery", "fixture-child-read-preview-root", "fixture-child-gate-resume-root", "fixture-child-unsupported-preview-target", "fixture-child-unsupported-preview-root", "fixture-child-preview-prerequisite", "fixture-child-preview-dispatch", "fixture-child-preview-empty", "fixture-child-preview-nested"]

@@ -98,7 +98,10 @@ evidence, and authenticated continuation receipts bind reused leaves. Each branc
 executor authenticates the complete release proof after the await. Missing branches, changed
 bindings or an unproved release fail before parent continuation; UNKNOWN writes never redispatch.
 
-A released delegation wait retains its run, attempt, queue position and enqueue time. Dashboard
+A released delegation wait retains its run, attempt, queue position and enqueue time.
+A read-only parent refresh retains those identities too. Its waiting phase cannot claim a worker;
+settlement of the accepted retry cohort records one native wakeup. Retry/Recover audits include
+actual synchronous parent version changes, while a later wakeup retains its own journal identity. Dashboard
 reads authenticate the release and derive `running` at its owning step, or `blocked` when an awaited
 descendant holds a `block-parent` edge. Approval stays on the run that owns the gate. Child changes
 refresh every waiting ancestor. A manual retry pauses its parent through the existing pause control;

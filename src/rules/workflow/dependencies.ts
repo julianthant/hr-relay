@@ -2,6 +2,7 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { deepFreeze } from "../validation/immutability.js";
 import {
+  CommandIdSchema,
   DelegationEdgeIdSchema,
   DelegationManifestIdSchema,
   DependencyIdSchema,
@@ -14,6 +15,11 @@ import {
 /** Preserve one delegation vocabulary; validate policy JSON rather than narrowing it to a SQL enum. */
 import { DelegationPolicySchema } from "../../models/workflow/delegation-policy.js";
 
+export const RefreshedRunSettlementSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  appliedVersion: PositiveIntSchema,
+});
+
 export const DependencyRecordSchema = z.strictObject({
   dependencyId: DependencyIdSchema,
   manifestId: DelegationManifestIdSchema,
@@ -23,6 +29,7 @@ export const DependencyRecordSchema = z.strictObject({
   childItemId: ItemIdSchema,
   policy: DelegationPolicySchema,
   state: z.enum(["active", "satisfied", "failed", "cancelled"]),
+  settlement: RefreshedRunSettlementSchema.optional(),
   version: PositiveIntSchema,
   createdAt: IsoInstantSchema,
   updatedAt: IsoInstantSchema,
