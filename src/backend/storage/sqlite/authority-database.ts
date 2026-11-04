@@ -1922,17 +1922,20 @@ export class CredentialContextRequiredError extends Error {
 
 function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, candidate?: ArtifactRef): readonly ArtifactRef[] {
       const references = new Map<string, ArtifactRef>();
+      const deletions = database.prepare("SELECT * FROM deleted_runs").all().map(deletedRunFromRow);
+      const retainedCandidates = artifactReferencesIn([
+        ...deletions.flatMap(deletion => deletion.files.filter(file => file.disposition === "retain").map(file => file.ref)),
+        ...(candidate === undefined ? [] : [candidate]),
+      ]);
+      for (const deletion of deletions) if (deletion.cleanupState === "pending") {
+        for (const file of deletion.files) if (file.disposition === "remove") references.set(file.ref.sha256, file.ref);
+      }
       const visit = (value: unknown): void => {
-        if (candidate !== undefined && containsDeletionArtifactReference(value, candidate)) references.set(candidate.sha256, candidate);
+        for (const ref of retainedCandidates) if (containsDeletionArtifactReference(value, ref)) references.set(ref.sha256, ref);
         for (const ref of artifactReferencesIn(value)) references.set(ref.sha256, ref);
       };
       for (const table of AUTHORITY_TABLE_REGISTRY.map(entry => entry.name)) {
-        if (table === "deleted_runs") {
-          for (const raw of database.prepare("SELECT * FROM deleted_runs WHERE cleanup_state='pending'").all()) {
-            for (const file of deletedRunFromRow(raw).files) if (file.disposition === "remove") visit(file.ref);
-          }
-          continue;
-        }
+        if (table === "deleted_runs") continue;
         const columns = database.prepare(`PRAGMA table_info(${table})`).all()
           .map(raw => z.object({ name: z.string() }).parse(raw).name)
           .filter(name => name.endsWith("_json"));

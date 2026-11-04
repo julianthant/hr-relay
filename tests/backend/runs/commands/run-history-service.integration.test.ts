@@ -207,12 +207,20 @@ describe("clear all run history", () => {
         expect(lifecycle.terminalize({ kind: "cancelled", commandId: randomUUID(), runId: run.envelope.runId, expectedVersion: cancelled.run.version,
           claim: { workerId: cancelled.run.lifecycle.workerId, claimGeneration: cancelled.run.claimGeneration }, endedAt: HISTORY_NOW }, personLookupDescriptor).state).toBe("applied");
       }
-      expect(lifecycle.clearHistory(command)).toEqual({ state: "cleared", commandId: command.commandId, deletedRuns: 3 });
+      const service = createRunHistoryService({ database: w.database, lifecycle, afterClear() {} });
+      expect(service.clear(command)).toEqual({ state: "cleared", commandId: command.commandId, deletedRuns: 3 });
       expect(permanent()).toEqual(before);
       expect(existsSync(join(admission.artifactRoot, `${ref.sha256}.artifact`))).toBe(true);
       expect(w.database.readManagedArtifactReferences()).toContainEqual(ref);
+      {
+        using raw = new DatabaseSync(w.path, { readOnly: true });
+        const manifest = deletedRunFromRow(raw.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(run.envelope.runId));
+        expect(manifest.cleanupState).toBe("complete");
+        expect(manifest.files).toMatchObject([{ ref, disposition: "retain" }]);
+      }
       expect(w.history.query({ from: "2026-07-01", to: "2026-12-01" }).rows).toHaveLength(2);
       w.reopen(); expect(permanent()).toEqual(before);
+      expect(existsSync(join(admission.artifactRoot, `${ref.sha256}.artifact`))).toBe(true);
       expect(w.history.query({ from: "2026-07-01", to: "2026-12-01" }).rows).toHaveLength(2);
     } finally { await w.dispose(); }
   });
@@ -266,7 +274,7 @@ it("keeps an ordinary artifact while another run consumes it, then removes it wi
   expect(f.database.readManagedArtifactReferences()).not.toContainEqual(ref);
 });
 
-it.each(["library-source", "generated-publication"])("keeps an ordinary artifact with a retained %s consumer", async consumer => {
+it.each(["library-source", "generated-publication", "generated-identity"])("keeps an ordinary artifact with a retained %s consumer", async consumer => {
   const f = await fixture(); const root = f.seed(); const {ref, file} = await f.ordinary(root);
   const library = createWorkbookLibraryService({repository: f.database.authority.workbooks, clock: capturedInstantClock(NOW), sync: unexpectedWorkbookSync});
   const workbook = library.create({name: "Source.xlsx", themes: [], hasFormulas: false, sheets: [{id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [{id: "row", cells: [{value: "Retained"}]}]}]});
@@ -275,7 +283,7 @@ it.each(["library-source", "generated-publication"])("keeps an ordinary artifact
     bindings: [], constants: [], corrections: [], exclusions: [], state: "mapping", validation: {state: "none"}, version: 1, createdAt: NOW, updatedAt: NOW});
   else f.database.authority.artifactOutbox.insert({outboxId: randomUUID(), artifactId: ref.id, projectionId: "retained-publication", stableKeyFingerprint: HASH_A,
     keyValues: [{field: "subject", value: "synthetic"}], sinkId: "xlsx-retention", sourceRunId: root.envelope.runId, sourceNodeId: "render-page",
-    state: "pending", payload: {schemaHash: HASH_A, value: {artifact: ref}}, createdAt: NOW});
+    state: "pending", payload: {schemaHash: HASH_A, value: consumer === "generated-identity" ? {subject: "synthetic"} : {artifact: ref}}, createdAt: NOW});
   const before = f.rows("artifacts");
   expect(f.service().clear(request())).toMatchObject({state: "cleared", deletedRuns: 1});
   expect(existsSync(file)).toBe(true);
