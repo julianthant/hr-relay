@@ -1,11 +1,8 @@
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
 import { z } from "zod";
-import { onboardingProfileDirectory } from "../../../src/backend/storage/browser-roots.js";
 
-const root=z.string().min(1).parse(process.argv[2]);
-const owner=z.strictObject({operationId:z.uuid(),profileId:z.uuid(),accountId:z.uuid(),generation:z.number().int().positive()}).parse(JSON.parse(z.string().parse(process.argv[3])));
-const directory=onboardingProfileDirectory(root,owner);
+const directory=z.string().min(1).parse(process.argv[2]);
 const browser=spawn(chromium.executablePath(),["--headless=new","--no-sandbox","--disable-extensions","--no-first-run","--no-default-browser-check",
   "--disable-background-networking","--disable-component-update","--password-store=basic","--use-mock-keychain","--disable-breakpad",
   `--user-data-dir=${directory}`,"--remote-debugging-address=127.0.0.1","--remote-debugging-port=0","about:blank"],{stdio:["ignore","ignore","pipe"]});

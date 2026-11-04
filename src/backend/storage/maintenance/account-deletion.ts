@@ -4,15 +4,16 @@ import { readRestoreWriteFences } from "../sqlite/restore-write-fences.js";
 import { withReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
-import { lstatSync, rmdirSync, unlinkSync } from "node:fs";
+import { lstatSync, readdirSync, rmdirSync, unlinkSync } from "node:fs";
 import { z } from "zod";
 import { advanceProfileRegistryDocument, ProfileRegistryDocumentSchema, ProfileVerifierDocumentSchema } from "../../../models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
-import { BrowserRootsSchema } from "../browser-root-contract.js";
+import { BrowserRootsSchema, StoppedBrowserRootsV1Schema } from "../browser-root-contract.js";
 import { CanonicalCredentialHeadSchema } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
-import { numericFileIdentity, readPrivateFile, removeExactPath } from "../configuration/credential-safe-file.js";
-import { fsyncPath, replacePrivateFile, writePrivateStage } from "../private-path.js";
+import { noSymlinkAncestry, numericFileIdentity, readPrivateFile, removeExactPath } from "../configuration/credential-safe-file.js";
+import { fsyncPath, privatePathRejects, replacePrivateFile, writePrivateStage } from "../private-path.js";
+import { fileStatus } from "../file-identity.js";
 import { FixedLayoutEntrySchema, fixedLayoutEntries } from "./fixed-layout.js";
 import { proveProfileRootsUnused } from "./process-closure.js";
 
@@ -32,6 +33,9 @@ export const AccountDeletionSchema = z.strictObject({
   roots: z.array(z.strictObject({ path: RelativePath, entries: z.array(FixedLayoutEntrySchema) })),
   cursor: z.number().int().nonnegative(), credentialCursor: z.number().int().min(0).max(2), pending: z.boolean(),
 });
+const StoppedAccountDeletionSchema = z.union([AccountDeletionSchema, AccountDeletionSchema.extend({
+  priorBrowsers: StoppedBrowserRootsV1Schema, browsers: StoppedBrowserRootsV1Schema,
+})]);
 type AccountDeletion = z.infer<typeof AccountDeletionSchema>;
 type Location = Readonly<{ stateRoot: string; installationId: string }>;
 const same = (left: unknown, right: unknown) => canonicalJsonStringify(left) === canonicalJsonStringify(right);
@@ -54,6 +58,30 @@ function paths(location: Location, profileId: string) {
   return { registry: join(machine, "profiles.json"), verifiers: join(machine, "profile-verifiers.json"),
     browsers: join(machine, "browser-roots.json"), head: join(machine, "credential-keys", `${profileId}.json`),
     duo: join(machine, "duo-credentials", `${profileId}.json`) };
+}
+
+export function assertAccountDeletionRetainedBackups(control: string, location: Location, profileId: string): void {
+  const members = (directory: string) => {
+    const info = fileStatus(directory, true);
+    if (info === undefined) return [];
+    if (!info.isDirectory() || !noSymlinkAncestry(directory, new Map()) || privatePathRejects(directory, info, "directory-0700")) {
+      throw new Error("account-deletion-retained-installation-backup");
+    }
+    return readdirSync(directory);
+  };
+  if (members(join(control, "profile-control-upgrades")).some(name => name.includes(profileId))) {
+    throw new Error("account-deletion-retained-installation-backup");
+  }
+  const directory = join(control, "browser-root-upgrades");
+  for (const name of members(directory)) {
+    if (!name.endsWith(".before.json") || !z.uuid().safeParse(name.slice(0, -".before.json".length)).success) {
+      throw new Error("account-deletion-retained-installation-backup");
+    }
+    const document = StoppedBrowserRootsV1Schema.parse(json(join(directory, name)));
+    if (document.installationId !== location.installationId || document.roots.some(row => row.profileId === profileId)) {
+      throw new Error("account-deletion-retained-installation-backup");
+    }
+  }
 }
 
 export function captureAccountDeletion(location: Location, document: z.infer<typeof ProfileRegistryDocumentSchema>, profileId: string, epoch: number): AccountDeletion {
@@ -86,10 +114,10 @@ export function publishAccountDeletion(path: string, plan: AccountDeletion): voi
 }
 
 export function resumeAccountDeletion(location: Location, journal: string, assertHeld: () => void,
-  registry: Readonly<{ validate(prior: z.infer<typeof ProfileRegistryDocumentSchema>, next: z.infer<typeof ProfileRegistryDocumentSchema>): void; publish(): void }>): void {
+  registry: Readonly<{ validate(prior: z.infer<typeof ProfileRegistryDocumentSchema>, next: z.infer<typeof ProfileRegistryDocumentSchema>): void; publish(): void }>, stoppedForward = false): void {
   assertHeld();
   assertMaintenanceCustodyAvailable("account-deletion");
-  let plan = AccountDeletionSchema.parse(json(journal));
+  let plan = stoppedForward ? StoppedAccountDeletionSchema.parse(json(journal)) : AccountDeletionSchema.parse(json(journal));
   const files = paths(location, plan.profileId), profileRoot = `profiles/${plan.profileId}`;
   const expectedRoots = [profileRoot, ...plan.priorBrowsers.roots.filter(root => root.profileId === plan.profileId && root.owner.kind === "signup").map(root => root.directory)];
   if (plan.installationId !== location.installationId || plan.priorDocument.installationId !== location.installationId || plan.priorDocument.activeProfileId !== null
@@ -134,6 +162,7 @@ export function resumeAccountDeletion(location: Location, journal: string, asser
       if (entry === undefined || lstatSync(join(location.stateRoot, entry.path), { throwIfNoEntry: false }) === undefined) throw new Error("account-deletion-member-missing");
     }
   };
+  assertAccountDeletionRetainedBackups(dirname(journal), location, plan.profileId);
   current();
   proveProfileRootsUnused(plan.roots.map(root => join(location.stateRoot, root.path)));
   current(); credentialKeyCustody.delete(plan.head.key);

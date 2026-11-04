@@ -1,5 +1,6 @@
 import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, renameSync, writeFileSync, type BigIntStats } from "node:fs";
 import { dirname } from "node:path";
+import { createRequire } from "node:module";
 import { assertWindowsNoReparse, assertWindowsPrivateParent, createWindowsPrivateDirectory, flushWindowsPath, windowsPrivatePathRejects } from "./windows-private-path.js";
 import { retainAuthoritySourceClosure } from "./source-closure.js";
 
@@ -71,6 +72,22 @@ export function writePrivateStage(path: string, bytes: Uint8Array): void {
 }
 
 export function replacePrivateFile(stage: string, path: string): void { renameSync(stage, path); }
+
+let exclusiveDirectoryMove: ((source: string, target: string, flags: number) => unknown) | undefined;
+export function movePrivateDirectoryExclusive(source: string, target: string): void {
+  if (process.platform !== "darwin") throw new Error("private-directory-exclusive-move-unavailable");
+  if (exclusiveDirectoryMove === undefined) {
+    const native: unknown = createRequire(import.meta.url)("koffi");
+    if (typeof native !== "object" || native === null || !("version" in native) || native.version !== "3.3.6"
+      || !("load" in native) || typeof native.load !== "function") throw new Error("private-directory-native-bridge-unavailable");
+    const library: unknown = Reflect.apply(native.load, native, ["/usr/lib/libSystem.B.dylib"]);
+    if (typeof library !== "object" || library === null || !("func" in library) || typeof library.func !== "function") throw new Error("private-directory-native-bridge-unavailable");
+    const move: unknown = Reflect.apply(library.func, library, ["int renamex_np(const char *source, const char *target, unsigned int flags)"]);
+    if (typeof move !== "function") throw new Error("private-directory-native-bridge-unavailable");
+    exclusiveDirectoryMove = (from, to, flags): unknown => Reflect.apply(move, library, [from, to, flags]);
+  }
+  if (exclusiveDirectoryMove(source, target, 0x00000004) !== 0) throw new Error("private-directory-exclusive-move-refused");
+}
 
 export function assertNoReparsePath(path: string): void {
   if (process.platform === "win32") { assertWindowsNoReparse(path); return; }

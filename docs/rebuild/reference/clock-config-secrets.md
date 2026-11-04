@@ -315,6 +315,21 @@ Protected payload schema-4 authenticates current record, value-free history, ret
 
 Registry document 3 binds immutable installation ID and safe revision. Control 7 binds logical registry digest/revision/epoch and operation membership; marker 8 selects the current tuple and external browser-root registry. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
 
+Browser-root registry schema 2 stores short numeric handles with complete owner bindings. Stopped startup
+runs `maintenance/browser-root-upgrade.ts` before ordinary admission. Its schema-1 forward conversion
+verifies a private byte-for-byte registry backup and records intent before native browser acquisition.
+Verified closure precedes journaled exclusive directory moves and exact source/stage publication.
+Recovery accepts only the recorded probe phase or move prefix;
+collisions, substitutions and unknown siblings refuse. Ordinary readers accept schema 2 only. The
+existing Windows layout-migration custody refusal still applies; fresh installations write schema 2. Captured predecessor account-deletion and machine-control upgrade journals
+finish under stopped custody with their original browser documents, paths and file/stage witnesses;
+standalone conversion waits for that owner to finish. A captured automatic restore also finishes first:
+its exact stopped operation retains the original registry format, paths and browser membership proof
+through native closure and authority settlement. Its finite browser port expires with that journal;
+conversion follows settlement. New captures and ordinary readers stay current-only.
+Unknown registry publication stages hold before conversion effects. Account deletion refuses retained
+browser-root archives containing that person, preserving shared verified bytes and other people.
+
 SQLite precommit proofs cover registry/verifier/control evidence, registry operations. Fixed-layout claims separately bind their exact external journal. Independent credential head and record publications retain their own authenticated writer checks and do not invalidate those registry proofs.
 
 `storage upgrade --machine-control` uses the existing stopped three-file forward protocol. Supported settled prior tuples and bound SQL schemas 8 through 18 require genuine source inspection and durable verified credential-free SQL backup before canonical key/frame/control publication. One receipt records exact tuple backups, encrypted credential plans, source fingerprints and the verified SQL archive. Publication resumes only exact recorded source-or-published prefixes. Old credentials/key plaintext are not copied into the new archive. Old runtime readers are deleted. Unknown software Duo counter history or unsupported pending journals produce a named HOLD before mutation; no clock seed, inferred absence, key adoption or silent retirement is allowed. Completed historical artifacts remain exact preserved inventory.

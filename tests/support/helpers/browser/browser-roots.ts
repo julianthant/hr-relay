@@ -10,26 +10,35 @@ import { createBrowserSessionFactoryFixtures } from "./session-factory-fixtures.
 import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { createBrowserRoots,onboardingProfileDirectory, type BrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions } from "../../../../src/backend/storage/browser-roots.js";
+import { createBrowserRoots,onboardingProfileDirectory, type SignupBrowserRootInput, type BrowserRoots, type BrowserRootLaunchInput, type BrowserProfileProbeOptions } from "../../../../src/backend/storage/browser-roots.js";
 import type { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import type { SignUpOperation } from "../../../../src/models/profiles/profile.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 
 // Consumer tests mock this port; registry authority is exercised by the storage integration tests.
 export function mockBrowserRootPort() {
-  let generation = 0;
+  let generation = 0, nextHandle = 1;
+  const allocations = new Map<string, BrowserRootLaunchInput>();
+  const key = (input: SignupBrowserRootInput) => JSON.stringify([input.profileId, input.profileRoot, input.owner]);
+  const launch = () => ({ launchId: randomUUID(), generation: ++generation, opened() {}, closing() {}, closed() {}, uncertain(error: unknown): never { throw error; } });
   const probe = async (input: BrowserRootLaunchInput, options: BrowserProfileProbeOptions) => {
     mkdirSync(input.profileDirectory, { recursive: true, mode: 0o700 });
     await options.probe(input.profileRoot, input.profileDirectory);
   };
   const browserRoots: BrowserRoots = {
-    inventory: () => ({ schemaVersion: 1, installationId: randomUUID(), revision: 0, nextGeneration: generation + 1, roots: [] }),
-    beginLaunch: () => ({ launchId: randomUUID(), generation: ++generation, opened() {}, closing() {}, closed() {}, uncertain(error): never { throw error; } }),
+    inventory: () => ({ schemaVersion: 2, installationId: randomUUID(), revision: 0, nextHandle, nextGeneration: generation + 1, roots: [] }),
+    beginLaunch: launch,
+    signupRoot: input => allocations.get(key(input)),
+    beginSignupLaunch(input) {
+      const root = allocations.get(key(input)) ?? { ...input, profileDirectory: onboardingProfileDirectory(input.profileRoot, nextHandle++) };
+      allocations.set(key(input), root);
+      return { ...launch(), input: root };
+    },
     probe,
     async withUnused(directory, options, body, owner) {
       if (owner === undefined) throw new Error("mock-browser-root-owner-required");
       await probe(owner, options);
-      return body({ assertCurrent() {}, remove() { rmSync(directory, { recursive: true }); mkdirSync(dirname(directory), { recursive: true, mode: 0o700 }); } });
+      return body({ assertCurrent() {}, remove() { for (const [id, allocation] of allocations) if (allocation.profileDirectory === directory) allocations.delete(id); rmSync(directory, { recursive: true }); mkdirSync(dirname(directory), { recursive: true, mode: 0o700 }); } });
     },
   };
   return { browserRoots, browserOwner: { profileId: randomUUID(), database: {} as AuthorityDatabase } };
@@ -64,8 +73,8 @@ export function seedRegisteredSignupBrowser(machine: RuntimeAdmission, operation
   const draft = operation.onboarding;
   if (draft === undefined) throw new Error("fixture-onboarding-required");
   const profileRoot = join(machine.stateRoot, "browsers", "onboarding");
-  const profileDirectory = onboardingProfileDirectory(profileRoot, { ...operation, accountId: draft.accountId, generation: draft.generation });
-  const launch = createBrowserRoots(machine).beginLaunch({ profileId: operation.profileId, profileRoot, profileDirectory,
+  const launch = createBrowserRoots(machine).beginSignupLaunch({ profileId: operation.profileId, profileRoot,
     credentialFingerprint: null, owner: { kind: "signup", operationId: operation.operationId, accountId: draft.accountId, providerGeneration: draft.generation } });
+  const profileDirectory = launch.input.profileDirectory;
   mkdirSync(profileDirectory, { recursive: true, mode: 0o700 }); launch.opened();
 }

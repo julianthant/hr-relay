@@ -1,5 +1,5 @@
 import { fileStatus } from "../file-identity.js";
-import type { BrowserRoot } from "../browser-root-contract.js";
+import type { StoppedBrowserRoot } from "../browser-root-contract.js";
 import { dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
 import { ProfileBrowserRootRefusalError,requireRuntimeAdmission } from "../admission/admission-identity.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
@@ -20,7 +20,7 @@ export function configuredBrowserRoots(root: string, custody: BrowserProfileCust
   return [...new Set([savedBrowserRoot, ...historical])];
 }
 
-export type BrowserRegistryMembership = Readonly<{ machineRoot: string; profileId: string; roots: readonly BrowserRoot[] }>;
+export type BrowserRegistryMembership = Readonly<{ machineRoot: string; profileId: string; roots: readonly StoppedBrowserRoot[] }>;
 export function retainedBrowserProfiles(root: string, custody: BrowserProfileCustody, savedBrowserRoot: string, browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, registry?: BrowserRegistryMembership) {
   const profiles = new Map<string, RetainedBrowserProfile>();
   for (const path of configuredBrowserRoots(root, custody, savedBrowserRoot)) assertBrowserRoot(root, path);
