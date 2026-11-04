@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
-import { deriveProfileNames, ProfileAuthoritySnapshotSchema } from "../../../src/models/profiles/profile.js";
+import { deriveProfileNames, LogoutOperationSchema, ProfileAuthoritySnapshotSchema } from "../../../src/models/profiles/profile.js";
 
 describe("profile names", () => {
   it("derives a timekeeper name and refuses padding", () => {
@@ -32,5 +32,17 @@ it("admits only a complete value-free authority tuple with no default or unknown
   for (const patch of [{ profileId: "" }, { profileSessionEpoch: 0 }, { accountRevision: 0 }, { accountAttemptGeneration: -1 },
     { protectedSettingsRevision: Number.MAX_SAFE_INTEGER + 1 }, { accountAvailability: "signed-out" }, { token: "fixture" }, { root: "/fixture" }]) {
     assert.equal(ProfileAuthoritySnapshotSchema.safeParse({ ...valid, ...patch }).success, false);
+  }
+});
+
+it("preserves numeric logout journals and exact decimal identities while refusing rounded witnesses", () => {
+  const operation = { schemaVersion: 2, kind: "logout", operationId: "11111111-1111-4111-8111-111111111111",
+    profileId: "22222222-2222-4222-8222-222222222222", sessionGeneration: 1, at: "2026-11-04T12:00:00.000Z", phase: "admitted" };
+  for (const inode of [17, "21110623253370482"]) {
+    const journal = { ...operation, source: { database: { device: 4, inode } } };
+    assert.deepEqual(LogoutOperationSchema.parse(JSON.parse(JSON.stringify(journal))), journal);
+  }
+  for (const inode of [Number(21_110_623_253_370_482n), "021110623253370482", "-1"]) {
+    assert.equal(LogoutOperationSchema.safeParse({ ...operation, source: { database: { device: 4, inode } } }).success, false);
   }
 });
