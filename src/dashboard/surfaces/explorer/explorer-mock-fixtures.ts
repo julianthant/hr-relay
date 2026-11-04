@@ -1,4 +1,4 @@
-import type { FieldSource, FlowField, FlowPart, FlowStep } from "./explorer-flow-model.js";
+import type { FieldSource, FlowField, FlowPart, FlowStep } from "../../../models/workflow/explorer-preview.js";
 
 // Copied presentation concepts from legacy hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87
 // src/dashboard/components/dev/rebuild-demo/demo-explorer-wire.ts and workflows/{onboarding,emergency-contact}.

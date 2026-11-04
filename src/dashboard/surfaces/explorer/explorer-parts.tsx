@@ -1,7 +1,8 @@
 import { ArrowUpRight, CheckCheck, ChevronDown, CircleStop, CornerDownRight, Cpu, Eye, GitBranch, GitMerge, Keyboard, LockKeyhole, Monitor, MousePointer2, PanelsTopLeft, PencilLine, UserRound } from "lucide-react";
 import { Select, dsFocus } from "../../ds/ui.js";
 import { ExplorerComment } from "./explorer-comment.js";
-import type { CommentChoices, FlowField, FlowPart, FlowStep, PreviewScenario } from "./explorer-flow-model.js";
+import type { CommentChoices, PreviewScenario } from "./explorer-flow-model.js";
+import type { FlowField, FlowPart, FlowStep } from "../../../models/workflow/explorer-preview.js";
 
 interface PartProps {
   parts: readonly FlowPart[]; step: FlowStep; scenario: PreviewScenario; onScenario: (scenario: PreviewScenario) => void;

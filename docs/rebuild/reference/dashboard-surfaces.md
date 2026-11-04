@@ -563,7 +563,7 @@ pending until the download settles and reports refusal without starting another 
 
 ## Explorer
 
-Served Explorer uses registered timeline groups with declared operator fields as one step per group and system. It displays only their fictional example strings and safe field provenance, with explicit definition-preview copy. Groups without operator fields retain task labels, purposes and operator action text without raw contract fieldsets. Exact graph, frozen operation and source lineage validation remains internal; no run values are inferred.
+Person Lookup and Separations declare read-only Explorer walkthroughs in their registered workflow definitions. The query serves their node-bound steps, forms, actions, fictional examples, preview choices and field sources to the existing timeline components. Preview choices change only local presentation; they never approve gates or execute work. Definition admission requires complete registered-node coverage, and the renderer retains graph, operation and source-lineage validation before projecting the walkthrough. Person Lookup shows its current single-person Search and Match paths; delegation nodes remain absent. Other workflows use their registered timeline groups and operator fields, or declared task labels, purposes and actions. No run values are inferred.
 
 Explorer mounts in Settings and describes itself as fictional preview data. Its workflow picker
 uses stable fixture IDs and the shared catalog. Local scenario/choice controls alter the preview's
