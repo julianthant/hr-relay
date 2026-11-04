@@ -1,7 +1,8 @@
 import type { WorkerBrowserSessionFactory } from "../../../workflow-kit/session.js";
 import type { RunMutationOutcome } from "../../runs/lifecycle/run-record-service.js";
 import type { RunRecord } from "../../../models/run/record.js";
-import { PreflightAdmissionRefusal, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
+import { PreflightAdmissionRefusal, PreflightObservationChangedError, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
+import type { WorkerPreflightRefusal } from "../../../models/preflight/preflight-contract.js";
 import type { RuntimePreflight } from "./runtime-admission.js";
 
 class PreparationRequired extends Error {
@@ -12,7 +13,7 @@ export async function claimWithPreflight(input: Readonly<{
   preflight: RuntimePreflight; signal: AbortSignal;
   prepareRun(run: RunRecord, signal: AbortSignal): Promise<void>;
   claim(admit: (run: RunRecord) => void): RunMutationOutcome;
-}>): Promise<RunMutationOutcome> {
+}>): Promise<RunMutationOutcome | WorkerPreflightRefusal> {
   let prepared: Readonly<{ runId: string; version: number }> | undefined;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if (input.signal.aborted) throw input.signal.reason;
@@ -29,8 +30,13 @@ export async function claimWithPreflight(input: Readonly<{
       });
     } catch (error) {
       if (!(error instanceof PreparationRequired)) throw error;
-      await input.preflight.admission.prepare(error.scope, input.signal);
-      input.preflight.admission.assertReady(error.scope);
+      try {
+        await input.preflight.admission.prepare(error.scope, input.signal);
+        input.preflight.admission.assertReady(error.scope);
+      } catch (preparationError) {
+        if (!(preparationError instanceof PreflightObservationChangedError)) throw preparationError;
+        return { state: "preflight-refused", code: "PREFLIGHT_OBSERVATION_CHANGED", runId: error.run.envelope.runId };
+      }
       if (prepared?.runId !== error.run.envelope.runId || prepared.version !== error.run.version) {
         await input.prepareRun(error.run, input.signal);
         prepared = { runId: error.run.envelope.runId, version: error.run.version };

@@ -817,6 +817,14 @@ export const ERROR_CATALOG = Object.freeze({
     "This command does more than its assistant classification says. No action was taken.",
     EmptyParametersSchema,
   ),
+  PREFLIGHT_OBSERVATION_CHANGED: catalogEntry(
+    "Storage changed before the next run could be claimed. Re-check readiness; use Sessions for any queued run instead of starting it again.",
+    EmptyParametersSchema,
+  ),
+  RUN_QUEUED_WORKER_UNAVAILABLE: catalogEntry(
+    "Your run is queued. Worker startup did not complete; review this run and Sessions. Do not start the run again.",
+    EmptyParametersSchema,
+  ),
 });
 
 export type ErrorCatalogCode = keyof typeof ERROR_CATALOG;
