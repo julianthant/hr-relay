@@ -51,6 +51,11 @@
       }
     ]
   },
+  "readOnlyControls": {
+    "address3": "Synthetic Suite",
+    "county": "Example County",
+    "samePhoneAsEmployee": false
+  },
   "savedRow": {
     "rowIndex": 1,
     "name": "Morgan Example",

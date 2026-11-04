@@ -29,6 +29,7 @@ export function createDeterministicUcpathContactPage(options: Readonly<{
       return UcpathContactPageSnapshotSchema.parse(page);
     },
     async viewAll() {
+      if (page.view === "all") return;
       actions.push("view-all");
       if (options.expanded === undefined) throw new Error("contact fixture requires an explicit complete View All snapshot");
       page = UcpathContactPageSnapshotSchema.parse(options.expanded);
