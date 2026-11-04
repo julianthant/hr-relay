@@ -11,10 +11,17 @@ export const AssistantSubjectSchema = z.strictObject({
   subjectRef: ReferenceSchema, displayName: z.string().min(1).max(160), employeeId: z.string().regex(/^\d{8}$/u).optional(),
 });
 export type AssistantSubject = z.infer<typeof AssistantSubjectSchema>;
-export const AssistantCitationSchema = z.strictObject({
+export const AssistantKnowledgeCitationSchema = z.strictObject({
   path: z.string().min(1).max(200), revision: z.string().regex(/^[a-f0-9]{40}$/u),
   startLine: z.number().int().positive(), endLine: z.number().int().positive(), quote: z.string().min(1).max(4000),
 });
+export const AssistantLocalEvidenceCitationSchema = z.strictObject({
+  kind: z.literal("local-run"), runId: z.uuid(), rowRevision: z.number().int().positive(),
+  source: z.enum(["status", "gate", "outcome", "timeline"]),
+  digest: z.string().regex(/^[a-f0-9]{64}$/u), quote: z.string().min(1).max(4000),
+});
+export type AssistantLocalEvidenceCitation = z.infer<typeof AssistantLocalEvidenceCitationSchema>;
+export const AssistantCitationSchema = z.union([AssistantKnowledgeCitationSchema, AssistantLocalEvidenceCitationSchema]);
 export const ASSISTANT_DEFAULT_MODEL = "gpt-6.1-sol";
 export const ASSISTANT_DEFAULT_EFFORT = "medium";
 export const ASSISTANT_VERIFY_COMMAND = '/verify-assistant';
@@ -119,6 +126,19 @@ export const AssistantRequestSchema = z.strictObject({
 });
 export type AssistantRequest = z.infer<typeof AssistantRequestSchema>;
 export const ASSISTANT_FAILURES = Object.freeze({
+  CHATGPT_AUTH_BUSY: ERROR_CATALOG.CHATGPT_AUTH_BUSY.text,
+  CHATGPT_AUTH_CANCELLED: ERROR_CATALOG.CHATGPT_AUTH_CANCELLED.text,
+  CHATGPT_AUTH_EXPIRED: ERROR_CATALOG.CHATGPT_AUTH_EXPIRED.text,
+  CHATGPT_AUTH_INVALID: ERROR_CATALOG.CHATGPT_AUTH_INVALID.text,
+  CHATGPT_AUTH_UNAVAILABLE: ERROR_CATALOG.CHATGPT_AUTH_UNAVAILABLE.text,
+  CHATGPT_USAGE_UNAVAILABLE: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text,
+  CHATGPT_SERVICE_CLOSED: ERROR_CATALOG.CHATGPT_SERVICE_CLOSED.text,
+  ASSISTANT_VERIFICATION_FAILED: ERROR_CATALOG.ASSISTANT_VERIFICATION_FAILED.text,
+  ASSISTANT_CAPABILITY_FAILED: ERROR_CATALOG.ASSISTANT_CAPABILITY_FAILED.text,
+  ASSISTANT_READ_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_READ_UNAVAILABLE.text,
+  ASSISTANT_READ_STALE: ERROR_CATALOG.ASSISTANT_READ_STALE.text,
+  ASSISTANT_HISTORY_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_HISTORY_UNAVAILABLE.text,
+  ASSISTANT_HISTORY_UNSAVED: ERROR_CATALOG.ASSISTANT_HISTORY_UNSAVED.text,
   CHATGPT_RESOURCE_CLOSURE_UNPROVED: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text,
   ASSISTANT_INVALID: ERROR_CATALOG.ASSISTANT_INVALID.text,
   ASSISTANT_CONTEXT_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_CONTEXT_UNAVAILABLE.text,
@@ -126,6 +146,8 @@ export const ASSISTANT_FAILURES = Object.freeze({
   ASSISTANT_MODEL_UNVERIFIED: ERROR_CATALOG.ASSISTANT_MODEL_UNVERIFIED.text,
   ASSISTANT_MODEL_UNAVAILABLE: ERROR_CATALOG.ASSISTANT_MODEL_UNAVAILABLE.text,
   ASSISTANT_RESPONSE_REFUSED: ERROR_CATALOG.ASSISTANT_RESPONSE_REFUSED.text,
+  ASSISTANT_RESPONSE_INCOMPLETE: ERROR_CATALOG.ASSISTANT_RESPONSE_INCOMPLETE.text,
+  ASSISTANT_RESPONSE_FAILED: ERROR_CATALOG.ASSISTANT_RESPONSE_FAILED.text,
   ASSISTANT_USAGE_LIMIT: ERROR_CATALOG.ASSISTANT_USAGE_LIMIT.text,
   ASSISTANT_PLAN_DISABLED: ERROR_CATALOG.ASSISTANT_PLAN_DISABLED.text,
   ASSISTANT_ACCOUNT_EXPIRED: ERROR_CATALOG.ASSISTANT_ACCOUNT_EXPIRED.text,

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { SETTINGS_CATALOG } from "../../models/config/catalog.js";
 import { isRetiredSettingsPath } from "../../models/config/settings.js";
-import { AssistantCitationSchema } from "../../models/dashboard/assistant.js";
+import { AssistantKnowledgeCitationSchema } from "../../models/dashboard/assistant.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 
 export const PUBLIC_ASSISTANT_REPOSITORY_ID = "R_kgDOVOf3Cg";
@@ -15,7 +15,7 @@ const ExportSchema = z.strictObject({ repositoryId: z.string(), revision: z.stri
 })).min(1).max(24) });
 export interface AssistantContextPolicy { readonly repositoryId: string; readonly revision: string; readonly exportSha256: string }
 export class AssistantContextError extends Error {
-  constructor(readonly code: "ASSISTANT_CONTEXT_UNAVAILABLE" | "ASSISTANT_CONTEXT_STALE") { super(code); this.name = "AssistantContextError"; }
+  constructor(readonly code: "ASSISTANT_CONTEXT_UNAVAILABLE" | "ASSISTANT_CONTEXT_STALE" | "ASSISTANT_READ_UNAVAILABLE" | "ASSISTANT_READ_STALE") { super(code); this.name = "AssistantContextError"; }
 }
 export function createAssistantContext(bytes: Uint8Array, policy: AssistantContextPolicy) {
   const fail = () => new AssistantContextError("ASSISTANT_CONTEXT_UNAVAILABLE");
@@ -34,7 +34,7 @@ export function createAssistantContext(bytes: Uint8Array, policy: AssistantConte
     },
     reference: source,
     citation(input: unknown) {
-      const parsed = AssistantCitationSchema.safeParse(input); if (!parsed.success) throw fail();
+      const parsed = AssistantKnowledgeCitationSchema.safeParse(input); if (!parsed.success) throw fail();
       const citation = parsed.data, file = files.find(entry => entry.path === citation.path);
       if (file === undefined || citation.revision !== source.revision || citation.endLine < citation.startLine
         || citation.endLine - citation.startLine >= 40) throw fail();
@@ -49,6 +49,7 @@ export type AssistantContext = ReturnType<typeof createAssistantContext>;
 export const ASSISTANT_INPUT_PROJECTION_VERSION = 1;
 export const ASSISTANT_KNOWLEDGE_PATH = "src/backend/assistant/generated-knowledge.json";
 const APPLICATION_HELP = {
+  assistant: "Relay can explain app help and available local run evidence, and propose supported local changes for you to confirm. Try help permissions, help notifications or run status with a selected served run. Account sign-in and protected values stay in Settings. Unsupported requests refuse without taking action.",
   permissions: "Assistant actions use the current operator grant. Required confirmation never comes from the model. Authentication and protected values stay in the operator interface.",
   notifications: "Notifications can be marked read, unread, snoozed or unsnoozed through their canonical command owner. Notification text and linked HR records stay local.",
   "dry-run": "A workflow dry run requires the selected subject and a current canonical plan. It stops before the external transaction commit. Workflow actions require the dashboard Run interface.",

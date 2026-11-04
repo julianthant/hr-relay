@@ -10,8 +10,18 @@ import type { AssistantPorts } from "./assistant-panel-model.js";
 import { ChatFiles } from "./chat-files.js";
 import { useHubAssistant } from "./hub-assistant-model.js";
 import "./hub-shell.css";
+import { useDashboardClient } from '../../state/client-context.js';
+import { useAssistantHistory, type AssistantHistory } from '../assistant/assistant-history-model.js';
+import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 
-export function HubShell({ settingsOpen, onLogout, chatsPort, onRunWorkflow, source = "mock", authority , commands, subjectRef}: { source?: "mock" | "served"; authority?: unknown; subjectRef?: string; settingsOpen: boolean; onLogout: () => void; chatsPort?: HubChatsPort; onRunWorkflow: NonNullable<AssistantPorts["onRunWorkflow"]> ; commands?: DashboardCommandBinding; }) {
+type HubShellProps = { source?: "mock" | "served"; authority?: unknown; subjectRef?: string; settingsOpen: boolean; onLogout: () => void; chatsPort?: HubChatsPort; onRunWorkflow: NonNullable<AssistantPorts["onRunWorkflow"]>; commands?: DashboardCommandBinding };
+export function HubShell(props: HubShellProps) {
+  const client = useDashboardClient();
+  const history = useAssistantHistory(client, props.source === 'served', props.authority);
+  return <HubShellBody key={history.store?.profileId ?? (history.pending ? 'loading' : 'session')} {...props} history={history.store}
+    preferenceChanged={history.preferenceChanged} modelPreference={history.preference} historyPending={history.pending || props.source === 'served' && history.store === undefined} historyNotice={history.notice || (history.pending ? 'Loading chat history…' : '')} />;
+}
+function HubShellBody({ settingsOpen, onLogout, chatsPort, onRunWorkflow, source = "mock", authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged }: HubShellProps & { history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
   const panelPosition = useHubPanelPosition(4);
   const launcherPosition = useHubPanelPosition(8, true);
   const [logout, setLogout] = useState(false);
@@ -26,10 +36,11 @@ export function HubShell({ settingsOpen, onLogout, chatsPort, onRunWorkflow, sou
   const anchor = useRef<HTMLSpanElement>(null);
   const [footer, setFooter] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => { setFooter(anchor.current?.closest(".dashboard-shell")?.querySelector<HTMLElement>('[aria-label="Session actions"] > span:last-child') ?? null); }, []);
-  const localChats = useMemo(() => createMockHubChatsPort(source === "mock"), [source]);
+  const localChats = useMemo(() => history?.chats ?? createMockHubChatsPort(source === "mock"), [source, history]);
   const model = useHubChats(chatsPort ?? localChats);
-  const assistant = useHubAssistant(onRunWorkflow, (id, title) => { if (model.chats.some(chat => chat.id === id)) model.rename(id, title); });
-  const served = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands);
+  const assistant = useHubAssistant(onRunWorkflow, (id, title) => { if (model.chats.some(chat => chat.id === id)) model.rename(id, title); }, history);
+  const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged });
+  const served = historyPending ? { ...servedController, canCompose: false } : servedController;
   const filesView = assistant.view?.id === model.currentId ? assistant.view : undefined;
   const backToChat = () => { assistant.closeFiles(); panelPosition.element.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus(); };
   const current = model.chats.find(chat => chat.id === model.currentId);
@@ -56,6 +67,7 @@ export function HubShell({ settingsOpen, onLogout, chatsPort, onRunWorkflow, sou
           if (index < 0) return;
           event.preventDefault(); buttons[event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : (index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
         }}>
+          {model.error && <p role="alert" className="hub-caption">{model.error}</p>}
           <div className="hub-chat-search"><Search aria-hidden /><input className="hub-field" aria-label="Search chats" placeholder="Search chats" value={query} onChange={event => setQuery(event.target.value)} /></div>
           {model.chats.length === 0 ? <div className="hub-empty"><strong>No chats yet</strong>Start a new chat to ask Relay for help.</div> : !model.chats.some(chat => chat.title.toLowerCase().includes(query.toLowerCase())) ? <div className="hub-empty">No matching chats.</div> : (["Today", "Yesterday", "Earlier"] as const).map(group => {
             const rows = model.chats.filter(chat => chat.group === group && chat.title.toLowerCase().includes(query.toLowerCase()));
@@ -65,7 +77,7 @@ export function HubShell({ settingsOpen, onLogout, chatsPort, onRunWorkflow, sou
           })}
         </div> : null}
         <div className="hub-assistant-slot" data-hub-assistant-slot="" hidden={list} inert={list}>
-          {current && currentSession && <AssistantPanel key={current.id} served={source === "served" ? served : undefined} onAutomaticTitle={title => currentSession.autoTitle(title)} producer={currentSession.producer} draft={currentSession.draft} accountClient={assistant.client} {...assistant.ports(current.id)} title={current.title} filesOpen={!!filesView} onSendMessage={filesView ? assistant.closeFiles : undefined}
+          {current && currentSession && <AssistantPanel key={current.id} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={source === "served" ? served : undefined} onAutomaticTitle={title => currentSession.autoTitle(title)} producer={currentSession.producer} draft={currentSession.draft} accountClient={assistant.client} {...assistant.ports(current.id)} title={current.title} filesOpen={!!filesView} onSendMessage={filesView ? assistant.closeFiles : undefined}
             onClose={() => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); }} onChats={() => { assistant.closeFiles(); setList(true); }} onNewChat={() => { assistant.closeFiles(); model.create(); setList(false); }} onRename={() => edit("rename", current.id)}
             headerProps={{ tabIndex: 0, "aria-label": "Move panel with arrow keys", onPointerDown: panelPosition.onPointerDown, onPointerMove: panelPosition.onPointerMove, onPointerUp: panelPosition.onPointerUp, onPointerCancel: panelPosition.onPointerCancel, onLostPointerCapture: panelPosition.onPointerCancel, onKeyDown: panelPosition.onKeyDown }} >{filesView ? <div className="hub-files-slot">{assistant.error && <p role="alert">{assistant.error}</p>}<ChatFiles key={`${filesView.id}:${filesView.initialFile?.id ?? filesView.mode}`} port={assistant.session(filesView.id).files} mode={filesView.mode} initialFile={filesView.initialFile} onBackToChat={backToChat} onAttachFile={filesView.mode === "attach" ? file => { void assistant.select(file); } : undefined} /></div> : undefined}</AssistantPanel>}
         </div>

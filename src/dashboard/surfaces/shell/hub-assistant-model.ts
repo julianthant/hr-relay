@@ -9,6 +9,7 @@ import { createChatFilesPort, type ChatFile } from './chat-files-model.js';
 import { assistantWorkflowOption, createAssistantMockProducer, readAssistantAttachment, type AssistantConversation, type AssistantFile, type AssistantPorts, type AssistantWorkflowRequest, type AssistantWorkflowResult } from './assistant-panel-model.js';
 import { initialMockDraft, mockRunsForDraft, type MockRun } from '../workflows/mocks/workflow-mock-model.js';
 import type { WorkflowComposition } from '../../app/workflow-sources.js';
+import type { AssistantHistory } from '../assistant/assistant-history-model.js';
 
 export function prepareHubWorkflow(request: AssistantWorkflowRequest, composition: WorkflowComposition, sequence: number): { runs: readonly MockRun[]; result: AssistantWorkflowResult } {
   const option = assistantWorkflowOption(request.workflowId);
@@ -45,11 +46,11 @@ export function prepareHubWorkflow(request: AssistantWorkflowRequest, compositio
   ] } };
 }
 
-export function createHubAssistantSession(id: string, adapter: ReturnType<typeof useSpreadsheetWiringAdapter>['adapter'], onTitle?: (title: string) => void, initialTitle?: string) {
+export function createHubAssistantSession(id: string, adapter: ReturnType<typeof useSpreadsheetWiringAdapter>['adapter'], onTitle?: (title: string) => void, initialTitle?: string, retainedDraft?: { read(): string; retain(text: string): void }) {
   const producer = createAssistantMockProducer(id === 'a' ? 'ask-write' : 'new');
   let conversation: AssistantConversation = { ...producer.initial(), id, ...(initialTitle === undefined ? {} : { title: initialTitle }) };
   let renamedTitle: string | undefined;
-  let draft: ComposerDraft = { text: '', files: [] };
+  let draft: ComposerDraft = { text: retainedDraft?.read() ?? '', files: [] };
   const files = createChatFilesPort(spreadsheetChatRegistrationPort(adapter));
   const references = new Map<string, SpreadsheetFileReference>();
   const bases = new Map<string, SpreadsheetFileReference>();
@@ -57,7 +58,7 @@ export function createHubAssistantSession(id: string, adapter: ReturnType<typeof
   const mockReferences = new Map<string, ChatFile>();
   return {
     files,
-    draft: { read: () => draft, retain(next: ComposerDraft) { draft = next; } },
+    draft: { read: () => draft, retain(next: ComposerDraft) { draft = next; retainedDraft?.retain(next.text); } },
     autoTitle(title: string) {
       if (conversation.title !== 'New chat') return;
       renamedTitle = title.trim(); conversation = { ...conversation, title: renamedTitle }; onTitle?.(conversation.title);
@@ -116,15 +117,15 @@ export function createHubAssistantSession(id: string, adapter: ReturnType<typeof
   };
 }
 
-export function useHubAssistant(onRunWorkflow: NonNullable<AssistantPorts['onRunWorkflow']>, onTitle: (id: string, title: string) => void) {
+export function useHubAssistant(onRunWorkflow: NonNullable<AssistantPorts['onRunWorkflow']>, onTitle: (id: string, title: string) => void, history?: AssistantHistory) {
   const titleChanged = useRef(onTitle); titleChanged.current = onTitle;
   const client = useDashboardClient();
   const { adapter } = useSpreadsheetWiringAdapter(false, null);
-  const sessions = useMemo(() => ({ adapter, values: new Map<string, ReturnType<typeof createHubAssistantSession>>() }), [adapter]);
+  const sessions = useMemo(() => ({ adapter, history, values: new Map<string, ReturnType<typeof createHubAssistantSession>>() }), [adapter, history]);
   const [view, setView] = useState<{ id: string; mode: 'browse' | 'attach'; initialFile?: ChatFile; resolve?: (file: AssistantFile | null) => void }>();
   const [error, setError] = useState('');
   const selectionGeneration = useRef(0);
-  const session = (id: string, initialTitle?: string) => { let value = sessions.values.get(id); if (!value) { value = createHubAssistantSession(id, sessions.adapter, title => titleChanged.current(id, title), initialTitle); sessions.values.set(id, value); } return value; };
+  const session = (id: string, initialTitle?: string) => { let value = sessions.values.get(id); if (!value) { value = createHubAssistantSession(id, sessions.adapter, title => titleChanged.current(id, title), initialTitle, history?.draft(id)); sessions.values.set(id, value); } return value; };
   const closeFiles = () => { selectionGeneration.current++; view?.resolve?.(null); setView(undefined); setError(''); };
   return { client, view, error, closeFiles, session, forgetSession: (id: string) => { sessions.values.delete(id); },
     ports(id: string): AssistantPorts {

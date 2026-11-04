@@ -2,7 +2,7 @@ import { ASSISTANT_START_SELECTED_WORKFLOW, type createAssistantWorkflowStarts }
 import { type NotificationCollectionTarget, type NotificationCollectionOperation } from "../../models/notifications/notifications.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { AssistantCitationSchema, AssistantActionProposalSchema, type AssistantRequest, type AssistantActionDecision, type AssistantActionResult } from "../../models/dashboard/assistant.js";
+import { AssistantCitationSchema, AssistantActionProposalSchema, type AssistantRequest, type AssistantActionDecision, type AssistantActionResult, type AssistantLocalEvidenceCitation } from "../../models/dashboard/assistant.js";
 import { CommandRequestSchema, type CommandRequest } from "../../rules/commands/commands.js";
 import { canonicalJsonStringify, type JsonValue } from "../../rules/validation/canonical-json.js";
 import type { AssistantActionRecord } from "../../models/profiles/assistant-authorization.js";
@@ -12,7 +12,7 @@ import type { CommandKernel } from "../runs/commands/command-kernel.js";
 import type { createAssistantAuthorization } from "./authorization.js";
 import type { AssistantFunctionContext, AssistantFunctionSet } from "./service.js";
 
-import { ASSISTANT_SAFE_KNOWLEDGE, assistantKnowledgeArtifact } from "./context.js";
+import { AssistantContextError, ASSISTANT_SAFE_KNOWLEDGE, assistantKnowledgeArtifact } from "./context.js";
 import { AssistantLocalIntentError } from "./service.js";
 
 const ACTIONS = {
@@ -22,12 +22,22 @@ const ACTIONS = {
   "unsnooze notifications": "notification-unsnooze-all",
 } as const;
 type Action = typeof ACTIONS[keyof typeof ACTIONS];
-type Intent = { kind: "help"; topic: keyof typeof ASSISTANT_SAFE_KNOWLEDGE } | { kind: "notification"; action: Action };
+type Intent = { kind: "help"; topic: keyof typeof ASSISTANT_SAFE_KNOWLEDGE } | { kind: "notification"; action: Action } | { kind: "run" };
+export interface AssistantReadAllowlist {
+  selectedRun(subjectRef: string | undefined): {
+    readonly text: string;
+    readonly citations: readonly AssistantLocalEvidenceCitation[];
+    assertCurrent(this: void): void;
+    validateCitation(this: void, citation: AssistantLocalEvidenceCitation): AssistantLocalEvidenceCitation;
+  };
+}
 export function localAssistantIntent(request: AssistantRequest, knowledge: Readonly<Record<string, string>> = ASSISTANT_SAFE_KNOWLEDGE): Intent {
+  const message = request.message.trim().toLowerCase().replace(/[?.!]$/u, "");
+  if (["hi", "hello", "help", "what can you do"].includes(message)) return { kind: "help", topic: "assistant" };
+  if (["run status", "status", "status of selected run", "explain selected run", "explain this run", "what is the status of this run", "why is this run waiting", "why did this run fail"].includes(message)) return { kind: "run" };
   if (request.subjectRef !== undefined) throw new AssistantLocalIntentError("assistant-local-intent-unavailable");
-  const message = request.message.trim().toLowerCase();
   for (const topic of Object.keys(knowledge)) {
-    if (message === `help ${topic}`.toLowerCase()) return { kind: "help", topic };
+    if ([`help ${topic}`, `explain ${topic}`, `what is ${topic}`, `how does ${topic} work`].some(phrase => message === phrase.toLowerCase())) return { kind: "help", topic };
   }
   for (const phrase of Object.keys(ACTIONS) as (keyof typeof ACTIONS)[]) {
     if (message === phrase) return { kind: "notification", action: ACTIONS[phrase] };
@@ -50,12 +60,15 @@ function collectionLabel(action: string, count: number): string {
 
 /** Captured references resolve only in this request's actual profile/command owner. */
 export function createProductionAssistantTools(input: Readonly<{
-  database: AuthorityDatabase; kernel: CommandKernel; authorization: ReturnType<typeof createAssistantAuthorization>;
+  database: AuthorityDatabase; kernel: Pick<CommandKernel, "assistantManifest" | "assistantAvailability">;
+  authorization: Pick<ReturnType<typeof createAssistantAuthorization>, "createChat" | "prepare" | "cancel" | "approve" | "consume">;
   knowledge: ReturnType<typeof assistantKnowledgeArtifact>;
   actorId: string; clock: Clock; assertCurrent(): void;
   workflowStarts?: ReturnType<typeof createAssistantWorkflowStarts>;
+  reads?: AssistantReadAllowlist;
 }>) {
-  type Captured = { intent: Intent; refs: Map<string, NotificationCollectionTarget> };
+  type Captured = { kind: "help" } | { kind: "notification"; action: Action; refs: Map<string, NotificationCollectionTarget> }
+    | { kind: "run"; read: ReturnType<AssistantReadAllowlist["selectedRun"]>; reference: string };
   const requests = new WeakMap<AssistantRequest, Captured>();
   type Pending = { chat: ReturnType<typeof input.authorization.createChat>; revision: number; command: CommandRequest; expiresAt: string; record: AssistantActionRecord; assertCurrent(): void };
   const pending = new Map<string, Pending>();
@@ -89,15 +102,21 @@ export function createProductionAssistantTools(input: Readonly<{
           : { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
       } catch { return { state: "unknown", actionId: decision.actionId }; }
     },
-    projectInput(request: AssistantRequest): Readonly<{ completion: "answer" | "canonical-action"; input: JsonValue; citations: readonly z.infer<typeof AssistantCitationSchema>[] }> {
+    projectInput(request: AssistantRequest): Readonly<{ completion: "answer" | "canonical-action" | "canonical-read"; input: JsonValue; citations: readonly z.infer<typeof AssistantCitationSchema>[] }> {
       current();
       if (request.message.trim().toLowerCase() === ASSISTANT_START_SELECTED_WORKFLOW && input.workflowStarts !== undefined) return input.workflowStarts.projectInput(request);
-      const intent = localAssistantIntent({ message: request.message }, input.knowledge.topics), refs: Captured["refs"] = new Map();
+      const intent = localAssistantIntent({ message: request.message }, input.knowledge.topics), refs = new Map<string, NotificationCollectionTarget>();
+      if (intent.kind === "run") {
+        if (input.reads === undefined) throw new AssistantContextError("ASSISTANT_READ_UNAVAILABLE");
+        const read = input.reads.selectedRun(request.subjectRef), reference = `ref_${randomUUID().replaceAll("-", "")}`;
+        read.assertCurrent(); requests.set(request, { kind: "run", read, reference });
+        return { completion: "canonical-read", input: { intent: "selected-run-explanation", reference }, citations: [] };
+      }
       if (intent.kind === "notification") {
         const target = input.database.withAuthorityReadSnapshot(() => input.database.authority.notifications.collection(input.actorId, operationOf(intent.action)));
         refs.set(`ref_${randomUUID().replaceAll("-", "")}`, target);
       }
-      current(); requests.set(request, { intent, refs });
+      current(); requests.set(request, intent.kind === "help" ? { kind: "help" } : { kind: "notification", action: intent.action, refs });
       const knowledge = input.knowledge;
       if (intent.kind === "help") {
         const line = Object.keys(knowledge.topics).indexOf(intent.topic) + 1;
@@ -116,8 +135,20 @@ export function createProductionAssistantTools(input: Readonly<{
       const captured = requests.get(context.request);
       if (captured === undefined) throw new Error("assistant-request-not-projected");
       requests.delete(context.request);
-      if (captured.intent.kind === "help") return [];
-      const action = captured.intent.action;
+      if (captured.kind === "help") return [];
+      if (captured.kind === "run") {
+        const { read, reference } = captured;
+        const parameters = z.strictObject({ reference: z.string().regex(/^ref_[a-f0-9]{32}$/u) });
+        return [{ namespace: "relay", description: "Read the selected run's local status and evidence. No actions are available.", functions: [{
+          name: "explain_selected_run", description: "Return the current selected run explanation with exact local evidence citations.", parameters,
+          async invoke(value, invocationSignal, invocationContext) {
+            invocationSignal.throwIfAborted(); current(); invocationContext.assertCurrent(); read.assertCurrent();
+            if (parameters.parse(value).reference !== reference) throw new AssistantLocalIntentError("assistant-reference-not-issued");
+            return { kind: "complete", result: { state: "answered", text: read.text, citations: [...read.citations] }, validateLocalCitation: read.validateCitation };
+          },
+        }] }];
+      }
+      const action = captured.action;
       const manifest = input.kernel.assistantManifest();
       if (!manifest.entries.some(entry => entry.family === "notification" && entry.action === action)) {
         throw new Error("assistant-action-unavailable");
