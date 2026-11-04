@@ -289,7 +289,7 @@ interface LinkedRunView {
   readonly partitionDay: string;
   readonly workflowId: string;
   readonly label: string;
-  readonly panelKind: "run" | "member" | "group";
+  readonly panelKind: QueueSurfaceWire["panelKind"];
   readonly status: QueueSurfaceWire["status"];
 }
 
@@ -1106,7 +1106,7 @@ export class RunQueueProjection {
     if (known !== undefined) return known;
     const link = { runId: run.envelope.runId, partitionDay: localDatePart(new Date(run.envelope.enqueuedAt)),
       workflowId: run.envelope.workflow, label: this.#deps.descriptors.resolve(run.envelope.workflow)?.label ?? run.envelope.workflow,
-      panelKind: panelKindOf(run.envelope.shape), status: this.#status(run) };
+      panelKind: panelKindOf(run.envelope.shape, this.#deps.authority.reviewAvailable?.(run.envelope.runId) === true), status: this.#status(run) };
     context.links.set(run.envelope.runId, link);
     return link;
   }
@@ -1226,6 +1226,7 @@ export class RunQueueProjection {
     const receipt = this.#receipt(context, authority, status);
     const warningVerdict = this.#warningVerdict(status, receipt);
     const descriptor = this.#deps.descriptors.resolve(queued.workflow);
+    const reviewAvailable = this.#deps.authority.reviewAvailable?.(queued.runId) === true;
 
     const members = children.filter(member => isQueueMember({ parent: this.#parentFact(context, member), status: this.#status(member) }));
     const memberChildIds = members.map((member) => member.envelope.runId);
@@ -1284,10 +1285,10 @@ export class RunQueueProjection {
         : pauseControl.state === "paused" ? { state: "present", value: "Pause recorded. Resume to continue." } : this.#liveMessage(authority, status),
       warnings: this.#warnings(warningVerdict),
       pipeline: this.#pipeline(row, queued.workflow, authority.lifecycle.state === "terminal", delegationWait),
-      panelKind: panelKindOf(shape),
+      panelKind: panelKindOf(shape, reviewAvailable),
       availableSections: [
         "logs",
-        ...(this.#deps.authority.reviewAvailable?.(queued.runId) === true ? ["review"] : []),
+        ...(reviewAvailable ? ["review"] : []),
         "context-data",
         "context-attempts",
         ...(authority.lifecycle.state === "terminal" && authority.lifecycle.outcome === "failed" ? ["failure"] : []),

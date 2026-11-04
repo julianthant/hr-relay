@@ -203,13 +203,17 @@ coordinates. Read-only `/api/v1/runs/:runId/ocr/commands/:commandId` settlement 
 authenticated result for uncertainty checks without dispatching the command again.
 
 Run detail may serve a `childRetry` action for the current failed OCR child while its unapproved
-parent is queued and can still join it. Logs renders it in the header and dispatches the existing
-`run/retry` command through the shared executor. The action binds the exact child revision;
-readback verifies the immutable source and one replacement's native `retryOf` and parent identities.
+parent can join it or qualifies for an authenticated read-only refresh from review or completion.
+Queue rows, linked-run chips and detail select the same panel kind from authenticated review availability.
+Logs renders it in the header and dispatches the existing `run/retry` command through the shared
+executor. The action binds the exact child revision;
+readback verifies the immutable source and one replacement's native `retryOf` and parent identities,
+including the exact parent target when the retry advances its version.
 After a lost reply, the retained exact command may be replayed after the action disappears if the
 original failed child and revision still match. A root run or changed revision cannot use that path.
-Successful, replaced, paused, approved and uncertain-write children have no retry action. Parked
-review and completed parents require delegation-owned resumption before that action is available.
+Successful, replaced, paused, approved and uncertain-write children have no retry action. The native
+refresh holds the parent until all accepted replacements settle, then resumes the same run to
+rebuild its review.
 
 The command envelope carries `commandId`, `requestedAt`, `requestedBy`, `source`, and optional
 `reason`. The request adds its exact `family`, `type`, target, and payload. Run targets use

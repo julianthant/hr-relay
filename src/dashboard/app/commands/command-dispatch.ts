@@ -367,16 +367,26 @@ export async function verifyShellCommandEffect(
       ? { state: "matched", evidence: detail } : mismatch(detail);
   }
   if (request.family === "run" && request.type === "retry") {
-    if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 2
+    if (!("affectedTargets" in reply) || ![2, 3].includes(reply.affectedTargets.length)
       || !reply.affectedTargets.every(target => target.family === "run")
+      || new Set(reply.affectedTargets.map(target => target.family === "run" ? target.runId : undefined)).size !== reply.affectedTargets.length
       || reply.affectedTargets.filter(target => target.family === "run" && target.runId === request.target.runId).length !== 1) return mismatch(reply);
-    const replacement = reply.affectedTargets.find(target => target.family === "run" && target.runId !== request.target.runId);
-    if (replacement?.family !== "run") return mismatch(reply);
-    const [source, next] = await Promise.all([client.runDetail(request.target.runId), client.runDetail(replacement.runId)]);
-    return childRetrySourceMatches(source, request.target) && next.runId === replacement.runId
+    const details = await Promise.all(reply.affectedTargets.map(target => {
+      if (target.family !== "run") throw new Error("Child retry target must be a run");
+      return client.runDetail(target.runId);
+    }));
+    if (!details.every((detail, index) => {
+      const target = reply.affectedTargets[index];
+      return target?.family === "run" && detail.runId === target.runId && detail.header.runId === target.runId;
+    })) return mismatch(details);
+    const source = details.find(detail => detail.runId === request.target.runId);
+    const replacements = details.filter(detail => detail.runId !== request.target.runId && detail.header.retryOf === request.target.runId);
+    const next = replacements[0];
+    return source !== undefined && replacements.length === 1 && next !== undefined && childRetrySourceMatches(source, request.target)
       && next.header.retryOf === source.runId && next.header.parentRunId === source.header.parentRunId
       && next.header.workflowId === source.header.workflowId && next.header.attempt > source.header.attempt
-      ? { state: "matched", evidence: [source, next] } : mismatch([source, next]);
+      && details.every(detail => detail === source || detail === next || detail.runId === source.header.parentRunId)
+      ? { state: "matched", evidence: details } : mismatch(details);
   }
   if (request.family === "worker-browser" && request.type === "check-parked-write") {
     if (!("affectedTargets" in reply) || reply.affectedTargets.length !== 2

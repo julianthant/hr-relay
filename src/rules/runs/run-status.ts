@@ -1,4 +1,4 @@
-import type { QueueStatusSchema } from "../../models/dashboard/projection.js";
+import type { QueueStatusSchema, QueueSurfaceWire } from "../../models/dashboard/projection.js";
 import type { RunRecord } from "../../models/run/record.js";
 import type { RunQueuedWire } from "../../models/events/types.js";
 import type { DelegationWaitState } from "../../models/run/summary.js";
@@ -31,8 +31,8 @@ export function deriveRunStatus(authority: Readonly<{ lifecycle: RunRecord["life
   return "queued";
 }
 
-/** Which panel a row's enqueued SHAPE opens — one mapping, two readers. */
-export function panelKindOf(shape: RunQueuedWire["shape"]): "run" | "member" | "group" {
+export function panelKindOf(shape: RunQueuedWire["shape"], reviewAvailable: boolean): QueueSurfaceWire["panelKind"] {
+  if (reviewAvailable) return "review";
   if (shape === "operation") return "group";
   if (shape === "operation-member") return "member";
   return "run";

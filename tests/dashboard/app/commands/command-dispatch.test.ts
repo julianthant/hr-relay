@@ -74,7 +74,25 @@ it("verifies child retry through the exact replacement and immutable source, inc
     family: "run", type: "retry", target: { runId: source.runId, expectedVersion: source.rowRevision } });
   const reply = CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
     affectedTargets: [{ family: "run", runId: source.runId }, { family: "run", runId: next.runId }] });
+  assert.ok(reply.state === "applied");
   assert.equal((await verifyShellCommandEffect(client, f.DAY.day, command, reply)).state, "matched");
+  const parent = RunDetailWireSchema.parse({ ...f.DETAIL, runId: runId(8), rowRevision: 8,
+    header: { ...f.DETAIL.header, runId: runId(8), status: "running" } });
+  const parentClient = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async input => {
+    const path = new URL(String(input)).pathname;
+    const foreign = RunDetailWireSchema.parse({ ...f.DETAIL, runId: runId(6), header: { ...f.DETAIL.header, runId: runId(6) } });
+    return Response.json(path.endsWith(parent.runId) ? parent : path.endsWith(source.runId) ? source : path.endsWith(observed.runId) ? observed : foreign);
+  } });
+  const refreshReply = CommandResultSchema.parse({ ...reply, affectedTargets: [...reply.affectedTargets, { family: "run", runId: parent.runId }] });
+  assert.equal((await verifyShellCommandEffect(parentClient, f.DAY.day, command, refreshReply)).state, "matched");
+  for (const targets of [
+    [...reply.affectedTargets, { family: "run", runId: runId(6) }],
+    [...reply.affectedTargets, { family: "run", runId: next.runId }],
+    [{ family: "run", runId: parent.runId }, { family: "run", runId: next.runId }],
+  ]) {
+    const malformed = CommandResultSchema.parse({ ...reply, affectedTargets: targets });
+    assert.equal((await verifyShellCommandEffect(parentClient, f.DAY.day, command, malformed)).state, "mismatch");
+  }
   for (const header of [{ ...next.header, retryOf: runId(6) }, { ...next.header, parentRunId: runId(6) },
     { ...next.header, attempt: source.header.attempt }, { ...next.header, workflowId: "other-workflow" }]) {
     observed = RunDetailWireSchema.parse({ ...next, header });

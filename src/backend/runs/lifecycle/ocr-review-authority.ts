@@ -15,12 +15,14 @@ import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/ide
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { BUILD_MANIFEST,resolveWorkflowFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
+import { authorizeWorkflowDelegationRefresh, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { authenticateDescendantHome,childTerminalSettlement,readDelegationEvidence } from "../../storage/sqlite/delegation-authority.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import { RunContinuationRefusedError,readContinuationGate,validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
 import { CanonicalTransitionRequestSchema } from "../../storage/sqlite/run-store-contracts.js";
+import { assertDelegationRefreshEligible } from "../../storage/sqlite/delegation-refresh.js";
 import type { RunRecordService } from "./run-record-service.js";
 
 function same(left: unknown, right: unknown): boolean { return canonicalJsonStringify(left) === canonicalJsonStringify(right); }
@@ -54,16 +56,25 @@ export function assertOcrChildRetryCurrent(repositories: AuthorityRepositories, 
   if (members.length !== 1) throw new RunContinuationRefusedError("ocr-child-retry-member-replaced");
 }
 
-export function ocrChildRetryAvailable(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, child: RunRecord): boolean {
+export function ocrChildRetryAvailable(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, child: RunRecord,
+  resolveDescriptor: (workflowId: string) => AnyWorkflowDescriptor | undefined): boolean {
   if (child.envelope.parent === undefined || child.lifecycle.state !== "terminal" || child.lifecycle.outcome !== "failed") return false;
   const parent = repositories.runs.get(child.envelope.parent.runId);
-  if (parent?.envelope.workflow !== "ocr" || parent.lifecycle.state !== "queued" || parent.cancelRequested === true
+  if (parent?.envelope.workflow !== "ocr" || !(parent.lifecycle.state === "queued" || parent.lifecycle.state === "parked-gate"
+    || parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "done") || parent.cancelRequested === true
     || parent.pause !== undefined || repositories.ocrReviews.snapshots(parent.envelope.runId).length > 0
     || repositories.gateResults.get(`${parent.envelope.runId}:approve-records`) !== undefined
     || repositories.workerControls.resetForRun(parent.envelope.runId) !== undefined
     || repositories.workerControls.resetForRun(child.envelope.runId) !== undefined
     || repositories.runtimeConfig.get()?.configSnapshotId !== child.envelope.configSnapshotId
-    || [parent, child].some(run => repositories.writeIntents.listByRun(run.envelope.runId).some(intent => intent.status === "attempting" || intent.status === "parked"))) return false;
+    || [parent, child].some(run => repositories.writeIntents.listByRun(run.envelope.runId).length > 0)) return false;
+  if (parent.lifecycle.state !== "queued" || parent.delegationRefresh !== undefined) {
+    const descriptor = resolveDescriptor(parent.envelope.workflow);
+    if (descriptor === undefined || descriptor.contractFingerprint !== parent.envelope.contractFingerprint) return false;
+    const authorization = authorizeWorkflowDelegationRefresh(descriptor, parent);
+    if (authorization === undefined) return false;
+    assertDelegationRefreshEligible(repositories, parent, authorization);
+  }
   const member = repositories.dependencies.groups(parent.envelope.runId).flatMap(({ group }) => group.children)
     .find(member => member.child.envelope.runId === child.envelope.runId);
   if (member === undefined) return false;

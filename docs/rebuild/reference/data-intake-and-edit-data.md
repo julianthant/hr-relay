@@ -168,6 +168,9 @@ its derived review and result tasks when it resumes. Changed authenticated child
 a later checkpoint-origin revision with all records derived from that one seed; corrections from
 the previous seed do not carry across. Unchanged child evidence leaves the current revision and
 its corrections intact. Machine rebuilds refuse after an approval snapshot exists.
+Failed page and lookup retries use native delegation refresh for parked review and completed
+read-only parents. The accepted cohort wakes the same parent once; revised lookup manifests retain
+unchanged fresh reads and admit new records without rewriting the original membership or settlements.
 Corrections, discard and restore append immutable revisions with expected-revision CAS and command replay.
 The same transaction advances the canonical run version through its lifecycle service so existing
 Queue and selected-detail subscriptions replace their reads. The `review` section serves source
