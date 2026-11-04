@@ -40,3 +40,14 @@ it("returns only the last completed storage check without rerunning or leaking b
   assert.deepEqual(await latest(first), { state: "completed", report });
   assert.deepEqual(await latest(second), { state: "never-run" });
 });
+
+it.each(["clear", "result"])("guards history %s before body effects and returns explicit unavailable authority", async operation => {
+  const server = app(async () => report);
+  const path = `/api/v1/storage/run-history/${operation}`;
+  assert.deepEqual(await (await server.request("/api/v1/storage/run-history")).json(), { state: "unavailable" });
+  assert.equal((await server.request(path, { method: "POST", body: "malformed" })).status, 403);
+  assert.equal((await server.request(path, { method: "POST", headers: { host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938" }, body: "malformed" })).status, 415);
+  const commandId = "50000000-0000-4000-8000-000000000001";
+  const response = await server.request(path, { method: "POST", headers: { host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json" }, body: JSON.stringify({ commandId }) });
+  assert.deepEqual(await response.json(), { state: "refused", commandId, reason: "unavailable" });
+});

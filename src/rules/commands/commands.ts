@@ -586,6 +586,7 @@ export const RunLifecycleCommandOperationSchema = z.enum([
   "recover",
   "delete",
   "purge",
+  "clear-history",
 ]);
 
 export const RunLifecycleCommandFenceSchema = z.discriminatedUnion("kind", [
@@ -625,6 +626,7 @@ export const RunLifecycleCommandResultIdentitySchema = z.discriminatedUnion("kin
     terminal: z.strictObject({ outcome: z.enum(["cancelled", "discarded", "superseded"]), endedAt: IsoInstantSchema }).optional(),
   }),
   z.strictObject({ kind: z.literal("deletion"), runIds: z.array(RunIdSchema).min(1) }),
+  z.strictObject({ kind: z.literal("history-deletion"), runIds: z.array(RunIdSchema) }),
   z.strictObject({
     kind: z.literal("purge"),
     evidenceClass: z.string().min(1),

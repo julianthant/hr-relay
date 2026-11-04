@@ -37,6 +37,12 @@ export function assertCanonicalRunCommandScope(repositories: AuthorityRepositori
 
 export const NativeCommandRequestSchema = z.union([StoredAuthorityCommandRecordSchema, SettingsInitializationCommandSchema]);
 export const NativeCommandAuditSchema = z.union([AuthorityCommandAuditRecordSchema, SettingsInitializationAuditSchema]);
+export function settledRunDeletionIds(audit: z.infer<typeof NativeCommandAuditSchema>): readonly string[] | undefined {
+  if (!("kind" in audit) || audit.kind !== "run-lifecycle") return undefined;
+  if (audit.request.operation === "delete" && audit.result.kind === "deletion"
+    || audit.request.operation === "clear-history" && audit.result.kind === "history-deletion") return audit.result.runIds;
+  return undefined;
+}
 const RowSchema = z.strictObject({
   id: z.string(), family: z.string(), actor_id: z.string(), parent_id: z.string().nullable(), target_id: z.string().nullable(),
   request_digest: z.string(), request_json: z.string(), state: z.enum(["admitted", "executing", "succeeded", "refused", "uncertain"]),

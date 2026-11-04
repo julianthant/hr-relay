@@ -74,7 +74,8 @@ async function expandChecks(dom: HTMLElement): Promise<void> {
 function assertRunHistoryAbsent(dom: HTMLElement): void {
   assert.equal(dom.querySelectorAll(".diagnostic-check-entry").length, 13);
   assert.equal(dom.querySelector('[aria-label="Storage health checks"] [role="list"]')?.children.length, 3);
-  assert.doesNotMatch(dom.textContent ?? "", /Run history|run record issues|stream runs|Current runs|Archived|Deleted|span_stream|record-digest|00000000|possible external write/iu);
+  assert.ok(dom.textContent?.includes("Clear run history"));
+  assert.doesNotMatch(dom.textContent ?? "", /run record issues|stream runs|Current runs|Archived|Deleted|span_stream|record-digest|00000000|possible external write/iu);
 }
 
 describe("loaded Settings storage doctor", () => {
