@@ -53,7 +53,7 @@ async function mountedLogs(page: Page, info: TestInfo, baseUrl: string, theme: (
 }
 
 test.describe("picked A affected Logs references", () => {
-  for (const theme of PARITY_THEMES) test(`mounted Logs and all Explorer workflows @ ${theme.attribute}`, { annotation: [{ type: "required-a11y-evidence", description: "baseline-workflows.a11y.yml" }] }, async ({ page }, info) => {
+  for (const theme of PARITY_THEMES) test(`mounted Logs and all Explorer workflows @ ${theme.attribute}`, { annotation: [{ type: "required-a11y-evidence", description: "baseline-picked-logs.a11y.yml" }] }, async ({ page }, info) => {
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     const errors: string[] = [], writes: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -63,7 +63,7 @@ test.describe("picked A affected Logs references", () => {
       await installTheme(page, theme);
       await installFrozenMonotonic(page);
       await mountedLogs(page, info, server.baseUrl, theme);
-      await witness(page, info, "baseline-workflows.a11y.yml");
+      await witness(page, info, "baseline-picked-logs.a11y.yml");
       expect(errors).toEqual([]); expect(writes).toEqual([]);
     } finally { await server.close(); }
   });
