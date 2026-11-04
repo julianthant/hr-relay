@@ -8,13 +8,13 @@ import { stepProofDescriptorOf } from "../../registries/step-proof-modules.js";
 import { INTAKE_PROJECTIONS,READABLE_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
 import type { createOperatorProjection } from "./queue.js";
 import { createOperatorRunDetail } from "./run-detail.js";
-import type { prepareDashboardRuntime } from "./runtime-startup.js";
+import type { prepareDashboardRuntime } from "./runtime-resources.js";
 import { createTrustReadDependencies } from "./trust.js";
 
 import type { WorkerLeaseRecord } from "../../../../models/run/worker.js";
 
-export async function composeWriteSafety(input: Pick<Awaited<ReturnType<typeof prepareDashboardRuntime>>, "database" | "admission" | "lifecycle" | "descriptors" | "ids" | "stateRoot"> & { projection: ReturnType<typeof createOperatorProjection>; ownsWorker: (lease: WorkerLeaseRecord) => boolean }) {
-  const { database, admission, lifecycle, descriptors, ids, stateRoot, projection, ownsWorker } = input;
+export function prepareWriteSafety(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "admission" | "lifecycle" | "descriptors" | "ids">) {
+  const { database, admission, lifecycle, descriptors, ids } = input;
   // Ref write-safety's typed operator resolutions, over the SAME AuthorityDatabase
   // instance as the kernel transaction (the executor's documented requirement).
 
@@ -28,11 +28,11 @@ export async function composeWriteSafety(input: Pick<Awaited<ReturnType<typeof p
   const artifacts = createContentAddressedArtifactWriter({
     admission,
   });
-  await artifacts.ready;
-  const artifactReader = createServerVerifiedArtifactReader({
-    admission,
-  });
-  await artifactReader.ready;
+  return { writeResolution, artifacts };
+}
+
+export function composeWriteSafety(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "lifecycle" | "stateRoot"> & { projection: ReturnType<typeof createOperatorProjection>; ownsWorker: (lease: WorkerLeaseRecord) => boolean; artifacts: ReturnType<typeof createContentAddressedArtifactWriter>; artifactReader: ReturnType<typeof createServerVerifiedArtifactReader> }) {
+  const { database, lifecycle, stateRoot, projection, ownsWorker, artifacts, artifactReader } = input;
   const intakeParser = createIntakeParser({ artifacts });
   const intakeProjections = {
     resolve: (workflowId: string) => INTAKE_PROJECTIONS[workflowId],
@@ -41,5 +41,5 @@ export async function composeWriteSafety(input: Pick<Awaited<ReturnType<typeof p
   const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
   const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, ownsWorker, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor ?? stepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
-  return { writeResolution, artifacts, artifactReader, intakeParser, intakeProjections, trustReads, runDetailDeps };
+  return { intakeParser, intakeProjections, trustReads, runDetailDeps };
 }

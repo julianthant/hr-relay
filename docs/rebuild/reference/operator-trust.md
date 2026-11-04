@@ -405,7 +405,7 @@ a disconnect or timeout alone does not establish a gap.
 `createNotificationObserver` in `src/backend/runs/notifications/observation.ts` serializes reads
 and publications, retains failed pending occurrences, exposes closed observation diagnostics, and
 awaits in-flight work on stop. It removes pending occurrences only after durable publication.
-`src/backend/app/composition/dashboard/runtime-startup.ts` invokes the observer at startup and on its watch
+`src/backend/app/composition/dashboard/dashboard-wiring.ts` invokes the observer at startup and on its watch
 interval. The inbox cannot store an alert while its own authority is unavailable; the dashboard's
 storage failure response remains the separate indication of that condition.
 

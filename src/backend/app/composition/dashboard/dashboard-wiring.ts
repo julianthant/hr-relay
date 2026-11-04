@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import { z } from "zod";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
 import { AssistantModelPreferenceSchema } from "../../../../models/config/assistant-model-preference.js";
@@ -30,11 +31,14 @@ import { createCommandBrowserManager } from "../../../runtime/browser/command-br
 import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { activeSettingsConfig,activeSettingsRuntimeIdentity } from "../../../runtime/settings/settings-runtime.js";
+import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
 import { readAutomaticRepairNotice } from "../../../storage/maintenance/automatic-repair-notice.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
+import { startDashboardHttpServer,type DashboardHttpServer } from "../../../transports/http/http-server.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/request-identity.js";
 import { createDashboardApp } from "../../../transports/http/routes/api.js";
+import { openStaticBundle } from "../../../transports/http/static-bundle.js";
 import { createSharePointWorkbookSync } from "../../../workbooks/sharepoint-sync.js";
 import { WorkbookLibraryError,createWorkbookLibraryService } from "../../../workbooks/workbook-library-service.js";
 import { DESCRIPTORS,READABLE_WORKFLOW_MODULES } from "../../registries/workflow-registry.js";
@@ -47,16 +51,26 @@ import { composeIntake } from "./intake.js";
 import { composeNotificationPublications,composeNotificationRoutes } from "./notification-wiring.js";
 import { composeQueueSummaries } from "./queue-summaries.js";
 import { createOperatorProjection } from "./queue.js";
+import type { DashboardRuntime } from "./runtime-contracts.js";
 import { type DashboardComposeInput,type StartupCleanup,type StartupCustody } from "./runtime-contracts.js";
-import type { prepareDashboardRuntime } from "./runtime-startup.js";
+import { prepareDashboardEnvironment,prepareDashboardRuntime } from "./runtime-resources.js";
 import { composeShell } from "./shell.js";
+import { composeDashboardShutdown } from "./shutdown-custody.js";
 import { composeStorage } from "./storage.js";
-import { composeDashboardTimeline } from "./timeline.js";
+import { GATE_PARK_WATCH_MS,composeDashboardTimeline } from "./timeline.js";
 import { WORKER_BIRTH_POLL_MS,WORKER_BIRTH_TIMEOUT_MS,composeWorkerProcessControl,productionWorkerLaunch,realWorkerProcessSpawner } from "./worker-process.js";
-import { composeWriteSafety } from "./write-safety.js";
+import { composeWriteSafety,prepareWriteSafety } from "./write-safety.js";
 
-export async function composeDashboardWiring(input: DashboardComposeInput, resources: Awaited<ReturnType<typeof prepareDashboardRuntime>>, startupCleanups: StartupCleanup[], custody: StartupCustody) {
-  const { requiredClosure, env, clock, timeZone, ids, repoRoot, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, frontend, staticBundle, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, readBackupSummary, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority } = resources;
+export async function composeDashboardRuntimeStartup(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody): Promise<DashboardRuntime> {
+  const environment = prepareDashboardEnvironment(input, custody);
+  const { repoRoot, frontend } = environment;
+  const staticBundle = frontend === "built-bundle"
+    ? await openStaticBundle(join(repoRoot, "dist", "dashboard"), repoRoot, input.frontendBuildScript)
+    : undefined;
+
+
+  const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle);
+  const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, timeZone, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, readBackupSummary, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority } = resources;
   const ledger = createTransactionHistory(database.authority);
 
   const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger, timeZone });
@@ -110,7 +124,13 @@ export async function composeDashboardWiring(input: DashboardComposeInput, resou
   custody.closeWorkerControl = stopWorkerControl;
   ownsWorker = lease => workerControl.supervisor.ownsWorker(lease.workerId, lease.processId, lease.lifecycle.startedAt);
   database.reconcileWorkerControlMilestones(clock.now().toISOString());
-  const { writeResolution, artifacts, artifactReader, intakeParser, intakeProjections, trustReads, runDetailDeps } = await composeWriteSafety({ database, admission, lifecycle, descriptors, ids, stateRoot, projection, ownsWorker });
+  const { writeResolution, artifacts } = prepareWriteSafety({ database, admission, lifecycle, descriptors, ids });
+  await artifacts.ready;
+  const artifactReader = createServerVerifiedArtifactReader({
+    admission,
+  });
+  await artifactReader.ready;
+  const { intakeParser, intakeProjections, trustReads, runDetailDeps } = composeWriteSafety({ database, lifecycle, stateRoot, projection, ownsWorker, artifacts, artifactReader });
 
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
 
@@ -321,5 +341,24 @@ export async function composeDashboardWiring(input: DashboardComposeInput, resou
   });
   const assistantSurface = assistantSurfaceCoverage(app.routes);
 
-  return { app, reportDashboardTransferFault, assistantAuthorization, shutdownRequested, noteWriter, runLogsHub, timelineTimer, hub, stopWorkerControl };
+  const startHttpServer = input.httpServerStarter ?? startDashboardHttpServer;
+  const server: DashboardHttpServer = input.applicationTransport === undefined ? await startHttpServer({
+    app,
+    port: input.backendPortOverride ?? input.isolation.backendPort,
+    onTransferError: reportDashboardTransferFault,
+  }) : { port: input.applicationTransport.listener.port,
+    close: input.applicationTransport.listener.mount(app, input.applicationTransport.accepts).close };
+  custody.transportClosed = false;
+  startupCleanups.push(requiredClosure(async () => {
+    const failures: unknown[] = [];
+    try { await server.close(); custody.transportClosed = true; } catch (error) { failures.push(error); }
+    if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
+  }));
+  dashboardPreflightRunners.markBackendOwned(server.port);
+  void notificationObserver.observe();
+  const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);
+  gateParkTimer.unref();
+  startupCleanups.push(() => clearInterval(gateParkTimer));
+
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, runLogsHub, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, custody });
 }

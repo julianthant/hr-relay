@@ -3,14 +3,14 @@ import { FingerprintSchema } from "../../../../rules/identity/ids.js";
 import { notificationDisplayContext } from "../../../runs/queries/notification-display.js";
 import type { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
 import type { createDashboardApp } from "../../../transports/http/routes/api.js";
-import type { prepareDashboardRuntime } from "./runtime-startup.js";
+import type { prepareDashboardRuntime } from "./runtime-resources.js";
 import type { composeShell } from "./shell.js";
 
 import type { composeWriteSafety } from "./write-safety.js";
 
-type NotificationWiringInput = Pick<Awaited<ReturnType<typeof prepareDashboardRuntime>>, "database" | "clock" | "lifecycle" | "descriptors"> & Pick<Awaited<ReturnType<typeof composeWriteSafety>>, "runDetailDeps">;
+type NotificationWiringInput = Pick<ReturnType<typeof prepareDashboardRuntime>, "database" | "clock" | "lifecycle" | "descriptors"> & Pick<ReturnType<typeof composeWriteSafety>, "runDetailDeps">;
 
-export function composeNotificationPublications(input: NotificationWiringInput & Pick<Awaited<ReturnType<typeof prepareDashboardRuntime>>, "notificationInbox">): NonNullable<Parameters<typeof composeShell>[0]["notificationPublications"]> {
+export function composeNotificationPublications(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "notificationInbox">): NonNullable<Parameters<typeof composeShell>[0]["notificationPublications"]> {
   const { database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox } = input;
   return { subscribe: notificationInbox.onPublication, project: publication => database.withAuthorityReadSnapshot(() => ({
       sourceId: FingerprintSchema.parse(publication.sourceId), actorId: publication.notification.actorId, durable: publication.durable,
@@ -23,7 +23,7 @@ export function composeNotificationPublications(input: NotificationWiringInput &
     })) };
 }
 
-export function composeNotificationRoutes(input: NotificationWiringInput & Pick<Awaited<ReturnType<typeof prepareDashboardRuntime>>, "assertCurrent" | "notificationObserver"> & { notificationTarget: ReturnType<typeof createNotificationTargetQuery> }): NonNullable<Parameters<typeof createDashboardApp>[0]["notifications"]> {
+export function composeNotificationRoutes(input: NotificationWiringInput & Pick<ReturnType<typeof prepareDashboardRuntime>, "assertCurrent" | "notificationObserver"> & { notificationTarget: ReturnType<typeof createNotificationTargetQuery> }): NonNullable<Parameters<typeof createDashboardApp>[0]["notifications"]> {
   const { database, clock, lifecycle, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget } = input;
   return { collection: (actor, operation) => { assertCurrent(); const value = database.withAuthorityReadSnapshot(() => database.authority.notifications.collection(actor, operation)); assertCurrent(); return value; }, snapshot: actor => database.withAuthorityReadSnapshot(() => database.authority.notifications.listByActor(actor).map(record => notificationWireOf(record, clock.nowMs(), notificationDisplayContext(record, {
       presentation: runDetailDeps,
