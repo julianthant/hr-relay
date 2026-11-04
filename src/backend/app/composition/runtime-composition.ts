@@ -1,5 +1,6 @@
 
 import { z } from "zod";
+import { DashboardStopSchema } from "../../../models/runtime/dashboard-control.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { TEST_DATA_USAGE } from "../../runs/provenance/test-data-usage.js";
 import type { WorkerLoopReport } from "../../runtime/workers/worker-loop.js";
@@ -37,7 +38,7 @@ export interface RebuildRuntimeStart {
   /** Explicit seam override for tests; production subscribes to the real process signals. */
   readonly signals?: RuntimeShutdownSignals;
   /** Publish readiness only after the dashboard owns shutdown. */
-  readonly dashboardReady?: () => void;
+  readonly dashboardReady?: () => void | Promise<void>;
 }
 
 export const DashboardFrontendSchema = z.enum(["vite-dev", "built-bundle"]);
@@ -157,11 +158,19 @@ function processShutdownSignals(): RuntimeShutdownSignals {
       const onTerminate = (): void => {
         handler("SIGTERM");
       };
+      const onMessage = (message: unknown): void => {
+        if (DashboardStopSchema.safeParse(message).success) onTerminate();
+      };
       process.on("SIGINT", onInterrupt);
       process.on("SIGTERM", onTerminate);
+      process.on("message", onMessage);
+      process.on("disconnect", onTerminate);
+      if (process.send !== undefined && !process.connected) onTerminate();
       return (): void => {
         process.removeListener("SIGINT", onInterrupt);
         process.removeListener("SIGTERM", onTerminate);
+        process.removeListener("message", onMessage);
+        process.removeListener("disconnect", onTerminate);
       };
     },
   };
@@ -171,7 +180,7 @@ function processShutdownSignals(): RuntimeShutdownSignals {
 async function ownDashboardUntilShutdown(
   running: RunningDashboard,
   signals: RuntimeShutdownSignals,
-  ready?: () => void,
+  ready?: () => void | Promise<void>,
 ): Promise<void> {
   let requestShutdown: (() => void) | undefined;
   const shutdownRequested = new Promise<void>((resolve) => {
@@ -184,7 +193,7 @@ async function ownDashboardUntilShutdown(
       if (requestShutdown === undefined) throw new Error("a shutdown signal arrived before the dashboard registered its handler");
       requestShutdown();
     });
-    ready?.();
+    await ready?.();
     await Promise.race([shutdownRequested, ...(running.shutdownRequested === undefined ? [] : [running.shutdownRequested]), ...(running.failure === undefined ? [] : [running.failure])]);
   } catch (error) { failures.push(error); }
   try { await running.stop(); } catch (error) { if (!failures.includes(error)) failures.push(error); }
@@ -227,7 +236,11 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
     const running = await compose(input.isolation, options);
     write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`);
     await ownDashboardUntilShutdown(running, input.signals ?? processShutdownSignals(), input.dashboardReady
-      ?? (() => { process.send?.({ type: "hrauto-dashboard-ready" }); }));
+      ?? (() => new Promise<void>((resolve, reject) => {
+        const send = process.send?.bind(process);
+        if (send === undefined || !process.connected) { resolve(); return; }
+        send({ type: "hrauto-dashboard-ready" }, (error: Error | null) => { if (error) reject(error); else resolve(); });
+      })));
     return;
   }
   if (command === "explain") {

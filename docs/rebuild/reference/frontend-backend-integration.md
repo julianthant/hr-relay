@@ -363,6 +363,25 @@ own their backend policies.
 
 ## Launch-time person storage upgrade
 
+On Windows, `relay.cmd` runs the production bootstrap with portable Node and opens a dedicated
+Edge app profile. Its parent owns the backend child and a random IPv4-loopback stop broker.
+`relay.cmd stop` reads a private capability under `%LOCALAPPDATA%\Relay\launcher`; nonce-bound
+HMACs authenticate both the stop request and its receipt. The capability is never transmitted.
+The broker forwards only the exact IPC stop message, keeps repeated requests waiting through the
+same drain, and reports success after a post-bootstrap receipt and the child's actual `close`.
+It never escalates to process termination. A bare, uncaused Windows backup-custody refusal after
+resource closure is a normal stop with an explicit backups-unavailable notice. Other failures
+remain failures. The Windows backend is detached and hidden with no inherited console IO;
+launcher death disconnects IPC and requests the same drain. A second launch authenticates with
+the existing parent to reopen the app window. Failed commands print public reasons and keep the
+command window open. The operator closes the Edge window separately.
+
+The broker record is written and flushed to a unique private stage before publication. Windows
+uses same-directory `MoveFileExW` without replacement; POSIX uses exclusive link publication and
+removes the stage, admitting its two-link transition only for this ephemeral control record.
+An interrupted stage cannot become a partial `broker.json`, and a second publisher cannot replace
+an existing owner. This control record grants no storage-maintenance durability or custody.
+
 Dashboard bootstrap upgrades supported registered READY person databases before shared runtime
 admission, HTTP listeners, notification producers or account providers. The same lifetime listener
 retains stopped exclusive custody through source inspection, verified backup, migration and current

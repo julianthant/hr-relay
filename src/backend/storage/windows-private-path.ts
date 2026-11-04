@@ -126,6 +126,7 @@ function loadNative() {
   const convert = advapi.func("int __stdcall ConvertStringSecurityDescriptorToSecurityDescriptorW(str16, uint32, _Out_ void **, void *)");
   const createDirectory = kernel.func("int __stdcall CreateDirectoryW(str16, void *)");
   const flush = kernel.func("int __stdcall FlushFileBuffers(void *)");
+  const move = kernel.func("int __stdcall MoveFileExW(str16, str16, uint32)");
   interface Resource { readonly handle: bigint; readonly library: object; state: "held" | "unproved" | "closed" }
   const retained = new Set<Resource>();
   function resource(value: unknown): Resource {
@@ -246,6 +247,11 @@ function loadNative() {
         requireFact(after.dev === observed.device && after.ino === observed.inode, "native-flush-identity-changed");
       });
     },
+    publish(stage: string, path: string): void {
+      requireFact(dirname(stage) === dirname(path), "native-publication-parent-mismatch");
+      requireFact(!inspect(stage, lstatSync(stage, { bigint: true }), "file-0600"), "native-publication-source-unsafe");
+      requireFact(move(stage, path, 8) !== 0, "native-private-publication-failed");
+    },
     createDirectory(path: string): void {
       const user = currentUser(), output: unknown[] = [null];
       const parent = dirname(path), parentStat = lstatSync(parent, { bigint: true });
@@ -278,3 +284,4 @@ export function assertWindowsPrivateParent(path: string): void {
 export function createWindowsPrivateDirectory(path: string): void { bridge().createDirectory(path); }
 export function flushWindowsPath(path: string): void { bridge().flush(path); }
 export function assertWindowsNoReparse(path: string): void { bridge().rejectReparse(path); }
+export function publishWindowsPrivateFile(stage: string, path: string): void { bridge().publish(stage, path); }
