@@ -366,7 +366,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     if (!Number.isFinite(options.closeProofMs) || options.closeProofMs <= 0) throw new ProfileOnboardingDuoProviderError("refused", "revoked");
     try {
       if (!isAbsolute(options.browserRoot) || realpathSync(options.browserRoot) !== options.browserRoot || !isAbsolute(options.extensionDirectory)) throw new Error("root");
-      const root = lstatSync(options.browserRoot);
+      const root = process.platform === "win32" ? lstatSync(options.browserRoot, { bigint: true }) : lstatSync(options.browserRoot);
       if (!root.isDirectory() || root.isSymbolicLink() || privatePathRejects(options.browserRoot, root, "private")) throw new Error("root");
     } catch { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root"); }
     const ownerIdentity={operationId:owner.operationId,profileId:owner.profileId,accountId:owner.accountId,generation:owner.generation};
