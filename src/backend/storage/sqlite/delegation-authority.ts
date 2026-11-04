@@ -184,7 +184,7 @@ export function authenticateDescendantHome(repositories: AuthorityRepositories, 
     const parent = ancestry[index + 1];
     if (parent === undefined) throw new Error("delegation-parent-unavailable");
     const groups = retainedDelegationManifests(repositories, parent.envelope.runId)
-      .map(manifest => ({ manifest, group: authenticateDelegationGroup(repositories, manifest) }))
+      .map(manifest => ({ manifest, group: repositories.dependencies.authenticateGroup(manifest) }))
       .filter(({ group }) => group.children.some(entry => index === 0
         ? entry.child.envelope.runId === member.envelope.runId : entry.history.includes(member.envelope.runId)));
     if (groups.length !== 1 || groups[0] === undefined) throw new Error("delegation-dispatch-membership-unavailable");
@@ -676,7 +676,7 @@ export function authenticateResetCancellation(repositories: AuthorityRepositorie
 }
 
 export function delegationEdgeForChild(repositories: AuthorityRepositories, parentRunId: string, childRunId: string) {
-  const selected = repositories.delegationManifests.listByParentRun(parentRunId).flatMap(manifest => authenticateDelegationGroup(repositories, manifest).children)
+  const selected = repositories.delegationManifests.listByParentRun(parentRunId).flatMap(manifest => repositories.dependencies.authenticateGroup(manifest).children)
     .filter(child => child.history.some(runId => runId === childRunId));
   if (selected.length !== 1) throw new Error("delegation-child-membership-unavailable");
   return selected[0].dependency;
