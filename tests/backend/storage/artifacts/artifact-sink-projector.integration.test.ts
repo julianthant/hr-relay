@@ -1,7 +1,8 @@
 import { afterAll, describe, it } from "vitest";
+import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
-import { existsSync,readFileSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
+import { existsSync,lstatSync,readFileSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ArtifactSinkBusyError,createArtifactSinkProjector,type ArtifactSinkProjectorOptions } from "../../../../src/backend/storage/artifacts/artifact-sink-projector.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -41,6 +42,38 @@ async function fixture() {
   };
   return { ...f, artifacts, path, make, read, file, seed };
 }
+
+it.skipIf(process.platform !== "linux")("projects with exact high-ID lock and parent custody", async () => {
+  const f = await fixture(), lockPath = join(f.root, ".retention.xlsx.writer.lock");
+  const restore = forceExactFileMetadata(f.root);
+  try {
+    f.db.authority.artifactOutbox.insert(update(1));
+    assert.deepEqual(await f.make().projectOutbox([id(1)]), { projected: 1 });
+    assert.equal(existsSync(lockPath), false);
+    const captured = restore.observations.find(observation => observation.path === lockPath && observation.source === "descriptor");
+    assert.ok(captured); assert.ok(captured.inode > 2n ** 53n);
+    assert.ok(restore.observations.some(observation => observation.path === lockPath && observation.source === "path" && observation.inode === captured.inode));
+    const parentInode = (1n << 54n) + (lstatSync(f.root, { bigint: true }).ino << 2n);
+    assert.ok(restore.observations.some(observation => observation.path === f.root && observation.inode === parentInode));
+    assert.equal(f.db.authority.artifactOutbox.get(id(1))?.state, "projected");
+  } finally { restore(); await f.dispose(); }
+});
+
+for (const target of ["lock", "parent"] as const) it.skipIf(process.platform !== "linux")(`refuses an adjacent high-ID projector ${target} substitution before publication`, async () => {
+  const f = await fixture(), lockPath = join(f.root, ".retention.xlsx.writer.lock");
+  let captured = false;
+  const restore = forceExactFileMetadata(f.root, (path, info, source) => {
+    if (path === lockPath && source === "descriptor") captured = true;
+    if (captured && source === "path" && path === (target === "lock" ? lockPath : f.root)) { assert.equal(Number(info.ino), Number(info.ino + 1n)); info.ino += 1n; }
+  });
+  try {
+    f.db.authority.artifactOutbox.insert(update(1));
+    await assert.rejects(f.make().projectOutbox([id(1)]), error => error instanceof AggregateError
+      && error.errors.some(cause => cause instanceof Error && cause.message === "artifact-sink-lock-custody-changed"));
+    assert.equal(captured, true); assert.equal(existsSync(lockPath), true); assert.equal(existsSync(f.path), false);
+    assert.equal(f.db.authority.artifactOutbox.get(id(1))?.state, "pending");
+  } finally { restore(); await f.dispose(); }
+});
 
 describe("G ordered publication and durable intent", () => {
   it("preserves two independent enqueues and a later enqueue while one destination writer is active", async () => {

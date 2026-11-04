@@ -1,3 +1,4 @@
+import { forceExactFileMetadata } from "../../support/helpers/exact-file-metadata.js";
 import { createNativeBrowserProbe } from "../../../src/backend/runtime/browser/native-browser.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -349,4 +350,21 @@ it("binds a command capability to the real profile epoch and rotates only closed
     assert.equal(row.owner.commandId, nextIdentity.commandId);
     next.closing(); next.closed();
   } finally { await foreign.close(); await w.close(); }
+});
+
+
+it.skipIf(process.platform !== "linux")("persists exact high browser identities through native probe and removal", async () => {
+  const w = await fixture();
+  let restore: (() => void) | undefined;
+  try {
+    await w.roots.probe({ ...w.input, credentialFingerprint: null }, w.options());
+    restore = forceExactFileMetadata(w.input.profileDirectory);
+    await w.roots.withUnused(w.input.profileDirectory, w.options(), async ({ remove }) => {
+      const row = w.roots.inventory().roots.find(row => row.native !== undefined);
+      assert.ok(row?.native); assert.equal(typeof row.native.source.inode, "string");
+      assert.ok(BigInt(row.native.source.inode) > 2n ** 53n);
+      remove();
+    }, { ...w.input, credentialFingerprint: null });
+    assert.equal(existsSync(w.input.profileDirectory), false);
+  } finally { restore?.(); await w.close(); }
 });

@@ -1,8 +1,9 @@
+import { fileStatus } from "./file-identity.js";
 import { BrowserRootOwnerSchema, BrowserRootSchema, BrowserRootsSchema, type BrowserRootOwner, type BrowserRoot, type BrowserRootsDocument } from "./browser-root-contract.js";
 import { BrowserProfileStillClosingError } from "../../workflow-kit/session.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { mkdirSync, readdirSync, rmSync } from "node:fs";
 import { AbsolutePathSchema } from "../../models/config/schema.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -21,7 +22,7 @@ import { initialSettingsFileRecord } from "../../models/config/settings.js";
 import { requireRuntimeAdmission } from "./admission/admission-identity.js";
 import { RuntimeLifetimeLock } from "./admission/lifetime-lock.js";
 import { AuthorityDatabase } from "./sqlite/authority-database.js";
-import { noSymlinkAncestry, readPrivateFile, withPrivateFileLock, type DirectoryIdentity } from "./configuration/credential-safe-file.js";
+import { sameDirectory, fileIdentityObservation, noSymlinkAncestry, readPrivateFile, withPrivateFileLock, type DirectoryIdentity } from "./configuration/credential-safe-file.js";
 import { fsyncPath, privatePathRejects, replacePrivateFile, writePrivateStage } from "./private-path.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "./source-closure.js";
 
@@ -48,7 +49,7 @@ async function runNativeBrowserProbe(profileRoot: string, profileDirectory: stri
   const root = AbsolutePathSchema.parse(profileRoot), directory = AbsolutePathSchema.parse(profileDirectory);
   assertPrivateProfilePath(root, directory);
   for (const path of [root, directory]) {
-    const info = lstatSync(path, { throwIfNoEntry: false });
+    const info = fileStatus(path, true);
     if (info === undefined || !info.isDirectory()) throw new ProfileCustodyUnavailableError();
   }
   if (!profileReservations.has(directory)) throw new ProfileCustodyUnavailableError();
@@ -60,7 +61,7 @@ export const profileReservations = new Set<string>();
 export function assertPrivateProfilePath(root: string, path: string): void {
   if (!path.startsWith(`${root}${sep}`)) throw new ProfileCustodyUnavailableError();
   for (let cursor = path; cursor !== dirname(cursor); cursor = dirname(cursor)) {
-    const metadata = lstatSync(cursor, { throwIfNoEntry: false });
+    const metadata = fileStatus(cursor, true);
     if (metadata !== undefined && (!metadata.isDirectory() || metadata.isSymbolicLink()
       || privatePathRejects(cursor, metadata, "private"))) throw new ProfileCustodyUnavailableError();
     if (cursor === root) return;
@@ -216,8 +217,8 @@ export function createBrowserRoots(input: RuntimeAdmission) {
       const commandRotation = prior?.owner.kind === 'command' && owner.kind === 'command' && prior.profileId === input.profileId && prior.profileRoot === profileRoot;
       if (prior !== undefined && (prior.native !== undefined || prior.launch.state !== "closed" || prior.profileId !== input.profileId
         || !commandRotation && !same(prior.owner, owner) || prior.profileRoot !== profileRoot || prior.credentialFingerprint !== null && prior.credentialFingerprint !== input.credentialFingerprint
-          && !(commandRotation && lstatSync(input.profileDirectory, { throwIfNoEntry: false }) === undefined))) throw new BrowserRootUnavailableError();
-      if (prior === undefined && lstatSync(input.profileDirectory, { throwIfNoEntry: false }) !== undefined) throw new BrowserRootUnavailableError();
+          && !(commandRotation && fileStatus(input.profileDirectory, true) === undefined))) throw new BrowserRootUnavailableError();
+      if (prior === undefined && fileStatus(input.profileDirectory, true) !== undefined) throw new BrowserRootUnavailableError();
       const row = BrowserRootSchema.parse({ profileId: input.profileId, profileRoot, directory: root, owner,
         sessionGeneration: binding.sessionGeneration, credentialFingerprint: input.credentialFingerprint,
         launch: { launchId: randomUUID(), generation: document.nextGeneration, state: "launching" } });
@@ -282,20 +283,20 @@ export function createBrowserRoots(input: RuntimeAdmission) {
         stoppedRecoveryRequired = true; assertStoppedRecovery();
       }
       if (prior.native !== undefined && stoppedProcess !== undefined) { stoppedRecoveryRequired = true; assertStoppedRecovery(); }
-      const source = lstatSync(profileDirectory, { throwIfNoEntry: false });
+      const source = fileStatus(profileDirectory, true);
       if (source === undefined || !source.isDirectory() || source.isSymbolicLink() || privatePathRejects(profileDirectory, source, "private")
-        || prior.native !== undefined && (prior.native.source.device !== source.dev || prior.native.source.inode !== source.ino)) throw new BrowserRootUnavailableError();
+        || prior.native !== undefined && (!sameDirectory(prior.native.source, { device: source.dev, inode: source.ino }))) throw new BrowserRootUnavailableError();
       const row = BrowserRootSchema.parse({ ...prior, native: { operationId: operation?.operationId ?? randomUUID(),
-        launchId: randomUUID(), generation: document.nextGeneration, source: { device: source.dev, inode: source.ino },
+        launchId: randomUUID(), generation: document.nextGeneration, source: fileIdentityObservation({ device: source.dev, inode: source.ino }),
         priorLaunchDigest: digest(prior.launch), phase: "probing" } });
       return { document: { ...replaceRow(document, prior, row), nextGeneration: increment(document.nextGeneration) }, result: row };
     }, assertOwner);
     let removed = false;
     function assertExcluded(document?: BrowserRootsDocument): void {
       assertOwner(); assertRow(document ?? read(), captured);
-      const source = lstatSync(profileDirectory, { throwIfNoEntry: false });
+      const source = fileStatus(profileDirectory, true);
       if (removed ? source !== undefined : source === undefined || captured.native === undefined
-        || source.dev !== captured.native.source.device || source.ino !== captured.native.source.inode) throw new BrowserRootUnavailableError();
+        || !sameDirectory({ device: source.dev, inode: source.ino }, captured.native.source)) throw new BrowserRootUnavailableError();
     }
     try {
       assertExcluded();
@@ -318,13 +319,13 @@ export function createBrowserRoots(input: RuntimeAdmission) {
           return { document: replaceRow(document, captured, row), result: row };
         }, assertOwner);
         const verify = (path: string): void => {
-          const file = lstatSync(path);
+          const file = fileStatus(path);
           if (file.isSymbolicLink() || privatePathRejects(path, file, "group-write")
-            || !(file.isDirectory() || file.isFile()) || file.isFile() && file.nlink !== 1) throw new BrowserRootUnavailableError();
+            || !(file.isDirectory() || file.isFile()) || file.isFile() && (file.nlink !== 1 && file.nlink !== 1n)) throw new BrowserRootUnavailableError();
           if (file.isDirectory()) for (const name of readdirSync(path)) verify(join(path, name));
         };
         verify(profileDirectory); assertExcluded(); rmSync(profileDirectory, { recursive: true });
-        if (lstatSync(profileDirectory, { throwIfNoEntry: false }) !== undefined) throw new BrowserRootUnavailableError();
+        if (fileStatus(profileDirectory, true) !== undefined) throw new BrowserRootUnavailableError();
         fsyncPath(join(binding.machineRoot, captured.profileRoot)); removed = true;
       } })); } finally { bodyActive = false; }
       assertExcluded();
@@ -394,7 +395,7 @@ export function planStoppedBrowserRoots(admission: RuntimeAdmission, claim: Stop
     .filter(path => path.startsWith(`${source.stateRoot}${sep}`)), ...retained.map(row => row.profileRoot)]);
   for (const base of bases) {
     assertPrivateProfilePath(source.stateRoot, base);
-    if (lstatSync(base, { throwIfNoEntry: false }) === undefined) continue;
+    if (fileStatus(base, true) === undefined) continue;
     for (const worker of readdirSync(base)) {
       if (!/^w[1-9]\d*$/u.test(worker)) throw new BrowserRootUnavailableError();
       const workerPath = join(base, worker); assertPrivateProfilePath(base, workerPath);
@@ -403,7 +404,7 @@ export function planStoppedBrowserRoots(admission: RuntimeAdmission, claim: Stop
   }
   for (const profile of retained) {
     assertPrivateProfilePath(profile.profileRoot, profile.profileDirectory);
-    const file = lstatSync(profile.profileDirectory, { throwIfNoEntry: false });
+    const file = fileStatus(profile.profileDirectory, true);
     if (file === undefined) { if (!profile.cleanupCompleted) throw new BrowserRootUnavailableError(); continue; }
     if (!file.isDirectory() || file.isSymbolicLink() || privatePathRejects(profile.profileDirectory, file, "private")) throw new BrowserRootUnavailableError();
     const browser = custody.browsers.find(row => row.profileDirectory === profile.profileDirectory), slot = custody.slots.find(row => row.workerId === browser?.workerId);
@@ -414,7 +415,7 @@ export function planStoppedBrowserRoots(admission: RuntimeAdmission, claim: Stop
       owner: { kind: "worker", workerId: slot.workerId, workflowId: slot.workflow, ordinal: slot.ordinal, membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration },
       sessionGeneration: source.sessionGeneration, credentialFingerprint: browser.signInFingerprint, launch,
       native: { operationId: source.conversionOperationId, launchId: randomUUID(), generation: nextGeneration++,
-        source: { device: file.dev, inode: file.ino }, priorLaunchDigest: digest(launch), phase: "probing" } });
+        source: fileIdentityObservation({ device: file.dev, inode: file.ino }), priorLaunchDigest: digest(launch), phase: "probing" } });
     roots.push(row);
   }
   source.revalidateSource(); source.assertHeld();
@@ -436,8 +437,8 @@ export async function probeStoppedControlBrowserRoots(admission: RuntimeAdmissio
       if (plan === undefined) throw new BrowserRootUnavailableError();
       const row = plan.roots.find(row => row.directory === directory);
       if (row?.native === undefined || row.profileId !== source.binding.profileId || row.native.operationId !== source.conversionOperationId) throw new BrowserRootUnavailableError();
-      const path = join(source.machineRoot, directory), before = lstatSync(path);
-      if (before.dev !== row.native.source.device || before.ino !== row.native.source.inode || !before.isDirectory() || before.isSymbolicLink()) throw new BrowserRootUnavailableError();
+      const path = join(source.machineRoot, directory), before = fileStatus(path);
+      if (!sameDirectory({ device: before.dev, inode: before.ino }, row.native.source) || !before.isDirectory() || before.isSymbolicLink()) throw new BrowserRootUnavailableError();
       if (profileReservations.has(path)) throw new ProfileCustodyUnavailableError();
       profileReservations.add(path);
       try {
@@ -446,7 +447,7 @@ export async function probeStoppedControlBrowserRoots(admission: RuntimeAdmissio
         source.publishBrowserPlan(plan, intended); plan = intended;
         current();
         await runNativeBrowserProbe(join(source.machineRoot, row.profileRoot), path, options);
-        current(); const after = lstatSync(path);
+        current(); const after = fileStatus(path);
         if (after.dev !== before.dev || after.ino !== before.ino) throw new BrowserRootUnavailableError();
         const observed = BrowserRootSchema.parse({ ...probing, launch: { ...probing.launch, state: "closed" }, native: { ...probing.native, phase: "observed" } });
         source.publishBrowserPlan(plan, BrowserRootsSchema.parse({ ...plan, revision: increment(plan.revision), roots: plan.roots.map(value => value.directory === directory ? observed : value) }));
@@ -467,7 +468,7 @@ export function createProfileBrowserClosure(createProbe: BrowserProfileProbeFact
       if ("assertLive" in owner && !owner.isFlatBackup()) {
         const admission = requireRuntimeAdmission(owner), roots = createBrowserRoots(admission);
         for (const profile of profiles) {
-          const present = lstatSync(profile.profileDirectory, { throwIfNoEntry: false });
+          const present = fileStatus(profile.profileDirectory, true);
           if (present === undefined) { if (!profile.cleanupCompleted) throw new BrowserRootUnavailableError(); continue; }
           await roots.withUnused(profile.profileDirectory, options, async () => undefined);
         }
@@ -499,7 +500,7 @@ export function createProfileBrowserClosure(createProbe: BrowserProfileProbeFact
       for (const profile of profiles) {
         assertPrivateProfilePath(root, profile.profileDirectory);
         if (profile.profileRoot !== join(root, "browsers")) throw new BrowserRootUnavailableError();
-        if (lstatSync(profile.profileDirectory, { throwIfNoEntry: false }) === undefined) { if (!profile.cleanupCompleted) throw new BrowserRootUnavailableError(); continue; }
+        if (fileStatus(profile.profileDirectory, true) === undefined) { if (!profile.cleanupCompleted) throw new BrowserRootUnavailableError(); continue; }
         if (profileReservations.has(profile.profileDirectory)) throw new ProfileCustodyUnavailableError();
         profileReservations.add(profile.profileDirectory);
         try { await runNativeBrowserProbe(profile.profileRoot, profile.profileDirectory, options); }
