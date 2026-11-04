@@ -60,8 +60,8 @@ describe("terminal failures remain observable", () => {
   });
   it("requires durable sinks at worker, provider and asynchronous authorization boundaries", () => {
     const requirements = [
-      ["src/backend/app/composition/dashboard/compose.ts", /const reportSupervisorFault[\s\S]*?debugEvents.emit\(event\)/u],
-      ["src/backend/app/composition/dashboard/compose.ts", /const reportDashboardTransferFault[\s\S]*?debugEvents.emit\(event\)/u],
+      ["src/backend/app/composition/dashboard/dashboard-wiring.ts", /const reportSupervisorFault[\s\S]*?debugEvents.emit\(event\)/u],
+      ["src/backend/app/composition/dashboard/dashboard-wiring.ts", /const reportDashboardTransferFault[\s\S]*?debugEvents.emit\(event\)/u],
       ["src/backend/app/composition/worker-compose.ts", /catch \(error\) \{\s*const refusedBeforeEffects = bootRefusal !== undefined && error === bootRefusal;[\s\S]*?else runtimeError = error;\s*try \{\s*debugEvents.emit\([\s\S]*?code: refusedBeforeEffects \? "PREFLIGHT_OBSERVATION_CHANGED" : "WORKER_RUNTIME_FAILED"/u],
       ["src/backend/app/composition/worker-compose.ts", /debugEvents,\s*taskNotes/u],
       ["src/backend/runtime/workers/worker-loop.ts", /debugEvents: deps.debugEvents/u],
