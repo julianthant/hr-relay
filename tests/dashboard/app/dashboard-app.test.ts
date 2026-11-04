@@ -370,6 +370,36 @@ describe_m1("served sign-up Finish", () => {
     assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
   });
 
+  it_m1.each([
+    ["cancelling", { state: "cancelling" as const, operationId: "00000000-0000-4000-8000-000000000003" }, true],
+    ["refused as blocked", { state: "refused" as const, code: "PROFILE_LOGOUT_BLOCKED" as const }, true],
+    ["an ordinary refusal", { state: "refused" as const, code: "PROFILE_SIGN_IN_REFUSED" as const }, false],
+  ])("a login submitted during a logout answers %s and %s", async (_name, answer, clears) => {
+    window.history.replaceState(null, "", "/");
+    let finished = false, reads = 0, signIns = 0;
+    const client = { ...appClient(), readProfileSession: async () => { reads++; return finished || !clears ? { state: "signed-out" as const, signUpRequired: false } : answer; },
+      signInProfile: async () => { signIns++; return answer; } };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+    for (const [name, value] of [["email", "fixture@ucsd.edu"], ["password", "disposable-fixture-password"]] as const) {
+      await act_m1(async () => { const field = document.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
+        field.dispatchEvent(new Event("input", { bubbles: true })); });
+    }
+    await act_m1(async () => { document.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    assert_m1.equal(signIns, 1);
+    const readsAfterSubmit = reads;
+    await vi_m1.waitFor(() => { assert_m1.equal(reads >= readsAfterSubmit + 2, true); }, { timeout: 3500 });
+    assert_m1.notEqual(document.querySelector(".form-error")?.textContent, "");
+    finished = true;
+    if (clears) await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector(".form-error")?.textContent, ""); }, { timeout: 3000 });
+    else {
+      const settled = reads;
+      await vi_m1.waitFor(() => { assert_m1.equal(reads >= settled + 1, true); }, { timeout: 3000 });
+      assert_m1.equal(document.querySelector(".form-error")?.textContent, operatorFailureSentence("PROFILE_SIGN_IN_REFUSED"));
+    }
+  });
+
   it_m1("opens the sign-up form from the Sign up link after a refused login", async () => {
     window.history.replaceState(null, "", "/");
     const client = { ...appClient(), readProfileSession: async () => ({ state: "refused" as const, code: "PROFILE_SIGN_IN_REFUSED" as const }) };
