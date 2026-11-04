@@ -3,10 +3,10 @@ import { sep } from "node:path";
 import { vi } from "vitest";
 import * as identities from "../../../src/backend/storage/file-identity.js";
 
-export function forceExactFileMetadata(root: string, observe?: (path: string, info: BigIntStats, source: "path" | "descriptor") => void) {
+export function forceExactFileMetadata(root: string | ((path: string) => boolean), observe?: (path: string, info: BigIntStats, source: "path" | "descriptor") => void) {
   const status = identities.fileStatus, descriptor = identities.descriptorStatus;
   const asyncStatus = identities.asyncFileStatus, asyncDescriptor = identities.asyncDescriptorStatus;
-  const owns = (path: string) => path === root || path.startsWith(`${root}${sep}`);
+  const owns = typeof root === "function" ? root : (path: string) => path === root || path.startsWith(`${root}${sep}`);
   const observations: { path: string; source: "path" | "descriptor"; inode: bigint }[] = [];
   const exact = (path: string, info: BigIntStats, source: "path" | "descriptor") => {
     info.ino = (1n << 54n) + (info.ino << 2n);
