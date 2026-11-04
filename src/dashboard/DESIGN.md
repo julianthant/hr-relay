@@ -99,6 +99,7 @@ At compact action widths, Start a run uses its existing icon and accessible name
 Sign-up method chips stay on one line, and Cancel sign-up lives in the Duo step footer with confirmation. The setup screen uses the house Select for method choice, with the same Security key and Touch ID names as its cards.
 Settings navigation uses the workflow rail's row height, spacing, padding, and hover/selected fills. Appearance has a Light/Dark toggle and an Animations switch without row descriptions or person names; preference feedback sits below the rows. Delete account is the last section in General. General has no assistant permission row.
 Assistant start proposals show the canonical plan input, one-run count, mode, browser and capture settings; Start run uses the app Button in both themes. Successful starts and cancellations collapse to a resolved line; uncertain outcomes keep the disabled card.
+Assistant setup uses a compact Test assistant row above the retained composer. Capability failures show their named reason in the thread. Served model and effort labels use the selected person’s preference. Restored chat text keeps its source revision and cannot restore confirmation or verification authority.
 Browser captures stay inline. A verified before/after pair sits under its declared submit action,
 with equal cards and captions below; incomplete or ambiguous capture associations remain visible.
 
