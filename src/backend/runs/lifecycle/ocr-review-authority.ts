@@ -1,5 +1,5 @@
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
-import { OcrReviewRevisionSchema,rebuildOcrReviewRecords,ocrReviewDigest,ocrSnapshotDigest,type OcrReviewRevision } from "../../../models/ocr/review.js";
+import { OcrReviewRevisionSchema,rebuildOcrReviewRecords,ocrReviewDigest,ocrSnapshotDigest,operatorOcrRecordId,blankOperatorOcrFields,type OcrReviewRevision } from "../../../models/ocr/review.js";
 import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import { delegationEvidenceOutput } from "../../../models/run/result.js";
 import { I9SignerOutputSchema } from "../../../models/systems/i9/read-section2-signer.js";
@@ -12,6 +12,7 @@ import { OcrApprovalReferenceSchema,OcrResultSchema } from "../../../models/work
 import { PersonLookupResultSchema } from "../../../models/workflows/person-lookup/result.js";
 import type { CommandRequest } from "../../../rules/commands/commands.js";
 import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/identifiers.js";
+import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { BUILD_MANIFEST,resolveWorkflowFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
@@ -146,12 +147,26 @@ export function reviseOcrReview(current: OcrReviewRevision,
   request: Extract<CommandRequest, { family: "ocr-review" }>, createdAt: string): OcrReviewRevision {
   if (request.target.runId !== current.sourceRunId || request.target.expectedRevision !== current.revision
     || request.requestedBy !== "local-operator" || request.source !== "dashboard"
-    || !current.records.some(record => record.recordId === request.payload.recordId)) throw new OcrReviewRefusedError();
-  return OcrReviewRevisionSchema.parse({ ...current, id: `${current.sourceRunId}#${current.revision + 1}`,
-    revision: current.revision + 1, origin: { kind: "command", commandId: request.commandId }, createdAt,
-    records: current.records.map(record => record.recordId !== request.payload.recordId ? record
-      : request.type === "correct-ocr-record" ? { ...record, ...request.payload }
-        : { ...record, discarded: request.type === "discard-ocr-record" }) });
+    || request.type !== "add-ocr-record" && !current.records.some(record => record.recordId === request.payload.recordId)) throw new OcrReviewRefusedError();
+  let records: OcrReviewRevision["records"];
+  if (request.type === "add-ocr-record") {
+    try {
+      records = [...current.records, { recordId: operatorOcrRecordId(current.seed, request.commandId),
+        fields: blankOperatorOcrFields(current.seed, request.payload.pages, createdAt), assertedEid: null, discarded: true,
+        provenance: { kind: "operator-added", commandId: request.commandId, createdAt: IsoInstantSchema.parse(createdAt), pages: request.payload.pages } }];
+    } catch { throw new OcrReviewRefusedError(); }
+  } else records = current.records.map(record => {
+    if (record.recordId !== request.payload.recordId) return record;
+    if (request.type !== "correct-ocr-record") return { ...record, discarded: request.type === "discard-ocr-record" };
+    const { pages, ...correction } = request.payload;
+    if (pages !== undefined && record.provenance === undefined) throw new OcrReviewRefusedError();
+    return { ...record, ...correction, ...(record.provenance === undefined ? {} : {
+      provenance: { ...record.provenance, pages: pages ?? record.provenance.pages } }) };
+  });
+  try {
+    return OcrReviewRevisionSchema.parse({ ...current, id: `${current.sourceRunId}#${current.revision + 1}`,
+      revision: current.revision + 1, origin: { kind: "command", commandId: request.commandId }, createdAt, records });
+  } catch { throw new OcrReviewRefusedError(); }
 }
 
 export function readOcrReviewAuthority(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, runId: string) {
@@ -208,7 +223,7 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
       const mutation = CanonicalTransitionRequestSchema.parse(command.request);
       if (!("ocrReviewRevision" in mutation) || mutation.sourceCommandId !== request.commandId || mutation.runId !== runId
         || mutation.ocrReviewRevision !== revision || Number(mutation.expectedVersion) !== Number(change.before)) throw new OcrReviewRefusedError();
-      invalidated.delete(request.payload.recordId);
+      if (request.type !== "add-ocr-record") invalidated.delete(request.payload.recordId);
     }
     previous = record;
   }
