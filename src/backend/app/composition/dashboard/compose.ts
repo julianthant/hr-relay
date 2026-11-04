@@ -1178,7 +1178,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   let selection: Selection | undefined;
   let onboardingSelection: { sessionId: string; token: string; operationId: string; profileId: string } | undefined;
   let completedDraft: { operationId: string; sessionId: string } | undefined;
-  let pending: { sessionId: string; operationId: string; profileId: string; runtime: DashboardRuntime; deleting: boolean } | undefined;
+  let pending: { sessionId: string; operationId: string; profileId: string; epoch: number; runtime: DashboardRuntime; deleting: boolean } | undefined;
   let transitioning = false;
   const retainedFailures: unknown[] = [];
   const cookieName = "relay-profile-session";
@@ -1369,11 +1369,13 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     } finally { transitioning = false; }
   });
   const endSession = async (c: Context, deleting: boolean) => {
-    if (deleting) DeleteProfileAccountRequestSchema.parse(await c.req.json());
+    const deletion = deleting ? DeleteProfileAccountRequestSchema.parse(await c.req.json()) : undefined;
     const active = selection === undefined ? undefined : current(c.req.raw);
     if (active === undefined && (pending === undefined || cookieOf(c.req.raw) !== pending.sessionId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     if (transitioning) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
-    if (deleting) {
+    if (deletion !== undefined) {
+      const target = active ?? pending;
+      if (target === undefined || target.profileId !== deletion.expectedProfileId || target.epoch !== deletion.expectedEpoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
       try { assertMaintenanceCustodyAvailable("account-deletion"); }
       catch (cause) { throw new ProfileSessionRefusedError("PROFILE_ACCOUNT_DELETION_REFUSED", { cause }); }
     }
@@ -1384,7 +1386,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
         await profileRuntime.drainForLogout(active.token);
         const result = profileRuntime.session.logOut(active.token, { at: clock.now().toISOString() });
         if (result.state !== "cancelling" || result.operationId === undefined) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
-        pending = { sessionId: active.sessionId, operationId: result.operationId, profileId: active.profileId, runtime: active.runtime, deleting };
+        pending = { sessionId: active.sessionId, operationId: result.operationId, profileId: active.profileId, epoch: active.epoch, runtime: active.runtime, deleting };
         selection = undefined;
       }
       const operation = pending;

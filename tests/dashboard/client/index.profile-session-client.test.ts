@@ -2,6 +2,7 @@ import { z } from "zod";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
+import type { DeleteProfileAccountRequest } from "../../../src/models/profiles/public-profile.js";
 
 it("keeps real profile responses and fixed failures distinct without retry or token projection", async () => {
   const requests: { path: string; origin: unknown; body: unknown }[] = [];
@@ -66,8 +67,15 @@ it("requires explicit confirmation for account deletion and carries empty-machin
     calls.push({ path: new URL(url).pathname, body: JSON.parse(z.string().parse(init?.body)) });
     return Response.json({ state: "signed-out", signUpRequired: true });
   } });
-  await assert.rejects(client.deleteProfileAccount({ confirmed: false } as unknown as { confirmed: true }));
+  const request = { confirmed: true, expectedProfileId: "00000000-0000-4000-8000-000000000001", expectedEpoch: 7 } as const;
+  for (const invalid of [
+    { ...request, confirmed: false }, { confirmed: true },
+    { confirmed: true, expectedEpoch: 7 }, { confirmed: true, expectedProfileId: request.expectedProfileId },
+    { ...request, expectedProfileId: "foreign" }, { ...request, expectedEpoch: 0 },
+    { ...request, expectedEpoch: -1 }, { ...request, expectedEpoch: 1.5 },
+    { ...request, expectedEpoch: Number.MAX_SAFE_INTEGER + 1 }, { ...request, expectedEpoch: "7" },
+  ]) await assert.rejects(client.deleteProfileAccount(invalid as DeleteProfileAccountRequest));
   assert.equal(calls.length, 0);
-  assert.deepEqual(await client.deleteProfileAccount({ confirmed: true }), { state: "signed-out", signUpRequired: true });
-  assert.deepEqual(calls, [{ path: "/api/v1/profile/delete-account", body: { confirmed: true } }]);
+  assert.deepEqual(await client.deleteProfileAccount(request), { state: "signed-out", signUpRequired: true });
+  assert.deepEqual(calls, [{ path: "/api/v1/profile/delete-account", body: request }]);
 });

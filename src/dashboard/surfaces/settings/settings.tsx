@@ -153,6 +153,7 @@ export function SettingsPage({
   searchTarget,
   dataContent,
   appearance,
+  deleteAccount,
   spreadsheetSource,
   onOpenRun,
   actorId,
@@ -174,6 +175,7 @@ export function SettingsPage({
   searchTarget?: string;
   dataContent?: ReactNode;
   appearance?: ReactNode;
+  deleteAccount?: ReactNode;
   spreadsheetSource?: "mock" | "served";
   onOpenRun?: (runId: string, partitionDay: string) => void;
   actorId: string;
@@ -321,7 +323,7 @@ export function SettingsPage({
         {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} workflowLabels={workflowLabels} />}
         {resolution.state === "open" && resolution.entry.id === "routes" && <RoutesSection editor={editor} />}
         {resolution.state === "open" && resolution.entry.id !== "routes" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
-          <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />
+          <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} deleteAccount={deleteAccount} />
         )}
         {resolution.state === "open" && resolution.entry.id === "credentials" && <SettingsAuthoritySection editor={editor} sectionId="credentials" />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
