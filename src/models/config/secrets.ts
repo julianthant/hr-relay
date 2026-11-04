@@ -202,6 +202,10 @@ export function validateBootSecrets(
 /** Closed worker bootstrap: OS lookup/home/temp/locale mechanics plus the display channel; NODE_OPTIONS and arbitrary parent bindings are not process mechanics. */
 export const WORKER_PROCESS_MECHANIC_KEYS = Object.freeze(["PATH", "HOME", "TMPDIR", "TMP", "TEMP", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "LANG", "LC_ALL", "TZ"] as const);
 
+export function windowsSystemRoot(): string | undefined {
+  return process.env.SystemRoot;
+}
+
 export const DEVELOPMENT_DEBUG_MIRROR_ENV = "RELAY_DEV_DEBUG_MIRROR";
 
 export function developmentDebugMirrorEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
