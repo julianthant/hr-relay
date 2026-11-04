@@ -1,7 +1,8 @@
+import { fileStatus, descriptorStatus, fileIdentityObservation, privateFileNumber } from "../file-identity.js";
 import { readPrivateFile } from "../configuration/credential-safe-file.js";
 import { privatePathRejects } from "../private-path.js";
 import { createHash } from "node:crypto";
-import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, type Stats } from "node:fs";
+import { closeSync, constants, openSync, readdirSync, type BigIntStats, type Stats } from "node:fs";
 import { join } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { AuthorityRestoreJournalSchema,RUNTIME_ROOT_AUTHORITY_ENTRY_NAMES } from "../admission/installation.js";
@@ -11,8 +12,9 @@ import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { StorageRecoveryInspectionSchema, type RestoreCandidate } from "./recovery-contracts.js";
 
-function fileIdentity(stat: Stats) {
-  return canonicalJsonStringify({dev:stat.dev,ino:stat.ino,size:stat.size,mode:stat.mode,uid:stat.uid,nlink:stat.nlink,mtimeMs:stat.mtimeMs,ctimeMs:stat.ctimeMs});
+function fileIdentity(stat: Stats | BigIntStats) {
+  const identity = fileIdentityObservation({ device: stat.dev, inode: stat.ino });
+  return canonicalJsonStringify({dev:identity.device,ino:identity.inode,size:privateFileNumber(stat.size),mode:privateFileNumber(stat.mode),uid:privateFileNumber(stat.uid),nlink:privateFileNumber(stat.nlink),mtimeMs:"mtimeNs" in stat ? stat.mtimeNs.toString() : stat.mtimeMs,ctimeMs:"ctimeNs" in stat ? stat.ctimeNs.toString() : stat.ctimeMs});
 }
 
 /** Stable evidence identity fences the doctor's awaited backup inspection. */
@@ -40,7 +42,7 @@ export function inspectStorageRecovery(admission: Readonly<Pick<RuntimeAdmission
       findings.push({ marker: "authority-restore", state: "interrupted" });
       identities.push(createHash("sha256").update(canonicalJsonStringify(pending)).digest("hex"));
     }
-    const root=lstatSync(stateRoot);
+    const root=fileStatus(stateRoot);
     if(!root.isDirectory())throw new Error("recovery-root-unavailable");
     const entries=readdirSync(stateRoot).sort();
     for(const name of entries.filter(name=>(name.startsWith(".") && !RUNTIME_ROOT_AUTHORITY_ENTRY_NAMES.includes(name))
@@ -52,12 +54,12 @@ export function inspectStorageRecovery(admission: Readonly<Pick<RuntimeAdmission
       const path=join(stateRoot,name);
       let descriptor:number | undefined;
       try {
-        const before=lstatSync(path);
-        if(!before.isFile() || before.isSymbolicLink() || before.nlink !== 1
+        const before=fileStatus(path);
+        if(!before.isFile() || before.isSymbolicLink() || privateFileNumber(before.nlink) !== 1
           || privatePathRejects(path, before, "group-write"))throw new Error("recovery-evidence-unavailable");
         descriptor=openSync(path,constants.O_RDONLY | constants.O_NOFOLLOW);
-        if(fileIdentity(fstatSync(descriptor)) !== fileIdentity(before)
-          || fileIdentity(lstatSync(path)) !== fileIdentity(before))throw new Error("recovery-evidence-changed");
+        if(fileIdentity(descriptorStatus(descriptor)) !== fileIdentity(before)
+          || fileIdentity(fileStatus(path)) !== fileIdentity(before))throw new Error("recovery-evidence-changed");
         identities.push(`${name}:${fileIdentity(before)}`);findings.push({marker,state:"interrupted"});
       } catch {
         identities.push(`${name}:unavailable`);findings.push({marker,state:"unavailable"});
@@ -66,7 +68,7 @@ export function inspectStorageRecovery(admission: Readonly<Pick<RuntimeAdmission
     const afterJournal = journalPath === undefined ? undefined : readPrivateFile(journalPath, { label: "lock", maxBytes: 16 * 1024 * 1024 });
     if ((journalFile === undefined) !== (afterJournal === undefined) || journalFile !== undefined && afterJournal !== undefined
       && !journalFile.bytes.equals(afterJournal.bytes)) throw new Error("recovery-operation-changed");
-    if(fileIdentity(lstatSync(stateRoot)) !== fileIdentity(root)
+    if(fileIdentity(fileStatus(stateRoot)) !== fileIdentity(root)
       || canonicalJsonStringify(readdirSync(stateRoot).sort()) !== canonicalJsonStringify(entries))throw new Error("recovery-inventory-changed");
   } catch {
     return {identity:"recovery-inventory-unavailable",report:StorageRecoveryInspectionSchema.parse({state:"unavailable",findings,

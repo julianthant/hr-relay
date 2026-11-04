@@ -1,6 +1,7 @@
+import { asyncFileStatus, asyncDescriptorStatus, privateFileNumber } from "../file-identity.js";
 import { createHash } from "node:crypto";
 import { constants } from "node:fs";
-import { link, lstat, mkdir, open, readFile, realpath, unlink } from "node:fs/promises";
+import { link, mkdir, open, readFile, realpath, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { ArtifactCollectionManifestSchema, NamedArtifactOutputSchema, type ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -12,7 +13,7 @@ import { ArtifactSinkConflictError, type ArtifactSink, type ArtifactSinkProjecti
 export type NamedFilePublicationPoint = "staged" | "prepared" | "published" | "directory-synced";
 
 async function optionalStat(path: string) {
-  try { return await lstat(path); }
+  try { return await asyncFileStatus(path); }
   catch (error) {
     if (error instanceof Error && "code" in error && error.code === "ENOENT") return undefined;
     throw error;
@@ -69,14 +70,14 @@ export function createNamedFileOutputSink(options: Readonly<{
         while (parent !== target.directory) { parents.add(parent); parent = dirname(parent); }
       }
       const orderedParents = [...parents].sort((a, b) => a.length - b.length);
-      const identities = new Map<string, { dev: number; ino: number }>();
+      const identities = new Map<string, { dev: number | bigint; ino: number | bigint }>();
       const assertParents = async (create: boolean) => {
         await request.assertCurrent();
         for (const path of orderedParents) {
           let current = await optionalStat(path);
           const previous = identities.get(path);
           if (current === undefined && previous !== undefined) throw new Error("named-file-output-directory-custody-changed");
-          if (current === undefined && create) { await mkdir(path, { mode: 0o700 }); current = await lstat(path); }
+          if (current === undefined && create) { await mkdir(path, { mode: 0o700 }); current = await asyncFileStatus(path); }
           if (current === undefined) continue;
           if (!current.isDirectory() || current.isSymbolicLink() || await realpath(path) !== path
             || previous !== undefined && (previous.dev !== current.dev || previous.ino !== current.ino)) throw new Error("named-file-output-directory-custody-changed");
@@ -90,7 +91,7 @@ export function createNamedFileOutputSink(options: Readonly<{
       if ("files" in target.output && !manifest.equals(Buffer.from(canonicalJsonStringify(ArtifactCollectionManifestSchema.parse({ files: target.output.files }))))) {
         throw new Error("named-file-output-collection-manifest-mismatch");
       }
-      const staged: Array<typeof target.files[number] & { stage: string; identity: { dev: number; ino: number } }> = [];
+      const staged: Array<typeof target.files[number] & { stage: string; identity: { dev: number | bigint; ino: number | bigint } }> = [];
       for (const [index, file] of target.files.entries()) {
         const bytes = "fileName" in target.output ? manifest : await verifiedBytes(options.artifacts, file.artifact, request);
         const stage = join(target.directory, `.relay-${request.row.outboxId}-${String(index)}.tmp`);
@@ -98,7 +99,7 @@ export function createNamedFileOutputSink(options: Readonly<{
         const handle = await open(stage, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
         let primary: { error: unknown } | undefined;
         let identity;
-        try { identity = await handle.stat(); await handle.writeFile(bytes); await handle.sync(); }
+        try { identity = await asyncDescriptorStatus(handle); await handle.writeFile(bytes); await handle.sync(); }
         catch (error) { primary = { error }; }
         try { await handle.close(); }
         catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { directory: { handle, stage } }); }
@@ -107,9 +108,9 @@ export function createNamedFileOutputSink(options: Readonly<{
         staged.push({ ...file, stage, identity });
       }
       const assertStage = async (file: typeof staged[number]) => {
-        const current = await lstat(file.stage);
+        const current = await asyncFileStatus(file.stage);
         if (!current.isFile() || current.isSymbolicLink() || current.dev !== file.identity.dev || current.ino !== file.identity.ino
-          || current.nlink !== 1 || !(await matchesArtifact(file.stage, file.artifact))) throw new Error("named-file-output-staged-bytes-changed");
+          || privateFileNumber(current.nlink) !== 1 || !(await matchesArtifact(file.stage, file.artifact))) throw new Error("named-file-output-staged-bytes-changed");
       };
       await options.fault?.("staged"); await assertParents(false);
       for (const file of staged) await assertStage(file);
@@ -134,7 +135,7 @@ export function createNamedFileOutputSink(options: Readonly<{
       }
       await options.fault?.("directory-synced"); await assertParents(false);
       for (const file of staged) {
-        const published = await lstat(file.path);
+        const published = await asyncFileStatus(file.path);
         if (!published.isFile() || published.isSymbolicLink() || published.dev !== file.identity.dev || published.ino !== file.identity.ino
           || !(await matchesArtifact(file.path, file.artifact))) throw conflict();
         await unlink(file.stage);

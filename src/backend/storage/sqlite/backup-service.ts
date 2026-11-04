@@ -1,10 +1,11 @@
+import { descriptorStatus, fileStatus, privateFileNumber } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { authoritySourceDatabaseIdentity, type AuthorityBackupExpectedSource } from "./database-identity.js";
 import { privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
-  chmodSync, constants, fstatSync, lstatSync, readSync,
+  chmodSync, constants, readSync,
   closeSync,
   createReadStream,
   existsSync,
@@ -73,8 +74,8 @@ export type VerifiedBackup = Readonly<{
 function fsyncPath(path: string): void {
   const descriptor = openSync(path, "r");
   let primary: { error: unknown } | undefined;
-  let descriptorIdentity: ReturnType<typeof fstatSync> | undefined;
-  try { descriptorIdentity = fstatSync(descriptor); fsyncSync(descriptor); }
+  let descriptorIdentity: ReturnType<typeof descriptorStatus> | undefined;
+  try { descriptorIdentity = descriptorStatus(descriptor); fsyncSync(descriptor); }
   catch (error) { primary = { error }; }
   try { closeSync(descriptor); }
   catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
@@ -188,13 +189,13 @@ function verifyStoppedManifest(manifestPath: string, expected: AuthorityBackupEx
   let result: VerifiedBackup | undefined;
   const failures: unknown[] = [];
   try {
-    const before = lstatSync(backupPath);
-    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1 || privatePathRejects(backupPath, before, "private") || before.size !== manifest.byteSize) throw new Error("profile-maintenance-backup-identity-invalid");
+    const before = fileStatus(backupPath);
+    if (!before.isFile() || before.isSymbolicLink() || privateFileNumber(before.nlink) !== 1 || privatePathRejects(backupPath, before, "private") || privateFileNumber(before.size) !== manifest.byteSize) throw new Error("profile-maintenance-backup-identity-invalid");
     const descriptor = openSync(backupPath, constants.O_RDONLY | constants.O_NOFOLLOW), hash = createHash("sha256");
     let descriptorIdentity = before;
     let descriptorFailure: { error: unknown } | undefined;
     try {
-      const opened = fstatSync(descriptor); descriptorIdentity = opened;
+      const opened = descriptorStatus(descriptor); descriptorIdentity = opened;
       if (opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("profile-maintenance-backup-changed");
       const chunk = Buffer.alloc(64 * 1024); let count = 0;
       for (;;) {
