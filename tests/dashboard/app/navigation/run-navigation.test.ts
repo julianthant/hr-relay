@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { resolveNotificationNavigation } from "../../../../src/dashboard/app/navigation/notification-navigation.js";
+import { resolveRunNavigation } from "../../../../src/dashboard/app/navigation/run-navigation.js";
 import { parseRoute, routeToSearch } from "../../../../src/dashboard/app/navigation/url-state.js";
 import { PRODUCT_WORKFLOW_COMPOSITION } from "../../../../src/dashboard/app/workflow-sources.js";
 import { PARITY_WORKFLOW_COMPOSITION } from "../../../parity/helpers/workflow-composition.js";
@@ -27,13 +27,14 @@ describe("notification composition and canonical navigation", () => {
   it("selects served product and explicit mock parity inbox/search independently of workflows", () => {
     expect(PRODUCT_WORKFLOW_COMPOSITION.inbox).toBe("served");
     expect(PRODUCT_WORKFLOW_COMPOSITION.search).toBe("served");
+    expect(PRODUCT_WORKFLOW_COMPOSITION.sources["emergency-contact"]).toBe("mock");
     const parity = PARITY_WORKFLOW_COMPOSITION([]);
     expect(parity.inbox).toBe("mock");
     expect(parity.search).toBe("mock");
   });
   it("freshly revalidates a historical run against its exact day and run detail", async () => {
     const client = clients();
-    const result = await resolveNotificationNavigation(client, target, origin, () => true);
+    const result = await resolveRunNavigation(client, target, origin, () => true);
     expect(client.dashboardDay).toHaveBeenCalledWith(day);
     expect(client.runDetail).toHaveBeenCalledWith(runId);
     expect(result.state).toBe("ready");
@@ -45,41 +46,41 @@ describe("notification composition and canonical navigation", () => {
     expect(result.route.view?.records).toBeUndefined();
   });
   it("preserves exact failure focus through history serialization", async () => {
-    const result = await resolveNotificationNavigation(clients(), { ...target, kind: "failure", failureId }, origin, () => true);
+    const result = await resolveRunNavigation(clients(), { ...target, kind: "failure", failureId }, origin, () => true);
     expect(result.state).toBe("ready");
     if (result.state !== "ready") throw new Error(result.message);
     expect(parseRoute(routeToSearch(result.route)).view?.logFailure).toEqual({ runId, failureId });
   });
   it("opens Settings Storage without run reads", async () => {
     const client = clients();
-    const result = await resolveNotificationNavigation(client, { kind: "storage" }, origin, () => true);
+    const result = await resolveRunNavigation(client, { kind: "storage" }, origin, () => true);
     expect(result).toMatchObject({ state: "ready", route: { settings: "storage", start: false } });
     expect(client.dashboardDay).not.toHaveBeenCalled();
   });
   it("refuses retired archives and every canonical refusal without guessing a run", async () => {
     const client = clients();
-    expect((await resolveNotificationNavigation(client, { kind: "archive", runId, reportDigest: FingerprintSchema.parse("a".repeat(64)) }, origin, () => true)).state).toBe("refused");
+    expect((await resolveRunNavigation(client, { kind: "archive", runId, reportDigest: FingerprintSchema.parse("a".repeat(64)) }, origin, () => true)).state).toBe("refused");
     for (const reason of ["wrong-actor", "notification-unavailable", "pinned", "run-unavailable", "failure-unavailable", "archive-unavailable", "target-unavailable"] as const) {
-      expect((await resolveNotificationNavigation(client, { kind: "refused", reason }, origin, () => true)).state).toBe("refused");
+      expect((await resolveRunNavigation(client, { kind: "refused", reason }, origin, () => true)).state).toBe("refused");
     }
     expect(client.runDetail).not.toHaveBeenCalled();
   });
   it("refuses missing runs, wrong day, unregistered workflows, read errors and changed identities", async () => {
     const missing = clients(); missing.dashboardDay.mockResolvedValue({ ...FIXTURE_DAY_WIRE, queueSurfaces: [] });
-    expect((await resolveNotificationNavigation(missing, target, origin, () => true)).state).toBe("refused");
+    expect((await resolveRunNavigation(missing, target, origin, () => true)).state).toBe("refused");
     const wrongDay = clients(); wrongDay.dashboardDay.mockResolvedValue({ ...FIXTURE_DAY_WIRE, day: LocalDateSchema.parse("2026-08-04") });
-    expect((await resolveNotificationNavigation(wrongDay, target, origin, () => true)).state).toBe("refused");
-    expect((await resolveNotificationNavigation(clients(), target, origin, () => false)).state).toBe("refused");
+    expect((await resolveRunNavigation(wrongDay, target, origin, () => true)).state).toBe("refused");
+    expect((await resolveRunNavigation(clients(), target, origin, () => false)).state).toBe("refused");
     const failed = clients(); failed.runDetail.mockRejectedValue(new Error("offline"));
-    expect((await resolveNotificationNavigation(failed, target, origin, () => true)).state).toBe("refused");
+    expect((await resolveRunNavigation(failed, target, origin, () => true)).state).toBe("refused");
     for (const changed of [{ ...detail, rowRevision: RowRevisionSchema.parse(detail.rowRevision + 1) }, { ...detail, header: { ...detail.header, attempt: detail.header.attempt + 1 } }]) {
       const client = clients(); client.runDetail.mockResolvedValue(changed);
-      expect((await resolveNotificationNavigation(client, target, origin, () => true)).state).toBe("refused");
+      expect((await resolveRunNavigation(client, target, origin, () => true)).state).toBe("refused");
     }
   });
   it("refuses missing or different failures instead of focusing a nearby step", async () => {
-    expect((await resolveNotificationNavigation(clients(), { ...target, kind: "failure", failureId: FailureIdSchema.parse(FIXTURE_IDS.doneRun) }, origin, () => true)).state).toBe("refused");
+    expect((await resolveRunNavigation(clients(), { ...target, kind: "failure", failureId: FailureIdSchema.parse(FIXTURE_IDS.doneRun) }, origin, () => true)).state).toBe("refused");
     const absent = clients(); absent.runDetail.mockResolvedValue({ ...detail, availableSections: ["logs"] });
-    expect((await resolveNotificationNavigation(absent, { ...target, kind: "failure", failureId }, origin, () => true)).state).toBe("refused");
+    expect((await resolveRunNavigation(absent, { ...target, kind: "failure", failureId }, origin, () => true)).state).toBe("refused");
   });
 });

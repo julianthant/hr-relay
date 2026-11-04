@@ -21,7 +21,7 @@ import { QueueSurfaceWireSchema, NotificationWireSchema } from "../../../src/mod
 import { NotificationCommandRequestSchema } from "../../../src/rules/commands/commands.js";
 import { CrossDateSearchPageSchema, type CrossDateSearchQueryInput } from "../../../src/models/dashboard/search.js";
 import { zeroMatchSearchPage } from "../../support/helpers/dashboard/search-page-fixtures.js";
-import { notificationTargetUnavailable } from "../../../src/dashboard/app/navigation/notification-navigation.js";
+import { notificationTargetUnavailable } from "../../../src/dashboard/app/navigation/run-navigation.js";
 
 const requested = vi.hoisted(() => ({ target: undefined as NotificationDestination | undefined }));
 function mockProductSources(): WorkflowSourcePolicy {

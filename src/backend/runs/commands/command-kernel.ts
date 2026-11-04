@@ -20,7 +20,7 @@ import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuati
 import { admitWorkerLifecycle,admitWorkerReset } from "../../storage/sqlite/worker-control.js";
 import { admitWorkerPoolRoster,requireWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
 import { executeFailureResolution,failureResolutionCapability } from "../lifecycle/failure-resolution.js";
-import { readOcrReviewAuthority,readOcrSnapshotsAuthority,reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
+import { assertOcrReviewChildrenCurrent,readOcrReviewAuthority,readOcrSnapshotsAuthority,reviseOcrReview } from "../lifecycle/ocr-review-authority.js";
 import { reviewedRunSettingsCurrent,selectNewRunIdentity,selectRunRuntime } from "../settings/run-settings.js";
 import { workflowPreflightScope } from "../start/preflight-scope.js";
 import { admitProtectedInput,protectedSubjectDisplay } from "../start/protected-input.js";
@@ -1677,6 +1677,9 @@ function executeResolveGate(
     if (approval === undefined || request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
     const review = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
     if (review === undefined || review.revision.revision !== approval.expectedRevision || review.digest !== approval.reviewDigest) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+    const lookupNodes = (["lookup-identities", "lookup-signers"] as const).filter(nodeId =>
+      descriptorRuntimeNodes(descriptor).some(node => node.kind === "child-run" && node.id === nodeId));
+    assertOcrReviewChildrenCurrent(repositories, request.target.runId, review.revision.seed, lookupNodes);
     const parsed = OcrApprovedSnapshotSchema.safeParse({ snapshotId: request.commandId, sourceRunId: request.target.runId,
       revision: review.revision.revision, reviewDigest: review.digest, selectedRecordIds: approval.selectedRecordIds,
       records: approval.selectedRecordIds.map(id => review.revision.records.find(record => record.recordId === id)),

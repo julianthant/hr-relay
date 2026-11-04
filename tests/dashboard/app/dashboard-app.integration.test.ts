@@ -36,6 +36,8 @@ import { LocalDateSchema as LocalDateSchema_m1 } from "../../../src/rules/identi
 import { FIXTURE_BOOTSTRAP as FIXTURE_BOOTSTRAP_m1 } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1,FIXTURE_IDS as FIXTURE_IDS_m1 } from "../../support/fixtures/dashboard/fixture-queue.js";
 import { createFixtureBff as createFixtureBff_m1 } from "../../support/helpers/dashboard/served-fixtures/fixture-bff.js";
+import { queueParentFixture } from "../../support/helpers/dashboard/queue-parent-fixture.js";
+import { FIXTURE_RUN_DETAILS } from "../../support/fixtures/dashboard/fixture-detail.js";
 
 
 {
@@ -271,6 +273,68 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(window.location.search, before);
     assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, preference);
     assert_m1.equal(workflowButton("Person Lookup").getAttribute("aria-current"), "page");
+  });
+  it_m1.each([
+    ["emergency-contact-member", FIXTURE_DAY_WIRE_m1.day], ["ocr", FIXTURE_DAY_WIRE_m1.day],
+    ["emergency-contact-member", "2026-08-02"], ["ocr", "2026-08-02"],
+  ])("opens linked %s Logs and its existing gate review on %s without public selection", async (workflowId, targetDay) => {
+    const parent = FIXTURE_DAY_WIRE_m1.queueSurfaces.find(row => row.runId === FIXTURE_IDS_m1.queuedRun);
+    const original = FIXTURE_DAY_WIRE_m1.queueSurfaces.find(row => row.runId === FIXTURE_IDS_m1.openGateRun);
+    assert_m1.ok(parent && original);
+    assert_m1.ok(!parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows).some(flow => flow.id === workflowId));
+    const child = { ...original, workflowId, panelKind: workflowId === "ocr" ? "review" : "member",
+      parent: queueParentFixture(parent.runId, { workflowId: parent.workflowId, panelKind: parent.panelKind, partitionDay: FIXTURE_DAY_WIRE_m1.day, visibility: "linked" }) };
+    const link = { runId: child.runId, partitionDay: targetDay, workflowId, label: "Child review", panelKind: child.panelKind, status: child.status };
+    const sourceDay = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1,
+      queueSurfaces: [{ ...parent, linkedRuns: [link] }, ...(targetDay === FIXTURE_DAY_WIRE_m1.day ? [child] : [])] });
+    const linkedDay = DashboardDayWireSchema.parse({ ...sourceDay, day: targetDay,
+      queueSurfaces: targetDay === sourceDay.day ? sourceDay.queueSurfaces : [child] });
+    const target = linkedDay.queueSurfaces.find(row => row.runId === child.runId); assert_m1.ok(target);
+    const reads: string[] = [];
+    const detail = FIXTURE_RUN_DETAILS[child.runId]; assert_m1.ok(detail);
+    await mount(`?day=${sourceDay.day}`, {
+      dashboardDay: async day => { assert_m1.equal(day, targetDay); return linkedDay; },
+      subscribeDay(input) { input.onDay(input.day === sourceDay.day ? sourceDay : linkedDay); input.onState({ state: "live" }); return { close() {} }; },
+      runDetail: async id => { reads.push(id);
+        if (id === parent.runId) { const ownerDetail = FIXTURE_RUN_DETAILS[id]; assert_m1.ok(ownerDetail); return ownerDetail; }
+        assert_m1.equal(id, child.runId);
+        return { ...detail, panelKind: target.panelKind, header: { ...detail.header, workflowId: target.workflowId } }; },
+    }, "sidebar");
+    const preference = shellPreferences.snapshot().value.selectedWorkflowId;
+    const chip = document.querySelector<HTMLButtonElement>(`[data-demo-row-id="${parent.runId}"] button[data-demo-row-link]`); assert_m1.ok(chip);
+    await click(chip);
+    assert_m1.equal(parseRoute_m1(window.location.search).run, child.runId);
+    assert_m1.equal(parseRoute_m1(window.location.search).day, targetDay);
+    assert_m1.equal(parseRoute_m1(window.location.search).view?.preview, null);
+    assert_m1.ok(reads.includes(parent.runId));
+    assert_m1.ok(reads.includes(child.runId));
+    assert_m1.ok(document.querySelector(`[data-demo-row-id="${child.runId}"]`));
+    const logs = document.querySelector('[aria-label="Selected run logs"]'); assert_m1.ok(logs);
+    assert_m1.match(logs.textContent ?? "", /Morrow, Bea/);
+    const review = [...logs.querySelectorAll<HTMLButtonElement>("button")].find(node => node.textContent?.trim() === "Review"); assert_m1.ok(review);
+    await click(review);
+    assert_m1.match(logs.textContent ?? "", /identity-review/);
+    assert_m1.equal(shellPreferences.snapshot().value.selectedWorkflowId, preference);
+    assert_m1.ok(!document.querySelector('nav[aria-label="Workflows"]')?.textContent?.includes("emergency-contact-member"));
+  });
+  it_m1("ignores a linked-run read that settles after another navigation", async () => {
+    const row = FIXTURE_DAY_WIRE_m1.queueSurfaces.find(item => item.runId === FIXTURE_IDS_m1.queuedRun); assert_m1.ok(row);
+    const linkedDay = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1,
+      queueSurfaces: FIXTURE_DAY_WIRE_m1.queueSurfaces.map(item => item === row ? { ...item,
+        linkedRuns: [{ runId: FIXTURE_IDS_m1.openGateRun, partitionDay: FIXTURE_DAY_WIRE_m1.day,
+          workflowId: row.workflowId, label: "Pending review", panelKind: "run", status: "awaiting-approval" }] } : item) });
+    let release: ((day: typeof linkedDay) => void) | undefined;
+    await mount(`?day=${linkedDay.day}`, {
+      dashboardDay: () => new Promise(resolve => { release = resolve; }),
+      subscribeDay(input) { input.onDay(linkedDay); input.onState({ state: "live" }); return { close() {} }; },
+    });
+    const chip = document.querySelector<HTMLButtonElement>(`[data-demo-row-id="${row.runId}"] button[data-demo-row-link]`); assert_m1.ok(chip);
+    await click(chip); assert_m1.ok(release);
+    await click(button("Settings"));
+    const before = window.location.search;
+    await act_m1(async () => release?.(linkedDay)); await settle();
+    assert_m1.equal(window.location.search, before);
+    assert_m1.equal(parseRoute_m1(before).settings, "");
   });
   it_m1.each(["search", "notification"])("refused %s destination preserves a dirty Settings draft without asking to discard", async surface => {
     const title = "Unavailable served destination";

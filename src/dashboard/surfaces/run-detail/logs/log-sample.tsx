@@ -46,7 +46,7 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
   const preview = resource.snapshot?.logs.dryRunPreview;
   const lastStepId = projection.steps.at(-1)?.id;
   const reviewAvailable = resource.snapshot?.detail.availableSections.includes("review") === true;
-  const retry = selection.row.parent === null ? undefined : selection.row.actions.find(action => action.kind === "command" && action.command === "retry");
+  const retry = selection.row.parent === null || resource.snapshot?.detail.childRetry !== undefined ? undefined : selection.row.actions.find(action => action.kind === "command" && action.command === "retry");
   const retryEnabled = resource.state === "loaded" && binding?.authority.dayState.day.state === "loaded"
     && (resource.command === undefined || resource.command.state === "refused") && onAction !== undefined;
   const feedback = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" ? <Banner tone="danger" title={logsReadFailedTitle}>{resource.error}</Banner> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, logsReadFailedTitle]);
@@ -67,8 +67,11 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
   const retryRun = useCallback(() => {
     if (retry !== undefined) onAction?.(retry, { runId: selection.row.runId, expectedVersion: selection.row.rowRevision });
   }, [retry,onAction,selection.row.runId,selection.row.rowRevision]);
-  const toolbar = useMemo(() => <>{reviewOpen ? <Button size="sm" onClick={onLogs}>Logs</Button> : reviewAvailable && onReview !== undefined && runHeaderAction(projection.steps, projection.timeline)?.label !== "Review" ? <Button size="sm" onClick={onReview}>Review</Button> : undefined}
-      {retry !== undefined && onAction !== undefined && <IconButton size="sm" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [reviewOpen,onLogs,reviewAvailable,onReview,projection.steps,projection.timeline,retry,onAction,retryEnabled,retryRun,feedback]);
+  const toolbar = useMemo(() => <>{resource.snapshot?.detail.ocrReviewChanges !== undefined && <Banner tone="warning" title="Earlier review changes no longer apply">
+    {resource.snapshot.detail.ocrReviewChanges.map(change => <p key={`${change.revision}:${change.sourcePage}`}>Page {change.sourcePage}: OCR evidence changed in revision {change.revision}. Review the new values before approving.</p>)}
+  </Banner>}{resource.snapshot?.detail.childRetry !== undefined && <IconButton label={resource.snapshot.detail.childRetry.label}
+    icon={<RotateCcw aria-hidden className="size-3.5" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}{reviewOpen ? <Button size="sm" onClick={onLogs}>Logs</Button> : reviewAvailable && onReview !== undefined && runHeaderAction(projection.steps, projection.timeline)?.label !== "Review" ? <Button size="sm" onClick={onReview}>Review</Button> : undefined}
+      {retry !== undefined && onAction !== undefined && <IconButton size="sm" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,reviewOpen,onLogs,reviewAvailable,onReview,projection.steps,projection.timeline,retry,onAction,retryEnabled,retryRun,feedback]);
   return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? selection.row.title} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision}
     onReview={reviewAvailable ? onReview : undefined}
     context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}

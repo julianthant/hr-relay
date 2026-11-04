@@ -42,7 +42,7 @@ function originalCheckpoint(repositories: AuthorityRepositories, group: Authenti
 }
 
 function readingMember(repositories: AuthorityRepositories, owner: RunRecord, pages: AuthenticatedGroup,
-  childRunIds: readonly string[], status: QueueRecordMembers["members"][number]["status"], workflowLabel: (workflowId: string) => string) {
+  childRunIds: readonly string[], status: QueueRecordMembers["members"][number]["status"], workflowLabel: (workflowId: string) => string, reviewAvailable: boolean) {
   const prepared = ReadOcrSourcePages.output.parse(originalCheckpoint(repositories,pages,"read-source-pages").output.value);
   return { kind: "reading" as const, ownerRunId: owner.envelope.runId,
     title: `${prepared.manifest.pageCount} ${prepared.manifest.pageCount === 1 ? "page" : "pages"}`,
@@ -50,7 +50,7 @@ function readingMember(repositories: AuthorityRepositories, owner: RunRecord, pa
     childRunIds, target: { runId: owner.envelope.runId, workflowId: owner.envelope.workflow,
       partitionDay: LocalDateSchema.parse(localDatePart(new Date(owner.envelope.enqueuedAt))), label: workflowLabel(owner.envelope.workflow),
       status: deriveRunStatus({ ...owner,delegationWait: repositories.dependencies.waitState(owner.envelope.runId) }),
-      panelKind: panelKindOf(owner.envelope.shape), section: "logs" as const } };
+      panelKind: panelKindOf(owner.envelope.shape, reviewAvailable), section: "logs" as const } };
 }
 
 function readOcrRecordSource(repositories: AuthorityRepositories, runId: string) {
@@ -112,10 +112,11 @@ function readOcrRecordPresentation(repositories: AuthorityRepositories, reader: 
   const owner = existence.run;
   if (owner.envelope.workflow !== "ocr") return undefined;
   authenticateOcrOperator(repositories, reader, owner);
+  const reviewAuthority = readOcrReviewAuthority(repositories, reader, runId);
   const statusOf = (run: RunRecord) => deriveRunStatus({ ...run, delegationWait: repositories.dependencies.waitState(run.envelope.runId) });
   const link = (run: RunRecord) => ({ runId: run.envelope.runId, workflowId: run.envelope.workflow,
     partitionDay: LocalDateSchema.parse(localDatePart(new Date(run.envelope.enqueuedAt))), label: workflowLabel(run.envelope.workflow),
-    status: statusOf(run), panelKind: panelKindOf(run.envelope.shape) });
+    status: statusOf(run), panelKind: panelKindOf(run.envelope.shape, run.envelope.runId === owner.envelope.runId && reviewAuthority !== undefined) });
   const source = readOcrRecordSource(repositories, runId);
   const groups = source?.groups ?? repositories.dependencies.groups(runId);
   const lookups = groups.filter(({ group }) => ["lookup-identities", "lookup-signers"].includes(group.invocation.nodeId));
@@ -136,9 +137,9 @@ function readOcrRecordPresentation(repositories: AuthorityRepositories, reader: 
   if (source === undefined) {
     if (pages === undefined) return undefined;
     return QueueRecordMembersSchema.parse({ runIds, members: [readingMember(repositories,owner,pages.group,
-      pages.group.children.filter(member => statusOf(member.child) !== "failed").flatMap(member => member.history),statusOf(owner),workflowLabel), ...failures] });
+      pages.group.children.filter(member => statusOf(member.child) !== "failed").flatMap(member => member.history),statusOf(owner),workflowLabel,reviewAuthority !== undefined), ...failures] });
   }
-  let review = readOcrReviewAuthority(repositories, reader, runId);
+  let review = reviewAuthority;
   if (review !== undefined && canonicalJsonStringify(review.revision.seed.review) !== canonicalJsonStringify(source.seed)) {
     authenticateDelegationRefresh(repositories,owner);
     const command = owner.delegationRefresh === undefined ? undefined : repositories.lifecycleJournal.getCommand(owner.delegationRefresh.commandId);
@@ -258,7 +259,7 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
       childRunIds: [...new Set([...row.childRunIds,...member.history])],
       target: { runId: child.envelope.runId, workflowId: child.envelope.workflow,
         partitionDay: LocalDateSchema.parse(localDatePart(new Date(child.envelope.enqueuedAt))), label: descriptor.label,
-        status, panelKind: panelKindOf(child.envelope.shape), section: "logs" } };
+        status, panelKind: panelKindOf(child.envelope.shape, false), section: "logs" } };
   }) });
 }
 
@@ -281,7 +282,7 @@ export function readQueueRecordMembers(repositories: AuthorityRepositories, read
           if (pages[0] === undefined) return [];
           const runIds = [...new Set(groups.flatMap(({ group }) => group.children.flatMap(child => child.history)))];
           const status = deriveRunStatus({ ...run,delegationWait: repositories.dependencies.waitState(run.envelope.runId) });
-          return [QueueRecordMembersSchema.parse({ runIds, members: [readingMember(repositories,member.child,pages[0].group,runIds,status,workflowLabel)] })];
+          return [QueueRecordMembersSchema.parse({ runIds, members: [readingMember(repositories,member.child,pages[0].group,runIds,status,workflowLabel,readOcrReviewAuthority(repositories,reader,member.child.envelope.runId) !== undefined)] })];
         }
         const descriptor = resolve(run.envelope.workflow);
         if (descriptor === undefined || descriptor.version !== run.envelope.descriptorVersion

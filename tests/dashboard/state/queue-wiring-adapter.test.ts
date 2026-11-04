@@ -28,6 +28,7 @@ it("owns Queue state/actions and keeps refused workflow jumps from navigating", 
   try {
     await act(async () => root.render(createElement(Probe)));
     assert.ok(wiring); assert.equal(wiring.viewState.selectedRunId, row.runId);
+    assert.equal(wiring.queueHandlers.onOpenLinked, input.openRelatedRun);
     assert.equal(wiring.actionsOf(row), row.actions);
     assert.ok(wiring.surfaces.every(surface => surface.workflowId === row.workflowId));
     wiring.queueHandlers.onToggleWell?.(row.runId); wiring.queueHandlers.onToggleBulk?.(row.runId);

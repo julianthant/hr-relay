@@ -186,6 +186,8 @@ it("keeps the parent reading while the linked OCR row owns person records and it
     canonical: { database, reader: f.canonical.lifecycle, descriptors } });
   const detail = buildRunDetail(deps, childRow.runId);
   assert.equal(detail.panelKind, "review");
+  assert.equal(parentRow.recordMembers?.members[0]?.target.panelKind, childRow.panelKind);
+  assert.equal(parentRow.recordMembers?.members[0]?.target.panelKind, detail.panelKind);
   assert.equal(detail.header.workflowId, "ocr");
   const steps = detail.timeline.steps; assert.ok(steps);
   assert.ok(steps.some(step => step.key === "approval"));

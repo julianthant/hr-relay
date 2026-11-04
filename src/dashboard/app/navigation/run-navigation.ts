@@ -9,7 +9,7 @@ export const notificationTargetUnavailable = () => formatErrorCatalogFailure(cre
 type Destination = Readonly<{ state: "ready"; route: AppRouteState; workflowId?: string }>
   | Readonly<{ state: "refused"; message: string }>;
 
-export async function resolveNotificationNavigation(client: Pick<DashboardClient, "dashboardDay" | "runDetail" | "runSection">,
+export async function resolveRunNavigation(client: Pick<DashboardClient, "dashboardDay" | "runDetail" | "runSection">,
   target: NotificationTarget, route: AppRouteState, canSelectWorkflow: (id: string, row: QueueSurfaceWire) => boolean): Promise<Destination> {
   const refuse = (): Destination => ({ state: "refused", message: notificationTargetUnavailable() });
   if (target.kind === "refused") return refuse();
@@ -20,7 +20,7 @@ export async function resolveNotificationNavigation(client: Pick<DashboardClient
   try {
     const day = await client.dashboardDay(target.day);
     const row = day.queueSurfaces.find(item => item.runId === target.runId);
-    if (day.day !== target.day || row === undefined || !canSelectWorkflow(row.workflowId,row)) return refuse();
+    if (day.day !== target.day || row === undefined || !canSelectWorkflow(row.workflowId, row)) return refuse();
     const detail = await client.runDetail(target.runId);
     if (detail.runId !== target.runId || detail.header.runId !== target.runId || detail.header.workflowId !== row.workflowId
       || detail.header.traceId !== row.traceId || detail.header.attempt !== row.attempt || detail.rowRevision !== row.rowRevision || detail.panelKind !== row.panelKind) return refuse();

@@ -138,6 +138,9 @@ Top-level Queue, calendar, notifications and Activity populations include roots 
 Visibility filtering precedes bounded pagination. An unloaded inline or hidden child never becomes a
 standalone row. Cross-workflow members stay under their parent; parent and linked chips retain exact
 workflow and day coordinates. Native parent authority still governs actions and deletion eligibility.
+Linked Queue navigation rechecks the destination day, run detail and workflow identity. Native child
+rows can open Logs and existing gate review without public catalog selection or a source-policy switch.
+The served OCR Records editor remains a separate wiring requirement.
 
 The product's workflow preview mounts `WorkflowMockQueue` and local `MockRun` state. Retry opens
 Rerun with the exact source. Local deletion removes the selected runs and clears their Logs/Records
@@ -297,6 +300,10 @@ Roster and document-type choices share one row. Direct document choices exclude 
 matching must use canonical spreadsheet bindings; no match or multiple matches remains explicit.
 Backend Person Lookup/matching, immutable approval persistence, and roster updates are separate
 wiring requirements. Current Records edits and transitions are local mock state.
+
+Served OCR Logs expose failed-child Retry in the header. When changed record evidence invalidates
+earlier corrections or review choices, the existing warning banner names the source page and revision.
+These warnings do not mount the served Records editor.
 
 ## Notifications
 

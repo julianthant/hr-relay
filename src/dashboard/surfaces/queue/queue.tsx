@@ -251,7 +251,7 @@ function HeaderChips({
 
 const PANEL_EXPLANATION: Record<QueueSurfaceWire["panelKind"], string> = {
   run: "Opening it shows the logs, recorded values, screenshots and operator decisions.",
-  review: "Opening it starts the review — the scanned page beside the fields read from it, one person at a time.",
+  review: "Opening it shows the run's logs and review status.",
   group: "Opening it lists the people it holds, attention first, and you can open any one of them from there.",
   member: "Opening it walks the set — previous, next, and a checked mark so you keep your place in it.",
 };
