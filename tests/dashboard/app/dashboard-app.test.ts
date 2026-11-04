@@ -305,6 +305,35 @@ describe_m1("served sign-up Finish", () => {
 
 
 
+  it_m1("a tab whose resume lost the race adopts the winner's session once it is in place", async () => {
+    window.history.replaceState(null, "", "/");
+    const active = { state: "active" as const, profileId: "00000000-0000-4000-8000-000000000002", duoState: "ready" as const, epoch: 7 };
+    let cookie = false, resumed = 0, readsBeforeWinner = 0;
+    let release!: () => void;
+    const winner = new Promise<void>(resolve => { release = resolve; }).then(() => { cookie = true; });
+    const client = { ...appClient(),
+      readProfileSession: async () => { if (cookie) return active; readsBeforeWinner++; return { state: "signed-out" as const, signUpRequired: false, resumable: true as const }; },
+      resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_TRANSITION_BLOCKED" as const }; } };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(readsBeforeWinner >= 2, true); }, { timeout: 3000 });
+    assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
+    release(); await winner;
+    await vi_m1.waitFor(() => { assert_m1.notEqual(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+    assert_m1.equal(resumed, 1);
+  });
+
+  it_m1("keeps the login form when resume is genuinely refused and no session appears", async () => {
+    window.history.replaceState(null, "", "/");
+    let resumed = 0, reads = 0;
+    const client = { ...appClient(),
+      readProfileSession: async () => { reads++; return { state: "signed-out" as const, signUpRequired: false, resumable: true as const }; },
+      resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const }; } };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(reads >= 3, true); }, { timeout: 3500 });
+    assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
+    assert_m1.equal(resumed, 1);
+  });
+
   it_m1("opens the sign-up form from the Sign up link after a refused login", async () => {
     window.history.replaceState(null, "", "/");
     const client = { ...appClient(), readProfileSession: async () => ({ state: "refused" as const, code: "PROFILE_SIGN_IN_REFUSED" as const }) };
