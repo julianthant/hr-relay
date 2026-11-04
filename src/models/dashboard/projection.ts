@@ -82,7 +82,7 @@ export const QueueMemberTargetSchema = z.discriminatedUnion("section", [
 ]);
 const MemberPresentationFields = {
   title: z.string().min(1), status: QueueStatusSchema,
-  statusLabel: z.enum(["Reading", "Looking up", "Verified", "Needs lookup", "Saved", "Saving", "Not approved", "Failed", "Blocked", "Cancelled"]),
+  statusLabel: z.enum(["Reading", "Looking up", "Verified", "Needs lookup", "Saved", "Saving", "Previewing", "Previewed", "Not approved", "Failed", "Blocked", "Cancelled"]),
   childRunIds: z.array(RunIdSchema), target: QueueMemberTargetSchema,
 };
 export const QueueRecordMemberSchema = z.strictObject({

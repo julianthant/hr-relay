@@ -22,7 +22,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
     authority: {
       queueParents: envelopes => database.authority.dependencies.parents(envelopes),
       recordMembers: (run, children) => database.withAuthorityReadSnapshot(() => readQueueRecordMembers(database.authority, input.reader,
-        run, children, id => descriptors.resolve(id)?.label ?? id)),
+        run, children, id => descriptors.resolve(id))),
       reviewAvailable: runId => database.withAuthorityReadSnapshot(() => {
         const current = input.reader.read(runId);
         return current.state === "present" && current.disposition === "live" && current.run.envelope.workflow === "ocr"

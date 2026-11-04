@@ -18,9 +18,13 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { childTerminalSettlement, readDelegationScopeEvidence } from "../../storage/sqlite/delegation-authority.js";
-import { authenticateOcrOperator, readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
+import { authenticateOcrOperator, readOcrReviewAuthority, requireCurrentOcrSnapshot } from "../lifecycle/ocr-review-authority.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
+import { ReadApprovedOcrSnapshot } from "../../../models/processing/ocr/read-approved-snapshot.js";
+import { ApprovedOcrRecordInputSchema } from "../../../models/workflows/ocr/approved-record.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { descriptorRuntimeNodes, workflowDryRunSupport, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 
 type AuthenticatedGroup = ReturnType<AuthorityRepositories["dependencies"]["authenticateGroup"]>;
 
@@ -77,8 +81,8 @@ export function readOcrRecordBindings(repositories: AuthorityRepositories, runId
   return { seed, bindings: DelegatedRecordBindingSchema.array().parse(bindings) };
 }
 
-export function readOcrQueueMembers(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
-  runId: string, workflowLabel: (workflowId: string) => string): QueueRecordMembers | undefined {
+function readOcrRecordPresentation(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
+  runId: string, workflowLabel: (workflowId: string) => string, applyLookupVisibility: boolean): QueueRecordMembers | undefined {
   const existence = reader.read(runId);
   if (existence.state !== "present" || existence.disposition !== "live") throw new OcrReviewRefusedError();
   const owner = existence.run;
@@ -129,7 +133,7 @@ export function readOcrQueueMembers(repositories: AuthorityRepositories, reader:
       if (member === undefined) throw new OcrReviewRefusedError();
       return { ...member, status: statusOf(member.child) };
     });
-    if (children.length > 0 && children.every(member => member.visibility === "linked"
+    if (applyLookupVisibility && children.length > 0 && children.every(member => member.visibility === "linked"
       || member.visibility === "hidden-unless-failed" && member.status !== "failed")) return [];
     const selectedChild = children.find(member => member.status === "failed" || member.status === "blocked" || member.status === "cancelled")
       ?? children.find(member => member.status !== "done") ?? children[0];
@@ -160,8 +164,75 @@ export function readOcrQueueMembers(repositories: AuthorityRepositories, reader:
   return QueueRecordMembersSchema.parse({ runIds, members: [...members, ...failures] });
 }
 
+export function readOcrQueueMembers(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
+  runId: string, workflowLabel: (workflowId: string) => string): QueueRecordMembers | undefined {
+  return readOcrRecordPresentation(repositories,reader,runId,workflowLabel,true);
+}
+
+function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
+  parent: RunRecord, source: QueueRecordMembers, approval: unknown, resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined) {
+  const snapshot = requireCurrentOcrSnapshot(repositories,reader,approval);
+  const groups = repositories.dependencies.groups(parent.envelope.runId)
+    .filter(({ group }) => group.invocation.nodeId === "members" && group.invocation.edgeId === "approved-records");
+  if (groups.length > 1) throw new OcrReviewRefusedError();
+  const group = groups[0]?.group;
+  const bound = new Map<string, NonNullable<typeof group>["children"][number]>();
+  if (group !== undefined) {
+    const checkpoint = originalCheckpoint(repositories,group,"approved-records");
+    if (checkpoint.output.schemaHash !== deriveSchemaHash(ReadApprovedOcrSnapshot.output,"output")
+      || canonicalJsonStringify(ReadApprovedOcrSnapshot.output.parse(checkpoint.output.value).snapshot) !== canonicalJsonStringify(snapshot)) throw new OcrReviewRefusedError();
+    for (const [index, member] of group.children.entries()) {
+      const input = member.child.input.parsed.value;
+      if (typeof input !== "object" || input === null) throw new OcrReviewRefusedError();
+      const memberApproval: unknown = Reflect.get(input,"approval"), memberRecord: unknown = Reflect.get(input,"record");
+      const approved = ApprovedOcrRecordInputSchema.parse({ approval: memberApproval, record: memberRecord });
+      const record = snapshot.records.find(record => record.recordId === approved.record.recordId);
+      if (record === undefined || canonicalJsonStringify(approved.approval) !== canonicalJsonStringify(approval)
+        || canonicalJsonStringify(approved.record) !== canonicalJsonStringify(record)
+        || canonicalJsonStringify(group.invocation.children[index]?.sourceRecordIds) !== canonicalJsonStringify([record.recordId])
+        || bound.has(record.recordId)) throw new OcrReviewRefusedError();
+      bound.set(record.recordId,member);
+    }
+  }
+  const selected = new Set(group === undefined ? snapshot.selectedRecordIds : bound.keys());
+  const runIds = [...new Set([...source.runIds,...[...bound.values()].flatMap(member => member.history)])];
+  return QueueRecordMembersSchema.parse({ runIds, members: source.members.filter(row => {
+    const member = row.kind === "record" ? bound.get(row.record.recordId) : undefined;
+    if (member === undefined || group === undefined) return true;
+    const visibility = group.invocation.policy.visibility;
+    return visibility === "inline" || visibility === "hidden-unless-failed"
+      && deriveRunStatus({ ...member.child,delegationWait: repositories.dependencies.waitState(member.child.envelope.runId) }) === "failed";
+  }).map(row => {
+    if (row.kind !== "record") return row;
+    if (!selected.has(row.record.recordId)) return { ...row, status: "cancelled", statusLabel: "Not approved" };
+    const member = bound.get(row.record.recordId);
+    if (member === undefined) {
+      const status = deriveRunStatus({ ...parent,delegationWait: repositories.dependencies.waitState(parent.envelope.runId) });
+      return { ...row, status: ["failed","blocked","cancelled"].includes(status) ? status : "running",
+        statusLabel: status === "failed" ? "Failed" : status === "blocked" ? "Blocked" : status === "cancelled" ? "Cancelled" : parent.envelope.dryRun ? "Previewing" : "Saving" };
+    }
+    const child = member.child, descriptor = resolve(child.envelope.workflow);
+    if (descriptor === undefined || descriptor.version !== child.envelope.descriptorVersion
+      || descriptor.contractFingerprint !== child.envelope.contractFingerprint) throw new OcrReviewRefusedError();
+    const support = workflowDryRunSupport(descriptor);
+    const readOnly = support.state === "unsupported" && support.reason === "no-transaction-node";
+    const status = deriveRunStatus({ ...child,delegationWait: repositories.dependencies.waitState(child.envelope.runId) });
+    const terminal = member.terminal;
+    if (status === "done" && terminal?.state !== "satisfied") throw new OcrReviewRefusedError();
+    const statusLabel = status === "failed" ? "Failed" : status === "blocked" ? "Blocked" : status === "cancelled" ? "Cancelled"
+      : terminal?.state === "satisfied" ? terminal.kind === "preview" ? "Previewed" : readOnly ? "Verified" : "Saved"
+      : readOnly ? "Looking up" : child.envelope.dryRun ? "Previewing" : "Saving";
+    return { ...row, status: status === "done" || status === "failed" || status === "blocked" || status === "cancelled" ? status : "running", statusLabel,
+      childRunIds: [...new Set([...row.childRunIds,...member.history])],
+      target: { runId: child.envelope.runId, workflowId: child.envelope.workflow,
+        partitionDay: LocalDateSchema.parse(localDatePart(new Date(child.envelope.enqueuedAt))), label: descriptor.label,
+        status, panelKind: panelKindOf(child.envelope.shape), section: "logs" } };
+  }) });
+}
+
 export function readQueueRecordMembers(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
-  run: RunRecord, children: readonly RunRecord[], workflowLabel: (workflowId: string) => string): QueueRecordMembers | undefined {
+  run: RunRecord, children: readonly RunRecord[], resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined): QueueRecordMembers | undefined {
+  const workflowLabel = (id: string) => resolve(id)?.label ?? id;
   if (run.envelope.workflow === "ocr") return readOcrQueueMembers(repositories, reader, run.envelope.runId, workflowLabel);
   if (!children.some(child => child.envelope.workflow === "ocr") && run.envelope.continuation === undefined) return undefined;
   const sources = repositories.dependencies.groups(run.envelope.runId)
@@ -180,8 +251,14 @@ export function readQueueRecordMembers(repositories: AuthorityRepositories, read
           const status = deriveRunStatus({ ...run,delegationWait: repositories.dependencies.waitState(run.envelope.runId) });
           return [QueueRecordMembersSchema.parse({ runIds, members: [readingMember(repositories,member.child,pages[0].group,runIds,status,workflowLabel)] })];
         }
-        const source = readOcrQueueMembers(repositories, reader, member.child.envelope.runId, workflowLabel);
-        return source === undefined ? [] : [source];
+        const descriptor = resolve(run.envelope.workflow);
+        if (descriptor === undefined || descriptor.version !== run.envelope.descriptorVersion
+          || descriptor.contractFingerprint !== run.envelope.contractFingerprint) throw new OcrReviewRefusedError();
+        const hasMembers = descriptorRuntimeNodes(descriptor)
+          .some(node => node.kind === "child-run" && node.id === "members" && node.edgeId === "approved-records");
+        const source = readOcrRecordPresentation(repositories, reader, member.child.envelope.runId, workflowLabel,!hasMembers);
+        if (source === undefined) return [];
+        return [approval !== null && hasMembers ? approvedParentMembers(repositories,reader,run,source,approval,resolve) : source];
       }));
   return sources.length === 0 ? undefined : QueueRecordMembersSchema.parse({
     runIds: [...new Set(sources.flatMap(source => source.runIds))], members: sources.flatMap(source => source.members),
