@@ -25,7 +25,7 @@ import {
 import type { Fingerprint } from "../../rules/identity/ids.js";
 import { FailureTerminalAuthorizationRecordSchema } from "./terminal-authorization.js";
 import { RunRecordSchema, type RunRecord } from "./record.js";
-import { DelegationManifestSchema, delegationJoinDisposition } from "../../rules/workflow/dependencies.js";
+import { DelegationManifestSchema, RefreshedRunSettlementSchema, delegationJoinDisposition } from "../../rules/workflow/dependencies.js";
 import { childRunOutcomeSchema, DelegationManifestRefSchema } from "../workflow/graph.js";
 import { FailureRecordSchema, type FailureRecord } from "../trust/failure.js";
 import { deriveSchemaHash, SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-value.js";
@@ -84,6 +84,7 @@ export const ChildTerminalDependencySchema = z.strictObject({
   edgeId: DelegationEdgeIdSchema,
   child: z.strictObject({
     runId: RunIdSchema, itemId: ItemIdSchema, workflowId: WorkflowIdSchema,
+    settlement: RefreshedRunSettlementSchema.optional(),
     attempt: PositiveIntSchema, descriptorVersion: PositiveIntSchema,
     contractFingerprint: FingerprintSchema, resultSchemaHash: FingerprintSchema,
     resultDigest: FingerprintSchema, dependencyDigest: FingerprintSchema,
@@ -94,6 +95,7 @@ export const ChildTerminalDependencySchema = z.strictObject({
 
 export const DelegationTerminalMemberSchema = z.strictObject({
   dependencyId: DependencyIdSchema,
+  settlement: RefreshedRunSettlementSchema.optional(),
   runId: RunIdSchema, itemId: ItemIdSchema, workflowId: WorkflowIdSchema,
   attempt: PositiveIntSchema, descriptorVersion: PositiveIntSchema,
   contractFingerprint: FingerprintSchema, resultSchemaHash: FingerprintSchema,
@@ -510,6 +512,14 @@ export function delegationEvidenceOutput(evidence: Extract<TerminalDependencyEvi
   return resolution.output;
 }
 
+export function refreshedRunSettlement(run: RunRecord, result: RunResultRecord): z.infer<typeof RefreshedRunSettlementSchema> | undefined {
+  if (run.delegationRefresh === undefined) return undefined;
+  const evidence = terminalEvidenceResult(result);
+  const appliedVersion = run.completion === undefined
+    ? evidence?.kind === "lifecycle-evidence" ? evidence.appliedVersion : undefined : run.completion.expectedVersion + 1;
+  return RefreshedRunSettlementSchema.parse({ commandId: run.delegationRefresh.commandId, appliedVersion });
+}
+
 export function delegationDependencyRecord(evidence: Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>): z.infer<typeof DelegationTerminalDependencySchema> {
   const single = singleDelegationResult(evidence);
   return DelegationTerminalDependencySchema.parse({ state: evidence.state, nodeId: evidence.nodeId, parentRunId: evidence.parentRunId,
@@ -518,7 +528,8 @@ export function delegationDependencyRecord(evidence: Extract<TerminalDependencyE
       runId: run.envelope.runId, itemId: run.envelope.itemId, workflowId: run.envelope.workflow, attempt: run.envelope.attempt,
       descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint,
       resultSchemaHash: result.resultSchemaHash, resultDigest: result.resultDigest, dependencyDigest: result.dependencyDigest,
-      lifecycle: run.lifecycle.state === "terminal" ? run.lifecycle.outcome : undefined })),
+      lifecycle: run.lifecycle.state === "terminal" ? run.lifecycle.outcome : undefined,
+      ...(run.delegationRefresh === undefined ? {} : { settlement: refreshedRunSettlement(run,result) }) })),
     ...(single?.operationSources === undefined ? {} : { operationSources: single.operationSources }),
     ...(single?.operationLineage === undefined ? {} : { operationLineage: single.operationLineage }) });
 }
@@ -526,11 +537,12 @@ export function delegationDependencyRecord(evidence: Extract<TerminalDependencyE
 export function terminalDelegationDependencyRecord(evidence: Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>): z.infer<typeof ChildTerminalDependencySchema> | z.infer<typeof DelegationTerminalDependencySchema> {
   const single = singleDelegationResult(evidence);
   const child = evidence.children[0]?.run;
-  if (evidence.manifest.cardinality !== "one" || evidence.manifest.join !== "one" || single === undefined || child === undefined) return delegationDependencyRecord(evidence);
+  if (evidence.manifest.revision !== undefined || evidence.manifest.cardinality !== "one" || evidence.manifest.join !== "one" || single === undefined || child === undefined) return delegationDependencyRecord(evidence);
   return ChildTerminalDependencySchema.parse({ state: "child-resolved", nodeId: evidence.nodeId, parentRunId: evidence.parentRunId,
     edgeId: evidence.edgeId, child: { runId: child.envelope.runId, itemId: child.envelope.itemId, workflowId: child.envelope.workflow,
       attempt: child.envelope.attempt, descriptorVersion: child.envelope.descriptorVersion, contractFingerprint: child.envelope.contractFingerprint,
-      resultSchemaHash: single.resultSchemaHash, resultDigest: single.resultDigest, dependencyDigest: single.dependencyDigest },
+      resultSchemaHash: single.resultSchemaHash, resultDigest: single.resultDigest, dependencyDigest: single.dependencyDigest,
+      ...(child.delegationRefresh === undefined ? {} : { settlement: refreshedRunSettlement(child,single) }) },
     ...(single.operationSources === undefined ? {} : { operationSources: single.operationSources }),
     ...(single.operationLineage === undefined ? {} : { operationLineage: single.operationLineage }) });
 }
