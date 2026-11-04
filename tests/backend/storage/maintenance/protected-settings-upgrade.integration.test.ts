@@ -11,10 +11,11 @@ import { inspectProtectedSettingsSource, STOPPED_PROTECTED_SETTINGS_SCHEMA_HASH 
 import { upgradeProtectedSettings } from "../../../../src/backend/storage/maintenance/protected-settings-upgrade.js";
 import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { verifyRetainedDelegatedPreviewEvidence } from "../../../support/helpers/backend/retained-delegated-preview-evidence.js";
+import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 
-async function priorProfile() {
-  const profile = await createBoundProfileFixture(), canonical = createCanonicalCredentials(profile.admission);
+async function priorProfile(existing?: BoundProfileStorageFixture) {
+  const profile = existing ?? await createBoundProfileFixture(), canonical = createCanonicalCredentials(profile.admission);
   const frame = canonical.readRecord("protected"); assert.ok(frame);
   const current = authenticateDocument(frame.value), at = systemClock.now().toISOString();
   const receipt = { commandId: randomUUID(), writeId: randomUUID(), commandFingerprint: "c".repeat(64),
@@ -113,3 +114,23 @@ it("keeps ordinary backup admissions outside the credential conversion door", as
     }
   } finally { operation.release(); await profile.close(); }
 });
+
+it("preserves persisted predecessor local and delegated previews, receipts and linked digests through the stopped credential upgrade", () =>
+  verifyRetainedDelegatedPreviewEvidence(async profile => {
+    await priorProfile(profile);
+    const before = readFileSync(join(profile.stateRoot, "credentials", "protected.json"));
+    const operation = profile.machine.acquireOfflineMaintenance();
+    const owner = profile.machine.admitStoppedProfileSettingsUpgrade(profile.admission.profileBinding.profileId, operation);
+    try {
+      const upgrade = () => upgradeProtectedSettings(owner, profileBrowserClosure, operation, systemClock,
+        join(profile.workspace, rebuildRuntimeIsolation.processLockRoot));
+      if (process.platform === "win32") {
+        await assert.rejects(upgrade(), { code: "STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE" });
+        assert.deepEqual(readFileSync(join(profile.stateRoot, "credentials", "protected.json")), before);
+        return "refused";
+      }
+      assert.equal(await upgrade(), "upgraded");
+      assert.equal(await upgrade(), "current");
+      return "upgraded";
+    } finally { owner.release(); operation.release(); }
+  }));

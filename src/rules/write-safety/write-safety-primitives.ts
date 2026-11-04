@@ -8,7 +8,7 @@ import {
   ObservationIdSchema,
   PageStateIdSchema,
 } from "../identity/ids.js";
-import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
+import { SchemaBoundEvidenceValueSchema } from "../../models/validation/schema-bound-value.js";
 
 /** The identity a write is fenced against; it lives in the browser-safe half because a descriptor closure has to be able to hash a schema that embeds it. */
 export const SubjectEvidenceSchema = z.discriminatedUnion("kind", [
@@ -71,15 +71,15 @@ export const TransactionOutcomeSchema = z.discriminatedUnion("disposition", [
   z.strictObject({
     disposition: z.literal("committed"),
     proofSource: z.enum(["normal-output", "recovery-probe", "operator-attestation"]),
-    proof: SchemaBoundCanonicalValueSchema,
-    output: SchemaBoundCanonicalValueSchema,
+    proof: SchemaBoundEvidenceValueSchema,
+    output: SchemaBoundEvidenceValueSchema,
     confirmedAt: IsoInstantSchema,
   }),
   z.strictObject({
     disposition: z.literal("already-present"),
     proofSource: z.enum(["live-probe", "durable-intent"]),
-    proof: SchemaBoundCanonicalValueSchema,
-    output: SchemaBoundCanonicalValueSchema,
+    proof: SchemaBoundEvidenceValueSchema,
+    output: SchemaBoundEvidenceValueSchema,
     observedAt: IsoInstantSchema,
   }),
 ]);
@@ -90,13 +90,13 @@ export const DryRunProbeObservationSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("durable-intent"),
     status: z.enum(["committed", "observed-present"]),
-    proof: SchemaBoundCanonicalValueSchema,
-    output: SchemaBoundCanonicalValueSchema,
+    proof: SchemaBoundEvidenceValueSchema,
+    output: SchemaBoundEvidenceValueSchema,
   }),
   z.strictObject({
     state: z.literal("present"),
-    proof: SchemaBoundCanonicalValueSchema,
-    output: SchemaBoundCanonicalValueSchema,
+    proof: SchemaBoundEvidenceValueSchema,
+    output: SchemaBoundEvidenceValueSchema,
   }),
   z.strictObject({ state: z.literal("absent"), evidence: AbsentEvidenceSchema }),
   z.strictObject({
