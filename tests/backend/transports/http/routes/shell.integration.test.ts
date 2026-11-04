@@ -424,7 +424,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       if (record === undefined) assert.fail(`run ${runId} did not enqueue`);
       return record;
     });
-    projectCurrentSeparationsRuns(h, runs);
+    for (const run of runs) projectCurrentSeparationsRuns(h, [run]);
     await new Promise<void>((resolve) => setImmediate(resolve));
 
     const live: DashboardStreamEnvelope[] = [];
