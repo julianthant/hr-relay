@@ -339,9 +339,16 @@ than approximating their effective access.
 
 New private directories receive a protected inheritable DACL during native creation. Existing unsafe
 directories are refused. Private stages verify safe parent inheritance and the created descriptor
-before writing bytes. Windows ancestry retains bigint identities. Native volume serial and 64-bit
+before writing bytes. Windows ancestry and private-file readers, lock publication and exact cleanup
+retain actual bigint filesystem identities. Readers return raw `Stats` on POSIX and `BigIntStats`
+on Windows; Windows metadata stability compares nanosecond timestamps. Ephemeral canonical
+observations encode bigint identities as decimal strings without changing POSIX fingerprints.
+Native volume serial and 64-bit
 file IDs must agree with exact Node observations; unsafe numeric witnesses and unsupported 128-bit
-file-ID mappings refuse. Persisted numeric witnesses are not silently rounded or migrated.
+file-ID mappings refuse. Existing persisted numeric witness formats accept only exact safe-integer
+representations; capturing a higher identity refuses with `WINDOWS_PRIVATE_PATH_REFUSED` before
+persistence. Credential publication, pepper, control-upgrade and maintenance witnesses retain this
+limitation. Mixed numeric/bigint comparisons require exactly equal safe numeric witnesses.
 
 Both isolated SQLite observers import this same policy. Their source descriptors stay in the child;
 parent observations do not claim exclusive Windows source custody.
