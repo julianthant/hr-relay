@@ -34,6 +34,7 @@ async function fixture() {
     if (active.state !== "active") throw new Error("actual signup required"); return active;
   }
   async function logOut(active: Awaited<ReturnType<typeof signUp>>) {
+    await runtime.drainForLogout(active.token);
     const pending = runtime.session.logOut(active.token, { at: systemClock.now().toISOString() });
     if (pending.state !== "cancelling" || pending.operationId === undefined) throw new Error("actual logout required");
     await runtime.awaitClosurePreparation(active.profileId);
