@@ -62,7 +62,7 @@ describe('compact run headers', () => {
     const dryRunPreview = previewState === 'none' ? undefined : DryRunPreviewWireSchema.parse(previewState === 'available'
       ? { state: 'available', coverage: 'full', stages: [{ id: 'submit', label: 'Submit', state: 'exercised', detail: 'Submit was not clicked.', submitNotClicked: true }] }
       : previewState === 'unavailable' ? { state: 'unavailable', reason: 'preview-not-completed' } : { state: 'pending' });
-    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Retained run' } },
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Retained run' }, availableSections: ['logs'] },
       logs: { ...(dryRunPreview === undefined ? {} : { dryRunPreview }) }, unavailableEvidence: [] }, onUcpathDecision: vi.fn() });
     projectRunLogs.mockReturnValue({ steps: [{ id: 'parked-submit', time: '13:02:03', title: 'Write parked',
       entries: [{ kind: 'note', id: 'parked-note', time: '13:02:03', message: 'Uncertain' }] },
