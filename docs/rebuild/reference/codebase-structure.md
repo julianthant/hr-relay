@@ -115,7 +115,7 @@ Paths in this table are relative to `src/backend/`.
 | Path | Ownership |
 | --- | --- |
 | `src/cli.ts` | CLI entrypoint. |
-| `src/dashboard/app/` | Renderer composition, navigation, commands, and workflow data-source selection. |
+| `src/dashboard/app/` | Renderer composition, navigation, commands, and workflow data-source selection. `navigation/run-navigation.ts` validates exact served day/run destinations for notifications, search and linked Queue chips before opening Logs. |
 | `src/dashboard/client/` | Shared backend client, queries, commands, and subscriptions. |
 | `src/dashboard/ds/` and `src/dashboard/kit/` | Design system and shared UI components. |
 | `src/dashboard/state/` and `src/dashboard/lib/` | Renderer state and utilities. `state/queue-wiring-adapter.ts` owns the Queue producer and its typed handlers. `state/activity-wiring-adapter.ts` owns Analytics population projection, snapshot-bound browse/export and exact run-detail admission. `state/spreadsheet-wiring-adapter.ts` owns saved workbook reads, drafts and versioned Save. |

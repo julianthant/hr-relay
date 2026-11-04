@@ -20,6 +20,7 @@ it("owns Queue state/actions and keeps refused workflow jumps from navigating", 
     filter: ["all"] as const, selectedRunId: row.runId, openWells: new Set<string>(), selectMode: true, bulkIds: new Set<string>(),
     nowIso: row.updatedAt, selectRun: (id: string) => selected.push(id),
     setActiveWorkflowId: (id: string) => { scopes.push(id); return false; }, onWells: (next: ReadonlySet<string>) => wells.push(next),
+    openLinkedRun: () => undefined,
     onBulkIds: (next: ReadonlySet<string>) => bulk.push(next), setBatchGrouping: async () => undefined,
     exitQueueSelection: () => undefined, runQueueAction: () => undefined,
   };
@@ -28,6 +29,7 @@ it("owns Queue state/actions and keeps refused workflow jumps from navigating", 
   try {
     await act(async () => root.render(createElement(Probe)));
     assert.ok(wiring); assert.equal(wiring.viewState.selectedRunId, row.runId);
+    assert.equal(wiring.queueHandlers.onOpenLinked, input.openLinkedRun);
     assert.equal(wiring.actionsOf(row), row.actions);
     assert.ok(wiring.surfaces.every(surface => surface.workflowId === row.workflowId));
     wiring.queueHandlers.onToggleWell?.(row.runId); wiring.queueHandlers.onToggleBulk?.(row.runId);
@@ -49,6 +51,7 @@ function mountWiring(overrides: Partial<WiringInput> = {}) {
     filter: ["all"], selectedRunId: row.runId, openWells: new Set(), selectMode: false, bulkIds: new Set(),
     nowIso: row.updatedAt, selectRun: () => undefined,
     setActiveWorkflowId: () => true, onWells: () => undefined, onBulkIds: () => undefined,
+    openLinkedRun: link => { if (input.setActiveWorkflowId(link.workflowId)) input.selectRun(link.runId, link.partitionDay); },
     setBatchGrouping: async () => undefined, exitQueueSelection: () => undefined,
     runQueueAction: () => undefined,
     ...overrides,
