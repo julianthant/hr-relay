@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { authoritySourceDatabaseIdentity, type AuthorityBackupExpectedSource } from "./database-identity.js";
 import { privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
@@ -249,6 +250,7 @@ export class AuthorityBackupService {
   request(input: unknown): Promise<AuthorityBackupRunReport> {
     this.#admission.assertAuthorityBackupWrite(this.#directory);
     const request = AuthorityBackupRequestSchema.parse(input);
+    assertMaintenanceCustodyAvailable("backup");
     this.#requiredGeneration = Math.max(this.#requiredGeneration, request.requiredGeneration);
     this.#coalescedRequests += 1;
     if (this.#inFlight !== undefined) return this.#inFlight;

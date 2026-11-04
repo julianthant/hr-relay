@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { createHash,randomUUID } from "node:crypto";
 import { closeSync,constants,existsSync,fstatSync,lstatSync,openSync,readdirSync,readSync,realpathSync,type Stats } from "node:fs";
 import { tmpdir } from "node:os";
@@ -247,13 +248,15 @@ export class RuntimeAdmission {
     lease.assertFixedProcessLockRoot(context.workspace, processLockRoot);
     lease.assertOfflineMaintenance(restore);
     assertOfflineMaintenanceForProcessRoot(restore, processLockRoot);
+    if (purpose === "layout") assertMaintenanceCustodyAvailable("layout-migration");
     const root = join(this.#stateRoot, "profiles", id), artifacts = join(root, "artifacts");
     const path = join(root, "state.db");
     const binding = { installationId: this.locator.installationId, profileId: id };
     const observed = readProfileDatabaseBinding(path);
-    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== 11 && observed.schemaVersion !== 12 && observed.schemaVersion !== 13 && observed.schemaVersion !== 14 && observed.schemaVersion !== 15 && observed.schemaVersion !== 16 && observed.schemaVersion !== 17 && observed.schemaVersion !== 18 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION)) throw new Error("profile-stopped-upgrade-bound-required");
+    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== 11 && observed.schemaVersion !== 12 && observed.schemaVersion !== 13 && observed.schemaVersion !== 14 && observed.schemaVersion !== 15 && observed.schemaVersion !== 16 && observed.schemaVersion !== 17 && observed.schemaVersion !== 18 && observed.schemaVersion !== 19 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION)) throw new Error("profile-stopped-upgrade-bound-required");
     if (purpose === "layout" && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("fixed-layout-current-schema-required");
     assertCanonicalProfileBinding(path, binding);
+    if (observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) assertMaintenanceCustodyAvailable("schema-upgrade");
     const ancestry = new Map<string, DirectoryIdentity>();
     noSymlinkAncestry(root, ancestry);
     noSymlinkAncestry(artifacts, ancestry);
@@ -376,6 +379,7 @@ export class RuntimeAdmission {
   async completeStartupUpgradeLogout(): Promise<void> {
     const operation = this.stoppedUpgradeLogout(), upgrade = this.#readyUpgrade;
     if (operation?.settlement === undefined || upgrade?.purpose !== "startup") return;
+    assertMaintenanceCustodyAvailable("schema-upgrade");
     const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
     const conversion = await AuthorityDatabase.prepareStartupLogoutConversion(this, operation);
     if (conversion !== undefined) upgrade.capture.settleLogout(conversion);
@@ -384,7 +388,7 @@ export class RuntimeAdmission {
     if (this.#readyUpgrade !== undefined) {
       if (this.#readyUpgrade.purpose === "layout") throw new Error("fixed-layout-schema-mutation-refused");
       this.assertStoppedProfileUpgrade(path, this.#readyUpgrade.processLockRoot);
-      if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18].includes(this.#readyUpgrade.sourceSchemaVersion) || sourceVersion !== this.#readyUpgrade.sourceSchemaVersion) throw new Error("profile-stopped-upgrade-version-refused");
+      if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19].includes(this.#readyUpgrade.sourceSchemaVersion) || sourceVersion !== this.#readyUpgrade.sourceSchemaVersion) throw new Error("profile-stopped-upgrade-version-refused");
       const proof = this.#readyUpgrade.qualification.current;
       if (proof.kind !== "qualified" || sourceFingerprint !== undefined && sourceFingerprint !== proof.sourceFingerprint) {
         this.#readyUpgrade.qualification.current = { kind: "revoked" };
@@ -473,7 +477,7 @@ export class RuntimeAdmission {
       if (observed.state !== "unbound" || observed.schemaVersion !== 6) throw new Error("existing-data-owner-source-changed");
       return 6;
     }
-    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== 11 && observed.schemaVersion !== 12 && observed.schemaVersion !== 13 && observed.schemaVersion !== 14 && observed.schemaVersion !== 15 && observed.schemaVersion !== 16 && observed.schemaVersion !== 17 && observed.schemaVersion !== 18 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || observed.binding.installationId !== this.profileBinding.installationId
+    if (observed.state !== "bound" || (observed.schemaVersion !== 8 && observed.schemaVersion !== 9 && observed.schemaVersion !== 10 && observed.schemaVersion !== 11 && observed.schemaVersion !== 12 && observed.schemaVersion !== 13 && observed.schemaVersion !== 14 && observed.schemaVersion !== 15 && observed.schemaVersion !== 16 && observed.schemaVersion !== 17 && observed.schemaVersion !== 18 && observed.schemaVersion !== 19 && observed.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || observed.binding.installationId !== this.profileBinding.installationId
       || observed.binding.profileId !== this.profileBinding.profileId) throw new Error("profile-stopped-upgrade-binding-changed");
     return observed.schemaVersion;
   }
@@ -871,6 +875,7 @@ export class RuntimeAdmission {
   }
   admitStoppedProfileBackup(profileId: string, operation: OfflineMaintenanceOperation): RuntimeAdmission {
     this.assertExclusive(); this.assertOfflineMaintenance(operation);
+    assertMaintenanceCustodyAvailable("backup");
     const access = this.#captureProfileAccess(profileId);
     if (access.phase !== "runtime") throw new Error("profile-onboarding-incomplete");
     return this.#admitProfile(access, operation, false, "backup");
@@ -1220,6 +1225,7 @@ export class RuntimeAdmission {
 
   captureProfileRestore(operation: OfflineMaintenanceOperation): ProfileRestoreContext {
     this.assertStoppedProfile(operation);
+    assertMaintenanceCustodyAvailable("restore");
     if (this.#authority.captureRestoreContext === undefined) throw new Error("profile-restore-authority-required");
     const credentials = captureStoppedCanonicalCredentialHead(this, operation);
     this.assertStoppedProfile(operation);
@@ -1485,6 +1491,7 @@ export class RuntimeAdmission {
   async startCleanFlatStore(browserClosure: ProfileBrowserClosure): Promise<void> {
     const { lease, restore } = this.#stoppedMachineMaintenance();
     try {
+      assertMaintenanceCustodyAvailable("layout-migration");
       if (!lease.flatStoreMigrationPending()) {
         const { captureFlatArchiveSource } = await import("../maintenance/existing-data-backup-files.js");
         const { assertFlatStartCleanCredentials } = await import("../maintenance/flat-start-clean.js");
@@ -1510,6 +1517,7 @@ export class RuntimeAdmission {
   }
   async forStoppedFlatBackup(): Promise<RuntimeAdmission> {
     const { lease } = this.#stoppedMachineMaintenance();
+    assertMaintenanceCustodyAvailable("backup");
     if (lease.flatStoreMigrationPending()) throw new Error("flat-start-clean-pending");
     return this.#forStoppedFlatSource();
   }

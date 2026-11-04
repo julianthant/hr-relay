@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { lstatSync,readdirSync } from "node:fs";
 import { dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
 import { z } from "zod";
@@ -200,6 +201,7 @@ export function publishFixedLayoutIntent(operation: OfflineMaintenanceOperation,
   const intent = FixedLayoutIntentSchema.parse(input), workspace = offlineMaintenanceWorkspace(operation);
   if (workspace !== intent.sourceWorkspace && workspace !== intent.targetWorkspace) throw new Error("fixed-layout-operation-foreign");
   operation.assertHeld();
+  assertMaintenanceCustodyAvailable("layout-migration");
   createFixedLayoutDirectory(intent.targetWorkspace);
   const directory = join(intent.targetWorkspace, ".tracker"); createFixedLayoutDirectory(directory);
   const path = join(directory, "fixed-layout.json"), stage = join(directory, `.fixed-layout-${intent.operationId}-${intent.phase}.stage`);
@@ -337,6 +339,7 @@ function issueFixedLayoutProfile(machine: RuntimeAdmission, operation: OfflineMa
 
 export async function activateFixedLayoutProfiles(machine: RuntimeAdmission): Promise<void> {
   machine.assertExclusive();
+  assertMaintenanceCustodyAvailable("layout-migration");
   const context = machine.readInstallationContext(), operation = machine.maintenanceOperation();
   if (context === undefined) throw new Error("fixed-layout-installation-required");
   const intent = readFixedLayoutIntent(context.workspace), profiles = machine.readStartupProfileIds();
