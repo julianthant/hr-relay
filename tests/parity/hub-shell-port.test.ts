@@ -167,12 +167,15 @@ for (const theme of ["light", "dark"] as const) {
           settingsFingerprint: document.settingsFingerprint, restartRequired: false }) });
       });
       await page.goto(`${server.baseUrl}/?settings=general`);
-      const animations = page.getByRole("switch", { name: /^Animations / });
+      const animations = page.getByRole("switch", { name: "Animations", exact: true });
       await expect(animations).toBeEnabled();
-      await expect(page.getByText("Saved for Jordan Lee on this Mac.", { exact: true })).toBeVisible();
+      const appearance = page.getByRole("group", { name: "Appearance", exact: true });
+      await expect(appearance).not.toContainText("Jordan Lee");
+      await expect(appearance.getByRole("button", { name: /^Switch to (?:light|dark) theme$/u })).toBeVisible();
       await expect(animations).toBeChecked(); await page.locator('[data-settings-path="appearance.animations"] .ds-switch-control').click();
       await expect(page.locator("html")).toHaveAttribute("data-motion", "off");
-      await expect(page.getByText("Saved for Jordan Lee. Your reduced-motion preference takes priority.", { exact: true })).toBeVisible();
+      await expect(animations).not.toBeChecked();
+      await expect(appearance.locator(".ds-switch-copy .ds-text-meta,.ds-field-description")).toHaveCount(0);
       await expect(page.getByText("Settings write unconfirmed", { exact: true })).toHaveCount(0);
       const search = page.locator(".settings-nav-search input");
       const fill = await search.evaluate(element => getComputedStyle(element).backgroundColor);
