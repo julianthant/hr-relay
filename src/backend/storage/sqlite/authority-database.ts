@@ -62,7 +62,7 @@ import { type InstallationLease } from "../admission/installation.js";
 import { RuntimeLifetimeLock,offlineMaintenanceWorkspace,type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { inspectArtifactDeletionFile,pendingDiagnosticArtifacts,reclaimDiagnosticStages,removeArtifactDeletionFile } from "../artifacts/content-addressed-artifact-writer.js";
-import { numericFileIdentity,sameDirectory,type DirectoryIdentity, clearOperationProofSlots,outermostOperationProof,readPrivateFile,revalidateOperationProof,withOperationProof } from "../configuration/credential-safe-file.js";
+import { fileIdentityObservation,sameDirectory,type DirectoryIdentity, clearOperationProofSlots,outermostOperationProof,readPrivateFile,revalidateOperationProof,withOperationProof } from "../configuration/credential-safe-file.js";
 import { assertCredentialStoreOwner,stoppedProfileOwnsCredentialCommand } from "../configuration/credential-store.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
@@ -2984,7 +2984,7 @@ export class AuthorityDatabase implements Disposable {
         poolIndex: slot.poolIndex, membershipRevision: slot.membershipRevision }), processId: lease.processId, leaseGeneration: lease.leaseGeneration });
     }));
     this.#admission.assertProfileRuntime();
-    return Object.freeze({ database: numericFileIdentity(this.#openedFileIdentity) });
+    return Object.freeze({ database: fileIdentityObservation(this.#openedFileIdentity, { preserveSafeNumbers: true }) });
   }
 
   #failNativeClosure(errors: readonly unknown[]): never {

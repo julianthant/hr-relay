@@ -109,7 +109,7 @@ export function createProfileSession(input: {
   readonly activity?: ProfileActivity;
   readonly credentialHooks?: CredentialStoreHooks;
   readonly credentialsFor?: (admission: RuntimeAdmission, purpose: "ordinary" | "settlement") => CredentialStore;
-  readonly prepareLogout?: (profileId: string, admission: RuntimeAdmission) => Readonly<{ source: Readonly<{ database: Readonly<{ device: number; inode: number }> }>; intentFailed(error: unknown): never }>;
+  readonly prepareLogout?: (profileId: string, admission: RuntimeAdmission) => Readonly<{ source: LogoutOperation["source"]; intentFailed(error: unknown): never }>;
   readonly prepareLogoutContinuation?: (operation: LogoutOperation) => void;
   readonly completedLogout?: (operationId: string) => Readonly<{ profileId: string; epoch: number }> | undefined;
   readonly closeStorage?: (profileId: string, admission: RuntimeAdmission) => void;

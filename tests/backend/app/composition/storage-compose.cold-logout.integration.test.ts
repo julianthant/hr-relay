@@ -137,7 +137,7 @@ for (const dimension of ["sessionGeneration", "source", "operationId"] as const)
     stopped.machine.assertColdPendingLogout(f.operation);
     const changed = LogoutOperationSchema.parse({ ...f.operation,
       ...(dimension === "sessionGeneration" ? { sessionGeneration: f.operation.sessionGeneration + 1 }
-        : dimension === "source" ? { source: { database: { ...f.operation.source.database, inode: f.operation.source.database.inode + 1 } } }
+        : dimension === "source" ? { source: { database: { ...f.operation.source.database, inode: (BigInt(f.operation.source.database.inode) + 1n).toString() } } }
           : { operationId: randomUUID() }) });
     const before = readFileSync(f.f.path), operation = readFileSync(f.operationPath);
     assert.throws(() => stopped.machine.assertColdPendingLogout(changed), /profile-logout-cold-source-unobserved/u);

@@ -1,4 +1,5 @@
 import { CanonicalCrashRecoveryRequestSchema } from "../run/worker.js";
+import { FileIdentitySchema } from "../storage/file-identity.js";
 import { WorkerPoolMemberSchema } from "../run/worker-slot.js";
 import { z } from "zod";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
@@ -173,7 +174,7 @@ export const LogoutOperationSchema = z.strictObject({
   operationId: z.uuid(),
   profileId: z.uuid(),
   sessionGeneration: z.number().int().safe().nonnegative(),
-  source: z.strictObject({ database: z.strictObject({ device: z.number().int().nonnegative(), inode: z.number().int().nonnegative() }) }),
+  source: z.strictObject({ database: FileIdentitySchema }),
   settlement: LogoutSettlementSchema.optional(),
   at: IsoInstantSchema,
   phase: z.enum(["admitted", "cancelling", "incomplete", "complete"]),
