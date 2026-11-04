@@ -6,6 +6,44 @@ import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-li
 import { acquireInstallation } from "../../../../src/backend/storage/admission/installation.js";
 import * as privateFiles from "../../../../src/backend/storage/configuration/credential-safe-file.js";
 import * as canonicalJson from "../../../../src/rules/validation/canonical-json.js";
+import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
+import fs from "node:fs";
+import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture } from "../../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
+
+for (const target of ["control", "credentials", "database"] as const) it.skipIf(process.platform !== "linux")(`converts installation ${target} with exact high-ID source witnesses`, async () => {
+  const f = await createHistoricalIncompleteProfileFixture();
+  if (target === "credentials") {
+    const control = JSON.parse(fs.readFileSync(f.controlPath, "utf8")) as { erasures: { credentialKey: { file: { inode: number | string } } }[] };
+    const key = control.erasures[0]?.credentialKey; assert.ok(key);
+    key.file.inode = ((1n << 54n) + (fs.lstatSync(f.keyPath, { bigint: true }).ino << 2n)).toString();
+    fs.writeFileSync(f.controlPath, JSON.stringify(control), { mode: 0o600 });
+  }
+  const restore = forceExactFileMetadata(path => target === "database" ? path.startsWith(f.databasePath) : target === "control" ? path === f.registryPath || path.endsWith(".registry.stage") || path === f.verifierPath || path.endsWith("/profile-pepper")
+    : path === f.keyPath || path === f.protectedPath || path.endsWith("/chatgpt-account.json"));
+  try {
+    await convertHistoricalIncompleteProfileFixture(f);
+    const marker = JSON.parse(fs.readFileSync(f.markerPath, "utf8")) as { schemaVersion: number };
+    assert.equal(marker.schemaVersion, 8);
+    const directory = `${f.workspace}/.tracker/control/profile-control-upgrades`, name = fs.readdirSync(directory).find(name => name.endsWith(".receipt.json")); assert.ok(name);
+    const receipt = JSON.parse(fs.readFileSync(`${directory}/${name}`, "utf8")) as { priorRegistry: { inode: number | string }; sourceEvidence: string; credentials: { plan: { operation: { priorHead: { inode: number | string } } } }[] };
+    const source = JSON.parse(receipt.sourceEvidence) as { profiles: { database: { inode: number | string } }[] };
+    const inode = target === "control" ? receipt.priorRegistry.inode : target === "credentials" ? receipt.credentials[0]?.plan.operation.priorHead.inode : source.profiles[0]?.database.inode;
+    assert.equal(typeof inode, "string"); assert.ok(inode !== undefined && BigInt(inode) > 2n ** 53n);
+    assert.ok(restore.observations.some(observation => observation.source === "descriptor" && observation.inode > 2n ** 53n));
+  } finally { restore(); await f.close(); }
+});
+
+it.skipIf(process.platform !== "linux")("captures stopped installation credential files with exact high-ID witnesses", async () => {
+  const lifetime = await runtimeLifetimeLock(), f = await createBoundProfileFixture({ lifetime });
+  const profileId = f.admission.profileBinding.profileId;
+  await f.closeController();
+  const lease = acquireInstallation(f.workspace, "exclusive", lifetime);
+  const restore = forceExactFileMetadata(path => path.includes("/credential-keys/") || path.includes("/credentials/") || path.endsWith("/profile-pepper"));
+  try {
+    const witness = lease.captureStoppedProfileUpgrade(profileId, "manual"); witness.assertHeld();
+    assert.ok(restore.observations.some(observation => observation.source === "descriptor" && observation.inode > 2n ** 53n));
+  } finally { restore(); lease.release(); await f.close(); }
+});
 
 it("captures genuine stopped-profile authority with exact bigint reader identities and unchanged POSIX fingerprints", async () => {
   const lifetime = await runtimeLifetimeLock(), f = await createBoundProfileFixture({ lifetime });
