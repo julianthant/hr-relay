@@ -3,11 +3,12 @@ import { createHmac, randomBytes } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createConnection, createServer } from "node:net";
+import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { it, vi } from "vitest";
-import { startRelay, stopRelay } from "../../../scripts/dev/relay.js";
+import { runRelayCommand, startRelay, stopRelay } from "../../../scripts/dev/relay.js";
 import { testProcessImport } from "../../support/compiled-process.js";
 import { createPrivateDirectory, writePrivateStage } from "../../../src/backend/storage/private-path.js";
 import { observeProcessIdentity } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
@@ -17,12 +18,27 @@ async function fixture(mode = "clean") {
   const directory = join(root, "launcher");
   const signals = new EventEmitter();
   const output: string[] = [];
+  const errors: string[] = [];
+  if (mode === "stale") {
+    createPrivateDirectory(directory, { mode: 0o700 });
+    const old = spawn(process.execPath, ["-e", "process.stdin.resume()"], { stdio: ["pipe", "ignore", "ignore"] });
+    assert.ok(old.pid);
+    const identity = observeProcessIdentity(old.pid); assert.ok(identity.state === "alive");
+    old.stdin.end(); await new Promise<void>(resolve => { old.once("close", () => { resolve(); }); });
+    writePrivateStage(join(directory, "broker.json"), Buffer.from(JSON.stringify({ port: 1, token: randomBytes(32).toString("hex"), pid: old.pid, identity: identity.identity })));
+    writeFileSync(join(directory, "keep"), "unrelated");
+  }
+  if (mode === "partial-stage") {
+    createPrivateDirectory(directory, { mode: 0o700 });
+    writePrivateStage(join(directory, "broker.interrupted.stage"), Buffer.from("{"));
+  }
   const running = startRelay({ directory, signals, prepare: async () => undefined,
-    backendArguments: ["--import", testProcessImport(), fileURLToPath(new URL("../../support/processes/relay-backend.ts", import.meta.url)), root, mode],
-    openWindow: async () => { output.push("opened"); }, write: message => { output.push(message); },
+    backendArguments: ["--import", testProcessImport(), fileURLToPath(new URL("../../support/processes/relay-drain-child.ts", import.meta.url)), root, mode],
+    openWindow: async () => { output.push("opened"); if (mode === "window-failure") throw new Error("relay-microsoft-edge-not-found"); },
+    write: message => { output.push(message); }, writeError: message => { errors.push(message); },
   });
   await vi.waitFor(() => { assert.ok(mode === "disconnected" ? existsSync(join(root, "draining")) : output.includes("opened")); });
-  return { root, directory, signals, output, running,
+  return { root, directory, signals, output, errors, running,
     release: () => { writeFileSync(join(root, "release"), "release"); },
     async close() {
       signals.emit("SIGTERM"); writeFileSync(join(root, "release"), "release");
@@ -40,10 +56,11 @@ it("authenticates a separate stop command, waits through a write, and absorbs re
     await new Promise<void>((resolve, reject) => {
       const socket = createConnection({ host: "127.0.0.1", port });
       socket.once("error", reject); socket.once("close", () => { resolve(); });
-      socket.once("connect", () => { socket.write(`${JSON.stringify({ action: "stop", token: "0".repeat(64) })}\n`); });
+      socket.once("connect", () => { socket.write(`${JSON.stringify({ action: "stop", nonce: randomBytes(32).toString("hex"), proof: "0".repeat(64) })}\n`); });
     });
     assert.equal(existsSync(join(run.root, "draining")), false);
-    await assert.rejects(startRelay({ directory: run.directory, prepare: async () => { throw new Error("must not start"); } }), /already-running/u);
+    assert.equal(await startRelay({ directory: run.directory, prepare: async () => { throw new Error("must not start"); } }), 0);
+    assert.equal(run.output.filter(value => value === "opened").length, 2);
     let settled = false;
     const stopping = stopRelay(run.directory).then(result => { settled = true; return result; });
     await vi.waitFor(() => { assert.ok(existsSync(join(run.root, "draining"))); });
@@ -65,7 +82,7 @@ it("authenticates a separate stop command, waits through a write, and absorbs re
 it.each(["failed", "silent"])("refuses success when backend stop is %s", async mode => {
   const run = await fixture(mode);
   try {
-    const stopping = assert.rejects(stopRelay(run.directory), /closure-unproved/u);
+    const stopping = assert.rejects(stopRelay(run.directory), /did not prove a clean backend stop/u);
     await vi.waitFor(() => { assert.ok(existsSync(join(run.root, "draining"))); });
     run.release();
     await stopping;
@@ -140,7 +157,7 @@ it.each(["proof", "nonce"])("rejects a forged stop receipt with the wrong %s", a
       const nonce = mismatch === "nonce" ? randomBytes(32).toString("hex") : request.nonce;
       const result = { type: "relay-dashboard-stopped", state: "clean" };
       const proof = mismatch === "proof" ? "0".repeat(64)
-        : createHmac("sha256", Buffer.from(token, "hex")).update(JSON.stringify(["relay-stopped", nonce, result])).digest("hex");
+        : createHmac("sha256", Buffer.from(token, "hex")).update(JSON.stringify(["relay-result", "stop", nonce, result])).digest("hex");
       socket.end(`${JSON.stringify({ nonce, proof, result })}\n`);
     });
   });
@@ -154,5 +171,69 @@ it.each(["proof", "nonce"])("rejects a forged stop receipt with the wrong %s", a
   } finally {
     await new Promise<void>((resolve, reject) => { server.close(error => { if (error) reject(error); else resolve(); }); });
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it.each(["stale", "partial-stage"])("starts past an owned %s publication without touching other files", async mode => {
+  const run = await fixture(mode);
+  try {
+    if (mode === "stale") assert.equal(readFileSync(join(run.directory, "keep"), "utf8"), "unrelated");
+    else assert.equal(readFileSync(join(run.directory, "broker.interrupted.stage"), "utf8"), "{");
+    const stopping = stopRelay(run.directory);
+    await vi.waitFor(() => { assert.ok(existsSync(join(run.root, "draining"))); });
+    run.release(); await stopping;
+    assert.equal(await run.running, 0);
+  } finally { await run.close(); }
+});
+
+it("explains a window failure while retaining proof of a clean backend stop", async () => {
+  const run = await fixture("window-failure");
+  try {
+    await vi.waitFor(() => { assert.ok(existsSync(join(run.root, "draining"))); });
+    run.release();
+    assert.equal(await run.running, 1);
+    assert.ok(run.errors.some(reason => reason.includes("Microsoft Edge was not found")));
+    assert.ok(run.output.includes("Relay backend stopped cleanly; the app window could not open."));
+    assert.equal(run.errors.some(reason => reason.includes("did not complete a verified clean stop")), false);
+  } finally { await run.close(); }
+});
+
+it("formats a top-level command failure as one public line without a stack or secret", async () => {
+  const errors: string[] = [];
+  assert.equal(await runRelayCommand(["invalid-command-with-private-value"], { writeError: reason => { errors.push(reason); } }), 1);
+  assert.deepEqual(errors, ["Usage: relay.cmd [start|stop]"]);
+});
+
+it("names an invalid control file without discarding an unproved owner", async () => {
+  const root = mkdtempSync(join(tmpdir(), "relay-invalid-control-")), directory = join(root, "launcher");
+  createPrivateDirectory(directory, { mode: 0o700 });
+  writePrivateStage(join(directory, "broker.json"), Buffer.from("{"));
+  const errors: string[] = [];
+  try {
+    assert.equal(await runRelayCommand([], { directory, writeError: reason => { errors.push(reason); } }), 1);
+    assert.deepEqual(errors, ["The private launcher control file is invalid. Preserve the folder and report this error."]);
+    assert.equal(readFileSync(join(directory, "broker.json"), "utf8"), "{");
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("publishes one complete owner when two launchers race, without overwriting the winner", async () => {
+  const root = mkdtempSync(join(tmpdir(), "relay-publication-race-"));
+  const directory = join(root, "launcher"), signals = new EventEmitter();
+  let winner: Buffer | undefined;
+  let prepare: (() => void) | undefined;
+  const prepared = new Promise<void>(resolve => { prepare = resolve; });
+  const argumentsForChild = ["--import", testProcessImport(), fileURLToPath(new URL("../../support/processes/relay-drain-child.ts", import.meta.url)), root, "clean"];
+  const first = startRelay({ directory, signals, backendArguments: argumentsForChild, openWindow: async () => undefined,
+    prepare: () => { winner = readFileSync(join(directory, "broker.json")); return prepared; }, write: () => undefined,
+  });
+  const second = startRelay({ directory, signals: new EventEmitter(), backendArguments: argumentsForChild,
+    prepare: async () => { throw new Error("losing publisher must not start a backend"); }, openWindow: async () => undefined, write: () => undefined,
+  });
+  try {
+    await assert.rejects(second, error => error instanceof Error && (error.message === "relay-launcher-publication-failed" || "code" in error && error.code === "EEXIST"));
+    assert.ok(winner); assert.equal(readFileSync(join(directory, "broker.json")).equals(winner), true);
+  } finally {
+    prepare?.(); signals.emit("SIGTERM"); writeFileSync(join(root, "release"), "release");
+    assert.equal(await first, 0); rmSync(root, { recursive: true, force: true });
   }
 });

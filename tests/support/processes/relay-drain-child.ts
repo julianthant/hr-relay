@@ -10,6 +10,7 @@ const directory = process.argv[2];
 if (directory === undefined) throw new Error("fixture-directory-required");
 const release = join(directory, "release");
 const mode = process.argv[3];
+writeFileSync(join(directory, "child.json"), JSON.stringify({ pid: process.pid }));
 if (mode === "disconnected") {
   if (process.disconnect === undefined) throw new Error("fixture-disconnect-required");
   process.disconnect();

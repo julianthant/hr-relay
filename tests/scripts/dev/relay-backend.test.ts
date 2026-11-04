@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { runRelayBackend } from "../../../scripts/dev/relay-backend.js";
+import { relayFailureReason, runRelayBackend } from "../../../scripts/dev/relay-backend.js";
 import { StorageMaintenanceCustodyUnavailableError } from "../../../src/backend/storage/maintenance/custody-availability.js";
 
 it("reports a stop only after the entire bootstrap has settled", async () => {
@@ -12,6 +12,13 @@ it("reports a stop only after the entire bootstrap has settled", async () => {
   assert.equal(settled, false);
   finish?.();
   assert.deepEqual(await pending, { type: "relay-dashboard-stopped", state: "clean" });
+});
+
+it("reports public failure reasons without exposing arbitrary error text", () => {
+  assert.match(relayFailureReason(new Error("relay-microsoft-edge-not-found")), /Microsoft Edge was not found/u);
+  assert.match(relayFailureReason(new Error("dashboard bundle refused: private-input; run command")), /Run npm run web:build/u);
+  assert.match(relayFailureReason(Object.assign(new Error("private-port-context"), { code: "EADDRINUSE" })), /port is already in use/u);
+  assert.equal(relayFailureReason(new Error("private-password-value")).includes("private-password-value"), false);
 });
 
 it("classifies only the bare backup custody refusal as an expected stop", async () => {

@@ -173,6 +173,19 @@ describe("runtime environment inventory coverage", () => {
     }
   });
 
+  it("limits host-program roots to their exact names and canonical accessor", () => {
+    for (const key of ["ProgramFiles", "ProgramFiles(x86)"]) {
+      const spec = RUNTIME_ENVIRONMENT_EXACT.find(candidate => candidate.key === key);
+      assert.ok(spec?.disposition === "active");
+      assert.equal(spec.channel, "host-programs"); assert.equal(spec.owner, "src/models/config/secrets.ts");
+      assert.deepEqual(EXACT_ENVIRONMENT_READER_OWNERS.find(reader => reader.key === key)?.paths, ["src/models/config/secrets.ts"]);
+      for (const change of [{ key: "RELAY_OTHER_PROGRAM_ROOT" }, { owner: "src/backend/app/config/runtime-isolation.ts" }, { classification: "secret" }]) {
+        const altered = { ...RUNTIME_ENVIRONMENT_REGISTRY, exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.map(row => row.key === key ? { ...row, ...change } : row) };
+        assert.ok(auditRuntimeEnvironmentInventory(altered).length > 0);
+      }
+    }
+  });
+
   it("recognizes aliases, imports, destructuring, computed keys, bulk reads, writes, and deletes", () => {
     const source = [
       'import proc, { env as importedEnv } from "node:process";',
