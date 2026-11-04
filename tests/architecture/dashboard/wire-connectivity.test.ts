@@ -72,7 +72,7 @@ async function scannedAndSavedReferences() {
 }
 
 function servedDashboardRoutes() {
-  return servedRoutes(`${dashboardRouteSource()}\n${readFileSync(join(REPO_ROOT, "src/backend/app/composition/dashboard/compose.ts"), "utf8")}`);
+  return servedRoutes(`${dashboardRouteSource()}\n${readFileSync(join(REPO_ROOT, "src/backend/app/composition/dashboard/profile-session-routes.ts"), "utf8")}`);
 }
 
 function bindingsFor(prefix: string): readonly PendingWireBinding[] {
