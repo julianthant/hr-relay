@@ -112,6 +112,18 @@ it("closes the broker and removes only its capability if preparation fails", asy
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
+it("refuses a stop receipt from a backend that never reached readiness", async () => {
+  const root = mkdtempSync(join(tmpdir(), "relay-early-stop-"));
+  const directory = join(root, "launcher");
+  try {
+    assert.equal(await startRelay({ directory, signals: new EventEmitter(), prepare: async () => undefined,
+      backendArguments: ["-e", "process.send({type:'relay-dashboard-stopped',state:'clean'},()=>process.disconnect());"],
+      openWindow: async () => { throw new Error("unready backend must not open a window"); }, write: () => undefined,
+    }), 1);
+    assert.equal(existsSync(join(directory, "broker.json")), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
 it.each(["proof", "nonce"])("rejects a forged stop receipt with the wrong %s", async mismatch => {
   const root = mkdtempSync(join(tmpdir(), "relay-forged-receipt-"));
   const directory = join(root, "launcher");

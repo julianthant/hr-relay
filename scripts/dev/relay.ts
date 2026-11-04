@@ -172,6 +172,7 @@ export async function startRelay(options: RelayLauncherOptions = {}): Promise<nu
       backend.on("message", (message: unknown) => {
         const stopped = DashboardStoppedSchema.safeParse(message);
         if (stopped.success) {
+          if (phase === "starting" || phase === "stop-pending") failures.push(new Error("relay-backend-stopped-before-readiness"));
           if (report !== undefined) failures.push(new Error("relay-backend-duplicate-stop-report"));
           report = stopped.data; return;
         }
