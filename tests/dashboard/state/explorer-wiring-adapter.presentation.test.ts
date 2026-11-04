@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { buildWorkflowExplorer } from "../../../src/backend/runs/queries/explorer.js";
 import { projectExplorerDefinition } from "../../../src/dashboard/state/explorer-wiring-adapter.js";
-import { allFields, type FlowPart } from "../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
+import { allFields } from "../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
+import type { FlowPart } from "../../../src/models/workflow/explorer-preview.js";
 import { FingerprintSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
@@ -10,6 +11,7 @@ import { explorerQueryDeps } from "../../support/fixtures/explorer-seams.js";
 function workflowWire() {
   const wire = buildWorkflowExplorer(explorerQueryDeps(manualClock(new Date("2026-08-03T17:00:00.000Z")), FingerprintSchema.parse("d".repeat(64))));
   const workflow = wire.workflows.find(workflow => workflow.id === "person-lookup"); assert.ok(workflow);
+  delete workflow.walkthrough;
   return workflow;
 }
 function projected() {
@@ -21,7 +23,7 @@ function projected() {
 function textOf(parts: readonly FlowPart[]): string[] {
   return parts.flatMap(part => part.kind === "form" || part.kind === "detail" ? [part.title, ...textOf(part.parts)] : part.kind === "note" || part.kind === "action" ? [part.text] : []);
 }
-describe("served Person Lookup Explorer operator presentation", () => {
+describe("Explorer operator-field presentation fallback", () => {
   it("generates the four walkthrough steps in declaration order without exposing internal task steps", () => {
     assert.deepEqual(projected().steps.map(step => [step.title, step.system]), [
       ["Search for person", "UCPath"], ["Cross-check identity", "CRM"],
