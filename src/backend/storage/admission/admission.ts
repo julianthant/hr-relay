@@ -83,7 +83,7 @@ function assertSyntheticDirectory(path: string): void {
   if (temp === undefined) throw new Error("runtime-admission: fixture must be beneath system temp");
   let ancestor = path;
   while (ancestor !== temp) {
-    const info = lstatSync(ancestor, { throwIfNoEntry: false });
+    const info = process.platform === "win32" ? lstatSync(ancestor, { bigint: true, throwIfNoEntry: false }) : lstatSync(ancestor, { throwIfNoEntry: false });
     if (info !== undefined && (!info.isDirectory() || info.isSymbolicLink()
       || privatePathRejects(ancestor, info, "group-write"))) {
       throw new Error("runtime-admission: unsafe synthetic fixture ancestor");
@@ -102,10 +102,10 @@ function assertActiveRootSafe(path: string): void {
   for (const part of relative(component, path).split(/[\\/]/u)) {
     if (part === "") continue;
     component = join(component, part);
-    const info = lstatSync(component);
+    const info = process.platform === "win32" ? lstatSync(component, { bigint: true }) : lstatSync(component);
     if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("runtime-admission: storage root path changed shape");
   }
-  const root = lstatSync(path);
+  const root = process.platform === "win32" ? lstatSync(path, { bigint: true }) : lstatSync(path);
   if (privatePathRejects(path, root, "group-write")) {
     throw new Error("runtime-admission: storage root ownership changed");
   }
@@ -1726,8 +1726,8 @@ export class RuntimeAdmission {
   static syntheticFixture(databasePath: string): RuntimeAdmission {
     if (databasePath !== ":memory:") {
       assertSyntheticDirectory(dirname(databasePath));
-      const file = lstatSync(databasePath, { throwIfNoEntry: false });
-      if (file !== undefined && (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1
+      const file = process.platform === "win32" ? lstatSync(databasePath, { bigint: true, throwIfNoEntry: false }) : lstatSync(databasePath, { throwIfNoEntry: false });
+      if (file !== undefined && (!file.isFile() || file.isSymbolicLink() || (file.nlink !== 1 && file.nlink !== 1n)
         || privatePathRejects(databasePath, file, "group-write"))) {
         throw new Error("runtime-admission: unsafe synthetic fixture database");
       }
