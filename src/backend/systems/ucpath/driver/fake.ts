@@ -19,19 +19,20 @@ import type { UcpathPersonOrgScreens } from "../../../../models/ui/ucpath-person
 import type { UcpathStoreDriver } from "../../../../models/ui/ucpath-driver.js";
 import { refuseUnimplementedSmartHrHalf } from "./smart-hr-fake.js";
 import { deterministicContactOperations } from "./contact-fake.js";
-import type { UcpathContactPagePort } from "./contact-operation.js";
+import type { UcpathContactPagePort, UcpathContactSavePort } from "./contact-operation.js";
 import { UCPATH_CONTACT_DISPLAYED_NAME } from "../../../../models/ui/ucpath-emergency-contact.js";
 
 export function createDeterministicUcpathPersonOrgDriver(
   result?: SearchPersonOrgOutput,
   jobSummary?: UcpathJobSummaryRead,
   contactPage?: UcpathContactPagePort,
+  contactSave?: UcpathContactSavePort,
 ): UcpathStoreDriver {
   let screen: UcpathPersonOrgScreens = UCPATH_PERSON_ORG_SEARCH_SCREEN;
   let eid: ReturnType<typeof EidSchema.parse> | undefined;
   return {
     ...refuseHireOperations(),
-    ...deterministicContactOperations(contactPage),
+    ...deterministicContactOperations(contactPage, contactSave),
     ...refuseUnimplementedSmartHrHalf("the Person Org fixture"),
     system: "ucpath",
     async searchPersonMatch() { throw new Error("Person Org fixture requires explicit Match results"); },

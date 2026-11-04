@@ -1,26 +1,16 @@
 import { EidSchema } from "../../../../rules/identity/ids.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../models/ui/ucpath-emergency-contact.js";
 import type { UcpathContactPageSnapshot } from "../../../../models/ui/ucpath-emergency-contact.js";
-import type { UcpathContactPagePort } from "./contact-operation.js";
-import { readContactSetWithPort, stageContactPlanWithPort, interpretContactPage } from "./contact-operation.js";
+import type { UcpathContactPagePort, UcpathContactSavePort } from "./contact-operation.js";
+import { createContactOperations, interpretContactPage } from "./contact-operation.js";
 import { UcpathContactRefusedError } from "../../../../models/systems/ucpath/emergency-contacts.js";
 import type { UcpathEmergencyContactDriver } from "../../../../models/ui/ucpath-emergency-contact.js";
 
-export function deterministicContactOperations(port?: UcpathContactPagePort): UcpathEmergencyContactDriver {
-  function requirePort(): UcpathContactPagePort {
+export function deterministicContactOperations(port?: UcpathContactPagePort, save?: UcpathContactSavePort): UcpathEmergencyContactDriver {
+  return createContactOperations(async () => {
     if (port === undefined) throw new Error("UCPath fixture requires explicit contact page observations");
     return port;
-  }
-  return {
-    async readEmergencyContacts(subject) {
-      const set = await readContactSetWithPort(requirePort(), subject);
-      if (set.observation !== "persisted") throw new UcpathContactRefusedError("contact-plan-refused");
-      return set;
-    },
-    async stageEmergencyContact(input, plan) {
-      return stageContactPlanWithPort(requirePort(), input, plan);
-    },
-  };
+  }, save);
 }
 
 export function createDeterministicUcpathContactPage(options: Readonly<{
@@ -83,6 +73,43 @@ export function createDeterministicUcpathContactPage(options: Readonly<{
       if (row.name.trim() !== "") throw new Error("contact fixture refuses to replace a populated name");
       page = { ...page, observation: "staged", rows: page.rows.map(row => row.rowIndex === rowIndex ? { ...row, name } : row) };
       if (options.afterName !== undefined) page = UcpathContactPageSnapshotSchema.parse(options.afterName);
+    },
+  };
+}
+
+
+/** Persistence belongs to the external fixture, independently of browser sessions. */
+export function createDeterministicContactPersistence(initial: UcpathContactPageSnapshot, now: () => string) {
+  let persisted = UcpathContactPageSnapshotSchema.parse(initial);
+  const submissions: UcpathContactPageSnapshot[] = [];
+  return {
+    submissions,
+    snapshot: () => UcpathContactPageSnapshotSchema.parse(persisted),
+    replacePersisted: (snapshot: UcpathContactPageSnapshot) => { persisted = UcpathContactPageSnapshotSchema.parse(snapshot); },
+    session() {
+      let editor = createDeterministicUcpathContactPage({ initial: persisted });
+      const port: UcpathContactPagePort = {
+        async snapshot() {
+          if ((await editor.snapshot()).observation === "persisted") {
+            editor = createDeterministicUcpathContactPage({ initial: { ...persisted, observedAt: now() } });
+          }
+          return editor.snapshot();
+        }, viewAll: () => editor.viewAll(), addBlankRow: () => editor.addBlankRow(),
+        fillFields: (index, effect) => editor.fillFields(index, effect), fillName: (index, name) => editor.fillName(index, name),
+        demotePrimary: (index, effect) => editor.demotePrimary(index, effect),
+      };
+      const save: UcpathContactSavePort = {
+        async save() {
+          const staged = await editor.snapshot();
+          submissions.push(staged);
+          persisted = UcpathContactPageSnapshotSchema.parse({ ...staged, observation: "persisted", observedAt: now() });
+        },
+        async readPersisted() {
+          editor = createDeterministicUcpathContactPage({ initial: { ...persisted, observedAt: now() } });
+          return interpretContactPage(await editor.snapshot(), { emplId: EidSchema.parse(persisted.displayedEid), expectedName: persisted.displayedName });
+        },
+      };
+      return { port, save };
     },
   };
 }

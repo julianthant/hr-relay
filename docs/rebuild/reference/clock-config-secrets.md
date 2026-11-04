@@ -378,6 +378,12 @@ migrated names without reading their values. It reports retired canary names wit
 excluded. Development worker launches add `RELAY_DEV_DEBUG_MIRROR=1` explicitly after filtering;
 production worker launches omit it even when the parent has it. Workers read operational credentials from the store themselves.
 The `secrets-single-source` architecture guard owns registered credential and environment access.
+`windowsLocalApplicationData()` in `secrets.ts` alone reads `LOCALAPPDATA`, registered as a
+direct-identifier `host-storage` authority. It is read only by Windows host selection and is excluded
+from worker bootstrap keys; workers receive the admitted workspace over genuine IPC. Config paths
+supplied with an admitted state/artifact pair are derived from that pair without resolving host
+workspace authority again; source asset paths remain repository-owned.
+
 `src/models/runtime/runtime-environment.ts` pins the exact `SystemRoot` read to `windowsSystemRoot` in
 `src/models/config/secrets.ts` under the non-secret `process-mechanics` channel. That channel accepts
 only this key and canonical owner; exact reader ownership names the same path. The native path
@@ -394,8 +400,13 @@ Application settings, credentials, and environment files are not test-input fall
 
 ## Installation roots, boot, and maintenance
 
-`applicationDataWorkspace()` uses the OS user's home directory and fixes the macOS workspace at
-`~/Library/Application Support/Relay`, independently of cwd and `HOME`. Source and bundled entrypoints
+`applicationDataWorkspace()` selects `%LOCALAPPDATA%\Relay` on Windows and the OS user's
+`~/Library/Application Support/Relay` on macOS and other POSIX hosts, independently of cwd and `HOME`.
+Its discriminated host facts admit only the authority for that platform. Windows requires a canonical
+drive-letter path: missing values, relative/UNC/device paths and Win32 normalization aliases refuse with
+`APPLICATION_DATA_WORKSPACE_REFUSED` before application state I/O. There is no home fallback, old-state
+migration, copy or deletion. Native SID/DACL, NTFS identity and reparse checks still govern actual
+Windows storage admission. Source and bundled entrypoints
 use that workspace; repository paths select code and assets. Explicit private test workspaces remain
 separate from operator data. `rebuildRuntimeIsolation` defines the inner `.tracker/data` state root,
 its `artifacts`, `browsers`, and `locks` directories, backend port `3938`, lifetime lock port `3939`,

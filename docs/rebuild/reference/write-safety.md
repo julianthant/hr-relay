@@ -88,7 +88,7 @@ Natural keys remain private authority data. Public projections use digest refere
 | `ucpath/create-termination` | `ucpath:termination\|<emplId>\|<effectiveDate>` | `ucpath/match-existing-termination` | `ucpath/verify-termination` | `operator-only` |
 | `ucpath/delete-pending-terminations` | `ucpath:pending-terminations-clear:v2\|<emplId>\|<set-digest>` | `ucpath/match-pending-terminations` | `ucpath/verify-pending-terminations-cleared` | `operator-only` |
 | `kuali/save-separation-finalization` | `kuali:<documentNumber>\|finalization\|<transactionNumber>` | `kuali/match-separation-finalization` | `kuali/verify-separation-finalization` | `stabilized`: 30,000 ms after fence, two reads at least 5,000 ms apart, same source state |
-| `ucpath/save-emergency-contact` (preview only) | `ucpath:emergency-contact\|<employee-and-effect-sha256>` | `ucpath/match-emergency-contact-plan` | `ucpath/verify-emergency-contact-plan` | `operator-only` |
+| `ucpath/save-emergency-contact` (live bindings pending) | `ucpath:emergency-contact\|<employee-and-effect-sha256>` | `ucpath/match-emergency-contact-plan` | `ucpath/verify-emergency-contact-plan` | `operator-only` |
 | `i9/create-profile` | `i9:profile\|<email-lower>\|<first-name-lower>\|<last-name-lower>\|<dob>` | `i9/match-profile` | `i9/verify-profile` | `operator-only` |
 | `i9/create-remote-record` | `i9:remote\|<profile-id>\|<start-date>` | `i9/match-remote-record` | `i9/verify-remote-record` | `operator-only` |
 
@@ -98,9 +98,16 @@ Emergency Contact declares the full ordered demotion/addition plan under the OCR
 probe checks the complete persisted protected set, and its key validates the raw desired contact
 against the plan. The permanent key uses one SHA-256 digest of the employee and canonical
 desired-effect identity. Original and freshly read stable content must agree; observation timestamps do
-not become transaction identity. Real mode refuses before acquiring contacts, and its commit task
-always returns `CONTACT_SAVE_UNAVAILABLE`. No driver Save capability exists. Preview captures the
-original and final prepared sets and creates no write intent, attempt or confirmation.
+not become transaction identity. Real mode refuses before approval or contact acquisition while the
+live bindings remain pending.
+The contact-specific Save driver consumes its retained prepared plan once, validates a native mutation
+capability and the complete staged set immediately before Save, then requires a new complete persisted
+read matching the entire plan. Its task derives the proof from that read; the native sequencer still
+runs the independent verifier before settlement. The live browser has no Save port or active Save
+selector and refuses `CONTACT_SAVE_UNAVAILABLE`. A test-only member composition omits the early
+pending-binding refusal to prove the actual tasks, driver and sequencer against persistent synthetic
+contact state. Preview captures the original and final prepared sets and creates no write intent,
+attempt or confirmation.
 
 I-9 declarations live in `src/models/systems/i9/{create-profile,create-remote-record}.ts`.
 Profile save and remote-record creation have separate intents and proofs. A saved profile cannot
