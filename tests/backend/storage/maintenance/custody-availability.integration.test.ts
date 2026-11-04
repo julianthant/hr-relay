@@ -41,7 +41,9 @@ import { join, relative } from "node:path";
 import { afterEach, it, vi } from "vitest";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
-import { createBoundProfileFixture, boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, boundProfileCredentials, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { sharedProfileCookieTabs } from "../../../support/helpers/dashboard/shared-profile-cookie-tabs.js";
+import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 
 const host = vi.hoisted(() => ({ platform: "win32" }));
@@ -365,13 +367,13 @@ it("refuses authenticated Windows account deletion without logging out and keeps
     headers: { "content-type": "application/json", origin: base, ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body) });
   try {
     const login = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
-    assert.equal(PublicProfileStateSchema.parse(await login.json()).state, "active");
+    const active = PublicProfileStateSchema.parse(await login.json()); assert.ok(active.state === "active");
     const header = login.headers.get("set-cookie"); assert.ok(header);
     const cookie = header.split(";")[0]; assert.ok(cookie);
     const durableAccountFiles = () => Object.fromEntries(Object.entries(files(f.workspace)).filter(([path]) =>
       path !== ".tracker/data/logs/boot.jsonl" && !path.endsWith("state.db-shm")));
     const before = durableAccountFiles(), profile = f.machine.readProfileRegistry();
-    const deletion = await post("/api/v1/profile/delete-account", { confirmed: true }, cookie);
+    const deletion = await post("/api/v1/profile/delete-account", { confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch }, cookie);
     assert.equal(deletion.status, 409);
     assert.deepEqual(PublicProfileStateSchema.parse(await deletion.json()), { state: "refused", code: "PROFILE_ACCOUNT_DELETION_REFUSED" });
     assert.deepEqual(f.machine.readProfileRegistry(), profile);
@@ -379,6 +381,55 @@ it("refuses authenticated Windows account deletion without logging out and keeps
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie } })).status, 200);
     const logout = await post("/api/v1/profile/logout", {}, cookie);
     assert.deepEqual(PublicProfileStateSchema.parse(await logout.json()), { state: "signed-out", signUpRequired: false });
+  } finally {
+    await application.stop().catch((error: unknown) => { assert.ok(error instanceof StorageMaintenanceCustodyUnavailableError); });
+    await f.close();
+  }
+});
+
+for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses stale shared-cookie ${replacement} deletion before Windows custody admission`, async () => {
+  const f = await createBoundProfileFixture();
+  const application = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine,
+    isolation: rebuildRuntimeIsolation, repoRoot: process.cwd(), backendPortOverride: 0, frontendPortOverride: 0,
+    env: {}, clock, onboardingDuo: syntheticOnboardingDuo(), preflightRunnerFactory: healthyRuntimePreflightRunners });
+  const { tabA, tabB } = sharedProfileCookieTabs(`http://127.0.0.1:${application.port}`);
+  try {
+    const old = PublicProfileStateSchema.parse(await (await tabA.post("sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" })).json());
+    assert.ok(old.state === "active");
+    const confirmation = { confirmed: true, expectedProfileId: old.profileId, expectedEpoch: old.epoch };
+    assert.deepEqual(PublicProfileStateSchema.parse(await (await tabB.post("logout", {})).json()), { state: "signed-out", signUpRequired: false });
+    if (replacement === "other-profile") {
+      const draft = PublicProfileStateSchema.parse(await (await tabB.post("sign-up", {
+        firstName: "Other", lastName: "Fixture", email: "other@ucsd.edu", password: "disposable-fixture-password",
+      })).json());
+      assert.ok(draft.state === "onboarding");
+      for (const method of ["key", "touch"] as const) {
+        const started = PublicProfileStateSchema.parse(await (await tabB.post("onboarding/duo/start", { operationId: draft.operationId, method })).json());
+        assert.ok(started.state === "onboarding");
+        if (started.methods[method].state !== "complete") {
+          const confirmed = await tabB.post("onboarding/duo/confirm", { operationId: draft.operationId, method,
+            attemptId: started.methods[method].attemptId, operatorConfirmed: true });
+          assert.equal(confirmed.status, 200);
+        }
+      }
+      assert.equal((await tabB.post("onboarding/complete", { operationId: draft.operationId })).status, 200);
+    } else assert.equal((await tabB.post("sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" })).status, 200);
+    const next = PublicProfileStateSchema.parse(await (await tabB.read()).json()); assert.ok(next.state === "active");
+    if (replacement === "other-profile") assert.notEqual(next.profileId, old.profileId);
+    else { assert.equal(next.profileId, old.profileId); assert.notEqual(next.epoch, old.epoch); }
+    assert.deepEqual(PublicProfileStateSchema.parse(await (await tabA.read()).json()), next);
+    const snapshot = () => ({ registry: f.machine.readProfileRegistry(),
+      files: Object.fromEntries(Object.entries(files(f.workspace)).filter(([path]) => path !== ".tracker/data/logs/boot.jsonl" && !path.endsWith("state.db-shm"))),
+      keyringDigest: createHash("sha256").update(JSON.stringify(FakeKeyringEntry.snapshot())).digest("hex") });
+    const before = snapshot();
+
+    const deletion = await tabA.post("delete-account", confirmation);
+
+    assert.equal(deletion.status, 409);
+    assert.deepEqual(PublicProfileStateSchema.parse(await deletion.json()), { state: "refused", code: "PROFILE_SESSION_STALE" });
+    assert.equal(deletion.headers.get("set-cookie"), null);
+    assert.deepEqual(snapshot(), before);
+    assert.deepEqual(PublicProfileStateSchema.parse(await (await tabB.read()).json()), next);
   } finally {
     await application.stop().catch((error: unknown) => { assert.ok(error instanceof StorageMaintenanceCustodyUnavailableError); });
     await f.close();

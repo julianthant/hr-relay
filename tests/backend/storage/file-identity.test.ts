@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
-import { fileStatus, descriptorStatus, asyncFileStatus, asyncDescriptorStatus, fileIdentityObservation, sameDirectory } from "../../../src/backend/storage/file-identity.js";
+import { fileStatus, descriptorStatus, asyncFileStatus, asyncDescriptorStatus, fileIdentityObservation, fileTimestampMilliseconds, sameDirectory } from "../../../src/backend/storage/file-identity.js";
 
 it("compares exact decimal observations without rounding adjacent NTFS IDs", () => {
   const id = 21_110_623_253_370_483n;
@@ -15,6 +15,19 @@ it("compares exact decimal observations without rounding adjacent NTFS IDs", () 
   assert.equal(sameDirectory({ device: 4n, inode: id }, { device: 4, inode: Number(id) }), false);
   assert.equal(sameDirectory({ device: 4n, inode: 17n }, { device: 4, inode: 17 }), true);
   assert.deepEqual(fileIdentityObservation({ device: 4, inode: 17 }), { device: 4, inode: 17 });
+});
+
+it("preserves safe numeric journal identities and fractional numeric timestamps", () => {
+  assert.deepEqual(fileIdentityObservation({ device: 4n, inode: 17n }, { preserveSafeNumbers: true }), { device: 4, inode: 17 });
+  assert.deepEqual(fileIdentityObservation({ device: 4n, inode: 9_007_199_254_740_993n }, { preserveSafeNumbers: true }), { device: 4, inode: "9007199254740993" });
+  const root = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), "journal-timestamps-"))), path = join(root, "file");
+  try {
+    fs.writeFileSync(path, "fixture", { mode: 0o600 }); fs.utimesSync(path, 1793779534.583591, 1793779534.583591);
+    const numeric = fs.lstatSync(path), exact = fs.lstatSync(path, { bigint: true });
+    const expected = { modified: numeric.mtimeMs, changed: numeric.ctimeMs };
+    assert.notEqual(expected.modified, Math.trunc(expected.modified));
+    assert.deepEqual(fileTimestampMilliseconds(numeric), expected); assert.deepEqual(fileTimestampMilliseconds(exact), expected);
+  } finally { fs.rmSync(root, { recursive: true }); }
 });
 
 for (const platform of ["win32", "linux"] as const) it(`keeps synchronous and asynchronous metadata exact on ${platform}`, async () => {

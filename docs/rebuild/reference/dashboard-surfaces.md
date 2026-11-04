@@ -442,9 +442,13 @@ account capability. Browser dimensions use the canonical `display.screenWidth` a
 draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
 
 General composes ChatGPT account, appearance, ordinary General fields and annual dates, with Delete account last. The assistant permission row and its search destination are absent; Relay always requires explicit confirmation for its actions. Appearance has a Light/Dark toggle and an Animations switch with no row descriptions or person names. Preference feedback retains loading, saving, failure and uncertain states below the rows.
-Delete account presents ready, explicit confirmation, deleting, and unavailable states. Deletion has
-no blocked presentation. Until the person deletion owner supplies authority and a callback, the served
-control is unavailable.
+Delete account uses the active ready profile's session owner and the typed delete client. Its confirmation
+is keyed to the profile and session epoch, and the request carries both as expected authority. The server
+atomically compares them with the authenticated selection before logout, detach or erasure, including
+pending deletion's original epoch. Rendering, navigation and Cancel dispatch nothing; confirmation
+dispatches once and disables deletion. Only the delete endpoint's final signed-out acknowledgment exits
+the profile. Refused, nonfinal and lost replies stay visible and locked across Settings navigation,
+without automatic retry or an erasure claim. A missing served profile keeps the control unavailable.
 The isolated `delete-account` parity fixture exercises mock state without reading or erasing data.
 Shared date controls display `MM/DD/YYYY` and preserve partial input during unrelated renders.
 Provider budget/model and API-key controls are absent. Browser viewport is developer configuration,

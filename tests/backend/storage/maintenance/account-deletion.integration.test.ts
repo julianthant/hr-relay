@@ -4,6 +4,7 @@ import { composeDashboardApplication } from "../../../../src/backend/app/composi
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import nativeFs, { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
@@ -20,6 +21,7 @@ import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/p
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
 import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
+import { sharedProfileCookieTabs } from "../../../support/helpers/dashboard/shared-profile-cookie-tabs.js";
 
 async function fixture() {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "account-deletion-")));
@@ -40,16 +42,19 @@ async function fixture() {
     await runtime.awaitClosurePreparation(active.profileId);
     assert.equal(runtime.session.resumeLogout(pending.operationId).state, "signed-out"); return pending.operationId;
   }
-  const other = await signUp("other@ucsd.edu"); await logOut(other);
+  async function retainBackup(active: Awaited<ReturnType<typeof signUp>>) {
+    const context = runtime.selectedContext(active.token), directory = join(machine.stateRoot, "profiles", active.profileId, "backups", "authority");
+    const backup = await new AuthorityBackupService(context.admission, context.database, { directory }, systemClock)
+      .request({ trigger: "schema-migration", requiredGeneration: context.database.getMeta().authorityGeneration });
+    assert.equal(backup.state, "verified");
+    const manifest = backup.manifests.at(-1); assert.ok(manifest);
+    return join(directory, manifest.backupFileName);
+  }
+  const other = await signUp("other@ucsd.edu"), otherRetained = await retainBackup(other); await logOut(other);
   const active = await signUp("fixture@ucsd.edu");
   const root = join(machine.stateRoot, "profiles", active.profileId), otherRoot = join(machine.stateRoot, "profiles", other.profileId);
-  const context = runtime.selectedContext(active.token), directory = join(root, "backups", "authority");
-  const backup = await new AuthorityBackupService(context.admission, context.database, { directory }, systemClock)
-    .request({ trigger: "schema-migration", requiredGeneration: context.database.getMeta().authorityGeneration });
-  assert.equal(backup.state, "verified");
-  const manifest = backup.manifests.at(-1); assert.ok(manifest);
-  const retained = join(directory, manifest.backupFileName), operationId = await logOut(active);
-  return { workspace, runtime, active, other, root, otherRoot, operationId, retained,
+  const retained = await retainBackup(active), operationId = await logOut(active);
+  return { workspace, runtime, active, other, root, otherRoot, operationId, retained, otherRetained,
     get machine() { return machine; }, get lifetime() { return lifetime; },
     async restart() {
       await runtime.close(); machine.release(); await lifetime.close();
@@ -101,7 +106,7 @@ for (const change of ["none", "unknown-member"] as const) it(`resumes interrupte
   } finally { spy.mockRestore(); syncBuiltinESMExports(); await f.close(); }
 });
 
-it("serves confirmed account deletion through the guarded dashboard route and signals an empty machine", async () => {
+async function routeFixture() {
   const f = await fixture();
   onTestFinished(() => f.close());
   await f.runtime.close();
@@ -110,21 +115,68 @@ it("serves confirmed account deletion through the guarded dashboard route and si
     repoRoot: f.workspace, backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
   onTestFinished(() => application.stop());
   const base = `http://127.0.0.1:${application.port}`;
+  return { f, base };
+}
+
+it("serves confirmed account deletion through the guarded dashboard route and signals an empty machine", async () => {
+  const { f, base } = await routeFixture();
   const post = (path: string, body: unknown, cookie?: string, origin = base) => fetch(`${base}/api/v1/profile/${path}`, {
     method: "POST", headers: { origin, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body),
   });
   for (const email of ["fixture@ucsd.edu", "other@ucsd.edu"]) {
     const login = await post("sign-in", { email, password: "disposable-fixture-password" });
-    assert.equal(PublicProfileStateSchema.parse(await login.json()).state, "active");
+    const active = PublicProfileStateSchema.parse(await login.json()); assert.ok(active.state === "active");
+    const confirmation = { confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch };
+    const otherBefore = email === "fixture@ucsd.edu" ? fixedLayoutEntries(f.otherRoot) : undefined;
     const cookie = login.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
-    assert.equal((await post("delete-account", { confirmed: true }, cookie, "http://foreign.invalid")).status, 403);
-    assert.equal((await post("delete-account", { confirmed: false }, cookie)).status, 400);
+    assert.equal((await post("delete-account", confirmation, cookie, "http://foreign.invalid")).status, 403);
+    assert.equal((await post("delete-account", { ...confirmation, confirmed: false }, cookie)).status, 400);
+    assert.equal((await post("delete-account", { confirmed: true }, cookie)).status, 400);
+    assert.equal((await post("delete-account", { ...confirmation, expectedEpoch: 0 }, cookie)).status, 400);
     assert.equal(f.machine.readProfileRegistry().profiles.length, email === "fixture@ucsd.edu" ? 2 : 1);
-    const response = await post("delete-account", { confirmed: true }, cookie); assert.equal(response.status, 200);
+    const response = await post("delete-account", confirmation, cookie); assert.equal(response.status, 200);
     assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "signed-out", signUpRequired: email === "other@ucsd.edu" });
-    assert.equal((await post("delete-account", { confirmed: true }, cookie)).status, 409);
+    assert.equal((await post("delete-account", confirmation, cookie)).status, 409);
+    assert.equal(existsSync(email === "fixture@ucsd.edu" ? f.root : f.otherRoot), false);
+    assert.equal(FakeKeyringEntry.snapshot().some(([account]) => account === `Relay:${f.machine.locator.installationId}:${active.profileId}`), false);
+    if (otherBefore !== undefined) {
+      assert.deepEqual(fixedLayoutEntries(f.otherRoot), otherBefore);
+      assert.equal(existsSync(f.retained), false);
+      assert.equal(existsSync(f.otherRetained), true);
+      assert.ok(FakeKeyringEntry.snapshot().some(([account]) => account === `Relay:${f.machine.locator.installationId}:${f.other.profileId}`));
+    }
   }
   assert.deepEqual(PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`)).json()), { state: "signed-out", signUpRequired: true });
+});
+
+for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses stale shared-cookie deletion after ${replacement} without touching either account`, async () => {
+  const { f, base } = await routeFixture();
+  const { tabA, tabB } = sharedProfileCookieTabs(base);
+  const old = PublicProfileStateSchema.parse(await (await tabA.post("sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" })).json());
+  assert.ok(old.state === "active");
+  const confirmation = { confirmed: true, expectedProfileId: old.profileId, expectedEpoch: old.epoch };
+  assert.deepEqual(PublicProfileStateSchema.parse(await (await tabB.post("logout", {})).json()), { state: "signed-out", signUpRequired: false });
+  const next = PublicProfileStateSchema.parse(await (await tabB.post("sign-in", {
+    email: replacement === "other-profile" ? "other@ucsd.edu" : "fixture@ucsd.edu", password: "disposable-fixture-password",
+  })).json());
+  assert.ok(next.state === "active");
+  if (replacement === "other-profile") assert.notEqual(next.profileId, old.profileId);
+  else { assert.equal(next.profileId, old.profileId); assert.notEqual(next.epoch, old.epoch); }
+  assert.deepEqual(PublicProfileStateSchema.parse(await (await tabA.read()).json()), next);
+  const snapshot = () => ({ registry: f.machine.readProfileRegistry(),
+    files: fixedLayoutEntries(f.machine.stateRoot).filter(entry => !entry.path.endsWith("state.db-shm") && entry.path !== "logs/boot.jsonl"),
+    keyringDigest: createHash("sha256").update(JSON.stringify(FakeKeyringEntry.snapshot())).digest("hex") });
+  const before = snapshot(); assert.equal(existsSync(f.retained), true); assert.equal(existsSync(f.otherRetained), true);
+
+  const response = await tabA.post("delete-account", confirmation);
+
+  assert.equal(response.status, 409);
+  assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_SESSION_STALE" });
+  assert.equal(response.headers.get("set-cookie"), null);
+  assert.deepEqual(snapshot(), before, "stale confirmation changed profile, backup, credential or journal authority");
+  assert.deepEqual(PublicProfileStateSchema.parse(await (await tabB.read()).json()), next);
+  assert.equal(existsSync(f.retained), true);
+  assert.equal(existsSync(f.otherRetained), true);
 });
 
 it("refuses deletion before effects when a shared installation upgrade backup retains the person", async () => {

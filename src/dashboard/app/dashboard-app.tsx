@@ -5,6 +5,7 @@ import { PreflightOcrContext, createServedPreflightOcrPort } from "../surfaces/s
 import { ChatGptAccountContext, createServedChatGptAccountPort } from "../surfaces/settings/general/chatgpt-account-model.js";
 import { operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { usePublicProfileSession } from "../surfaces/shell/onboarding-model.js";
+import { DeleteAccountControl } from "../surfaces/settings/general/ui-settings-records-general-paths.js";
 import { HubPreferencesPreviewContext } from "../surfaces/settings/general/hub-preferences-model.js";
 import { OnboardingSetup } from "../surfaces/shell/onboarding-setup.js";
 import { Onboarding } from "../surfaces/shell/onboarding.js";
@@ -227,6 +228,13 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           preferences={preferences}
           boot={boot}
           onProfileLogout={profileSource === "served" ? publicProfile.logout : undefined}
+          deleteAccount={profileSource === "served" && session?.state === "active" && session.duoState === "ready"
+            ? <DeleteAccountControl key={`${session.profileId}:${session.epoch}`} presentation={publicProfile.accountDeletion.state === "idle"
+              ? { state: "ready", personName: boot.actor.label, onConfirm: () => { void publicProfile.deleteAccount(); } }
+              : publicProfile.accountDeletion.state === "deleting" ? { state: "deleting", personName: boot.actor.label }
+                : { state: publicProfile.accountDeletion.state, personName: boot.actor.label,
+                  message: operatorFailureSentence(publicProfile.accountDeletion.state === "uncertain" ? "PROFILE_ACCOUNT_DELETION_REFUSED" : publicProfile.accountDeletion.code) }} />
+            : undefined}
           workflowComposition={workflowComposition}
           route={route}
           setRoute={setRoute}
@@ -292,6 +300,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
 interface LoadedAppProps {
   preferences: PersonPreferencesOwner;
   onProfileLogout?: () => Promise<void>;
+  deleteAccount?: ReactNode;
   workflowComposition: (workflows: readonly import("../surfaces/run-start/run-start.js").RunStartWorkflow[]) => WorkflowComposition;
   boot: FrontendBootstrapWire;
   route: AppRouteState;
@@ -320,6 +329,7 @@ interface LoadedAppProps {
 function LoadedApp({
   preferences,
   onProfileLogout,
+  deleteAccount,
   workflowComposition: composeWorkflows,
   boot,
   route,
@@ -1094,7 +1104,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
           {/* Intake is a durable workspace; leaving it must not discard mapping progress. */}
-          <DashboardTakeovers onOpenRun={selectRun} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
+          <DashboardTakeovers deleteAccount={deleteAccount} onOpenRun={selectRun} activitySource={workflowComposition.activity} today={today} workflowSources={workflowComposition.sources} takeover={takeover} route={route} setRoute={setRoute} boot={boot}
             client={client} workflowCatalog={explorerCatalog} settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
