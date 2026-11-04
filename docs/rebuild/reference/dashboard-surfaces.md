@@ -256,12 +256,13 @@ values and identities that no longer satisfy the current input stay uncopied. On
 one source input with a fresh visible library/version lookup, without a selected-row picker or retained
 source selector. Its [trusted input projection](workflow-model.md#56-recovery-and-rerun) removes server-owned roster data.
 
+Parsed identifier entries trim and collapse whitespace, follow the declared separators, and deduplicate identities. The two-column preview retains the total count; each remove button updates the textbox and planned population. Normalization on blur preserves typing, while protected Match tuples retain their raw editor values and masked preview.
+
 Options show Priority as Interactive or Bulk, Browser mode as Headed or Headless, Dry run where
 declared, a required-screenshots notice, and workflow-specific fields. New/reset dashboard
 launches start with Dry run off and Headed browser mode. Workflow captures cannot be turned off. The operator explicitly
 chooses other values. Interactive work has priority over Bulk background batches; this is not a
-promise of immediate execution or preemption. Fixed facts use the shared field/grid treatment with
-visible reasons. A workflow with no flags has no empty flag group.
+promise of immediate execution or preemption. Options omit the policy/version footer; Confirm retains the workflow version. A workflow with no flags has no empty flag group.
 
 Steps keep required form-fill/save/submit actions and required sign-in included. Reading steps can
 accept typed manual values. PDF plans show Read document with OCR as system label; its checkbox

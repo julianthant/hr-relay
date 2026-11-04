@@ -176,8 +176,7 @@ describe("keeps optional steps and removes only the per-start destination", () =
     assert.ok(!dialog.text().includes("Test instance"));
     assert.equal(document.querySelectorAll('input[type="radio"][name^="Priority-"]').length, 2);
     assert.equal(document.querySelectorAll('input[type="radio"][name^="Browser mode-"]').length, 2);
-    assert.ok(dialog.text().includes("Active policy"));
-    assert.ok(dialog.text().includes("Fixed by the selected workflow."));
+    assert.doesNotMatch(dialog.text(), /Active policy|Workflow version|Fixed by the selected workflow/u);
     const selectedWorkflow = document.body.querySelector('nav[aria-label="Workflow"] button[aria-current="page"]');
     const workflow = WORKFLOWS.find((candidate) => candidate.workflowId === WORKFLOW_ID);
     assert.ok(workflow !== undefined);

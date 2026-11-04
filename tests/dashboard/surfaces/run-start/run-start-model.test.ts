@@ -3,8 +3,6 @@ import assert from "node:assert/strict";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
 import { describe,it } from "vitest";
 import {
-ENQUEUE_POLICY_MEANING,
-ENQUEUE_POLICY_REASON,
 START_DOOR_ABSENCE,
 foldStepOmissionFacts,
 forcedStepOmissions,
@@ -24,7 +22,6 @@ changeTypedInput,
 type StartRequestShape,
 type StepOmissionStepView,
 } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
-import { EnqueuePolicySchema } from "../../../../src/models/workflow/presentation.js";
 import { StepOmissionFormSchema,type StepOmissionForm } from "../../../../src/models/workflow/step-omission.js";
 import { parsePersonLookupRequest } from "../../../../src/models/workflows/person-lookup/input.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
@@ -108,29 +105,6 @@ describe("compact input guidance follows the declared parser", () => {
     assert.equal(inputRunDelimiterHint({ rules, split: { kind: "delimited", delimiters: ["\n"] } }), "Separate values with a new line.");
     assert.equal(inputRunDelimiterHint({ rules, split: { kind: "delimited", delimiters: ["\n", ";", ","] } }), "Separate values with a new line or a semicolon or a comma.");
     assert.equal(inputRunDelimiterHint({ rules, split: { kind: "delimited", delimiters: ["|"] } }), 'Separate values with "|".');
-  });
-});
-
-describe("the declared active-run policy, as the modal states it", () => {
-  it("covers the enum exactly — a new policy arm cannot land wordless, and no word outlives its arm", () => {
-    assert.deepEqual(
-      Object.keys(ENQUEUE_POLICY_MEANING).sort(),
-      [...EnqueuePolicySchema.options].sort(),
-    );
-  });
-
-  it("has a sentence for every policy any registered workflow actually declares", () => {
-    for (const descriptor of WORKFLOW_DESCRIPTORS) {
-      assert.ok(
-        ENQUEUE_POLICY_MEANING[descriptor.enqueue] !== undefined,
-        `${descriptor.id} declares ${descriptor.enqueue}, which the modal has no words for`,
-      );
-    }
-  });
-
-  it("states WHY the policy is not a control, so a locked value never reads as a broken one", () => {
-
-    assert.match(ENQUEUE_POLICY_REASON, /Fixed by this workflow/u);
   });
 });
 
