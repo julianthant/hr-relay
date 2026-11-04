@@ -1,3 +1,5 @@
+import type { RuntimeAdmission } from "../admission/admission.js";
+import { readStoppedProtectedRecord } from "./canonical-credential-store.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
@@ -92,4 +94,11 @@ export function convertProtectedSettings(input: unknown, at: string): Credential
 export function inspectProtectedSettingsSource(input: unknown) {
   if (typeof input === "object" && input !== null && Reflect.get(input, "schemaVersion") === 5) return authenticateDocument(input);
   return authenticatePrior(input);
+}
+
+export function stoppedProfileOwnsCredentialCommand(admission: RuntimeAdmission, purpose: "logout" | "layout" | "startup-recovery", commandId: string): boolean {
+  const id = z.uuid().parse(commandId), frame = readStoppedProtectedRecord(admission, purpose);
+  const document = inspectProtectedSettingsSource(frame.value);
+  if (frame.revision !== document.record.revision) throw new Error("credential store protected.json disagrees with its authenticated revision");
+  return document.retiredLegacy.commandIds.includes(id) || document.history.some(({ receipt }) => receipt.commandId === id);
 }

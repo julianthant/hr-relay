@@ -656,9 +656,11 @@ export function createProfileSession(input: {
       });
     },
     cancelOnboarding,
-    async recoverOnboarding(options: Readonly<{ deferActivation?: boolean; registrationProofs?: readonly StartupRegistrationProof[] }> = {}): Promise<void> {
+    async recoverOnboarding(options: Readonly<{ deferActivation?: boolean; finishOnly?: boolean; registrationProofs?: readonly StartupRegistrationProof[] }> = {}): Promise<void> {
       const operations = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.onboarding !== undefined);
-      if (operations.length === 0) return;
+      const selected = options.finishOnly === true ? operations.filter(operation => operation.onboarding?.finish !== undefined) : operations;
+      if (selected.length === 0) return;
+      const selectedIds = new Set(selected.map(operation => operation.operationId));
       const browserRoot = join(machineRoot, "browsers", "onboarding");
       const browserRoots = createBrowserRoots(admission);
       const bound=operations.map(operation=>{
@@ -676,7 +678,7 @@ export function createProfileSession(input: {
       }
       const clock=input.clock??systemClock;
       const config=resolveConfigWithProvenance({},{primaryDisplay:null},clock,{stateRoot:machineRoot,artifactRoot:admission.artifactRoot}).config;
-      const present=bound.flatMap(entry=>{
+      const present=bound.filter(entry => selectedIds.has(entry.operation.operationId)).flatMap(entry=>{
         if(entry.rootInput !== undefined && lstatSync(entry.rootInput.profileDirectory,{throwIfNoEntry:false})!==undefined)return [{ ...entry, rootInput: entry.rootInput }];
         if(entry.operation.onboarding?.finish===undefined&&entry.operation.onboarding?.abort===undefined) {
           throw new NativeBrowserClosureUnprovedError([new Error("abandoned-onboarding-browser-missing-without-owned-cleanup")]);
@@ -698,7 +700,7 @@ export function createProfileSession(input: {
         assertBound();
       }
       assertBound();
-      for (const operation of operations) {
+      for (const operation of selected) {
         if (operation.onboarding?.finish !== undefined) {
           if (operation.phase !== "publishing") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
           const published = registry.read().profiles.find(row => row.profileId === operation.profileId);

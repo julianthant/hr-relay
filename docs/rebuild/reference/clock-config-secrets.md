@@ -327,9 +327,18 @@ Startup settles pending onboarding before converting ready profiles. A stopped e
 binds an explicit Finish to its exact operation, authenticated credential files, native identities and
 runtime lifetime. Finish publication rechecks that opaque proof, its original registration receipt,
 Duo evidence and verifier custody; it consumes the operation before conversion adds a receipt.
-Unfinished onboarding is closed and cancelled through the same recovery path. Startup defers
-profile activation until conversion completes. Ordinary publication and credential reads remain
-current-format only.
+Early storage initialization settles only explicit Finish operations. Other pending drafts and their
+owned browser roots remain for ordinary onboarding recovery, which retains its missing-root and
+owned-cleanup refusals. Startup defers profile activation until conversion completes. Ordinary
+publication and credential reads remain current-format only.
+
+Pending logout retains its captured credential source through crash reconciliation and native
+settlement. Its stopped command-identity lookup authenticates document 4 or 5 without granting
+ordinary reads or conversion authority; marked history and retired command IDs remain collision
+owners. Even a ready registry prefix is excluded from startup conversion while its logout operation
+is pending. Only after native settlement, ready publication and disposal of the stopped logout owner
+does the controller acquire a new backed settings-conversion admission. UNKNOWN writes keep the
+operation pending and the original credentials unchanged.
 Ordinary readers accept only the current schema. Stopped conversion and flat-source inspection own
 the previous grammar; retained value-free receipts keep the catalog used by their original write.
 

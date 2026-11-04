@@ -1,7 +1,8 @@
+import { AuthorityEvidenceSchemaUpgradeRecordSchema } from "../../../models/config/authority.js";
 import type { inspectProtectedSettingsSource } from "../configuration/protected-settings-upgrade.js";
 import { fileModified, fileChanged, fileStatus, descriptorStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
-import { createHash,randomUUID } from "node:crypto";
+import { createHash,createHmac,timingSafeEqual,randomUUID } from "node:crypto";
 import { closeSync,constants,existsSync,lstatSync,openSync,readdirSync,readSync,realpathSync,type Stats,type BigIntStats } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename,dirname,isAbsolute,join,parse,relative,resolve } from "node:path";
@@ -163,7 +164,7 @@ export class RuntimeAdmission {
   #automaticRestore: AuthorityRestoreInput | undefined;
   #repairSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | undefined;
   readonly #readyUpgrade: ReadyProfileUpgrade | undefined;
-  #protectedSettingsUpgrade: { readonly kind: "inspection" } | { readonly kind: "backed"; readonly assertCurrent: () => void } | { readonly kind: "revoked" } | undefined;
+  #protectedSettingsUpgrade: { readonly kind: "inspection" } | { readonly kind: "backed"; readonly assertCurrent: () => Readonly<{ sourceFingerprint: string; backupSha256: string }> } | { readonly kind: "revoked" } | undefined;
   readonly #flatBackup: Readonly<{ sourcePath: string; processLockRoot: string }> | undefined;
 
   private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
@@ -694,6 +695,18 @@ export class RuntimeAdmission {
     assertCanonicalProfileBinding(join(profileRoot, "state.db"), binding);
     return { operation, binding, machineRoot: this.#stateRoot, profileRoot };
   }
+  readPendingLogoutProfileIds(): readonly string[] {
+    this.assertReadable();
+    if (this.#scope !== "installation") throw new Error("profile-logout-machine-required");
+    const directory = join(this.#stateRoot, "machine", "operations");
+    if (!existsSync(directory)) return [];
+    return readdirSync(directory).filter(name => name.endsWith(".json")).flatMap(name => {
+      const file = readPrivateFile(join(directory, name), { label: "lock", maxBytes: 1_048_576 });
+      if (file === undefined) throw new Error("profile-logout-operation-missing");
+      const operation = z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+      return operation.kind === "logout" && operation.phase !== "complete" ? [operation.profileId] : [];
+    });
+  }
   async captureStartupRegistrationProofs(): Promise<readonly StartupRegistrationProof[]> {
     this.assertExclusive(); this.assertOfflineMaintenance(this.maintenanceOperation());
     if (this.#scope !== "installation") throw new Error("profile-startup-registration-machine-required");
@@ -913,16 +926,40 @@ export class RuntimeAdmission {
       const source = AuthorityDatabase.inspectStoppedUpgrade(this, join(this.#stateRoot, "state.db"), processLockRoot, clock);
       if (backup.schemaVersion !== source.schemaVersion || backup.authorityGeneration !== source.authorityGeneration
         || backup.authorityContentFingerprint !== source.authorityContentFingerprint) throw new Error("protected-settings-upgrade-backup-mismatch");
+      return { sourceFingerprint: source.authorityContentFingerprint, backupSha256: backup.sha256 };
     };
     assertCurrent();
     this.#protectedSettingsUpgrade = { kind: "backed", assertCurrent };
   }
-  assertStoppedProtectedSettingsWrite(): void {
+  assertStoppedProtectedSettingsWrite(): Readonly<{ sourceFingerprint: string; backupSha256: string }> {
     this.assertStoppedProtectedSettingsUpgrade();
     const qualified = this.#protectedSettingsUpgrade;
     if (qualified?.kind !== "backed") throw new Error("protected-settings-upgrade-verified-backup-required");
-    try { qualified.assertCurrent(); }
+    try { return qualified.assertCurrent(); }
     catch (error) { this.#protectedSettingsUpgrade = { kind: "revoked" }; throw error; }
+  }
+  #evidenceSchemaMac(statement: Omit<z.infer<typeof AuthorityEvidenceSchemaUpgradeRecordSchema>, "evidenceSchemaMac">): Buffer {
+    this.assertReadable();
+    if (statement.evidenceSchemas.installationId !== this.profileBinding.installationId
+      || statement.evidenceSchemas.profileId !== this.profileBinding.profileId) throw new Error("evidence-schema-conversion-foreign");
+    let root = this.#profileParent;
+    if (root === undefined) throw new Error("evidence-schema-conversion-installation-required");
+    while (root.#profileParent !== undefined) root = root.#profileParent;
+    if (root.#scope !== "installation") throw new Error("evidence-schema-conversion-machine-required");
+    const pepper = readPrivateFile(join(root.#stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
+    if (pepper === undefined || pepper.bytes.length !== 32) throw new Error("evidence-schema-conversion-key-required");
+    return createHmac("sha256", pepper.bytes).update(`relay:evidence-schema-conversion-seal:v1\0${canonicalJsonStringify(statement)}`).digest();
+  }
+  sealStoppedEvidenceSchemaConversion(input: unknown): string {
+    const qualified = this.assertStoppedProtectedSettingsWrite();
+    const statement = AuthorityEvidenceSchemaUpgradeRecordSchema.omit({ evidenceSchemaMac: true }).parse(input);
+    if (statement.upgradeId !== qualified.sourceFingerprint || statement.backup.sha256 !== qualified.backupSha256)
+      throw new Error("evidence-schema-conversion-backup-changed");
+    return this.#evidenceSchemaMac(statement).toString("hex");
+  }
+  assertEvidenceSchemaConversion(input: unknown): void {
+    const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse(input), { evidenceSchemaMac, ...statement } = record;
+    if (!timingSafeEqual(Buffer.from(evidenceSchemaMac, "hex"), this.#evidenceSchemaMac(statement))) throw new Error("evidence-schema-conversion-seal-invalid");
   }
   assertCredentialRead(): void {
     this.assertLive();

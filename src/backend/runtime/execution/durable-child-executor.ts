@@ -1,3 +1,4 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { z } from "zod";
 import { RunRecordSchema, runClaim, type RunRecord } from "../../../models/run/record.js";
 import { resolveDelegationEvidenceOutput, readRunPreviewResult, DelegationTerminalEvidenceSchema, RunResultRecordSchema, type DelegationTerminalEvidence } from "../../../models/run/result.js";
@@ -29,6 +30,7 @@ export interface DelegationAdmission {
 }
 
 export interface DelegationAuthority {
+  readonly evidenceSchemaHash?: EvidenceSchemaReader;
   readonly authority: Pick<AuthorityRepositories, "delegationManifests" | "dependencies" | "runResults" | "failures">
     & { readonly runs: Pick<AuthorityRepositories["runs"], "get"> };
   withAuthorityReadSnapshot<Result>(read: () => Result): Result;
@@ -90,14 +92,14 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
           const { node } = context;
           const member = admitted.entries[index];
           if (member?.state === "reused") {
-            values[node.id] = resolveDelegationEvidenceOutput(member.evidence, node.target.result).output;
+            values[node.id] = resolveDelegationEvidenceOutput(member.evidence, node.target.result, authority.evidenceSchemaHash?.bind(authority)).output;
             continue;
           }
           const manifest = DelegationManifestSchema.parse(member?.manifest);
           const retained = authority.authority.delegationManifests.get(manifest.manifestId);
           if (retained === undefined || canonicalJsonStringify(retained) !== canonicalJsonStringify(manifest)
-            || manifest.parentRunId !== parent.envelope.runId || manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")
-            || manifest.resultSchemaHash !== deriveSchemaHash(node.target.result, "output")) throw new Error("delegation-manifest-binding-mismatch");
+            || manifest.parentRunId !== parent.envelope.runId || (authority.evidenceSchemaHash?.({ kind: "delegation-input", id: manifest.manifestId }, manifest, manifest.inputSchemaHash, deriveSchemaHash(node.target.input, "input")) ?? manifest.inputSchemaHash) !== deriveSchemaHash(node.target.input, "input")
+            || (authority.evidenceSchemaHash?.({ kind: "delegation-result", id: manifest.manifestId }, manifest, manifest.resultSchemaHash, deriveSchemaHash(node.target.result, "output")) ?? manifest.resultSchemaHash) !== deriveSchemaHash(node.target.result, "output")) throw new Error("delegation-manifest-binding-mismatch");
           assertDelegationReplayMatches({ edgeId: manifest.edgeId, planFingerprint: manifest.manifestFingerprint }, plan);
           if (manifest.cardinality !== plan.cardinality || manifest.join !== plan.join
             || canonicalJsonStringify(manifest.policy) !== canonicalJsonStringify(plan.policy)
@@ -163,7 +165,7 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
           const evidence = DelegationTerminalEvidenceSchema.parse({ state: "delegation-resolved", nodeId: node.id,
             parentRunId: parent.envelope.runId, edgeId: manifest.edgeId, invocationCommandId: authenticated.invocation.commandId,
             manifest, children: settled });
-          values[node.id] = resolveDelegationEvidenceOutput(evidence, node.target.result).output;
+          values[node.id] = resolveDelegationEvidenceOutput(evidence, node.target.result, authority.evidenceSchemaHash?.bind(authority)).output;
         }
         if (admitted.state === "released") {
           const wait = authority.authority.dependencies.wait(parent.envelope.runId, batch.descriptor);

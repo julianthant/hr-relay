@@ -1,3 +1,5 @@
+import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { upgradeEvidenceSchemas } from "./evidence-schema-upgrade.js";
 import { join } from "node:path";
 import type { Clock } from "../../../rules/time/clock.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
@@ -9,14 +11,17 @@ import { assertStoppedBackupClosure, prepareStoppedBackupClosure, type ProfileBr
 import { backupStoppedAuthority } from "./upgrade.js";
 
 export async function upgradeProtectedSettings(admission: RuntimeAdmission, browserClosure: ProfileBrowserClosure,
-  operation: OfflineMaintenanceOperation, clock: Clock, processLockRoot: string): Promise<"current" | "upgraded"> {
+  operation: OfflineMaintenanceOperation, clock: Clock, processLockRoot: string, descriptors: readonly AnyWorkflowDescriptor[] = []): Promise<"current" | "upgraded"> {
   admission.assertStoppedProtectedSettingsUpgrade();
   const owner = createStoppedProtectedSettingsStore(admission), source = owner.read();
   if (source === undefined) throw new Error("protected-settings-upgrade-source-missing");
+  const authenticated = inspectProtectedSettingsSource(source.value);
+  if (authenticated.record.revision !== source.revision) throw new Error("protected-settings-upgrade-revision-mismatch");
+  const evidence = await upgradeEvidenceSchemas(admission, descriptors, browserClosure, operation, clock, processLockRoot);
   if (typeof source.value === "object" && source.value !== null && Reflect.get(source.value, "schemaVersion") === 5) {
     const document = authenticateDocument(source.value);
     if (document.record.revision !== source.revision) throw new Error("protected-settings-upgrade-revision-mismatch");
-    return "current";
+    return evidence;
   }
   const prior = inspectProtectedSettingsSource(source.value);
   if (prior.record.revision !== source.revision || !Number.isSafeInteger(source.revision + 1)) throw new Error("protected-settings-upgrade-revision-mismatch");

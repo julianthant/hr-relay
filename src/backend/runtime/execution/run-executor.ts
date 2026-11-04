@@ -1,3 +1,4 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
 import { RunContinuationRefusedError, readContinuationGate, validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../../../models/run/worker.js";
@@ -75,6 +76,7 @@ import { DelegationPendingSchema } from "./durable-child-executor.js";
 
 /** The authority surface a run execution needs; `AuthorityDatabase` satisfies it. */
 export interface RunExecutionAuthority {
+  readonly evidenceSchemaHash?: EvidenceSchemaReader;
   readonly authority: Pick<AuthorityRepositories, "runCheckpoints" | "gateResults" | "artifactOutbox" | "timelineEvents" | "runResults">
     & { readonly runs: Pick<AuthorityRepositories["runs"], "get"> }
     & Partial<Pick<AuthorityRepositories, "configSnapshots">>;
@@ -545,7 +547,8 @@ export async function executeClaimedRun(
     const problems: string[] = [];
     let canonicalInput: JsonValue | undefined;
     try {
-      canonicalInput = JsonValueSchema.parse(parseCanonicalInputSnapshot(descriptor.canonicalInput, initial.input.parsed));
+      canonicalInput = JsonValueSchema.parse(parseCanonicalInputSnapshot(descriptor.canonicalInput, { ...initial.input.parsed, schemaHash: deps.authority.evidenceSchemaHash?.(
+        { kind: "run-input", id: runId }, initial.input, initial.input.parsed.schemaHash, deriveSchemaHash(descriptor.canonicalInput, "output")) ?? initial.input.parsed.schemaHash }));
     } catch (error) {
       problems.push(error instanceof Error ? error.message : "canonical input snapshot failed to parse");
     }
@@ -713,7 +716,7 @@ export async function executeClaimedRun(
           if (dependencyNode?.kind === "child-run") {
             const child = deps.authority.withAuthorityTransaction?.(repositories => AuthenticatedRunContinuation.authenticate(repositories, source.envelope)
               .dependency(String(dependency), String(dependencyNode.edgeId), true));
-            if (child !== undefined) { values[String(dependency)] = JsonValueSchema.parse(delegationEvidenceOutput(child, dependencyNode.target.result)); continue; }
+            if (child !== undefined) { values[String(dependency)] = JsonValueSchema.parse(delegationEvidenceOutput(child, dependencyNode.target.result, deps.authority.evidenceSchemaHash?.bind(deps.authority))); continue; }
           }
           if ((dependencyNode?.kind === "task" || dependencyNode?.kind === "gate" && dependencyNode.resolvedBy === "operator") && dependencyNode.when !== undefined
             && !evaluateNodeCondition(dependencyNode.when, sourceScopeFor(sourceRunId, dependencyNode.dependsOn))) continue;
@@ -747,12 +750,12 @@ export async function executeClaimedRun(
       if (evidence === undefined || evidence.parentRunId !== runId || evidence.nodeId !== node.id || evidence.edgeId !== node.edgeId
         || node.await !== "terminal" || evidence.manifest.cardinality !== node.cardinality || evidence.manifest.join !== node.join
         || canonicalJsonStringify(evidence.manifest.policy) !== canonicalJsonStringify(node.policy)
-        || evidence.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")
-        || evidence.manifest.resultSchemaHash !== deriveSchemaHash(node.target.result, "output")
+        || (deps.authority.evidenceSchemaHash?.({ kind: "delegation-input", id: evidence.manifest.manifestId }, evidence.manifest, evidence.manifest.inputSchemaHash, deriveSchemaHash(node.target.input, "input")) ?? evidence.manifest.inputSchemaHash) !== deriveSchemaHash(node.target.input, "input")
+        || (deps.authority.evidenceSchemaHash?.({ kind: "delegation-result", id: evidence.manifest.manifestId }, evidence.manifest, evidence.manifest.resultSchemaHash, deriveSchemaHash(node.target.result, "output")) ?? evidence.manifest.resultSchemaHash) !== deriveSchemaHash(node.target.result, "output")
         || evidence.children.some(child => child.run.envelope.workflow !== node.target.id || child.run.envelope.dryRun !== envelope.dryRun)) {
         throw new RunContinuationRefusedError("run-gate-resume-child-authority-unavailable");
       }
-      resolveDelegationEvidenceOutput(evidence, node.target.result);
+      resolveDelegationEvidenceOutput(evidence, node.target.result, deps.authority.evidenceSchemaHash?.bind(deps.authority));
       return evidence;
     };
 
@@ -2184,7 +2187,7 @@ export async function executeClaimedRun(
             requireOriginalClaim(getRun());
             const sourceEvidence = childSourceEvidence(node);
             let raw: unknown;
-            if (sourceEvidence !== undefined) raw = resolveDelegationEvidenceOutput(sourceEvidence, node.target.result).output;
+            if (sourceEvidence !== undefined) raw = resolveDelegationEvidenceOutput(sourceEvidence, node.target.result, deps.authority.evidenceSchemaHash?.bind(deps.authority)).output;
             else if (childBatchOutputs.has(node.id)) raw = childBatchOutputs.get(node.id);
             else {
               const leafIds = owner.kind === "child-run" ? [owner.id] : owner.branches.flatMap(branch => branch.nodes);
@@ -2231,7 +2234,7 @@ export async function executeClaimedRun(
               throw new RunContinuationRefusedError("run-gate-resume-child-authority-changed");
             }
             if (evidence === undefined) throw new Error("delegation-outcome-authority-unavailable");
-            const resolution = resolveDelegationEvidenceOutput(evidence, node.target.result);
+            const resolution = resolveDelegationEvidenceOutput(evidence, node.target.result, deps.authority.evidenceSchemaHash?.bind(deps.authority));
             if (canonicalJsonStringify(raw) !== canonicalJsonStringify(resolution.output)) throw new Error("delegation-outcome-value-mismatch");
             childResultEvidence.set(String(node.id), evidence);
             if (resolution.kind === "preview") {

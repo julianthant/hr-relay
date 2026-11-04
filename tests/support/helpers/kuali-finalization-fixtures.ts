@@ -356,6 +356,8 @@ export function finalizationQueuedRun(
 }
 
 export interface FinalizationHarness {
+  readonly profile: Awaited<ReturnType<typeof createBoundProfileFixture>>;
+  readonly closeController: () => Promise<void>;
   readonly path: string;
   readonly world: KualiFakeWorld;
   readonly filingWorld: ReturnType<typeof createUcpathSmartHrFakeWorld>;
@@ -481,8 +483,14 @@ export async function finalizationHarness(
     log: recordingLogger().log,
     resolveImplFingerprint: () => FINALIZATION_IMPL_FINGERPRINT,
   });
-  let closeAttempted = false;
+  let closeAttempted = false, databaseClosed = false;
+  const closeDatabase = () => {
+    if (databaseClosed) return;
+    releaseSeededWriteOwners(database, clock.now().toISOString()); database.close(); databaseClosed = true;
+  };
   return {
+    profile,
+    async closeController() { await manager.closeAll("worker-stop"); closeDatabase(); await profile.closeController(); },
     path: profile.path,
     world,
     filingWorld,
@@ -503,7 +511,7 @@ export async function finalizationHarness(
       if (held.failure !== undefined) throw held.failure;
       if (closeAttempted) return;
       closeAttempted = true;
-      try { releaseSeededWriteOwners(database, clock.now().toISOString()); database.close(); await profile.close(); retainedFinalizationOwners.delete(held); }
+      try { closeDatabase(); await profile.close(); retainedFinalizationOwners.delete(held); }
       catch (error) { held.primary = { error }; held.failure = retainAuthoritySourceClosure([error], { admission: held }); throw held.failure; }
     },
   };

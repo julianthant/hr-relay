@@ -51,7 +51,7 @@ import { resumeAutomaticAuthorityRestore } from "../../storage/sqlite/offline-re
 import { type StorageDoctorReport } from "../../storage/sqlite/recovery-contracts.js";
 import { createTransactionHistory } from "../../storage/sqlite/transaction-history.js";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
-import { DESCRIPTORS,descriptorSetHash,SERVER_REGISTRY } from "../registries/workflow-registry.js";
+import { DESCRIPTORS,READABLE_WORKFLOW_MODULES,descriptorSetHash,SERVER_REGISTRY } from "../registries/workflow-registry.js";
 
 import { lstatSync } from "node:fs";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
@@ -244,13 +244,13 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
     });
     await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts, clock);
     const registrationProofs = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? undefined : machine.captureStartupRegistrationProofs());
-    if (registrationProofs !== undefined) {
+    if (registrationProofs !== undefined && registrationProofs.length !== 0) {
       const recoveryMachine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
       let recovery: ReturnType<typeof createProfileSession> | undefined;
       let recoveryFailure: { error: unknown } | undefined;
       try {
         recovery = createProfileSession({ machineRoot: recoveryMachine.stateRoot, admission: recoveryMachine, clock });
-        await recovery.recoverOnboarding({ deferActivation: true, registrationProofs });
+        await recovery.recoverOnboarding({ deferActivation: true, finishOnly: true, registrationProofs });
       }
       catch (error) { recoveryFailure = { error }; }
       if (recoveryFailure !== undefined && hasUnprovedSourceClosure(recoveryFailure.error)) throw retainAuthoritySourceClosure([recoveryFailure.error], { admission: { recoveryMachine, recovery } });
@@ -258,8 +258,11 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
       catch (error) { throw retainAuthoritySourceClosure(recoveryFailure === undefined ? [error] : [recoveryFailure.error, error], { admission: { recoveryMachine, recovery } }); }
       if (recoveryFailure !== undefined) throw recoveryFailure.error;
     }
-    registered = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? []
-      : machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready").map(row => row.profileId));
+    registered = await withStoppedMachineStorage(workspace, lifetime, async machine => {
+      if (machine.requiresFlatStoreMigration()) return [];
+      const pending = new Set(machine.readPendingLogoutProfileIds());
+      return machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready" && !pending.has(row.profileId)).map(row => row.profileId);
+    });
     try {
       await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
         const { upgradeProtectedSettings } = await import("../../storage/maintenance/protected-settings-upgrade.js");
@@ -269,7 +272,7 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
           if (person === undefined) throw new Error("protected-settings-upgrade-profile-missing");
           if (person.credentialState !== "saved") continue;
           const admission = machine.admitStoppedProfileSettingsUpgrade(profileId, operation); owned.push(admission);
-          await upgradeProtectedSettings(admission, profileBrowserClosure, operation, clock, processLockRoot);
+          await upgradeProtectedSettings(admission, profileBrowserClosure, operation, clock, processLockRoot, READABLE_WORKFLOW_MODULES.map(module => module.descriptor));
         }
       });
     } catch (error) { throw new RegisteredPersonUpgradeRefusedError(error); }
@@ -775,9 +778,30 @@ export function composeProfileRuntime(input: Readonly<{
       job.busy = profileResourceCustodyBusy(stopped.facts);
       if (!job.busy) {
         await stopped.complete();
-        completedLogouts.set(operation.operationId, { profileId: operation.profileId, epoch: operation.sessionGeneration + 1 });
       }
-      stopped.dispose(); job.state = "ready";
+      stopped.dispose();
+      if (!job.busy) {
+        const row = machine.readProfileRegistry().profiles.find(row => row.profileId === operation.profileId);
+        if (row?.lifecycle !== "ready") throw new Error("profile-logout-settled-registration-required");
+        if (row.credentialState === "saved") {
+          const maintenance = machine.acquireOfflineMaintenance();
+          let owner: RuntimeAdmission | undefined, failure: { error: unknown } | undefined;
+          try {
+            owner = machine.admitStoppedProfileSettingsUpgrade(operation.profileId, maintenance);
+            const context = machine.readInstallationContext();
+            if (context === undefined) throw new Error("profile-parent-context-unavailable");
+            const { upgradeProtectedSettings } = await import("../../storage/maintenance/protected-settings-upgrade.js");
+            await upgradeProtectedSettings(owner, profileBrowserClosure, maintenance, input.clock,
+              join(context.workspace, rebuildRuntimeIsolation.processLockRoot), READABLE_WORKFLOW_MODULES.map(module => module.descriptor));
+          } catch (error) { failure = { error }; }
+          if (failure !== undefined && hasUnprovedSourceClosure(failure.error)) throw retainAuthoritySourceClosure([failure.error], { admission: { owner, machine }, restore: maintenance });
+          try { owner?.release(); maintenance.release(); }
+          catch (error) { throw retainAuthoritySourceClosure(failure === undefined ? [error] : [failure.error, error], { admission: { owner, machine }, restore: maintenance }); }
+          if (failure !== undefined) throw failure.error;
+        }
+      }
+      if (!job.busy) completedLogouts.set(operation.operationId, { profileId: operation.profileId, epoch: operation.sessionGeneration + 1 });
+      job.state = "ready";
     })();
     void job.completion.catch(error => {
       if (hasUnprovedSourceClosure(error)) machine.retainSourceClosure(error);

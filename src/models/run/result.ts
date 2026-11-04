@@ -1,3 +1,4 @@
+import type { EvidenceSchemaReader } from "../storage/evidence-schema-admission.js";
 import { RunContinuationSchema } from "./continuation.js";
 import { DryRunCoverageSchema, DryRunStepSchema } from "../workflow/dry-run.js";
 import { ContractFieldPathSchema } from "../task/task-contract.js";
@@ -468,7 +469,7 @@ export const DelegationPreviewOutputSchema = z.strictObject({
 export type DelegationEvidenceResolution = Readonly<{ kind: "ordinary"; output: unknown }>
   | Readonly<{ kind: "preview"; output: z.infer<typeof DelegationPreviewOutputSchema> }>;
 
-export function resolveDelegationEvidenceOutput(evidence: Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>, schema: z.ZodType): DelegationEvidenceResolution {
+export function resolveDelegationEvidenceOutput(evidence: Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>, schema: z.ZodType, schemaReader?: EvidenceSchemaReader): DelegationEvidenceResolution {
   const { manifest } = evidence;
   if (manifest.parentRunId !== evidence.parentRunId || manifest.edgeId !== evidence.edgeId) throw new Error("delegation-outcome-manifest-mismatch");
   if (manifest.join === "none") {
@@ -490,7 +491,7 @@ export function resolveDelegationEvidenceOutput(evidence: Extract<TerminalDepend
         if (!envelope.dryRun) throw new Error("delegation-preview-dry-run-required");
         return { state: "previewed" as const, ...identity };
       }
-      if (result.resultSchemaHash !== manifest.resultSchemaHash || result.resultSchemaHash !== deriveSchemaHash(schema, "output")) throw new Error("delegation-outcome-result-mismatch");
+      if (result.resultSchemaHash !== manifest.resultSchemaHash || (schemaReader?.({ kind: "run-result", id: result.runId }, result, result.resultSchemaHash, deriveSchemaHash(schema, "output")) ?? result.resultSchemaHash) !== deriveSchemaHash(schema, "output")) throw new Error("delegation-outcome-result-mismatch");
       return childRunOutcomeSchema(schema).parse({ state: "done", ...identity, output: result.result.value });
     }
     if (run.lifecycle.outcome === "failed" && terminal?.kind === "failed-evidence" && terminal.authorization.failureId === run.lifecycle.failureId) return childRunOutcomeSchema(schema).parse({ state: "failed", ...identity, failureId: run.lifecycle.failureId });
@@ -506,8 +507,8 @@ export function resolveDelegationEvidenceOutput(evidence: Extract<TerminalDepend
   return { kind: "ordinary", output: manifest.cardinality === "one" ? outcomes[0] : outcomes };
 }
 
-export function delegationEvidenceOutput(evidence: Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>, schema: z.ZodType): unknown {
-  const resolution = resolveDelegationEvidenceOutput(evidence, schema);
+export function delegationEvidenceOutput(evidence: Extract<TerminalDependencyEvidence, { state: "delegation-resolved" }>, schema: z.ZodType, schemaReader?: EvidenceSchemaReader): unknown {
+  const resolution = resolveDelegationEvidenceOutput(evidence, schema, schemaReader);
   if (resolution.kind === "preview") throw new Error("delegation-preview-is-not-workflow-output");
   return resolution.output;
 }

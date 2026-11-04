@@ -14,16 +14,11 @@ import { encodePrivate, privateEqual as privateEqualBounded } from "../../../rul
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
-import { CanonicalCredentialError, CredentialMaintenanceHold, createCanonicalCredentials, readStoppedProtectedRecord, type CanonicalCredentialRecord } from "./canonical-credential-store.js";
+import { CanonicalCredentialError, CredentialMaintenanceHold, createCanonicalCredentials, type CanonicalCredentialRecord } from "./canonical-credential-store.js";
 
 const MAX_PRIVATE_REQUEST_BYTES = 64_000;
 const MAX_CREDENTIAL_DOCUMENT_BYTES = 16 * 1024 * 1024;
 
-export function stoppedProfileOwnsCredentialCommand(admission: RuntimeAdmission, purpose: "logout" | "layout" | "startup-recovery", commandId: string): boolean {
-  const id = z.uuid().parse(commandId), frame = readStoppedProtectedRecord(admission, purpose), document = authenticateDocument(frame.value);
-  if (frame.revision !== document.record.revision) throw new Error("credential store protected.json disagrees with its authenticated revision");
-  return document.history.some(({ receipt }) => receipt.commandId === id);
-}
 
 const ProtectedSettingsApplyPreflightSchema = ProtectedSettingsApplyInputSchema
   .omit({ entries: true })
@@ -373,7 +368,8 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
     ownsCommandId(commandId: string): boolean {
       admission.assertCredentialRead();
       const id = z.uuid().parse(commandId);
-      return readCurrent().history.some(({ receipt }) => receipt.commandId === id);
+      const document = readCurrent();
+      return document.retiredLegacy.commandIds.includes(id) || document.history.some(({ receipt }) => receipt.commandId === id);
     },
     acceptedAt(commandId: string): string | undefined {
       admission.assertCredentialRead();

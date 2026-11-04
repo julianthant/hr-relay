@@ -413,3 +413,26 @@ UCPath hire filing proofs bind the independently read transaction, legal identit
 Hire event keys retain the verified hire email, date and position across EID assignment or reviewed mode changes. Before master fills, a fresh complete read must prove the exact retained T-number and current filing status. New-hire receipt reuse also checks the independently read Tracker Profile ID against the verified I-9 profile.
 
 Completion-proof descriptions preserve nullable scalar fields explicitly. Email syntax and refinements remain marked for server validation; the completion proof schema still decides acceptance.
+
+
+Retained schema evidence keeps its original selectors and linked digests. A stopped profile-name
+domain conversion validates the supported source grammar and the current registered contracts,
+after exact browser/process closure and a verified same-profile authority backup. One settled
+`database_upgrades` record certifies each affected frozen owner, source selector, current selector
+and canonical source digest. The source includes the entire canonical input, checkpoint, result,
+gate, delegation manifest or permanent write intent, preserving signer bindings and command facts.
+The conversion does not rewrite those records, completion/dependency links or receipts.
+
+The admission facade seals the complete conversion statement with domain-separated HMAC-SHA256
+using the installation's existing profile pepper. Signing requires the exact stopped backed source;
+verification binds the installation and profile before reading that key. Credential erasure or key
+rotation does not discard the evidence seal. Restart validates the original backup and sealed
+certificate, then resumes credential conversion without duplicating the evidence record.
+
+Ordinary receipt, delegation and write-proof consumers use only this current certificate format.
+They verify the seal and exact owner/source/target digest, then parse the original value with the
+current contract. Missing certificates preserve the original mismatch refusal; changed, foreign,
+unknown or future evidence refuses. No historical value parser or historical hash list runs in an
+ordinary reader. Execution's descriptor, implementation, claim, gate, UNKNOWN and write-binding
+checks remain independent requirements. Source ingress selectors, command requests and immutable
+nested transaction envelopes remain original evidence rather than fresh admission authority.

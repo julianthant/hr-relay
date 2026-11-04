@@ -197,3 +197,15 @@ for (const version of [2, 3] as const) it.each(["unchanged", "value", "timestamp
     assert.equal(f.store.read().entries.ucpathPassword?.value, SECRET);
     assert.deepEqual(readFileSync(f.path), bytes);
   });
+
+it("keeps retired credential command identities deny-only and owned after their value history is gone", async () => {
+  const f = await fixture();
+  const owner = createCanonicalCredentials(f.admission), frame = owner.readRecord("protected"); assert.ok(frame);
+  const document = authenticateDocument(frame.value), commandId = randomUUID();
+  rewriteAuthenticatedCredentialFixture(f.machine.stateRoot, f.admission.profileBinding.profileId, () =>
+    ({ ...document, retiredLegacy: { ...document.retiredLegacy, commandIds: [...document.retiredLegacy.commandIds, commandId] } }));
+  const before = readFileSync(f.path);
+  assert.equal(f.store.ownsCommandId(commandId), true); assert.equal(f.store.acceptedAt(commandId), undefined);
+  assert.equal(f.store.ownsCommandId(randomUUID()), false);
+  assert.deepEqual(readFileSync(f.path), before);
+});
