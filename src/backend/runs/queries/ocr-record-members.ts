@@ -29,6 +29,9 @@ import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { ReadApprovedOcrSnapshot } from "../../../models/processing/ocr/read-approved-snapshot.js";
 import { ApprovedOcrRecordInputSchema } from "../../../models/workflows/ocr/approved-record.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { timelineCheckpointReference } from "../../../models/events/timeline.js";
+import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
+import { checkpointLookupKey } from "../../../models/workflow/checkpoint.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 
 type AuthenticatedGroup = ReturnType<AuthorityRepositories["dependencies"]["authenticateGroup"]>;
@@ -225,7 +228,16 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
   const bound = new Map<string, NonNullable<typeof group>["children"][number]>();
   if (group !== undefined) {
     const checkpoint = originalCheckpoint(repositories,group,"approved-records");
-    if (checkpoint.output.schemaHash !== deriveSchemaHash(ReadApprovedOcrSnapshot.output,"output")
+    const publication = repositories.timelineEvents.get(deriveStableUuid("timeline-checkpoint-recorded",
+      checkpointLookupKey(checkpoint.workflowId, checkpoint.itemId, checkpoint.nodeId, checkpoint.attempt, checkpoint.claimGeneration)));
+    if (checkpoint.runId !== parent.envelope.runId || checkpoint.workflowId !== parent.envelope.workflow
+      || checkpoint.itemId !== parent.envelope.itemId || checkpoint.nodeId !== "approved-records" || checkpoint.attempt !== parent.envelope.attempt
+      || checkpoint.descriptorVersion !== parent.envelope.descriptorVersion || checkpoint.contractFingerprint !== parent.envelope.contractFingerprint
+      || publication?.payload.kind !== "checkpoint-recorded" || publication.workflow !== checkpoint.workflowId
+      || publication.scope.kind !== "run" || publication.scope.runId !== parent.envelope.runId || publication.occurredAt !== checkpoint.writtenAt
+      || publication.payload.runId !== parent.envelope.runId || publication.payload.workflow !== checkpoint.workflowId
+      || publication.payload.attempt !== checkpoint.attempt || publication.payload.claimGeneration !== checkpoint.claimGeneration
+      || canonicalJsonStringify(publication.payload.checkpoint) !== canonicalJsonStringify(timelineCheckpointReference(checkpoint))
       || canonicalJsonStringify(ReadApprovedOcrSnapshot.output.parse(checkpoint.output.value).snapshot) !== canonicalJsonStringify(snapshot)) throw new OcrReviewRefusedError();
     for (const [index, member] of group.children.entries()) {
       const input = member.child.input.parsed.value;
