@@ -1,6 +1,6 @@
 import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
 import { AuthorityRestoreJournalSchema } from "../../../../src/backend/storage/admission/installation.js";
-import { linkSync,mkdirSync,mkdtempSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
+import { linkSync,lstatSync,mkdirSync,mkdtempSync,readFileSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach,describe,expect,it,vi } from "vitest";
@@ -94,6 +94,23 @@ describe("native recovery evidence inventory",()=>{
 it.skipIf(process.platform !== "linux")("inspects retained recovery evidence with high exact identities", () => {
   const f = fixture(true); writeFileSync(f.staged, "owned fixture", { mode: 0o600 });
   const restore = forceExactFileMetadata(f.root);
-  try { expect(f.read().report.state).toBe("interrupted"); }
+  try {
+    expect(f.read().report.state).toBe("interrupted");
+    const inode = (1n << 54n) + (lstatSync(f.staged, { bigint: true }).ino << 2n);
+    for (const source of ["path", "descriptor"] as const) expect(restore.observations).toContainEqual({ path: f.staged, source, inode });
+  }
   finally { restore(); }
+});
+
+it.skipIf(process.platform !== "linux")("refuses an adjacent high-ID recovery evidence descriptor substitution", () => {
+  const f = fixture(true); writeFileSync(f.staged, "owned fixture", { mode: 0o600 });
+  const restore = forceExactFileMetadata(f.root, (path, info, source) => {
+    if (path === f.staged && source === "descriptor") { expect(Number(info.ino)).toBe(Number(info.ino + 1n)); info.ino += 1n; }
+  });
+  try {
+    expect(f.read().report).toMatchObject({ state: "unavailable", findings: [
+      { marker: "authority-restore", state: "interrupted" }, { marker: "authority-restore", state: "unavailable" },
+    ] });
+    expect(readFileSync(f.staged, "utf8")).toBe("owned fixture");
+  } finally { restore(); }
 });

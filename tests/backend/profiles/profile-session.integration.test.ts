@@ -941,6 +941,19 @@ it.skipIf(process.platform !== "linux")("reads a signed-in profile file with exa
   try {
     const bytes = f.session.readFile(f.active.token, "notes/note.bin");
     assert.equal(bytes instanceof Uint8Array && Buffer.from(bytes).equals(f.own), true);
+    const inode = (1n << 54n) + (fs.lstatSync(f.path, { bigint: true }).ino << 2n);
+    for (const source of ["path", "descriptor"] as const) assert.ok(restore.observations.some(observation =>
+      observation.path === f.path && observation.source === source && observation.inode === inode), `missing exact ${source} identity`);
+  } finally { restore(); }
+});
+
+it.skipIf(process.platform !== "linux")("refuses an adjacent high-ID profile descriptor substitution", async () => {
+  const f = await readIsolationFixture(), restore = forceExactFileMetadata(f.directory, (path, info, source) => {
+    if (path === f.path && source === "descriptor") { assert.equal(Number(info.ino), Number(info.ino + 1n)); info.ino += 1n; }
+  });
+  try {
+    assert.throws(() => f.session.readFile(f.active.token, "notes/note.bin"), { message: "profile file read refused" });
+    assert.deepEqual(readFileSync(f.path), f.own);
   } finally { restore(); }
 });
 
