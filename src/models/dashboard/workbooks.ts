@@ -97,12 +97,20 @@ export const IntakeCommandResultWireSchema = z.discriminatedUnion("state", [
 ]);
 export type IntakeCommandResultWire = z.infer<typeof IntakeCommandResultWireSchema>;
 
-export const WorkbookTypeSchema = z.strictObject({
+const WorkbookReferenceTypeSchema = z.strictObject({
   id: WorkbookIdSchema, name: NameSchema, keyFieldId: FieldSchema.nullable(),
   fields: z.array(FieldSchema), defaultWorkbookId: WorkbookIdSchema.nullable(),
 }).superRefine((type, ctx) => {
   if ((type.keyFieldId !== null && !type.fields.includes(type.keyFieldId)) || new Set(type.fields).size !== type.fields.length)
     ctx.addIssue({ code: 'custom', message: 'invalid workbook type fields' });
+});
+export const WorkbookTypeSchema = WorkbookReferenceTypeSchema.safeExtend({
+  fieldLabels: z.record(FieldSchema, NameSchema).optional(), requiredFields: z.array(FieldSchema).optional(),
+}).superRefine((type, ctx) => {
+  const labels = type.fields.map(field => (type.fieldLabels?.[field] ?? field).trim().toLowerCase());
+  if (Object.keys(type.fieldLabels ?? {}).some(field => !type.fields.includes(field)) || new Set(labels).size !== labels.length
+    || new Set(type.requiredFields).size !== (type.requiredFields?.length ?? 0)
+    || type.requiredFields?.some(field => !type.fields.includes(field))) ctx.addIssue({ code: 'custom', message: 'invalid workbook type column names or required fields' });
 });
 export const WorkbookLinkSchema = z.strictObject({ url: z.url().refine(value => {
   const url = new URL(value);
@@ -167,7 +175,7 @@ export const WorkbookSelectedRowReferenceRequestSchema = WorkbookSelectedRowRefe
 export const WorkbookSelectedRowReferenceSnapshotSchema = z.strictObject({ libraryId: WorkbookIdSchema, version: z.number().int().positive(),
   versionId: WorkbookIdSchema.optional(), versionName: NameSchema.optional(),
   worksheets: z.array(z.strictObject({ sheetId: WorkbookIdSchema, name: NameSchema })).min(1),
-  type: WorkbookTypeSchema, rows: z.array(z.strictObject({ key: z.string(), state: z.enum(['matched', 'missing', 'ambiguous']),
+  type: WorkbookReferenceTypeSchema, rows: z.array(z.strictObject({ key: z.string(), state: z.enum(['matched', 'missing', 'ambiguous']),
     matches: z.array(z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema, values: z.record(FieldSchema, WorkbookCellValueWireSchema) })) })) });
 export const RunWorkbookSelectedRowReferenceSchema = z.strictObject({ request: WorkbookSelectedRowReferenceRequestSchema, snapshot: WorkbookSelectedRowReferenceSnapshotSchema }).superRefine((reference, ctx) => {
   const { request, snapshot } = reference;
@@ -190,7 +198,7 @@ export const WorkbookSnapshotRequestSchema = z.union([WorkbookReferenceRequestSc
   WorkbookNamedReferenceRequestSchema, WorkbookNamedAllRowsRequestSchema, WorkbookSelectedRowReferenceRequestSchema]);
 export const WorkbookReferenceSnapshotSchema = z.strictObject({ libraryId: WorkbookIdSchema, version: z.number().int().positive(),
   worksheets: z.array(z.strictObject({ sheetId: WorkbookIdSchema, name: NameSchema })).min(1),
-  type: WorkbookTypeSchema, rows: z.array(z.strictObject({ key: z.string(), state: z.enum(['matched', 'missing', 'ambiguous']),
+  type: WorkbookReferenceTypeSchema, rows: z.array(z.strictObject({ key: z.string(), state: z.enum(['matched', 'missing', 'ambiguous']),
     matches: z.array(z.strictObject({ sheetId: WorkbookIdSchema, rowId: WorkbookIdSchema, values: z.record(FieldSchema, WorkbookCellValueWireSchema) })) })) });
 export const WorkbookReferenceLookupSchema = z.union([WorkbookReferenceRequestSchema.pick({ typeId: true, keys: true, fields: true }),
   WorkbookAllRowsRequestSchema.pick({ mode: true, typeId: true, fields: true })]);

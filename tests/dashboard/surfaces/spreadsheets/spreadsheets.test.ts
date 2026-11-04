@@ -14,12 +14,13 @@ import { type EditableWorkbook } from '../../../../src/rules/spreadsheets/workbo
 import { exportSpreadsheetInWorker,importSpreadsheetInWorker } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js';
 import { SpreadsheetTypeDialog, SpreadsheetsSettings } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheets.js';
 import { StorageHealthSummaryWireSchema } from '../../../../src/models/dashboard/bootstrap.js';
-import { SavedWorkbookSchema,WorkbookCreateRequestSchema,decodeEditableWorkbook,encodeSavedWorkbook,type SavedWorkbook } from '../../../../src/models/dashboard/workbooks.js';
+import { SavedWorkbookSchema,WorkbookTypeSchema,WorkbookCreateRequestSchema,decodeEditableWorkbook,encodeSavedWorkbook,type SavedWorkbook, type WorkbookType } from '../../../../src/models/dashboard/workbooks.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
 import { WorkbookLibraryEntrySchema, type WorkbookLibraryEntry } from '../../../../src/models/dashboard/workbook-library.js';
 import { FIXTURE_EDITABLE_SETTINGS } from '../../../parity/helpers/fixture-settings.js';
 import { FixtureCommandBinding } from '../../../support/helpers/dashboard/command-binding.js';
 import { MeasurementFreeResizeObserver } from '../../../support/helpers/settings-storage-doctor-fixtures.js';
+import { spreadsheetTypeColumn } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-type-model.js';
 vi.mock('../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.js', () => ({ importSpreadsheetInWorker: vi.fn(), exportSheetInWorker: vi.fn(), exportSpreadsheetInWorker: vi.fn() }));
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root | undefined;
@@ -270,6 +271,69 @@ it('opens the selected type through the mounted route and restores its trigger',
   assert.match(document.querySelector('[role="dialog"]')?.textContent ?? '', /Create spreadsheet type/);
   assert.equal(document.querySelector<HTMLInputElement>('input[name="spreadsheet-type-name"]')?.value, '');
   assert.equal(w.calls.filter(call => call.method === 'POST').length, 0);
+});
+
+it('edits a 31-column type, required fields and membership through the mounted dialog', async () => {
+  const columns = Array.from({ length: 31 }, (_, index) => spreadsheetTypeColumn(`Synthetic ${index + 1}`));
+  const type: WorkbookType = { id: 'wide', name: 'Synthetic roster', keyFieldId: null, defaultWorkbookId: null,
+    fields: columns.map(column => column.id), fieldLabels: Object.fromEntries(columns.map(column => [column.id, column.name])) };
+  let saved: WorkbookType | undefined;
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ToastProvider, null, createElement(SpreadsheetTypeDialog, {
+    open: true, onOpenChange: () => undefined, type, returnFocus: createRef<HTMLButtonElement>(),
+    onSave: async value => { saved = value; return { state: 'confirmed' }; },
+  }))));
+  assert.equal(document.querySelectorAll('input[aria-label^="Column "]').length, 31);
+  const first = document.querySelector<HTMLInputElement>('input[aria-label="Column 1 name"]'); assert(first);
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(first, 'Renamed column'); first.dispatchEvent(new Event('input', { bubbles: true })); });
+  const required = document.querySelector<HTMLElement>('[role="checkbox"]'); assert(required);
+  await act(async () => required.click()); await click('Remove column 31'); await click('Save type');
+  assert.equal(saved?.fields.length, 30); assert.equal(saved?.fieldLabels?.[columns[0].id], 'Renamed column');
+  assert.deepEqual(saved?.requiredFields, [columns[0].id]); assert(!saved?.fields.includes(columns[30].id));
+});
+
+it.each(['Employee ID', 'UCPath Empl ID'])('keeps the existing EID when imported header %s resolves to it', async header => {
+  const workbook = newEditableWorkbook();
+  const imported = { ...workbook, sheets: workbook.sheets.map(sheet => ({ ...sheet, rows: [{ ...sheet.rows[0], cells: [{ value: header }, { value: 'Notes' }, { value: 'Other' }] }, ...sheet.rows.slice(1)] })) };
+  let saved: WorkbookType | undefined;
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ToastProvider, null, createElement(SpreadsheetTypeDialog, {
+    open: true, onOpenChange: () => undefined, workbook: imported, returnFocus: createRef<HTMLButtonElement>(),
+    onSave: async value => { saved = value; return { state: 'confirmed' }; },
+  }))));
+  const input = (label: string) => { const node = document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`); assert(node); return node; };
+  const fill = async (node: HTMLInputElement, value: string) => act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(node, value); node.dispatchEvent(new Event('input', { bubbles: true })); });
+  const columnNames = () => [...document.querySelectorAll<HTMLInputElement>('input[aria-label^="Column "]')].map(node => node.value);
+  const checks = () => [...document.querySelectorAll<HTMLElement>('[role="checkbox"]')];
+  const selectHeader = async (value: string) => {
+    const select = document.querySelector<HTMLElement>('[role="dialog"] [role="combobox"]'); assert(select);
+    await act(async () => select.click());
+    const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.textContent?.trim() === value); assert(option);
+    await act(async () => option.click());
+  };
+  const name = document.querySelector<HTMLInputElement>('input[name="spreadsheet-type-name"]'); assert(name);
+  await fill(name, 'Synthetic roster'); await fill(input('Column 3 name'), 'Payroll identifier');
+  assert.equal(checks().length, 3); await act(async () => checks()[2].click());
+  await selectHeader(header); await click('Add selected header');
+  assert.deepEqual(columnNames(), ['First Name', 'Last Name', 'Payroll identifier']);
+  assert.equal(checks()[2].getAttribute('aria-checked'), 'true');
+  assert.match(document.querySelector('[role="alert"]')?.textContent ?? '', /already included as “Payroll identifier”/u);
+  assert.equal(saved, undefined);
+  await selectHeader('Notes'); await click('Add selected header');
+  await fill(input('Column 4 name'), 'Team notes'); await act(async () => checks()[3].click());
+  await fill(input('Column 3 name'), 'Payroll ID');
+  assert.deepEqual(columnNames(), ['First Name', 'Last Name', 'Payroll ID', 'Team notes']);
+  assert.equal(checks()[2].getAttribute('aria-checked'), 'true');
+  assert.equal(checks()[3].getAttribute('aria-checked'), 'true');
+  await click('Remove column 4'); await click('Remove column 2'); await fill(input('Column 1 name'), 'Given name');
+  assert.deepEqual(columnNames(), ['Given name', 'Payroll ID']);
+  assert.equal(checks()[1].getAttribute('aria-checked'), 'true');
+  await click('Save type');
+  const result = WorkbookTypeSchema.parse(saved);
+  assert.equal(result.name, 'Synthetic roster'); assert.equal(result.keyFieldId, 'eid'); assert.equal(result.defaultWorkbookId, null);
+  assert.deepEqual(result.fields, ['firstName', 'eid']);
+  assert.deepEqual(result.fieldLabels, { firstName: 'Given name', eid: 'Payroll ID' });
+  assert.deepEqual(result.requiredFields, ['eid']);
 });
 
 it('reopens a pending type on Check result with its name locked', async () => {

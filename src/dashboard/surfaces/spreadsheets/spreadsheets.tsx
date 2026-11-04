@@ -2,42 +2,67 @@ import { useSpreadsheetWiringAdapter } from "../../state/spreadsheet-wiring-adap
 import { useViewNavigation, useViewState } from "../../app/navigation/view-route-model.js";
 import { importSpreadsheetInWorker } from "./spreadsheet-import-client.js";
 import { spreadsheetImportError } from "./spreadsheet-import-model.js";
+import { spreadsheetTypeColumn, spreadsheetTypeColumns, spreadsheetTypeError, spreadsheetTypeHeaders } from './spreadsheet-type-model.js';
 import { SpreadsheetEditor } from "./spreadsheet-editor.js";
 import { decodeEditableWorkbook, type WorkbookType } from '../../../models/dashboard/workbooks.js';
 import type { WorkbookLibraryEntry, WorkbookLibraryVersion, WorkbookLibraryAction } from '../../../models/dashboard/workbook-library.js';
 import type { LibraryChangeResult } from '../../state/spreadsheet-wiring-adapter.js';
 import { mockWorkbookTypes, mockWorkbookLibrary } from './spreadsheet-library-model.js';
-import { spreadsheetField } from './spreadsheet-fields-model.js';
 import { type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, Field, Input, useToasts } from "../../ds/ui.js";
+import { Banner, Button, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, Field, Input, Select, useToasts } from "../../ds/ui.js";
 import { SpreadsheetImportDialog } from "./spreadsheet-import.js";
 import { SpreadsheetColumnImport } from "./spreadsheet-column-import.js";
 import { prepareSpreadsheetColumns, selectSpreadsheetColumns } from "./spreadsheet-column-import-model.js";
 import { SpreadsheetLibrary } from "./spreadsheet-library.js";
 import { SpreadsheetVersions } from "./spreadsheet-versions.js";
 import { spreadsheetDownload, saveSpreadsheetDownload } from "./spreadsheet-chat-registration-model.js";
-import { saveMockSpreadsheet, addMockSpreadsheetType, renameMockSpreadsheetType, registeredSpreadsheetWorkbook, registerLocalSpreadsheet, retainSpreadsheetCopy, useSpreadsheetMocks, type RegisteredSpreadsheet } from "./spreadsheet-mock-model.js";
+import { saveMockSpreadsheet, putMockSpreadsheetType, registeredSpreadsheetWorkbook, registerLocalSpreadsheet, retainSpreadsheetCopy, useSpreadsheetMocks, type RegisteredSpreadsheet } from "./spreadsheet-mock-model.js";
 
-export function SpreadsheetTypeDialog({ open, onOpenChange, type, returnFocus, onSave, pending = false }: { open: boolean; onOpenChange: (open: boolean) => void; type?: WorkbookType; returnFocus: RefObject<HTMLButtonElement | null>; onSave: (type: WorkbookType) => Promise<LibraryChangeResult>; pending?: boolean }) {
+export function SpreadsheetTypeDialog({ open, onOpenChange, type, workbook, returnFocus, onSave, pending = false }: { open: boolean; onOpenChange: (open: boolean) => void; type?: WorkbookType; workbook?: EditableWorkbook | null; returnFocus: RefObject<HTMLButtonElement | null>; onSave: (type: WorkbookType) => Promise<LibraryChangeResult>; pending?: boolean }) {
   const { toast } = useToasts();
   const input = useRef<HTMLInputElement>(null);
   const saveButton = useRef<HTMLButtonElement>(null);
   const [name, setName] = useState(type?.name ?? '');
+  const [columns, setColumns] = useState(() => spreadsheetTypeColumns(type));
+  const [header, setHeader] = useState('');
+  const headers = spreadsheetTypeHeaders(workbook);
+  const validation = spreadsheetTypeError(name, columns);
   const [error, setError] = useState(pending ? 'This type change is not yet confirmed. Check its result before editing it.' : ''), [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState(pending);
   const [id] = useState(() => crypto.randomUUID());
+  const addHeader = () => {
+    const column = spreadsheetTypeColumn(header), existing = columns.find(item => item.id === column.id);
+    if (existing) { setError(`“${header}” is already included as “${existing.name}”. The existing column is unchanged.`); return; }
+    setColumns(current => [...current, column]); setHeader(''); setError('');
+  };
   const save = async () => {
+    if (validation) { setError(validation); return; }
     setBusy(true); setError('');
     try {
-      const result = await onSave({ ...(type ?? { id, fields: ['firstName', 'lastName', 'eid'], keyFieldId: 'eid', defaultWorkbookId: null }), name: name.trim() });
+      const fields = columns.map(column => column.id);
+      const result = await onSave(uncertain && type ? type : { id: type?.id ?? id, name: name.trim(), fields, defaultWorkbookId: type?.defaultWorkbookId ?? null,
+        keyFieldId: type?.keyFieldId && fields.includes(type.keyFieldId) ? type.keyFieldId : fields.includes('eid') ? 'eid' : null,
+        fieldLabels: Object.fromEntries(columns.map(column => [column.id, column.name.trim()])), requiredFields: columns.filter(column => column.required).map(column => column.id) });
       if (result.state === 'confirmed') { onOpenChange(false); toast({ tone: 'success', title: 'Spreadsheet type saved' }); }
       else { setError(result.message); setUncertain(result.state === 'uncertain'); }
     } catch (error) { setError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); }
   };
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent hideClose className="hub-sheets-dialog hub-sheets-type-dialog" title={type ? 'Edit spreadsheet type' : 'Create spreadsheet type'} onOpenAutoFocus={event => { event.preventDefault(); if (uncertain) saveButton.current?.focus(); else input.current?.focus(); }} onCloseAutoFocus={event => { if (returnFocus.current) { event.preventDefault(); returnFocus.current.focus(); } }}>
-    <DialogBody><Field label="Type name" error={error || undefined}><Input ref={input} autoComplete="off" name="spreadsheet-type-name" className="hub-sheets-field" value={name} disabled={busy || uncertain} onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && name.trim()) { event.preventDefault(); void save(); } }} /></Field><p className="hub-sheets-caption">Columns: {(type?.fields ?? ['firstName', 'lastName', 'eid']).map(field => spreadsheetField(field).label).join(', ')}</p></DialogBody>
-    <DialogFooter><Button className="hub-sheets-button" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button><Button ref={saveButton} className="hub-sheets-button hub-sheets-primary" disabled={busy || !name.trim()} onClick={() => void save()}>{uncertain ? 'Check result' : busy ? 'Saving…' : 'Save type'}</Button></DialogFooter>
+    <DialogBody><Field label="Type name"><Input ref={input} autoComplete="off" name="spreadsheet-type-name" className="hub-sheets-field" value={name} disabled={busy || uncertain} onChange={event => { setName(event.target.value); setError(''); }} /></Field>
+      <fieldset onChange={() => setError('')} disabled={busy || uncertain} className="hub-sheets-type-columns"><legend>Columns ({columns.length})</legend>
+        <p className="hub-sheets-caption">Name each column and choose which fields are required.</p>
+        {columns.map((column, index) => <div key={column.id} className="hub-sheets-type-column">
+          <Input aria-label={`Column ${index + 1} name`} value={column.name} onChange={event => setColumns(current => current.map(item => item.id === column.id ? { ...item, name: event.target.value } : item))} />
+          <Checkbox label={`Required column ${index + 1}`} checked={column.required} onCheckedChange={required => setColumns(current => current.map(item => item.id === column.id ? { ...item, required: required === true } : item))} />
+          <Button aria-label={`Remove column ${index + 1}`} onClick={() => setColumns(current => current.filter(item => item.id !== column.id))}>Remove</Button>
+        </div>)}
+        <Button onClick={() => setColumns(current => [...current, spreadsheetTypeColumn()])}>Add column</Button>
+        {headers.length > 0 && <div className="hub-sheets-header-suggestions"><Field label="Imported workbook headers"><Select value={header} onChange={event => setHeader(event.target.value)}><option value="">Choose a header</option>{headers.map(value => <option key={value} value={value}>{value}</option>)}</Select></Field><Button disabled={!header} onClick={addHeader}>Add selected header</Button></div>}
+      </fieldset>
+      {error && <Banner tone="danger" title="Type not saved">{error}</Banner>}
+    </DialogBody>
+    <DialogFooter><Button className="hub-sheets-button" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button><Button ref={saveButton} className="hub-sheets-button hub-sheets-primary" disabled={busy} onClick={() => void save()}>{uncertain ? 'Check result' : busy ? 'Saving…' : 'Save type'}</Button></DialogFooter>
   </DialogContent></Dialog>;
 }
 
@@ -126,7 +151,7 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook, onOp
     <input ref={upload} disabled={busy || !!pendingImport} type="file" accept=".xlsx,.csv" aria-label="Open XLSX or CSV" className="sr-only" onChange={event => { const file = event.target.files?.[0]; if (file) void importFile(file); }} />
     {loading && <p role="status" className="text-caption text-ui-muted">{loading}</p>}
     {fileError && <Banner tone="danger" title="Spreadsheet unavailable">{fileError}{source === "served" && <Button disabled={served.catalogRefreshing} onClick={() => void served.adapter.refreshCatalog()}>Refresh library</Button>}</Banner>}
-    {selectedId !== null && !selected && source === "mock" ? <Banner tone="danger" title="Spreadsheet unavailable"><p>This file is no longer registered.</p><Button onClick={() => setSelectedId(null)}>Open library</Button></Banner> : visibleWorkbook ? <SpreadsheetEditor key={source === "served" ? served.key : selectedId ?? visibleWorkbook.name} document={visibleWorkbook} dirty={currentDirty} onHistory={source === "served" && served.draft?.opened ? () => { versionTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setVersionsId(served.draft!.opened!.libraryId); } : undefined} exportKeepsDirty={source === "served"} onSave={source === "served" ? (served.loading || served.refreshing || served.error || served.openError || served.catalogError) && !served.draft?.intent ? undefined : draft => served.adapter.save(selectedId!, draft) : saveMockSpreadsheet} onDocument={documentChange} onExported={() => toast({ tone: "success", title: "Spreadsheet copy exported" })} onMapping={selected ? () => {
+    {selectedId !== null && !selected && source === "mock" ? <Banner tone="danger" title="Spreadsheet unavailable"><p>This file is no longer registered.</p><Button onClick={() => setSelectedId(null)}>Open library</Button></Banner> : visibleWorkbook ? <SpreadsheetEditor key={source === "served" ? served.key : selectedId ?? visibleWorkbook.name} document={visibleWorkbook} dirty={currentDirty} onHistory={source === "served" && served.draft?.opened ? () => { versionTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setVersionsId(served.draft!.opened!.libraryId); } : undefined} exportKeepsDirty={source === "served"} onSaveValues={source === 'served' && served.draft?.opened ? (name, draft) => served.adapter.saveValuesVersion(selectedId!, name, draft) : undefined} onSave={source === "served" ? (served.loading || served.refreshing || served.error || served.openError || served.catalogError) && !served.draft?.intent ? undefined : draft => served.adapter.save(selectedId!, draft) : saveMockSpreadsheet} onDocument={documentChange} onExported={() => toast({ tone: "success", title: "Spreadsheet copy exported" })} onMapping={selected ? () => {
       setEditingId(selected.id);
       if (selected.typeId === 'local') {
         const draft = { ...visibleWorkbook, libraryId: undefined };
@@ -140,10 +165,9 @@ export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook, onOp
     </>}
     {importView === "columns" ? pendingImport ? <SpreadsheetColumnImport open={importOpen} document={pendingImport} onOpenChange={setImportOpen} onChange={next => onWorkbook(next, true)} onCancel={() => { setImportOpen(false); onWorkbook(null, false); }} onConfirm={confirmImport} returnFocus={importTrigger} /> : importOpen && <Dialog open onOpenChange={setImportOpen}><DialogContent title="Import unavailable" description="Choose the file again to review its columns."><DialogBody>The pending file is no longer in memory.</DialogBody><DialogFooter><Button onClick={() => setImportOpen(false)}>Close</Button></DialogFooter></DialogContent></Dialog> : <SpreadsheetImportDialog open={importOpen} onOpenChange={setImportOpen} existing={editing} onRegistered={() => { if (!editing) setSelectedId(null); }} />}
     <SpreadsheetVersions key={versionsId ?? "closed"} returnFocus={versionTrigger} entry={catalog.find(entry => entry.libraryId === versionsId) ?? null} pending={source === "served" && versionsId !== null && served.pendingLibraries.includes(versionsId)} onClose={() => setVersionsId(null)} onDownload={downloadVersion} onChange={changeLibrary} onCheck={entry => served.adapter.settleLibrary(entry.libraryId)} />
-    <SpreadsheetTypeDialog key={`${typeId ?? "new"}:${String(typeOpen)}`} open={typeOpen} onOpenChange={setTypeOpen} type={viewType} pending={source === "served" && served.pendingTypes.some(type => type.id === viewType?.id)} returnFocus={typeTrigger} onSave={async type => {
+    <SpreadsheetTypeDialog key={`${typeId ?? "new"}:${String(typeOpen)}`} open={typeOpen} onOpenChange={setTypeOpen} type={viewType} workbook={pendingImport ?? visibleWorkbook ?? workbook} pending={source === "served" && served.pendingTypes.some(type => type.id === viewType?.id)} returnFocus={typeTrigger} onSave={async type => {
       if (source === 'served') return served.adapter.saveType(type);
-      if (viewType) renameMockSpreadsheetType(viewType.id, type.name);
-      else addMockSpreadsheetType(type.name, type.fields.map(field => spreadsheetField(field).label));
+      putMockSpreadsheetType(type);
       return { state: 'confirmed' };
     }} />
   </section>;

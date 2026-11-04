@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach,describe,it } from "vitest";
 import { editSpreadsheetCell,newEditableWorkbook } from "../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js";
 import { ROSTER_FIELDS } from "../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-data.js";
-import { addMockSpreadsheetType,renameMockSpreadsheetType,initialSpreadsheetSheets,NOT_MAPPED,registeredSpreadsheetWorkbook,registerLocalSpreadsheet,registerMockSpreadsheet,resetSpreadsheetMocks,retainSpreadsheetCopy,searchMockSpreadsheet,spreadsheetMappingErrors,WORKBOOK_ONLY,type SpreadsheetType } from "../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js";
+import { putMockSpreadsheetType,addMockSpreadsheetType,renameMockSpreadsheetType,initialSpreadsheetSheets,NOT_MAPPED,registeredSpreadsheetWorkbook,registerLocalSpreadsheet,registerMockSpreadsheet,resetSpreadsheetMocks,retainSpreadsheetCopy,searchMockSpreadsheet,spreadsheetMappingErrors,WORKBOOK_ONLY,type SpreadsheetType } from "../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 const roster: SpreadsheetType = { id: "roster", name: "Roster", fields: ROSTER_FIELDS };
 const file = () => registerMockSpreadsheet({ name: "Fictional roster.xlsx", typeId: "roster", sheets: initialSpreadsheetSheets(roster) });
@@ -91,4 +91,15 @@ it("renames a type without changing its identity, columns or existing workbook a
   assert.throws(() => renameMockSpreadsheetType(type.id, " roster "), /already exists/u);
   assert.throws(() => renameMockSpreadsheetType(type.id, " "), /Enter a type name/u);
   assert.throws(() => renameMockSpreadsheetType("missing", "Name"), /TYPE_NOT_FOUND/u);
+});
+
+ it('retains custom field identities when importing a mock type with renamed columns', () => {
+  resetSpreadsheetMocks();
+  const definition = { id: 'custom', name: 'Custom roster', fields: ['roster.customField'], keyFieldId: null, defaultWorkbookId: null,
+    fieldLabels: { 'roster.customField': 'Custom name' }, requiredFields: ['roster.customField'] };
+  putMockSpreadsheetType(definition);
+  const file = registerMockSpreadsheet({ name: 'Synthetic.xlsx', typeId: definition.id,
+    sheets: [{ name: 'Synthetic', headerRow: 1, columns: ['Custom header'], mapping: ['Custom name'] }] });
+  assert.equal(file.sheets[0].bindings?.[0].fieldId, 'roster.customField');
+  assert.equal(registeredSpreadsheetWorkbook(file).sheets[0].columnBindings?.[0].fieldId, 'roster.customField');
 });

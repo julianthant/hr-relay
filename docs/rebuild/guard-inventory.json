@@ -500,6 +500,14 @@
       "replacementRequired": true
     },
     {
+      "name": "redaction-workbook-origins",
+      "file": "tests/architecture/logs/redaction-surface-scan.workbook.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/guards-and-tests.md; docs/rebuild/reference/clock-config-secrets.md",
+      "invariant": "Reason: mutable workbook type metadata and values-only actions add private leaves across request, status and durable records. Pin exact membership of all 55 captured-hr-value origins in operator-loopback or durable-authority custody without retention exceptions. Every omitted origin must fail independently, and every leaf must refuse process and OS-notification egress. Retained workbook and start-plan reference types keep their exact five-field shape and origin membership, excluding mutable editor metadata.",
+      "replacementRequired": true
+    },
+    {
       "name": "redaction-worker-startup-origins",
       "file": "tests/architecture/logs/redaction-surface-scan.worker-startup.test.ts",
       "status": "active",

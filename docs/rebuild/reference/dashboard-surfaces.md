@@ -529,8 +529,11 @@ Origin-wide browser preferences are never read or adopted.
 
 ## Spreadsheets
 
-Spreadsheets has Registered spreadsheets and Spreadsheet types tabs, library search, New spreadsheet,
-Import spreadsheet, and Add spreadsheet type. The library reads served saved workbooks; Spreadsheet types remain local.
+Spreadsheets shows the served workbook library, workflow outputs and spreadsheet types. Create type
+and Edit provide named columns, required-field choices and imported header suggestions. Names must
+be nonempty and unique, with at least one column. Renaming retains each field's stable ID. Types
+already used in workbook history retain their field membership and key so journal replay stays valid;
+column labels and required-field choices remain editable.
 Opening a saved workbook mounts `SpreadsheetEditor`. List and open reads use a loading status; read failures show Spreadsheet unavailable.
 New and imported workbooks remain drafts until Save. Save sends the opened version and confirms only matching readback.
 Conflicts and uncertain saves retain the draft. Unsaved workbook drafts share Settings exit guards.
@@ -561,6 +564,11 @@ save, reopen and XLSX export, while malformed table XML refuses import. The shar
 Editing a cell clears its old rich text and hyperlink metadata. Formulas import their stored results
 and retain a presence flag. Master edits, keyed writes and Sync refuse formula-bearing workbooks
 or metadata the editable model cannot preserve, including table structures and non-cell styles.
+Save as new version (values only) confirms the loss of merged cells, formulas, formatting, colors,
+rich text and links before retaining the edited cell values as a named library snapshot. Formula
+cells retain imported results. The original snapshot stays selected and downloadable, and the open
+draft stays available. This action uses catalog/workbook revision checks, immutable action receipts
+and exact snapshot readback; an uncertain result is checked without repeating the write.
 `spreadsheet-fields-model.ts` reuses canonical intake field IDs and namespaces roster-only IDs.
 Canonical value checks use the intake field coercers and schemas without rewriting stored values.
 Roster-only fields remain tracker text; workflow-specific transaction rules belong to execution admission.

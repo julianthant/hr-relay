@@ -106,6 +106,11 @@ export type SpreadsheetSaveResult =
   | { state: 'confirmed'; version: number; readback: EditableWorkbook }
   | { state: 'refused' | 'conflict' | 'uncertain'; reason: string };
 
+export function spreadsheetValuesOnly(document: EditableWorkbook): EditableWorkbook {
+  return { ...document, themes: [], hasFormulas: false, unsupportedMetadata: false,
+    sheets: document.sheets.map(sheet => ({ ...sheet, rows: sheet.rows.map(row => ({ ...row, cells: row.cells.map(cell => ({ value: cell.value })) })) })) };
+}
+
 function sameSpreadsheetValue(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
   if (left instanceof Date || right instanceof Date) return left instanceof Date && right instanceof Date && left.getTime() === right.getTime();

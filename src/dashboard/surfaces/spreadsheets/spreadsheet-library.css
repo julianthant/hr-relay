@@ -49,6 +49,9 @@ html[data-motion=off] :is(.hub-sheets-library,.hub-sheets-dialog) button { trans
 .hub-sheets-type-dialog>[class*="overflow-y-auto"]>div { gap:0; }
 .hub-sheets-type-dialog .hub-sheets-field { line-height:19.5px; }
 .hub-sheets-type-dialog .hub-sheets-caption { font-size:13px; margin:0; }
+.hub-sheets-type-columns { border:0; padding:0; margin:20px 0 0; min-width:0; }
+.hub-sheets-type-column { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:12px; align-items:center; margin:12px 0; }
+.hub-sheets-header-suggestions { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:end; margin-top:20px; }
 body>div[data-state=open]:has(+ .hub-sheets-dialog) { background:#0008; transition:none; }
 .hub-sheets-section { margin-top:28px; }
 .hub-sheets-data { width:100%; border-collapse:collapse; font-size:13px; line-height:20px; }

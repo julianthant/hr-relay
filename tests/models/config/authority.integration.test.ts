@@ -113,7 +113,7 @@ afterAll(() => profiles.close());
       assert.deepEqual(database.authority.workbooks.history(saved.libraryId), []);
     } },
     { table: "workbook_types", mutate: database => {
-      const type = { id: 'accounting', name: 'Accounting type', keyFieldId: null, fields: [], defaultWorkbookId: null };
+      const type = { id: 'accounting', name: 'Accounting type', keyFieldId: null, fields: ['roster.accounting'], defaultWorkbookId: null };
       assert.deepEqual(database.authority.workbooks.putType(type), type);
       assert.deepEqual(database.authority.workbooks.types().find(value => value.id === type.id), type);
     } },

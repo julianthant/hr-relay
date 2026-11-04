@@ -836,6 +836,7 @@ const WORKBOOK_VALUE_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrig
   { path: "themes[]", origin: "captured-hr-value" },
 ];
 const LIBRARY_TYPE_ORIGINS = ['id', 'name', 'keyFieldId', 'fields[]', 'defaultWorkbookId'] as const;
+const LIBRARY_MUTABLE_TYPE_ORIGINS = [...LIBRARY_TYPE_ORIGINS, 'fieldLabels', 'requiredFields[]'] as const;
 const LIBRARY_METADATA_ORIGINS = ['typeId'] as const;
 const LIBRARY_CHANGE_ORIGINS = ['key', 'values', 'sheetId', 'rowId', 'selection.sheetId', 'selection.rowId', 'name', 'metadata.typeId', 'resolves.operationId'] as const;
 const LIBRARY_RECEIPT_ORIGINS = ['operationId', 'libraryId', 'key', 'candidates[].sheetId', 'candidates[].rowId',
@@ -852,6 +853,7 @@ const LIBRARY_STATE_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigi
 const LIBRARY_ACTION_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
   ...['operationId', 'change.from.versionId', 'change.versionId', 'change.sources[].libraryId'].map(path => ({ path, origin: 'repository-authored' as const })),
   { path: 'change.name', origin: 'operator-authored' }, { path: 'change.metadata.typeId', origin: 'captured-hr-value' },
+  ...WORKBOOK_VALUE_ORIGINS.map(entry => ({ ...entry, path: `change.from.workbook.${entry.path}` })),
 ];
 const PLANNED_OUTPUT_ORIGINS = ['name', 'sheetId', 'worksheetName', 'folderName', 'archiveName', 'people[].rowId', 'people[].label'] as const;
 const LIBRARY_NAME_RETENTION = 'Operator-approved named workbook and version management retains entered names in the local library state and its immutable action journal (docs/rebuild/reference/data-intake-and-edit-data.md, Saved workbook reference data). This permits local authority retention only, with no process or OS notification egress.';
@@ -956,7 +958,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface: 'wire/workbook-library-action-status', path: 'record.libraryId', origin: 'repository-authored' },
     { surface: 'wire/workbook-library-catalog', path: '[].libraryId', origin: 'repository-authored' },
     ...['name', 'worksheets[].id', 'worksheets[].name', 'metadata.typeId'].map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].${path}`, origin: 'captured-hr-value' as const })),
-    ...LIBRARY_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].type.${path}`, origin: 'captured-hr-value' as const })),
+    ...LIBRARY_MUTABLE_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-library-catalog', path: `[].type.${path}`, origin: 'captured-hr-value' as const })),
     ...['versionId', 'versionName'].map(path => ({ surface: 'wire/workbook-reference', path, origin: path === 'versionId' ? 'repository-authored' : 'operator-authored' })),
     { surface: 'request/workbook-reference', path: 'versionId', origin: 'repository-authored' },
     { surface: 'request/workbook-reference', path: 'selectedRow.sheetId', origin: 'captured-hr-value' },
@@ -1175,7 +1177,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
     { surface, path: "[].libraryId", origin: "repository-authored" as const },
     ...WORKBOOK_VALUE_ORIGINS.map(entry => ({ ...entry, surface, path: `[].workbook.${entry.path}`, origin: entry.path === "libraryId" ? "repository-authored" as const : entry.origin })),
   ]),
-  ...LIBRARY_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-type', path, origin: 'captured-hr-value' as const })),
+  ...LIBRARY_MUTABLE_TYPE_ORIGINS.map(path => ({ surface: 'wire/workbook-type', path, origin: 'captured-hr-value' as const })),
   ...LIBRARY_METADATA_ORIGINS.map(path => ({ surface: 'wire/workbook-metadata', path, origin: 'captured-hr-value' as const })),
   ...LIBRARY_CHANGE_ORIGINS.flatMap(path => ['request/workbook-operation', 'durable/workbook-operation'].map(surface => ({ surface,
     path: surface.startsWith('durable/') ? `change.${path}` : path, origin: path === 'name' ? 'operator-authored' as const : 'captured-hr-value' as const,
