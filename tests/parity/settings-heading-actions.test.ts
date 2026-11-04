@@ -36,12 +36,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await navigation.getByRole("link", { name: name === "Storage checks" ? "Storage" : name, exact: true }).click();
         if (name === "Spreadsheets") {
           await expect(body.locator(".hub-sheets-library h1")).toHaveText(name);
-          const toolbar = body.locator(".hub-sheets-toolbar"), bounds = (await toolbar.boundingBox())!;
-          const actions = toolbar.getByRole("button");
-          await expect(actions).toHaveText(["Import spreadsheet", "Create type"]);
+          const toolbar = body.locator(".ds-table-toolbar"), bounds = (await toolbar.boundingBox())!;
+          const actions = toolbar.locator(".ds-table-toolbar-controls").getByRole("button");
+          await expect(actions).toHaveText(["Create type", "Import spreadsheet"]);
           const first = (await actions.first().boundingBox())!, last = (await actions.last().boundingBox())!;
-          expect(first.x).toBe(bounds.x); expect(last.x + last.width).toBe(bounds.x + bounds.width); expect(first.y).toBe(last.y);
-          await expect(body.locator(".hub-sheets-intro")).toHaveText("Choose, import, and organize your spreadsheet data.");
+          await expect(toolbar.getByRole("searchbox", { name: "Search spreadsheets", exact: true })).toBeVisible();
+          const search = (await toolbar.locator(".ds-table-toolbar-search").boundingBox())!;
+          expect(search.x).toBe(bounds.x); expect(first.x).toBeGreaterThan(search.x + search.width);
+          expect(last.x + last.width).toBe(bounds.x + bounds.width); expect(first.y).toBe(last.y);
+          await expect(body.locator(".hub-sheets-intro")).toHaveText("Reference data and workbooks made by your workflows.");
           continue;
         }
         await expect(body.locator(".ds-page-heading-title").first()).toHaveText(name);
