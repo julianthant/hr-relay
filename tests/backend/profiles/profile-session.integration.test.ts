@@ -207,6 +207,25 @@ describe("profile session", () => {
     assert.equal((JSON.parse(readFileSync(join(root, "machine", "profiles.json"), "utf8")) as { profiles: unknown[] }).profiles.length, 1);
   });
 
+  it("resumes the profile left signed in after a restart without its password, and nothing after logout", async () => {
+    const root = await temp();
+    const session = createProfileSession({ machineRoot: root });
+    const alex = await finishProfileOnboarding(session, session.signUp({
+      firstName: "Alex", lastName: "Rivera", email: "alex@ucsd.edu", password: "secret-one", createdAt: "2026-09-06T12:00:00.000Z",
+    }));
+    assert.equal(alex.state, "active");
+    if (alex.state !== "active") return;
+    const restarted = createProfileSession({ machineRoot: root });
+    const resumed = restarted.resumeSignedInProfile({ at: "2026-09-06T12:05:00.000Z" });
+    assert.equal(resumed.state, "active");
+    if (resumed.state !== "active") return;
+    assert.equal(resumed.profileId, alex.profileId);
+    assert.ok(resumed.epoch > alex.epoch);
+    assert.equal((await settleLogout(restarted, restarted.logOut(resumed.token, { at: "2026-09-06T12:06:00.000Z" }))).state, "signed-out");
+    const after = createProfileSession({ machineRoot: root }).resumeSignedInProfile({ at: "2026-09-06T12:07:00.000Z" });
+    assert.equal(after.state, "refused");
+  });
+
   it("refuses non-letter initials before creating a profile", async () => {
     const root = await temp();
     const session = createProfileSession({ machineRoot: root });

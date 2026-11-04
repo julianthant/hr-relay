@@ -7,9 +7,9 @@ import { duoMethodLabels, duoSummary, useDuoBrowser, mockOnboardingPort, type Du
 import "./onboarding.css";
 import { Button, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
 
-export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPort, authenticated = false, problem, signedInAs }: {
+export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPort, authenticated = false, problem, resumable = false }: {
   step: OnboardingStep; onStep: (step: OnboardingStep) => void; onDashboard: () => void; port?: OnboardingPort; authenticated?: boolean; problem?: string;
-  signedInAs?: { readonly firstName: string; readonly lastName: string };
+  resumable?: boolean;
 }) {
   const [forms, setForms] = useState<Record<"login" | "signup", OnboardingDetails>>({ login: { firstName: "", lastName: "", email: "", password: "" }, signup: { firstName: "", lastName: "", email: "", password: "" } });
   const formStep = step === "login" ? "login" : "signup";
@@ -38,6 +38,13 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
   useEffect(() => { const lifetime = submitted; submitted.current++; setSubmitting(false); setCompletionUnknown(false); return () => { lifetime.current++; }; }, [draft?.operationId]);
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState("");
+  const [resuming, setResuming] = useState(resumable && port.source === "served");
+  const resumeStarted = useRef(false);
+  useEffect(() => {
+    if (!resumable || port.source !== "served" || resumeStarted.current) return;
+    resumeStarted.current = true;
+    void port.resume().catch(() => setLoginError(operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE"))).finally(() => setResuming(false));
+  }, [resumable, port]);
   const [attempts, setAttempts] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const browser = useDuoBrowser(methods, setMethods, port.source, draft?.operationId, port.source === "served" ? port : undefined);
@@ -99,9 +106,9 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
       {signup && name === "password" && <p className="field-help" id="password-help">Use at least 8 characters.</p>}
       <p className="hub-auth-error" id={`auth-${name}-error`} aria-live="polite">{errors[name]}</p></div>;
   };
-  const title = step === "login" ? signedInAs ? `Log in as ${signedInAs.firstName} ${signedInAs.lastName}` : "Log in to Relay" : signup ? "Create your profile" : step === "ready" ? "You’re all set" : both ? "Duo setup is complete" : port.source === "served" ? "Set up Duo" : launching ? "Opening your setup browser…" : closed ? "Pick up where you left off" : failed ? "Reconnect to finish setup" : "Set up your sign-in methods";
+  const title = step === "login" ? "Log in to Relay" : signup ? "Create your profile" : step === "ready" ? "You’re all set" : both ? "Duo setup is complete" : port.source === "served" ? "Set up Duo" : launching ? "Opening your setup browser…" : closed ? "Pick up where you left off" : failed ? "Reconnect to finish setup" : "Set up your sign-in methods";
   const opening = port.source === "served" && launching && !both;
-  const description = step === "login" ? "Open your workspace." : signup ? "Add your details, then set up Duo." : step === "ready" ? "Your profile and sign-in methods are ready." : both ? "Security key and Touch ID are confirmed. Finish to open Relay."
+  const description = step === "login" ? resuming ? "Opening your workspace…" : "Open your workspace." : signup ? "Add your details, then set up Duo." : step === "ready" ? "Your profile and sign-in methods are ready." : both ? "Security key and Touch ID are confirmed. Finish to open Relay."
     : uncertainMethod ? `Relay could not confirm ${uncertainMethod}. In Duo, open Manage devices and remove any device you do not recognize, then start it over in the setup browser.`
     : waitingMethod ? `Finish adding ${waitingMethod} in the setup browser. Relay moves on when Duo shows it was added.`
     : unavailableMethod ? `Relay cannot verify ${unavailableMethod}. Open the setup browser to check it.`
@@ -158,7 +165,7 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
           {signup && <div className="name-row">{field("firstName", "First name", "text", "given-name")}{field("lastName", "Last name", "text", "family-name")}</div>}
           {field("email", "Work email", "email", "username")}{field("password", "Password", "password", signup ? "new-password" : "current-password")}
           <div className="login-actions"><p className="form-error" role="alert">{loginError || problem}</p><button tabIndex={0} className="btn primary full" type="submit" disabled={seconds > 0 || submitting}>{signup ? "Create profile" : seconds > 0 ? `Log in in 0:${String(seconds).padStart(2, "0")}` : "Log in"}</button></div>
-        </form>{!signedInAs && <div className="switch-row"><span>{signup ? "Already have a profile?" : "New to Relay?"}</span><a tabIndex={0} className="text-link" href={`?onboarding=${signup ? "login" : "signup"}`} onClick={async event => { event.preventDefault(); await navigate(signup ? "login" : "signup"); }}>{signup ? "Log in" : "Sign up"}</a></div>}
+        </form><div className="switch-row"><span>{signup ? "Already have a profile?" : "New to Relay?"}</span><a tabIndex={0} className="text-link" href={`?onboarding=${signup ? "login" : "signup"}`} onClick={async event => { event.preventDefault(); await navigate(signup ? "login" : "signup"); }}>{signup ? "Log in" : "Sign up"}</a></div>
           {!signup && port.source === "mock" && <p className="field-help">Demo: alex.rivera@ucsd.edu / Relay-demo-42</p>}</> : step === "duo" ? <>
           <ul className="method-list" aria-label="Duo methods">{(["key", "touch"] as const).map(method => <li key={method}><span className="method-name">{method === "key" ? <KeyRound className="icon" aria-hidden /> : <Fingerprint className="icon" aria-hidden />}{method === "key" ? "Security key" : "Touch ID"}</span><DuoMethodPill state={draft?.methods[method].state ?? (methods[method] ? "complete" : "idle")} /></li>)}</ul>
           <p className="sr-only" role="status">{duoSummary(methods, draft)}</p>{port.source === "served" && (loginError || problem) && <p className="form-error" role="alert">{loginError || problem}</p>}<footer className="actions"><div className="buttons"><Button variant="ghost" size="sm" disabled={submitting || completionUnknown || port.source === "served" && (draft === undefined || port.unavailable)} onClick={event => requestCancellation("login", event.currentTarget)}>{submitting ? "Cancelling…" : "Cancel sign-up"}</Button><button tabIndex={0} className="btn primary" type="button" aria-busy={opening || undefined} disabled={submitting || completionUnknown || opening} onClick={() => both ? navigate("ready") : browser.open()}>{opening && <LoaderCircle aria-hidden className="icon animate-spin motion-reduce:animate-none" />}{both ? "Finish setup" : closed || failed ? "Reopen browser" : "Show setup browser"}</button></div></footer>

@@ -489,7 +489,7 @@ it("revokes retained selected producers before a genuine in-flight public transp
   }
 });
 
-it("a refused dashboard start after Finish keeps the published profile and leaves login as the way forward", async () => {
+it("a refused dashboard start after Finish keeps the published profile signed in and resumes it without a password", async () => {
   const f = await fixture();
   const actual = await vi.importActual<typeof dashboardRunners>("../../../../../src/backend/app/preflight/dashboard-runners.js");
   let refuse = true;
@@ -510,9 +510,9 @@ it("a refused dashboard start after Finish keeps the published profile and leave
     assert.ok(f.machine.readProfileRegistry().profiles[0]?.registration.onboardingCompletion);
     const state = await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } });
     assert.equal(state.status, 200);
-    assert.deepEqual(PublicProfileStateSchema.parse(await state.json()), { state: "signed-out", signUpRequired: false, signedInAs: { firstName: "Fixture", lastName: "Operator" } });
+    assert.deepEqual(PublicProfileStateSchema.parse(await state.json()), { state: "signed-out", signUpRequired: false, resumable: true });
     refuse = false;
-    const login = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
+    const login = await post("/api/v1/profile/resume", {});
     assert.equal(PublicProfileStateSchema.parse(await login.json()).state, "active");
     const session = login.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(session);
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie: session, origin: base } })).status, 200);

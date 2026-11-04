@@ -30,6 +30,7 @@ export interface ServedOnboardingPort {
   openPortal(): Promise<PublicProfileState>;
   start(method: ProfileOnboardingMethod): Promise<PublicProfileState>;
   confirmDuo(scope: DuoConfirmationScope): Promise<PublicProfileState>;
+  resume(): Promise<PublicProfileState>;
   validate(this: void, step: "login" | "signup", details: OnboardingDetails): OnboardingErrors;
   submit(step: "login" | "signup", details: OnboardingDetails): Promise<PublicProfileState>;
 }
@@ -77,6 +78,7 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
       const result = await client.confirmProfileOnboardingDuo({ operationId: scope.operationId, method: scope.method, attemptId: scope.attemptId, operatorConfirmed: true });
       return accept(result);
     },
+    async resume() { return accept(await client.resumeProfile(), true); },
     async submit(step, details) {
       const result = step === "signup" ? await client.signUpProfile(details) : await client.signInProfile({ email: details.email, password: details.password });
       if (step === "signup" && result.state !== PROFILE_ONBOARDING_STATE && result.state !== "refused" && result.state !== "error") throw new Error("ONBOARDING_DRAFT_REQUIRED");
@@ -281,6 +283,7 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
     };
     return { source: "served", validate: validateOnboarding, onboarding, unavailable: Boolean(failure), authorityScope: scope,
       submit: (step, details) => run(port => port.submit(step, details)),
+      resume: () => run(port => port.resume()),
       complete: () => run(port => port.complete()), cancel: () => run(port => port.cancel()),
       cancelDuo: (method, attemptId) => run(port => port.cancelDuo(method, attemptId)),
       showBrowser: () => run(port => port.showBrowser(), "view"), openPortal: () => run(port => port.openPortal()),
