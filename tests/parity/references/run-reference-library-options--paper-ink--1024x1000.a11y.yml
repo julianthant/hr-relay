@@ -1,7 +1,7 @@
 # run-reference-library-options--paper-ink--1024x1000
 # adapter: fixture
 # fixture: run-reference-library.spec.ts:named reference planning light 1024
-# descriptorHash: 83a12355a2a61561e31884edf46f36774eb1c7e2f806879fd5e0858cc2e0c246
+# descriptorHash: 98b1269bfa67d1c68f74d4d93db21be4ebf9da1407604d463de8b1f793356421
 # appVersion: 0.1.0
 # viewport: 1024x1000  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
