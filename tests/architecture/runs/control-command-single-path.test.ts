@@ -712,7 +712,7 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
 /* ── the partition (ref dashboard-surfaces authority) ────────── */
 
 const EXPECTED_ACTIVE = {
-  "ocr-review": ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"],
+  "ocr-review": ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record", "add-ocr-record"],
   application: ["pause-all", "pause-all-and-quit"],
   "assistant-model-preference": ["set-assistant-model-preference"],
   "failure-resolution": ["annotate-failure"],

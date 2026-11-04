@@ -163,6 +163,16 @@ The native OCR repository stores them in `ocr_source_uploads`, `ocr_review_revis
 the existing content-addressed writer. Source-page reads admit the current person, run, revision
 and original page before preparing a verified byte lease, then revalidate after preparation.
 
+`add-ocr-record` creates an unselected operator-added record under the existing command transaction
+and expected-review-revision CAS. Its stable ID includes the original PDF digest and creation command
+identity. Record provenance retains that command, its server creation time and exact form-specific
+page bindings; I-9 retains both section bindings. Blank fields use canonical form admission and block
+approval until resolved. Corrections can change the fields and bound original pages, preserving the
+creation identity and reading date. These records use the existing JSON revision/snapshot authorities;
+no separate table or database migration is needed. Original extractions, lookup outcomes and the review
+seed remain unchanged. Source projections identify operator-added records without claiming a lookup.
+Authenticated rebuilds retain them only while their bound source-page evidence remains unchanged.
+
 The final OCR result checkpoint publishes revision 1 with the actual run identity. OCR rebuilds
 its derived review and result tasks when it resumes. Changed authenticated child outcomes publish
 a later checkpoint-origin revision from one complete seed. Each record retains corrected fields,
@@ -179,7 +189,7 @@ Operator retry refuses while the OCR parent holds a worker claim. A queued paren
 admitted lookups cannot retry a page until it parks; authenticated delegated recovery retains its
 separate continuation authority. Corrections, discard and restore refuse while a replacement awaits
 a rebuilt review, so an accepted edit cannot disappear at publication.
-Corrections, discard and restore append immutable revisions with expected-revision CAS and command replay.
+Creation, corrections, discard and restore append immutable revisions with expected-revision CAS and command replay.
 New mutations refuse with `OCR_REVIEW_REFUSED` once an authenticated approval snapshot exists,
 including delayed edits whose OCR revision still matches after the gate queues the run. The check
 and revision append share the command authority transaction. Exact replay of previously applied
@@ -187,7 +197,7 @@ commands and read-only historical reconciliation remain available after approval
 The same transaction advances the canonical run version through its lifecycle service so existing
 Queue and selected-detail subscriptions replace their reads. The `review` section serves source
 pages, fields, provenance, issues, current revision and immutable snapshots; `people` remains unavailable.
-Read-only command-result queries reconcile an uncertain correction without replaying it.
+Read-only command-result queries reconcile uncertain creation or correction without replaying it.
 
 Records authenticates the original review checkpoint through its protected native publication and
 the revision's full-checkpoint digest. The publication binds the original schema hash and value

@@ -290,10 +290,13 @@ is live. Only Sessions Add workers adds more.
 Records opens within the workflow's Logs body. Each record card pairs its source PDF page with
 included/excluded state and grouped fields. Source page selection, zoom out/in, and Fit page keep
 actual page identity. Missing or failed source images say so. Aspect ratio comes from loaded image
-dimensions. The record heading receives arrival focus. The preview's Add record focuses its Employee ID;
-served Records edits existing extracted records only.
+dimensions. The record heading receives arrival focus. Served Add record creates a blank, unselected
+operator-added record through a revision-bound command and focuses its Employee ID. Approval freezes
+the exact selected records; uncertain creation checks the original command without redispatch.
+[Data intake](data-intake-and-edit-data.md#44-durable-extracted-records) owns provenance, source bindings
+and authority details.
 
-The parent form type controls the fields. Manual mode begins with blank predefined records.
+The parent form type controls the fields. In the start preview, manual mode begins with blank predefined records.
 Every current OCR shape omits Notes. Employee IDs must match `^10\d{6}$`; invalid IDs, unknown
 records, and missing required fields block approval. A valid manually entered ID has no provenance
 warning, but manual provenance remains distinct from verified lookup evidence. I-9 page selections
