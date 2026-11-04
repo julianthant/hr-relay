@@ -30,7 +30,10 @@ describe("deterministic UCPath contact editor", () => {
     const page = UcpathContactPageSnapshotSchema.parse(fixture.page);
     const port = createDeterministicUcpathContactPage({ initial: page });
     const { name: _name, ...fields } = contactEffect(UcpathEmergencyContactInputSchema.parse(fixture.input));
-    await assert.rejects(port.viewAll(), /explicit complete View All/);
+    await port.viewAll();
+    assert.deepEqual(port.actions, []);
+    const paged = createDeterministicUcpathContactPage({ initial: { ...page, view: "paged", rows: page.rows.slice(0, 1) } });
+    await assert.rejects(paged.viewAll(), /explicit complete View All/);
     await assert.rejects(port.fillFields(0, fields), /overwrite a populated/);
     await assert.rejects(port.fillName(0, "Replacement"), /replace a populated/);
     await assert.rejects(port.fillName(99, "Fixture name"), /row disappeared/);
