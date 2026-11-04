@@ -15,6 +15,12 @@ export function registerStorageRoutes(app: DashboardApp, deps: StorageRouteDeps,
     return c.json(ClearRunHistoryResultSchema.parse(deps.runHistory?.clear(request)
       ?? { state: "refused", commandId: request.commandId, reason: "unavailable" }));
   });
+  app.use("/api/v1/storage/run-history/result", operatorMutationIngressGuard);
+  app.post("/api/v1/storage/run-history/result", async c => {
+    const request = ClearRunHistoryRequestSchema.parse(await c.req.json());
+    return c.json(ClearRunHistoryResultSchema.parse(deps.runHistory?.check(request)
+      ?? { state: "refused", commandId: request.commandId, reason: "unavailable" }));
+  });
   app.get("/api/v1/storage/doctor/latest", (c) => c.json(latest));
   app.get("/api/v1/storage/doctor", async (c) => {
     const report = await run();

@@ -1,3 +1,5 @@
+import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
+import { clearSettingsReads } from "../../../../../src/dashboard/state/settings-read-model.js";
 import { ClearRunHistoryRequestSchema } from "../../../../../src/models/dashboard/run-history.js";
 import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 // @vitest-environment jsdom
@@ -25,19 +27,26 @@ async function confirm() {
   await act(async () => element.click());
 }
 async function click(name: string) { await act(async () => { button(name).focus(); button(name).click(); }); }
-async function mount(options: { activeRuns?: number; finishedRuns?: number; unavailable?: boolean; reject?: boolean; mismatch?: boolean } = {}) {
+async function mount(options: { activeRuns?: number; finishedRuns?: number; unavailable?: boolean; reject?: boolean; mismatch?: boolean; unreceived?: boolean; statusResponse?: () => Promise<Response> } = {}) {
   let cleared = 0, fail = false;
-  const commands: unknown[] = [];
+  const commands: unknown[] = [], checks: unknown[] = [];
+  const recorded = new Map<string, {state: "cleared"; commandId: string; deletedRuns: number}>();
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
     if (url.endsWith("/storage/doctor/latest")) return Response.json({ state: "never-run" });
-    if (url.endsWith("/storage/run-history")) return Response.json(options.unavailable ? { state: "unavailable" } : { state: "available", finishedRuns: options.finishedRuns ?? 2, activeRuns: options.activeRuns ?? 0 });
-    if (!url.endsWith("/storage/run-history/clear")) throw new Error(`unexpected request ${url}`);
+    if (url.endsWith("/storage/run-history")) return options.statusResponse?.() ?? Response.json(options.unavailable ? { state: "unavailable" } : { state: "available", finishedRuns: options.finishedRuns ?? 2, activeRuns: options.activeRuns ?? 0 });
+    const checking = url.endsWith("/storage/run-history/result");
+    if (!checking && !url.endsWith("/storage/run-history/clear")) throw new Error(`unexpected request ${url}`);
     if (typeof init?.body !== "string") throw new Error("expected a JSON request body");
-    const command = ClearRunHistoryRequestSchema.parse(JSON.parse(init.body)); commands.push(command);
-    if (fail) throw new Error("synthetic lost response");
+    const command = ClearRunHistoryRequestSchema.parse(JSON.parse(init.body));
     const { commandId } = command;
-    return Response.json(options.reject ? { state: "refused", commandId, reason: "active-runs" }
-      : { state: "cleared", commandId: options.mismatch ? crypto.randomUUID() : commandId, deletedRuns: 2 });
+    if (checking) { checks.push(command); return Response.json(recorded.get(commandId) ?? { state: "not-recorded", commandId }); }
+    commands.push(command);
+    if (fail && options.unreceived) throw new Error("synthetic request never received");
+    if (options.reject) return Response.json({ state: "refused", commandId, reason: "active-runs" });
+    const result = recorded.get(commandId) ?? { state: "cleared" as const, commandId: options.mismatch ? crypto.randomUUID() : commandId, deletedRuns: 2 };
+    recorded.set(commandId, result);
+    if (fail) throw new Error("synthetic committed response lost");
+    return Response.json(result);
   } });
   const render = async () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
@@ -46,7 +55,7 @@ async function mount(options: { activeRuns?: number; finishedRuns?: number; unav
     }) })));
   };
   await render();
-  return { commands, get cleared() { return cleared; }, fail(value: boolean) { fail = value; }, render };
+  return { client, commands, checks, get cleared() { return cleared; }, fail(value: boolean) { fail = value; }, render };
 }
 
 it("requires destructive confirmation, defaults focus to Cancel, and acknowledges the exact command", async () => {
@@ -78,7 +87,7 @@ it("retains an uncertain request across remount and checks the same command iden
   await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren();
   await f.render(); expect(button("Check clear result").disabled).toBe(false);
   f.fail(false); await click("Check clear result");
-  expect(f.commands).toHaveLength(2); expect(f.commands[1]).toEqual(f.commands[0]); expect(f.cleared).toBe(1);
+  expect(f.commands).toHaveLength(1); expect(f.checks).toEqual([f.commands[0]]); expect(f.cleared).toBe(1);
 });
 
 it("treats a mismatched command response as uncertain and never announces completion", async () => {
@@ -86,4 +95,38 @@ it("treats a mismatched command response as uncertain and never announces comple
   await confirm();
   expect(f.cleared).toBe(0); expect(button("Check clear result")).toBeDefined();
   expect(document.body.textContent).not.toContain("finished runs cleared.");
+});
+
+it("does not dispatch a fresh deletion when checking an unreceived request and requires another confirmation", async () => {
+  const f = await mount({ unreceived: true }); f.fail(true);
+  await click("Clear run history"); await confirm();
+  expect(f.commands).toHaveLength(1);
+  f.fail(false); await click("Check clear result");
+  expect(f.commands).toHaveLength(1);
+  expect(f.checks).toEqual([f.commands[0]]);
+  expect(f.cleared).toBe(0);
+  expect(document.body.textContent).toContain("not recorded");
+  await click("Clear run history");
+  expect(f.commands).toHaveLength(1);
+  await confirm(); expect(f.commands).toHaveLength(2); expect(f.commands[1]).not.toEqual(f.commands[0]);
+});
+
+it("keeps a failed status read visible and refuses clearing", async () => {
+  const f = await mount({statusResponse: async () => { throw new Error("synthetic history read failure"); }});
+  expect(button("Clear run history").disabled).toBe(true);
+  expect(document.body.textContent).toContain(ERROR_CATALOG.STORAGE_AUTHORITY_READ_FAILED.text);
+  expect(f.commands).toEqual([]);
+});
+
+it("ignores a superseded status read after a replacement read has loaded", async () => {
+  let rejectFirst: ((reason: unknown) => void) | undefined, reads = 0;
+  const first = new Promise<Response>((_resolve, reject) => { rejectFirst = reject; });
+  const f = await mount({statusResponse: () => ++reads === 1 ? first : Promise.resolve(Response.json({state: "available", finishedRuns: 2, activeRuns: 0}))});
+  expect(button("Clear run history").disabled).toBe(true);
+  await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren();
+  clearSettingsReads(f.client); await f.render();
+  expect(button("Clear run history").disabled).toBe(false);
+  await act(async () => { if (rejectFirst === undefined) throw new Error("missing deferred read"); rejectFirst(new Error("superseded history read")); });
+  expect(button("Clear run history").disabled).toBe(false);
+  expect(document.body.textContent).not.toContain(ERROR_CATALOG.STORAGE_AUTHORITY_READ_FAILED.text);
 });

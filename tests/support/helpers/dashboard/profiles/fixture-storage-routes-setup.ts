@@ -9,6 +9,10 @@ export function createFixtureStorageRoutesSetup({ FIXTURE_STORAGE_DOCTOR }: {
   function registerFixtureStorageRoutes({ app, runHistory }: { app: Hono; runHistory?: "ready" | "active" | "empty" }): void {
     let finishedRuns = runHistory === "empty" ? 0 : 3;
     const settled = new Map<string, ClearRunHistoryResult>();
+    app.post("/api/v1/storage/run-history/result", async c => {
+      const { commandId } = ClearRunHistoryRequestSchema.parse(await c.req.json());
+      return c.json(settled.get(commandId) ?? { state: "not-recorded", commandId });
+    });
     app.get("/api/v1/storage/run-history", c => c.json(runHistory === undefined ? { state: "unavailable" }
       : { state: "available", finishedRuns, activeRuns: runHistory === "active" ? 1 : 0 }));
     app.post("/api/v1/storage/run-history/clear", async c => {

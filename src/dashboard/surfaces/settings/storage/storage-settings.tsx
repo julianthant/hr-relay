@@ -174,7 +174,7 @@ export function StorageSection({ storage, onHistoryCleared }: { storage: Storage
         <div className="hub-settings-row">
           <div><div className="hub-row-label">Clear run history</div><span className="hub-row-note">{history.description}</span></div>
           <div className="hub-setting-control"><Button ref={historyTrigger} variant="dangerGhost" disabled={storage.authority !== "healthy" || history.disabled}
-            onClick={() => history.unknown ? void history.clear() : setConfirming(true)}>{history.pending ? "Clearing…" : history.unknown ? "Check clear result" : "Clear run history"}</Button></div>
+            onClick={() => history.unknown ? void history.clear() : setConfirming(true)}>{history.checking ? "Checking…" : history.pending ? "Clearing…" : history.unknown ? "Check clear result" : "Clear run history"}</Button></div>
         </div>
         {history.message && <p role="status" className="px-[var(--ds-space-loose)] pb-[var(--ds-space-cozy)]">{history.message}</p>}
         <Dialog open={confirming} onOpenChange={setConfirming}>

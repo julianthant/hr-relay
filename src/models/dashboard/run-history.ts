@@ -11,6 +11,7 @@ export const RunHistoryStatusSchema = z.discriminatedUnion("state", [
 export type RunHistoryStatus = z.infer<typeof RunHistoryStatusSchema>;
 
 export const ClearRunHistoryResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("not-recorded"), commandId: CommandIdSchema }),
   z.strictObject({ state: z.literal("cleared"), commandId: CommandIdSchema, deletedRuns: z.number().int().nonnegative() }),
   z.strictObject({ state: z.literal("refused"), commandId: CommandIdSchema,
     reason: z.enum(["active-runs", "shared-checkpoint", "unresolved-write", "replay-divergent", "unavailable"]) }),

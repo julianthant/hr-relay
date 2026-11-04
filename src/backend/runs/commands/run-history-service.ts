@@ -5,18 +5,22 @@ import type { RunRecordService } from "../lifecycle/run-record-service.js";
 export interface RunHistoryService {
   status(): RunHistoryStatus;
   clear(request: ClearRunHistoryRequest): ClearRunHistoryResult;
+  check(request: ClearRunHistoryRequest): ClearRunHistoryResult;
 }
 
 export function createRunHistoryService(input: { database: AuthorityDatabase; lifecycle: RunRecordService; afterClear(): void }): RunHistoryService {
+  const settle = (result: ClearRunHistoryResult): ClearRunHistoryResult => {
+    if (result.state === "cleared") {
+      for (const receipt of input.database.authority.deletedRuns.list().filter(receipt => receipt.commandId === result.commandId)) {
+        input.database.settleRunDeletionFiles({ runId: receipt.runId, commandId: result.commandId });
+      }
+      input.afterClear();
+    }
+    return result;
+  };
   return {
     status: () => input.lifecycle.historyStatus(),
-    clear(request) {
-      const result = input.lifecycle.clearHistory(request);
-      if (result.state === "cleared") {
-        input.database.resumeRunDeletionFiles();
-        input.afterClear();
-      }
-      return result;
-    },
+    clear: request => settle(input.lifecycle.clearHistory(request)),
+    check: request => settle(input.lifecycle.clearHistoryResult(request)),
   };
 }

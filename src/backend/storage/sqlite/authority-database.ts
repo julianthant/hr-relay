@@ -1,3 +1,4 @@
+import { artifactReferencesIn, containsDeletionArtifactReference } from "./artifact-references.js";
 import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { deriveEvidenceReceiptId } from "../../../models/trust/evidence-identity.js";
@@ -44,7 +45,7 @@ import { WorkerControlRecordSchema,WorkerControlRefusal,type WorkerResetBinding 
 import { WorkerPoolRecordSchema,workerPoolVersion,type WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { WorkerSlotRecordSchema,workerPoolMember,type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import { CanonicalCrashRecoveryRequestSchema,LIVE_WORKER_STATES,RunClaimTokenSchema,WorkerControlBasisSchema,WorkerLeaseRecordSchema,isLiveWorker,type WorkerLeaseRecord } from "../../../models/run/worker.js";
-import { DiagnosticAttachmentSchema,DiagnosticBundleSchema,type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
+import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { deriveBulkChildCommand,deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import { AuthorityCommandAuditRecordSchema,AuthorityCommandRecordSchema,BulkParentCommandRecordSchema,BulkRunCommandAcceptanceRecordSchema,CommandAuditRecordSchema,CommandIdentityConflictError,CommandRequestSchema,RunLifecycleCommandAuditRecordSchema,RunLifecycleCommandRecordSchema,StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
@@ -81,7 +82,7 @@ import { createFailureResolutionRepository } from "./failure-resolution.js";
 import { createGeneratedArtifactRepository,generatedArtifactFromRow } from "./generated-artifacts.js";
 import { createImportedArtifactRepositories,importedArtifactFromRow } from "./imported-artifacts.js";
 import { isNativeOrdinaryTable,nativeOrdinaryRecordFromRow,type NativeOrdinaryTable } from "./native-record-row.js";
-import { containsDeletionArtifactReference,executeNativeRunDeletion,prepareNativeRunDeletion } from "./native-run-deletion.js";
+import { deletionArtifactValues,executeNativeRunDeletion,prepareNativeRunDeletion } from "./native-run-deletion.js";
 import { createNotificationMetadataRepositories,validateNotificationMetadata } from "./notification-publications.js";
 import { createReadonlyAuthoritySnapshot,withAuthorityDatabaseReadOnly,withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
@@ -1922,22 +1923,16 @@ export class CredentialContextRequiredError extends Error {
 function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, candidate?: ArtifactRef): readonly ArtifactRef[] {
       const references = new Map<string, ArtifactRef>();
       const visit = (value: unknown): void => {
-        if (value === null || typeof value !== "object") return;
         if (candidate !== undefined && containsDeletionArtifactReference(value, candidate)) references.set(candidate.sha256, candidate);
-        const full = ArtifactRefSchema.safeParse(value);
-        if (full.success) references.set(full.data.sha256, full.data);
-        if (Array.isArray(value)) { for (const member of value) visit(member); return; }
-        const object = value as Record<string, unknown>;
-        if (typeof object.preparationJson === "string") visit(JSON.parse(object.preparationJson));
-        const attachment = DiagnosticAttachmentSchema.safeParse(value);
-        if (attachment.success) {
-          const row = attachment.data;
-          const ref = ArtifactRefSchema.parse({ id: row.artifactId, sha256: row.digest, bytes: row.byteLength, mediaType: row.mediaType });
-          references.set(ref.sha256, ref);
-        }
-        for (const member of Object.values(object)) visit(member);
+        for (const ref of artifactReferencesIn(value)) references.set(ref.sha256, ref);
       };
       for (const table of AUTHORITY_TABLE_REGISTRY.map(entry => entry.name)) {
+        if (table === "deleted_runs") {
+          for (const raw of database.prepare("SELECT * FROM deleted_runs WHERE cleanup_state='pending'").all()) {
+            for (const file of deletedRunFromRow(raw).files) if (file.disposition === "remove") visit(file.ref);
+          }
+          continue;
+        }
         const columns = database.prepare(`PRAGMA table_info(${table})`).all()
           .map(raw => z.object({ name: z.string() }).parse(raw).name)
           .filter(name => name.endsWith("_json"));
@@ -3690,9 +3685,8 @@ export class AuthorityDatabase implements Disposable {
       for (const file of deletion.files.filter(file=>file.disposition === "remove")) {
         for (const table of AuthorityTableNameSchema.options.filter(table=>table !== "deleted_runs")) {
           for (const row of this.#database.prepare(`SELECT * FROM ${table}`).iterate()) {
-            for (const [column,value] of Object.entries(row)) {
-              if (column.endsWith("_json") && typeof value === "string"
-                && containsDeletionArtifactReference(JSON.parse(value) as unknown,file.ref)) throw new Error("run-deletion-cleanup-file-still-referenced");
+            for (const value of deletionArtifactValues(this.#database, table, row)) {
+              if (containsDeletionArtifactReference(value, file.ref)) throw new Error("run-deletion-cleanup-file-still-referenced");
             }
           }
         }

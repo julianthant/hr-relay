@@ -1,10 +1,15 @@
+import { z } from "zod";
+import { ArtifactRefSchema, type ArtifactRef } from "../../../../src/models/artifacts/artifacts.js";
+import { findProfileFixtureAdmission } from "../../../support/helpers/admission-fixture.js";
+import { RunCheckpointRecordSchema } from "../../../../src/models/workflow/checkpoint.js";
+import { ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { deletedRunFromRow } from "../../../../src/backend/storage/sqlite/deleted-run-row.js";
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/workbook-library-service.js";
 import { unexpectedWorkbookSync } from "../../../support/helpers/backend/workbook-sync.js";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { createRunHistoryService } from "../../../../src/backend/runs/commands/run-history-service.js";
@@ -63,11 +68,22 @@ async function fixture() {
         sensitivity: "redacted", width: 1, height: 1 }] });
     return join(profile.admission.artifactRoot, `${ref.sha256}.artifact`);
   };
+  const ordinary = async (run: ReturnType<typeof seed>, shared?: ArtifactRef) => {
+    const writer = createContentAddressedArtifactWriter({ admission: profile.admission }); await writer.ready;
+    const ref = shared ?? await writer.put(Buffer.from(`ordinary rendered page ${run.envelope.runId}`), { mediaType: "image/png" });
+    const output = ExtractPdfPagesOutputSchema.parse({ pageCount: 1, pages: [{ sourcePage: 1, image: ref }] });
+    const checkpoint = RunCheckpointRecordSchema.parse({ workflowId: run.envelope.workflow, itemId: run.envelope.itemId,
+      runId: run.envelope.runId, nodeId: "render-page", attempt: run.envelope.attempt, claimGeneration: 1,
+      output: { schemaHash: HASH_A, value: output }, descriptorVersion: run.envelope.descriptorVersion,
+      contractFingerprint: run.envelope.contractFingerprint, implFingerprint: HASH_A, provenance: [], writtenAt: NOW });
+    database.authority.runCheckpoints.insert(checkpoint);
+    return { ref, checkpoint, file: join(profile.admission.artifactRoot, `${ref.sha256}.artifact`) };
+  };
   const rows = (table: string) => {
     using raw = new DatabaseSync(profile.path, { readOnly: true });
     return raw.prepare(`SELECT * FROM ${table}`).all();
   };
-  return { profile, get database() { return database; }, service, lifecycle, seed, diagnostic, rows,
+  return { profile, get database() { return database; }, service, lifecycle, seed, diagnostic, ordinary, rows,
     get refreshed() { return refreshed; },
     fault(step?: string, at = 1) { failStep = step; faultAt = at; matchedSteps = 0; }, fileFault(value: boolean) { fileFault = value; },
     reopen() { database.close(); database = open(); },
@@ -142,7 +158,7 @@ describe("clear all run history", () => {
     expect(existsSync(file)).toBe(false);
     expect(f.rows("deleted_runs")[0]?.cleanup_state).toBe("pending");
     f.fileFault(false); f.reopen(); const later = f.seed();
-    expect(f.service().clear(command)).toEqual({ state: "cleared", commandId: command.commandId, deletedRuns: 1 });
+    expect(f.service().check(command)).toEqual({ state: "cleared", commandId: command.commandId, deletedRuns: 1 });
     expect(f.database.authority.runs.get(later.envelope.runId)).toBeDefined();
     expect(f.rows("deleted_runs")[0]?.cleanup_state).toBe("complete");
   });
@@ -170,7 +186,14 @@ describe("clear all run history", () => {
   it("retains confirmed write evidence and transaction history through clear and reopen", async () => {
     const w = await historyWorld({ terminalize: true });
     try {
-      w.commit(801); w.commit(802);
+      const admission = findProfileFixtureAdmission(dirname(w.path)); if (admission === undefined) throw new Error("missing fixture admission");
+      const writer = createContentAddressedArtifactWriter({admission}); await writer.ready;
+      const ref = await writer.put(Buffer.from("retained HR write proof"), {mediaType: "application/pdf"});
+      const confirmed = w.commit(801, {proof: {schemaHash: HASH_A, value: {artifact: ref}}}); w.commit(802);
+      const run = w.database.authority.runs.get(confirmed.commit.transaction.runId); if (run === undefined) throw new Error("missing committed fixture run");
+      w.database.authority.runCheckpoints.insert({workflowId: run.envelope.workflow, itemId: run.envelope.itemId, runId: run.envelope.runId,
+        nodeId: "artifact-proof", attempt: run.envelope.attempt, claimGeneration: 1, output: {schemaHash: HASH_A, value: {artifact: ref}},
+        descriptorVersion: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint, implFingerprint: HASH_A, provenance: [], writtenAt: HISTORY_NOW});
       const permanent = () => {
         using raw = new DatabaseSync(w.path, { readOnly: true });
         return ["write_intents", "write_attempts"].map(table => raw.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
@@ -186,9 +209,133 @@ describe("clear all run history", () => {
       }
       expect(lifecycle.clearHistory(command)).toEqual({ state: "cleared", commandId: command.commandId, deletedRuns: 3 });
       expect(permanent()).toEqual(before);
+      expect(existsSync(join(admission.artifactRoot, `${ref.sha256}.artifact`))).toBe(true);
+      expect(w.database.readManagedArtifactReferences()).toContainEqual(ref);
       expect(w.history.query({ from: "2026-07-01", to: "2026-12-01" }).rows).toHaveLength(2);
       w.reopen(); expect(permanent()).toEqual(before);
       expect(w.history.query({ from: "2026-07-01", to: "2026-12-01" }).rows).toHaveLength(2);
     } finally { await w.dispose(); }
   });
+});
+
+it("removes a rendered page referenced only by a delegated child checkpoint, without diagnostic attachments", async () => {
+  const f = await fixture(); const root = f.seed(), child = f.seed(undefined, root);
+  const {ref, file} = await f.ordinary(child);
+  expect(f.rows("diagnostic_files")).toEqual([]);
+  expect(existsSync(file)).toBe(true);
+  expect(f.service().clear(request())).toMatchObject({state: "cleared", deletedRuns: 2});
+  expect(existsSync(file)).toBe(false);
+  const tombstone = f.rows("deleted_runs").map(deletedRunFromRow).find(row=>row.receipt.runId===child.envelope.runId);
+  expect(tombstone?.files).toMatchObject([{ref, disposition: "remove"}]);
+  f.reopen(); expect(existsSync(file)).toBe(false);
+  expect(f.database.readManagedArtifactReferences()).not.toContainEqual(ref);
+});
+
+it("checks an absent journal without deleting a later terminal run or writing a command", async () => {
+  const f = await fixture(); const original = f.seed(); const unreceived = request();
+  const later = f.seed(); const before = f.rows("runs"), generation = f.database.getMeta().authorityGeneration;
+  expect(f.service().check(unreceived)).toEqual({ state: "not-recorded", commandId: unreceived.commandId });
+  expect(f.rows("runs")).toEqual(before);
+  expect(f.database.authority.runs.get(original.envelope.runId)).toBeDefined();
+  expect(f.database.authority.runs.get(later.envelope.runId)).toBeDefined();
+  expect(f.rows("deleted_runs")).toEqual([]);
+  expect(f.database.authority.lifecycleJournal.getCommand(unreceived.commandId)).toBeUndefined();
+  expect(f.database.getMeta().authorityGeneration).toBe(generation);
+});
+
+it("recovers a committed response loss without clearing later runs", async () => {
+  const f = await fixture(); f.seed(); const command = request();
+  expect(f.service().clear(command)).toMatchObject({state: "cleared", deletedRuns: 1});
+  f.reopen(); const later = f.seed(); const generation = f.database.getMeta().authorityGeneration;
+  expect(f.service().check(command)).toEqual({state: "cleared", commandId: command.commandId, deletedRuns: 1});
+  expect(f.database.authority.runs.get(later.envelope.runId)).toBeDefined();
+  expect(f.database.getMeta().authorityGeneration).toBe(generation);
+});
+
+it("keeps an ordinary artifact while another run consumes it, then removes it with the last consumer", async () => {
+  const f = await fixture(); const first = f.seed(), second = f.seed();
+  const { ref, file } = await f.ordinary(first); await f.ordinary(second, ref);
+  const command = request();
+  expect(f.lifecycle().delete({ commandId: command.commandId, runId: first.envelope.runId, expectedVersion: first.version }).state).toBe("deleted");
+  f.database.settleRunDeletionFiles({ runId: first.envelope.runId, commandId: command.commandId });
+  expect(existsSync(file)).toBe(true);
+  expect(deletedRunFromRow(f.rows("deleted_runs")[0]).files).toMatchObject([{ ref, disposition: "retain" }]);
+  f.reopen(); expect(existsSync(file)).toBe(true);
+  expect(f.service().clear(request())).toMatchObject({state: "cleared", deletedRuns: 1});
+  expect(existsSync(file)).toBe(false);
+  expect(f.database.readManagedArtifactReferences()).not.toContainEqual(ref);
+});
+
+it.each(["library-source", "generated-publication"])("keeps an ordinary artifact with a retained %s consumer", async consumer => {
+  const f = await fixture(); const root = f.seed(); const {ref, file} = await f.ordinary(root);
+  const library = createWorkbookLibraryService({repository: f.database.authority.workbooks, clock: capturedInstantClock(NOW), sync: unexpectedWorkbookSync});
+  const workbook = library.create({name: "Source.xlsx", themes: [], hasFormulas: false, sheets: [{id: "sheet", name: "Sheet", width: 1, hidden: [], rows: [{id: "row", cells: [{value: "Retained"}]}]}]});
+  if (consumer === "library-source") f.database.authority.intakeSessions.create({reservedManifestId: randomUUID(), intakeSessionId: randomUUID(), actorId: "local-operator", workflow: root.envelope.workflow,
+    artifact: ref, workbookSource: {libraryId: workbook.libraryId, version: workbook.version}, sheet: "Sheet", headerRowIndex: 0,
+    bindings: [], constants: [], corrections: [], exclusions: [], state: "mapping", validation: {state: "none"}, version: 1, createdAt: NOW, updatedAt: NOW});
+  else f.database.authority.artifactOutbox.insert({outboxId: randomUUID(), artifactId: ref.id, projectionId: "retained-publication", stableKeyFingerprint: HASH_A,
+    keyValues: [{field: "subject", value: "synthetic"}], sinkId: "xlsx-retention", sourceRunId: root.envelope.runId, sourceNodeId: "render-page",
+    state: "pending", payload: {schemaHash: HASH_A, value: {artifact: ref}}, createdAt: NOW});
+  const before = f.rows("artifacts");
+  expect(f.service().clear(request())).toMatchObject({state: "cleared", deletedRuns: 1});
+  expect(existsSync(file)).toBe(true);
+  expect(f.rows("artifacts")).toEqual(before);
+  expect(library.read(workbook.libraryId)).toEqual(workbook);
+  expect(deletedRunFromRow(f.rows("deleted_runs")[0]).files).toMatchObject([{ref, disposition: "retain"}]);
+  f.reopen(); expect(existsSync(file)).toBe(true); expect(f.database.readManagedArtifactReferences()).toContainEqual(ref);
+});
+
+it("preserves ordinary files and their owners when a later root fails before commit", async () => {
+  const f = await fixture(); const root = f.seed(), child = f.seed(undefined, root); const {ref, file} = await f.ordinary(child);
+  const bytes = readFileSync(file), runs = f.rows("runs"), command = request(); f.fault("runs", 2);
+  expect(()=>f.service().clear(command)).toThrow("history-delete-fault");
+  expect(f.rows("runs")).toEqual(runs); expect(f.rows("deleted_runs")).toEqual([]); expect(readFileSync(file)).toEqual(bytes);
+  f.fault(); f.reopen(); expect(f.database.readManagedArtifactReferences()).toContainEqual(ref);
+  expect(f.service().clear(command)).toMatchObject({state: "cleared", deletedRuns: 2}); expect(existsSync(file)).toBe(false);
+});
+
+it("recovers a delegated ordinary artifact manifest after unlink failure and reopen without deleting later evidence", async () => {
+  const f = await fixture(); const root = f.seed(), child = f.seed(undefined, root); const {ref, file} = await f.ordinary(child); const command = request();
+  f.fileFault(true); expect(()=>f.service().clear(command)).toThrow("history-file-fault");
+  expect(existsSync(file)).toBe(false);
+  const pending = f.rows("deleted_runs").map(deletedRunFromRow).find(row=>row.receipt.runId===child.envelope.runId);
+  expect(pending?.cleanupState).toBe("pending"); expect(pending?.files).toMatchObject([{ref, disposition: "remove"}]);
+  f.fileFault(false); f.reopen(); const later = f.seed(), evidence = await f.ordinary(later);
+  expect(f.service().check(command)).toEqual({state: "cleared", commandId: command.commandId, deletedRuns: 2});
+  expect(f.database.authority.runs.get(later.envelope.runId)).toBeDefined(); expect(existsSync(evidence.file)).toBe(true);
+  expect(f.rows("deleted_runs").every(row=>deletedRunFromRow(row).cleanupState==="complete")).toBe(true);
+  expect(existsSync(file)).toBe(false);
+});
+
+it("rejects replaced ordinary artifact bytes and recovers only the originally captured manifest", async () => {
+  const f = await fixture(); const root = f.seed(), {ref, file} = await f.ordinary(root); const bytes = readFileSync(file), command = request();
+  expect(f.lifecycle().clearHistory(command).state).toBe("cleared");
+  const manifest = f.rows("deleted_runs"); writeFileSync(file, Buffer.concat([bytes, Buffer.from("\n")]));
+  expect(()=>f.service().check(command)).toThrow("artifact-deletion-captured-bytes-mismatch");
+  expect(f.rows("deleted_runs")).toEqual(manifest);
+  f.reopen(); expect(()=>f.service().check(command)).toThrow("artifact-deletion-captured-bytes-mismatch");
+  writeFileSync(file, bytes); expect(f.service().check(command).state).toBe("cleared"); expect(existsSync(file)).toBe(false);
+  expect(f.database.readManagedArtifactReferences()).not.toContainEqual(ref);
+});
+
+it("clears already-purged diagnostics without treating their receipt as a live artifact", async () => {
+  const f = await fixture(); const root = f.seed(), file = await f.diagnostic(root);
+  expect(f.database.sweepOrdinaryDiagnostics("2027-01-01T00:00:00.000Z").purged).toHaveLength(1);
+  expect(existsSync(file)).toBe(false);
+  expect(f.service().clear(request())).toMatchObject({state: "cleared", deletedRuns: 1});
+  expect(f.rows("deleted_runs").map(deletedRunFromRow)[0]?.files).toEqual([]);
+});
+
+it("does not let purged diagnostics on a retained run pin a live ordinary artifact", async () => {
+  const f = await fixture(); const first = f.seed(), retained = f.seed();
+  const file = await f.diagnostic(retained);
+  const ref = z.object({ref: ArtifactRefSchema}).parse(JSON.parse(readFileSync(file, "utf8"))).ref;
+  await f.ordinary(first, ref);
+  expect(f.database.sweepOrdinaryDiagnostics("2027-01-01T00:00:00.000Z").purged).toHaveLength(1);
+  expect(existsSync(file)).toBe(true);
+  const command = request();
+  expect(f.lifecycle().delete({commandId: command.commandId, runId: first.envelope.runId, expectedVersion: first.version}).state).toBe("deleted");
+  expect(f.database.settleRunDeletionFiles({runId: first.envelope.runId, commandId: command.commandId})).toBe("complete");
+  expect(existsSync(file)).toBe(false);
+  expect(f.database.authority.runs.get(retained.envelope.runId)).toBeDefined();
 });

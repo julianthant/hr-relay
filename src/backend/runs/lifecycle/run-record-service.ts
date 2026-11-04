@@ -1302,12 +1302,7 @@ export class RunRecordService {
         const journal = this.inspectJournal(repositories, "clear-history", request, { kind: "none" });
         if (journal.state === "divergent") return { state: "refused", commandId: request.commandId, reason: "replay-divergent" };
         if (journal.state === "replay") {
-          if (journal.result.kind !== "history-deletion") throw new Error("run-history-replay-result-mismatch");
-          for (const id of journal.result.runIds) {
-            if (repositories.deletedRuns.get(id)?.commandId !== request.commandId || repositories.runs.get(id) !== undefined)
-              throw new Error("run-history-replay-tombstone-mismatch");
-          }
-          return { state: "cleared", commandId: request.commandId, deletedRuns: journal.result.runIds.length };
+          return this.replayHistoryDeletion(repositories, journal);
         }
         const runs = repositories.runs.listWorkflows().flatMap(workflow => repositories.runs.listByWorkflow(workflow));
         if (runs.some(run => run.lifecycle.state !== "terminal")) return { state: "refused", commandId: request.commandId, reason: "active-runs" };
@@ -1334,6 +1329,26 @@ export class RunRecordService {
       if (error instanceof RunDeletionRefusedError) return { state: "refused", commandId: request.commandId, reason: error.reason };
       throw error;
     }
+  }
+
+  clearHistoryResult(input: unknown): ClearRunHistoryResult {
+    const request = ClearRunHistoryRequestSchema.parse(input);
+    return this.dependencies.database.withAuthorityReadSnapshot(() => {
+      const repositories = this.dependencies.database.authority;
+      const journal = this.inspectJournal(repositories, "clear-history", request, { kind: "none" });
+      if (journal.state === "new") return { state: "not-recorded", commandId: request.commandId };
+      if (journal.state === "divergent") return { state: "refused", commandId: request.commandId, reason: "replay-divergent" };
+      return this.replayHistoryDeletion(repositories, journal);
+    });
+  }
+
+  private replayHistoryDeletion(repositories: AuthorityRepositories, journal: Extract<LifecycleJournalInspection, { state: "replay" }>): ClearRunHistoryResult {
+    if (journal.result.kind !== "history-deletion") throw new Error("run-history-replay-result-mismatch");
+    for (const id of journal.result.runIds) {
+      if (repositories.deletedRuns.get(id)?.commandId !== journal.command.commandId || repositories.runs.get(id) !== undefined)
+        throw new Error("run-history-replay-tombstone-mismatch");
+    }
+    return { state: "cleared", commandId: journal.command.commandId, deletedRuns: journal.result.runIds.length };
   }
 
   purge(input: unknown): RunPurgeOutcome {

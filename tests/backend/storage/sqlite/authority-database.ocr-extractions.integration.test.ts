@@ -14,7 +14,7 @@ import { operatorRequestedCapture } from "../../../../src/backend/logs/diagnosti
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { trustWorld } from "../../../support/helpers/backend/trust-authority-fixture.js";
 import { insertUnboundOcrExtraction } from "../../../support/fixtures/storage/ocr-extractions.js";
-import { containsDeletionArtifactReference } from "../../../../src/backend/storage/sqlite/native-run-deletion.js";
+import { containsDeletionArtifactReference } from "../../../../src/backend/storage/sqlite/artifact-references.js";
 
 const world = createAuthorityAccountingTestWorld();
 afterEach(world.cleanup);
