@@ -21,8 +21,8 @@ import { bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/p
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { ExtractPdfPages, type ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
-import { defineServiceStore, defineTaskStoreRegistry, type RegisteredTaskStore } from "../../../../src/workflow-kit/task-registry.js";
-import { submittedPage, READING_ID } from "../../fixtures/ocr/source-pages.js";
+import { defineServiceStore, defineTaskStoreRegistry, defineWorkflowStore, type RegisteredTaskStore } from "../../../../src/workflow-kit/task-registry.js";
+import { submittedPage, READING_ID, READ_AT } from "../../fixtures/ocr/source-pages.js";
 import { canonicalChildExecution } from "./canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "./run-executor-world.js";
 import { boundProfileAdmission } from "../synthetic-database-admission.js";
@@ -35,6 +35,12 @@ import { createWriteSequencer } from "../../../../src/backend/runtime/writes/wri
 import { testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
 import type { SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import type { WorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
+import { ocrPageStore } from "../../../../src/workflows/ocr-page/task-registry.js";
+import { readManualOcrReadingTask } from "../../../../src/workflows/ocr-page/tasks/read-manual-reading.js";
+import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/driver/fake.js";
+import { I9LookupError, type I9LookupInput } from "../../../../src/models/systems/i9/read-section2-signer.js";
+import { sessionFactoryHarness } from "../phase1f-executor-harness.js";
+import { i9PageSubmission } from "../../fixtures/i9-check-start.js";
 
 interface ReviewedPageFacts {
   readonly employeeName: string;
@@ -47,6 +53,8 @@ export function createOcrReviewWorld() {
   return {
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule;
+      failManualPageOnce?: number; stopAfterPageFailure?: boolean;
+      signerLookup?: Readonly<{ firstNames: readonly string[]; failOnce?: string }>;
       reviewedPages?: readonly ReviewedPageFacts[]; operatorEvidence?: boolean;
       sessions?: SessionFactoryHarness; screenshotCapture?: NonNullable<Parameters<typeof world.executorHarness>[0]>["screenshotCapture"];
       member?: WorkflowModule;
@@ -66,13 +74,37 @@ export function createOcrReviewWorld() {
       const coordinator = options.coordinator === true ? workflowModuleOf("emergency-contact") : undefined;
       const member = options.member ?? (options.coordinator === true ? childWorkflowModuleOf("emergency-contact", "emergency-contact-member") : undefined);
       const root = options.parent ?? coordinator ?? ocrRoot;
-      const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction" && store.namespace !== "workflow:ocr"),
+      let failedPage = false;
+      let failedSigner = false;
+      const signerReads: string[] = [];
+      const sessions = options.signerLookup === undefined ? options.sessions : sessionFactoryHarness({ i9: () => ({
+        ...createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: READ_AT }),
+        async readSection2Signer(input: I9LookupInput) {
+          signerReads.push(input.firstName);
+          if (!failedSigner && input.firstName === options.signerLookup?.failOnce) {
+            failedSigner = true;
+            throw new I9LookupError();
+          }
+          return { i9Status: "not-found" as const, signerName: "" as const };
+        },
+      }) });
+      const manualReading = options.failManualPageOnce === undefined ? readManualOcrReadingTask : defineTask(readManualOcrReadingTask.contract, {
+        sessions: [], async run(args) {
+          if (!failedPage && args.input.page.sourcePage === options.failManualPageOnce) {
+            failedPage = true;
+            return args.ctx.fail("INCONSISTENT_INPUTS", "Synthetic first page-read failure.");
+          }
+          return readManualOcrReadingTask.impl.run(args);
+        },
+      });
+      const pages = defineWorkflowStore("ocr-page", { ...ocrPageStore.tasks, readManualReading: manualReading });
+      const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => !["extraction", "workflow:ocr", "workflow:ocr-page"].includes(store.namespace)), pages,
         defineServiceStore("extraction", { render }), options.retainedProducer === true ? retainedOcrStore : ocrWorkflowStore];
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
         tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
       const harness = await world.executorHarness({ descriptor: root.descriptor, stores,
-        ...(options.sessions === undefined ? {} : { sessions: options.sessions }),
+        ...(sessions === undefined ? {} : { sessions }),
         ...(options.screenshotCapture === undefined ? {} : { screenshotCapture: options.screenshotCapture }),
       });
       options.onHarness?.(harness);
@@ -112,9 +144,16 @@ export function createOcrReviewWorld() {
       const image = await artifacts.put(pageBytes, { mediaType: "image/png" });
       rendered.value = { pageCount: options.pageCount ?? 1, pages: Array.from({ length: options.pageCount ?? 1 }, (_, index) => ({ sourcePage: index + 1, image })) };
       const manifest = buildOcrSourceManifest(upload.artifact, rendered.value);
-      const readings = ocrPageInputs(manifest, READING_ID).map((page, index) => {
+      const formType = options.signerLookup === undefined ? "emergency-contact" : "i9";
+      if (options.signerLookup !== undefined) {
+        assert.equal(options.record, true);
+        assert.equal(options.signerLookup.firstNames.length, manifest.pages.length);
+        if (options.signerLookup.failOnce !== undefined) assert.ok(options.signerLookup.firstNames.includes(options.signerLookup.failOnce));
+      }
+      const readings = ocrPageInputs(manifest, READING_ID, formType).map((page, index) => {
         const facts = options.reviewedPages?.[index];
-        const original = submittedPage(page, facts?.employeeName ?? "Example, Avery", options.record === true ? "emergency-contact" : "blank");
+        const original = options.signerLookup === undefined ? submittedPage(page, facts?.employeeName ?? "Example, Avery", options.record === true ? "emergency-contact" : "blank")
+          : i9PageSubmission(page, { eid: "10800000", firstName: options.signerLookup.firstNames[index], kind: "i9-section1" });
         const valid = { ...original, source: { kind: "operator" as const, actorId },
           record: original.record === null ? null : { answers: { ...original.record.answers,
             ...(facts === undefined ? {} : { "contact.name": { state: "read" as const, raw: facts.contactName, confidence: 0.9 } }) } } };
@@ -122,17 +161,21 @@ export function createOcrReviewWorld() {
           ...(facts === undefined ? {} : { "contact.name": { state: "read" as const, raw: facts.correctedContactName, confidence: 1 } }) } } };
         return { reading: bindManualOcrPageReading(page, actorId, { ...valid,
           record: valid.record === null ? null : { answers: { ...valid.record.answers,
-            ...(facts === undefined ? { "employee.name": { state: "absent" as const, reason: "blank" as const } } : {}) } } }),
+            ...(facts === undefined && options.signerLookup === undefined ? { "employee.name": { state: "absent" as const, reason: "blank" as const } } : {}) } } }),
           corrected: bindManualOcrPageReading(page, actorId, corrected).extraction.record };
       });
       const first = readings[0]; assert.ok(first);
       const { reading, corrected } = first;
       const request = OcrInputSchema.parse({ document: upload.artifact, readingId: READING_ID,
-        formType: "emergency-contact", roster: null, approval: options.release === true ? "release" : "review-only",
+        formType, roster: null, approval: options.release === true ? "release" : "review-only",
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
       const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading }), { dryRun: options.dryRun ?? false,
           ...(options.retainedProducer === true || !root.descriptor.requiredWorkbookTypeIds.includes("ocr-roster") ? {} : { workbookReferences: [{ entry: 1, typeId: "ocr-roster", libraryId: roster.libraryId }] }) });
-      const result = await canonical.execute(parentRun, new AbortController().signal);
+      let result = await canonical.execute(parentRun, new AbortController().signal);
+      if ((failedPage || failedSigner) && options.stopAfterPageFailure !== true && result.run?.lifecycle.state === "queued") {
+        const continued = await canonical.execute(parentRun, new AbortController().signal);
+        result = { ...continued, outcomes: [...result.outcomes, ...continued.outcomes] };
+      }
       const run = root === ocrRoot ? parentRun : database.authority.runs.listChildren(parentRun.envelope.runId).find(child => child.envelope.workflow === "ocr");
       assert.ok(run);
       if (actorId === "local-operator") {
@@ -143,9 +186,13 @@ export function createOcrReviewWorld() {
             frames: [...(failure.debug?.stack ?? "").matchAll(/(?:src|tests)\/[A-Za-z0-9_./-]+\.ts:\d+:\d+/gu)]
               .map(match => match[0]).slice(0, 8) };
         });
-        assert.deepEqual(failures, [], `OCR fixture execution failed: ${JSON.stringify(failures)}`);
+        assert.deepEqual(failures.filter(failure => !((failedPage && failure.nodeId === "manual-reading" && failure.code === "INCONSISTENT_INPUTS")
+          || (failedSigner && failure.nodeId === "lookup-source" && failure.code === "I9_LOOKUP_FAILED"))), [],
+          `OCR fixture execution failed: ${JSON.stringify(failures)}`);
+        assert.equal(failures.length, Number(failedPage) + Number(failedSigner));
         const lifecycle = root === ocrRoot ? result.run?.lifecycle : database.authority.runs.get(run.envelope.runId)?.lifecycle;
-        assert.ok((options.release === true || coordinator !== undefined) ? lifecycle?.state === "parked-gate"
+        assert.ok(failedPage && options.stopAfterPageFailure === true ? lifecycle?.state === "queued"
+          : (options.release === true || coordinator !== undefined) ? lifecycle?.state === "parked-gate"
           : lifecycle?.state === "terminal" && lifecycle.outcome === "done",
         `OCR fixture stopped before review: ${JSON.stringify(result.outcomes.map(outcome => ({ state: outcome.state })))}`);
       }
@@ -171,7 +218,7 @@ export function createOcrReviewWorld() {
           } }, ocrApproval: { expectedRevision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: snapshot.selectedRecordIds } } };
       };
       return { harness, database, path, clock, admission, artifacts, artifactReader, sources, canonical, run, parentRun, result, approval,
-        reading, corrected, pageBytes, command, root, resolve, stores, readResult: () => {
+        reading, corrected, pageBytes, command, root, resolve, stores, signerReads, readResult: () => {
           const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
             "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);
           return OcrResultSchema.parse(checkpoint.output.value);

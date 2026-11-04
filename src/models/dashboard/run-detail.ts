@@ -1,5 +1,5 @@
 import { failureCodeFromTaskCode } from "../failures/error-catalog.js";
-import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema } from "../ocr/review.js";
+import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, OcrReviewChangeSchema } from "../ocr/review.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { StartPlanRequestSchema } from "./start-plan.js";
@@ -69,6 +69,8 @@ import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../events/type
 
 export const RunIdentityWireSchema = z.strictObject({
   runId: RunIdSchema,
+  parentRunId: RunIdSchema.optional(),
+  retryOf: RunIdSchema.optional(),
   traceId: TraceIdSchema,
   workflowId: WorkflowIdSchema,
   actorId: ActorIdSchema.optional(),
@@ -280,12 +282,21 @@ export const RunDetailWireSchema = z.strictObject({
   gate: GateDecisionWireSchema,
   outcome: OutcomeWireSchema,
   context: ContextSummaryWireSchema,
+  ocrReviewChanges: z.array(OcrReviewChangeSchema).min(1).optional(),
+  childRetry: z.strictObject({
+    key: z.literal("retry-child"), label: z.literal("Retry"), kind: z.literal("command"), command: z.literal("retry"),
+    expectedVersion: RowRevisionSchema, intent: z.literal("neutral"), icon: z.literal("retry"), placement: z.array(z.literal("banner")).length(1),
+  }).optional(),
   /** Historical archives may omit captures; every live read emits them. */
   captures: RunCaptureAvailabilityWireSchema.optional(),
     /* The timeline steps this run OMITTED at start, by descriptor key; keys only — the operator's typed facts are the run's input and never cross this wire. */
   omittedSteps: z.array(TimelineCategoryKeySchema).min(1).optional(),
   availableSections: z.array(RunDetailSectionSchema),
 }).superRefine((detail, context) => {
+  if (detail.childRetry !== undefined && (detail.header.parentRunId === undefined || detail.header.status !== "failed"
+    || detail.childRetry.expectedVersion !== detail.rowRevision)) {
+    context.addIssue({ code: "custom", path: ["childRetry"], message: "child retry requires the exact failed run revision" });
+  }
   if (detail.runId !== detail.header.runId) {
     context.addIssue({ code: "custom", path: ["header", "runId"], message: "run detail and header identities must match" });
   }
@@ -455,7 +466,7 @@ export const ReviewPageSchema = z.strictObject({
   runId: RunIdSchema,
   records: z.array(ReviewRecordWireSchema),
   ocr: z.strictObject({ revision: OcrReviewRevisionSchema, digest: FingerprintSchema,
-    approvedSnapshots: z.array(OcrApprovedSnapshotSchema) }).optional(),
+    approvedSnapshots: z.array(OcrApprovedSnapshotSchema), invalidatedCorrections: z.array(OcrReviewChangeSchema).min(1).optional() }).optional(),
 }).superRefine((page, context) => {
   if (page.records.some(({ runId }) => runId !== page.runId)) context.addIssue({ code: "custom", path: ["records"], message: "review record run identities must match page" });
   if (page.ocr !== undefined && page.ocr.revision.sourceRunId !== page.runId) context.addIssue({ code: "custom", message: "OCR review must belong to the requested run" });
