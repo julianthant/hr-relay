@@ -1,3 +1,6 @@
+import { BUILD_MANIFEST } from "../../../../src/workflow-kit/validation/build-manifest.js";
+import type { BuildManifest } from "../../../../src/models/workflow/build-manifest.js";
+import type { createRetainedApprovedRecordReader } from "../../fixtures/ocr/retained-approved-records.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
@@ -63,6 +66,8 @@ export function createOcrReviewWorld() {
       reviewedPages?: readonly ReviewedPageFacts[]; operatorEvidence?: boolean;
       screenshotCapture?: NonNullable<Parameters<typeof world.executorHarness>[0]>["screenshotCapture"];
       member?: WorkflowModule;
+      buildManifest?: BuildManifest;
+      approvedReader?: typeof createRetainedApprovedRecordReader;
       manualPageFailure?: (sourcePage: number) => boolean;
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
@@ -133,7 +138,7 @@ export function createOcrReviewWorld() {
         sessions: harness.manager, emitter: harness.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: harness.scheduler,
         taskDeadlineMs: 60_000, operator: "local-operator", log: harness.deps.log }) : undefined;
       const notes = options.operatorEvidence === true ? createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }) : undefined;
-      const canonical = canonicalChildExecution({ ...harness.deps, artifacts, ...(writeSequencer === undefined ? {} : { writeSequencer }) }, database, path, resolve,
+      const canonical = canonicalChildExecution({ ...harness.deps, ...(options.buildManifest === undefined ? {} : { buildManifest: options.buildManifest }), artifacts, ...(writeSequencer === undefined ? {} : { writeSequencer }) }, database, path, resolve,
         options.retainedProducer === true ? retainedOcrCheckpointPublication : createOcrCheckpointPublication,
         { workbooks, resources: (reader, run) => { const claim = runClaim(run); assert.ok(claim); const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
           const needsPlanEvidence = notes !== undefined && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction");
@@ -141,7 +146,9 @@ export function createOcrReviewWorld() {
           confirmedActionPublisher: createConfirmedActionPublisher({ workerId: claim.workerId, streamId: randomUUID(), clock, capacity: 256,
             append: event => { const current = database.authority.runs.get(event.action.runId); assert.ok(current); notes.emitConfirmedAction(event, current); } }) }), providers: { configSnapshots: database.authority.configSnapshots,
           idFactory: { next: () => randomUUID() }, adapters: { "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({clock,
-            reader: createApprovedOcrRecordReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime()}),
+            reader: options.approvedReader === undefined
+              ? createApprovedOcrRecordReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime()})
+              : options.approvedReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime(), manifest: options.buildManifest ?? BUILD_MANIFEST}),
           }) } } }; } });
       const sources = createOcrSourceService({ database, reader: canonical.lifecycle, clock, artifacts, artifactReader,
         assertCurrent: () => admission.assertProfileRuntime() });

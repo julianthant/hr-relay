@@ -88,10 +88,12 @@ it("ocr/approved-snapshot — consumes a corrected released record and admits it
   const native = f.database.authority.dependencies.groups(f.parentRun.envelope.runId).find(({ group }) => group.invocation.nodeId === "members"); assert.ok(native);
   assert.deepEqual(native.group.invocation.children.map(child => child.sourceRecordIds), selected.map(recordId => [recordId]));
   const generation = f.database.getMeta().authorityGeneration;
-  assert.throws(() => readRows(id => {
+  const retained = readRows(id => {
     const descriptor = f.resolve(id);
     return descriptor?.id === "emergency-contact-member" ? { ...descriptor, version: descriptor.version + 1 } : descriptor;
-  }), /OCR_REVIEW_REFUSED/u);
+  });
+  assert.deepEqual(retained?.members.map(row => row.statusLabel), ["Running"]);
+  assert.deepEqual(retained?.members.map(row => row.childRunIds), rows.members.map(row => row.childRunIds));
   assert.equal(f.database.getMeta().authorityGeneration, generation);
   assert.deepEqual(readRows(), rows);
   assert.equal(f.harness.sessions.opens(), 0);
