@@ -14,6 +14,7 @@ import { assistantKnowledgeArtifact,loadProductionAssistantContext } from "../..
 import { createAssistantService } from "../../../assistant/service.js";
 import { assistantSurfaceCoverage,createProductionAssistantTools } from "../../../assistant/tools.js";
 import { createAssistantWorkflowStarts } from "../../../assistant/workflow-start.js";
+import { createAssistantReadAllowlist } from "./assistant.js";
 import { CHATGPT_OCR_MODEL,createChatGptOcrPageReader } from "../../../processing/providers/chatgpt-ocr-adapter.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { createCommandKernel } from "../../../runs/commands/command-kernel.js";
@@ -227,7 +228,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     authorization: assistantAuthorization, descriptors, served: workflowId => workflowSources[workflowId] === "served",
     actorId: resolved.config.actor.id, clock, assertCurrent });
   const assistantTools = createProductionAssistantTools({ database, kernel, authorization: assistantAuthorization, knowledge,
-    actorId: resolved.config.actor.id, clock, assertCurrent, workflowStarts });
+    actorId: resolved.config.actor.id, clock, assertCurrent, workflowStarts,
+    reads: createAssistantReadAllowlist({ runDetail: runDetailDeps, assertCurrent }) });
   const assistant = createAssistantService({ account: { ...chatGptAccount, ...context.accountAuthority },
     context: () => loadProductionAssistantContext(repoRoot, knowledge),
     runtime: () => { assertCurrent(); return knowledge.policy; },
