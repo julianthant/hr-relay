@@ -1,6 +1,6 @@
 import { timelineCheckpointReference } from "../../../models/events/timeline.js";
-import { OcrReviewRevisionSchema,initialOcrReviewRecords,ocrReviewDigest,ocrSnapshotDigest,type OcrReviewRevision } from "../../../models/ocr/review.js";
-import type { RunRecord } from "../../../models/run/record.js";
+import { OcrReviewRevisionSchema,rebuildOcrReviewRecords,ocrReviewDigest,ocrSnapshotDigest,type OcrReviewRevision } from "../../../models/ocr/review.js";
+import { runClaim, type RunRecord } from "../../../models/run/record.js";
 import { delegationEvidenceOutput } from "../../../models/run/result.js";
 import { I9SignerOutputSchema } from "../../../models/systems/i9/read-section2-signer.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -23,6 +23,8 @@ import { authenticateRootRun } from "../../storage/sqlite/delegation-root-author
 import { RunContinuationRefusedError,readContinuationGate,validateRunContinuation } from "../../storage/sqlite/run-continuation.js";
 import { CanonicalTransitionRequestSchema } from "../../storage/sqlite/run-store-contracts.js";
 import { assertDelegationRefreshEligible } from "../../storage/sqlite/delegation-refresh.js";
+import type { ContinuationRetryOwnerSchema } from "../../storage/sqlite/delegation-contracts.js";
+import type { z } from "zod";
 import type { RunRecordService } from "./run-record-service.js";
 
 function same(left: unknown, right: unknown): boolean { return canonicalJsonStringify(left) === canonicalJsonStringify(right); }
@@ -41,7 +43,14 @@ export function authenticateOcrOperator(repositories: AuthorityRepositories, rea
   return "local-operator";
 }
 
-export function assertOcrChildRetryCurrent(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, child: RunRecord): void {
+function ocrRetryParentInFlight(repositories: AuthorityRepositories, parent: RunRecord, child: RunRecord): boolean {
+  return runClaim(parent) !== undefined || child.envelope.workflow === "ocr-page" && parent.lifecycle.state === "queued" && parent.delegationRefresh === undefined
+    && repositories.dependencies.groups(parent.envelope.runId).some(({ group }) =>
+      group.invocation.nodeId === "lookup-identities" || group.invocation.nodeId === "lookup-signers");
+}
+
+export function assertOcrChildRetryCurrent(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, child: RunRecord,
+  continuationOwner?: z.infer<typeof ContinuationRetryOwnerSchema>): void {
   const parent = child.envelope.parent === undefined ? undefined : repositories.runs.get(child.envelope.parent.runId);
   if (parent?.envelope.workflow !== "ocr") return;
   authenticateOcrOperator(repositories, reader, parent);
@@ -49,6 +58,9 @@ export function assertOcrChildRetryCurrent(repositories: AuthorityRepositories, 
     || repositories.ocrReviews.snapshots(parent.envelope.runId).length > 0
     || repositories.gateResults.get(`${parent.envelope.runId}:approve-records`) !== undefined) {
     throw new RunContinuationRefusedError("ocr-child-retry-review-frozen-or-child-ineligible");
+  }
+  if (continuationOwner === undefined && ocrRetryParentInFlight(repositories, parent, child)) {
+    throw new RunContinuationRefusedError("ocr-child-retry-parent-in-flight");
   }
   readOcrReviewAuthority(repositories, reader, parent.envelope.runId);
   const members = repositories.dependencies.groups(parent.envelope.runId).flatMap(({ group }) => group.children)
@@ -62,7 +74,7 @@ export function ocrChildRetryAvailable(repositories: AuthorityRepositories, read
   const parent = repositories.runs.get(child.envelope.parent.runId);
   if (parent?.envelope.workflow !== "ocr" || !(parent.lifecycle.state === "queued" || parent.lifecycle.state === "parked-gate"
     || parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "done") || parent.cancelRequested === true
-    || parent.pause !== undefined || repositories.ocrReviews.snapshots(parent.envelope.runId).length > 0
+    || parent.pause !== undefined || ocrRetryParentInFlight(repositories, parent, child) || repositories.ocrReviews.snapshots(parent.envelope.runId).length > 0
     || repositories.gateResults.get(`${parent.envelope.runId}:approve-records`) !== undefined
     || repositories.workerControls.resetForRun(parent.envelope.runId) !== undefined
     || repositories.workerControls.resetForRun(child.envelope.runId) !== undefined
@@ -116,7 +128,7 @@ export function publishOcrReview(repositories: AuthorityRepositories, reader: Pi
   if (repositories.ocrReviews.snapshots(run.envelope.runId).length > 0) throw new OcrReviewRefusedError();
   const expectedRevision = current?.revision.revision ?? 0;
   const record = OcrReviewRevisionSchema.parse({ id: `${run.envelope.runId}#${expectedRevision + 1}`, sourceRunId: run.envelope.runId,
-    revision: expectedRevision + 1, seed, records: initialOcrReviewRecords(seed),
+    revision: expectedRevision + 1, seed, records: rebuildOcrReviewRecords(seed, current?.revision).records,
     origin: { kind: "checkpoint", key: checkpointRecordKey(checkpoint), digest: sha256Hex(canonicalJsonStringify(checkpoint)), checkpoint: timelineCheckpointReference(checkpoint) },
     actorId, createdAt: checkpoint.writtenAt });
   if (current !== undefined) {
@@ -151,10 +163,12 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
   if (latest.sourceRunId !== runId) throw new OcrReviewRefusedError();
   let previous: OcrReviewRevision | undefined;
   let previousCheckpoint: OcrReviewRevision | undefined;
+  const invalidated = new Map<string, ReturnType<typeof rebuildOcrReviewRecords>["invalidatedCorrections"][number]>();
   for (let revision = 1; revision <= latest.revision; revision++) {
     const record = repositories.ocrReviews.revision(runId, revision);
     if (record === undefined || record.sourceRunId !== runId || record.revision !== revision) throw new OcrReviewRefusedError();
     if (record.origin.kind === "checkpoint") {
+      const rebuilt = rebuildOcrReviewRecords(record.seed, previous);
       const checkpoint = repositories.runCheckpoints.listByAttempt(existence.run.envelope.workflow,
         existence.run.envelope.itemId, "read-result", existence.run.envelope.attempt)
         .find(row => checkpointRecordKey(row) === (record.origin.kind === "checkpoint" ? record.origin.key : ""));
@@ -172,7 +186,8 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
         || previous !== undefined && same(previous.seed, record.seed)
         || record.origin.digest !== sha256Hex(canonicalJsonStringify(checkpoint))
         || !same(record.origin.checkpoint, timelineCheckpointReference(checkpoint)) || record.createdAt !== checkpoint.writtenAt
-        || !same(record.records, initialOcrReviewRecords(record.seed))) throw new OcrReviewRefusedError();
+        || !same(record.records, rebuilt.records)) throw new OcrReviewRefusedError();
+      for (const change of rebuilt.invalidatedCorrections) invalidated.set(change.recordId, change);
       previousCheckpoint = record;
     } else {
       const request = repositories.commands.get(record.origin.commandId);
@@ -193,10 +208,12 @@ export function readOcrReviewAuthority(repositories: AuthorityRepositories, read
       const mutation = CanonicalTransitionRequestSchema.parse(command.request);
       if (!("ocrReviewRevision" in mutation) || mutation.sourceCommandId !== request.commandId || mutation.runId !== runId
         || mutation.ocrReviewRevision !== revision || Number(mutation.expectedVersion) !== Number(change.before)) throw new OcrReviewRefusedError();
+      invalidated.delete(request.payload.recordId);
     }
     previous = record;
   }
-  return { run: existence.run, revision: latest, digest: ocrReviewDigest(latest) };
+  return { run: existence.run, revision: latest, digest: ocrReviewDigest(latest),
+    invalidatedCorrections: [...invalidated.values()].map(({ recordId: _recordId, ...change }) => change) };
 }
 
 export function readOcrSnapshotsAuthority(repositories: AuthorityRepositories, review: NonNullable<ReturnType<typeof readOcrReviewAuthority>>) {

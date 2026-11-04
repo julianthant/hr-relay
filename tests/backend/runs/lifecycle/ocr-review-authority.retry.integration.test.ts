@@ -154,6 +154,9 @@ it("re-fans signer lookups after a page replacement adds a record and retains th
   const repositories = f.database.authority;
   const original = repositories.ocrReviews.latest(f.run.envelope.runId); assert.ok(original);
   assert.equal(original.records.length, 1);
+  assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
+  assert.equal(f.canonical.kernel.execute(f.command("discard-ocr-record", 2)).state, "applied");
+  const corrected = repositories.ocrReviews.latest(f.run.envelope.runId); assert.ok(corrected);
   const before = readDelegationEvidence(repositories, f.run.envelope.runId, "lookup-signers");
   assert.equal(before.children.length, 1);
   const retained = before.children[0]; assert.ok(retained);
@@ -174,14 +177,15 @@ it("re-fans signer lookups after a page replacement adds a record and retains th
   assert.deepEqual(repositories.delegationManifests.get(before.manifest.manifestId), before.manifest);
   assert.deepEqual(f.signerReads, ["Avery", "Morgan"]);
   const review = readOcrReviewAuthority(repositories, f.canonical.lifecycle, f.run.envelope.runId); assert.ok(review);
-  assert.equal(review.revision.revision, 2);
+  assert.equal(review.revision.revision, corrected.revision + 1);
   assert.equal(review.revision.records.length, 2);
+  assert.deepEqual(review.revision.records[0], corrected.records[0]);
   assert.deepEqual(review.revision.seed.review.pages.map(page => page.disposition), ["record", "record"]);
   assert.deepEqual(review.revision.seed.identities.map(identity => identity.outcome.runId), after.children.map(child => child.run.envelope.runId));
   assert.deepEqual(repositories.ocrReviews.revision(f.run.envelope.runId, original.revision), original);
   assert.deepEqual(resumed.run?.envelope, f.run.envelope);
   assert.equal(f.canonical.kernel.execute(request).state, "already-applied");
-  assert.equal(repositories.ocrReviews.latest(f.run.envelope.runId)?.revision, 2);
+  assert.equal(repositories.ocrReviews.latest(f.run.envelope.runId)?.revision, corrected.revision + 1);
   assert.equal(f.database.readProfileResourceCustody().writeIntents.length, 0);
 });
 

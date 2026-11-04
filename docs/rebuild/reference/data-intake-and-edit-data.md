@@ -165,12 +165,20 @@ and original page before preparing a verified byte lease, then revalidate after 
 
 The final OCR result checkpoint publishes revision 1 with the actual run identity. OCR rebuilds
 its derived review and result tasks when it resumes. Changed authenticated child outcomes publish
-a later checkpoint-origin revision with all records derived from that one seed; corrections from
-the previous seed do not carry across. Unchanged child evidence leaves the current revision and
-its corrections intact. Machine rebuilds refuse after an approval snapshot exists.
+a later checkpoint-origin revision from one complete seed. Each record retains corrected fields,
+discard and asserted EID when its source extraction, record facts and own lookup evidence are
+unchanged. Changes to another record or grouping issues do not reset those choices. Changed or
+removed record evidence invalidates that record's earlier choices. Served Logs and the review
+section identify the affected page and revision until the operator edits that record again.
+Unchanged child evidence leaves the current revision and its corrections intact. Machine rebuilds
+refuse after an approval snapshot exists.
 Failed page and lookup retries use native delegation refresh for parked review and completed
 read-only parents. The accepted cohort wakes the same parent once; revised lookup manifests retain
 unchanged fresh reads and admit new records without rewriting the original membership or settlements.
+Operator retry refuses while the OCR parent holds a worker claim. A queued parent that has already
+admitted lookups cannot retry a page until it parks; authenticated delegated recovery retains its
+separate continuation authority. Corrections, discard and restore refuse while a replacement awaits
+a rebuilt review, so an accepted edit cannot disappear at publication.
 Corrections, discard and restore append immutable revisions with expected-revision CAS and command replay.
 The same transaction advances the canonical run version through its lifecycle service so existing
 Queue and selected-detail subscriptions replace their reads. The `review` section serves source

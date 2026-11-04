@@ -58,7 +58,9 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm }: { select
   return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? selection.row.title} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision}
     context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}
     status={<StatusBadge status={dsStatusOf(selection.row.status)} pauseControl={selection.row.pauseControl} presentation="queue" />}
-    toolbar={<>{resource.snapshot?.detail.childRetry !== undefined && <IconButton label={resource.snapshot.detail.childRetry.label}
+    toolbar={<>{resource.snapshot?.detail.ocrReviewChanges !== undefined && <Banner tone="warning" title="Earlier review changes no longer apply">
+      {resource.snapshot.detail.ocrReviewChanges.map(change => <p key={`${change.revision}:${change.sourcePage}`}>Page {change.sourcePage}: OCR evidence changed in revision {change.revision}. Review the new values before approving.</p>)}
+    </Banner>}{resource.snapshot?.detail.childRetry !== undefined && <IconButton label={resource.snapshot.detail.childRetry.label}
       icon={<RotateCcw aria-hidden className="size-3.5" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}{toolbar}</>}
     content={content}
     afterStep={afterStep} />;

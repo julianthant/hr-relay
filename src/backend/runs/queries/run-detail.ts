@@ -349,11 +349,13 @@ export function buildRunDetail(
     : { state: "absent", reason: `run is ${status}` };
 
   const canonical = deps.canonical;
-  const reviewAvailable = authority.envelope.workflow === "ocr" && canonical !== undefined
-    && canonical.database.withAuthorityReadSnapshot(() => readOcrReviewAuthority(canonical.database.authority, canonical.reader, runId) !== undefined);
+  const review = authority.envelope.workflow === "ocr" && canonical !== undefined
+    ? canonical.database.withAuthorityReadSnapshot(() => readOcrReviewAuthority(canonical.database.authority, canonical.reader, runId)) : undefined;
+  const reviewAvailable = review !== undefined;
   return RunDetailWireSchema.parse({
     runId,
     rowRevision: authority.version,
+    ...(review === undefined || review.invalidatedCorrections.length === 0 ? {} : { ocrReviewChanges: review.invalidatedCorrections }),
     ...(canonical === undefined || !ocrChildRetryAvailable(canonical.database.authority, canonical.reader, authority,
       workflowId => canonical.descriptors.resolve(workflowId)) ? {} : {
       childRetry: { key: "retry-child", label: "Retry", kind: "command", command: "retry", expectedVersion: authority.version,
