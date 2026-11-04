@@ -15,7 +15,7 @@ import { RuntimeLifetimeLock,type OfflineMaintenanceOperation } from "../admissi
 import { fsyncPath,replacePrivateFile,writePrivateStage } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { credentialKeyCustody } from "./credential-key-custody.js";
-import { assertPrivateFileLockBytes,capturePriorPrivateFileLock,createPrivateLock,ensureChildDirectory,noSymlinkAncestry,PrivateFileLockUnavailableError,PrivateFileReadTransitionError,readPrivateFile,removeExactPath,statDirectory,withOperationProof,withPrivateFileLock,type DirectoryIdentity } from "./credential-safe-file.js";
+import { sameDirectory, numericFileIdentity, assertPrivateFileLockBytes,capturePriorPrivateFileLock,createPrivateLock,ensureChildDirectory,noSymlinkAncestry,PrivateFileLockUnavailableError,PrivateFileReadTransitionError,readPrivateFile,removeExactPath,statDirectory,withOperationProof,withPrivateFileLock,type DirectoryIdentity } from "./credential-safe-file.js";
 import { validateDuoKeyPair } from "./duo-signing.js";
 
 export type CanonicalCredentialKind = "protected" | "duo" | "chatgpt";
@@ -151,7 +151,7 @@ function createStage(paths: ReturnType<typeof canonicalPaths>, operationId: stri
 }
 function matchesPrior(file: ReturnType<typeof readPrivateFile>, prior: z.infer<typeof PriorFile>): boolean {
   return prior.state === "absent" ? file === undefined : file !== undefined && digest(file.bytes) === prior.digest
-    && file.identity.device === prior.device && file.identity.inode === prior.inode;
+    && sameDirectory(file.identity, prior);
 }
 function inspectCreatePrefix(paths: ReturnType<typeof canonicalPaths>, operation: z.infer<typeof CreateOperation>, key: Buffer, assertCurrent: () => void): void {
   if (operation.installationId !== paths.binding.installationId || operation.profileId !== paths.binding.profileId
@@ -222,7 +222,7 @@ function inspectErasePrefix(paths: ReturnType<typeof canonicalPaths>, operation:
     if (headFile === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     const headBytes = encode(operation.head), erased = headFile.bytes.equals(headBytes);
     if (!erased && (digest(headFile.bytes) !== operation.priorHeadFile.digest
-      || headFile.identity.device !== operation.priorHeadFile.device || headFile.identity.inode !== operation.priorHeadFile.inode
+      || !sameDirectory(headFile.identity, operation.priorHeadFile)
       || canonicalJsonStringify(parse(headFile.bytes)) !== canonicalJsonStringify(operation.priorHead))) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     let foundPresent = false;
     for (const kind of kinds) {
@@ -233,7 +233,7 @@ function inspectErasePrefix(paths: ReturnType<typeof canonicalPaths>, operation:
         if (!erased || foundPresent) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       } else {
         foundPresent = true;
-        if (digest(current.bytes) !== expected.digest || current.identity.device !== expected.device || current.identity.inode !== expected.inode) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+        if (digest(current.bytes) !== expected.digest || !sameDirectory(current.identity, expected)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       }
     }
     if (!erased) { assertCurrent(); authenticateHead(operation.priorHead); }
@@ -352,7 +352,7 @@ function inspectCanonicalNamespace(paths: ReturnType<typeof canonicalPaths>, hea
         if (expected.kind !== header.kind) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       }
       if (!stage.bytes.equals(expected.bytes) || expected.identity === undefined
-        || stage.identity.device !== expected.identity.device || stage.identity.inode !== expected.identity.inode) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+        || !sameDirectory(stage.identity, expected.identity)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     }
   }
 }
@@ -469,12 +469,12 @@ export function captureCanonicalCredentialPublication(machine: RuntimeAdmission,
       assertCurrent(); const file = readPrivateFile(paths.records[kind], { label: "protected.json", maxBytes });
       if (file === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       records[kind] = open(head, key, kind, file.bytes);
-      files.push({ kind, ...file.identity, digest: digest(file.bytes) });
+      files.push({ kind, ...numericFileIdentity(file.identity), digest: digest(file.bytes) });
     }
-    const witness = CanonicalCredentialPublicationSourceSchema.parse({ head: { ...headFile.identity, digest: digest(headFile.bytes) }, files });
+    const witness = CanonicalCredentialPublicationSourceSchema.parse({ head: { ...numericFileIdentity(headFile.identity), digest: digest(headFile.bytes) }, files });
     for (const file of [{ path: paths.headPath, ...witness.head }, ...witness.files.map(file => ({ path: paths.records[file.kind], ...file }))]) {
       assertCurrent(); const current = readPrivateFile(file.path, { label: "protected.json", maxBytes });
-      if (current === undefined || current.identity.device !== file.device || current.identity.inode !== file.inode || digest(current.bytes) !== file.digest) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      if (current === undefined || !sameDirectory(current.identity, file) || digest(current.bytes) !== file.digest) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     }
     assertCurrent(); return deepFreeze({ source: witness, records, head });
   } catch (error) {
@@ -515,8 +515,7 @@ export function captureStoppedCanonicalCredentialHead(admission: RuntimeAdmissio
       open(head, key, kind, record.bytes); assertCurrent();
     }
     const after = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
-    if (after === undefined || !after.bytes.equals(file.bytes) || after.identity.device !== file.identity.device
-      || after.identity.inode !== file.identity.inode) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    if (after === undefined || !after.bytes.equals(file.bytes) || !sameDirectory(after.identity, file.identity)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     return deepFreeze(CanonicalCredentialRestoreSnapshotSchema.parse({ binding: paths.binding, generation: head.generation, keyId: head.key.keyId,
       digest: digest(file.bytes), counters: head.counters, retired: head.retired }));
   } catch (error) {
@@ -551,8 +550,8 @@ export function captureStoppedIncompleteCredentials(admissionInput: RuntimeAdmis
     if (protectedRecord === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     current();
     return { record: protectedRecord, keyId: head.key.keyId, generation: head.generation,
-      credentials: CanonicalCredentialPublicationSourceSchema.parse({ head: { ...source.identity, digest: digest(source.bytes) },
-        files: files.map(({ kind, file }) => ({ kind, ...file.identity, digest: digest(file.bytes) })) }) };
+      credentials: CanonicalCredentialPublicationSourceSchema.parse({ head: { ...numericFileIdentity(source.identity), digest: digest(source.bytes) },
+        files: files.map(({ kind, file }) => ({ kind, ...numericFileIdentity(file.identity), digest: digest(file.bytes) })) }) };
   } catch (error) {
     if (hasUnprovedSourceClosure(error)) { admission.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission }); }
     throw error;
@@ -582,7 +581,7 @@ export function readStoppedProtectedRecord(admissionInput: RuntimeAdmission, pur
     const record = open(head, key, "protected", file.bytes);
     const after = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
     if (record === undefined || after === undefined || !after.bytes.equals(source.bytes)
-      || after.identity.device !== source.identity.device || after.identity.inode !== source.identity.inode) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+      || !sameDirectory(after.identity, source.identity)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     current(); return record;
   } catch (error) {
     if (hasUnprovedSourceClosure(error)) { admission.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission }); }
@@ -688,7 +687,7 @@ export function prepareStoppedCanonicalCredentials(admission: RuntimeAdmission, 
     if (!noSymlinkAncestry(paths.directory, ancestry)) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
     if (readPrivateFile(paths.operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
     const old = readPrivateFile(paths.headPath, { label: "lock", maxBytes });
-    if (old === undefined || old.identity.device !== source.key.file.device || old.identity.inode !== source.key.file.inode) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
+    if (old === undefined || !sameDirectory(old.identity, source.key.file)) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
     const legacy = Binding.extend({ schemaVersion: z.literal(1), keyId: z.uuid(), key: z.string() }).safeParse(parse(old.bytes));
     const metadata = NativeKey.extend({ legacyWitness: z.literal(true).optional() }).safeParse(parse(old.bytes));
     if (!legacy.success && !metadata.success) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
@@ -710,12 +709,12 @@ export function prepareStoppedCanonicalCredentials(admission: RuntimeAdmission, 
       generation: increment(source.head.epoch), revision: 0, key, counters: [], retired });
     const head = ActiveHead.parse({ ...body, mac: headMac(body, secret) });
     const operation = CreateOperation.parse({ schemaVersion: 1, kind: "create", ...source.binding, operationId, head,
-      priorHead: { state: "present", ...old.identity, digest: digest(old.bytes) }, files: kinds.map(kind => {
+      priorHead: { state: "present", ...numericFileIdentity(old.identity), digest: digest(old.bytes) }, files: kinds.map(kind => {
         assertCurrent();
         if (!noSymlinkAncestry(dirname(paths.records[kind]), ancestry) && kind !== "duo") throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
         const prior = readPrivateFile(paths.records[kind], { label: "protected.json", maxBytes }), bytes = seal(head, secret, kind, records[kind]);
         open(head, secret, kind, bytes);
-        return { kind, digest: digest(bytes), bytes: bytes.toString("base64"), prior: prior === undefined ? { state: "absent" } : { state: "present", ...prior.identity, digest: digest(prior.bytes) } };
+        return { kind, digest: digest(bytes), bytes: bytes.toString("base64"), prior: prior === undefined ? { state: "absent" } : { state: "present", ...numericFileIdentity(prior.identity), digest: digest(prior.bytes) } };
       }) });
     assertCurrent(); return deepFreeze({ operation, digest: digest(encode(operation)) });
   } catch (error) {
@@ -881,7 +880,7 @@ export function captureCanonicalDraftErasure(machine: RuntimeAdmission, profile:
     if (readPrivateFile(paths.operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined
       || Object.values(paths.records).some(path => readPrivateFile(path, { label: "protected.json", maxBytes }) !== undefined)) throw new CredentialMaintenanceHold("CREDENTIAL_OPERATION_PENDING");
     machine.assertCanonicalCredentialErasure(profile, operation);
-    return { ...file.identity, digest: digest(file.bytes) };
+    return { ...numericFileIdentity(file.identity), digest: digest(file.bytes) };
   } catch (error) {
     if (hasUnprovedSourceClosure(error)) {
       machine.retainSourceClosure(error); profile.retainSourceClosure(error);
@@ -946,13 +945,13 @@ export function eraseCanonicalDraftCredentials(machine: RuntimeAdmission, profil
           duo = DuoCredentialRecordSchema.parse(record.value);
           for (const credential of duo.credentials) validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
         }
-        return { kind, digest: digest(source.bytes), ...source.identity };
+        return { kind, digest: digest(source.bytes), ...numericFileIdentity(source.identity) };
       });
       const head = ErasedHeadBody.parse({ schemaVersion: 1, state: "erased", ...paths.binding, generation: abort.generation,
         operationId: abort.operationId, key: parsed.key, counters: parsed.counters,
         retired: [...new Set([...parsed.retired, ...parsed.counters.map(counter => counter.credentialId), ...duo.credentials.map(credential => credential.credentialId)])] });
       const plan = ErasePlan.parse({ schemaVersion: 1, kind: "erase", ...paths.binding, operationId: abort.operationId,
-        priorHead: parsed, priorHeadFile: { digest: digest(file.bytes), ...file.identity }, head, files });
+        priorHead: parsed, priorHeadFile: { digest: digest(file.bytes), ...numericFileIdentity(file.identity) }, head, files });
       const operation = EraseOperation.parse({ ...plan, head: { ...head, planDigest: digest(encode(plan)) } });
       guard(); writePrivateStage(paths.operationPath, encode(operation)); fsyncPath(paths.operations); guard();
       saved = readPrivateFile(paths.operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 });
@@ -983,7 +982,7 @@ export function eraseCanonicalDraftCredentials(machine: RuntimeAdmission, profil
       guard();
       const current = readPrivateFile(paths.records[kind], { label: "protected.json", maxBytes });
       if (current !== undefined) {
-        if (digest(current.bytes) !== expected.digest || current.identity.device !== expected.device || current.identity.inode !== expected.inode) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+        if (digest(current.bytes) !== expected.digest || !sameDirectory(current.identity, expected)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
         removeExactPath(paths.records[kind], expected, false, "credential-erase-source-changed"); fsyncPath(dirname(paths.records[kind]));
       }
     }
@@ -1067,14 +1066,14 @@ export function createCanonicalCredentials(admissionInput: RuntimeAdmission,
       fsyncPath(dirname(path)); assertCurrent();
       const after = readPrivateFile(path, { label: "protected.json", maxBytes });
       if (after === undefined || identity === undefined || !after.bytes.equals(bytes)
-        || after.identity.device !== identity.device || after.identity.inode !== identity.inode) throw new CanonicalCredentialError("CREDENTIAL_UNCERTAIN");
+        || !sameDirectory(after.identity, identity)) throw new CanonicalCredentialError("CREDENTIAL_UNCERTAIN");
     } catch (error) {
       if (!stageCreated && error instanceof AggregateError) translate(error, "CREDENTIAL_UNCERTAIN");
       if (stageCreated && !replacementAttempted && !hasUnprovedSourceClosure(error)) {
         try {
           const owned = readPrivateFile(stage, { label: "protected.json", maxBytes });
           if (owned !== undefined && identity !== undefined && owned.bytes.equals(bytes)
-            && owned.identity.device === identity.device && owned.identity.inode === identity.inode) {
+            && sameDirectory(owned.identity, identity)) {
             removeExactPath(stage, owned.identity, false, "credential-stage-changed"); fsyncPath(dirname(stage));
           }
         } catch (cleanup) {
@@ -1125,7 +1124,7 @@ export function createCanonicalCredentials(admissionInput: RuntimeAdmission,
       if (!active) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       assertCurrent();
       const file = readPrivateFile(chatLeasePath, { label: "lock", maxBytes: 4096 });
-      if (identity === undefined || file === undefined || file.identity.device !== identity.device || file.identity.inode !== identity.inode
+      if (identity === undefined || file === undefined || !sameDirectory(file.identity, identity)
         || !file.bytes.equals(bytes)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
     }
     try {
