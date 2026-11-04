@@ -25,9 +25,10 @@ import { testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifec
 export function canonicalChildExecution(deps: RunExecutorDependencies, database: AuthorityDatabase, path: string,
   resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined,
   checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>,
-  options?: Readonly<{ workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion">;
+  options?: Readonly<{ poolIndex?: number; workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion">;
     resources?(reader: Pick<RunRecordService, "read">, run: RunRecord): Pick<RunExecutorDependencies, "providers" | "artifactProjector" | "taskNotes" | "confirmedActionPublisher"> }>) {
   const { clock } = deps;
+  const poolIndex = options?.poolIndex ?? 1;
   const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
   const lifecycle = new RunRecordService({ database, clock, ids: deps.ids, resolveDescriptor: resolve,
     ...(deps.buildManifest === undefined ? {} : { buildManifest: deps.buildManifest }),
@@ -58,19 +59,19 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     const descriptor = resolve(root.envelope.workflow);
     assert.ok(descriptor);
     if (home === undefined) {
-      const admitted = testAdmittedWorker(database, clock, { path, workflow: descriptor.id, poolIndex: 1, browserSystems: deps.stores.stores.flatMap(store => store.kind === "browser" ? [store.namespace] : []) });
+      const admitted = testAdmittedWorker(database, clock, { path, workflow: descriptor.id, poolIndex, browserSystems: deps.stores.stores.flatMap(store => store.kind === "browser" ? [store.namespace] : []) });
       home = { workerId: admitted.workerId, workflow: admitted.member.workflow, ordinal: admitted.member.ordinal,
         createdAt: admitted.member.createdAt, reservationCommandId: admitted.member.reservationCommandId, path: realpathSync(path), processId: process.pid };
     }
     const runtime = database.authority.runtimeConfig.get();
     assert.ok(runtime);
-    const owner = testWorkerLifetime(database, descriptor.id, 1);
+    const owner = testWorkerLifetime(database, descriptor.id, poolIndex);
     assert.equal(owner.workerId, home.workerId);
     assert.equal(owner.member.workflow, home.workflow);
     assert.equal(owner.member.ordinal, home.ordinal);
     assert.equal(owner.member.createdAt, home.createdAt);
     assert.equal(owner.member.reservationCommandId, home.reservationCommandId);
-    assert.equal(owner.member.poolIndex, 1);
+    assert.equal(owner.member.poolIndex, poolIndex);
     assert.equal(owner.member.retiredAt, null);
     assert.equal(owner.lease.processId, home.processId);
     assert.equal(owner.lease.processId, process.pid);

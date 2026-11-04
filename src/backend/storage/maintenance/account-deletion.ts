@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { readRestoreWriteFences } from "../sqlite/restore-write-fences.js";
 import { withReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
@@ -10,7 +11,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { BrowserRootsSchema } from "../browser-root-contract.js";
 import { CanonicalCredentialHeadSchema } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
-import { readPrivateFile, removeExactPath } from "../configuration/credential-safe-file.js";
+import { numericFileIdentity, readPrivateFile, removeExactPath } from "../configuration/credential-safe-file.js";
 import { fsyncPath, replacePrivateFile, writePrivateStage } from "../private-path.js";
 import { FixedLayoutEntrySchema, fixedLayoutEntries } from "./fixed-layout.js";
 import { proveProfileRootsUnused } from "./process-closure.js";
@@ -41,7 +42,7 @@ function read(path: string) {
   return file;
 }
 function json(path: string): unknown { return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(read(path).bytes)); }
-function witness(path: string) { const file = read(path); return { ...file.identity, digest: digest(file.bytes) }; }
+function witness(path: string) { const file = read(path); return { ...numericFileIdentity(file.identity), digest: digest(file.bytes) }; }
 function write(path: string, value: unknown): void {
   const stage = `${path}.account-deletion.tmp`, bytes = Buffer.from(canonicalJsonStringify(value));
   if (lstatSync(stage, { throwIfNoEntry: false }) === undefined) writePrivateStage(stage, bytes);
@@ -58,6 +59,7 @@ function paths(location: Location, profileId: string) {
 export function captureAccountDeletion(location: Location, document: z.infer<typeof ProfileRegistryDocumentSchema>, profileId: string, epoch: number): AccountDeletion {
   const row = document.profiles.find(row => row.profileId === profileId), files = paths(location, profileId);
   if (document.activeProfileId !== null || document.sessionGeneration !== epoch || row?.lifecycle !== "ready") throw new Error("account-deletion-session-changed");
+  assertMaintenanceCustodyAvailable("account-deletion");
   const priorVerifiers = ProfileVerifierDocumentSchema.parse(json(files.verifiers));
   const priorBrowsers = BrowserRootsSchema.parse(json(files.browsers));
   if (priorBrowsers.installationId !== location.installationId || priorBrowsers.roots.some(root => root.profileId === profileId && (root.launch.state !== "closed" || root.native !== undefined))) throw new Error("account-deletion-browser-closure-unproved");
@@ -77,6 +79,7 @@ export function captureAccountDeletion(location: Location, document: z.infer<typ
 }
 
 export function publishAccountDeletion(path: string, plan: AccountDeletion): void {
+  assertMaintenanceCustodyAvailable("account-deletion");
   const bytes = Buffer.from(canonicalJsonStringify(AccountDeletionSchema.parse(plan)));
   if (bytes.byteLength > 100 * 1024 * 1024) throw new Error("account-deletion-plan-too-large");
   writePrivateStage(path, bytes); fsyncPath(dirname(path));
@@ -84,6 +87,8 @@ export function publishAccountDeletion(path: string, plan: AccountDeletion): voi
 
 export function resumeAccountDeletion(location: Location, journal: string, assertHeld: () => void,
   registry: Readonly<{ validate(prior: z.infer<typeof ProfileRegistryDocumentSchema>, next: z.infer<typeof ProfileRegistryDocumentSchema>): void; publish(): void }>): void {
+  assertHeld();
+  assertMaintenanceCustodyAvailable("account-deletion");
   let plan = AccountDeletionSchema.parse(json(journal));
   const files = paths(location, plan.profileId), profileRoot = `profiles/${plan.profileId}`;
   const expectedRoots = [profileRoot, ...plan.priorBrowsers.roots.filter(root => root.profileId === plan.profileId && root.owner.kind === "signup").map(root => root.directory)];

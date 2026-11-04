@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable, StorageMaintenanceCustodyUnavailableError } from "../../storage/maintenance/custody-availability.js";
 import { hasPendingShutdownBackupRetirement, resumeShutdownBackupRetirement } from "../../storage/maintenance/clean-shutdown-backups.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
@@ -93,6 +94,7 @@ export class RegisteredPersonUpgradeRefusedError extends Error {
 export async function resumePendingAutomaticRestore(workspace: string, lifetime: RuntimeLifetimeLock): Promise<void> {
   lifetime.assertExclusiveWorkspaceTarget(workspace);
   const path = join(workspace, ".tracker", "control", "journal.json");
+  if (existsSync(path)) assertMaintenanceCustodyAvailable("restore");
   const file = readPrivateFile(path, { label: "lock", maxBytes: 16 * 1024 * 1024 });
   if (file === undefined) return;
   const pending = z.object({ schemaVersion: z.literal(3), phase: z.literal("restoring"), restore: z.object({ operationId: z.uuid() }) }).parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
@@ -111,6 +113,8 @@ export async function resumePendingAutomaticRestore(workspace: string, lifetime:
 }
 
 async function repairRegisteredPerson(workspace: string, lifetime: RuntimeLifetimeLock, profileId: string, clock: Clock): Promise<void> {
+  lifetime.assertHeld();
+  assertMaintenanceCustodyAvailable("restore");
   await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
     const operation = machine.maintenanceOperation(), admission = machine.admitStoppedProfileRepair(profileId, operation);
     owned.push(admission);
@@ -119,6 +123,8 @@ async function repairRegisteredPerson(workspace: string, lifetime: RuntimeLifeti
 }
 
 export async function restoreNewestPersonBackup(admission: RuntimeAdmission, operation: OfflineMaintenanceOperation, clock: Clock) {
+  admission.assertOfflineMaintenance(operation);
+  assertMaintenanceCustodyAvailable("restore");
   const context = admission.readInstallationContext(); if (context === undefined) throw new Error("automatic-repair-installation-required");
   const credentials = createCredentialStore({ admission, stateRoot: admission.stateRoot });
   const service = new OfflineAuthorityRestoreService(profileBrowserClosure, admission, { authorityPath: join(admission.stateRoot, "state.db"),
@@ -153,7 +159,9 @@ export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, l
     await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
       const operation = machine.maintenanceOperation(); operation.consume();
       const registry = machine.readProfileRegistry();
-      for (const row of registry.profiles.filter(profile => profile.lifecycle === "ready" && profile.credentialState === "saved")) {
+      const ready = registry.profiles.filter(profile => profile.lifecycle === "ready" && profile.credentialState === "saved");
+      if (ready.length !== 0) assertMaintenanceCustodyAvailable("backup");
+      for (const row of ready) {
         if (hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", row.profileId))) {
           const repair = machine.admitStoppedProfileRepair(row.profileId, operation); owned.push(repair);
           await resumeShutdownBackupRetirement(repair, clock);
@@ -170,6 +178,7 @@ export async function backupRegisteredPeopleAtCleanShutdown(workspace: string, l
       }
     });
   } catch (error) {
+    if (error instanceof StorageMaintenanceCustodyUnavailableError && error.constructor === StorageMaintenanceCustodyUnavailableError && error.cause === undefined && !hasUnprovedSourceClosure(error)) throw error;
     throw new AutomaticShutdownBackupError(error);
   }
 }
@@ -223,6 +232,7 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
     }
     await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
       for (const profileId of registered) if (hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", profileId))) {
+        assertMaintenanceCustodyAvailable("backup-retirement");
         const admission = machine.admitStoppedProfileRepair(profileId, machine.maintenanceOperation()); owned.push(admission);
         await resumeShutdownBackupRetirement(admission, clock);
       }
@@ -253,7 +263,10 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
   const journal = readFixedLayoutIntent(targetWorkspace);
   if (journal !== undefined && journal.phase !== "complete" && journal.sourceWorkspace !== sourceWorkspace) throw new Error("fixed-layout-recovery-source-foreign");
   let publication: FixedLayoutPublication | undefined;
-  if (journal !== undefined && journal.phase !== "complete") publication = recoverFixedLayoutPublication(targetWorkspace, lifetime);
+  if (journal !== undefined && journal.phase !== "complete") {
+    assertMaintenanceCustodyAvailable("layout-migration");
+    publication = recoverFixedLayoutPublication(targetWorkspace, lifetime);
+  }
   else {
     const targetControl = lstatSync(join(targetWorkspace, ".tracker", "control"), { throwIfNoEntry: false });
     const sourceControl = lstatSync(join(sourceWorkspace, ".tracker", "control"), { throwIfNoEntry: false });
@@ -273,6 +286,7 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
       if (lstatSync(tracker, { throwIfNoEntry: false }) !== undefined && readdirSync(tracker).length !== 0) throw new Error("fixed-layout-target-membership-unknown");
       createFixedLayoutDirectory(targetWorkspace); return;
     }
+    assertMaintenanceCustodyAvailable("layout-migration");
     publication = await withDefaultLayoutSource(sourceWorkspace, lifetime, async () => {
       await resumePendingAutomaticRestore(sourceWorkspace, lifetime);
       await withStoppedMachineStorage(sourceWorkspace, lifetime, async convert => {
@@ -1240,12 +1254,17 @@ export async function composeStorageCommand(
       if (hasUnprovedSourceClosure(error)) throw retainAuthoritySourceClosure([error], { admission, restore: operation });
       operation.release();
       // Unvalidated parser/OS error text can contain input. Emit only a named outcome.
-      const code = error instanceof Error ? /^([a-z]+(?:-[a-z]+)+)(?:[: {]|$)/u.exec(error.message)?.[1] : undefined;
+      const unavailable = error instanceof StorageMaintenanceCustodyUnavailableError
+        && error.constructor === StorageMaintenanceCustodyUnavailableError && error.cause === undefined;
+      const code = unavailable ? "STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE"
+        : error instanceof Error ? /^([a-z]+(?:-[a-z]+)+)(?:[: {]|$)/u.exec(error.message)?.[1] : undefined;
       const candidateKey = error instanceof Error ? /\{ key: ([A-Za-z0-9.*_-]+) \}/u.exec(error.message)?.[1] : undefined;
       const key = candidateKey !== undefined && SETTINGS_CATALOG.some((row) => row.key === candidateKey
         || (row.key.startsWith("urls.") && candidateKey.startsWith(`${row.key}.`))) ? candidateKey : undefined;
       const report = { state: "refused-or-incomplete", code: code ?? "upgrade-validation-failed", ...(key === undefined ? {} : { key }) };
-      return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: ${report.code}${key === undefined ? "" : ` { key: ${key} }`}; inspect state before retrying`, exitCode: 1 };
+      return { output: rest.includes("--json") ? JSON.stringify(report) : unavailable
+        ? `storage upgrade: ${report.code} — ${ERROR_CATALOG.STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE.text}`
+        : `storage upgrade: ${report.code}${key === undefined ? "" : ` { key: ${key} }`}; inspect state before retrying`, exitCode: 1 };
     }
   }
   if (subcommand === "repair-span-root") return repairSpanRootCommand(isolation, rest, clock, repoRoot, admission);

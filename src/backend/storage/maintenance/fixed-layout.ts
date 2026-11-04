@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { lstatSync,readdirSync } from "node:fs";
 import { dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
 import { z } from "zod";
@@ -13,7 +14,7 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { offlineMaintenanceWorkspace,type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
-import { noSymlinkAncestry,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { sameDirectory, privateFileNumber, noSymlinkAncestry,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { createPrivateDirectory,fsyncPath,privatePathRejects,replacePrivateFile,writePrivateStage } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../source-closure.js";
 import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
@@ -61,8 +62,8 @@ export function fixedLayoutEntries(root: string): readonly FixedLayoutEntry[] {
     const identity = { path: entry.path.split("\\").join("/"), device: entry.device, inode: entry.inode, mode: entry.mode };
     if (entry.directory) return FixedLayoutEntrySchema.parse({ ...identity, kind: "directory" });
     const observed = file(join(root, entry.path), "managed data");
-    if (observed.identity.device !== entry.device || observed.identity.inode !== entry.inode
-      || observed.stat.mode !== entry.mode || observed.bytes.length !== entry.size) throw new Error("fixed-layout-source-changed");
+    if (!sameDirectory(observed.identity, entry)
+      || privateFileNumber(observed.stat.mode) !== entry.mode || observed.bytes.length !== entry.size) throw new Error("fixed-layout-source-changed");
     return FixedLayoutEntrySchema.parse({ ...identity, kind: "file", size: observed.bytes.length, digest: hash(observed.bytes) });
   }).sort((left, right) => left.path < right.path ? -1 : left.path === right.path ? 0 : 1);
   if (!noSymlinkAncestry(root, ancestry)) throw new Error("fixed-layout-source-changed");
@@ -200,6 +201,7 @@ export function publishFixedLayoutIntent(operation: OfflineMaintenanceOperation,
   const intent = FixedLayoutIntentSchema.parse(input), workspace = offlineMaintenanceWorkspace(operation);
   if (workspace !== intent.sourceWorkspace && workspace !== intent.targetWorkspace) throw new Error("fixed-layout-operation-foreign");
   operation.assertHeld();
+  assertMaintenanceCustodyAvailable("layout-migration");
   createFixedLayoutDirectory(intent.targetWorkspace);
   const directory = join(intent.targetWorkspace, ".tracker"); createFixedLayoutDirectory(directory);
   const path = join(directory, "fixed-layout.json"), stage = join(directory, `.fixed-layout-${intent.operationId}-${intent.phase}.stage`);
@@ -337,6 +339,7 @@ function issueFixedLayoutProfile(machine: RuntimeAdmission, operation: OfflineMa
 
 export async function activateFixedLayoutProfiles(machine: RuntimeAdmission): Promise<void> {
   machine.assertExclusive();
+  assertMaintenanceCustodyAvailable("layout-migration");
   const context = machine.readInstallationContext(), operation = machine.maintenanceOperation();
   if (context === undefined) throw new Error("fixed-layout-installation-required");
   const intent = readFixedLayoutIntent(context.workspace), profiles = machine.readStartupProfileIds();

@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { AccountDeletionRefusedError, captureAccountDeletion, publishAccountDeletion, resumeAccountDeletion } from "../maintenance/account-deletion.js";
 import { createHash,randomBytes,randomUUID } from "node:crypto";
 import {
@@ -11,7 +12,7 @@ import { ConfigSchema } from "../../../models/config/schema.js";
 import { LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument } from "../../../models/profiles/profile.js";
 import { CanonicalCredentialConversionPlanSchema,CanonicalCredentialHeadSchema,CanonicalCredentialOperationSchema,CanonicalCredentialPublicationSourceSchema,CanonicalCredentialRestoreSnapshotSchema,CredentialMaintenanceHold,captureCanonicalCredentialStartupLocks,publishStoppedCanonicalCredentials,type CanonicalCredentialConversionPlan } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
-import { capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock } from "../configuration/credential-safe-file.js";
+import { sameDirectory, numericFileIdentity, fileIdentityObservation, capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock } from "../configuration/credential-safe-file.js";
 import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js";
 import { createProfileVerifiers,preparedProfileVerifierPepperWitness,verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { SourceRecordSchema,file as backupFile,hash as backupHash,profileAuthorityFileWitnesses,retainedStorageBackup } from "../maintenance/existing-data-backup-files.js";
@@ -264,6 +265,7 @@ export async function prepareFixedLayoutPublication(lease: InstallationLease, ma
   const { assertStoppedBackupClosure } = await import("../maintenance/profile-inventory.js");
   assertInstallationLease(lease); lease.assertHeld(); lease.assertOfflineMaintenance(operation);
   requireRuntimeAdmission(machine).assertExclusive();
+  assertMaintenanceCustodyAvailable("layout-migration");
   if (!(lease.lifetime instanceof RuntimeLifetimeLock)) fail("fixed-layout-root-required");
   const intent = FixedLayoutIntentSchema.parse(input), context = lease.readInstallationContext(), profiles = machine.readStartupProfileIds();
   if (intent.phase !== "moving" || intent.sourceWorkspace !== context.workspace || intent.operationId !== operation.operationId
@@ -295,6 +297,7 @@ export function recoverFixedLayoutPublication(targetWorkspace: string, lifetime:
   const intent = readFixedLayoutIntent(targetWorkspace);
   if (intent === undefined || intent.phase === "complete") fail("fixed-layout-recovery-missing");
   lifetime.assertExclusiveWorkspaceTarget(intent.sourceWorkspace);
+  assertMaintenanceCustodyAvailable("layout-migration");
   const operation = lifetime.beginOfflineMaintenance(intent.sourceWorkspace);
   let retain = false;
   try {
@@ -354,6 +357,7 @@ export function consumeFixedLayoutPublication(proof: FixedLayoutPublication, lif
   if (source === undefined || source.lifetime !== lifetime || source.consumed) fail("fixed-layout-publication-unissued");
   const intent = source.intent;
   lifetime.assertExclusiveWorkspaceTarget(intent.sourceWorkspace);
+  assertMaintenanceCustodyAvailable("layout-migration");
   if (activeAdmissions(join(intent.sourceWorkspace, CONTROL)).length !== 0 || activeAdmissions(join(intent.targetWorkspace, CONTROL)).length !== 0
     || canonicalJsonStringify(readFixedLayoutIntent(intent.targetWorkspace)) !== canonicalJsonStringify(intent)) fail("fixed-layout-publication-changed");
   const operation = lifetime.beginOfflineMaintenance(intent.sourceWorkspace);
@@ -707,7 +711,7 @@ function assertProfileCredentialKeyMembership(locator: RuntimeLocator, heads: re
       const { legacyWitness: _legacyWitness, ...native } = metadata;
       bytes = Buffer.from(encodePrivate(credentialKeyCustody.read(native)));
     }
-    if (file.identity.device !== anchor.file.device || file.identity.inode !== anchor.file.inode
+    if (!sameDirectory(file.identity, anchor.file)
       || createHash("sha256").update(bytes).digest("hex") !== anchor.file.digest) fail("profile-credential-key-unowned");
   }
 }
@@ -876,7 +880,7 @@ function assertOnboardingFinishPublicationDocument(locator: RuntimeLocator,
   const current = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), SignUpOperationSchema);
   if (canonicalJsonStringify(current) !== canonicalJsonStringify(operation)) fail("profile-onboarding-finish-operation-changed");
   const pepper = readPrivateFile(join(locator.stateRoot, "machine", "profile-pepper"), { label: "lock", maxBytes: 32 });
-  if (pepper === undefined || pepper.bytes.length !== 32 || pepper.identity.device !== intent.pepper.device || pepper.identity.inode !== intent.pepper.inode
+  if (pepper === undefined || pepper.bytes.length !== 32 || !sameDirectory(pepper.identity, intent.pepper)
     || createHash("sha256").update(pepper.bytes).digest("hex") !== intent.pepper.digest) fail("profile-onboarding-finish-pepper-changed");
 }
 
@@ -963,7 +967,7 @@ function prepareUnpublishedDraftAbort(control: string, locator: RuntimeLocator, 
     if (lstatMaybe(root)) fail("profile-draft-abort-head-changed");
     credentialKeyCustody.assertAbsent({ installationId: locator.installationId, profileId: operation.profileId, keyId: operation.credentials.keyId });
   } else {
-    if (canonicalJsonStringify({ ...headFile.identity, digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
+    if (canonicalJsonStringify({ ...numericFileIdentity(headFile.identity), digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
     const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(headFile.bytes)));
     if (head.state !== "erased" || head.installationId !== locator.installationId || head.profileId !== operation.profileId
       || head.key.installationId !== head.installationId || head.key.profileId !== head.profileId || head.key.keyId !== operation.credentials.keyId
@@ -1075,7 +1079,7 @@ function profileObservation(control: string, locator: RuntimeLocator): string {
     assertNoSymlinkComponents(path);
     const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
     if (file === undefined) fail("profile-registry-evidence-missing");
-    return { path, device: file.identity.device, inode: file.identity.inode,
+    return { path, ...fileIdentityObservation(file.identity),
       digest: createHash("sha256").update(file.bytes).digest("hex") };
   });
   return canonicalJsonStringify({ files, operations });
@@ -1120,7 +1124,7 @@ function readProfileUpgradeAuthority(control: string, workspace: string, locator
         if (path !== pending && signup?.credentials.phase !== "planned" && signup?.onboarding?.abort === undefined) fail("profile-stopped-upgrade-evidence-required");
         return { path, state: "absent" };
       }
-      return { path, identity: file.identity, digest: createHash("sha256").update(file.bytes).digest("hex") };
+      return { path, identity: fileIdentityObservation(file.identity), digest: createHash("sha256").update(file.bytes).digest("hex") };
     });
   if (profileObservation(control, locator) !== before || lstatMaybe(join(control, "profile-publication.json"))) fail("profile-stopped-upgrade-observation-changed");
   assertHeld();
@@ -1818,6 +1822,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       });
     },
     deleteProfileAccount(profileId: string, epoch: number): void {
+      assertHeld();
+      assertMaintenanceCustodyAvailable("account-deletion");
       const restore = this.beginOfflineMaintenance();
       try { mutate(() => {
         const guard = () => assertStoppedMachineMaintenance(this, restore);
@@ -1878,11 +1884,13 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     captureStoppedProfileUpgrade(profileId: string, purpose: "manual" | "startup" | "layout") {
       if (mode !== "exclusive") fail("profile-stopped-upgrade-exclusive-required");
       const id = z.uuid().parse(profileId);
+      assertHeld();
       const read = () => readProfileUpgradeAuthority(control, workspace, locator, id, assertHeld, purpose);
-      let original = read();
       const logout = purpose !== "manual" ? profileOperationInventory(locator.stateRoot).map(entry =>
         readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${entry.operationId}.json`), ProfileOperationSchema))
         .find((operation): operation is z.infer<typeof LogoutOperationSchema> => operation.kind === "logout" && operation.profileId === id && operation.phase !== "complete") : undefined;
+      if (purpose === "startup" && logout?.settlement !== undefined) assertMaintenanceCustodyAvailable("schema-upgrade");
+      let original = read();
       const guard = () => {
         if (read() !== original) fail("profile-stopped-upgrade-authority-changed");
       };
@@ -2019,10 +2027,10 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (canonicalJsonStringify(current) !== canonicalJsonStringify(operation)) fail("profile-pending-logout-operation-changed");
         const observation = profileObservation(control, locator);
         const publication = readPrivateFile(join(control, "profile-publication.json"), { label: "lock", maxBytes: 1_048_576 });
-        const pending = publication === undefined ? { absent: true } : { device: publication.identity.device, inode: publication.identity.inode,
+        const pending = publication === undefined ? { absent: true } : { ...fileIdentityObservation(publication.identity),
           digest: createHash("sha256").update(publication.bytes).digest("hex") };
         assertHeld();
-        return canonicalJsonStringify({ document, observation, pending, operationIdentity: file.identity });
+        return canonicalJsonStringify({ document, observation, pending, operationIdentity: fileIdentityObservation(file.identity) });
       };
       const read = (publication?: ProfilePublicationRead) => {
         if (publication === undefined) return mutate(() => observe(readMachineRegistry(control, locator, false)));
@@ -2251,7 +2259,7 @@ function controlUpgradeFile(path: string, maxBytes = 1_048_576) {
   assertNoSymlinkComponents(path);
   const file = readPrivateFile(path, { label: "lock", maxBytes });
   if (file === undefined) fail("profile-control-upgrade-evidence-missing");
-  return { device: file.identity.device, inode: file.identity.inode, digest: createHash("sha256").update(file.bytes).digest("hex") };
+  return { ...numericFileIdentity(file.identity), digest: createHash("sha256").update(file.bytes).digest("hex") };
 }
 
 function retainedControlUpgradeEntry(directory: string, name: string, installationId: string): z.infer<typeof RetainedControlUpgradeEntrySchema> {
@@ -2379,7 +2387,7 @@ function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typ
       join(root, "credentials", "protected.json"), join(root, "credentials", "chatgpt-account.json")].map(path => {
       const file = readPrivateFile(path, { label: "protected.json", maxBytes: 25 * 1024 * 1024 });
       const actual = file === undefined ? { state: "absent" as const } : { state: "present" as const,
-        ...file.identity, digest: createHash("sha256").update(file.bytes).digest("hex") };
+        ...numericFileIdentity(file.identity), digest: createHash("sha256").update(file.bytes).digest("hex") };
       if (conversion === undefined) return { path, file: actual };
       const head = dirname(path) === join(machine, "credential-keys");
       const planned = head ? conversion.priorHead : conversion.files.find(file => file.kind === (basename(path) === "protected.json" ? "protected" : "chatgpt"))?.prior;
@@ -2526,6 +2534,16 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
   const lease = heldLease ?? acquireInstallation(workspace, "exclusive", lifetime, { stoppedControlForward: true, offlineOperation: restore }), locator = lease.locator, control = join(workspace, CONTROL);
   const markerPath = join(locator.stateRoot, "machine", "profile-registry-version.json"), controlPath = join(control, "profile-registry.json");
   const intentPath = join(control, "profile-control-upgrade.json"), backupDirectory = join(control, "profile-control-upgrades");
+  try {
+    const marker = readProfileEvidence(markerPath, z.strictObject({ schemaVersion: z.number().int() }));
+    if (marker.schemaVersion !== 8 || lstatMaybe(intentPath)) assertMaintenanceCustodyAvailable("schema-upgrade");
+  } catch (error) {
+    if (ownsLease) {
+      try { restore.release(); lease.release(); }
+      catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { admission: lease, restore }); }
+    }
+    throw error;
+  }
   const conversionOperationId = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath).operationId : randomUUID();
   const inventoryClaims = new Map<string, StoppedControlProfileInventory>();
   const inventorySnapshots = new Set<Readonly<{ dispose(): void }>>();
@@ -2605,6 +2623,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     async prepareBrowserInventory(plan: boolean, createProbe: BrowserProfileProbeFactory): Promise<void> {
       held();
       if (this.machineControlCurrent() && !this.upgradeIntentPresent()) return;
+      assertMaintenanceCustodyAvailable("schema-upgrade");
       const pending = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath) : undefined;
       if (pending !== undefined) {
         if (plan) fail("profile-control-upgrade-recovery-required");
@@ -2790,6 +2809,13 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       try {
       const prepared = withInstallationControl(control, () => {
         held();
+        if (this.machineControlCurrent() && !this.upgradeIntentPresent()) {
+          const registrations = readMachineRegistry(control, locator, false);
+          const runtimeAccess = registrations.profiles.some(row => row.registration.onboardingCompletion === undefined)
+            ? "onboarding-incomplete" as const : "unchanged" as const;
+          return { state: "current" as const, runtimeAccess, profileCount: registrations.profiles.length };
+        }
+        assertMaintenanceCustodyAvailable("schema-upgrade");
         const pending = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath) : undefined;
         const registrations = pending?.priorDocument ?? readProfileEvidence(registryPath,
           z.union([ProfileRegistryDocumentSchema, StoppedProfileRegistryDocumentSchema]));

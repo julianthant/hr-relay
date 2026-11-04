@@ -339,13 +339,33 @@ than approximating their effective access.
 
 New private directories receive a protected inheritable DACL during native creation. Existing unsafe
 directories are refused. Private stages verify safe parent inheritance and the created descriptor
-before writing bytes. Windows ancestry retains bigint identities. Native volume serial and 64-bit
+before writing bytes. Windows ancestry and private-file readers, lock publication and exact cleanup
+retain actual bigint filesystem identities. Readers return raw `Stats` on POSIX and `BigIntStats`
+on Windows; Windows metadata stability compares nanosecond timestamps. Ephemeral canonical
+observations encode bigint identities as decimal strings without changing POSIX fingerprints.
+Native volume serial and 64-bit
 file IDs must agree with exact Node observations; unsafe numeric witnesses and unsupported 128-bit
-file-ID mappings refuse. Persisted numeric witnesses are not silently rounded or migrated.
+file-ID mappings refuse. Existing persisted numeric witness formats accept only exact safe-integer
+representations; capturing a higher identity refuses with `WINDOWS_PRIVATE_PATH_REFUSED` before
+persistence. Credential publication, pepper, control-upgrade and maintenance witnesses retain this
+limitation. Mixed numeric/bigint comparisons require exactly equal safe numeric witnesses.
 
 Both isolated SQLite observers import this same policy. Their source descriptors stay in the child;
-parent observations do not claim exclusive Windows source custody. Backup, restore and deletion
-retain their existing Windows refusals.
+parent observations do not claim exclusive Windows source custody.
+
+`storage/maintenance/custody-availability.ts` refuses Windows backup/export, restore, backup
+retirement, schema/control upgrade, layout migration and ready-account deletion before their
+source capture or effects. Private-path admission does not establish custody of streams, namespace
+membership or external handles. This is the reason these maintenance boundaries share one refusal.
+Current-schema boot, ordinary reads, login/logout and unpublished signup cleanup remain available.
+No pending retirement, no upgrade/continuation and genuinely new layout creation are no-work cases.
+
+After the transport, selected runtime, onboarding, profile and machine all close successfully,
+automatic shutdown backup reports `STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE` on Windows and the
+bootstrap releases its lifetime listener. The command fails explicitly; no backup success is
+reported. Any closure failure, mixed aggregate or unproved source custody retains the existing
+uncertain-runtime handling and lifetime. Authenticated account deletion refuses before logout,
+leaving the current session and credentials intact.
 
 Windows path flushing opens the exact object for writing with reparse-point handling, verifies its
 identity, calls `FlushFileBuffers` and checks handle closure. Failed native handles or security
@@ -442,12 +462,12 @@ The bootstrap retains admission through runner shutdown and releases it in `fina
 
 ### Current authority schema and boot states
 
-The current schema is 19. Workbook catalogue names and the version in use are separate from immutable workbook snapshots and action receipts. Its forward upgrade refuses an older captured workbook-reference schema rather than rewriting retained input or its proof. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
+The current schema is 20. Workbook catalogue names and the version in use are separate from immutable workbook snapshots and action receipts. Its forward upgrade refuses an older captured workbook-reference schema rather than rewriting retained input or its proof. Identity-exclusive OnBase sessions retain a durable lease across process loss and uncertain browser closure; only the owning session generation can release it after proven closure. There is no expiry or automatic takeover. The `assistant_model_preference` table stores one authenticated per-profile model and effort record, independently of Settings, permissions, account eligibility and capability evidence. A genuine never-written preference has no row; successful preference history with a missing or rolled-back row refuses.
 
 
 Fresh workbook storage contains one General type seed. Incomplete-profile inventory reports that row and treats only its exact initial payload as pristine, alongside either bare authority or authenticated Settings initialization. Extra or edited types and workbook masters, creations, operations or named versions remain activity that blocks withdrawal.
 
-The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 and 18. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
+The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18 and 19. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
 `src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 20` and
@@ -457,7 +477,7 @@ An existing database must match its application ID, `user_version`, metadata, an
 ordinary startup. Ordinary writable opens and stopped upgrades use SQLite existing-only mode,
 including when a source disappears during opening. Only `initializeProfile`, after its issued setup
 admission check, creates the absent canonical profile database and its current baseline.
-Schemas 1 through 18 are inspected only under stopped upgrade or maintenance authority; ordinary readers
+Schemas 1 through 19 are inspected only under stopped upgrade or maintenance authority; ordinary readers
 use the current layout. Stopped inspection projects the absent pre-v15 pause column as null only
 after validating the predecessor's registered schema, including run/search/timeline/result owners.
 The native layout includes the pause scalar and its JSON-equality triggers, plus immutable OCR source uploads, review revisions and approved snapshots. The forward v18 migration adds library catalogue state, immutable named snapshots and action receipts under the same verified-backup upgrade boundary. The v19 guard checks every captured workbook reference in runs and retained start plans, including terminal runs and consumed plans, against the current derived output-schema hash. A mismatch refuses with `workbook_reference_schema_upgrade_unproved` before migration effects and preserves retained references, proofs and the source schema; it never rehashes or rebinds evidence.

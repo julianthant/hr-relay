@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "../storage/maintenance/custody-availability.js";
 import { captureCanonicalDraftErasure,eraseCanonicalDraftCredentials,initializeCanonicalCredentials } from "../storage/configuration/canonical-credential-store.js";
 import { privatePathRejects } from "../storage/private-path.js";
 
@@ -826,6 +827,8 @@ export function createProfileSession(input: {
     },
     deleteLoggedOutAccount(operationId: string): void {
       admission.assertWritable();
+      try { assertMaintenanceCustodyAvailable("account-deletion"); }
+      catch (cause) { throw new ProfileSessionRefusedError("PROFILE_ACCOUNT_DELETION_REFUSED", { cause }); }
       const completed = input.completedLogout?.(operationId), document = registry.read();
       if (completed === undefined || document.activeProfileId !== null || document.sessionGeneration !== completed.epoch
         || storageAdmissions.has(completed.profileId) || sessions.size !== 0) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
