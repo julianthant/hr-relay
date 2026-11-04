@@ -90,6 +90,8 @@ const DEFERRED_CAPABILITIES = [
 const RETENTION_CASES_MODULES = ["tests/support/processes/startup-upgrade-retention-cases.js", "tests/support/processes/browser-root-retention.js"];
 const RETENTION_CASES_OWNER = "tests/support/processes/credential-source-retention-worker.ts";
 const PROCESS_ENTRYPOINTS = [
+  { file: "relay-launcher-parent.ts", consumers: ["tests/scripts/dev/relay.windows-native.integration.test.ts"] },
+  { file: "relay-drain-child.ts", consumers: ["tests/scripts/dev/relay.integration.test.ts"] },
   { file: "debug-event-child.ts", consumers: ["tests/backend/logs/debug-events.integration.test.ts"] },
   { file: "command-custody-worker.ts", consumers: ["tests/backend/runtime/browser/command-browser.integration.test.ts"] },
   { file: "credential-source-retention-worker.ts", consumers: ["tests/support/helpers/credential-source-retention.ts"] },
@@ -221,6 +223,7 @@ function processImportViolations(path: string, text: string): string[] {
 function childEntrypointBound(path: string, text: string, file: string): boolean {
   const fileUrlNames = new Set<string>();
   const inheritedChildNames = new Set<string>();
+  const launcherNames = new Set<string>();
   let urlShadowed = false;
   const source = parseSource(path, text);
   const joinNames = new Set(["join"]);
@@ -232,6 +235,14 @@ function childEntrypointBound(path: string, text: string, file: string): boolean
         : clause.namedBindings.elements.some(binding => binding.name.text === 'URL'))) urlShadowed = true;
     const resolved = declaration.moduleSpecifier.text.startsWith(".")
       ? repoRelative(resolve(REPO_ROOT, dirname(path), declaration.moduleSpecifier.text)) : declaration.moduleSpecifier.text;
+    if (resolved === "scripts/dev/relay.js") {
+      const bindings = clause?.namedBindings;
+      if (bindings !== undefined && ts.isNamedImports(bindings) && !clause?.isTypeOnly) {
+        for (const binding of bindings.elements) {
+          if (!binding.isTypeOnly && (binding.propertyName ?? binding.name).text === "startRelay") launcherNames.add(binding.name.text);
+        }
+      }
+    }
     if (resolved === "tests/support/helpers/backend/runtime-lifetime.js") {
       const bindings = clause?.namedBindings;
       if (bindings !== undefined && ts.isNamedImports(bindings) && !clause?.isTypeOnly) {
@@ -263,6 +274,7 @@ function childEntrypointBound(path: string, text: string, file: string): boolean
       && node.name !== undefined && ts.isIdentifier(node.name)) {
       fileUrlNames.delete(node.name.text);
       inheritedChildNames.delete(node.name.text);
+      launcherNames.delete(node.name.text);
       if (node.name.text === 'URL') urlShadowed = true;
     }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer !== undefined) declarations.set(node.name.text, node.initializer);
@@ -291,6 +303,15 @@ function childEntrypointBound(path: string, text: string, file: string): boolean
   }
   let bound = false;
   function visit(node: ts.Node) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && launcherNames.has(node.expression.text)) {
+      const options = node.arguments[0];
+      if (options !== undefined && ts.isObjectLiteralExpression(options)) {
+        for (const property of options.properties) {
+          if (ts.isPropertyAssignment(property) && property.name.getText(source) === "backendArguments"
+            && ts.isArrayLiteralExpression(property.initializer) && property.initializer.elements.some(element => canonicalPath(element))) bound = true;
+        }
+      }
+    }
     if (ts.isPropertyAssignment(node) && node.name.getText(source) === "prefixArgs") {
       let value = node.initializer;
       if (ts.isCallExpression(value) && value.expression.getText(source) === "Object.freeze" && value.arguments[0] !== undefined) value = value.arguments[0];
@@ -420,6 +441,21 @@ describe("test-data ownership", () => {
     for (const text of [`// spawn(process.execPath, [${literal}]);`, `const unused = ${literal};`, `spawn(process.execPath, [${literal.replace('"support", "processes"', '"process-fixtures"')}]);`, 'import "../../support/processes/worker-stub-cli.ts";']) {
       assert.equal(childEntrypointBound(path, text, file), false, text);
     }
+  });
+
+  it("binds launcher fixture arguments only through the real imported launcher", () => {
+    const path = "tests/scripts/dev/relay.integration.test.ts", file = "relay-drain-child.ts";
+    const imported = 'import { startRelay as launch } from "../../../scripts/dev/relay.js"; import { fileURLToPath } from "node:url";';
+    const target = 'fileURLToPath(new URL("../../support/processes/relay-drain-child.ts", import.meta.url))';
+    const options = `{ backendArguments: ["--import", "tsx", ${target}] }`;
+    assert.equal(childEntrypointBound(path, `${imported} launch(${options});`, file), true);
+    for (const source of [
+      `launch(${options});`, `${imported} function launch() {} launch(${options});`,
+      `${imported.replace("import { startRelay", "import type { startRelay")} launch(${options});`,
+      `${imported.replace("scripts/dev/relay.js", "scripts/dev/foreign.js")} launch(${options});`,
+      `${imported} const unused = ${options};`, `${imported} launch(${options.replace("backendArguments", "args")});`,
+      `${imported} launch(${options.replace("support/processes", "support/foreign")});`,
+    ]) assert.equal(childEntrypointBound(path, source, file), false, source);
   });
 
   it("recorded credential capabilities are deferred producer functions", () => {
