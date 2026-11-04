@@ -77,6 +77,8 @@ permission. Served actions and exact write authority decide which controls are a
 Failed OCR children use the existing Retry icon button in their log-panel header when the server
 serves that action. Member lines keep their existing navigation behavior.
 
+Run Options omit the policy/version footer; Confirm retains the workflow version. Parsed identifier entries use two columns with a total count and named remove buttons. Leaving the textbox normalizes delimited entries; Match tuples retain raw identifiers in the editor and mask the preview.
+
 The app has a 1024×720 CSS-pixel minimum canvas. Queue remains beside Logs. Below the floor, the
 page scrolls rather than switching to a phone layout. Workspace/workflow rails, the top bar, and
 Sessions are shell chrome; Settings and intake replace the main region through `TakeoverFrame`.

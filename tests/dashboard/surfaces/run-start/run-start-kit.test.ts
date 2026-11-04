@@ -9,7 +9,6 @@ LockedFact,
 PlanPreview,
 StartChoiceControl,
 } from "../../../../src/dashboard/surfaces/run-start/run-start-kit.js";
-import { ENQUEUE_POLICY_REASON } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { fmtClock } from "../../../../src/dashboard/surfaces/shared/status/format.js";
 import { StartPlanWireSchema as StartPlanResponseSchema,type StartPlanWire as StartPlanResponse } from "../../../../src/models/dashboard/start-plan.js";
 import { CommandResultSchema,type CommandResult } from "../../../../src/rules/commands/commands.js";
@@ -73,12 +72,12 @@ describe("a locked value states its reason on screen", () => {
       createElement(LockedFact, {
         label: "Active-run policy",
         value: "Refuse overlapping subject runs",
-        reason: ENQUEUE_POLICY_REASON,
+        reason: "Fixed by this workflow.",
       }),
     );
 
     assert.ok(
-      textOf(withoutTooltips(markup)).includes(ENQUEUE_POLICY_REASON),
+      textOf(withoutTooltips(markup)).includes("Fixed by this workflow."),
       "the reason is reachable only by hovering",
     );
     assert.ok(textOf(markup).includes("Active-run policy"), "the fact is unlabelled");
@@ -90,12 +89,12 @@ describe("a locked value states its reason on screen", () => {
       createElement(LockedFact, {
         label: "Active-run policy",
         value: "Refuse overlapping subject runs",
-        reason: ENQUEUE_POLICY_REASON,
+        reason: "Fixed by this workflow.",
       }),
     );
     assert.doesNotMatch(markup, /title="/u, "the reason went back onto a tooltip as well");
     assert.equal(
-      occurrences(textOf(markup), ENQUEUE_POLICY_REASON),
+      occurrences(textOf(markup), "Fixed by this workflow."),
       1,
       "a screen reader reads this locked value's reason more than once",
     );

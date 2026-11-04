@@ -1,6 +1,7 @@
 /** Run-surface ingress: closed, serializable domain unions with exhaustive interpreters, so one declaration drives both the server's start command and the client's panel. */
 import { z } from "zod";
 import { PositiveIntSchema } from "../../rules/identity/ids.js";
+import { collapseWhitespace } from "../fields/cell-coercion.js";
 
 /** A field name as it appears in a workflow input schema. */
 export const InputFieldNameSchema = z.string().regex(
@@ -161,7 +162,7 @@ function splitEntries(spec: InputParserSpec, text: string): readonly string[] {
   for (const delimiter of spec.split.delimiters) {
     parts = parts.flatMap((part) => part.split(delimiter));
   }
-  return parts.map((part) => part.trim()).filter((part) => part.length > 0);
+  return parts.map(collapseWhitespace).filter((part) => part.length > 0);
 }
 
 function matchRule(spec: InputParserSpec, entry: string): EntryRule | undefined {
