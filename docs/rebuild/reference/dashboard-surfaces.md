@@ -126,10 +126,10 @@ is identified by its review-owner run and stable record ID; child histories can 
 Covered native children do not draw duplicate lines. OCR uses the existing Name/Status well for
 Reading, Looking up, Verified, Needs lookup and failed-page lines. A parent waiting for OCR approval
 keeps its page-count Reading line while OCR owns the person records and review gate. After OCR
-releases its approved result, the parent exposes its record lines in source order. The native approved
-snapshot and member binding determine Saving, Saved, Not approved and failure states; dry-run members
+releases its approved result, the parent exposes its record lines in source order within the existing
+status tiers. The native approved snapshot and member binding determine Saving, Saved, Not approved and failure states; dry-run members
 show Previewing or Previewed, and read-only completions remain Verified. Line clicks and the name button select the exact
-record; keyboard traversal follows the same order. Person Lookup members use their served outcome
+record; keyboard traversal follows the rendered order. Person Lookup members use their served outcome
 words. A line has no Retry control: the failed child's own Logs header uses its served action and
 revision, preserving pending and uncertain command recovery. The canonical OCR Review opens at
 the selected stable record through a lazy read; its source and fields use the existing read-only cards.
