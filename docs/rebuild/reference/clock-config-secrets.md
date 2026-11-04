@@ -323,6 +323,13 @@ retired command/write/value identities, retires every removed value ID, and appe
 receipt. The scoped writer computes the authenticated conversion before publishing it. Its canonical
 replacement uses the existing authenticated revision CAS, exact stage custody
 and readback. Current schema-5 records are authenticated without another backup or mutation.
+Startup settles pending onboarding before converting ready profiles. A stopped exclusive capture
+binds an explicit Finish to its exact operation, authenticated credential files, native identities and
+runtime lifetime. Finish publication rechecks that opaque proof, its original registration receipt,
+Duo evidence and verifier custody; it consumes the operation before conversion adds a receipt.
+Unfinished onboarding is closed and cancelled through the same recovery path. Startup defers
+profile activation until conversion completes. Ordinary publication and credential reads remain
+current-format only.
 Ordinary readers accept only the current schema. Stopped conversion and flat-source inspection own
 the previous grammar; retained value-free receipts keep the catalog used by their original write.
 
@@ -405,7 +412,9 @@ does not establish rename, journal-recovery or power-loss durability for Windows
 The secure bootstrap does not load `.env` or `.env.providers`. Provider families and their file
 writer are absent. `assertNoMigratedEnvironmentKeys` checks parent key membership and refuses
 migrated names without reading their values. It reports retired canary names with the remedy
-`config/test-data.local.json`. Other migrated names receive the Settings remedy.
+`config/test-data.local.json`. `TIMEKEEPER_NAME`, `HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY`
+and `HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION` receive the exact retired protected-setting
+refusal with removal as the remedy. Other migrated names receive the Settings remedy.
 
 `workerBootstrapEnvironment` copies only `HRAUTO_HOST_PRIMARY_DISPLAY` and
 `WORKER_PROCESS_MECHANIC_KEYS`: `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`, `WINDIR`,
