@@ -18,12 +18,16 @@ it.each([false, true])("checks every registered ready person before any upgrade 
   mkdirSync(join(workspace, ".tracker", "control"), { recursive: true }); writeFileSync(join(workspace, ".tracker", "control", "installation.json"), "mock control");
   const first = randomUUID(), second = randomUUID(), pending = randomUUID(), events: string[] = [];
   let upgraded = false;
-  const release = vi.fn(() => { events.push("release"); });
-  const owner = { requiresFlatStoreMigration: () => false, readStartupProfileIds: () => [first, second], release };
+  const browserGate = Promise.withResolvers<void>();
+  let browserUpgradeCompleted = false;
+  const browserUpgrade = vi.fn(async () => { browserUpgradeCompleted = false; await browserGate.promise; browserUpgradeCompleted = true; return "current"; });
+  const release = vi.fn(() => { assert.equal(browserUpgradeCompleted, true); events.push("release"); });
+  const owner = { upgradeBrowserRoots: browserUpgrade, requiresFlatStoreMigration: () => false, readStartupProfileIds: () => [first, second], release };
   // @ts-expect-error This pure orchestration test replaces the native admission boundary.
   const acquire = vi.spyOn(RuntimeAdmission, "acquireStoppedMachineControlMaintenance").mockReturnValue(owner);
   // @ts-expect-error Only the schema result is consumed at this orchestration boundary.
   const inspect = vi.spyOn(AuthorityDatabase, "inspectRegisteredPersonAtStartup").mockImplementation((_machine, id) => {
+    assert.equal(browserUpgradeCompleted, true);
     events.push(`inspect:${id}`);
     assert.notEqual(id, pending);
     if (invalidPeer && id === second) throw new Error("foreign registered peer");
@@ -36,18 +40,22 @@ it.each([false, true])("checks every registered ready person before any upgrade 
     return { state: "upgraded", fromSchemaVersion: 8, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, credentials: "unchanged" };
   });
   try {
+    const pendingUpgrade = upgradeRegisteredPersonStores(workspace, lifetime, { primaryDisplay: null });
+    assert.equal(browserUpgrade.mock.calls.length, 1); assert.deepEqual(events, []);
+    browserGate.resolve();
     if (invalidPeer) {
-      await assert.rejects(upgradeRegisteredPersonStores(workspace, lifetime, { primaryDisplay: null }), error => error instanceof RegisteredPersonUpgradeRefusedError
+      await assert.rejects(pendingUpgrade, error => error instanceof RegisteredPersonUpgradeRefusedError
         && error.cause instanceof Error && error.cause.message === "foreign registered peer");
       assert.equal(upgrade.mock.calls.length, 0); assert.equal(release.mock.calls.length, 1);
     } else {
-      await upgradeRegisteredPersonStores(workspace, lifetime, { primaryDisplay: null });
+      await pendingUpgrade;
       assert.equal(upgrade.mock.calls.length, 1); assert.equal(release.mock.calls.length, 3);
       const before = upgrade.mock.calls.length;
       await upgradeRegisteredPersonStores(workspace, lifetime, { primaryDisplay: null });
       assert.equal(upgrade.mock.calls.length, before);
     }
-  } finally { upgrade.mockRestore(); inspect.mockRestore(); acquire.mockRestore(); await lifetime.close(); rmSync(workspace, { recursive: true }); }
+    assert.equal(browserUpgrade.mock.calls.length, acquire.mock.calls.length);
+  } finally { browserGate.resolve(); upgrade.mockRestore(); inspect.mockRestore(); acquire.mockRestore(); await lifetime.close(); rmSync(workspace, { recursive: true }); }
 });
 
 
