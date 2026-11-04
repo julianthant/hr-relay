@@ -502,7 +502,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const setActiveWorkflowId = useCallback((id: string): boolean => {
     if (requestActiveWorkflowId(id)) return true;
     if (dayWire?.queueSurfaces.some(row => row.parent !== null && row.workflowId === id
-      || row.parent?.workflowId === id || row.linkedRuns.some(link => link.workflowId === id)
+      || row.parent?.workflowId === id
       || row.surfaceKind === "operation" && row.recordMembers?.members.some(member => member.target.workflowId === id))) return true;
     toast({ tone: "danger", title: "Workflow unavailable", description: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text });
     return false;
