@@ -68,6 +68,7 @@ export function createOcrReviewWorld() {
       member?: WorkflowModule;
       buildManifest?: BuildManifest;
       approvedReader?: typeof createRetainedApprovedRecordReader;
+      approvedStore?: RegisteredTaskStore;
       manualPageFailure?: (sourcePage: number) => boolean;
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
@@ -110,7 +111,8 @@ export function createOcrReviewWorld() {
         },
       });
       const pages = defineWorkflowStore("ocr-page", { ...ocrPageStore.tasks, readManualReading: manualReading });
-      const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => !["extraction", "workflow:ocr", "workflow:ocr-page"].includes(store.namespace)), pages,
+      const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => !["extraction", "workflow:ocr", "workflow:ocr-page"].includes(store.namespace)
+        && store.namespace !== options.approvedStore?.namespace), ...(options.approvedStore === undefined ? [] : [options.approvedStore]), pages,
         defineServiceStore("extraction", { render }), options.retainedProducer === true ? retainedOcrStore : ocrWorkflowStore];
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],

@@ -1,7 +1,14 @@
 import type { BuildManifest } from "../../../../src/models/workflow/build-manifest.js";
 import { resolveWorkflowFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
-import { ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
-import type { z } from "zod";
+import { OcrApprovedSnapshotSchema, ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
+import { z } from "zod";
+import { AdmittedRecordSchema } from "../../../../src/models/ocr/extraction.js";
+import { EidSchema, StableRecordIdSchema } from "../../../../src/rules/identity/ids.js";
+import { defineTaskContract } from "../../../../src/models/task/task-contract.js";
+import { defineTask } from "../../../../src/workflow-kit/task.js";
+import { defineServiceStore } from "../../../../src/workflow-kit/task-registry.js";
+import { ocrStore } from "../../../../src/backend/processing/ocr/task-registry.js";
+import { readApprovedOcrSnapshotTask } from "../../../../src/backend/processing/ocr/tasks/read-approved-snapshot.js";
 import { OcrApprovalReadRequestSchema } from "../../../../src/models/processing/ocr/approved-snapshot.js";
 import { ReadApprovedOcrRecord } from "../../../../src/models/processing/ocr/read-approved-record.js";
 import { ReadApprovedOcrSnapshot } from "../../../../src/models/processing/ocr/read-approved-snapshot.js";
@@ -21,13 +28,24 @@ import type { RunRecordService } from "../../../../src/backend/runs/lifecycle/ru
 
 const same = (left: unknown, right: unknown) => canonicalJsonStringify(left) === canonicalJsonStringify(right);
 
+const originalRecord = z.strictObject({ recordId: StableRecordIdSchema, fields: AdmittedRecordSchema,
+  assertedEid: EidSchema.nullable(), discarded: z.boolean() });
+const { __sealed: _snapshotSeal, ...snapshotSpec } = ReadApprovedOcrSnapshot;
+export const retainedSnapshotContract = defineTaskContract({ ...snapshotSpec,
+  output: z.strictObject({ snapshot: OcrApprovedSnapshotSchema.safeExtend({ records: z.array(originalRecord).min(1) }) }) });
+export const retainedSnapshotStore = defineServiceStore("ocr", { ...ocrStore.tasks,
+  readApprovedSnapshot: defineTask(retainedSnapshotContract, { sessions: [],
+    run: args => readApprovedOcrSnapshotTask.impl.run(args) }),
+});
+
 export function createRetainedApprovedRecordReader(deps: Readonly<{
   database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot">; reader: Pick<RunRecordService, "read">; run: RunRecord;
   assertCurrent(): void; resolveDescriptor(workflowId: string): AnyWorkflowDescriptor | undefined;
   manifest: BuildManifest;
+  snapshotContract?: typeof retainedSnapshotContract;
 }>): Pick<ApprovedOcrRecordReader, "readSnapshot" | "readRecord"> {
   const reader = deps.reader;
-  function consumer(task: typeof ReadApprovedOcrSnapshot | typeof ReadApprovedOcrRecord) {
+  function consumer(task: typeof ReadApprovedOcrSnapshot | typeof ReadApprovedOcrRecord | typeof retainedSnapshotContract) {
     const found = reader.read(deps.run.envelope.runId), capturedClaim = runClaim(deps.run);
     if (found.state !== "present" || found.disposition !== "live" || capturedClaim === undefined) throw new OcrReviewRefusedError();
     const current = found.run, claim = runClaim(current), descriptor = deps.resolveDescriptor(current.envelope.workflow);
@@ -51,7 +69,7 @@ export function createRetainedApprovedRecordReader(deps: Readonly<{
     return result;
   }
   function selected(query: z.output<typeof OcrApprovalReadRequestSchema>) {
-    const { current, descriptor } = consumer(query.kind === "snapshot" ? ReadApprovedOcrSnapshot : ReadApprovedOcrRecord);
+    const { current, descriptor } = consumer(query.kind === "snapshot" ? deps.snapshotContract ?? ReadApprovedOcrSnapshot : ReadApprovedOcrRecord);
     let owner = current, ownerDescriptor = descriptor;
     if (query.kind === "record") {
       const parent = current.envelope.parent === undefined ? undefined : reader.read(current.envelope.parent.runId);
