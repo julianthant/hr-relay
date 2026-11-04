@@ -23,6 +23,7 @@ import { createCredentialStore } from "../../../../src/backend/storage/configura
 import { ChatGptCredentialRecordSchema, createChatGptCredentialRepository } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
+import { readProfileIdentity } from "../../../../src/models/config/secrets.js";
 
 
 function credentialSnapshot(path: string) {
@@ -49,6 +50,10 @@ it("composes actual selected resources without transport and revokes retained or
     assert.equal(context.credentials, credentials);
     assert.equal(context.database.getMeta().profileId, f.admission.profileBinding.profileId);
     assert.equal(context.settings.read().runtimeStatus.state, "current");
+    assert.deepEqual(readProfileIdentity(context.protectedSecrets), {
+      profileId: f.admission.profileBinding.profileId, sessionEpoch: f.machine.readProfileRegistry().sessionGeneration,
+      displayName: "Fixture Example", initials: "FE",
+    });
     const credentialBytes = credentialSnapshot(join(f.stateRoot, "credentials", "chatgpt-account.json"));
     const account = await context.accountAuthority.readAuthority();
     assert.deepEqual(credentialSnapshot(join(f.stateRoot, "credentials", "chatgpt-account.json")), credentialBytes);
@@ -79,7 +84,7 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
   const transport = vi.spyOn(globalThis, "fetch").mockImplementation(() => { throw new Error("composed profile proof forbids transport"); });
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
-  const fields = { firstName: "Synthetic", lastName: "Operator", email: "profile@ucsd.edu", password: "synthetic-profile-password", createdAt: clock.now().toISOString() };
+  const fields = { firstName: "Synthetic", lastName: "Middle Operator", email: "profile@ucsd.edu", password: "synthetic-profile-password", createdAt: clock.now().toISOString() };
   const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(), admission: machine, clock, hostFacts: { primaryDisplay: null } });
   try {
 
@@ -101,6 +106,9 @@ it("issues a genuine tuple through real profile composition, refuses open-contex
     if (captured.state !== "available") throw new Error("composed authority unavailable");
     assert.equal(captured.snapshot.accountRevision, 1);
     const context = runtime.selectedContext(active.token);
+    assert.deepEqual(readProfileIdentity(context.protectedSecrets), {
+      profileId: active.profileId, sessionEpoch: active.epoch, displayName: "Synthetic Middle Operator", initials: "SMO",
+    });
     runtime.beginSupervisorConstruction(active.token);
     runtime.bindSupervisor(active.token, { memberEvidence: () => undefined, drainOwnedChildren: async () => undefined });
     const epoch = machine.readProfileRegistry().sessionGeneration;
@@ -174,7 +182,7 @@ for (const dimension of ["account", "settings"] as const) it(`revalidates real c
     } else {
     const applyProtected = () => context.credentials.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(),
       commandFingerprint: "a".repeat(64), expectedRevision: context.credentials.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-      updatedAt: clock.now().toISOString(), entries: { timekeeperName: { set: "Synthetic Updated" } } }));
+      updatedAt: clock.now().toISOString(), entries: { sharepointOnboardingRosterUrl: { set: "https://example.test/updated-roster" } } }));
     assert.equal(applyProtected().state, "applied");
     await assertFresh(["protectedSettingsRevision"]);
     const applySettings = () => {

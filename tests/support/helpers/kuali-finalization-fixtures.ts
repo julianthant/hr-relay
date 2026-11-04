@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { releaseSeededWriteOwners } from "./timeline-write-fixture.js";
 import { retainAuthoritySourceClosure } from '../../../src/backend/storage/source-closure.js';
-import { ProtectedStoreRecordSchema } from "../../../src/models/config/protected-settings.js";
+import { readProfileIdentity } from "../../../src/models/config/secrets.js";
 import { ProtectedInputBindingSchema } from "../../../src/models/write-safety/protected-input.js";
 import { protectedSecretSource } from "./protected-secret-source.js";
 import { admitProtectedInput } from "../../../src/backend/runs/start/protected-input.js";
@@ -306,11 +306,10 @@ export function finalizationNode(): Extract<
 export function finalizationQueuedRun(
   options: Readonly<{ dryRun?: boolean; startAt?: string }> = {},
 ): Record<string, unknown> {
-  const source = protectedSecretSource({ timekeeperName: FINALIZATION_VARIABLES.timekeeperName });
-  const signer = ProtectedStoreRecordSchema.parse(source.read()).entries.timekeeperName;
-  if (signer === undefined) throw new Error("fixture protected signer missing");
-  const binding = ProtectedInputBindingSchema.parse({ kind: "protected-store", inputPath: "timekeeperName",
-    name: "timekeeperName", valueId: signer.valueId });
+  const source = protectedSecretSource({ profileName: FINALIZATION_VARIABLES.timekeeperName });
+  const signer = readProfileIdentity(source);
+  const binding = ProtectedInputBindingSchema.parse({ kind: "profile", inputPath: "timekeeperName",
+    name: "timekeeperName", profileId: signer.profileId, sessionEpoch: signer.sessionEpoch });
   const admitted = admitProtectedInput(separationsKualiFinalizationDescriptor, [FINALIZATION_RUN_INPUT],
     source, undefined, [binding])[0];
   if (admitted === undefined) throw new Error("fixture protected input admission missing");

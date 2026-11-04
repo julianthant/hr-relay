@@ -35,7 +35,7 @@ it("remedies navigate to their owner and never repair through rendering",async()
 
 for (const presentation of ["compact", "settings"] as const) it(`${presentation} credential and route remedies use the same exact destinations`, async () => {
   const served = await report(); const destinations: string[] = [];
-  const checks = ["secrets.ucpath-sso", "secrets.timekeeper", "secrets.sharepoint-roster"].map(id => ({
+  const checks = ["secrets.ucpath-sso", "profile.identity", "secrets.sharepoint-roster"].map(id => ({
     id: PreflightCheckIdSchema.parse(id), label: id, verdict: "fail" as const,
     detail: "Synthetic credential unavailable", blocks: ["executor.run"], remediation: "Review configuration", checkedAt: served.checkedAt,
   }));
@@ -48,10 +48,13 @@ for (const presentation of ["compact", "settings"] as const) it(`${presentation}
       presentation, preflight: { state: "completed", report: served, checks }, onRerun() { throw new Error("unexpected command"); },
     }) }) })); });
   assert.deepEqual(destinations, []);
-  const remedies = [...host.querySelectorAll("button")].filter(button => button.textContent?.startsWith("Configure "));
-  assert.equal(remedies.length, 3);
-  for (const button of remedies) await act(async () => button.click());
-  assert.deepEqual(destinations, ["credentials", "credentials", "routes"]);
+  const remedies = [...host.querySelectorAll("button")].filter(button => /^(?:Configure |Open Settings$)/u.test(button.textContent ?? ""));
+  assert.deepEqual(remedies.map(button => button.textContent).sort(), ["Configure credentials", "Open Settings", "Configure SharePoint route"].sort());
+  for (const label of ["Configure credentials", "Open Settings", "Configure SharePoint route"]) {
+    const button = remedies.find(candidate => candidate.textContent === label); assert.ok(button);
+    await act(async () => button.click());
+  }
+  assert.deepEqual(destinations, ["credentials", "settings", "routes"]);
 });
 
 it("a replaced remedy owner fences stale callbacks without running any repair", async () => {

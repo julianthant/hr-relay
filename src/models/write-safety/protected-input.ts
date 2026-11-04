@@ -11,6 +11,7 @@ const ProtectedInputPathSchema = z.enum(["timekeeperName", "documentNumber", "em
 const ProtectedInputNameSchema = z.enum(["timekeeperName", "separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]);
 /** Where a protected input's VALUE came from; no member ever carries a value or a value-derived surrogate. */
 export const ProtectedInputBindingSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("profile"), inputPath: z.literal("timekeeperName"), name: z.literal("timekeeperName"), profileId: z.uuid(), sessionEpoch: z.number().int().safe().positive() }),
   z.strictObject({ kind: z.literal("protected-store"), inputPath: z.literal("timekeeperName"),
     name: z.literal("timekeeperName"), valueId: z.uuid() }),
   z.strictObject({ kind: z.literal("test-data-local"), inputPath: z.enum(["documentNumber", "emplId"]),

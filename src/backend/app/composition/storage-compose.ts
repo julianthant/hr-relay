@@ -1,3 +1,4 @@
+import { createCredentialSecretSource, readAdmittedProfileIdentity } from "../../runtime/settings/settings-runtime.js";
 import { assertMaintenanceCustodyAvailable, StorageMaintenanceCustodyUnavailableError } from "../../storage/maintenance/custody-availability.js";
 import { hasPendingShutdownBackupRetirement, resumeShutdownBackupRetirement } from "../../storage/maintenance/clean-shutdown-backups.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
@@ -241,6 +242,19 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
       }
     });
     await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts, clock);
+    try {
+      await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
+        const { upgradeProtectedSettings } = await import("../../storage/maintenance/protected-settings-upgrade.js");
+        const operation = machine.maintenanceOperation(), processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
+        for (const profileId of registered) {
+          const person = machine.readProfileRegistry().profiles.find(row => row.profileId === profileId);
+          if (person === undefined) throw new Error("protected-settings-upgrade-profile-missing");
+          if (person.credentialState !== "saved") continue;
+          const admission = machine.admitStoppedProfileSettingsUpgrade(profileId, operation); owned.push(admission);
+          await upgradeProtectedSettings(admission, profileBrowserClosure, operation, clock, processLockRoot);
+        }
+      });
+    } catch (error) { throw new RegisteredPersonUpgradeRefusedError(error); }
     return registered;
   } catch (error) {
     if (error instanceof RegisteredPersonUpgradeRefusedError) throw error;
@@ -593,7 +607,7 @@ export function composeSelectedProfileStorage(input: Readonly<{
       assertCurrent();
       return value;
     } });
-    const protectedSecrets = Object.freeze({ read: () => { assertCurrent(); return input.credentials.read(); } });
+    const protectedSecrets = createCredentialSecretSource({ read: () => { assertCurrent(); return input.credentials.read(); } }, () => { const identity = readAdmittedProfileIdentity(machine, admission); assertCurrent(); return identity; });
     const accountAuthority = Object.freeze({
       readAuthority: async (expectedAdmission: RuntimeAdmission = admission) => {
         if (expectedAdmission !== admission) throw new Error("profile-account-owner-mismatch");

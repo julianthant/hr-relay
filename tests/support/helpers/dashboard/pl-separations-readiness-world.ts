@@ -24,7 +24,7 @@ export function createPlSeparationsReadinessWorld(profileFixture?: Parameters<ty
   async function setup(workflowId: ReadinessWorkflow) {
     const module = workflowModuleOf(workflowId);
     const h = await launchHarness("reject-active", undefined, { descriptor: module.descriptor,
-      protectedSecrets: protectedSecretSource({ timekeeperName: "Fixture Operator" }) }, profileFixture);
+      protectedSecrets: protectedSecretSource({ profileName: "Fixture Operator" }) }, profileFixture);
     fixtures.push(h);
     const workflow: RunStartWorkflow = { ...h.workflow, role: module.role };
     return { ...h, workflow,

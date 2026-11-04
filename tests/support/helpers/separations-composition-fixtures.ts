@@ -275,7 +275,7 @@ export function compositionQueuedRun(
 ): Record<string, unknown> {
   const admitted = admitProtectedInput(separationsDescriptor,
     [{ documentNumber: COMPOSITION_DOCUMENT, searchTimeoutMs: 15_000 }],
-    protectedSecretSource({ timekeeperName: COMPOSITION_TIMEKEEPER }))[0];
+    protectedSecretSource({ profileName: COMPOSITION_TIMEKEEPER }))[0];
   if (admitted === undefined) throw new Error("fixture protected input admission missing");
   return {
     envelope: {

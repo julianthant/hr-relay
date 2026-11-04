@@ -997,8 +997,30 @@ export function eraseCanonicalDraftCredentials(machine: RuntimeAdmission, profil
   }
 }
 
-export function createCanonicalCredentials(admissionInput: RuntimeAdmission,
+export function createCanonicalCredentials(admission: RuntimeAdmission,
   options: Readonly<{ afterReplace?: (kind: CanonicalCredentialKind) => void }> = {}) {
+  return canonicalCredentialOwner(admission, options, () => admission.assertCredentialRead());
+}
+
+export function createStoppedProtectedSettingsStore(admission: RuntimeAdmission) {
+  admission.assertStoppedProtectedSettingsUpgrade();
+  const owner = canonicalCredentialOwner(admission, { beforeReplace: () => admission.assertStoppedProtectedSettingsWrite() }, () => admission.assertStoppedProtectedSettingsUpgrade());
+  return Object.freeze({
+    read: () => owner.readRecord("protected"),
+    convert: async (source: CanonicalCredentialRecord, at: string) => {
+      const { convertProtectedSettings } = await import("./protected-settings-upgrade.js");
+      if (typeof source.value !== "object" || source.value === null || Reflect.get(source.value, "schemaVersion") !== 4) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+      const current = owner.readRecord("protected");
+      if (current === undefined || canonicalJsonStringify(current) !== canonicalJsonStringify(source)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+      const next = convertProtectedSettings(source.value, at);
+      if (next.record.revision !== source.revision + 1) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+      return owner.replaceRecord("protected", source.revision, next);
+    },
+  });
+}
+
+function canonicalCredentialOwner(admissionInput: RuntimeAdmission,
+  options: Readonly<{ beforeReplace?: () => void; afterReplace?: (kind: CanonicalCredentialKind) => void }>, assertRead: () => void) {
   const admission = requireRuntimeAdmission(admissionInput), canonical = canonicalPaths(admission);
   const { binding, directory, headPath, operationPath } = canonical, paths = canonical.records;
   const ancestry = new Map<string, DirectoryIdentity>();
@@ -1020,7 +1042,7 @@ export function createCanonicalCredentials(admissionInput: RuntimeAdmission,
   }
   function readHead(): { head: Head; key: Buffer } {
     return withOperationProof(() => {
-      admission.assertCredentialRead();
+      assertRead();
       assertAccess();
       if (readPrivateFile(operationPath, { label: "lock", maxBytes: 100 * 1024 * 1024 }) !== undefined) throw new CanonicalCredentialError("CREDENTIAL_BUSY");
       const file = readPrivateFile(headPath, { label: "lock", maxBytes });
@@ -1033,7 +1055,7 @@ export function createCanonicalCredentials(admissionInput: RuntimeAdmission,
       inspectCanonicalNamespace(canonical, head, key, ownedStages, assertAccess, ancestry);
       if (capturedGeneration !== undefined && (head.generation !== capturedGeneration.generation || head.key.keyId !== capturedGeneration.keyId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
       capturedGeneration ??= { generation: head.generation, keyId: head.key.keyId };
-      assertAccess(); admission.assertCredentialRead(); return { head, key };
+      assertAccess(); assertRead(); return { head, key };
     });
   }
   function assertCurrent(): void { try { readHead(); } catch (error) { translate(error); } }
@@ -1111,6 +1133,7 @@ export function createCanonicalCredentials(admissionInput: RuntimeAdmission,
           && candidate.publicKeySpki === credential.publicKeySpki && candidate.privateKeyPkcs8 === credential.privateKeyPkcs8))) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
     }
     const record = deepFreeze({ revision: increment(current?.revision ?? 0), value });
+    options.beforeReplace?.();
     publish(paths[kind], seal(head, key, kind, record), kind);
     const after = read(kind);
     if (after === undefined || canonicalJsonStringify(after) !== canonicalJsonStringify(record)) throw new CanonicalCredentialError("CREDENTIAL_UNCERTAIN");

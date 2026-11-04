@@ -407,7 +407,6 @@ export function createProfileSession(input: {
           entries: {
             ucpathUserId: { set: fields.email },
             ucpathPassword: { set: fields.password },
-            timekeeperName: { set: names.timekeeperName },
           },
         }));
         if (applied.state !== "applied" && !store.ownsCommandId(operation.commandId)) {
@@ -423,8 +422,7 @@ export function createProfileSession(input: {
     if (store.ownsCommandId(operation.commandId)) {
       const current = store.read().entries;
       const same = current.ucpathUserId?.value === fields.email
-        && current.ucpathPassword?.value === fields.password
-        && current.timekeeperName?.value === names.timekeeperName;
+        && current.ucpathPassword?.value === fields.password;
       if (!same) return refusal("PROFILE_SIGN_IN_REFUSED");
     }
     return issueOnboardingSession(operation);

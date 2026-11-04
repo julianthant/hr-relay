@@ -218,7 +218,7 @@ describe("source-bound Rerun value read", () => {
   it.each(["safe-identity", "embedded-protected-value"] as const)("withholds protected input in the %s HTTP response", async kind => {
     const descriptor = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "separations"); assert.ok(descriptor);
     const name = kind === "safe-identity" ? "Fixture Hidden Operator" : "1234567";
-    const secrets = protectedSecretSource({ timekeeperName: name });
+    const secrets = protectedSecretSource({ profileName: name });
     let secretReads = 0;
     const h = await launchHarness("reject-active", undefined, { descriptor,
       protectedSecrets: { read: () => { secretReads += 1; return secrets.read(); } } });
@@ -250,7 +250,7 @@ describe("source-bound Rerun value read", () => {
         selectedStepKeys: descriptor.timeline.map(step => step.key),
         rerunSource: { ...request(source), intent: "rerun", selectedStepKeys: descriptor.timeline.map(step => step.key), copiedFrom: [] } });
       assert.deepEqual(nextPlan.refused, []);
-      assert.equal(secretReads, readsBeforeRerun);
+      assert.equal(secretReads, readsBeforeRerun + 1);
       const next = h.start(nextPlan);
       assert.notEqual(next.envelope.runId, source.envelope.runId);
       assert.deepEqual(next.input.raw, submission);

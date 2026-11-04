@@ -10,7 +10,8 @@ import { ConfigSchema, PROVIDER_CAPABILITY_CONFIG_KEYS, SettingsOverrideSchema }
 import { ProtectedValueSchemas } from "../../../src/models/config/protected-settings.js";
 import { SECRET_SPECS } from "../../../src/models/config/secrets.js";
 import { RUNTIME_DEPENDENCY_REGISTRY } from "../../../src/models/runtime/runtime-dependencies.js";
-import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS, SETTINGS_CATALOG, SettingsCatalogRowSchema, SettingsCatalogSchema, settingsCatalogRow, ordinarySettingsObject } from "../../../src/models/config/catalog.js";
+import { RUNTIME_ENVIRONMENT_EXACT } from "../../../src/models/runtime/runtime-environment.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS, SETTINGS_CATALOG, SettingsCatalogRowSchema, SettingsCatalogSchema, settingsCatalogRow, ordinarySettingsObject } from "../../../src/models/config/catalog.js";
 import { gitVisibleFiles, REPO_ROOT, repoRelative } from "../support/helpers/guard-files.js";
 
 interface ReaderCatalogRow {
@@ -163,7 +164,7 @@ describe("settings catalog", () => {
     const external = SECRET_SPECS
       .map((spec) => spec.name);
     assert.deepEqual(SETTINGS_CATALOG.filter((row) => !["ordinary-settings", "runtime-isolation", "derived-host"].includes(row.sourceClass))
-      .map((row) => row.key).filter((key) => key !== "activityPersonPseudonym").sort(),
+      .map((row) => row.key).sort(),
     external.sort());
     assert.deepEqual(SETTINGS_CATALOG.filter((row) => row.sourceClass === "protected-store")
       .map((row) => row.key).sort(), Object.keys(ProtectedValueSchemas).sort());
@@ -182,13 +183,13 @@ describe("settings catalog", () => {
     assert.equal(SettingsOverrideSchema.safeParse({ urls: { kuali: { test: { entry: "https://example.invalid" } } } }).success, true);
     assert.throws(() => ordinarySettingsObject("actor", z.strictObject({ id: z.string() })), /actor.label is missing/u);
   });
-  it("pins the 74-row closed registry and refuses a missing or duplicated row", () => {
-    assert.equal(SETTINGS_CATALOG.length, 74);
+  it("pins the 72-row closed registry and refuses a missing or duplicated row", () => {
+    assert.equal(SETTINGS_CATALOG.length, 72);
     assert.deepEqual(Object.fromEntries([
       "ordinary-settings", "protected-store", "derived-host", "runtime-isolation",
     ].map((sourceClass) => [sourceClass, SETTINGS_CATALOG.filter((row) => row.sourceClass === sourceClass).length])), {
       "ordinary-settings": 65,
-      "protected-store": 5,
+      "protected-store": 3,
       "derived-host": 1,
       "runtime-isolation": 3,
     });
@@ -201,7 +202,7 @@ describe("settings catalog", () => {
 
   it("refuses every protected, provider and observed value in the ordinary document", () => {
     const protectedRows = SETTINGS_CATALOG.filter((row) => row.sourceClass === "protected-store");
-    assert.equal(protectedRows.length, 5);
+    assert.equal(protectedRows.length, 3);
     for (const row of SETTINGS_CATALOG.filter((row) => row.sensitivity !== "ordinary")) {
       const parsed = SettingsCatalogRowSchema.safeParse({ ...row, sourceClass: "ordinary-settings" });
       assert.equal(parsed.success, false, row.key);
@@ -227,10 +228,10 @@ describe("settings catalog", () => {
   });
 
   it("assigns protected credentials next-use and refuses canary environment keys", () => {
-    for (const name of ["ucpathUserId", "ucpathPassword", "timekeeperName", "sharepointOnboardingRosterUrl", "activityPersonPseudonym"]) {
+    for (const name of ["ucpathUserId", "ucpathPassword", "sharepointOnboardingRosterUrl"]) {
       assert.equal(settingsCatalogRow(name).restartScope, "next-use", name);
     }
-    for (const name of ["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]) {
+    for (const name of ["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid", "timekeeperName", "activityPersonPseudonym"]) {
       assert.throws(() => settingsCatalogRow(name), new RegExp(`settings catalog has no key ${name}`, "u"));
     }
     assert.equal(SETTINGS_CATALOG.some((row) => row.restartScope === "next-start"), false);
@@ -241,6 +242,11 @@ describe("settings catalog", () => {
     for (const key of RETIRED_TEST_TARGET_ENVIRONMENT_KEYS) {
       assert.equal(MIGRATED_SETTINGS_ENVIRONMENT_KEYS.includes(key), true, key);
       assert.equal(SETTINGS_CATALOG.some((row) => row.currentSource.some((source) => source.kind === "env" && (source.name as string) === key)), false, key);
+    }
+    for (const key of RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS) {
+      const entry = RUNTIME_ENVIRONMENT_EXACT.find(row => row.key === key);
+      assert.ok(entry?.disposition === "migrated-refused");
+      assert.equal(entry.reason, "protected setting retired; remove it from the environment");
     }
     for (const row of SETTINGS_CATALOG.filter((row) => row.sourceClass === "ordinary-settings")) {
       assert.equal(row.restartScope, "generation", row.key);

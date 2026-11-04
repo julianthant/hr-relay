@@ -11,7 +11,7 @@ import { FailureResolutionActionSchema,FailureResolutionTargetSchema } from "../
 import { WriteIntentRecordSchema } from "../write-safety/write-safety.js";
 export { RunDisplayNameSchema } from "../../models/run/display-name.js";
 
-import { MarkedProtectedSettingsPatchSchema,ProtectedSettingsPatchSchema,ProtectedSettingsReadbackSchema,markProtectedSettingsPatch } from "../../models/config/protected-settings.js";
+import { MarkedProtectedSettingsPatchSchema,ProtectedSettingsPatchSchema,ProtectedSettingsReceiptEntriesSchema,markProtectedSettingsPatch } from "../../models/config/protected-settings.js";
 import { SettingsLeafOperationSchema,SettingsPatchSchema } from "../../models/config/settings.js";
 import { SchemaBoundCanonicalValueSchema } from "../../models/validation/schema-bound-value.js";
 import { ActorIdSchema,BrowserSessionIdSchema,CommandAuditIdSchema,CommandIdSchema,DependencyIdSchema,FingerprintSchema,GateIdSchema,IntakeManifestIdSchema,IntakeSessionIdSchema,IntakeTargetFieldIdSchema,IsoInstantSchema,ItemIdSchema,LOCAL_OPERATOR_ACTOR_ID,NodeIdSchema,NonNegativeIntSchema,NotificationIdSchema,PositiveIntSchema,RunIdSchema,RunSessionIdSchema,SourceColumnIdSchema,SourceSurfaceIdSchema,StartPlanIdSchema,TaskIdSchema,TraceIdSchema,WorkerIdSchema,WorkflowIdSchema,WriteAttemptIdSchema,WriteIntentIdSchema } from "../identity/ids.js";
@@ -438,7 +438,7 @@ const CommandLandingResultSchema = z.strictObject({
   settingsRevision: PositiveIntSchema.optional(),
   settingsFingerprint: FingerprintSchema.optional(),
   revision: PositiveIntSchema.optional(),
-  entries: ProtectedSettingsReadbackSchema.shape.entries.optional(),
+  entries: ProtectedSettingsReceiptEntriesSchema.optional(),
   workerStartup: RunWorkerStartupFailureSchema.optional(),
 }).superRefine((result, context) => {
   if (result.workerStartup !== undefined && !result.affectedTargets.some(target => target.family === "run")) {

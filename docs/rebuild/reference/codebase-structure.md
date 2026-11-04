@@ -52,6 +52,11 @@ Briefs, receipts, and task evidence live in the main checkout's gitignored `.wor
 `src/models/dashboard/run-outputs.ts` owns intended workbook and worksheet ZIP output facts shared by retained plans and Confirm.
 `src/backend/storage/sqlite/workbook-library-repository.ts` owns catalogue CAS, immutable named snapshots and action receipts alongside editable revisions.
 
+`src/models/profiles/profile-identity.ts` owns the derived name/initials runtime shape.
+`src/backend/storage/configuration/protected-settings-upgrade.ts` owns stopped source authentication and
+protected-value retirement; `src/backend/storage/maintenance/protected-settings-upgrade.ts` sequences its
+verified backup and canonical replacement before runtime composition.
+
 ## Source tree
 
 ```text

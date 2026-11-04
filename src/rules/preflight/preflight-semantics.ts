@@ -87,7 +87,7 @@ export const PREFLIGHT_CHECK_EXPECTATIONS = deepFreeze(PreflightCheckSemanticExp
     "system.servicenow.prod", "system.i9.prod",
     "system.new-kronos.prod", "system.old-kronos.prod",
   ]),
-  expectation("secrets.timekeeper", ["workflow.kuali-fill"], ["workflow.kuali-fill"]),
+  expectation("profile.identity", ["workflow.kuali-fill"], ["workflow.kuali-fill"]),
   expectation("secrets.sharepoint-roster", ["workflow.sharepoint-download", "system.sharepoint.prod"], ["workflow.sharepoint-download", "system.sharepoint.prod"]),
   ...systemExpectations(),
   ...providerExpectations(),

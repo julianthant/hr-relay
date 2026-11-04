@@ -120,7 +120,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     expect(cleared.protectedSettings.readback.entries.ucpathPassword.present).toBe(false); expect(cleared.protectedSettings.readback.revision).toBe(protectedBaseline + 2);
     // A real competing protected writer advances only that authority.
     await password.fill(secret);
-    await client.executeCommand({ ...original, commandId: randomUUID(), target: { expectedRevision: cleared.protectedSettings.readback.revision }, payload: { ...original.payload, writeId: randomUUID(), entries: { timekeeperName: { set: "synthetic-competing-timekeeper" } } } });
+    await client.executeCommand({ ...original, commandId: randomUUID(), target: { expectedRevision: cleared.protectedSettings.readback.revision }, payload: { ...original.payload, writeId: randomUUID(), entries: { ucpathUserId: { set: "synthetic-competing-timekeeper" } } } });
     await password.blur();
     await expect(page.getByText("The command conflicted with a newer state. Refresh and review the current result.", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry edit", exact: true })).toBeVisible();
@@ -129,7 +129,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     const afterConflict = await client.editableSettings();
     if (afterConflict.protectedSettings.state !== "available") throw new Error("protected-conflict-readback-unavailable");
     expect(afterConflict.protectedSettings.readback.revision).toBe(protectedBaseline + 3);
-    expect(afterConflict.protectedSettings.entries.timekeeperName?.value).toBe("synthetic-competing-timekeeper");
+    expect(afterConflict.protectedSettings.entries.ucpathUserId?.value).toBe("synthetic-competing-timekeeper");
     // Lose the confirming GET after the next real effect; retry must keep its identity.
     await page.route("**/api/v1/settings/editable", route => route.abort("failed"), { times: 1 });
     await page.getByRole("button", { name: "Retry edit", exact: true }).click();

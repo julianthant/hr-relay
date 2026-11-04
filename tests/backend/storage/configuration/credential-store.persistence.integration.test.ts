@@ -114,7 +114,7 @@ async function domainVersionFixture() {
 }
 
 for (const version of [2, 3] as const) it.each(["unchanged", "value", "timestamp", "commandFingerprint", "expectedRevision", "protectedSchemaHash"] as const)(
-  `requires literal version4 for authenticated current-shaped payload version-${version} %s`, async corruption => {
+  `requires literal version5 for authenticated current-shaped payload version-${version} %s`, async corruption => {
     const { f, original, record, password, lastApplied } = await domainVersionFixture();
     const corrupted = corruption === "value" || corruption === "timestamp"
       ? { ...record, entries: { ...record.entries, ucpathPassword: { ...password, ...(corruption === "value" ? { value: "different-private-password" } : { updatedAt: "2026-09-06T12:01:00.000Z" }) } } }
@@ -132,7 +132,7 @@ for (const version of [2, 3] as const) it.each(["unchanged", "value", "timestamp
     assert.equal(validation.success, false);
     if (validation.success) throw new Error("noncurrent credential schema unexpectedly accepted");
     assert.deepEqual(validation.error.issues.map(issue => ({ code: issue.code, path: issue.path, values: "values" in issue ? issue.values : undefined })),
-      [{ code: "invalid_value", values: [4], path: ["schemaVersion"] },
+      [{ code: "invalid_value", values: [5], path: ["schemaVersion"] },
         ...(corruption === "expectedRevision" || corruption === "protectedSchemaHash" ? [{ code: "custom", path: ["record", "lastApplied"], values: undefined }] : [])]);
     rewriteAuthenticatedCredentialFixture(f.machine.stateRoot, f.admission.profileBinding.profileId, () => candidate);
     const actual = createCanonicalCredentials(f.admission).readRecord("protected"); assert.ok(actual);
@@ -183,11 +183,11 @@ for (const version of [2, 3] as const) it.each(["unchanged", "value", "timestamp
     let blocked: ReturnType<typeof f.store.apply> | undefined, winnerBytes: Buffer | undefined;
     const writer = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot, hooks: { afterRename() {
       winnerBytes = readFileSync(f.path);
-      blocked = f.store.apply(request({ commandId: COMMAND_2, writeId: WRITE_2, expectedRevision: revision + 1, entries: { timekeeperName: { set: "lock-contention" } } }));
+      blocked = f.store.apply(request({ commandId: COMMAND_2, writeId: WRITE_2, expectedRevision: revision + 1, entries: { ucpathUserId: { set: "lock-contention" } } }));
       assert.equal(f.store.read().entries.ucpathPassword?.value, SECRET);
       assert.equal(f.store.read().revision, revision + 1);
       assert.deepEqual(readFileSync(f.path), winnerBytes);
-      assert.deepEqual(f.store.read().entries.timekeeperName, current.entries.timekeeperName);
+      assert.deepEqual(f.store.read().entries.ucpathUserId, current.entries.ucpathUserId);
     } } });
     assert.equal(writer.apply(request({ commandId: COMMAND_1, writeId: WRITE_1, expectedRevision: revision, entries: { ucpathPassword: { set: SECRET } } })).state, "applied");
     assert.deepEqual(blocked, { state: "rejected", code: "lock-unavailable", message: "credential store lock is unavailable" });

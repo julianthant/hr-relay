@@ -107,7 +107,7 @@ it("lost CAS preserves the peer's command and never publishes a stale candidate"
   const profile = await freshProfile(), peer = createCredentialStore({ admission: profile.admission, stateRoot: profile.stateRoot });
   const path = join(profile.stateRoot, "credentials", "protected.json"); let peerBytes: Buffer | undefined;
   const store = createCredentialStore({ admission: profile.admission, stateRoot: profile.stateRoot, hooks: { beforeRename() {
-    applied(peer, request({ commandId: COMMAND_2, writeId: WRITE_2, entries: { timekeeperName: { set: "peer" } } })); peerBytes = readFileSync(path);
+    applied(peer, request({ commandId: COMMAND_2, writeId: WRITE_2, entries: { ucpathUserId: { set: "peer" } } })); peerBytes = readFileSync(path);
   } } });
   try {
     const result = store.apply(request({ entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } }));
@@ -237,21 +237,21 @@ it("requires current schema and consistent history for every authenticated paylo
 it("imports retired historical identities without reviving values or allowing future reuse", async () => {
   const f = await fixture();
   try {
-    const first = applied(f.store, request({ entries: { timekeeperName: { set: "retired keeper" } } })), retiredEntry = first.entries.timekeeperName; assert.ok(retiredEntry);
+    const first = applied(f.store, request({ entries: { ucpathUserId: { set: "retired keeper" } } })), retiredEntry = first.entries.ucpathUserId; assert.ok(retiredEntry);
     const retiredValue = retiredEntry.valueId;
     applied(f.store, request({ commandId: COMMAND_2, writeId: WRITE_2, expectedRevision: 2, entries: { ucpathPassword: { set: PRIVATE_VALUE_2 } } }));
     const owner = createCanonicalCredentials(f.admission), frame = owner.readRecord("protected"); assert.ok(frame);
     const document = structuredClone(authenticateDocument(frame.value)), retiredOnlyValue = randomUUID(), retiredWrite = randomUUID(), tombstoneOnlyCommand = randomUUID();
-    delete document.record.entries.timekeeperName;
+    delete document.record.entries.ucpathUserId;
     document.retiredLegacy = { commandIds: [COMMAND_1, tombstoneOnlyCommand], writeIds: [retiredWrite], valueIds: [retiredValue, retiredOnlyValue] };
     const next = request({ commandId: COMMAND_3, writeId: WRITE_3, expectedRevision: 3, entries: {}, updatedAt: NOW_2 });
     const receipt = { commandId: next.commandId, commandFingerprint: next.commandFingerprint, writeId: next.writeId,
       expectedRevision: next.expectedRevision, protectedSchemaHash: next.protectedSchemaHash };
     document.history.push({ receipt: { ...receipt, updatedAt: next.updatedAt }, marked: {}, setValueIds: {} });
     document.record.revision = PositiveIntSchema.parse(4); document.record.lastApplied = receipt; document.latestRequest = { kind: "apply", request: next };
-    assert.equal(authenticateDocument(document).record.entries.timekeeperName, undefined);
+    assert.equal(authenticateDocument(document).record.entries.ucpathUserId, undefined);
     owner.replaceRecord("protected", frame.revision, document);
-    assert.equal(f.store.read().revision, 4); assert.equal(f.store.read().entries.timekeeperName, undefined);
+    assert.equal(f.store.read().revision, 4); assert.equal(f.store.read().entries.ucpathUserId, undefined);
     assert.equal(f.store.ownsCommandId(COMMAND_1), true); assert.equal(f.store.ownsCommandId(tombstoneOnlyCommand), false);
     assert.equal(f.store.acceptedAt(COMMAND_1), undefined); assert.equal(f.store.acceptedAt(tombstoneOnlyCommand), undefined);
     const bytes = readFileSync(f.path);
@@ -260,8 +260,8 @@ it("imports retired historical identities without reviving values or allowing fu
       assert.equal(f.store.verifyReplay(reused).state, "rejected");
     }
     const colliding = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot, ids: { randomUUID: () => retiredOnlyValue } });
-    assert.throws(() => colliding.apply(request({ commandId: randomUUID(), writeId: randomUUID(), expectedRevision: 4, entries: { timekeeperName: { set: "new keeper" } } })), /value identity generation collided/u);
-    const revived = structuredClone(document); revived.record.entries.timekeeperName = retiredEntry;
+    assert.throws(() => colliding.apply(request({ commandId: randomUUID(), writeId: randomUUID(), expectedRevision: 4, entries: { ucpathUserId: { set: "new keeper" } } })), /value identity generation collided/u);
+    const revived = structuredClone(document); revived.record.entries.ucpathUserId = retiredEntry;
     assert.throws(() => authenticateDocument(revived), /identity history/u);
     assert.deepEqual(readFileSync(f.path), bytes);
   } finally { await f.close(); }
@@ -287,12 +287,12 @@ it("reports the genuine short canonical writer lease as lock-unavailable without
   const profile = await freshProfile(), peer = createCredentialStore({ admission: profile.admission, stateRoot: profile.stateRoot });
   let competing: ReturnType<typeof peer.apply> | undefined;
   const store = createCredentialStore({ admission: profile.admission, stateRoot: profile.stateRoot, hooks: { afterRename() {
-    competing = peer.apply(request({ commandId: COMMAND_2, writeId: WRITE_2, expectedRevision: 2, entries: { timekeeperName: { set: "must not publish" } } }));
+    competing = peer.apply(request({ commandId: COMMAND_2, writeId: WRITE_2, expectedRevision: 2, entries: { ucpathUserId: { set: "must not publish" } } }));
   } } });
   try {
     applied(store, request({ entries: { ucpathPassword: { set: PRIVATE_VALUE_1 } } }));
     assert.deepEqual(competing, { state: "rejected", code: "lock-unavailable", message: "credential store lock is unavailable" });
-    assert.equal(peer.read().revision, 2); assert.equal(peer.read().entries.timekeeperName, undefined); assert.equal(peer.read().entries.ucpathPassword?.value, PRIVATE_VALUE_1);
+    assert.equal(peer.read().revision, 2); assert.equal(peer.read().entries.ucpathUserId, undefined); assert.equal(peer.read().entries.ucpathPassword?.value, PRIVATE_VALUE_1);
   } finally { await profile.close(); }
 });
 it("admits an owned sticky ancestor while the protected directory and record stay private", async () => {

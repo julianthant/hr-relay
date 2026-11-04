@@ -2,7 +2,7 @@ import { testProcessImport } from "../../../support/compiled-process.js";
 import { advanceProfileRegistryDocument } from "../../../../src/models/profiles/profile.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
-import { deriveProfileNames, SignUpOperationSchema, LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
+import { SignUpOperationSchema, LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { finishProfileOnboarding, readyProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
 import { boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import fs from "node:fs";
@@ -306,8 +306,7 @@ it("publishes ready only through genuine canonical Finish custody and rechecks d
     const request = ProtectedSettingsApplyInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
       commandFingerprint: operation.commandFingerprint, expectedRevision: operation.expectedRevision,
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: operation.createdAt,
-      entries: { ucpathUserId: { set: f.fields.email }, ucpathPassword: { set: f.fields.password },
-        timekeeperName: { set: deriveProfileNames(f.fields.firstName, f.fields.lastName).timekeeperName } } });
+      entries: { ucpathUserId: { set: f.fields.email }, ucpathPassword: { set: f.fields.password } } });
     const publication = f.machine.admitProfilePublication(operation.operationId);
     const publicationStore = createCredentialStore({ admission: publication, stateRoot: publication.stateRoot });
     assert.throws(() => publicationStore.verifyReplay(request), /profile-setup-operation-not-current/u);

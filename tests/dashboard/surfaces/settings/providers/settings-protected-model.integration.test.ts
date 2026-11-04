@@ -130,7 +130,7 @@ it("preserves a schema-admitted literal marker credential through exact-byte rec
 
 it("keeps the unknown original ID and draft while authority is absent, then replays exact bytes", async () => {
   const h = await mountRecovery();
-  await act(async () => h.controller().update("timekeeperName", "Retained operator"));
+  await act(async () => h.controller().update("ucpathUserId", "Retained operator"));
   await h.action(() => h.controller().submit());
   assert.equal(h.controller().save.state, "unconfirmed");
   const draft = structuredClone(h.controller().draft);
@@ -138,7 +138,7 @@ it("keeps the unknown original ID and draft while authority is absent, then repl
   const commandId = h.binding().executor.retainedAttempts()[0].request.commandId;
   h.setAvailable(false); await h.render();
   await h.action(() => h.controller().retry());
-  await act(async () => h.controller().update("timekeeperName", "Divergent operator"));
+  await act(async () => h.controller().update("ucpathUserId", "Divergent operator"));
   await h.action(() => h.controller().submit());
   assert.equal(h.sent.length, 1); assert.equal(h.controller().save.state, "unconfirmed");
   assert.equal(h.controller().locked, true); assert.deepEqual(h.controller().draft, draft);

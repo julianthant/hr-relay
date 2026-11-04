@@ -47,7 +47,7 @@ describe("settings apply during a production worker claim", () => {
     const applyProtected = (value: string, revision: number) => kernel.execute({
       commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
       family: "settings", type: "apply-protected-settings", target: { expectedRevision: revision },
-      payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: nextCommandId(), entries: { timekeeperName: { set: value } } },
+      payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: nextCommandId(), entries: { ucpathUserId: { set: value } } },
     });
     const protectedBaseline = credentials.read().revision;
     const ordinaryBaseline = readSettings(database.authority).revision;
@@ -80,7 +80,7 @@ describe("settings apply during a production worker claim", () => {
       const waitingBefore = database.authority.runs.get(waitingId);
       const epoch = database.authority.settingsCurrent.get();
       const snapshot = database.authority.configSnapshots.get(active.configSnapshotId);
-      assert.equal(source.read().entries.timekeeperName?.value, "Synthetic Initial Keeper");
+      assert.equal(source.read().entries.ucpathUserId?.value, "Synthetic Initial Keeper");
       const result = kind === "protected" ? applyProtected("Synthetic Rotated Keeper", protectedBaseline + 1) : (() => {
         const patch = { "timeouts.taskMs": { set: 240_000 } } as const;
         return kernel.execute({ commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
@@ -100,7 +100,7 @@ describe("settings apply during a production worker claim", () => {
       assert.deepEqual(database.authority.runs.get(RUN_ID), run);
       if (kind === "protected") {
         assert.deepEqual(database.authority.settingsCurrent.get(), epoch);
-        assert.equal(source.read().entries.timekeeperName?.value, "Synthetic Rotated Keeper");
+        assert.equal(source.read().entries.ucpathUserId?.value, "Synthetic Rotated Keeper");
       } else assert.notDeepEqual(database.authority.settingsCurrent.get(), epoch);
       gate.resolve();
       const outcome = await settled;

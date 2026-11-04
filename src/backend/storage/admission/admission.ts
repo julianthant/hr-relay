@@ -9,7 +9,7 @@ import { DuoCredentialRecordSchema } from "../../../models/config/duo-credential
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { assertFinishedProfileOnboarding,deriveProfileNames,LogoutOperationSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,type LogoutOperation,type ProfileDatabaseBinding,type ProfileOperation,type ProfileRegistryDocument,type SignUpOperation } from "../../../models/profiles/profile.js";
+import { assertFinishedProfileOnboarding,LogoutOperationSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,type LogoutOperation,type ProfileDatabaseBinding,type ProfileOperation,type ProfileRegistryDocument,type SignUpOperation } from "../../../models/profiles/profile.js";
 import { systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
@@ -154,6 +154,7 @@ export class RuntimeAdmission {
   #automaticRestore: AuthorityRestoreInput | undefined;
   #repairSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | undefined;
   readonly #readyUpgrade: ReadyProfileUpgrade | undefined;
+  #protectedSettingsUpgrade: { readonly kind: "inspection" } | { readonly kind: "backed"; readonly assertCurrent: () => void } | { readonly kind: "revoked" } | undefined;
   readonly #flatBackup: Readonly<{ sourcePath: string; processLockRoot: string }> | undefined;
 
   private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
@@ -659,7 +660,7 @@ export class RuntimeAdmission {
       || document.record.revision !== operation.expectedRevision + 1 || document.history.length !== 1 || document.historyBaseRevision !== 1
       || document.retiredLegacy.commandIds.length !== 0 || document.retiredLegacy.writeIds.length !== 0 || document.retiredLegacy.valueIds.length !== 0) throw new Error("profile-registration-receipt-invalid");
     const email = document.record.entries.ucpathUserId?.value, password = document.record.entries.ucpathPassword?.value;
-    if (email === undefined || password === undefined || document.record.entries.timekeeperName?.value !== deriveProfileNames(operation.firstName, operation.lastName).timekeeperName) throw new Error("profile-registration-input-required");
+    if (email === undefined || password === undefined) throw new Error("profile-registration-input-required");
     const draft = operation.onboarding, key = draft?.attempts.findLast(attempt => attempt.generation === draft.generation && attempt.method === "key");
     const duo = DuoCredentialRecordSchema.parse(captured.records.duo?.value), credential = duo.credentials.find(credential => credential.state === "ready" && credential.credentialId === key?.ceremony?.credentialId);
     if (credential === undefined || key?.scope === undefined || canonicalJsonStringify(credential.scope) !== canonicalJsonStringify(key.scope)
@@ -842,6 +843,39 @@ export class RuntimeAdmission {
       || resolve(path) !== path || path !== join(this.#stateRoot, "state.db")) throw new Error("profile-logout-settlement-required");
     return this.#stoppedLogout.operation;
   }
+  assertStoppedProtectedSettingsUpgrade(): void {
+    this.assertLive();
+    if (this.#scope !== "profile-maintenance" || this.#mode !== "exclusive" || this.#profileParent === undefined
+      || this.#protectedSettingsUpgrade === undefined || this.#protectedSettingsUpgrade.kind === "revoked") throw new Error("protected-settings-upgrade-stopped-owner-required");
+    this.#profileParent.assertExclusive();
+    this.assertOfflineMaintenance(this.maintenanceOperation());
+  }
+  async qualifyStoppedProtectedSettingsUpgrade(input: Readonly<{ closure: StoppedBackupClosure; backupManifestPath: string;
+    operation: OfflineMaintenanceOperation; clock: Clock; processLockRoot: string }>): Promise<void> {
+    this.assertStoppedProtectedSettingsUpgrade();
+    const { closure, backupManifestPath, operation, clock, processLockRoot } = input;
+    const { assertStoppedBackupClosure } = await import("../maintenance/profile-inventory.js");
+    const { verifyStoppedBackupManifestAtPath } = await import("../sqlite/backup-service.js");
+    const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
+    const assertCurrent = () => {
+      this.assertStoppedProtectedSettingsUpgrade();
+      this.assertOfflineMaintenance(operation);
+      assertStoppedBackupClosure(closure, this, operation);
+      const backup = verifyStoppedBackupManifestAtPath(this, backupManifestPath).manifest;
+      const source = AuthorityDatabase.inspectStoppedUpgrade(this, join(this.#stateRoot, "state.db"), processLockRoot, clock);
+      if (backup.schemaVersion !== source.schemaVersion || backup.authorityGeneration !== source.authorityGeneration
+        || backup.authorityContentFingerprint !== source.authorityContentFingerprint) throw new Error("protected-settings-upgrade-backup-mismatch");
+    };
+    assertCurrent();
+    this.#protectedSettingsUpgrade = { kind: "backed", assertCurrent };
+  }
+  assertStoppedProtectedSettingsWrite(): void {
+    this.assertStoppedProtectedSettingsUpgrade();
+    const qualified = this.#protectedSettingsUpgrade;
+    if (qualified?.kind !== "backed") throw new Error("protected-settings-upgrade-verified-backup-required");
+    try { qualified.assertCurrent(); }
+    catch (error) { this.#protectedSettingsUpgrade = { kind: "revoked" }; throw error; }
+  }
   assertCredentialRead(): void {
     this.assertLive();
     if (this.#scope === "profile-layout") throw new Error("fixed-layout-credential-read-refused");
@@ -885,6 +919,12 @@ export class RuntimeAdmission {
     access.verify("runtime");
     return this.#admitProfile(access, operation);
   }
+  admitStoppedProfileSettingsUpgrade(profileId: string, operation: OfflineMaintenanceOperation): RuntimeAdmission {
+    this.assertExclusive(); this.assertOfflineMaintenance(operation);
+    const access = this.#captureProfileAccess(profileId);
+    if (access.phase !== "runtime") throw new Error("profile-onboarding-incomplete");
+    return this.#admitProfile(access, operation, false, "settings");
+  }
   admitStoppedProfileBackup(profileId: string, operation: OfflineMaintenanceOperation): RuntimeAdmission {
     this.assertExclusive(); this.assertOfflineMaintenance(operation);
     assertMaintenanceCustodyAvailable("backup");
@@ -906,7 +946,7 @@ export class RuntimeAdmission {
       || path !== join(this.#stateRoot, "state.db")) throw new Error("startup-recovery-admission-required");
     this.assertStoppedProfile(this.maintenanceOperation());
   }
-  #admitProfile(claim: ProfileAccess, maintenance?: OfflineMaintenanceOperation, publication = false, stoppedPurpose?: "repair" | "backup"): RuntimeAdmission {
+  #admitProfile(claim: ProfileAccess, maintenance?: OfflineMaintenanceOperation, publication = false, stoppedPurpose?: "repair" | "backup" | "settings"): RuntimeAdmission {
     const repair = stoppedPurpose === "repair";
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
@@ -989,6 +1029,7 @@ export class RuntimeAdmission {
       [join(root, "state.db")], maintenance !== undefined ? "profile-maintenance" : claim.phase === "setup" ? "profile-initialization" : claim.phase === "settlement" ? "profile-settlement" : "profile", this.#mode, this.#locator,
       { installationId: this.locator.installationId, profileId: claim.profileId }, this);
     admitted.#repairSchemaVersion = repairSchema;
+    if (stoppedPurpose === "settings") admitted.#protectedSettingsUpgrade = { kind: "inspection" };
     return admitted;
   }
   get stateRoot(): string { this.assertLive(); return this.#stateRoot; }

@@ -5,7 +5,7 @@ import type { CredentialStore, CredentialStoreApplyOutcome } from "../../../mode
 import { CredentialEraseInputSchema } from "../../../models/config/credential-store.js";
 import {
   PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, ProtectedSettingsLastAppliedSchema,
-  ProtectedSettingsNameSchema, ProtectedStoreRecordSchema, PROTECTED_SETTINGS_SET_MARKER,
+  ProtectedSettingsNameSchema, ProtectedSettingsHistoryNameSchema, ProtectedStoreRecordSchema, PROTECTED_SETTINGS_SET_MARKER,
   initialProtectedStoreRecord, markProtectedSettingsPatch, type ProtectedSettingsApplyInput, type ProtectedStoreRecord,
 } from "../../../models/config/protected-settings.js";
 import { SettingsApplyRefusalSchema, type SettingsApplyRejectionCode } from "../../../models/config/settings.js";
@@ -14,7 +14,7 @@ import { encodePrivate, privateEqual as privateEqualBounded } from "../../../rul
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners } from "../source-closure.js";
-import { CanonicalCredentialError, createCanonicalCredentials, readStoppedProtectedRecord, type CanonicalCredentialRecord } from "./canonical-credential-store.js";
+import { CanonicalCredentialError, CredentialMaintenanceHold, createCanonicalCredentials, readStoppedProtectedRecord, type CanonicalCredentialRecord } from "./canonical-credential-store.js";
 
 const MAX_PRIVATE_REQUEST_BYTES = 64_000;
 const MAX_CREDENTIAL_DOCUMENT_BYTES = 16 * 1024 * 1024;
@@ -59,7 +59,7 @@ const CredentialLatestRequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("erase"), request: CredentialEraseInputSchema, repairedExpectedRevision: z.number().int().safe().positive().optional() }),
 ]);
 export const CredentialDocumentSchema = z.strictObject({
-  schemaVersion: z.literal(4),
+  schemaVersion: z.literal(5),
   record: ProtectedStoreRecordSchema,
   historyBaseRevision: z.number().int().safe().positive(),
   history: z.array(CredentialHistoryEntrySchema),
@@ -145,7 +145,7 @@ function lastApplied(request: {
   });
 }
 
-function replayValueIds(history: readonly CredentialHistoryEntry[], baseRevision: number): Map<string, string> {
+export function credentialHistoryValueIds(history: readonly CredentialHistoryEntry[], baseRevision: number): Map<string, string> {
   let revision = baseRevision;
   const commandIds = new Set<string>();
   const writeIds = new Set<string>();
@@ -158,7 +158,7 @@ function replayValueIds(history: readonly CredentialHistoryEntry[], baseRevision
     }
     commandIds.add(receipt.commandId);
     writeIds.add(receipt.writeId);
-    for (const name of ProtectedSettingsNameSchema.options) {
+    for (const name of ProtectedSettingsHistoryNameSchema.options) {
       const operation = marked[name];
       const valueId = setValueIds[name];
       if (operation === undefined || "clear" in operation || "erase" in operation) {
@@ -192,7 +192,7 @@ export function authenticateDocument(input: unknown): CredentialDocument {
   const erased = new Set(parsed.data.retiredLegacy.valueIds);
   let replayed: Map<string, string>;
   try {
-    replayed = new Map([...replayValueIds(parsed.data.history, parsed.data.historyBaseRevision)].filter(([, valueId]) => !erased.has(valueId)));
+    replayed = new Map([...credentialHistoryValueIds(parsed.data.history, parsed.data.historyBaseRevision)].filter(([, valueId]) => !erased.has(valueId)));
   } catch {
     throw new Error("credential store protected.json has malformed identity history");
   }
@@ -231,7 +231,7 @@ export function authenticateDocument(input: unknown): CredentialDocument {
 
 export function initialDocument(): CredentialDocument {
   return deepFreeze(CredentialDocumentSchema.parse({
-    schemaVersion: 4,
+    schemaVersion: 5,
     record: initialProtectedStoreRecord(),
     historyBaseRevision: 1, history: [],
     retiredLegacy: { commandIds: [], writeIds: [], valueIds: [] },
@@ -265,6 +265,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
   }
   function parseCurrent(frame: CanonicalCredentialRecord | undefined): CredentialDocument {
     if (frame === undefined) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+    if (typeof frame.value === "object" && frame.value !== null && Reflect.get(frame.value, "schemaVersion") === 4) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED");
     const document = authenticateDocument(frame.value);
     if (frame.revision !== document.record.revision) throw new Error("credential store protected.json disagrees with its authenticated revision");
     return document;
@@ -325,11 +326,11 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       entries.set(name, { valueId, value: operation.set, updatedAt: request.updatedAt });
     }
     return authenticateDocument({
-      schemaVersion: 4,
+      schemaVersion: 5,
       historyBaseRevision: document.historyBaseRevision, retiredLegacy: document.retiredLegacy,
       latestRequest: { kind: "apply", request },
       record: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         revision: document.record.revision + 1,
         protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
         entries: Object.fromEntries(entries),

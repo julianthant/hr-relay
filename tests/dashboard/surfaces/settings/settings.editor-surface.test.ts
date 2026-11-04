@@ -56,7 +56,7 @@ async function settingsClient(applied: unknown[], mode: "confirmed" | "held" | "
 
 async function mountSettingsPage(client: DashboardClient, section: string,
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void,
-  nowIso = "2026-08-28T18:00:00.000Z") {
+  nowIso = "2026-08-28T18:00:00.000Z", profileName = "Synthetic Operator") {
   const element = document.createElement("div");
   host = element;
   document.body.append(element);
@@ -64,7 +64,7 @@ async function mountSettingsPage(client: DashboardClient, section: string,
     root = createRoot(element);
     root.render(createElement(DashboardClientProvider, { client,
       children: createElement(FixtureCommandBinding, { actorId: "local-operator", nowIso,
-        children: createElement(SettingsPage, { onClose: () => undefined, storage: STORAGE, sections: [],
+        children: createElement(SettingsPage, { profileName, onClose: () => undefined, storage: STORAGE, sections: [],
           workflowLabels: new Map<string, string>(), section, actorId: "local-operator",
           descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
           ...(onExitGuardChange === undefined ? {} : { onExitGuardChange }) }),
@@ -88,6 +88,22 @@ function overlayButton(name: string): HTMLButtonElement {
 }
 
 describe("editable Settings surface", () => {
+  it("shows the served profile name and per-word initials without editable or removal controls", async () => {
+    const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => {
+      if (String(url).endsWith("/settings/editable")) return Response.json(DOCUMENT);
+      throw new Error("unexpected-read-only-settings-request");
+    } });
+    host = await mountSettingsPage(client, "credentials", undefined, "2026-08-28T18:00:00.000Z", "Synthetic Middle Operator");
+    assert.match(host.textContent ?? "", /Timekeeper nameSynthetic Middle Operator/u);
+    assert.match(host.textContent ?? "", /Timekeeper initialsSMO/u);
+    assert.doesNotMatch(host.textContent ?? "", /Historical Activity pseudonym/u);
+    assert.equal(host.querySelector('input[name="timekeeperName"]'), null);
+    assert.equal(host.querySelector('input[name="activityPersonPseudonym"]'), null);
+    assert.equal(host.querySelector('button[aria-label="Remove Timekeeper name"]'), null);
+    assert.equal(host.querySelector('button[aria-label="Remove Timekeeper initials"]'), null);
+    assert.equal(host.querySelectorAll("input").length, 3, "navigation search and the two UCPath credentials remain editable");
+  });
+
   it("guards retained workflow credentials before leaving after an unconfirmed write", async () => {
     let guard: ((proceed: () => void) => void) | undefined;
     let exited = 0;

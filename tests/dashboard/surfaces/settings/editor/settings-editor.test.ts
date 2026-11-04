@@ -246,7 +246,7 @@ describe('confirmed Settings feedback through the current editor', () => {
   it('withholds a protected toast on conflict and readback failure', async () => {
     const { controller, authority, ports, notices, problems } = await setup();
     await act(async () => controller().protectedEditor.update('ucpathPassword', 'secret-toast-sentinel'));
-    assert.equal(authority.protectedApply({ timekeeperName: { set: 'Other operator' } }).state, 'applied');
+    assert.equal(authority.protectedApply({ ucpathUserId: { set: 'Other operator' } }).state, 'applied');
     await act(async () => controller().protectedEditor.submit());
     assert.equal(controller().protectedEditor.save.state, 'conflict');
     assert.deepEqual(notices, []);
