@@ -62,6 +62,7 @@
     "@typescript-eslint/parser": "^8.59.2",
     "@vitejs/plugin-react": "6.1.0",
     "@vitest/coverage-v8": "~4.1.12",
+    "esbuild": "0.28.1",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "7.1.1",
     "eslint-plugin-unused-imports": "^4.4.1",
@@ -97,6 +98,7 @@
     "csv-parse": "^7.0.2",
     "hono": "^4.13.13",
     "jszip": "3.10.2",
+    "koffi": "3.3.6",
     "lucide-react": "1.8.0",
     "pdf-lib": "1.17.1",
     "pdf-to-img": "^7.0.0",
@@ -113,7 +115,8 @@
   "allowScripts": {
     "esbuild@0.28.1": true,
     "fsevents@2.3.3": true,
-    "fsevents@2.3.2": true
+    "fsevents@2.3.2": true,
+    "koffi": false
   },
   "overrides": {
     "jsdom": {

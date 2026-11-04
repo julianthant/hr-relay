@@ -1,3 +1,4 @@
+import { prepareWindowsObserverPolicy } from "./scripts/build/windows-observer-policy.js";
 /** Development proxies keep the typed client on the BFF's same origin. */
 import { prepareBuildManifest } from "./scripts/build/workflow-build-manifest.js";
 import { defineConfig } from "vite";
@@ -11,6 +12,7 @@ import {
   DashboardLaunchNonceSchema,
 } from "./src/backend/transports/http/frontend-owner.js";
 
+prepareWindowsObserverPolicy(import.meta.dirname);
 prepareBuildManifest(import.meta.dirname);
 
 const BACKEND = "http://127.0.0.1:3938";

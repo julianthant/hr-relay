@@ -48,6 +48,21 @@ include the static module, and run without `src/` or the development generator. 
 packaged data must refuse startup. There is no current Electron packaging system or acceptance
 proof; frontend bundle checks do not establish packaged-runtime acceptance.
 
+`scripts/build/windows-observer-policy.ts` bundles the canonical shared `privatePathRejects`
+implementation as CommonJS for the two isolated Windows SQLite observers. esbuild is a direct
+pinned build dependency; Node builtins and Koffi remain external. The ignored artifact and input/digest
+metadata live under `node_modules/.cache/relay/`. Source-tool configuration and manifest preparation
+prepare them without regenerating registries; the independent manifest check rebuilds expected bytes
+in memory and refuses missing or stale outputs without writing. Unchanged bytes keep their timestamps.
+
+Only Windows observer calls validate the metadata's confined public source/dependency inputs and
+artifact SHA256; the child checks its artifact again before loading the shared native policy. Missing,
+stale or changed assets refuse explicitly. There is no runtime build or TypeScript loader. POSIX
+children retain plain CommonJS and never read this Windows asset. Restart source tools after changing
+canonical policy inputs. Future desktop packaging must embed and bind expected metadata, ship the
+artifact and Koffi, and validate independently before bundling; absent source files never imply a
+packaged mode. That packaging mode is not implemented by this source build.
+
 ## 1. Test layers and ownership
 
 Tests mirror source once under `tests/`. A source path under `src/` drops that prefix. Tests for
