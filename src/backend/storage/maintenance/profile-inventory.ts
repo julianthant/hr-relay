@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { createHash } from "node:crypto";
 import { existsSync,readFileSync,lstatSync,opendirSync,readdirSync,type Dirent } from "node:fs";
 import { basename,join,relative,resolve,sep } from "node:path";
@@ -205,6 +206,7 @@ export async function prepareStoppedBackupClosure(browserClosure: ProfileBrowser
   const layout = { workerDirectory: (input: Parameters<ProfileBrowserClosure["workerDirectory"]>[0]) => browserClosure.workerDirectory(input) };
   try {
     held();
+    assertMaintenanceCustodyAvailable("backup");
     const before = stoppedBackupBrowserCensus(admission, operation, clock, processLockRoot, layout);
     await browserClosure.probeClosed(before.profiles, before.timing, clock, new AbortController().signal, admission);
     held();
@@ -224,6 +226,7 @@ export async function prepareStoppedBackupClosure(browserClosure: ProfileBrowser
 export function assertStoppedBackupClosure(closure: StoppedBackupClosure, admission: RuntimeAdmission,
   operation: OfflineMaintenanceOperation): Pick<ProfileBrowserClosure, "workerDirectory"> {
   admission.assertOfflineMaintenance(operation);
+  assertMaintenanceCustodyAvailable("backup");
   const issued = stoppedBackupClosures.get(closure);
   if (issued === undefined || issued.admission !== admission || issued.operation !== operation) throw new StorageBackupClosureUnprovedError();
   assertOfflineMaintenanceForProcessRoot(operation, issued.processLockRoot);

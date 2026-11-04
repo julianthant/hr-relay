@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable, StorageMaintenanceCustodyUnavailableError } from "../../../storage/maintenance/custody-availability.js";
 import { createDebugEventWriter } from "../../../logs/debug-events.js";
 import { createApplicationLifecycle, type ApplicationUpdateHost } from "../../../runs/lifecycle/application-lifecycle.js";
 import { DeleteProfileAccountRequestSchema } from "../../../../models/profiles/public-profile.js";
@@ -16,7 +17,7 @@ import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-rec
 import { PROFILE_ONBOARDING_BROWSER_DIRECTORY } from "../../../storage/browser-root-contract.js";
 import { assertPrivateProfilePath,createBrowserRoots } from "../../../storage/browser-roots.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
-import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
+import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure } from "../../../storage/source-closure.js";
 
 import { notificationSourceEventOf,notificationWireOf } from "../../../../models/dashboard/projection.js";
 import { EVENT_STREAM_RETENTION_DAYS } from "../../../../models/events/retention.js";
@@ -1360,6 +1361,10 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     const active = selection === undefined ? undefined : current(c.req.raw);
     if (active === undefined && (pending === undefined || cookieOf(c.req.raw) !== pending.sessionId)) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     if (transitioning) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+    if (deleting) {
+      try { assertMaintenanceCustodyAvailable("account-deletion"); }
+      catch (cause) { throw new ProfileSessionRefusedError("PROFILE_ACCOUNT_DELETION_REFUSED", { cause }); }
+    }
     completedDraft = undefined;
     transitioning = true;
     try {
@@ -1411,7 +1416,12 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       try { await profileRuntime?.session.closeOnboarding(); } catch (error) { failures.push(error); }
       if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
       try { await profileRuntime?.close("shutdown"); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
-      try { machine.release(); await backupRegisteredPeopleAtCleanShutdown(installation.workspace, input.lifetimeLock, clock); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      try { machine.release(); } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
+      try { await backupRegisteredPeopleAtCleanShutdown(installation.workspace, input.lifetimeLock, clock); }
+      catch (error) {
+        if (error instanceof StorageMaintenanceCustodyUnavailableError && error.constructor === StorageMaintenanceCustodyUnavailableError && error.cause === undefined && !hasUnprovedSourceClosure(error)) throw error;
+        throw new RuntimeCustodyUncertainError([error]);
+      }
     })();
     return stopping;
   } });
