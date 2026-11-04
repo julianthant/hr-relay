@@ -14,7 +14,9 @@ import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { EmergencyContactMemberInputSchema } from "../../../../src/models/workflows/emergency-contact-member/input.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../src/models/ui/ucpath-emergency-contact.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
+import { SearchPersonOrgOutputSchema, UcpathCandidateSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { composeWorkflowModule, compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
+import { bindWorkflowDelegationTargets } from "../../../../src/workflow-kit/workflow.js";
 import { BUILD_MANIFEST } from "../../../../src/workflow-kit/validation/build-manifest.js";
 import { buildEmergencyContactRecords } from "../../../../src/workflows/emergency-contact/steps/read-document/step.js";
 import { buildEmergencyContactMembers } from "../../../../src/workflows/emergency-contact/steps/members/step.js";
@@ -44,20 +46,27 @@ const historicalParent = composeWorkflowModule(compileWorkflow(defineWorkflow({ 
 }), { manifest }), taskStoreRegistry.stores);
 const historicalOcr = composeWorkflowModule(compileWorkflow({ ...ocrWorkflow }, { manifest }), ocrModule.stores);
 const historicalMember = composeWorkflowModule(compileWorkflow({ ...contactSaveMember.definition }, { manifest }), taskStoreRegistry.stores);
+bindWorkflowDelegationTargets([historicalParent.descriptor, historicalOcr.descriptor, historicalMember.descriptor,
+  ...["ocr-page", "person-lookup", "i9-lookup"].map(id => childWorkflowModuleOf("ocr", id).descriptor)]);
 
 for (const dryRun of [false, true]) {
   it(`reads the full day with a retained approved ${dryRun ? "preview" : "ordinary"} tree and original omitted member associations`, async () => {
+    const employee = UcpathCandidateSchema.parse({ emplId: "10800000", name: "Example, Avery", department: "Housing Dining Hospitality",
+      jobTitle: "Fixture employee", employeeStatus: "active", hdh: true, hrStatus: "Active",
+      startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" });
+    const lookup = SearchPersonOrgOutputSchema.parse({ results: [employee],
+      selection: { status: "resolved", selected: employee, candidateEids: [employee.emplId] } });
     let ticks = Date.parse(contactPage.page.observedAt);
     const persistence = createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
-      displayedEid: "10800000", displayedName: "Example, Avery" }), () => new Date(++ticks).toISOString());
+      displayedEid: employee.emplId, displayedName: employee.name }), () => new Date(++ticks).toISOString());
     const sessions = sessionFactoryHarness({ ucpath: () => {
       const session = persistence.session();
-      return createDeterministicUcpathPersonOrgDriver(undefined, undefined, session.port, session.save);
+      return createDeterministicUcpathPersonOrgDriver(lookup, undefined, session.port, session.save);
     }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
     const f = await world.fixture({ coordinator: true, parent: historicalParent, ocr: historicalOcr, member: historicalMember,
       buildManifest: manifest, approvedReader: createRetainedApprovedRecordReader,
       record: true, pageCount: 1, dryRun, operatorEvidence: true, sessions,
-      reviewedPages: [{ employeeName: "Example, Avery", contactName: "Original Contact", correctedContactName: "Released Contact" }],
+      reviewedPages: [{ employeeName: employee.name, contactName: "Original Contact", correctedContactName: "Released Contact" }],
       screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
     assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
     assert.equal(f.canonical.kernel.execute(f.approval()).state, "applied");
@@ -74,6 +83,7 @@ for (const dryRun of [false, true]) {
     const member = native.group.children[0]; assert.ok(member);
     const input = EmergencyContactMemberInputSchema.parse(member.child.input.parsed.value);
     assert.equal(input.approval.sourceRunId, f.run.envelope.runId);
+    assert.equal(input.record.assertedEid, employee.emplId);
     for (const run of [f.parentRun, f.run, member.child]) {
       assert.equal(run.envelope.contractFingerprint, manifest.workflows.find(entry => entry.id === run.envelope.workflow)?.fingerprint);
       assert.notEqual(run.envelope.contractFingerprint, currentResolve(run.envelope.workflow)?.contractFingerprint);
