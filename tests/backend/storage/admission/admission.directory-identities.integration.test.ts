@@ -7,7 +7,7 @@ import { afterEach, it, vi } from "vitest";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 
-const policy = vi.hoisted(() => ({ paths: new Set<string>(), refuse: false, exact: false, observations: 0 }));
+const policy = vi.hoisted(() => ({ paths: new Set<string>(), highIds: new Map<string, bigint>(), refuse: false, exact: false, observations: 0 }));
 vi.mock("../../../../src/backend/storage/private-path.js", async load => {
   const original = await load<typeof import("../../../../src/backend/storage/private-path.js")>();
   const host = process.platform;
@@ -15,14 +15,16 @@ vi.mock("../../../../src/backend/storage/private-path.js", async load => {
     if (policy.paths.has(path) && rule === "group-write") {
       policy.observations++;
       if (policy.exact) { assert.equal(typeof stat.dev, "bigint"); assert.equal(typeof stat.ino, "bigint"); }
+      if (policy.highIds.has(path)) assert.equal(stat.ino, policy.highIds.get(path));
       if (policy.refuse) return true;
+      if (policy.highIds.has(path)) return false;
     }
     return host === "win32" ? original.privatePathRejects(path, stat, rule) : original.posixPrivatePathRejects(path, stat, rule);
   } };
 });
 const roots: string[] = [];
 afterEach(() => {
-  vi.restoreAllMocks(); syncBuiltinESMExports(); policy.paths.clear(); policy.refuse = false; policy.exact = false; policy.observations = 0;
+  vi.restoreAllMocks(); syncBuiltinESMExports(); policy.paths.clear(); policy.highIds.clear(); policy.refuse = false; policy.exact = false; policy.observations = 0;
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 function directory() {
@@ -41,6 +43,31 @@ it("revalidates genuine active installation roots with actual Windows bigint obs
     policy.refuse = true;
     assert.throws(() => f.machine.assertStorageRootsSafe(), /storage root ownership changed/u);
   } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); policy.paths.clear(); policy.exact = false; await f.close(); }
+});
+for (const kind of ["state", "artifact"] as const) it(`revalidates an active ${kind} root with an exact high Windows file ID`, async () => {
+  const f = await createBoundProfileFixture();
+  const root = kind === "state" ? f.machine.stateRoot : f.machine.artifactRoot;
+  const high = 9_007_199_254_740_993n, actual = fs.lstatSync;
+  windows(root); policy.highIds.set(root, high);
+  let reads = 0;
+  vi.spyOn(fs, "lstatSync").mockImplementation((path, options) => {
+    const info = actual(path, options);
+    if (path === root) {
+      assert.equal(typeof options === "object" && options.bigint, true, "active root metadata must request bigint");
+      assert.ok(info); info.ino = high; reads++;
+    }
+    return info;
+  });
+  syncBuiltinESMExports();
+  try {
+    f.machine.assertStorageRootsSafe();
+    assert.ok(reads >= 2); assert.ok(policy.observations >= 1);
+    policy.refuse = true;
+    assert.throws(() => f.machine.assertStorageRootsSafe(), /storage root ownership changed/u);
+  } finally {
+    vi.restoreAllMocks(); syncBuiltinESMExports(); policy.paths.clear(); policy.highIds.clear(); policy.exact = false;
+    await f.close();
+  }
 });
 it("admits synthetic directories and an existing database with exact Windows identities", () => {
   const root = directory(), database = join(root, "state.db"); fs.writeFileSync(database, "synthetic database", { mode: 0o600 });
