@@ -3,7 +3,7 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Fast Duo · Relay sign-in setup</title><link rel="stylesheet" href="styles.css"><script type="module" src="options.js"></script></head>
 <body>
 <div class="app">
-<header class="topbar"><a class="brand" href="options.html"><img class="brand-mark" src="icons/autopilot.svg" alt="" width="42" height="42"><span>Fast Duo<small>Relay sign-in setup</small></span></a></header>
+<header class="topbar"><a class="brand" href="options.html"><img class="brand-mark" src="icons/autopilot.svg" alt="" width="42" height="42"><span>Fast Duo<small>Relay sign-in setup</small></span></a><nav class="topbar-actions" aria-label="Setup tab"><button id="returnRelay" type="button" class="secondary compact" disabled>Return to Relay</button><button id="closeSetup" type="button" class="secondary compact">Close tab</button></nav></header>
 <main>
 <div id="message" role="status" class="notice" hidden></div>
 <section id="accountsPage">
@@ -15,10 +15,8 @@
 <h2 id="editorTitle" tabindex="-1">Set up Security key</h2>
 <p id="instruction" class="relay-instruction"></p>
 <button id="primaryAction" type="button" class="primary full" disabled>Set up Security key</button>
-<button id="cancelCapture" type="button" class="quiet full" hidden>Cancel setup</button>
-<div class="relay-return-actions"><button id="returnRelay" type="button" class="secondary" disabled>Return to Relay</button><button id="closeSetup" type="button" class="quiet">Close setup tab</button></div>
+<button id="cancelCapture" type="button" class="secondary full" hidden>Cancel setup</button>
 </div></aside>
 </div>
 </section>
-</main><footer><span>Fast Duo <span class="muted">/ 0.3.0</span></span><span>Continue in Relay when both methods are added.</span></footer>
-</div></body></html>
+</main></div></body></html>

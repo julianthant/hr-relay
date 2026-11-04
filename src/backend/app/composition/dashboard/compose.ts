@@ -1232,13 +1232,18 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     if (selection === undefined && onboardingSelection !== undefined && cookieOf(c.req.raw, onboardingCookieName) === onboardingSelection.sessionId) {
       return c.json(profileRuntime.session.readOnboarding(onboardingSelection.token, onboardingSelection.operationId));
     }
-    if (selection === undefined) return c.json(PublicProfileStateSchema.parse(pending !== undefined && cookieOf(c.req.raw) === pending.sessionId
-      ? { state: "cancelling", operationId: pending.operationId } : { state: "signed-out", signUpRequired: machine.readProfileRegistry().profiles.length === 0 }));
+    if (selection === undefined && pending !== undefined && cookieOf(c.req.raw) === pending.sessionId) return c.json(PublicProfileStateSchema.parse({ state: "cancelling", operationId: pending.operationId }));
+    if (selection === undefined) {
+      const registry = machine.readProfileRegistry();
+      return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: registry.profiles.length === 0,
+        ...registry.activeProfileId !== null && { resumable: true } }));
+    }
     const active = current(c.req.raw);
     return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: active.profileId, epoch: active.epoch,
       duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.duoState }));
   });
   app.use("/api/v1/profile/sign-in", operatorMutationIngressGuard);
+  app.use("/api/v1/profile/resume", operatorMutationIngressGuard);
   app.use("/api/v1/profile/sign-up", operatorMutationIngressGuard);
   app.use("/api/v1/profile/logout", operatorMutationIngressGuard);
   app.use("/api/v1/profile/delete-account", operatorMutationIngressGuard);
@@ -1267,12 +1272,13 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     if (row === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
     return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
   };
-  const activate = async (request: Request, signup: boolean): Promise<PublicProfileState> => {
+  const activate = async (request: Request, mode: "signup" | "signin" | "resume"): Promise<PublicProfileState> => {
     if (transitioning || selection !== undefined || pending !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
     transitioning = true;
     try {
       const result = await (async () => {
-        if (signup) return profileRuntime.session.signUp({ ...ProfileSignUpRequestSchema.parse(await request.json()), createdAt: clock.now().toISOString() });
+        if (mode === "signup") return profileRuntime.session.signUp({ ...ProfileSignUpRequestSchema.parse(await request.json()), createdAt: clock.now().toISOString() });
+        if (mode === "resume") return profileRuntime.session.resumeSignedInProfile({ at: clock.now().toISOString() });
         const fields = { ...ProfileLoginRequestSchema.parse(await request.json()), at: clock.now().toISOString() };
         const signed = profileRuntime.session.signIn(fields);
         if (signed.state !== "cancelling") return signed;
@@ -1291,18 +1297,23 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
       return mountActive(result);
     } finally { transitioning = false; }
   };
-  const admitProfile = async (signup: boolean, request: Request) => {
-    const activated = await activate(request, signup);
+  const admitProfile = async (mode: "signup" | "signin" | "resume", request: Request) => {
+    const activated = await activate(request, mode);
     const result = PublicProfileStateSchema.parse(activated.state === "refused" ? { state: activated.state, code: activated.code } : activated);
     return { result, session: result.state === "active" ? selection : undefined };
   };
   app.post("/api/v1/profile/sign-in", async c => {
-    const admitted = await admitProfile(false, c.req.raw);
+    const admitted = await admitProfile("signin", c.req.raw);
+    if (admitted.session !== undefined) c.header("set-cookie", `${cookieName}=${admitted.session.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
+    return c.json(admitted.result);
+  });
+  app.post("/api/v1/profile/resume", async c => {
+    const admitted = await admitProfile("resume", c.req.raw);
     if (admitted.session !== undefined) c.header("set-cookie", `${cookieName}=${admitted.session.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
     return c.json(admitted.result);
   });
   app.post("/api/v1/profile/sign-up", async c => {
-    const admitted = await admitProfile(true, c.req.raw);
+    const admitted = await admitProfile("signup", c.req.raw);
     if (admitted.session !== undefined) c.header("set-cookie", `${cookieName}=${admitted.session.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
     if (admitted.result.state === PROFILE_ONBOARDING_STATE && onboardingSelection !== undefined) c.header("set-cookie", `${onboardingCookieName}=${onboardingSelection.sessionId}; HttpOnly; SameSite=Strict; Path=/api/v1/profile`);
     return c.json(admitted.result);
@@ -1348,9 +1359,10 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     const draft = currentOnboarding(c.req.raw, request.operationId);
     transitioning = true;
     try {
-      const active = await profileRuntime.session.completeOnboarding(draft.token, request.operationId), result = await mountActive(active);
-      completedDraft = { operationId: request.operationId, sessionId: draft.sessionId };
+      const active = await profileRuntime.session.completeOnboarding(draft.token, request.operationId);
       onboardingSelection = undefined;
+      const result = await mountActive(active);
+      completedDraft = { operationId: request.operationId, sessionId: draft.sessionId };
       if (selection === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
       c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
       return c.json(result);

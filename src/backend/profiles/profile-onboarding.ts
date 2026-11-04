@@ -80,13 +80,19 @@ export function createProfileOnboarding(input: {
   function completeIfProved(receipt: SignUpDuoAttempt): SignUpDuoAttempt {
     if (receipt.ceremony === undefined || receipt.scope === undefined) return receipt;
     if (receipt.portal !== undefined && receipt.ceremony.credentialId !== receipt.portal.credentialId) return unavailable();
-    const confirmed = receipt.operatorConfirmedAt !== undefined || receipt.method === "key" && receipt.portal?.acceptance === "exact-credential-request";
+    const confirmed = receipt.operatorConfirmedAt !== undefined || receipt.portal?.acceptance === "portal-accepted"
+      || receipt.method === "key" && receipt.portal?.acceptance === "exact-credential-request";
     if (!confirmed) return receipt;
     if (receipt.method === "key") {
       if (receipt.ceremony.mechanism !== "fast-duo") return unavailable();
-    } else if (receipt.portal?.acceptance !== "portal-accepted") return receipt;
-    else if ((receipt.ceremony.mechanism !== "native-platform" && receipt.ceremony.mechanism !== "chromium-platform") || !receipt.ceremony.softwareInterceptionDisabled) return unavailable();
+    } else if ((receipt.ceremony.mechanism !== "native-platform" && receipt.ceremony.mechanism !== "chromium-platform") || !receipt.ceremony.softwareInterceptionDisabled) return unavailable();
     return { ...receipt, state: "complete" };
+  }
+  function provedComplete(operation: SignUpOperation, receipt: SignUpDuoAttempt): boolean {
+    return (receipt.method === "key" || receipt.ceremony?.mechanism === "chromium-platform")
+      && receipt.state === "complete" && completeIfProved(receipt).state === "complete"
+      && receipt.scope !== undefined && input.store(operation).readForScope(receipt.scope)
+        .some(entry => entry.credentialId === receipt.ceremony?.credentialId && entry.state === "ready");
   }
   function settleAttempt(attempt: DraftDuoAttempt): void {
     const { operation, receipt } = current(attempt), completed = completeIfProved(receipt);
@@ -101,14 +107,17 @@ export function createProfileOnboarding(input: {
   }
   async function reportFailure(attempt: DraftDuoAttempt, error: Error): Promise<void> {
     const failure = ProfileOnboardingDuoFailureSchema.parse(input.failureDiagnostic(error)), kind = failure.kind;
-    if (kind === "unknown" && !retainedFailures.includes(error)) retainedFailures.push(error);
+    let complete = false;
     try {
       const recorded = input.update(attempt.operationId, operation => {
         const draft = requiredDraft(operation), receipt = draft.attempts.find(entry => entry.attemptId === attempt.attemptId);
         if (draft.generation !== attempt.generation || receipt === undefined) return unavailable();
+        complete = provedComplete(operation, receipt);
+        if (complete) return { operation, result: false };
         return { operation: { ...operation, onboarding: { ...draft, attempts: draft.attempts.map(entry => entry.attemptId === attempt.attemptId
           ? { ...entry, failure: entry.failure ?? failure, state: kind === "unknown" ? "unknown" as const : "closed" as const } : entry) } }, result: receipt.failure === undefined };
       });
+      if (kind === "unknown" && !complete && !retainedFailures.includes(error)) retainedFailures.push(error);
       if (recorded) input.onFailure(attempt, failure);
     } catch (failure) { retainedFailures.push(error, failure); throw new AggregateError([error, failure], "profile-onboarding-failure-retention-unproved", { cause: failure }); }
     const lease = leases.get(attempt.attemptId); if (lease !== undefined) lease.revoked = true;
@@ -165,12 +174,7 @@ export function createProfileOnboarding(input: {
           const draft = requiredDraft(operation);
           if (draft.generation !== attempt.generation || !draft.attempts.some(entry => entry.attemptId === attempt.attemptId)) return unavailable();
           const receipt = draft.attempts.find(entry => entry.attemptId === attempt.attemptId);
-          if ((attempt.method === "key" || receipt?.ceremony?.mechanism === "chromium-platform")
-            && receipt?.state === "complete" && completeIfProved(receipt).state === "complete"
-            && receipt.scope !== undefined && input.store(operation).readForScope(receipt.scope)
-              .some(entry => entry.credentialId === receipt.ceremony?.credentialId && entry.state === "ready")) {
-            return { operation, result: false };
-          }
+          if (receipt !== undefined && provedComplete(operation, receipt)) return { operation, result: false };
           return { operation: { ...operation, onboarding: { ...draft, attempts: draft.attempts.map(entry => entry.attemptId === attempt.attemptId
             ? { ...entry, failure: entry.failure ?? failure, state: "unknown" as const } : entry) } }, result: receipt?.failure === undefined };
         });
@@ -222,7 +226,8 @@ export function createProfileOnboarding(input: {
     },
     confirm(operationId: string, method: ProfileOnboardingMethod, attemptId: string): void {
       const lease = leases.get(attemptId); if (lease === undefined || lease.attempt.operationId !== operationId || lease.attempt.method !== method) return unavailable();
-      updateAttempt(lease.attempt, (_operation, receipt) => ({ receipt: { ...receipt, operatorConfirmedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) }, result: undefined }));
+      updateAttempt(lease.attempt, (_operation, receipt) => receipt.ceremony === undefined ? unavailable()
+        : { receipt: { ...receipt, operatorConfirmedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) }, result: undefined });
       settleAttempt(lease.attempt);
     },
     async cancelAttempt(operationId: string, method: ProfileOnboardingMethod, attemptId: string): Promise<void> {

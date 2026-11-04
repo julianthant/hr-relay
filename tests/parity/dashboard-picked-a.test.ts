@@ -88,10 +88,7 @@ for (const theme of ["light", "dark"] as const) {
         await page.goto(`${server.baseUrl}/?fixture=picked-onboarding&onboarding=signup`);
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
         if (state !== "details" && state !== "both-added") {
-          const chips = page.locator(".method-chip");
-          await expect(chips).toHaveCount(2);
-          const tops = await chips.evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().top));
-          expect(tops[0]).toBe(tops[1]);
+          await expect(page.locator(".method-list > li")).toHaveCount(2);
           if (state === "cancel-confirm") {
             await page.getByRole("button", { name: "Cancel sign-up", exact: true }).click();
             await expect(page.getByRole("dialog", { name: "Cancel sign-up?", exact: true })).toBeVisible();

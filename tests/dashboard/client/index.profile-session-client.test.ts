@@ -55,6 +55,8 @@ it("accepts an explicitly confirmed software ceremony without inventing portal a
   assert.equal(state.state, "onboarding");
   if (state.state === "onboarding") { assert.equal(state.methods.key.portalAccepted, false); assert.equal(state.methods.key.state, "complete"); }
   value = { ...draft, methods: { ...draft.methods, touch: { ...method, portalAccepted: false } } };
+  assert.equal((await client.readProfileSession()).state, "onboarding");
+  value = { ...draft, methods: { ...draft.methods, touch: { ...method, portalAccepted: false, operatorConfirmed: false } } };
   await assert.rejects(client.readProfileSession());
 });
 
