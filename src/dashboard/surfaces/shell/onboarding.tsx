@@ -43,8 +43,9 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
   useEffect(() => {
     if (!resumable || port.source !== "served" || resumeStarted.current) return;
     resumeStarted.current = true;
-    void port.resume().catch(() => setLoginError(operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE"))).finally(() => setResuming(false));
-  }, [resumable, port]);
+    void port.resume().then(result => { if (result.state !== "active") onStep("login"); },
+      () => { setLoginError(operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE")); onStep("login"); }).finally(() => setResuming(false));
+  }, [resumable, port, onStep]);
   const [attempts, setAttempts] = useState(0);
   const [seconds, setSeconds] = useState(0);
   const browser = useDuoBrowser(methods, setMethods, port.source, draft?.operationId, port.source === "served" ? port : undefined);

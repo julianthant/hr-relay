@@ -301,6 +301,11 @@ describe_m1("served sign-up Finish", () => {
       resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_TRANSITION_BLOCKED" as const }; } };
     await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
     await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+    await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
+    await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Log in")?.click(); });
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+    assert_m1.equal(resumed, 1);
   });
 
 
