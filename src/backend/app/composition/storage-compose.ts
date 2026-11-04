@@ -1,3 +1,4 @@
+import { acquireEntrypointAdmission } from "../../storage/admission/bootstrap-admission.js";
 import { createCredentialSecretSource, readAdmittedProfileIdentity } from "../../runtime/settings/settings-runtime.js";
 import { assertMaintenanceCustodyAvailable, StorageMaintenanceCustodyUnavailableError } from "../../storage/maintenance/custody-availability.js";
 import { hasPendingShutdownBackupRetirement, resumeShutdownBackupRetirement } from "../../storage/maintenance/clean-shutdown-backups.js";
@@ -224,7 +225,7 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
   if (!existsSync(join(workspace, ".tracker", "control", "installation.json"))) return [];
   try {
     await resumePendingAutomaticRestore(workspace, lifetime);
-    const registered = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? []
+    let registered = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? []
       : machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready").map(row => row.profileId));
     for (const profileId of registered) {
       try { await withStoppedMachineStorage(workspace, lifetime, async machine => AuthorityDatabase.inspectRegisteredPersonAtStartup(machine, profileId)); }
@@ -242,6 +243,23 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
       }
     });
     await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts, clock);
+    const registrationProofs = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? undefined : machine.captureStartupRegistrationProofs());
+    if (registrationProofs !== undefined) {
+      const recoveryMachine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
+      let recovery: ReturnType<typeof createProfileSession> | undefined;
+      let recoveryFailure: { error: unknown } | undefined;
+      try {
+        recovery = createProfileSession({ machineRoot: recoveryMachine.stateRoot, admission: recoveryMachine, clock });
+        await recovery.recoverOnboarding({ deferActivation: true, registrationProofs });
+      }
+      catch (error) { recoveryFailure = { error }; }
+      if (recoveryFailure !== undefined && hasUnprovedSourceClosure(recoveryFailure.error)) throw retainAuthoritySourceClosure([recoveryFailure.error], { admission: { recoveryMachine, recovery } });
+      try { await recovery?.closeOnboarding(); recovery?.close(); recoveryMachine.release(); }
+      catch (error) { throw retainAuthoritySourceClosure(recoveryFailure === undefined ? [error] : [recoveryFailure.error, error], { admission: { recoveryMachine, recovery } }); }
+      if (recoveryFailure !== undefined) throw recoveryFailure.error;
+    }
+    registered = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? []
+      : machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready").map(row => row.profileId));
     try {
       await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
         const { upgradeProtectedSettings } = await import("../../storage/maintenance/protected-settings-upgrade.js");

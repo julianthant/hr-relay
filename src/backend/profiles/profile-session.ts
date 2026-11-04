@@ -14,7 +14,7 @@ import { resolveConfigWithProvenance } from "../app/config/resolve.js";
 import { ProfileOnboardingDuoProviderError } from "../runtime/browser/onboarding-duo-provider.js";
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
-import { type RuntimeAdmission } from "../storage/admission/admission.js";
+import { type RuntimeAdmission, type StartupRegistrationProof } from "../storage/admission/admission.js";
 import { assertPrivateProfilePath,createBrowserRoots } from "../storage/browser-roots.js";
 import { assertCredentialStoreOwner,createCredentialStore,CredentialStoreCommitUncertainError,initialDocument,type CredentialStoreHooks } from "../storage/configuration/credential-store.js";
 import { hasUnprovedSourceClosure } from '../storage/source-closure.js';
@@ -306,17 +306,19 @@ export function createProfileSession(input: {
     }
   }
 
-  function publishSignUp(operation: SignUpOperation): ActiveProfileSession {
+  function settleSignUp(operation: SignUpOperation, proof?: StartupRegistrationProof): string {
     admission.assertWritable();
     assertFinishedProfileOnboarding(operation);
     if (operation.phase !== "publishing") { operation = { ...operation, phase: "publishing" }; writeOperation(operation); }
     const profile = admission.admitProfilePublication(operation.operationId);
-    try { registry.publishSignUp(operation, profile); }
+    try { registry.publishSignUp(operation, profile, proof); }
     finally { profile.release(); }
     releaseOrdinary(operation.profileId);
     deleteOperation(operation.operationId);
-    return activate(operation.profileId);
+    return operation.profileId;
   }
+
+  function publishSignUp(operation: SignUpOperation): ActiveProfileSession { return activate(settleSignUp(operation)); }
 
   function onboardingState(operation: SignUpOperation): ProfileOnboardingState {
     const draft = operation.onboarding;
@@ -654,7 +656,7 @@ export function createProfileSession(input: {
       });
     },
     cancelOnboarding,
-    async recoverOnboarding(): Promise<void> {
+    async recoverOnboarding(options: Readonly<{ deferActivation?: boolean; registrationProofs?: readonly StartupRegistrationProof[] }> = {}): Promise<void> {
       const operations = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.onboarding !== undefined);
       if (operations.length === 0) return;
       const browserRoot = join(machineRoot, "browsers", "onboarding");
@@ -702,7 +704,8 @@ export function createProfileSession(input: {
           const published = registry.read().profiles.find(row => row.profileId === operation.profileId);
           if (published !== undefined) assertPublishedFinish(operation, published.registration);
           else assertFinishedProfileOnboarding(operation);
-          publishSignUp(operation);
+          const profileId = settleSignUp(operation, options.registrationProofs?.find(proof => proof.operationId === operation.operationId));
+          if (options.deferActivation !== true) activate(profileId);
         } else {
           if (operation.onboarding?.abort === undefined) onboarding.recoverClosed(operation.operationId);
           const draft = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operation.operationId);

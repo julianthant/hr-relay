@@ -1,3 +1,4 @@
+import type { inspectProtectedSettingsSource } from "../configuration/protected-settings-upgrade.js";
 import { fileModified, fileChanged, fileStatus, descriptorStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { createHash,randomUUID } from "node:crypto";
@@ -14,7 +15,7 @@ import { systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { captureCanonicalCredentialPublication,captureStoppedCanonicalCredentialHead,captureStoppedIncompleteCredentials } from "../configuration/canonical-credential-store.js";
+import { captureCanonicalCredentialPublication,captureStoppedStartupCredentialPublication,captureStoppedCanonicalCredentialHead,captureStoppedIncompleteCredentials } from "../configuration/canonical-credential-store.js";
 import { sameDirectory,fileIdentityObservation,privateFileNumber,ensureChildDirectory,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { authenticateDocument } from "../configuration/credential-store.js";
 import { validateDuoKeyPair } from "../configuration/duo-signing.js";
@@ -133,6 +134,14 @@ type AdmissionScope = "profile-layout" | "profile-maintenance" | "flat-backup" |
 type ReadyProfileUpgrade = Readonly<{ purpose: "manual" | "startup" | "layout"; sourcePath: string; processLockRoot: string; sourceSchemaVersion: 6 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20; copyPath?: string;
   capture: ReturnType<InstallationLease["captureStoppedProfileUpgrade"]>;
   qualification: { current: Readonly<{ kind: "inspection" }> | Readonly<{ kind: "qualified"; sourceFingerprint: string }> | Readonly<{ kind: "revoked" }> } }>;
+
+const StartupRegistrationProofSchema = z.strictObject({ operationId: z.uuid() });
+export type StartupRegistrationProof = z.infer<typeof StartupRegistrationProofSchema>;
+const startupRegistrationProofs = new WeakMap<StartupRegistrationProof, {
+  lifetime: RuntimeLifetimeLock | WorkerRuntimeLifetimeLock; installationId: string; operation: string;
+  source: ReturnType<typeof captureCanonicalCredentialPublication>["source"];
+  document: ReturnType<typeof inspectProtectedSettingsSource>;
+}>();
 
 /** A lifetime-bound, path-specific authority to open this installation's physical storage. */
 export class RuntimeAdmission {
@@ -636,27 +645,31 @@ export class RuntimeAdmission {
     this.#assertMachineRuntime();
     (this.#authority as InstallationLease).publishProfileRegistry(expected, document);
   }
-  publishProfileRegistration(profile: RuntimeAdmission, operation: SignUpOperation): void {
+  publishProfileRegistration(profile: RuntimeAdmission, operation: SignUpOperation, proof?: StartupRegistrationProof): void {
     this.#assertMachineRuntime();
     if (profile.#profileParent !== this) throw new Error("profile-publication-owner-required");
-    try { (this.#authority as InstallationLease).publishProfileRegistration(operation, profile); }
+    try { (this.#authority as InstallationLease).publishProfileRegistration(operation, profile, proof); }
     catch (error) {
       if (hasUnprovedSourceClosure(error)) retainUnprovedSourceOwners(error, { admission: { machine: this, profile } });
       throw error;
     }
   }
-  readProfileRegistration(lease: InstallationLease, operation: SignUpOperation, publication: ProfilePublicationRead) {
+  readProfileRegistration(lease: InstallationLease, operation: SignUpOperation, publication: ProfilePublicationRead, proof?: StartupRegistrationProof) {
     requireRuntimeAdmission(this, publication);
     const machine = this.#profileParent;
     if (machine === undefined || machine.#authority !== lease || !(lease.lifetime instanceof RuntimeLifetimeLock)) throw new Error("profile-publication-owner-required");
     assertFinishedProfileOnboarding(operation);
     const captured = captureCanonicalCredentialPublication(machine, this, operation, publication), frame = captured.records.protected;
     if (frame === undefined) throw new Error("profile-registration-credentials-required");
-    const document = authenticateDocument(frame.value), latest = document.latestRequest;
+    const staged = proof === undefined ? undefined : startupRegistrationProofs.get(proof);
+    if (proof !== undefined && (staged === undefined || staged.lifetime !== machine.lifetime || staged.installationId !== machine.locator.installationId
+      || staged.operation !== canonicalJsonStringify(operation) || canonicalJsonStringify(staged.source) !== canonicalJsonStringify(captured.source))) throw new Error("profile-startup-registration-proof-changed");
+    const document = staged?.document ?? authenticateDocument(frame.value), latest = document.latestRequest;
+    const schemaHash = staged?.document.record.protectedSchemaHash ?? PROTECTED_SETTINGS_SCHEMA_HASH;
     if (document.record.revision !== frame.revision || latest?.kind !== "apply" || operation.expectedRevision === undefined
       || latest.request.commandId !== operation.commandId || latest.request.writeId !== operation.writeId
       || latest.request.commandFingerprint !== operation.commandFingerprint || latest.request.updatedAt !== operation.createdAt
-      || latest.request.expectedRevision !== operation.expectedRevision || latest.request.protectedSchemaHash !== PROTECTED_SETTINGS_SCHEMA_HASH
+      || latest.request.expectedRevision !== operation.expectedRevision || latest.request.protectedSchemaHash !== schemaHash
       || document.record.revision !== operation.expectedRevision + 1 || document.history.length !== 1 || document.historyBaseRevision !== 1
       || document.retiredLegacy.commandIds.length !== 0 || document.retiredLegacy.writeIds.length !== 0 || document.retiredLegacy.valueIds.length !== 0) throw new Error("profile-registration-receipt-invalid");
     const email = document.record.entries.ucpathUserId?.value, password = document.record.entries.ucpathPassword?.value;
@@ -668,6 +681,41 @@ export class RuntimeAdmission {
     validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
     machine.assertCanonicalCredentialCreation(this, operation, publication);
     return { revision: frame.revision, credentials: captured.source, email, password };
+  }
+  assertStoppedStartupRegistrationInspection(input: SignUpOperation) {
+    this.assertExclusive(); this.assertOfflineMaintenance(this.maintenanceOperation());
+    if (this.#scope !== "installation") throw new Error("profile-startup-registration-machine-required");
+    const operation = SignUpOperationSchema.parse(input);
+    assertFinishedProfileOnboarding(operation);
+    const file = readPrivateFile(join(this.#stateRoot, "machine", "operations", `${operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
+    if (operation.phase !== "publishing" || file === undefined
+      || canonicalJsonStringify(SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)))) !== canonicalJsonStringify(operation)) throw new Error("profile-startup-registration-operation-changed");
+    const binding = { installationId: this.locator.installationId, profileId: operation.profileId }, profileRoot = join(this.#stateRoot, "profiles", operation.profileId);
+    assertCanonicalProfileBinding(join(profileRoot, "state.db"), binding);
+    return { operation, binding, machineRoot: this.#stateRoot, profileRoot };
+  }
+  async captureStartupRegistrationProofs(): Promise<readonly StartupRegistrationProof[]> {
+    this.assertExclusive(); this.assertOfflineMaintenance(this.maintenanceOperation());
+    if (this.#scope !== "installation") throw new Error("profile-startup-registration-machine-required");
+    const directory = join(this.#stateRoot, "machine", "operations"), proofs: StartupRegistrationProof[] = [];
+    if (!existsSync(directory)) return proofs;
+    const { inspectProtectedSettingsSource } = await import("../configuration/protected-settings-upgrade.js");
+    for (const name of readdirSync(directory).filter(name => name.endsWith(".json"))) {
+      const file = readPrivateFile(join(directory, name), { label: "lock", maxBytes: 1_048_576 });
+      if (file === undefined) throw new Error("profile-startup-registration-operation-missing");
+      const operation = z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+      if (operation.kind !== "sign-up" || operation.onboarding?.finish === undefined) continue;
+      const captured = captureStoppedStartupCredentialPublication(this, operation), frame = captured.records.protected;
+      if (frame === undefined) throw new Error("profile-startup-registration-credentials-missing");
+      const document = inspectProtectedSettingsSource(frame.value);
+      if (document.record.revision !== frame.revision) throw new Error("profile-startup-registration-revision-invalid");
+      if (document.schemaVersion === 4 && document.record.entries.timekeeperName?.value !== `${operation.firstName.charAt(0)}${operation.lastName.charAt(0)}`.toUpperCase()) throw new Error("profile-startup-registration-name-invalid");
+      const proof = Object.freeze(StartupRegistrationProofSchema.parse({ operationId: operation.operationId }));
+      startupRegistrationProofs.set(proof, { lifetime: this.lifetime, installationId: this.locator.installationId,
+        operation: canonicalJsonStringify(operation), source: captured.source, document });
+      proofs.push(proof);
+    }
+    return proofs;
   }
   beginProfileSignUp(fields: Omit<SignUpOperation, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "credentials">): SignUpOperation {
     this.#assertMachineRuntime();
@@ -950,7 +998,13 @@ export class RuntimeAdmission {
     const repair = stoppedPurpose === "repair";
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
-    if (maintenance !== undefined) { this.assertOfflineMaintenance(maintenance); claim.verify(stoppedPurpose === undefined ? "runtime" : "issue"); }
+    const verifyStoppedClaim = () => {
+      if (stoppedPurpose !== "settings") { claim.verify(stoppedPurpose === undefined ? "runtime" : "issue"); return; }
+      claim.verify("custody");
+      const row = this.readProfileRegistry().profiles.find(row => row.profileId === claim.profileId);
+      if (row?.lifecycle !== "ready" || row.credentialState !== "saved" || row.registration.onboardingCompletion === undefined) throw new Error("profile-settings-upgrade-registration-changed");
+    };
+    if (maintenance !== undefined) { this.assertOfflineMaintenance(maintenance); verifyStoppedClaim(); }
     else claim.verify(publication ? "custody" : "issue");
     const root = join(this.#stateRoot, "profiles", claim.profileId);
     let repairSchema: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | undefined;
@@ -981,7 +1035,7 @@ export class RuntimeAdmission {
         this.#exclusiveInstallationLease().assertProfileRestoreHeld(restoreCustody.input, restoreCustody.restore);
         return;
       }
-      if (maintenance !== undefined) claim.verify(stoppedPurpose === undefined ? "runtime" : "issue");
+      if (maintenance !== undefined) verifyStoppedClaim();
       const proof = outermostOperationProof();
       const verified = proof?.slots.get(PROFILE_CUSTODY_PROOF);
       if (verified instanceof WeakSet && verified.has(claim)) return;
@@ -1015,7 +1069,8 @@ export class RuntimeAdmission {
       },
       assertProfileRuntime: publication => {
         if (restoreCustody !== undefined || restoreSettled) throw new Error("profile-restore-runtime-refused");
-        claim.verify(stoppedPurpose === undefined ? "runtime" : "issue", publication);
+        if (stoppedPurpose === "settings") verifyStoppedClaim();
+        else claim.verify(stoppedPurpose === undefined ? "runtime" : "issue", publication);
       },
       assertPendingLogoutCustody: operationId => {
         this.assertLive();

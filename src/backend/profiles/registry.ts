@@ -1,4 +1,4 @@
-import type { RuntimeAdmission } from "../storage/admission/admission.js";
+import type { RuntimeAdmission, StartupRegistrationProof } from "../storage/admission/admission.js";
 import { join } from "node:path";
 import { z } from "zod";
 import {
@@ -53,14 +53,14 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
     read(): ProfileRegistryDocument {
       return read();
     },
-    publishSignUp(operation: SignUpOperation, profile: RuntimeAdmission): ProfileRegistryRow {
+    publishSignUp(operation: SignUpOperation, profile: RuntimeAdmission, proof?: StartupRegistrationProof): ProfileRegistryRow {
       return withProfileLock(root, () => {
         read();
         const file = readPrivateFile(join(root, "machine", "operations", `${operation.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
         if (file === undefined) throw new ProfileRegistryAuthorityError();
         const pending = SignUpOperationSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
         if (canonicalJsonStringify(pending) !== canonicalJsonStringify(operation)) throw new Error("profile-signup-intent-mismatch");
-        admission.publishProfileRegistration(profile, pending);
+        admission.publishProfileRegistration(profile, pending, proof);
         const row = read().profiles.find(entry => entry.profileId === pending.profileId);
         if (row === undefined) throw new ProfileRegistryAuthorityError();
         return row;

@@ -313,6 +313,22 @@ it("publishes ready only through genuine canonical Finish custody and rechecks d
     const publish = () => f.machine.publishProfileRegistration(publication, operation);
     assert.throws(() => Reflect.apply(f.machine.publishProfileRegistration.bind(f.machine), f.machine, [{ ...publication }, operation]), TypeError);
     assert.throws(() => f.machine.publishProfileRegistration(publication, SignUpOperationSchema.parse({ ...operation, writeId: randomUUID() })));
+    const protectedPath = join(publication.stateRoot, "credentials", "protected.json");
+    const source = readFileSync(protectedPath), operationBefore = readFileSync(operationPath), registryBefore = f.registry.read();
+    await assert.rejects(f.machine.captureStartupRegistrationProofs());
+    const maintenance = f.machine.acquireOfflineMaintenance();
+    let proofs: Awaited<ReturnType<RuntimeAdmission["captureStartupRegistrationProofs"]>>;
+    try { proofs = await f.machine.captureStartupRegistrationProofs(); }
+    finally { maintenance.release(); }
+    const proof = proofs.find(proof => proof.operationId === operation.operationId); assert.ok(proof);
+    assert.throws(() => f.machine.publishProfileRegistration(publication, operation, { ...proof }), /profile-startup-registration-proof-changed/u);
+    const heldProtected = join(f.workspace, "held-protected-source");
+    renameSync(protectedPath, heldProtected); copyFileSync(heldProtected, protectedPath);
+    try { assert.throws(() => f.machine.publishProfileRegistration(publication, operation, proof), /profile-startup-registration-proof-changed/u); }
+    finally { rmSync(protectedPath); renameSync(heldProtected, protectedPath); }
+    assert.deepEqual(readFileSync(protectedPath), source);
+    assert.deepEqual(readFileSync(operationPath), operationBefore);
+    assert.deepEqual(f.registry.read(), registryBefore);
     const priorDatabase = readFileSync(path), changedBinding = new DatabaseSync(path);
     try {
       changedBinding.exec("DROP TRIGGER database_states_binding_immutable");

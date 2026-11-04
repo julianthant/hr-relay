@@ -1,3 +1,4 @@
+import type { ProfileDatabaseBinding } from "../../../models/profiles/profile.js";
 import { FileIdentitySchema } from "../../../models/storage/file-identity.js";
 import { createCipheriv,createDecipheriv,createHash,createHmac,randomBytes,randomUUID,timingSafeEqual } from "node:crypto";
 import { lstatSync,readdirSync } from "node:fs";
@@ -453,7 +454,16 @@ export function captureCanonicalCredentialPublication(machine: RuntimeAdmission,
   operation: SignUpOperation, publication: ProfilePublicationRead) {
   requireRuntimeAdmission(machine); requireRuntimeAdmission(profile, publication);
   const assertCurrent = () => machine.assertCanonicalCredentialCreation(profile, operation, publication);
-  const source = assertCurrent(), ancestry = new Map<string, DirectoryIdentity>();
+  return captureCredentialPublication(machine, profile, assertCurrent);
+}
+
+export function captureStoppedStartupCredentialPublication(machine: RuntimeAdmission, operation: SignUpOperation) {
+  return captureCredentialPublication(machine, machine, () => machine.assertStoppedStartupRegistrationInspection(operation));
+}
+
+function captureCredentialPublication(machine: RuntimeAdmission, profile: RuntimeAdmission,
+  assertCurrent: () => Readonly<{ machineRoot: string; profileRoot: string; binding: ProfileDatabaseBinding; operation: SignUpOperation }>) {
+  const source = assertCurrent(), operation = source.operation, ancestry = new Map<string, DirectoryIdentity>();
   const paths = fixedCanonicalPaths(source.machineRoot, source.profileRoot, source.binding);
   try {
     assertCurrent();
