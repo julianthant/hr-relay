@@ -33,7 +33,7 @@ function audit(extraSource?: string): readonly string[] {
   // Scan every core helper: moving a forbidden call into another core module cannot hide it.
   const roots = gitVisibleFiles(["src/backend/runtime", "src/backend/runs"])
     .filter((file) => file.endsWith(".ts") && !["src/backend/runs/commands/command-kernel.ts", "src/backend/runs/lifecycle/run-fan-out.ts"].includes(file));
-  roots.push("src/backend/app/composition/dashboard/compose.ts");
+  roots.push("src/backend/app/composition/dashboard/write-safety.ts");
   const fixture = resolve(REPO_ROOT, "src/backend/runtime/worker-mutator-proof.ts");
   const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext, strict: true, skipLibCheck: true };
@@ -54,7 +54,7 @@ function audit(extraSource?: string): readonly string[] {
       if (file === "src/backend/runtime/writes/write-recovery.ts"
         && ((ts.isMethodDeclaration(node) && node.name.getText() === "resolveAbsent")
           || (ts.isIfStatement(node) && node.expression.getText() === 'evaluation.state === "safe-to-retry"'))) return;
-      if (file === "src/backend/app/composition/dashboard/compose.ts") {
+      if (file === "src/backend/app/composition/dashboard/write-safety.ts") {
         if (!ancestor(node, (parent) => ts.isCallExpression(parent)
           && parent.expression.getText() === "createWriteResolutionExecutor")) {
           ts.forEachChild(node, visit);

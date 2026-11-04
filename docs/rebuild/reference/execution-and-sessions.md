@@ -349,7 +349,7 @@ prints the closure classification and exits nonzero; the dry-run runtime refuses
 the database before releasing its process record. Database closure failure retains that record;
 aggregated cleanup preserves the runtime error.
 
-`src/backend/app/composition/dashboard/compose.ts` closes HTTP and stream consumers, stops
+`src/backend/app/composition/dashboard/shutdown-custody.ts` closes HTTP and stream consumers, stops
 observers, and awaits `drainOwnedChildren`. The supervisor uses the ordinary graceful stop and
 escalation policy, then observes owned child exits. Failure to observe exit is a shutdown failure.
 Closing the supervisor cancels its timers and returns any remaining live-child evidence for the
