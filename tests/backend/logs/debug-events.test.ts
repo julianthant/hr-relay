@@ -8,6 +8,20 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { debugEventLevel } from "../../../src/models/events/timeline.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
 describe("bounded native debug events", () => {
+  it("mirrors HTTP method, registered route template and status without client routes or payloads", () => {
+    const { repository } = fixture(); const lines: string[] = [];
+    const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test", development: true,
+      writeStderr: line => { lines.push(line); } });
+    writer.emit({ category: "http", phase: "failed", correlationId: "route-proof", method: "GET",
+      route: "/api/v1/runs/:runId/attempt-history", status: 503, message: "PRIVATE_BODY_CANARY", stack: "PRIVATE_STACK_CANARY" });
+    const mirrored = JSON.parse(lines[0]) as Record<string, unknown>;
+    assert.equal(mirrored.method, "GET");
+    assert.equal(mirrored.route, "/api/v1/runs/:runId/attempt-history");
+    assert.equal(mirrored.status, 503);
+    writer.emit({ category: "client", phase: "failed", correlationId: "client-route", route: "/api/v1/runs/PRIVATE_NAME_CANARY" });
+    assert.equal("route" in JSON.parse(lines[1]), false);
+    assert.equal(lines.join("").includes("CANARY"), false);
+  });
   it.each([
     [{ phase: "failed" }, "error"],
     [{ phase: "settled" }, "info"],
