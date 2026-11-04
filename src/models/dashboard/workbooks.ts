@@ -6,6 +6,7 @@ import { IsoInstantSchema, WorkflowIdSchema, LOCAL_OPERATOR_ACTOR_ID, Fingerprin
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { IntakeSessionWireSchema } from "../intake/wire.js";
 import { IntakeCommandRequestSchema, CommandResultSchema } from "../../rules/commands/commands.js";
+import { populatedSpreadsheetValue, workbookSizeIssue } from "../../rules/spreadsheets/workbook-size.js";
 
 export const WorkbookIdSchema = z.string().min(1);
 export const WorkbookRevisionSchema = z.number().int().positive();
@@ -35,10 +36,11 @@ function workbookSchema<Value extends z.ZodType>(value: Value) {
   const ThemesSchema = z.union([z.array(z.string()), z.record(z.string().regex(/^[a-zA-Z0-9]+$/u), z.string())]);
   function unique(values: readonly (string | number)[]): boolean { return new Set(values).size === values.length; }
   return z.strictObject({ name: NameSchema, libraryId: WorkbookIdSchema.optional(), sheets: z.array(SheetSchema).min(1), themes: ThemesSchema, hasFormulas: z.boolean(), unsupportedMetadata: z.boolean().optional() }).superRefine((workbook, ctx) => {
-    let cells = 0;
+    let cells = 0, populatedCells = 0;
     if (!unique(workbook.sheets.map(sheet => sheet.id)) || !unique(workbook.sheets.map(sheet => sheet.name.toLowerCase()))) ctx.addIssue({ code: "custom", message: "duplicate sheets" });
     for (const sheet of workbook.sheets) {
       cells += sheet.rows.length * sheet.width;
+      for (const row of sheet.rows) for (const cell of row.cells) if (populatedSpreadsheetValue(Reflect.get(cell, 'value'))) populatedCells++;
       if (!unique(sheet.rows.map(row => row.id)) || sheet.rows.some(row => row.cells.length !== sheet.width)
         || !unique(sheet.hidden) || sheet.hidden.some(column => column >= sheet.width)
         || (sheet.headerRow !== undefined && sheet.headerRow > sheet.rows.length)) ctx.addIssue({ code: "custom", message: "invalid sheet dimensions or identity" });
@@ -47,7 +49,8 @@ function workbookSchema<Value extends z.ZodType>(value: Value) {
         || !unique(sheet.columnBindings.flatMap(binding => binding.fieldId === null ? [] : [binding.fieldId]))
         || sheet.columnBindings.some(binding => binding.basis === "unmapped" && binding.fieldId !== null))) ctx.addIssue({ code: "custom", message: "invalid column bindings" });
     }
-    if (cells > 100_000) ctx.addIssue({ code: "custom", message: "workbook cell limit exceeded" });
+    const sizeIssue = workbookSizeIssue(populatedCells, cells);
+    if (sizeIssue) ctx.addIssue({ code: "custom", message: sizeIssue });
   });
 }
 export const EditableWorkbookSchema = workbookSchema(z.union([PrimitiveCellSchema, z.date()]));

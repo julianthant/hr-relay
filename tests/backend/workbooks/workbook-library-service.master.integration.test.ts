@@ -100,10 +100,10 @@ it('settles missing and duplicate keys without effects and continues FIFO after 
 });
 it('settles an oversized add without changing content or ownership and drains the following patch', () => {
   const f = fixture();
-  const saved = f.service.create({ name: 'At limit.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 'wide', name: 'People', width: 10_000, hidden: [], headerRow: 1,
-    columnBindings: Array.from({ length: 10_000 }, (_, i) => ({ id: `column-${i}`, sourceColumn: i, sourceHeader: i === 0 ? 'EID' : i === 1 ? 'Notes' : '',
+  const saved = f.service.create({ name: 'At limit.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 'wide', name: 'People', width: 1000, hidden: [], headerRow: 1,
+    columnBindings: Array.from({ length: 1000 }, (_, i) => ({ id: `column-${i}`, sourceColumn: i, sourceHeader: i === 0 ? 'EID' : i === 1 ? 'Notes' : '',
       fieldId: i === 0 ? 'eid' : i === 1 ? 'roster.notes' : null, basis: i < 2 ? 'manual' : 'unmapped' })),
-    rows: Array.from({ length: 10 }, (_, row) => ({ id: `row-${row}`, cells: Array.from({ length: 10_000 }, (_, column) => ({ value: column === 0 ? row === 0 ? 'EID' : `person-${row}` : null })) })),
+    rows: Array.from({ length: 250 }, (_, row) => ({ id: `row-${row}`, cells: Array.from({ length: 1000 }, (_, column) => ({ value: column === 0 ? row === 0 ? 'EID' : `person-${row}` : row === 1 && column === 1 ? null : 'retained' })) })),
   }] });
   f.service.operatorOperation(saved.libraryId, 'wide-type', { kind: 'metadata', expectedVersion: 1, metadata: { typeId: 'roster', sharePoint: null } });
   const before = f.service.read(saved.libraryId), owners = () => f.database.prepare('SELECT ownership_json FROM workbook_library WHERE id=?').get(saved.libraryId);
