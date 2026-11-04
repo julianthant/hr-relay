@@ -1,5 +1,5 @@
 import type { RefObject, ReactNode } from "react";
-import { Check, CheckCircle2, FlaskConical } from "lucide-react";
+import { Check, CheckCircle2, FlaskConical, X } from "lucide-react";
 import type { SurfaceField, InputRunSurface, TypedInputDraft } from "../../../models/workflow/ingress.js";
 import { cn } from "../../lib/utils.js";
 import {
@@ -12,6 +12,7 @@ import {
   DateInput,
   Field,
   Input,
+  IconButton,
   KeyValueList,
   MetaLine,
   Refusal,
@@ -463,10 +464,21 @@ export function TypedInput({
   const declaration = surface.typedInput;
   const values = declaration === undefined ? draft : { ...typedInputDefaults(declaration), ...draft };
   const mode = declaration === undefined ? undefined : typedInputMode(declaration, values);
+  const editableParser = declaration === undefined ? surface.parser : mode?.parser.kind === "entries" ? mode.parser.spec : undefined;
+  const separator = editableParser?.split.kind === "delimited"
+    ? editableParser.split.delimiters.includes("\n") ? "\n" : editableParser.split.delimiters[0]
+    : "";
+  const entryText = (entries: RunInputPreview["entries"]) => entries.map(entry => entry.sourceText).join(separator);
   const field = <Field label={mode?.inputLabel ?? inputRunFieldLabel(surface.parser)} description={mode?.hint ?? inputRunDelimiterHint(surface.parser)} error={presentation === "served" ? preview.problem : undefined}>
     <Textarea key={workflowId} ref={inputRef} autoFocus rows={4} value={text}
       placeholder={mode?.placeholder ?? (inputRunFieldLabel(surface.parser) === "Kuali ID" ? surface.placeholder.replaceAll("Kuali document numbers", "Kuali IDs") : surface.placeholder)}
-      onChange={event => onText(event.target.value)} />
+      onChange={event => onText(event.target.value)}
+      onBlur={() => {
+        if (editableParser !== undefined && preview.problem === null) {
+          const normalized = entryText(preview.entries);
+          if (normalized !== text) onText(normalized);
+        }
+      }} />
   </Field>;
   const controls = declaration && <>
     <SegmentedChoice label={declaration.modeLabel} value={mode?.value ?? ""}
@@ -476,13 +488,20 @@ export function TypedInput({
       <Checkbox key={control.field} label={control.label} checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value === true)} />)}
   </>;
   if (rowInput !== undefined) return <>{controls}{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>;
-  if (presentation === "mock") return <>{controls}{field}
-    {preview.entries.length > 0 && <ul aria-label="Parsed inputs" className="launch-parsed-input m-0 flex list-none flex-col gap-1 p-0">{preview.entries.map(entry => <li key={entry.index} className="flex items-center gap-2 rounded-md border border-ui-stroke px-2 text-body"><span className="text-ui-muted">{entry.index + 1}</span><span className="truncate">{entry.sourceText}</span></li>)}</ul>}
-  </>;
   return <>{controls}<div className="flex flex-col gap-[var(--ds-space-snug)]">{field}
     {preview.entries.length > 0 && <section aria-label="Parsed input" className="mt-3 flex flex-col gap-3">
       <div className="flex items-center justify-between"><h4 className="text-body font-semibold">Parsed input</h4><Badge tone="neutral">{preview.entries.length} {preview.entries.length === 1 ? "run" : "runs"}</Badge></div>
-      <ul className="launch-parsed-input overflow-hidden rounded-md border border-ui-stroke divide-y divide-ui-stroke">{preview.entries.map(entry => <li key={entry.index} className="flex min-w-0 items-center gap-2 bg-ui-table px-[10px] py-2"><span className="text-body">{entry.index + 1}.</span><span className="min-w-0 flex-1 truncate font-mono text-caption">{entry.sourceText}</span><span className="text-caption text-ui-muted">1 run</span></li>)}</ul>
+      <ul className={cn("launch-parsed-input m-0 grid list-none gap-2 p-0", editableParser !== undefined && "grid-cols-2")}>
+        {preview.entries.map(entry => <li key={entry.index} className="flex min-w-0 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-[10px] py-2">
+          <span className="text-body">{entry.index + 1}.</span>
+          <span className="min-w-0 flex-1 break-words font-mono text-caption">{entry.sourceText}</span>
+          {editableParser !== undefined && <IconButton size="xs" label={`Remove ${entry.sourceText}`} icon={<X aria-hidden className={dsIcon.md} />}
+            onClick={() => {
+              onText(entryText(preview.entries.filter(candidate => candidate.index !== entry.index)));
+              inputRef?.current?.focus();
+            }} />}
+        </li>)}
+      </ul>
     </section>}
   </div></>;
 }
