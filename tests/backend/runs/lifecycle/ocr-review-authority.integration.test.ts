@@ -5,6 +5,7 @@ import { afterEach, it } from "vitest";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { assertOcrRecoverySnapshotCurrent, requireCurrentOcrSnapshot, readOcrReviewAuthority, readOcrSnapshotsAuthority } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
 import { OcrApprovedSnapshotSchema, ocrReviewDigest } from "../../../../src/models/ocr/review.js";
+import { runClaim } from "../../../../src/models/run/record.js";
 import { OcrWorkflowResultSchema, OcrResultSchema } from "../../../../src/models/workflows/ocr/result.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
@@ -112,6 +113,43 @@ it("appends journal-bound corrections, discards and restores with revision CAS a
   assert.ok(foreign.state === "rejected" && foreign.code === "OCR_REVIEW_REFUSED");
 });
 
+it.each(["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"] as const)("refuses delayed %s after approval without changing frozen authority", async type => {
+  const f = await world.fixture({ record: true, release: true, pageCount: 2 });
+  const correction = f.command("correct-ocr-record", 1);
+  assert.equal(f.canonical.kernel.execute(correction).state, "applied");
+  const runId = f.run.envelope.runId, repositories = f.database.authority;
+  const tabB = readOcrReviewAuthority(repositories, f.canonical.lifecycle, runId); assert.ok(tabB);
+  assert.equal(tabB.revision.revision, 2);
+  let delayed = CommandRequestSchema.parse(f.command(type, tabB.revision.revision));
+  if (delayed.family === "ocr-review" && delayed.type === "correct-ocr-record") delayed = CommandRequestSchema.parse({ ...delayed,
+    payload: { ...delayed.payload, assertedEid: "10800001" } });
+  const selected = [tabB.revision.records[0].recordId], consent = approval(f, selected);
+  assert.equal(f.canonical.kernel.execute(consent).state, "applied");
+  const observe = () => ({ review: repositories.ocrReviews.latest(runId), run: repositories.runs.get(runId),
+    snapshots: repositories.ocrReviews.snapshots(runId), gate: repositories.gateResults.get(`${runId}:approve-records`),
+    generation: f.database.getMeta().authorityGeneration });
+  const frozen = observe(); assert.ok(frozen.run && frozen.review);
+  assert.equal(frozen.run.lifecycle.state, "queued");
+  assert.equal(runClaim(frozen.run), undefined);
+  assert.equal(frozen.review.revision, delayed.family === "ocr-review" ? delayed.target.expectedRevision : undefined);
+  assert.deepEqual(frozen.snapshots[0].selectedRecordIds, selected);
+  assert.equal(frozen.snapshots[0].records[0].assertedEid, "10800000");
+  const refused = f.canonical.kernel.execute(delayed);
+  assert.equal(refused.state, "rejected");
+  if (refused.state === "rejected") assert.equal(refused.code, "OCR_REVIEW_REFUSED");
+  assert.deepEqual(observe(), frozen);
+  assert.equal(repositories.commands.get(delayed.commandId), undefined);
+  assert.equal(repositories.commandAudits.findByCommand(delayed.commandId), undefined);
+  assert.equal(repositories.lifecycleJournal.getCommand(lifecycleCommandId("operator-ocr-review", delayed.commandId)), undefined);
+  assert.deepEqual(f.sources.commandResult(runId, delayed.commandId), { state: "unavailable" });
+  const historical = f.sources.commandResult(runId, correction.commandId); assert.ok(historical.state === "recorded");
+  assert.deepEqual(historical.request, CommandRequestSchema.parse(correction));
+  assert.equal(historical.result.state, "applied");
+  assert.equal(f.canonical.kernel.execute(correction).state, "already-applied");
+  assert.equal(f.canonical.kernel.execute(consent).state, "already-applied");
+  assert.deepEqual(observe(), frozen);
+});
+
 it("rolls snapshot creation back with gate failure, then replays the original approved snapshot through parent resume", async () => {
   const f = await world.fixture({ record: true, release: true });
   assert.equal(f.result.run?.lifecycle.state, "parked-gate");
@@ -148,25 +186,41 @@ it("rolls snapshot creation back with gate failure, then replays the original ap
   assert.deepEqual(readOcrSnapshotsAuthority(f.database.authority, review), [snapshot]);
 });
 
-it("refuses stale approval and retains an immutable snapshot after a later draft revision and database restart", async () => {
+it("refuses stale approval and late drafts while retaining the immutable snapshot through restart", async () => {
   const f = await world.fixture({ record: true, release: true });
-  assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
+  const correction = f.command("correct-ocr-record", 1);
+  assert.equal(f.canonical.kernel.execute(correction).state, "applied");
   const stale = approval(f);
-  assert.equal(f.canonical.kernel.execute(f.command("discard-ocr-record", 2)).state, "applied");
+  const discard = f.command("discard-ocr-record", 2);
+  assert.equal(f.canonical.kernel.execute(discard).state, "applied");
   const currentRun = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(currentRun);
   const refused = f.canonical.kernel.execute({ ...stale, target: { ...stale.target, expectedVersion: currentRun.version } });
   assert.ok(refused.state === "rejected" && refused.code === "invalid-state");
   assert.deepEqual(f.database.authority.ocrReviews.snapshots(f.run.envelope.runId), []);
-  assert.equal(f.canonical.kernel.execute(f.command("restore-ocr-record", 3)).state, "applied");
+  const restore = f.command("restore-ocr-record", 3);
+  assert.equal(f.canonical.kernel.execute(restore).state, "applied");
   const request = approval(f);
   assert.equal(f.canonical.kernel.execute(request).state, "applied");
   const saved = f.database.authority.ocrReviews.snapshot(request.commandId); assert.ok(saved);
   assert.deepEqual(requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, request.payload.result.value), saved);
-  assert.equal(f.canonical.kernel.execute(f.command("discard-ocr-record", 4)).state, "applied");
+  const late = f.canonical.kernel.execute(f.command("discard-ocr-record", 4));
+  assert.ok(late.state === "rejected" && late.code === "OCR_REVIEW_REFUSED");
+  for (const command of [correction, discard, restore]) {
+    const result = f.sources.commandResult(f.run.envelope.runId, command.commandId); assert.ok(result.state === "recorded");
+    assert.deepEqual(result.request, CommandRequestSchema.parse(command));
+    assert.equal(f.canonical.kernel.execute(command).state, "already-applied");
+  }
   assert.deepEqual(f.database.authority.ocrReviews.snapshot(request.commandId), saved);
-  assert.throws(() => requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, request.payload.result.value), /OCR_REVIEW_REFUSED/u);
+  assert.deepEqual(requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, request.payload.result.value), saved);
+  const staleReference = { ...request.payload.result.value, revision: 3 };
+  assert.throws(() => requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, staleReference), /OCR_REVIEW_REFUSED/u);
   const current = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(current);
-  assert.throws(() => assertOcrRecoverySnapshotCurrent(f.database.authority, f.canonical.lifecycle, current), /ocr-approved-snapshot-recovery-refused/u);
+  const repositories = f.database.authority, gateKey = `${f.run.envelope.runId}:approve-records`;
+  const gate = repositories.gateResults.get(gateKey); assert.ok(gate);
+  const altered: AuthorityRepositories = { ...repositories, gateResults: { ...repositories.gateResults,
+    get: key => key === gateKey ? { ...gate, result: { ...gate.result, value: staleReference } } : repositories.gateResults.get(key) } };
+  assert.throws(() => assertOcrRecoverySnapshotCurrent(altered, f.canonical.lifecycle, current), /ocr-approved-snapshot-recovery-refused/u);
+  assert.doesNotThrow(() => assertOcrRecoverySnapshotCurrent(repositories, f.canonical.lifecycle, current));
   await f.harness.manager.closeAll("worker-stop");
   f.database.close();
   const reopened = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 500, migrationOwner: "ocr-review-restart" }, f.clock,
@@ -174,7 +228,7 @@ it("refuses stale approval and retains an immutable snapshot after a later draft
   f.harness.authority.replaceClosedDatabase(reopened);
   const reader = new RunRecordService({ database: reopened, clock: f.clock, ids: { uuid: randomUUID }, publishQueued: () => { throw new Error("unexpected enqueue"); } });
   const read = readOcrReviewAuthority(reopened.authority, reader, f.run.envelope.runId); assert.ok(read);
-  assert.equal(read.revision.revision, 5);
+  assert.equal(read.revision.revision, 4);
   assert.deepEqual(readOcrSnapshotsAuthority(reopened.authority, read), [saved]);
   assert.equal(reopened.authority.runs.get(f.run.envelope.runId)?.lifecycle.state, "queued");
 });
