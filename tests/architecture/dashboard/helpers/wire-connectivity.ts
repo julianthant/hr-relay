@@ -194,7 +194,8 @@ const COMMENTS = /\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
 const DESCRIPTOR_COMMAND = /\b(?:command|key)\s*:\s*"([a-z-]+)"/g;
 
 // Strip comments before finding producer verbs; prose cannot make a command reachable.
-export function projectedCommandKeys(source: string): readonly string[] {
+export function projectedCommandKeys(source: string, property?: "command"): readonly string[] {
   const code = source.replaceAll(COMMENTS, " ");
-  return [...new Set([...code.matchAll(DESCRIPTOR_COMMAND)].map(([, key]) => key ?? ""))].sort();
+  const pattern = property === "command" ? /\bcommand\s*:\s*"([a-z-]+)"/g : DESCRIPTOR_COMMAND;
+  return [...new Set([...code.matchAll(pattern)].map(([, key]) => key ?? ""))].sort();
 }

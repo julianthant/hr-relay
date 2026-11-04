@@ -288,6 +288,10 @@ matching must use canonical spreadsheet bindings; no match or multiple matches r
 Backend Person Lookup/matching, immutable approval persistence, and roster updates are separate
 wiring requirements. Current Records edits and transitions are local mock state.
 
+Served OCR Logs expose failed-child Retry in the header. When changed record evidence invalidates
+earlier corrections or review choices, the existing warning banner names the source page and revision.
+These warnings do not mount the served Records editor.
+
 ## Notifications
 
 The bell names loading, unavailable, or unread count. Opening the inbox replaces the workflow list.
