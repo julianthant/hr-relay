@@ -26,6 +26,6 @@ export function buildOcrReviewSection(deps: RunDetailQueryDeps, runId: string): 
           evidence: [`artifact:${page.image.id}`] };
       }),
       ocr: { revision: review.revision, digest: review.digest,
-        approvedSnapshots: snapshots } }) };
+        approvedSnapshots: snapshots, ...(review.invalidatedCorrections.length === 0 ? {} : { invalidatedCorrections: review.invalidatedCorrections }) } }) };
   });
 }

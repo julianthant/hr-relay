@@ -237,6 +237,16 @@ const { surface } = createAwaitingQueueFixtures(RUN_ID, HASH_A, HASH_B, NOW);
 
 describe_m2("the row's accessible name carries the age", () => {
 
+  it_m2("describes a linked served OCR review as logs and status", () => {
+    const row = surface({ gateOpenedAt: { state: "present", value: "2026-08-14T16:42:00.000Z" } });
+    const markup = renderToStaticMarkup_m2(createElement_m2(QueueRow_m2, {
+      surface: QueueSurfaceWireSchema_m1.parse({ ...row, linkedRuns: [{ runId: "22222222-2222-4222-8222-222222222222", partitionDay: "2026-08-14", workflowId: "ocr", label: "OCR", status: "awaiting-approval", panelKind: "review" }] }),
+      state: { openWells: new Set<string>(), nowIso: NOW }, handlers: { onSelect() {} }, workflowLabelOf: () => "OCR",
+    }));
+    assert_m2.match(markup, /Opening it shows the run&#x27;s logs and review status/);
+    assert_m2.doesNotMatch(markup, /starts the review/);
+  });
+
   it_m2("renders the production QueueRow press target with the composed gate age", () => {
     const row = surface({
       gateOpenedAt: { state: "present", value: "2026-08-14T16:42:00.000Z" },

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import assert from 'node:assert/strict';
-import { createElement } from 'react';
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach,beforeEach,describe,it,vi } from 'vitest';
 import { LogSample } from '../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js';
@@ -47,6 +48,50 @@ describe('compact run headers', () => {
       assert.match(markup, /served logs unavailable/);
       assert.equal(useRunWiring.mock.calls.length, 1);
     } finally { window.history.replaceState(null, '', locationBefore); }
+  });
+
+  it.each([true, false])('renders the served child retry in the log header with current availability (%s)', available => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Failed lookup' }, childRetry: { label: 'Retry' } },
+      logs: {}, unavailableEvidence: [] }, ...(available ? { onChildRetry: vi.fn() } : {}) });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    const markup = renderToStaticMarkup(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } }));
+    const header = markup.slice(markup.indexOf('<header'), markup.indexOf('</header>'));
+    assert.match(header, /aria-label="Retry"/);
+    assert.equal(/disabled=""/.test(header), !available);
+  });
+
+  it.each([true, false])('clicks the served child Retry only when it is enabled (%s)', available => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    const effects: string[] = [];
+    const snapshot = { detail: { header: { title: 'Failed lookup' }, childRetry: { label: 'Retry' } }, logs: {}, unavailableEvidence: [] };
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot, ...(available ? { onChildRetry: () => effects.push('retry') } : {}) });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+    try {
+      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } })));
+      const button = host.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert.ok(button);
+      act(() => button.click());
+      assert.deepEqual(effects, available ? ['retry'] : []);
+      useRunWiring.mockReturnValue({ state: 'loaded', snapshot, onChildRetry: () => effects.push('updated') });
+      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } })));
+      const refreshed = host.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert.ok(refreshed);
+      act(() => refreshed.click());
+      assert.deepEqual(effects, available ? ['retry', 'updated'] : ['updated']);
+    } finally { act(() => root.unmount()); host.remove(); }
+  });
+
+  it('shows the source page and revision when earlier review changes no longer apply', () => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'OCR' }, ocrReviewChanges: [{ sourcePage: 2, revision: 4 }] },
+      logs: {}, unavailableEvidence: [] } });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    const markup = renderToStaticMarkup(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'OCR' } }));
+    assert.match(markup, /Earlier review changes no longer apply/);
+    assert.match(markup, /Page 2: OCR evidence changed in revision 4/);
   });
 
   it.each([
