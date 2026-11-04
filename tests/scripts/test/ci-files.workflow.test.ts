@@ -187,7 +187,7 @@ describe("separate event and admitted proof workflows", () => {
 
   it("retains native/bootstrap budgets, post-failure groups and exact file membership", () => {
     const windows = job(full, "windows");
-    expect(windows.indexOf("git config --global core.autocrlf false")).toBeLessThan(windows.indexOf("uses: actions/checkout@v4"));
+    expect(windows.indexOf("git config --global core.autocrlf false")).toBeLessThan(windows.indexOf("uses: actions/checkout@v7"));
     expect(windows).toContain("git config --global core.autocrlf false");
     expect(windows).toContain("shell: bash");
     expect(windows).not.toMatch(/ram-tmp|mdutil|sysctl|memory_pressure|continue-on-error/u);
@@ -357,7 +357,7 @@ describe("cancelled admitted source work", () => {
       assert.ok(code);
       return Boolean(runInNewContext(code, { cancelled: () => cancelled, always: () => true }));
     };
-    expect(inner).toContain("uses: actions/checkout@v4");
+    expect(inner).toContain("uses: actions/checkout@v7");
     expect(inner).toContain("run: npm ci");
     expect(outer).not.toContain("actions/checkout");
     expect(outer).not.toContain("npm ci");
