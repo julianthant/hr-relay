@@ -19,7 +19,7 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 Complete these in order.
 
 - [done] Portable storage core — keep one database and settings per person, simplify Mac safety checks, retain the last three quit-time backups and repair crash or corruption damage automatically without relocating folders.
-- [now] Sign-up and accounts — require Touch ID and a Duo security key, both added in Duo's device management at duo.ucsd.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Keep credentials on logout. Put Delete account in Settings > General. Tell an empty machine to sign up first. Back up the old store, then start clean. Resume a signed-in profile after a restart; Log out ends it.
+- [now] Sign-up and accounts — require Touch ID and a Duo security key, both added in Duo's device management at duo.ucsd.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Keep credentials on logout. Put Delete account in Settings > General. Tell an empty machine to sign up first. Back up the old store, then start clean. Resume a signed-in profile after a restart; Log out ends it. Let Log out finish while workflows run, and keep the login page checking until it completes.
 - [done] Workflow logins — use fast-duo for every workflow login.
 - [done] Runs — pause and resume at completed steps, rerun failed items from saved results, confirm quitting and park interrupted submits as unknown.
 - [done] Write safety — capture browser steps and submit boundaries, retain dry-run evidence, show UCPath transaction findings for operator review and keep Kuali reload verification.
