@@ -2,7 +2,8 @@ import { useViewState } from "../../app/navigation/view-route-model.js";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ArrowUpRight, CheckCheck, Cpu, Monitor, X } from "lucide-react";
 import { Button, dsElev, IconButton, PageHeading, Select } from "../../ds/ui.js";
-import { allFields, DEFAULT_COMMENTS, type CommentChoices, type FlowField, type FlowStep, type FieldSource, type PreviewScenario } from "./explorer-flow-model.js";
+import { allFields, DEFAULT_COMMENTS, type CommentChoices, type PreviewScenario } from "./explorer-flow-model.js";
+import type { FlowField, FlowStep, FieldSource } from "../../../models/workflow/explorer-preview.js";
 import { ExplorerParts } from "./explorer-parts.js";
 import { ExplorerSource } from "./explorer-source.js";
 

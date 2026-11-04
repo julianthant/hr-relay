@@ -4,7 +4,7 @@ import { initialMockDraft, type MockRun } from "../workflows/mocks/workflow-mock
 import { mockFieldValue, mockStepNode } from "../workflows/mocks/workflow-result-model.js";
 import { mockOperations, mockOperationValue } from "../workflows/mocks/workflow-operation-model.js";
 import { workflowPreviewGraph, type PreviewNode } from "../workflows/mocks/workflow-preview-contracts.js";
-import type { FieldSource, FlowField, FlowPart, FlowStep } from "./explorer-flow-model.js";
+import type { FieldSource, FlowField, FlowPart, FlowStep } from "../../../models/workflow/explorer-preview.js";
 import type { MockFlow } from "./explorer-mock-fixtures.js";
 
 type Choice = Readonly<{ key: string; label: string; options: readonly (readonly [string, string])[] }>;

@@ -1,3 +1,4 @@
+import type { AuthoredExplorerPart as Part, FlowField, WorkflowExplorerPreview } from "../../models/workflow/explorer-preview.js";
 import { z } from "zod";
 import {
   KualiDocumentNumberSchema,
@@ -68,8 +69,108 @@ function omittedOr<T, R>(
   return widened === undefined ? Object.freeze({ state: "omitted" as const, step }) : present(widened);
 }
 
+
+const action = (text: string, icon: "click" | "read" | "verify" | "compute" | "key" | "rejoin" | "stop" = "verify"): Part => ({ kind: "action", text, icon });
+const note = (text: string): Part => ({ kind: "note", text });
+const rows = (mode: FlowField["mode"], fields: readonly (readonly [string, string, string, string?, FlowField["template"]?])[]): Part => ({ kind: "rows", fields: fields.map(([id, label, value, source, template]) => ({ id, label, value, mode, ...(source ? { source } : {}), ...(template ? { template } : {}) })) });
+const form = (id: string, title: string, mode: string, parts: readonly Part[], result?: "pending"): Part => ({ kind: "form", id, title, mode, parts, ...(result ? { result } : {}) });
+const branch = (key: string, value: string, parts: readonly Part[]): Part[] => parts.map(part => ({ ...part, when: { [key]: [value] } }));
+const stop = (text: string): Part[] => [action(text, "stop"), note("Stop here. No downstream transaction or Kuali save.")];
+
+const read = (system: string, page: string, field: string, step: number, fieldId?: string) => ({ system, page, field, step, ...(fieldId ? { fieldId } : {}) });
+const kuali = (field: string, fieldId: string) => read("Kuali", "RRSS Separation Request", field, 3, fieldId);
+const job = (field: string, fieldId: string) => read("UCPath", "Workforce Job Summary", field, 8, fieldId);
+const chain = (step: number, title: string, detail: string) => ({ step, title, detail });
+const dateReads = [kuali("Last day worked · separation date", "dates"), read("Kronos", "Timecard", "Last punch date", 12, "punch"), read("Kronos", "Timecard", "Sick dates · holiday dates", 12, "leave")];
+const dateChain = [chain(13, "Reconcile dates", "Combine the request dates with the observed timecard."), chain(16, "Verify approval", "The approved write details bind these dates.")];
+const identityReads = [kuali("Employee ID", "employee"), read("UCPath", "Person Organizational Summary", "Matching employee records", 6)];
+const identityChain = [chain(7, "Resolve employee", "Match the document ID against the name-search results."), chain(16, "Verify approval", "Use the employee identity bound to the approved write details.")];
+
+const separationsExplorer: WorkflowExplorerPreview = {
+  choices: [
+    { key: "identity", label: "Identity check", options: [["verified", "Verified"], ["review", "Review"], ["rejected", "Rejected"]] },
+    { key: "pending", label: "Read result", options: [["none", "None"], ["some", "Some"], ["unknown", "Unknown"]] },
+    { key: "termination", label: "Existing termination", options: [["absent", "Absent"], ["present", "Present"], ["unknown", "Unknown"]] },
+  ],
+  completion: "Separation filed and Kuali document verified",
+  sourceVariants: [{ when: { termination: ["present"] }, sources: {
+    receipt: { reads: [read("UCPath", "Existing termination", "Transaction number", 19)], chain: [chain(20, "Verify receipt", "Match employee and effective date to the approved request."), chain(21, "Verify current filing", "Confirm this transaction is still present before Kuali finalization.")] },
+  } }],
+  steps: [
+    { nodes: [], title: "Open browser sessions", parts: [{ kind: "sessions", systems: ["Kuali", "Kronos", "UCPath"] }] },
+    { nodes: ["resolve-action"], title: "Find the Kuali action", system: "Kuali", parts: [
+      form("action-list", "Action List", "Fill form", [rows("fill", [["document", "Document number", "Run input", "document"]])]), action("Click Go", "click"), action("Read the matching action link", "read"),
+    ] },
+    { nodes: ["document"], title: "Read the separation document", system: "Kuali", parts: [
+      form("request", "RRSS Separation Request", "Read only", [rows("read", [
+        ["name", "Employee name", "Separation request"], ["employee", "Employee ID", "Separation request"], ["type", "Employee type · student title code", "Separation request"], ["division", "Division · location", "Separation request"], ["termination", "Termination type", "Separation request"], ["dates", "Last day worked · separation date", "Separation request"], ["comments", "Additional comments", "Separation request"],
+      ]), { kind: "detail", id: "request-options", title: "Timekeeper, final transactions & option lists", parts: [rows("read", [
+        ["timekeeper", "Request acknowledged · timekeeper name", "Current form values"], ["timekeeper-comments", "Timekeeper comments", "Preserve existing text"], ["effective", "Termination effective date", "Current form value"], ["job", "Department · payroll title code · payroll title", "Current form values"], ["receipt", "Submitted template · transaction number", "Current form values"], ["pay", "Final pay", "Current selection"], ["options", "All dropdown options", "Read available choices"],
+      ])] }]), action("Verify document number and form type"),
+    ] },
+    { nodes: ["plan"], title: "Build the separation plan", system: "Local", parts: [action("Use the request’s employee name and dates to establish the timecard window.", "compute")] },
+    { nodes: ["termination-type"], title: "Resolve the termination type", system: "Local", parts: [action("Map the requested termination type to the UCPath template and reason.", "compute")] },
+    { nodes: ["name-search"], title: "Search the employee name", system: "UCPath", parts: [form("person", "Person Organizational Summary", "Fill form", [rows("fill", [["name", "Employee name", "Kuali separation request", "name"]])]), action("Read all matching employees", "read")] },
+    { nodes: ["subject"], title: "Identify the separation subject", system: "Local", parts: [action("Match the document’s employee ID against the name-search results.", "compute")] },
+    { nodes: ["job-summary"], title: "Read Workforce Job Summary", system: "UCPath", parts: [action("Expand employment instances when needed", "click"), form("job-summary", "Workforce Job Summary", "Read only", [rows("read", [
+      ["employee", "Employee ID · name", "Displayed employee"], ["record", "Employee record", "Each employment row"], ["status", "HR status · effective date", "Each employment row"], ["position", "Business unit · position number", "Each employment row"], ["department", "Department ID · department", "Each employment row"], ["title", "Job code · job title", "Each employment row"], ["end", "Expected job end date", "Each employment row"], ["class", "FTE · employee class", "Each employment row"],
+    ])])] },
+    { nodes: ["employment"], title: "Resolve active employment", system: "Local", parts: [action("Select the active employment record. Stop if no single valid record can be established.", "compute")] },
+    { nodes: ["department-option"], title: "Match the department option", system: "Local", parts: [action("Match the UCPath department to an option read from this Kuali document.", "compute")] },
+    { nodes: ["timecard-search"], title: "Find the employee timecard", system: "Kronos", parts: [form("employee-search", "Employee search", "Fill form", [rows("fill", [["employee", "Employee ID", "Resolved separation subject", "identity-before-approval"]])]), action("Select the matching employee", "click")] },
+    { nodes: ["timecard"], title: "Read the timecard", system: "Kronos", parts: [action("Open Go To → Timecard", "click"), form("range", "Timecard range", "Fill form", [rows("fill", [["range", "Start date · end date", "Separation plan", "window"]])]), form("timecard", "Timecard", "Read only", [rows("read", [["displayed-range", "Displayed date range", "Verify requested window"], ["punch", "Punches · last punch date", "Timecard grid"], ["leave", "Sick dates · holiday dates", "Timecard grid"], ["codes", "Other pay codes", "Timecard grid"]])])] },
+    { nodes: ["dates"], title: "Reconcile the dates", system: "Local", parts: [rows("compute", [["last-worked", "Last day worked", "Request + last punch"], ["separation", "Separation date", "Request + leave dates"], ["effective", "Termination effective date", "Reconciled separation date"]])] },
+    { nodes: ["comparison"], title: "Compare identity and write details", system: "Local", parts: [action("Bind the employee, employment, dates and proposed writes to the approval evidence.", "compute")] },
+    { nodes: ["identity-approval"], title: "Resolve identity approval", system: "You", stopWhen: { identity: ["rejected"] }, parts: [
+      { kind: "choice", choice: "identity" }, ...branch("identity", "verified", [action("Identity verified against the supplied employee ID.")]), ...branch("identity", "review", [action("Pause for operator review. Resume this path after approval."), note("Sessions close while waiting; reacquire and authenticate on resume.")]), ...branch("identity", "rejected", stop("Identity approval rejected")),
+    ] },
+    { nodes: ["approval"], title: "Verify the approval", system: "Local", parts: [action("Verify that the approval still matches the employee and proposed writes.", "compute")] },
+    { nodes: ["pending-set"], title: "Read pending terminations", system: "UCPath", parts: [form("pending", "Transactions in Progress", "Read only", [rows("read", [["employee", "Employee ID · name", "Approved identity"], ["pending", "Pending termination rows", "Exact observed set"], ["transactions", "Transaction IDs · effective dates", "Each pending row"]])], "pending")] },
+    { nodes: ["clear-pending"], title: "Clear pending terminations", system: "UCPath", stopWhen: { pending: ["unknown"] }, parts: [
+      ...branch("pending", "none", [action("No pending terminations to delete."), action("Continue to the existing-termination check", "rejoin")]),
+      ...branch("pending", "some", [action("Verify the exact pending set has not changed"), action("Select only the observed pending termination rows", "click"), action("Click Delete", "click"), action("Verify that the selected terminations were cleared"), action("Continue to the existing-termination check", "rejoin")]), ...branch("pending", "unknown", stop("Pending terminations could not be verified")),
+    ] },
+    { nodes: ["file-termination"], title: "File the termination", system: "UCPath", stopWhen: { termination: ["unknown"] }, parts: [
+      { kind: "choice", choice: "termination" }, note("Match the approved employee and effective date in UCPath."),
+      ...branch("termination", "absent", [
+        form("template", "Smart HR · Template", "Fill form", [rows("fill", [["template", "Template", "Resolved termination type", "type"], ["transaction-date", "Transaction date", "Termination effective date", "dates"]])]), action("Click Create Transaction", "click"),
+        form("transaction", "Smart HR · Transaction details", "Continue", [rows("fill", [["employee", "Employee ID", "Approved identity", "identity"]]), action("Press Tab to resolve employee", "key"), rows("read", [["employee-record", "Employee name · employee record", "Verify approved identity"], ["job-date", "Job effective date", "Verify transaction date"]]), rows("fill", [["reason", "Action reason", "Resolved reason code", "type"]])]), action("Click Continue", "click"),
+        form("employment", "Smart HR · Employment information", "Continue", [rows("fill", [["override", "Override last date worked", "Checked", "override"], ["last-worked", "Last date worked", "Reconciled date", "dates"], ["initiator-comments", "Initiator comments", "Reconciled date explanation", "comments", "ucpath"], ["transaction-comments", "Transaction comments", "Same explanation", "comments", "duplicate"]])]),
+        action("Read back all staged values"), action("Click Save and Submit", "click"), action("Verify the transaction number and receipt"), action("Continue with the newly filed receipt", "rejoin"),
+      ]),
+      ...branch("termination", "present", [action("Read the matching transaction number and receipt", "read"), action("Verify employee, effective date and transaction proof"), action("Reuse this receipt · continue at step 20", "rejoin")]), ...branch("termination", "unknown", stop("The existing-termination check is inconclusive")),
+    ] },
+    { nodes: ["receipt"], title: "Verify the termination receipt", system: "Local", parts: [...branch("termination", "absent", [action("Verify the new receipt against the approved employee and effective date")]), ...branch("termination", "present", [action("Verify the existing receipt against the approved employee and effective date")]), ...branch("termination", "unknown", [action("Verify the new receipt against the approved employee and effective date")])] },
+    { nodes: ["filing-presence"], title: "Verify the current UCPath filing", system: "UCPath", parts: [action("Find the exact transaction and verify it is still present")] },
+    { nodes: ["finalize-kuali"], title: "Finalize the Kuali document", system: "Kuali", parts: [action("Check whether this exact finalization is already saved"), note("Already saved: verify the current values and finish. Otherwise:"), form("finalize", "RRSS Separation Request", "Continue", [
+      { kind: "resume", step: 3, text: "Same form · opened in step 3" }, rows("fill", [["department", "Department", "Matched department option", "department"], ["title", "Payroll title code · payroll title", "Workforce Job Summary", "title"], ["acknowledged", "Request acknowledged", "Checked", "acknowledged"], ["timekeeper", "Timekeeper name", "Configured timekeeper", "timekeeper"], ["dates", "Last day worked · separation date", "Reconciled dates", "dates"], ["effective", "Termination effective date", "Verified receipt date", "effective"], ["submitted", "Termination template submitted", "Checked", "submitted"], ["transaction", "Transaction number", "Verified UCPath receipt", "receipt"], ["pay", "Final pay", "Workflow rule", "pay"], ["comments", "Timekeeper comments", "Existing comments + filing details", "timekeeper-comments", "kuali"]]),
+    ]), action("Verify every staged field and preserve existing comments"), action("Click Save", "click"), action("Reload and verify the saved document")] },
+  ],
+  sources: {
+    document: { origin: "Run input", detail: "The document number provided when this run is started." },
+    name: { reads: [kuali("Employee name", "name")], chain: [chain(4, "Build separation plan", "Use the name read from this request.")] },
+    identity: { reads: identityReads, chain: identityChain },
+    "identity-before-approval": { reads: identityReads, chain: identityChain.slice(0, 1) },
+    dates: { reads: dateReads, chain: dateChain },
+    window: { reads: [kuali("Last day worked · separation date", "dates")], chain: [chain(4, "Build timecard window", "Derive the window from the request dates and document observation time.")] },
+    type: { reads: [kuali("Termination type", "termination")], chain: [chain(5, "Resolve termination type", "Map the request to the configured UCPath template and action reason.")] },
+    override: { origin: "Workflow rule", detail: "Ensure the override is checked before entering the reconciled last date worked." },
+    comments: { reads: dateReads, chain: [chain(13, "Build termination comments", "Explain the reconciled dates using the request and timecard evidence. Both UCPath comment fields receive identical text.")] },
+    department: { reads: [job("Department ID · department", "department"), kuali("Department option list", "options")], chain: [chain(9, "Resolve active employment", "Choose the department from the selected employment record."), chain(10, "Match the Kuali option", "Resolve that department against options read from this document.")] },
+    title: { reads: [job("Job code · job title", "title")], chain: [chain(9, "Resolve active employment", "Take the code and title from the selected employment record.")] },
+    acknowledged: { origin: "Workflow rule", detail: "Set the request acknowledgement to checked during Kuali finalization." },
+    timekeeper: { origin: "Configured input", detail: "The timekeeperName input comes from runtime configuration. Protected values remain hidden unless the application permits them." },
+    submitted: { origin: "Verified filing", detail: "Set to checked only after the UCPath filing receipt has been verified.", reads: [read("UCPath", "Termination receipt", "Verified filing", 20)] },
+    pay: { origin: "Workflow rule", detail: "Select “Does not need final pay (student)”. This is a declared constant, not a field read from a page." },
+    "timekeeper-comments": { reads: [kuali("Existing timekeeper comments", "timekeeper-comments")], chain: [chain(13, "Reconcile dates", "Compose the date explanation with the configured timekeeper."), chain(20, "Verify filing receipt", "Include the filing details."), chain(22, "Append finalization comments", "Preserve the originally read comments; refuse if the current text changed.")] },
+    receipt: { reads: [read("UCPath", "New termination receipt", "Transaction number", 19)], chain: [chain(20, "Verify receipt", "Match employee and effective date to the approved request."), chain(21, "Verify current filing", "Confirm this transaction is still present before Kuali finalization.")] },
+    effective: { reads: dateReads, chain: [...dateChain, chain(20, "Verify receipt date", "The receipt must match the approved effective date.")] },
+  },
+};
+
 export const separationsWorkflow = defineWorkflow({
   id: "separations",
+  explorerPreview: separationsExplorer,
   requiredWorkbookTypeIds: [],
   version: 1,
   code: "sp",

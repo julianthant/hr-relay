@@ -23,7 +23,8 @@ import { buildWorkflowCatalog, type WorkflowCatalogEntry } from "../../../src/da
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const wire = buildWorkflowExplorer(explorerQueryDeps(manualClock(new Date("2026-08-09T12:00:00.000Z")), FingerprintSchema.parse("d".repeat(64))));
-const compiled = wire.workflows.find(workflow => workflow.definitionPreview.state === "compiled")!;
+const compiled = structuredClone(wire.workflows.find(workflow => workflow.definitionPreview.state === "compiled")!);
+delete compiled.walkthrough;
 
 function changed(change: (workflow: ExplorerWorkflowWire) => void): ExplorerWorkflowWire {
   const workflow = structuredClone(compiled);
@@ -36,7 +37,8 @@ function redigest(definition: WorkflowOperationDisplaySnapshot): WorkflowOperati
   return WorkflowOperationDisplaySnapshotSchema.parse({ ...payload, contentDigest: sha256Hex(`hrauto:operation-display-snapshot:v2\0${canonicalJsonStringify(payload)}`) });
 }
 function lineageWorkflow(): ExplorerWorkflowWire {
-  const base = wire.workflows.find(workflow => workflow.id === "separations")!;
+  const base = structuredClone(wire.workflows.find(workflow => workflow.id === "separations")!);
+  delete base.walkthrough;
   const task = wire.workflows.flatMap(workflow => workflow.nodes.flatMap(node => node.tasks)).find(task => task.arm === "task" && task.effect === "read")!;
   const field = (path: string, side: "input" | "output") => ({ path, side, kind: "string", presence: "always", recorded: { state: "unknown", reason: "No run is loaded" } });
   const binding = { state: "bound", storeNamespace: "crm", storeKind: "browser", driverSystem: "crm" };
@@ -70,7 +72,7 @@ function lineageWorkflow(): ExplorerWorkflowWire {
   workflow.operationStructure = { state: "declared", definition: redigest(snapshot) };
   return workflow;
 }
-function partText(parts: readonly import("../../../src/dashboard/surfaces/explorer/explorer-flow-model.js").FlowPart[]): string[] {
+function partText(parts: readonly import("../../../src/models/workflow/explorer-preview.js").FlowPart[]): string[] {
   return parts.flatMap(part => part.kind === "form" || part.kind === "detail" ? [part.title, ...partText(part.parts)] : part.kind === "note" || part.kind === "action" ? [part.text] : []);
 }
 
@@ -79,7 +81,9 @@ describe("Explorer registered projection", () => {
     const missing = structuredClone(wire) as unknown as { workflows: Record<string, unknown>[] };
     delete missing.workflows[0].definitionPreview;
     assert.equal(WorkflowExplorerWireSchema.safeParse(missing).success, false);
-    for (const workflow of wire.workflows) {
+    for (const original of wire.workflows) {
+      const workflow = structuredClone(original);
+      delete workflow.walkthrough;
       if (workflow.definitionPreview.state !== "compiled") continue;
       const result = projectExplorerDefinition(workflow);
       assert.equal(result.state, "ready", result.state === "refused" ? String(result.evidence) : workflow.id);
@@ -353,7 +357,7 @@ describe("complete source and structure declarations", () => {
     const result = projectExplorerDefinition(workflow);
     assert.equal(result.state, "ready");
     if (result.state !== "ready") return;
-    const actions = (parts: readonly import("../../../src/dashboard/surfaces/explorer/explorer-flow-model.js").FlowPart[]): Extract<typeof parts[number], { kind: "action" }>[] => parts.flatMap(part => part.kind === "detail" || part.kind === "form" ? actions(part.parts) : part.kind === "action" ? [part] : []);
+    const actions = (parts: readonly import("../../../src/models/workflow/explorer-preview.js").FlowPart[]): Extract<typeof parts[number], { kind: "action" }>[] => parts.flatMap(part => part.kind === "detail" || part.kind === "form" ? actions(part.parts) : part.kind === "action" ? [part] : []);
     const mapped = result.projection.steps.filter(step => step.title === "Declared source").flatMap(step => actions(step.parts));
     assert.equal(mapped.length, Object.keys(icons).length);
     assert.deepEqual(mapped.map(action => action.icon), Object.values(icons));
