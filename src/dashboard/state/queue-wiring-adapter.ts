@@ -19,7 +19,7 @@ export function useQueueWiring(input: Readonly<{
   bulkIds: ReadonlySet<string>;
   nowIso: string;
   selectRun: (runId: string, partitionDay?: string) => void;
-  setActiveWorkflowId: (workflowId: string) => boolean;
+  openRelatedRun: NonNullable<QueueHandlers["onOpenLinked"]>;
   onWells: (next: ReadonlySet<string>) => void;
   onBulkIds: (next: ReadonlySet<string>) => void;
   setBatchGrouping: NonNullable<QueueHandlers["onSetBatchGrouping"]>;
@@ -27,7 +27,7 @@ export function useQueueWiring(input: Readonly<{
   runQueueAction: NonNullable<QueueHandlers["onAction"]>;
 }>) {
   const { allRows, attemptHistory, rows, activeWorkflowId, filter, selectedRunId, openWells, selectMode, bulkIds, nowIso,
-    selectRun, setActiveWorkflowId, selectedMember, openMember, onWells, onBulkIds, setBatchGrouping, exitQueueSelection,
+    selectRun, openRelatedRun, selectedMember, openMember, onWells, onBulkIds, setBatchGrouping, exitQueueSelection,
     runQueueAction } = input;
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (allRows === undefined) return [];
@@ -99,18 +99,10 @@ export function useQueueWiring(input: Readonly<{
         else next.add(runId);
         onBulkIds(next);
       },
-      /* Cross-workflow parent jumps switch scope before selecting the run. */
-      onOpenParent: (parent) => {
-        if (!setActiveWorkflowId(String(parent.workflowId))) return;
-        selectRun(String(parent.runId), parent.partitionDay);
-      },
-      /* Use the served child route; current-day lookup cannot find cross-day delegation. */
-      onOpenLinked: (link) => {
-        if (!setActiveWorkflowId(String(link.workflowId))) return;
-        selectRun(String(link.runId), link.partitionDay);
-      },
+      onOpenParent: openRelatedRun,
+      onOpenLinked: openRelatedRun,
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, setActiveWorkflowId, exitQueueSelection, openMember],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, openRelatedRun, exitQueueSelection, openMember],
   );
 
   const actionsOf = useCallback((surface: QueueSurfaceWire): readonly ActionDescriptorWire[] => surface.actions, []);

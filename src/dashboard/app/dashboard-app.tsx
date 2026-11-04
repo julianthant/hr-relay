@@ -97,7 +97,8 @@ import "../surfaces/shell/permanent-shell.css";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/shared/status/status-model.js";
 import { StorageBanner } from "../surfaces/settings/storage/storage-settings.js";
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
-import { resolveNotificationNavigation } from "./navigation/notification-navigation.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { notificationTargetUnavailable, resolveNotificationNavigation } from "./navigation/notification-navigation.js";
 import { notificationDestinationRefusal, useWorkspaceNotifications } from "../surfaces/notifications/notifications-preview-model.js";
 import type { NotificationDestination } from "../surfaces/notifications/notifications-view-model.js";
 import {
@@ -554,6 +555,55 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       return { ...next, section: "logs", view: { ...next.view, queueMember: undefined } };
     }));
   }, [setRoute, day, leaveSettings]);
+  const relatedNavigation = useRef(0);
+  const relatedDay = useRef(dayWire);
+  relatedDay.current = dayWire;
+  const openRelatedRun = useCallback<NonNullable<QueueHandlers["onOpenLinked"]>>(target => {
+    const request = ++relatedNavigation.current, scope = commandScope, origin = routeRef.current;
+    const owner = dayWire?.queueSurfaces.find(row => row.parent === target || row.linkedRuns.includes(target));
+    if (owner === undefined) return;
+    const parent = owner.parent === target;
+    const targetKey = canonicalJsonStringify(target);
+    const current = () => {
+      const row = relatedDay.current?.queueSurfaces.find(row => row.runId === owner.runId);
+      return relatedNavigation.current === request && currentCommandScope.current === scope && routeRef.current === origin
+        && relatedDay.current?.day === day && row?.workflowId === owner.workflowId && row.traceId === owner.traceId
+        && row.attempt === owner.attempt && row.rowRevision === owner.rowRevision
+        && (parent ? row.parent !== null && canonicalJsonStringify(row.parent) === targetKey
+          : row.linkedRuns.some(link => canonicalJsonStringify(link) === targetKey));
+    };
+    const refuse = () => ({ state: "refused" as const,message: notificationTargetUnavailable() });
+    const resolve = async (): Promise<Awaited<ReturnType<typeof resolveNotificationNavigation>>> => {
+      try {
+        const detail = await client.runDetail(owner.runId);
+        if (detail.runId !== owner.runId || detail.header.runId !== owner.runId || detail.header.workflowId !== owner.workflowId
+          || detail.header.traceId !== owner.traceId || detail.header.attempt !== owner.attempt
+          || detail.rowRevision !== owner.rowRevision || detail.panelKind !== owner.panelKind) return refuse();
+        return await resolveNotificationNavigation(client,{ kind: "run",runId: target.runId,day: target.partitionDay },origin,(id,row) => {
+          if (id !== target.workflowId || row.panelKind !== target.panelKind || row.parent === null && !canSelectWorkflowId(id)) return false;
+          if (!parent) return row.parent?.runId === owner.runId && row.parent.workflowId === owner.workflowId && row.parent.panelKind === owner.panelKind && row.parent.partitionDay === day;
+          if (owner.parent?.runId !== row.runId || owner.parent.workflowId !== row.workflowId || owner.parent.partitionDay !== target.partitionDay) return false;
+          const reciprocal = row.linkedRuns.find(link => link.runId === owner.runId);
+          return reciprocal === undefined || reciprocal.workflowId === owner.workflowId && reciprocal.panelKind === owner.panelKind && reciprocal.partitionDay === day;
+        });
+      } catch { return refuse(); }
+    };
+    const open = (result: Awaited<ReturnType<typeof resolveNotificationNavigation>>) => {
+      if (!current()) return;
+      if (result.state === "refused") { toast({ tone: "danger",title: "Workflow unavailable",description: result.message });return; }
+      if (canSelectWorkflowId(target.workflowId) && !setActiveWorkflowId(target.workflowId)) return;
+      setRoute({ ...result.route,view: { ...result.route.view,queueMember: undefined } });
+    };
+    void resolve().then(result => {
+      if (!current()) return;
+      if (result.state === "refused") { open(result);return; }
+      leaveSettings(() => {
+        if (!current()) return;
+        if (origin.settings === undefined) open(result);
+        else void resolve().then(open);
+      });
+    });
+  },[client,commandScope,day,dayWire,canSelectWorkflowId,setActiveWorkflowId,leaveSettings,setRoute,toast]);
   const openQueueMember = useCallback<NonNullable<QueueHandlers["onOpenMember"]>>(member => {
     const target = member.target;
     const partitionDay = dayWire?.queueSurfaces.some(row => row.runId === target.runId) ? day : target.partitionDay;
@@ -751,7 +801,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   }, [onSelectMode, onBulkIds]);
   const { surfaces, outcomes, viewState, queueHandlers, actionsOf } = useQueueWiring({
     allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
-    openWells, selectMode, bulkIds, nowIso, selectRun, setActiveWorkflowId, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells, onBulkIds,
+    openWells, selectMode, bulkIds, nowIso, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells, onBulkIds,
     setBatchGrouping, exitQueueSelection, runQueueAction,
   });
 
@@ -1082,7 +1132,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               {startRestrictions.has(activeWorkflowId) && previewFlow ? <Panel className="min-h-0"><PanelBody><EmptyState title="Workflow unavailable" description={startRestrictions.get(activeWorkflowId)} /></PanelBody></Panel> : previewFlow && dateSelection.state === "valid" ? <WorkflowMockQueue label={previewFlow.label} runs={railQueueRows} allRuns={mockRuns} selected={railRun} onSelect={setRailRun}
                 onRetry={id => { const source = mockRetrySource(mockRuns, id); openMockLaunch({ workflowId: source.workflowId, source }); }}
                 onDelete={ids => { setDeletedMockRuns(previous => new Set([...previous, ...ids])); setMockRuns(previous => previous.filter(run => !ids.includes(run.id))); toast({ tone: "success", title: "Run deleted" }); if (railRun && ids.includes(railRun)) { setRailRun(undefined); setRailReviewId(undefined); } }}
-                day={day} nowIso={nowIso} anchorIso={boot.serverClock.now} sort={sort} filter={queueFilterScope} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
+                day={day} nowIso={nowIso} anchorIso={boot.serverClock.now} sort={sort} filter={queueFilterScope} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) && !queueRows.some(row => row.parent !== null && row.workflowId === activeWorkflowId) ? (
                 dateError === undefined && dayResource.state !== "failed" && dayWire === undefined ? <QueueSkeleton label={workflows.find(workflow => workflow.id === activeWorkflowId)?.label} /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
                     description={dateError ?? (dayResource.state === "failed" ? dayFailureText : dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />
