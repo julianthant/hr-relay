@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { OcrReviewRecordSchema } from "../../models/ocr/review-record.js";
+import { OcrReviewRecordSchema, OcrOperatorPagesSchema } from "../../models/ocr/review-record.js";
 import { AssistantModelPreferenceSchema } from "../../models/config/assistant-model-preference.js";
 import { NotificationCollectionTargetSchema } from "../../models/notifications/notifications.js";
 import { StoredAssistantPermissionModeSchema } from "../../models/profiles/assistant-permission-mode.js";
@@ -43,7 +43,7 @@ export const CommandFamilySchema = z.enum([
 ]);
 
 export const CommandActionSchema = z.enum([
-  "correct-ocr-record", "discard-ocr-record", "restore-ocr-record",
+  "correct-ocr-record", "discard-ocr-record", "restore-ocr-record", "add-ocr-record",
   "pause-all",
   "pause-all-and-quit",
   "check-parked-write",
@@ -332,10 +332,13 @@ export const GateCommandRequestSchema = z.strictObject({
 export const OcrReviewCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("ocr-review"), type: z.literal("correct-ocr-record"),
     target: z.strictObject({ runId: RunIdSchema, expectedRevision: PositiveIntSchema }),
-    payload: OcrReviewRecordSchema.omit({ discarded: true }) }),
+    payload: OcrReviewRecordSchema.pick({ recordId: true, fields: true, assertedEid: true }).extend({ pages: OcrOperatorPagesSchema.optional() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("ocr-review"), type: z.enum(["discard-ocr-record", "restore-ocr-record"]),
     target: z.strictObject({ runId: RunIdSchema, expectedRevision: PositiveIntSchema }),
     payload: z.strictObject({ recordId: OcrReviewRecordSchema.shape.recordId }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("ocr-review"), type: z.literal("add-ocr-record"),
+    target: z.strictObject({ runId: RunIdSchema, expectedRevision: PositiveIntSchema }),
+    payload: z.strictObject({ pages: OcrOperatorPagesSchema }) }),
 ]);
 
 export const NotificationCommandRequestSchema = z.discriminatedUnion("type", [
@@ -784,7 +787,7 @@ export function commandEffectIsWeaker(stated: CommandEffectClass, actual: Comman
 }
 
 export const COMMAND_EFFECT_BY_ACTION = {
-  "correct-ocr-record": "local-write", "discard-ocr-record": "local-write", "restore-ocr-record": "local-write",
+  "add-ocr-record": "local-write", "correct-ocr-record": "local-write", "discard-ocr-record": "local-write", "restore-ocr-record": "local-write",
   "pause-all": "local-write",
   "pause-all-and-quit": "destructive",
   "check-parked-write": "local-write",
@@ -831,7 +834,7 @@ export const COMMAND_EFFECT_BY_ACTION = {
 } as const satisfies Record<z.infer<typeof CommandActionSchema>, CommandEffectClass>;
 
 export const COMMAND_ASSISTANT_METADATA = {
-  "correct-ocr-record": "Correct a retained OCR review record", "discard-ocr-record": "Discard an OCR review record", "restore-ocr-record": "Restore a discarded OCR review record",
+  "add-ocr-record": "Add an operator-authored OCR review record", "correct-ocr-record": "Correct a retained OCR review record", "discard-ocr-record": "Discard an OCR review record", "restore-ocr-record": "Restore a discarded OCR review record",
   "pause-all": "Pause current work",
   "pause-all-and-quit": "Pause current work and quit after explicit confirmation",
   "check-parked-write": "Read target state while keeping an uncertain write held",
@@ -891,7 +894,7 @@ export const CommandFamilySpecSchema = z.strictObject({
 });
 
 const COMMAND_ACTIONS_BY_FAMILY = {
-  "ocr-review": ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"],
+  "ocr-review": ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record", "add-ocr-record"],
   application: ["pause-all", "pause-all-and-quit"],
   "assistant-model-preference": ["set-assistant-model-preference"],
   "failure-resolution": ["annotate-failure"],
@@ -934,7 +937,7 @@ export const CommandFamilyRegistrySchema = z.array(CommandFamilySpecSchema).supe
 });
 
 export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.parse([
-  { family: "ocr-review", actions: ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"] },
+  { family: "ocr-review", actions: ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record", "add-ocr-record"] },
   { family: "application", actions: ["pause-all", "pause-all-and-quit"] },
   { family: "assistant-model-preference", actions: ["set-assistant-model-preference"] },
   { family: "failure-resolution", actions: ["annotate-failure"] },

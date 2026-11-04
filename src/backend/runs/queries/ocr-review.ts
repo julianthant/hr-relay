@@ -6,6 +6,7 @@ import { deterministicUuid } from "../lifecycle/support.js";
 import { ocrRecordName } from "../../../models/ocr/review.js";
 import { runClaim } from "../../../models/run/record.js";
 import { GateIdSchema } from "../../../rules/identity/ids.js";
+import { ocrRecordSourcePages } from "../../../models/ocr/review-record.js";
 
 export function buildOcrReviewSection(deps: RunDetailQueryDeps, runId: string): RunDetailSectionResponse {
   const canonical = deps.canonical;
@@ -27,14 +28,16 @@ export function buildOcrReviewSection(deps: RunDetailQueryDeps, runId: string): 
       : { state: "available" as const, runVersion: run.version };
     return { section: "review", payload: ReviewPageSchema.parse({ runId,
       records: review.revision.records.map(record => {
-        const source = review.revision.seed.review.records.find(seed => seed.recordId === record.recordId);
-        const page = review.revision.seed.review.accounting.manifest.pages.find(page => page.sourcePage === source?.sourcePage);
-        if (source === undefined || page === undefined) throw new SectionUnavailableError("OCR record source page is unavailable");
+        const pages = ocrRecordSourcePages(review.revision.seed.review.records, record).map(sourcePage => {
+          const page = review.revision.seed.review.accounting.manifest.pages.find(page => page.sourcePage === sourcePage);
+          if (page === undefined) throw new SectionUnavailableError("OCR record source page is unavailable");
+          return page;
+        });
         return { recordId: deterministicUuid(`ocr-review:${runId}:${record.recordId}`), runId, recordRevision: review.revision.revision,
-          label: ocrRecordName(record.fields) ?? `Page ${source.sourcePage}`,
+          label: ocrRecordName(record.fields) ?? (record.provenance === undefined ? `Page ${pages[0].sourcePage}` : "Operator-added record"),
           state: record.discarded ? "rejected" : snapshots.some(snapshot => snapshot.revision === review.revision.revision
             && snapshot.selectedRecordIds.includes(record.recordId)) ? "accepted" : "pending",
-          evidence: [`artifact:${page.image.id}`] };
+          evidence: pages.map(page => `artifact:${page.image.id}`) };
       }),
       ocr: { revision: review.revision, digest: review.digest,
         editing, ...(editing.state === "available" && run.lifecycle.state === "parked-gate" && String(run.lifecycle.gateId) === "approve-records"

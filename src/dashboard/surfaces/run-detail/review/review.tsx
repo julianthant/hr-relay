@@ -31,8 +31,13 @@ export function RunReview({ selection, focus }: { selection: LogSelection; focus
     {resource.feedback && <Banner tone="warning" title="Review changes">{resource.feedback}{resource.check && <Button size="sm" onClick={resource.check}>Check result</Button>}{resource.reload && <Button size="sm" onClick={resource.reload}>Discard local changes</Button>}</Banner>}
     <RecordReview runId={selection.row.runId} subject={selection.row.title} cards={cards.map(card => ({ ...card,
       disposition: resource.readOnly ? card.disposition : discarded ? { label: "Discarded", tone: "neutral" } : undefined }))} readOnly={resource.readOnly || discarded}
-      disabled={resource.disabled} actionsDisabled={resource.actionsDisabled} discarded={discarded} selectedCount={ready} focusId={focus?.recordId}
-      onEditField={resource.edit} onCommit={resource.flush} onChange={record => resource.include([{ id: record.id, selected: record.selected }])}
+      disabled={resource.disabled} actionsDisabled={resource.actionsDisabled} discarded={discarded} selectedCount={ready} focusId={focus?.recordId ?? resource.addedRecordId}
+      onEditField={resource.edit} onCommit={resource.flush} onChange={record => {
+        const current = cards.find(card => card.record.id === record.id)?.record;
+        if (record.manualEntry && current !== undefined && record.page !== current.page) resource.edit(record.id, "sourcePage", String(record.page));
+        else resource.include([{ id: record.id, selected: record.selected }]);
+      }}
+      onAdd={resource.readOnly ? undefined : resource.add}
       onApprove={review?.approval === undefined ? undefined : resource.approve}
       approvalError={ready !== selected?.length ? "Resolve the selected records before approval." : undefined}
       onDiscard={resource.readOnly ? undefined : () => resource.include(cards.filter(card => card.record.selected).map(card => ({ id: card.record.id, selected: false })), true)}
@@ -110,16 +115,22 @@ export function RecordReview({ runId, subject, cards, readOnly, discarded, selec
   const records = cards.map(card => card.record);
   const body = useRef<HTMLDivElement>(null);
   const focusId = useRef(records[0]?.id);
+  const addedFocus = useRef<string>(undefined);
   const focusRecord = (id: string | undefined, selector: string, preventScroll = false) => {
     const card = [...body.current?.querySelectorAll<HTMLElement>("[data-review-record-id]") ?? []].find(node => node.dataset.reviewRecordId === id);
     card?.querySelector<HTMLElement>(selector)?.focus({ preventScroll });
   };
   const focused = useRef<string>(undefined);
   useEffect(() => {
-    const id = requestedFocus ?? cards[0]?.record.id;
+    const added = addedFocus.current !== undefined && cards.some(card => card.record.id === addedFocus.current);
+    const id = added ? addedFocus.current : requestedFocus ?? cards[0]?.record.id;
     const owner = JSON.stringify([runId, id]);
-    if (focused.current === owner) return;
-    const frame = requestAnimationFrame(() => { focusRecord(id, "[data-ocr-review-heading]", requestedFocus === undefined); focused.current = owner; });
+    if (focused.current === owner && !added) return;
+    const frame = requestAnimationFrame(() => {
+      focusRecord(id, added ? 'input[name="employeeId"], input[name="employee.employeeId"], input[name="assertedEid"]' : "[data-ocr-review-heading]", requestedFocus === undefined);
+      focused.current = added ? JSON.stringify([runId, requestedFocus ?? id]) : owner;
+      if (added) addedFocus.current = undefined;
+    });
     return () => cancelAnimationFrame(frame);
   }, [runId, requestedFocus, cards]);
   return <section aria-label="OCR records" onBlurCapture={event => {
@@ -139,8 +150,9 @@ export function RecordReview({ runId, subject, cards, readOnly, discarded, selec
     {(onApprove || onDiscard) && !discarded && <footer className="flex shrink-0 flex-wrap items-center gap-3 border-t border-ui-stroke bg-ui-table px-3 py-3">
       {onApprove && <div className="min-w-0 flex-1 text-caption"><span className="text-ui-muted">{count} selected for approval</span>{approvalError && <p role="status" className="m-0 mt-1 text-ui-warning">{approvalError}</p>}</div>}
       <div className="ml-auto flex flex-wrap items-center gap-2">
-        {!readOnly && onAdd && records.length > 0 && <Button size="sm" icon={<Plus aria-hidden className="size-4" />} onClick={() => {
+        {!readOnly && onAdd && <Button size="sm" disabled={disabled || actionsDisabled} icon={<Plus aria-hidden className="size-4" />} onClick={() => {
           focusId.current = onAdd();
+          addedFocus.current = focusId.current || undefined;
           requestAnimationFrame(() => focusRecord(focusId.current, 'input[name="employeeId"]'));
         }}>Add record</Button>}
         {onDiscard && !discarded && <Button size="sm" disabled={disabled || actionsDisabled} onClick={() => {

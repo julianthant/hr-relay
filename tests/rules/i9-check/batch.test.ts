@@ -9,6 +9,9 @@ import { i9CheckMatchKey } from "../../../src/models/workflows/i9-check/input.js
 import { i9RetentionRow } from "../../../src/rules/i9-check/retention.js";
 import { i9ApprovedSource } from "../../support/fixtures/i9-check-start.js";
 import { i9Search } from "../../support/fixtures/i9-check.js";
+import { operatorOcrFields, operatorOcrRecordId, OcrApprovedSnapshotSchema } from "../../../src/models/ocr/review.js";
+import { OcrOperatorPagesSchema } from "../../../src/models/ocr/review-record.js";
+import { SubmittedRecordSchema } from "../../../src/models/ocr/extraction.js";
 
 function fixture() {
   const first = i9ApprovedSource(1, [{ eid: "10000001", kind: "i9-section1", dob: "01/15/2000" }, { eid: "10000001", kind: "i9-section2", hireDate: "06/01/2020" }]);
@@ -17,6 +20,32 @@ function fixture() {
   const selection = { state: "ready" as const, sources: [first.source, second.source] };
   return { request, selection, people: i9CheckApprovedPeople({ request, selection }) };
 }
+
+it("retains both approved section coordinates for one operator-added I-9 person without inventing extraction membership", () => {
+  const f = i9ApprovedSource(1, [{ eid: "10000001", kind: "i9-section1", dob: "01/15/2000" },
+    { eid: "10000001", kind: "i9-section2", hireDate: "06/01/2020" }]);
+  const [first, second] = f.source.snapshot.records;
+  if (first === undefined || second === undefined) throw new Error("Missing paired fixture");
+  const seed = { review: f.source.review, identities: [] }, commandId = "00000000-0000-4000-8000-000000000906";
+  const pages = OcrOperatorPagesSchema.parse([{ pageKind: "i9-section1", sourcePage: 1 }, { pageKind: "i9-section2", sourcePage: 2 }]);
+  const values = SubmittedRecordSchema.parse({ answers: Object.fromEntries(first.fields.answers.map(answer => {
+    const held = answer.state === "absent" && answer.reason === "not-on-form" ? second.fields.answers.find(other => other.path === answer.path) : answer;
+    if (held === undefined) throw new Error("Missing paired field");
+    return [held.path, held.state === "absent" ? { state: "absent", reason: held.reason } : { state: "read", raw: held.raw, confidence: held.confidence }];
+  })) }).answers;
+  const manual = { recordId: operatorOcrRecordId(seed, commandId), assertedEid: first.assertedEid, discarded: false,
+    fields: operatorOcrFields(seed, pages, values, f.source.snapshot.approvedAt),
+    provenance: { kind: "operator-added", commandId, createdAt: f.source.snapshot.approvedAt, pages } };
+  const snapshot = OcrApprovedSnapshotSchema.parse({ ...f.source.snapshot, selectedRecordIds: [manual.recordId], records: [manual] });
+  const request = I9CheckStartInput.parse({ documents: [f.requestDocument], asOf: "2026-11-01", reviewerName: "Example Reviewer" });
+  const people = i9CheckApprovedPeople({ request, selection: { state: "ready", sources: [{ ...f.source, snapshot }] } });
+  expect(f.source.review.records.some(record => record.recordId === manual.recordId)).toBe(false);
+  expect(people.people).toHaveLength(1);
+  expect(people.people[0].person).toMatchObject({ dob: "2000-01-15", hireDate: "2020-06-01", sourcePages: [1, 2] });
+  expect(people.people[0].sources.map(source => [source.recordId, source.sourcePage])).toEqual([[manual.recordId, 1], [manual.recordId, 2]]);
+  expect(() => i9CheckApprovedPeople({ request, selection: { state: "ready", sources: [{ ...f.source,
+    snapshot: { ...snapshot, records: [{ ...manual, provenance: undefined }] } }] } })).toThrow("ocr-review-record-source-missing");
+});
 function reference(f: ReturnType<typeof fixture>) {
   return WorkbookReferenceReadSchema.shape.reference.parse({ request: { typeId: "action-history", libraryId: "action-history", versionId: "earlier-version",
     keys: f.people.people.map(person => person.eid), fields: [...I9_CHECK_REFERENCE.fields] }, snapshot: { libraryId: "action-history", version: 8, versionId: "earlier-version", versionName: "Fall review",

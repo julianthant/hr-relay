@@ -18,6 +18,23 @@ import { redactValue } from "../../../src/rules/redaction/redaction.js";
 import { JsonValueSchema } from "../../../src/rules/validation/canonical-json.js";
 import { RecordedDataPointSchema } from "../../../src/rules/workflow/task-provenance.js";
 
+it("drops operator-added record identity, time and page bindings while admitting only the fixed provenance tag", () => {
+  const scopes: EvidenceValueScope[] = [{ kind: "task-output", taskId: TaskIdSchema.parse("ocr/read-approved-record") },
+    ...["emergency-contact-member", "emergency-contact-member-contact-plan", "emergency-contact-member-contact-preview"].map(id => ({
+      kind: "workflow-input" as const, workflowId: WorkflowIdSchema.parse(id),
+    }))];
+  for (const scope of scopes) {
+    for (const path of ["record.provenance.commandId", "record.provenance.createdAt", "record.provenance.pages"]) {
+      const declaration = classifyEvidenceLeaf(scope, path);
+      assert.equal(declaration.classification, "sensitive-hr"); assert.equal(declaration.transform, "drop");
+      assert.deepEqual(redactValue(declaration.classification, declaration.transform, "synthetic-private-provenance"),
+        { state: "redacted", classification: "sensitive-hr", transform: "drop" });
+    }
+    assert.equal(classifyEvidenceLeaf(scope, "record.provenance.kind").transform, "allow");
+    assert.throws(() => classifyEvidenceLeaf(scope, "record.provenance.unexpected"), /no declared evidence classification/u);
+  }
+});
+
 function schemaLeaves(schema: JSONSchema.JSONSchema | boolean, prefix = ""): readonly string[] {
   if (typeof schema === "boolean") throw new Error("OCR evidence requires an explicit schema");
   assert.equal(schema.$ref, undefined, "OCR evidence schemas must be inspected without unresolved references");
