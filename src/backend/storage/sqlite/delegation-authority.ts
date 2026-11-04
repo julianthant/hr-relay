@@ -131,6 +131,7 @@ function authenticateOriginalGroup(repositories: AuthorityRepositories, manifest
       || child.input.ingressSchemaHash !== invocation.target.inputSchemaHash || child.input.parsed.schemaHash !== invocation.target.canonicalInputSchemaHash
       || delegationChildInputFingerprint(child.input.parsed.value) !== planned.canonicalInputFingerprint) throw new Error("delegation-child-binding-mismatch");
     const requested = CanonicalCreateRunRequestSchema.parse(create.request);
+    if (manifest.revision !== undefined && requested.recovery !== "restart-from-start") throw new Error("delegation-revision-fresh-read-required");
     authenticateRunPriority(repositories, child, requested.priority, LOCAL_OPERATOR_ACTOR_ID);
     const creationFields = ["workflow", "descriptorVersion", "contractFingerprint", "operationDisplayCapability", "operationDisplaySnapshot",
       "configSnapshotId", "configFingerprint", "requestedInstance", "resolvedInstance", "shape", "dryRun", "browserMode",
