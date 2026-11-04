@@ -1,3 +1,6 @@
+import * as delegationAuthority from "../../../../src/backend/storage/sqlite/delegation-authority.js";
+import { DatabaseSync } from "node:sqlite";
+import { syntheticDatabasePath } from "../../../support/helpers/synthetic-database-admission.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { descriptorRuntimeNodes, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
@@ -6,7 +9,7 @@ import assert from "node:assert/strict";
 import { ERROR_CATALOG, ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { randomUUID } from "node:crypto";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
@@ -648,4 +651,64 @@ it("returns a typed refusal and rolls back parent recovery when a failed child i
   assert.deepEqual(f.modules.map(module => f.database.authority.runs.listByWorkflow(module.descriptor.id)), before);
   assert.deepEqual(f.database.authority.runs.listChildren(source.envelope.runId), children);
   assert.deepEqual(f.currentRoot(), source);
+});
+
+
+it("reuses native group authentication only within a current execution observation and refuses fresh mutation or tampering", async () => {
+  const f = await fixture("cascade");
+  assert.equal((await f.execution.step(f.root, world.SIGNAL)).outcome.state, "yielded-delegation");
+  const child = f.child(), owner = testWorkerLifetime(f.database, f.root.envelope.workflow, 1);
+  const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
+  const claimed = f.execution.lifecycle.claimNext({ commandId: randomUUID(), workflow: f.root.envelope.workflow,
+    workerId: owner.workerId, workerLifetime: owner.workerLifetime, runtimeConfig: { generation: runtime.generation,
+      settingsRevision: runtime.settingsRevision, settingsFingerprint: runtime.settingsFingerprint, configFingerprint: runtime.configFingerprint } });
+  assert.ok(claimed.state === "applied" && "run" in claimed);
+  assert.equal(claimed.run.envelope.runId, child.envelope.runId);
+  const request = { runId: child.envelope.runId, claim: { workerId: owner.workerId, claimGeneration: claimed.run.claimGeneration } };
+  const authenticate = vi.spyOn(delegationAuthority, "authenticateDelegationGroup");
+  try {
+    f.database.withAuthorityTransaction(() => {
+      f.database.assertCurrentExecution(request);
+      assert.equal(authenticate.mock.calls.length, 1);
+      f.database.assertCurrentExecution(request);
+      assert.equal(authenticate.mock.calls.length, 2);
+    });
+    authenticate.mockClear();
+    f.database.withAuthorityReadSnapshot(() => {
+      f.database.assertCurrentExecution(request);
+      f.database.assertCurrentExecution(request);
+      assert.equal(authenticate.mock.calls.length, 1);
+      const manifest = f.database.authority.delegationManifests.listByParentRun(f.root.envelope.runId)[0]; assert.ok(manifest);
+      const group = f.database.authority.dependencies.authenticateGroup(manifest);
+      group.children.splice(0);
+      assert.equal(f.database.authority.dependencies.authenticateGroup(manifest).children.length, 1);
+    });
+    authenticate.mockClear();
+    f.database.assertCurrentExecution(request);
+    f.database.assertCurrentExecution(request);
+    assert.equal(authenticate.mock.calls.length, 2);
+    assert.throws(() => f.database.assertCurrentExecution({ ...request, claim: { ...request.claim,
+      claimGeneration: request.claim.claimGeneration + 1 } }), /worker-execution-lost/u);
+    const rollback = new Error("rollback native observation mutation");
+    assert.throws(() => f.database.withAuthorityTransaction(() => {
+      f.database.assertCurrentExecution(request);
+      assert.equal(f.execution.kernel.execute(f.cancel()).state, "applied");
+      assert.throws(() => f.database.assertCurrentExecution(request), /worker-execution-lost/u);
+      throw rollback;
+    }), error => error === rollback);
+    assert.equal(f.currentRoot().cancelRequested, undefined);
+    f.database.assertCurrentExecution(request);
+    const invocation = f.database.authority.lifecycleJournal.listDelegationInvocations(f.root.envelope.runId)[0]; assert.ok(invocation);
+    const raw = new DatabaseSync(syntheticDatabasePath(f.database));
+    const digest = raw.prepare("SELECT request_digest FROM commands WHERE id=?").get(invocation.commandId)?.request_digest;
+    assert.ok(typeof digest === "string");
+    try {
+      raw.prepare("UPDATE commands SET request_digest=? WHERE id=?").run("0".repeat(64), invocation.commandId);
+      assert.throws(() => f.database.assertCurrentExecution(request), /command-row-identity-mismatch/u);
+    } finally {
+      raw.prepare("UPDATE commands SET request_digest=? WHERE id=?").run(digest, invocation.commandId);
+      raw.close();
+    }
+    f.database.assertCurrentExecution(request);
+  } finally { authenticate.mockRestore(); }
 });
