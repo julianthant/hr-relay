@@ -430,6 +430,14 @@ renderer. Archive and UI catalog requests show removal notices, with a guarded r
 
 ### General and ChatGPT account
 
+Storage includes one confirmed Clear run history action. Its served status counts terminal and
+active runs across all workflows and dates; any active run refuses the whole command. The command
+removes the terminal run forest, Logs and diagnostic attachments through journaled tombstones and
+resumable exact-file cleanup. Spreadsheets, settings, credentials, account data and write-safety
+records remain. An uncertain response retains its command ID; Check clear result replays only that
+command. The run picker omits delegated-only previews while Explorer retains their definitions.
+`createRunHistoryService` requires composition wiring before the Storage action is available.
+
 Every assistant mutation requires an explicit Confirm. Settings grants enable proposals and never authorize automatic changes. Retired permission modes cannot be selected or granted; their terminal history stays inert. A grant alone does not verify
 account capability. Browser dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
 draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
