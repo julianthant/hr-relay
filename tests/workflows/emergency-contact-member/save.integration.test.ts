@@ -44,7 +44,7 @@ const approved = EMERGENCY_CONTACT_MEMBER_EXAMPLE;
 const contact = approvedEmergencyContact(approved.record);
 const desired = contactEffect(contact);
 
-type FailurePoint = "pending" | "save-before" | "save-after" | "partial" | "primary-conflict" | "unreadable" | "mismatch" | "staged-readback" | "stale-readback" | "verifier" | "prepare" | "identity" | "drift" | "capture-before" | "capture-after" | "read" | "probe" | "capture-prepare";
+type FailurePoint = "pending" | "save-before" | "save-after" | "partial" | "primary-conflict" | "unreadable" | "mismatch" | "staged-readback" | "stale-readback" | "verifier" | "prepare" | "identity" | "drift" | "capture-before" | "capture-after" | "read" | "probe" | "capture-prepare" | "staged-page-drift";
 async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]; failure?: FailurePoint; priorWrite?: "attempting" | "parked"; interrupt?: boolean } = {}) {
   const browser = defineBrowserStore("ucpath", ucpathDriver, ucpathSession, { readContacts: readEmergencyContactsTask,
     stageContact: stageEmergencyContactTask, probeContact: probeEmergencyContactTask, verifyContact: verifyEmergencyContactTask, saveContact: saveEmergencyContactTask });
@@ -107,6 +107,9 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
     assert.equal(context.screenshot.state, "available");
     const port = ports.at(-1); assert.ok(port);
     const snapshot = await port.snapshot(); captures.push(snapshot);
+    if (options.failure === "staged-page-drift" && context.trigger.kind === "task-point" && context.trigger.boundary === "before-submit") {
+      await port.demotePrimary(1, desired);
+    }
     if (options.failure === "capture-prepare" && snapshot.observation === "staged" && context.trigger.kind === "task-point" && context.trigger.boundary === "step") throw new Error("fixture-prepare-capture-failed");
     if (options.failure === "capture-before" && context.trigger.kind === "task-point" && context.trigger.boundary === "before-submit") throw new Error("fixture-before-capture-failed");
     if (options.failure === "capture-after" && context.trigger.kind === "task-point" && context.trigger.boundary === "after-submit") throw new Error("fixture-after-capture-failed");
@@ -172,7 +175,7 @@ it("commits the declared primary demotion and addition once, then independently 
   const date = f.clock.now().toISOString().slice(0, 10);
   assert.equal(createTransactionHistory(f.database.authority).query({ from: date, to: date, runId: f.run.envelope.runId }).rows.length, 1);
 });
-for (const failure of ["pending", "save-before", "save-after", "partial", "primary-conflict", "unreadable", "mismatch", "staged-readback", "stale-readback", "verifier", "capture-after"] as const) it(`parks ${failure} after the fence without a forged output or retry`, async () => {
+for (const failure of ["staged-page-drift", "pending", "save-before", "save-after", "partial", "primary-conflict", "unreadable", "mismatch", "staged-readback", "stale-readback", "verifier", "capture-after"] as const) it(`parks ${failure} after the fence without a forged output or retry`, async () => {
   const f = await memberFixture({ failure });
   const intents = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
   assert.equal(intents.length, 1); assert.equal(intents[0]?.status, "parked");
@@ -182,14 +185,16 @@ for (const failure of ["pending", "save-before", "save-after", "partial", "prima
   if (failure === "partial") assert.equal(f.persistence.snapshot().rows.length, 1);
   if (failure === "primary-conflict") assert.deepEqual(f.persistence.snapshot().rows.map(row => row.primary), [true, true]);
   assert.equal(f.database.authority.runResults.get(f.run.envelope.runId), undefined);
+  const date = f.clock.now().toISOString().slice(0, 10);
+  assert.deepEqual(createTransactionHistory(f.database.authority).query({ from: date, to: date, runId: f.run.envelope.runId }).rows, []);
   assert.equal(f.database.authority.runCheckpoints.latest(f.run.envelope.workflow, f.run.envelope.itemId, "contact-preview"), undefined);
   const submissions = f.persistence.submissions.length;
-  assert.equal(submissions, failure === "save-before" || failure === "pending" ? 0 : 1);
+  assert.equal(submissions, failure === "staged-page-drift" || failure === "save-before" || failure === "pending" ? 0 : 1);
   const retry = f.execution.start(compiled.descriptor, { ...approved, record: { ...approved.record, recordId: `${"b".repeat(64)}#emergency-contact#2` } }, { dryRun: false });
   await f.execution.execute(retry, world.SIGNAL);
   assert.equal(f.persistence.submissions.length, submissions);
   assert.deepEqual(f.database.authority.writeIntents.listByRun(retry.envelope.runId), []);
-  if (failure === "save-after") assert.match(f.database.authority.failures.listByRun(retry.envelope.runId)[0]?.summary ?? "", /parked/u);
+  if (failure === "save-after" || failure === "staged-page-drift") assert.match(f.database.authority.failures.listByRun(retry.envelope.runId)[0]?.summary ?? "", /parked/u);
 });
 for (const failure of ["read", "probe", "prepare", "identity", "drift", "capture-prepare", "capture-before"] as const) it(`refuses ${failure} before the fence with zero Save and intents`, async () => {
   const f = await memberFixture({ failure });
