@@ -38,7 +38,9 @@ function evidenceId(title: string, state: string) {
 async function evidence(page: Page, info: TestInfo, state: string) {
   const id = evidenceId(info.title, state);
   await page.evaluate(() => document.fonts.ready);
-  await info.attach(`${id}.png`, { body: await page.screenshot({ animations: 'disabled' }), contentType: 'image/png' });
+  const path = info.outputPath(`${id}.png`);
+  await page.screenshot({ path, animations: 'disabled' });
+  await info.attach(`${id}.png`, { path, contentType: 'image/png' });
   await attachShellA11y(page, info, `${id}.a11y.yml`);
 }
 async function review(page: Page, fixture: WorkbookRowsFixture, dialog: Locator, info: TestInfo, capture: boolean, mode: 'new-hire' | 'rehire' = 'new-hire') {
