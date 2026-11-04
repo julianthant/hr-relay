@@ -30,7 +30,6 @@ export interface DraftDuoAttempt {
 export interface DraftDuoObservedContext {
   readonly contextId: string;
   readonly tabId: number;
-  readonly accountName: string;
   readonly origin: string;
   readonly rpId: string;
 }

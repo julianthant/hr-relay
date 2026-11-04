@@ -48,7 +48,7 @@ async function fixture() {
   const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot);
   mkdirSync(processLockRoot, { recursive: true, mode: 0o700 });
   const signUpFields = { firstName: "Synthetic", lastName: "Operator", email: "operator@ucsd.edu", password: "synthetic-password", createdAt: clock.now().toISOString() };
-  const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(() => signUpFields.email), admission: machine, clock, hostFacts: { primaryDisplay: null } });
+  const runtime = composeProfileRuntime({ onboardingDuo: syntheticOnboardingDuo(), admission: machine, clock, hostFacts: { primaryDisplay: null } });
   const active = await finishProfileOnboarding(runtime.session, runtime.session.signUp(signUpFields));
   assert.equal(active.state, "active"); if (active.state !== "active") throw new Error("signup required");
   const context = runtime.selectedContext(active.token), database = context.database;

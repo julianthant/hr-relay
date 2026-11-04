@@ -439,7 +439,7 @@ it("upgrades a pending sign-up database before onboarding recovery without publi
     }
     machine = acquireSharedRuntimeAdmission(f.workspace, lifetime);
     assert.equal(machine.readProfileRegistry().profiles.some(row => row.profileId === profileId), false);
-    runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts, onboardingDuo: syntheticOnboardingDuo(() => login.email) });
+    runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts, onboardingDuo: syntheticOnboardingDuo() });
     await runtime.session.recoverOnboarding();
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(f.stateRoot), false);
     const resumed = runtime.session.signUp({ ...login, firstName: "Fixture", lastName: "Example", createdAt: new Date().toISOString() });

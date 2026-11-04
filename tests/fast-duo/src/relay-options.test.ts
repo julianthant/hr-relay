@@ -14,25 +14,24 @@ it("renders the approved extension states and keeps card selection, guards and f
   const calls: string[] = [];
   vi.stubGlobal("chrome", { runtime: { sendMessage: async ({ type }: { type: string }) => {
     calls.push(type);
-    if (type === "RELAY_OPEN_PORTAL") await new Promise<void>(resolve => { release = resolve; });
+    if (type === "RELAY_START") await new Promise<void>(resolve => { release = resolve; });
     return { success: true, result: { relaySetup: true, profile } };
   } } });
   const cards = () => [...document.querySelectorAll<HTMLButtonElement>(".relay-method-card")];
-  const picker = () => document.querySelector<HTMLElement>("#transport")!;
-  const choices = () => [...picker().querySelectorAll<HTMLButtonElement>("button")];
+  const title = () => document.getElementById("editorTitle")?.textContent;
   try {
     await mountRelayOptions(profile);
     assert.deepEqual(cards().map(card => card.querySelector("strong")?.textContent), ["Security key", "Touch ID"]);
-    assert.deepEqual(choices().map(button => button.textContent), ["Security key", "Touch ID"]);
-    assert.equal(document.querySelector("select"), null);
+    assert.equal(document.querySelector("select"), null); assert.equal(document.getElementById("transport"), null);
+    assert.equal(title(), "Set up Security key");
     cards()[1].focus(); cards()[1].click();
-    assert.equal(picker().dataset.value, "internal"); assert.equal(cards()[1].getAttribute("aria-pressed"), "true");
+    assert.equal(cards()[1].getAttribute("aria-pressed"), "true"); assert.equal(title(), "Set up Touch ID");
     await vi.advanceTimersByTimeAsync(1000);
     assert.equal(document.activeElement, cards()[1]);
-    choices()[0].click();
+    cards()[0].click();
     assert.equal(cards()[0].getAttribute("aria-pressed"), "true");
-    document.querySelector<HTMLButtonElement>("#openLogin")!.click();
-    assert.ok(cards().every(card => card.disabled)); assert.ok(choices().every(button => button.disabled));
+    document.querySelector<HTMLButtonElement>("#primaryAction")!.click();
+    assert.ok(cards().every(card => card.disabled));
     assert.ok(release); release(); await Promise.resolve(); await Promise.resolve();
     await vi.advanceTimersByTimeAsync(0);
     assert.ok(cards().every(card => !card.disabled));
@@ -40,20 +39,19 @@ it("renders the approved extension states and keeps card selection, guards and f
       ["idle", "Not started", ["off", "off", "off"]],
       ["pending", "Pending", ["complete", "pending", "off"]],
       ["complete", "Completed", ["complete", "complete", "complete"]],
-      ["unknown", "Failed", ["complete", "failed", "off"]],
-      ["unavailable", "Failed", ["complete", "failed", "off"]],
+      ["unknown", "Not confirmed", ["complete", "failed", "off"]],
+      ["unavailable", "Unavailable", ["complete", "failed", "off"]],
     ] as const) {
       profile = { ...profile, methods: { key: { state }, touch: { state: "idle" } } };
       await vi.advanceTimersByTimeAsync(1000);
       assert.equal(cards()[0].querySelector(".relay-method-pill")?.textContent, label);
       assert.deepEqual([...cards()[0].querySelectorAll<HTMLElement>("ol li")].map(step => step.dataset.state), tones);
       assert.equal(document.getElementById("accountCount")?.textContent, `${state === "complete" ? 1 : 0} of 2 completed`);
-      assert.ok(choices().every(button => button.disabled === (state === "pending")));
-      assert.ok(cards().every(card => card.disabled === (state === "pending")));
+      assert.ok(cards().every(card => !card.disabled));
       assert.equal(cards()[0].querySelectorAll("svg").length, 2);
       if (state === "unknown" || state === "unavailable") {
         assert.match(cards()[0].textContent ?? "", /Not confirmed/);
-        assert.match(cards()[0].textContent ?? "", /do not repeat this attempt/);
+        assert.match(cards()[0].textContent ?? "", state === "unknown" ? /Check Duo, then start over/ : /Return to Relay to check setup/);
       }
     }
     assert.ok(calls.includes("STATE"));
@@ -77,24 +75,56 @@ for (const lateFailure of [false, true]) it(`keeps actions available during a st
     if (type === "STATE") return new Promise((resolve, reject) => {
       settle = () => lateFailure ? reject(new Error("synthetic obsolete state read")) : resolve({ success: true, result: { relaySetup: true, profile: initial } });
     });
-    assert.equal(type, "RELAY_START");
+    assert.ok(type === "RELAY_START" || type === "RELAY_OPEN_PORTAL");
     return { success: true, result: { relaySetup: true, profile: pending } };
   } } });
   try {
     await mountRelayOptions(initial);
     await vi.advanceTimersByTimeAsync(1000);
     assert.ok(settle);
-    const start = document.querySelector<HTMLButtonElement>("#startCapture")!;
+    const start = document.querySelector<HTMLButtonElement>("#primaryAction")!;
     assert.equal(start.disabled, false);
     start.click();
     await vi.advanceTimersByTimeAsync(0);
-    assert.deepEqual(calls, ["STATE", "RELAY_START"]);
+    assert.deepEqual(calls, ["STATE", "RELAY_START", "RELAY_OPEN_PORTAL"]);
     assert.equal(document.querySelector<HTMLButtonElement>("#cancelCapture")!.disabled, false);
     settle();
     await vi.advanceTimersByTimeAsync(0);
     assert.equal(document.querySelector<HTMLButtonElement>("#cancelCapture")!.disabled, false);
     assert.equal(document.querySelector<HTMLElement>('.relay-method-card[data-method="key"]')!.dataset.state, "pending");
     assert.equal(document.getElementById("message")!.hidden, true);
+  } finally {
+    window.dispatchEvent(new Event("pagehide"));
+    document.body.replaceChildren(); vi.unstubAllGlobals(); vi.useRealTimers();
+  }
+});
+
+it("a refused action leaves setup usable and an unconfirmed method can start over", async () => {
+  const { mountRelayOptions } = await import(pathToFileURL(resolve("fast-duo/src/relay-options.js")).href) as { mountRelayOptions(this: void, profile: unknown): Promise<void> };
+  vi.useFakeTimers();
+  document.body.innerHTML = readFileSync("fast-duo/src/options.html", "utf8");
+  const profile = { operationId: "synthetic-operation", profileId: "synthetic-profile",
+    methods: { key: { state: "unknown", attemptId: "synthetic-attempt" }, touch: { state: "idle" } } };
+  const calls: string[] = [];
+  vi.stubGlobal("chrome", { runtime: { sendMessage: async ({ type, method }: { type: string; method?: string }) => {
+    calls.push(method === undefined ? type : `${type}:${method}`);
+    if (type === "RELAY_START" && method === "touch") return { success: false };
+    return { success: true, result: { relaySetup: true, profile } };
+  } } });
+  const start = () => document.querySelector<HTMLButtonElement>("#primaryAction")!;
+  try {
+    await mountRelayOptions(profile);
+    assert.equal(start().hidden, false); assert.equal(start().disabled, false); assert.equal(start().textContent, "Start Security key over");
+    document.querySelector<HTMLButtonElement>('.relay-method-card[data-method="touch"]')!.click();
+    start().click();
+    await vi.advanceTimersByTimeAsync(0);
+    assert.equal(document.getElementById("message")!.hidden, false);
+    await vi.advanceTimersByTimeAsync(1000);
+    assert.equal(start().disabled, false); assert.equal(document.querySelector<HTMLButtonElement>("#returnRelay")!.disabled, false);
+    assert.equal(document.getElementById("editorTitle")!.textContent, "Set up Touch ID");
+    start().click();
+    await vi.advanceTimersByTimeAsync(0);
+    assert.deepEqual(calls.filter(call => call.startsWith("RELAY_START")), ["RELAY_START:touch", "RELAY_START:touch"]);
   } finally {
     window.dispatchEvent(new Event("pagehide"));
     document.body.replaceChildren(); vi.unstubAllGlobals(); vi.useRealTimers();
