@@ -36,9 +36,10 @@ async function fixture() {
   let failStep: string | undefined;
   let faultAt = 1, matchedSteps = 0;
   let fileFault = false;
+  let fileFaultAt = 1, removedFiles = 0;
   const open = () => AuthorityDatabase.open({ path: profile.path, busyTimeoutMs: 250, migrationOwner: "history-test" }, undefined, undefined, undefined, {
     afterDeleteStep: ({ step }) => { if (step === failStep && ++matchedSteps === faultAt) throw new Error("history-delete-fault"); },
-    afterDeletionFileRemoved: () => { if (fileFault) throw new Error("history-file-fault"); },
+    afterDeletionFileRemoved: () => { if (fileFault && ++removedFiles >= fileFaultAt) throw new Error("history-file-fault"); },
   });
   let database = open();
   cleanups.push(async () => { database.close(); await profile.close(); });
@@ -86,7 +87,7 @@ async function fixture() {
   };
   return { profile, get database() { return database; }, service, lifecycle, seed, diagnostic, ordinary, rows,
     get refreshed() { return refreshed; },
-    fault(step?: string, at = 1) { failStep = step; faultAt = at; matchedSteps = 0; }, fileFault(value: boolean) { fileFault = value; },
+    fault(step?: string, at = 1) { failStep = step; faultAt = at; matchedSteps = 0; }, fileFault(value: boolean, at = 1) { fileFault = value; fileFaultAt = at; removedFiles = 0; },
     reopen() { database.close(); database = open(); },
   };
 }
@@ -465,4 +466,21 @@ it("does not reuse completed removal metadata for a later file with identical co
   const later = f.seed(); const retained = await f.ordinary(later, replacement);
   expect(f.database.readManagedArtifactReferences()).toEqual([replacement]);
   f.reopen(); expect(existsSync(retained.file)).toBe(true); expect(f.database.readManagedArtifactReferences()).toEqual([replacement]);
+});
+
+it("settles a pending batch in one generation and retains all manifests after a later unlink fault", async () => {
+  const f = await fixture(), first = f.seed(UUID_3), second = f.seed(UUID_5);
+  const files = [await f.ordinary(first), await f.ordinary(second), await f.ordinary(second, undefined, "extra")];
+  expect(f.lifecycle().clearHistory(request())).toMatchObject({state: "cleared", deletedRuns: 2});
+  const manifests = f.rows("deleted_runs"), generation = f.database.getMeta().authorityGeneration;
+  f.fileFault(true, 2);
+  expect(() => f.database.resumeRunDeletionFiles()).toThrow("history-file-fault");
+  expect(f.database.getMeta().authorityGeneration).toBe(generation);
+  expect(f.rows("deleted_runs")).toEqual(manifests);
+  expect(files.filter(file => existsSync(file.file))).toHaveLength(1);
+  expect(f.database.readManagedArtifactReferences()).toEqual(files.filter(file => existsSync(file.file)).map(file => file.ref));
+  f.fileFault(false); f.reopen();
+  expect(f.database.getMeta().authorityGeneration).toBe(generation + 1);
+  expect(f.rows("deleted_runs").map(deletedRunFromRow).every(deletion => deletion.cleanupState === "complete")).toBe(true);
+  expect(files.every(file => !existsSync(file.file))).toBe(true);
 });

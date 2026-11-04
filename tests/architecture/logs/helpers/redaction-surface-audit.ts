@@ -33,6 +33,7 @@ import { CrossDateSearchPageSchema } from "../../../../src/models/dashboard/sear
 import { SettingsFactsWireSchema } from "../../../../src/models/dashboard/settings.js";
 import { EditableSettingsPathSchema, EditableSettingsWireSchema } from "../../../../src/models/dashboard/settings-editor.js";
 import { StorageDoctorWireSchema, StorageDoctorLatestWireSchema, ProtectedSettingsInspectionWireSchema } from "../../../../src/models/dashboard/storage.js";
+import { ClearRunHistoryRequestSchema, RunHistoryStatusSchema, ClearRunHistoryResultSchema } from "../../../../src/models/dashboard/run-history.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../src/models/dashboard/subscription.js";
 import { OperatorXlsxExportEvidenceSchema } from "../../../../src/models/dashboard/xlsx-export.js";
 import { RerunValuesResponseSchema } from "../../../../src/models/dashboard/rerun-values.js";
@@ -785,6 +786,9 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
 
   { id: "wire/capture-pointer", egress: "operator-loopback", module: "src/models/dashboard/artifacts.ts", schema: CapturePointerWireSchema },
   { id: "wire/storage-doctor", egress: "operator-loopback", module: "src/models/dashboard/storage.ts", schema: StorageDoctorWireSchema },
+  { id: "request/clear-run-history", egress: "operator-loopback", module: "src/models/dashboard/run-history.ts", schema: ClearRunHistoryRequestSchema },
+  { id: "wire/run-history-status", egress: "operator-loopback", module: "src/models/dashboard/run-history.ts", schema: RunHistoryStatusSchema },
+  { id: "wire/clear-run-history-result", egress: "operator-loopback", module: "src/models/dashboard/run-history.ts", schema: ClearRunHistoryResultSchema },
   { id: "wire/storage-doctor-latest", egress: "operator-loopback", module: "src/models/dashboard/storage.ts", schema: StorageDoctorLatestWireSchema },
   { id: "wire/settings-facts", egress: "operator-loopback", module: "src/models/dashboard/settings.ts", schema: SettingsFactsWireSchema },
   { id: "wire/editable-settings", egress: "operator-loopback", module: "src/models/dashboard/settings-editor.ts", schema: EditableSettingsWireSchema },
@@ -2204,6 +2208,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/models/dashboard/failure-display.ts", state: "audited", reason: "Repository-authored failure title and observation are embedded in run detail and archived failure values." },
     { module: "src/models/dashboard/run-logs-subscription.ts", state: "audited", reason: "Composite loopback stream embeds the dashboard envelope and confirmed action events with exact run and transport identities." },
     { module: "src/models/dashboard/actions.ts", state: "audited", reason: "the action descriptor and its confirmation copy ride the queue row" },
+    { module: "src/models/dashboard/run-history.ts", state: "audited", reason: "Loopback request/status/result surfaces carry UUID command identity, nonnegative counts and closed states/refusals; no HR text or protected values." },
     { module: "src/models/dashboard/application-lifecycle.ts", state: "audited", reason: "the queue projection embeds only closed application/update states, runtime generation and opaque run/version targets; no free text or HR values" },
     { module: "src/models/dashboard/activity-population.ts", state: "audited", reason: "Loopback Analytics population, selected browse and CSV export retain captured run titles, operator-authored query text and nested report origins under exact snapshot identity." },
     { module: "src/models/dashboard/activity-volume.ts", state: "audited", reason: "the Activity report embeds validated host-zone boundaries calculated from selected dates" },

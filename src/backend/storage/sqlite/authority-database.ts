@@ -3679,44 +3679,54 @@ export class AuthorityDatabase implements Disposable {
     this.#admission.assertWritable();
     const pending = this.#database.prepare("SELECT * FROM deleted_runs WHERE cleanup_state='pending' ORDER BY deleted_at,run_id").all()
       .map(row=>deletedRunFromRow(row).receipt);
-    for (const receipt of pending) this.settleRunDeletionFiles({runId:receipt.runId,commandId:receipt.commandId});
-    return pending.length;
+    return this.#settleCommittedRunDeletionFiles(pending.map(receipt => ({runId:receipt.runId,commandId:receipt.commandId})));
   }
 
   settleRunDeletionFiles(input: unknown): "complete" {
     const request = z.strictObject({runId:RunIdSchema,commandId:CommandIdSchema}).parse(input);
+    this.#settleCommittedRunDeletionFiles([request]);
+    return "complete";
+  }
+
+  #settleCommittedRunDeletionFiles(requests: readonly Readonly<{runId:string;commandId:string}>[]): number {
     if (this.#transactionDepth !== 0) throw new Error("run-deletion-cleanup-requires-committed-receipt");
     this.#admission.assertWritable();
+    if (requests.length === 0) return 0;
     return this.#authorityWrite("deleted_runs",()=>{
-      const raw = this.#database.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(request.runId);
-      if (raw === undefined) throw new Error("run-deletion-cleanup-receipt-missing");
-      const deletion = deletedRunFromRow(raw);
-      if (deletion.receipt.commandId !== request.commandId) throw new Error("run-deletion-cleanup-command-mismatch");
-      const commandRaw = this.#database.prepare("SELECT * FROM commands WHERE id=?").get(request.commandId);
-      if (commandRaw === undefined) throw new Error("run-deletion-cleanup-command-missing");
-      const command = commandFromRow(commandRaw);
-      const auditRows = this.#database.prepare("SELECT * FROM command_audits WHERE command_id=?").all(request.commandId);
-      if (auditRows.length !== 1) throw new Error("run-deletion-cleanup-audit-missing");
-      const audit = NativeCommandAuditSchema.parse(nativeOrdinaryRecordFromRow("command_audits",auditRows[0]));
-      if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
-        || z.object({state:z.literal("succeeded"),outcome_json:z.string()}).parse(commandRaw).outcome_json !== canonicalJsonStringify(audit)
-        || !settledRunDeletionIds(audit)?.includes(request.runId)) throw new Error("run-deletion-cleanup-settlement-mismatch");
-      if (deletion.cleanupState === "complete") return {result:"complete" as const,changes:0};
-      validateAuthorityRecordSchemas(this.#database);
-      for (const file of deletion.files.filter(file=>file.disposition === "remove")) {
-        for (const table of AuthorityTableNameSchema.options.filter(table=>table !== "deleted_runs")) {
-          for (const row of this.#database.prepare(`SELECT * FROM ${table}`).iterate()) {
-            for (const value of deletionArtifactValues(this.#database, table, row)) {
-              if (containsDeletionArtifactReference(value, file.ref)) throw new Error("run-deletion-cleanup-file-still-referenced");
+      const deletions = requests.map(request => {
+        const raw = this.#database.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(request.runId);
+        if (raw === undefined) throw new Error("run-deletion-cleanup-receipt-missing");
+        const deletion = deletedRunFromRow(raw);
+        if (deletion.receipt.commandId !== request.commandId) throw new Error("run-deletion-cleanup-command-mismatch");
+        const commandRaw = this.#database.prepare("SELECT * FROM commands WHERE id=?").get(request.commandId);
+        if (commandRaw === undefined) throw new Error("run-deletion-cleanup-command-missing");
+        const command = commandFromRow(commandRaw);
+        const auditRows = this.#database.prepare("SELECT * FROM command_audits WHERE command_id=?").all(request.commandId);
+        if (auditRows.length !== 1) throw new Error("run-deletion-cleanup-audit-missing");
+        const audit = NativeCommandAuditSchema.parse(nativeOrdinaryRecordFromRow("command_audits",auditRows[0]));
+        if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+          || z.object({state:z.literal("succeeded"),outcome_json:z.string()}).parse(commandRaw).outcome_json !== canonicalJsonStringify(audit)
+          || !settledRunDeletionIds(audit)?.includes(request.runId)) throw new Error("run-deletion-cleanup-settlement-mismatch");
+        return deletion;
+      });
+      const pending = deletions.filter(deletion => deletion.cleanupState === "pending");
+      if (pending.length > 0) validateAuthorityRecordSchemas(this.#database);
+      for (const deletion of pending) {
+        for (const file of deletion.files.filter(file=>file.disposition === "remove")) {
+          for (const table of AuthorityTableNameSchema.options.filter(table=>table !== "deleted_runs")) {
+            for (const row of this.#database.prepare(`SELECT * FROM ${table}`).iterate()) {
+              for (const value of deletionArtifactValues(this.#database, table, row)) {
+                if (containsDeletionArtifactReference(value, file.ref)) throw new Error("run-deletion-cleanup-file-still-referenced");
+              }
             }
           }
+          removeArtifactDeletionFile(this.#admission,file);
+          this.#lifecycleHooks?.afterDeletionFileRemoved?.({runId:deletion.receipt.runId,digest:file.ref.sha256});
         }
-        removeArtifactDeletionFile(this.#admission,file);
-        this.#lifecycleHooks?.afterDeletionFileRemoved?.({runId:request.runId,digest:file.ref.sha256});
+        const changed = this.#database.prepare("UPDATE deleted_runs SET cleanup_state='complete' WHERE run_id=? AND cleanup_state='pending'").run(deletion.receipt.runId);
+        if (sqliteChanges(changed.changes) !== 1) throw new Error("run-deletion-cleanup-cas-lost");
       }
-      const changed = this.#database.prepare("UPDATE deleted_runs SET cleanup_state='complete' WHERE run_id=? AND cleanup_state='pending'").run(request.runId);
-      if (sqliteChanges(changed.changes) !== 1) throw new Error("run-deletion-cleanup-cas-lost");
-      return {result:"complete" as const,changes:1};
+      return {result:deletions.length,changes:pending.length};
     });
   }
 
