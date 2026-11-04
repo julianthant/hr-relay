@@ -34,6 +34,8 @@ test.describe("start-run picker hierarchy", () => {
         const picker = page.getByRole("navigation", { name: "Workflow" });
         await expect(picker.getByRole("button", { name: "Separations", exact: true })).toBeVisible();
         await expect(picker.getByRole("button", { name: "Person Lookup", exact: true })).toBeVisible();
+        await expect(picker.getByRole("button", { name: "I-9 Lookup", exact: true })).toHaveCount(0);
+        await expect(picker.getByRole("button", { name: "SharePoint Download", exact: true })).toHaveCount(0);
         await expect(page.getByRole("button", { name: /not startable/u })).toHaveCount(0);
         await expect(page.getByTitle("A proving harness of separations — a step of that workflow, not a workflow of its own")).toHaveCount(0);
 
