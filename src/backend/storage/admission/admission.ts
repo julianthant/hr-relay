@@ -615,6 +615,17 @@ export class RuntimeAdmission {
       || operation.onboarding?.accountId !== signup.accountId || operation.onboarding.generation !== signup.providerGeneration) throw new Error("browser-registry-signup-unavailable");
     return operation;
   }
+  hasCapturedAuthorityRestore(): boolean {
+    this.assertLive();
+    return this.#automaticRestore !== undefined && (this.#scope === "profile-restore" || this.#scope === "profile-maintenance");
+  }
+  assertAutomaticRestoreBrowserRegistry(): void {
+    this.assertLive();
+    if ((this.#scope !== "profile-restore" && this.#scope !== "profile-maintenance") || this.#automaticRestore === undefined) throw new Error("profile-restore-browser-custody-required");
+    const operation = this.maintenanceOperation();
+    this.assertOfflineMaintenance(operation);
+    this.assertAuthorityRestoreCurrent(this.#automaticRestore, operation);
+  }
   assertBrowserRegistryMaintenance(): OfflineMaintenanceOperation {
     const operation = this.maintenanceOperation();
     this.assertOfflineMaintenance(operation);

@@ -323,7 +323,10 @@ Recovery accepts only the recorded probe phase or move prefix;
 collisions, substitutions and unknown siblings refuse. Ordinary readers accept schema 2 only. The
 existing Windows layout-migration custody refusal still applies; fresh installations write schema 2. Captured predecessor account-deletion and machine-control upgrade journals
 finish under stopped custody with their original browser documents, paths and file/stage witnesses;
-standalone conversion waits for that owner to finish. New captures and ordinary readers stay current-only.
+standalone conversion waits for that owner to finish. A captured automatic restore also finishes first:
+its exact stopped operation retains the original registry format, paths and browser membership proof
+through native closure and authority settlement. Its finite browser port expires with that journal;
+conversion follows settlement. New captures and ordinary readers stay current-only.
 Unknown registry publication stages hold before conversion effects. Account deletion refuses retained
 browser-root archives containing that person, preserving shared verified bytes and other people.
 

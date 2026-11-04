@@ -16,7 +16,7 @@ import { type RuntimeAdmission } from "../admission/admission.js";
 import type { InstallationLease } from "../admission/installation.js";
 import { offlineMaintenanceWorkspace,type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
-import { createBrowserRoots } from "../browser-roots.js";
+import { createAutomaticRestoreBrowserRoots, createBrowserRoots } from "../browser-roots.js";
 import { CredentialLockRecordSchema,readPrivateFile } from "../configuration/credential-safe-file.js";
 import { privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError,hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
@@ -73,11 +73,15 @@ export async function probeStoppedProfileBrowsersClosed(admission: RuntimeAdmiss
   admission.assertLive();
 }
 
+function inventoryBrowserRoots(admission: RuntimeAdmission) {
+  return admission.hasCapturedAuthorityRestore() ? createAutomaticRestoreBrowserRoots(admission) : createBrowserRoots(admission);
+}
+
 function registryMembership(admission: RuntimeAdmission): BrowserRegistryMembership | undefined {
   if (!admission.hasCurrentBrowserRegistry()) return undefined;
   const binding = admission.captureBrowserRegistryContext();
   if (binding.profileId === null) throw new Error('profile-inventory-browser-membership-unavailable');
-  return { machineRoot: binding.machineRoot, profileId: binding.profileId, roots: createBrowserRoots(admission).inventory().roots };
+  return { machineRoot: binding.machineRoot, profileId: binding.profileId, roots: inventoryBrowserRoots(admission).inventory().roots };
 }
 
 function stoppedBrowserProfiles(admission: RuntimeAdmission, custody: BrowserProfileCustody, savedBrowserRoot: string,
@@ -86,7 +90,7 @@ function stoppedBrowserProfiles(admission: RuntimeAdmission, custody: BrowserPro
   const profiles = retainedBrowserProfiles(admission.stateRoot, custody, savedBrowserRoot, browserClosure, registry);
   if (!admission.preservesUnfinishedProfileState() || registry === undefined) return profiles;
   const binding = admission.captureBrowserRegistryContext();
-  for (const row of createBrowserRoots(admission).inventory().roots) {
+  for (const row of inventoryBrowserRoots(admission).inventory().roots) {
     if (row.profileId !== binding.profileId || row.owner.kind !== "signup") continue;
     const file = readPrivateFile(join(binding.machineRoot, "machine", "operations", `${row.owner.operationId}.json`), { label: "lock", maxBytes: 1_048_576 });
     if (file === undefined) throw new Error("profile-inventory-browser-membership-unavailable");
@@ -181,7 +185,7 @@ function stoppedBackupBrowserCensus(admission: RuntimeAdmission, operation: Offl
   try {
     const { custody, config } = stoppedBrowserFacts(admission, clock, processLockRoot);
     const retained = stoppedBrowserProfiles(admission, custody, config.paths.browserProfileRoot, layout);
-    const binding = admission.captureBrowserRegistryContext(), rows = createBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
+    const binding = admission.captureBrowserRegistryContext(), rows = inventoryBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
     if (rows.some(row => row.launch.state !== "closed" || row.native !== undefined)) throw new StorageBackupClosureUnprovedError();
     let physical: ReturnType<typeof restoreBrowserCensus>;
     try { physical = restoreBrowserCensus(admission, "browser-roots"); }
@@ -282,7 +286,7 @@ function unreadableRestoreSqlite(error: unknown): boolean {
 
 function restoreBrowserCensus(admission: RuntimeAdmission, scope: "browser-roots" | "profile-root") {
   const binding = admission.captureBrowserRegistryContext();
-  const rows = createBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
+  const rows = inventoryBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
   const roots = [...new Set([join(admission.stateRoot, "browsers"), ...rows.map(row => join(binding.machineRoot, row.profileRoot))])];
   const identities: Array<{ path: string; device: number | string; inode: number | string; mode: number; owner: number }> = [];
   const profiles: RetainedBrowserProfile[] = [];

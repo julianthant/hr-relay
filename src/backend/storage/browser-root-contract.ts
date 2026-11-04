@@ -79,3 +79,4 @@ export function parseStoppedBrowserRootUpgradeSource(value: unknown) {
 }
 
 export type StoppedBrowserRootsDocument = ReturnType<typeof parseStoppedBrowserRootUpgradeSource>;
+export type StoppedBrowserRoot = StoppedBrowserRootsDocument["roots"][number];

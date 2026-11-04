@@ -1270,7 +1270,7 @@ function upgradeRestoreControl(control: string, locator: RuntimeLocator): void {
   unlinkSync(intentPath); fsyncPath(control);
 }
 
-function preflightProfileFormats(control: string, workspace: string, stoppedForward: boolean): void {
+function preflightProfileFormats(control: string, workspace: string, stoppedForward: boolean, restoreOperationId?: string): void {
   if (!lstatMaybe(join(control, "installation.json"))) return;
   const locator = rawLocator(control, workspace), machine = join(locator.stateRoot, "machine");
   const completed = join(control, "flat-start-clean-complete.json");
@@ -1298,11 +1298,15 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
         cause: new Error(version.phase === "complete" ? "profile-control-upgrade-legacy-logout-completion-unproved" : "profile-control-upgrade-legacy-logout-epoch-unproved") });
     }
   }
+  if (restoreOperationId !== undefined) {
+    const pending = readProfileEvidence(join(control, "journal.json"), JournalSchema);
+    if (pending.phase !== "restoring" || pending.restore.operationId !== restoreOperationId || pending.installationId !== locator.installationId) fail("profile-restore-context-unavailable");
+  }
   if (stoppedForward) upgradeRestoreControl(control, locator);
   const marker = readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
   if (marker.schemaVersion === 8) {
     if (!stoppedForward && lstatMaybe(join(control, "browser-root-upgrade.json"))) fail("browser-root-upgrade-pending");
-    const browsers = stoppedForward ? parseStoppedBrowserRootUpgradeSource(readProfileEvidence(join(machine, "browser-roots.json"), z.unknown()))
+    const browsers = stoppedForward || restoreOperationId !== undefined ? parseStoppedBrowserRootUpgradeSource(readProfileEvidence(join(machine, "browser-roots.json"), z.unknown()))
       : readProfileEvidence(join(machine, "browser-roots.json"), BrowserRootsSchema);
     if (browsers.installationId !== locator.installationId) fail("browser-registry-installation-mismatch");
   }
@@ -1379,7 +1383,11 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (options.offlineOperation === undefined || !(lifetime instanceof RuntimeLifetimeLock)) fail("offline-maintenance-exclusive-root-required");
     lifetime.assertOfflineMaintenance(options.offlineOperation, workspace);
   }
-  try { preflightProfileFormats(join(workspace, CONTROL), workspace, options?.stoppedControlForward === true); }
+  if (options?.recoverAuthorityRestore !== undefined) {
+    if (!(lifetime instanceof RuntimeLifetimeLock) || mode !== "exclusive" || options.offlineOperation !== options.recoverAuthorityRestore.restoreAdmission) fail("offline-maintenance-exclusive-root-required");
+    lifetime.assertOfflineMaintenance(options.recoverAuthorityRestore.restoreAdmission, workspace);
+  }
+  try { preflightProfileFormats(join(workspace, CONTROL), workspace, options?.stoppedControlForward === true, options?.recoverAuthorityRestore?.operationId); }
   catch (error) { lifetime.retainSourceClosure(error); throw error; }
   if (lifetime instanceof RuntimeLifetimeLock) lifetime.initializeWorkspace(workspace, () => {
     lifetime.assertStartupWorkspace(workspace);

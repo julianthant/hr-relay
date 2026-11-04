@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, win32 } from "node:path";
 import { it } from "vitest";
 import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
-import { createBrowserRoots } from "../../../src/backend/storage/browser-roots.js";
+import { createAutomaticRestoreBrowserRoots, createBrowserRoots } from "../../../src/backend/storage/browser-roots.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { seedRegisteredSignupBrowser } from "../../support/helpers/browser/browser-roots.js";
 
@@ -18,6 +18,19 @@ async function signupFixture() {
     owner: { kind: "signup" as const, operationId: operation.operationId, accountId: operation.onboarding.accountId, providerGeneration: operation.onboarding.generation } };
   return { f, path, operation, request, roots: createBrowserRoots(f.machine) };
 }
+
+it("refuses predecessor browser access without an exact captured restore even under stopped custody", async () => {
+  const f = await createBoundProfileFixture();
+  const path = join(f.machine.stateRoot, "machine", "browser-roots.json"), before = readFileSync(path);
+  const operation = f.admission.acquireOfflineMaintenance(), stopped = f.admission.forStoppedMaintenance(operation);
+  try {
+    for (const admission of [f.machine, f.admission, stopped]) {
+      assert.equal(admission.hasCapturedAuthorityRestore(), false);
+      assert.throws(() => createAutomaticRestoreBrowserRoots(admission), /profile-restore-browser-custody-required/u);
+      assert.deepEqual(readFileSync(path), before);
+    }
+  } finally { stopped.release(); operation.release(); await f.close(); }
+});
 
 it("keeps the same handle on a later launch and allocates a distinct handle for the next provider generation", async () => {
   const w = await signupFixture();
