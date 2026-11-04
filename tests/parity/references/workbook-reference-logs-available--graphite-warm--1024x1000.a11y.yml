@@ -1,7 +1,7 @@
 # workbook-reference-logs-available--graphite-warm--1024x1000
 # adapter: fixture
 # fixture: workbook-reference-logs.spec.ts:ordered roster reference Logs dark 1024
-# descriptorHash: d54c409455939aa7d046e353f07b46616d3d3b2dbf867a1f7de2331bc19a8623
+# descriptorHash: a3c57a74ddfacc9df80bd6eab3ab002e4300b39615559a903e0a23acad1cf95d
 # appVersion: 0.1.0
 # viewport: 1024x1000  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
