@@ -43,7 +43,7 @@ export const OcrReviewRevisionSchema = z.strictObject({
     || record.seed.review.sourceRunId !== undefined && record.seed.review.sourceRunId !== record.sourceRunId
     || record.records.length !== record.seed.review.records.length
     || record.records.some((entry, index) => entry.recordId !== record.seed.review.records[index]?.recordId)
-    || (record.revision === 1) !== (record.origin.kind === "checkpoint")) {
+    || record.revision === 1 && record.origin.kind !== "checkpoint") {
     context.addIssue({ code: "custom", message: "OCR revision must retain its exact run, seed and record membership" });
   }
   for (const entry of record.records) {
@@ -65,6 +65,35 @@ export const OcrReviewRevisionSchema = z.strictObject({
   }
 });
 export type OcrReviewRevision = z.infer<typeof OcrReviewRevisionSchema>;
+export const OcrReviewChangeSchema = z.strictObject({ sourcePage: PositiveIntSchema, revision: PositiveIntSchema });
+
+function recordEvidence(seed: OcrReviewRevision["seed"], recordId: OcrReviewRevision["records"][number]["recordId"]) {
+  const record = seed.review.records.find(record => record.recordId === recordId);
+  if (record === undefined) return null;
+  const { issues: _issues, ...facts } = record;
+  return { formType: seed.review.formType, record: facts,
+    identities: seed.identities.filter(identity => identity.recordIds.includes(recordId)).map(({ recordIds: _recordIds, ...identity }) => identity) };
+}
+
+export function rebuildOcrReviewRecords(seed: OcrReviewRevision["seed"], previous?: Pick<OcrReviewRevision, "seed" | "records" | "revision">) {
+  const initial = initialOcrReviewRecords(seed);
+  const unchanged = new Set<string>();
+  const previousInitial = previous === undefined ? [] : initialOcrReviewRecords(previous.seed);
+  return { records: initial.map(record => {
+    const prior = previous?.records.find(prior => prior.recordId === record.recordId);
+    if (previous === undefined || prior === undefined || canonicalJsonStringify(recordEvidence(previous.seed, record.recordId))
+      !== canonicalJsonStringify(recordEvidence(seed, record.recordId))) return record;
+    unchanged.add(record.recordId);
+    return prior;
+  }),
+    invalidatedCorrections: previous?.records.flatMap(record => {
+      if (unchanged.has(record.recordId) || canonicalJsonStringify(record) === canonicalJsonStringify(previousInitial.find(prior => prior.recordId === record.recordId))) return [];
+      const source = previous.seed.review.records.find(source => source.recordId === record.recordId);
+      if (source === undefined) throw new Error("ocr-review-record-source-missing");
+      return [{ recordId: record.recordId, sourcePage: source.sourcePage, revision: previous.revision + 1 }];
+    }) ?? [] };
+}
+
 export function ocrReviewDigest(revision: OcrReviewRevision): string {
   return sha256Hex(`relay:ocr-review:v1\0${canonicalJsonStringify(OcrReviewRevisionSchema.parse(revision))}`);
 }
