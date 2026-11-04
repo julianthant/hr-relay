@@ -710,6 +710,8 @@ version, fingerprints, schema hash, and payload. A mismatch refuses rather than 
 plausible output with an equal schema. `src/backend/storage/sqlite/migrations.ts` makes checkpoint
 updates and replacement inserts illegal and permits deletion only with the owning deleted-run
 tombstone. Event-stream retention does not delete checkpoint authority.
+It also retains original `gate.resolved` events after terminal settlement: delegation root
+authentication binds a resumed run to that exact native event, command and gate result.
 
 A successful terminal result is separate authority. `src/backend/runs/lifecycle/run-result.ts`,
 `terminal-authorization.ts`, and the descriptor's terminal-result factory bind the derive to exact
