@@ -93,10 +93,10 @@ li div, .intro { overflow-wrap: anywhere; }
 </section>
 <section>
 <h2>Dashboard ready</h2>
-<p class="intro">Complete these in order.</p>
+<p class="intro">Complete these in order on the Mac.</p>
 <div class="counts" aria-label="Status counts"><span class="count done">done <strong>11</strong></span>
-<span class="count now">now <strong>7</strong></span>
-<span class="count next">next <strong>3</strong></span>
+<span class="count now">now <strong>6</strong></span>
+<span class="count next">next <strong>2</strong></span>
 <span class="count later">later <strong>0</strong></span></div>
 <ul><li>
 <span class="pill done">done</span>
@@ -120,7 +120,7 @@ li div, .intro { overflow-wrap: anywhere; }
 </li>
 <li>
 <span class="pill now">now</span>
-<div><strong class="name">OCR and Emergency Contact</strong><p class="description">dry-run preview and fake-driver Save are proven; finish review retry and per-person rows, then capture live selectors and wire production Save.</p></div>
+<div><strong class="name">OCR and Emergency Contact</strong><p class="description">dry-run preview and fake-driver Save are proven and live selectors are captured; finish the selector fixes, Add record, review retry and per-person rows, then wire production Save.</p></div>
 </li>
 <li>
 <span class="pill done">done</span>
@@ -160,19 +160,11 @@ li div, .intro { overflow-wrap: anywhere; }
 </li>
 <li>
 <span class="pill now">now</span>
-<div><strong class="name">Duo enrollment</strong><p class="description">verify sign-up capture and cancellation at duo.ucsd.edu.</p></div>
+<div><strong class="name">Duo enrollment</strong><p class="description">show Duo&#39;s real error codes and verify sign-up capture and cancellation on the Mac at duo.ucsd.edu.</p></div>
 </li>
 <li>
 <span class="pill next">next</span>
 <div><strong class="name">Operator preview</strong><p class="description">complete the full test pass and verify automatic backup and self-repair before preview.</p></div>
-</li>
-<li>
-<span class="pill now">now</span>
-<div><strong class="name">Windows support</strong><p class="description">run the local web app through `relay.cmd` on a restricted Windows laptop without admin rights. Keep Windows file identities exact and stop cleanly with a dashboard tab open.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Encryption at rest</strong><p class="description">protect Relay&#39;s sensitive data on an unencrypted Windows disk.</p></div>
 </li>
 <li>
 <span class="pill now">now</span>
@@ -181,6 +173,26 @@ li div, .intro { overflow-wrap: anywhere; }
 <li>
 <span class="pill next">next</span>
 <div><strong class="name">Workflow sign-off</strong><p class="description">Person Lookup live read and sign-off, then Separations dry run and sign-off, then OCR to Emergency Contact sign-off after production Save and live selector support, then real runs.</p></div>
+</li></ul>
+</section>
+<section>
+<h2>Windows, after the Mac is signed off</h2>
+
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>0</strong></span>
+<span class="count now">now <strong>0</strong></span>
+<span class="count next">next <strong>3</strong></span>
+<span class="count later">later <strong>0</strong></span></div>
+<ul><li>
+<span class="pill next">next</span>
+<div><strong class="name">Windows support</strong><p class="description">run the local web app through `relay.cmd` on a restricted Windows laptop without admin rights. Keep Windows file identities exact, fix security-key enrollment, stop cleanly after a Duo attempt, keep setup and start usable at laptop limits, and pass the Windows-native custody tests on the PC.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Prebuilt Windows bundle</strong><p class="description">ship a zip with Node, Chromium and dependencies by USB or GitHub Release, with always-on code-only logs and `relay.cmd diagnose`; never clone, install or run tests on the laptop. Then bundle the backend with esbuild.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Encryption at rest</strong><p class="description">protect Relay&#39;s sensitive data on an unencrypted Windows disk.</p></div>
 </li></ul>
 </section>
 <section>
@@ -200,7 +212,7 @@ li div, .intro { overflow-wrap: anywhere; }
 </li>
 <li>
 <span class="pill later">later</span>
-<div><strong class="name">Parked work</strong><p class="description">re-judge schema baseline, one UI library and bundled backend against the new core.</p></div>
+<div><strong class="name">Parked work</strong><p class="description">re-judge schema baseline and one UI library against the new core.</p></div>
 </li>
 <li>
 <span class="pill later">later</span>
