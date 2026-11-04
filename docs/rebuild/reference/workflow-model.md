@@ -511,8 +511,11 @@ member attempts and settlement versions. Removed members retain their original c
 A rebuilt review checkpoint receives a new binding even when its lookup inputs are identical.
 
 Reuse requires the same canonical input, explicit individual source-record set, target contract,
-configuration and fresh authenticated observations. Otherwise admission creates a new read. It
-never retries a successful write or changes an earlier manifest. A ready parent can accept another
+configuration and fresh authenticated observations. Otherwise admission creates a new read,
+bound to fresh execution and checkpoints owned by that child. Complete accepted retry membership
+derives from native admission and extension journals through the owner's recorded version;
+an omitted extension refuses authentication and settlement. Refresh never retries a successful
+write or changes an earlier manifest. A ready parent can accept another
 retry cohort before being claimed; an executing refresh refuses a concurrent child retry.
 
 ### 3.3 Conditions

@@ -220,6 +220,7 @@ type RunLifecycleJournalRepository = Readonly<{
   findGatePark(runId: string, gateId: string, throughVersion: number): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   findCancellation(runId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   listDelegationInvocations(parentRunId: string): readonly z.infer<typeof RunLifecycleCommandRecordSchema>[];
+  listDelegationRefreshes(runId: string): readonly z.infer<typeof RunLifecycleCommandRecordSchema>[];
   findDelegationInvocation(manifestId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   listDelegationAdmissions(runId: string, claimGeneration: number): readonly z.infer<typeof RunLifecycleCommandRecordSchema>[];
   findDelegationOwner(runId: string, claimGeneration: number, throughVersion: number): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
@@ -1117,6 +1118,13 @@ function authenticateStoredResolutionAudit(database: DatabaseSync,input:unknown)
   authenticateAuditedParkedWriteResolution(nativeOrdinaryRecordFromRow("write_attempts",attempt),commandFromRow(command),audit);
 }
 
+function readDelegationRefreshCommands(database: DatabaseSync, runId: string) {
+  return database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+    AND json_extract(request_json,'$.operation')='delegation-refresh'
+    AND json_extract(request_json,'$.request.runId')=? ORDER BY id`).all(RunIdSchema.parse(runId))
+    .map(row => RunLifecycleCommandRecordSchema.parse(commandFromRow(row)));
+}
+
 function assertRefreshedReceiptSettlement(database: DatabaseSync, record: RunEvidenceReceipt, row: unknown): void {
   const { settlement_version: version } = z.object({ settlement_version: PositiveIntSchema }).parse(row);
   if (database.prepare("SELECT 1 FROM run_results WHERE run_id=? AND settlement_version<? LIMIT 1").get(record.runId,version) === undefined) return;
@@ -1142,6 +1150,7 @@ function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRe
     const path = new Set(refreshPath).add(key);
     authenticateDelegationRefresh({
       lifecycleJournal: {
+        listDelegationRefreshes: runId => readDelegationRefreshCommands(database,runId),
         getCommand: commandId => { const row = database.prepare("SELECT * FROM commands WHERE id=?").get(commandId); return row === undefined ? undefined : AuthorityCommandRecordSchema.parse(commandFromRow(row)); },
         findAuditByCommand: commandId => { const row = database.prepare("SELECT * FROM command_audits WHERE command_id=?").get(commandId); return row === undefined ? undefined : AuthorityCommandAuditRecordSchema.parse(nativeOrdinaryRecordFromRow("command_audits",row)); },
       },
@@ -5163,6 +5172,7 @@ export class AuthorityDatabase implements Disposable {
           if (rows.length > 1) throw new Error("delegation-cancellation-source-ambiguous");
           return rows[0] === undefined ? undefined : RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
         },
+        listDelegationRefreshes: (runId: string) => readDelegationRefreshCommands(this.#database,runId),
         listDelegationInvocations: (parentRunId: string) => this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
           AND json_extract(request_json,'$.operation')='delegation-invocation'
           AND json_extract(request_json,'$.request.runId')=? ORDER BY id`).all(parentRunId)
