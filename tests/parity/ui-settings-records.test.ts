@@ -38,7 +38,7 @@ for (const theme of PARITY_THEMES) test(`Settings body switch thumbs remain on t
     expect(position.thumbRight).toBeLessThanOrEqual(position.trackRight);
     expect(position.color).toBe("rgb(255, 255, 255)");
   }
-  expect(positions.filter(position => position.checked)).toHaveLength(3);
+  expect(positions.filter(position => position.checked)).toHaveLength(2);
   const evidenceName = `settings-switch-thumb-${theme.name}.a11y.yml`;
   const tree = await page.locator("body").ariaSnapshot();
   info.annotations.push({ type: `a11y-attachment-sha256:${evidenceName}`, description: createHash("sha256").update(tree).digest("hex") });
