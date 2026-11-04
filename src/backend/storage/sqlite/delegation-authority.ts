@@ -310,6 +310,7 @@ export function retainedDelegationManifests(repositories: AuthorityRepositories,
   const invocations = repositories.lifecycleJournal.listDelegationInvocations(parentRunId)
     .map(command => DelegationInvocationRequestSchema.parse(command.request));
   const dependencies = repositories.dependencies.listByParentRun(parentRunId);
+  if (manifests.some(manifest => !invocations.some(invocation => invocation.manifestId === manifest.manifestId))) throw new Error("delegation-invocation-authority-unavailable");
   if (invocations.length !== manifests.length || dependencies.length !== manifests.reduce((count, manifest) => count + manifest.children.length, 0) || invocations.some(invocation => !manifests.some(manifest => manifest.manifestId === invocation.manifestId))
     || dependencies.some(dependency => !manifests.some(manifest => manifest.manifestId === dependency.manifestId
       && manifest.children.some(child => child.dependencyId === dependency.dependencyId)))) throw new Error("delegation-group-incomplete");

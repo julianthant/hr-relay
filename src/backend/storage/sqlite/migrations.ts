@@ -851,7 +851,7 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
     ) STRICT`,
     `INSERT INTO run_results SELECT result.run_id || ':' || COALESCE(json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1,json_extract(result.payload_json,'$.result.value.appliedVersion')),
       result.run_id, COALESCE(json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1,json_extract(result.payload_json,'$.result.value.appliedVersion')),
-      json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json),'$.version',COALESCE(json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1,json_extract(result.payload_json,'$.result.value.appliedVersion')),'$.updatedAt',result.created_at),
+      json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json),'$.version',COALESCE(json_extract(run.lifecycle_json,'$.completion.expectedVersion')+1,json_extract(result.payload_json,'$.result.value.appliedVersion')),'$.updatedAt',json_extract(run.lifecycle_json,'$.lifecycle.endedAt')),
       result.workflow,result.attempt,result.result_digest,result.payload_json,result.created_at
       FROM previous_run_results result JOIN runs run ON run.id=result.run_id`,
     `CREATE TABLE run_receipts (

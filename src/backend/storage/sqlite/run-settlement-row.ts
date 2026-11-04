@@ -33,9 +33,8 @@ export function runSettlementColumns(run: RunRecord, result: RunResultRecord) {
   const evidence = terminalEvidenceResult(result);
   const version = z.number().int().positive().parse(run.completion === undefined
     ? evidence?.kind === "lifecycle-evidence" ? evidence.appliedVersion : undefined : run.completion.expectedVersion + 1);
-  if (run.lifecycle.state !== "terminal" || run.version < version || run.envelope.runId !== result.runId
-    || run.lifecycle.endedAt !== result.createdAt) throw new Error("run-settlement-context-mismatch");
-  const terminal = RunRecordSchema.parse({ ...run, version, updatedAt: result.createdAt });
+  if (run.lifecycle.state !== "terminal" || run.version < version || run.envelope.runId !== result.runId) throw new Error("run-settlement-context-mismatch");
+  const terminal = RunRecordSchema.parse({ ...run, version, updatedAt: run.lifecycle.endedAt });
   return { id: `${result.runId}:${version}`, run_id: result.runId, settlement_version: version,
     terminal_run_json: canonicalJsonStringify(terminal), workflow: result.workflowId, attempt: result.attempt,
     result_digest: result.resultDigest, payload_json: canonicalJsonStringify(result), created_at: result.createdAt };

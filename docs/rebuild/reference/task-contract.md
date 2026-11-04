@@ -375,12 +375,17 @@ Unmatched values remain unmatched.
 and fresh saved-effect comparison. The single UCPath driver exposes reads and staging through
 the shared contact-set interpreter. Preparation binds the earlier observed set fingerprint,
 independently checks displayed EID/name and preserves every existing contact. Conflicts and
-unspecified addresses refuse. The interpreter compares saved effects as four-state observations;
+unspecified addresses refuse. The observational comparison of saved effects returns four-state observations;
 it grants no receipt, write probe, Save or retry authority. Candidate selectors remain pending
 live read-only verification. Registered Emergency Contact members use the task-ID suffix modules
 for reads, staging and protected plan probes; `contact-contract.ts` owns their shared schemas and
-idempotency. Save remains unavailable. The pending-binding inventory tracks only contracts
-referenced by registered descriptors.
+idempotency. Save has a contact-specific capability-checked driver operation, separate from the
+Save-free preparation port. It retains the approved plan and prepared editor until submit, rechecks
+all staged effects, and returns only a fresh complete persisted read matching the plan. The commit
+task then supplies its claim to the mandatory native verifier. Live Save remains unavailable until
+its pending selectors and page facts are proven; the production member refuses before approval or
+contact acquisition. The pending-binding inventory tracks only contracts referenced by registered
+descriptors.
 
 ## 3. Task registration
 
