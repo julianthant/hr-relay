@@ -142,6 +142,7 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
                 setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "" } } : current);
                 onStep("login"); return;
               }
+              if (result.state === "cancelling" || result.state === "refused" && result.code === "PROFILE_LOGOUT_BLOCKED") return;
               if (signup || result.state !== "active") {
                 setLoginError(operatorFailureSentence(result.state === "refused" || result.state === "error" ? result.code : "PROFILE_LOGOUT_BLOCKED"));
                 return;
