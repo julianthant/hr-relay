@@ -66,8 +66,8 @@ describe('compact run headers', () => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
     const effects: string[] = [];
-    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Failed lookup' }, childRetry: { label: 'Retry' } },
-      logs: {}, unavailableEvidence: [] }, ...(available ? { onChildRetry: () => effects.push('retry') } : {}) });
+    const snapshot = { detail: { header: { title: 'Failed lookup' }, childRetry: { label: 'Retry' } }, logs: {}, unavailableEvidence: [] };
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot, ...(available ? { onChildRetry: () => effects.push('retry') } : {}) });
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
     try {
@@ -75,6 +75,11 @@ describe('compact run headers', () => {
       const button = host.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert.ok(button);
       act(() => button.click());
       assert.deepEqual(effects, available ? ['retry'] : []);
+      useRunWiring.mockReturnValue({ state: 'loaded', snapshot, onChildRetry: () => effects.push('updated') });
+      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } })));
+      const refreshed = host.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert.ok(refreshed);
+      act(() => refreshed.click());
+      assert.deepEqual(effects, available ? ['retry', 'updated'] : ['updated']);
     } finally { act(() => root.unmount()); host.remove(); }
   });
 
