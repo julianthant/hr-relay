@@ -176,6 +176,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/integration/journaled-protected-settings.ts` | journaled protected settings |
 | `helpers/integration/storage-recovery-fixture.ts` | storage recovery fixture |
 | `helpers/kuali-finalization-fixtures.ts` | kuali finalization fixtures |
+| `helpers/native-path-picker-driver.ts` | owned native picker dialog driver and process readiness |
 | `helpers/operation-display-fixtures.ts` | operation display schemas, bindings and fixture builders |
 | `helpers/phase1f-executor-harness.ts` | phase1f executor harness |
 | `helpers/protected-secret-source.ts` | protected secret source |

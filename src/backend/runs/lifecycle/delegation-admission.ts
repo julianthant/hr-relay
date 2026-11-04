@@ -398,7 +398,7 @@ function authenticateObservationOrigins(repositories: AuthorityRepositories, des
     for (const dependency of source?.dependsOn ?? []) visit(dependency);
   };
   visit(node.id);
-  const observed = [];
+  const observed = new Set<string>();
   let after = 0;
   for (;;) {
     const page = repositories.timelineEvents.page({ runId: checkpoint.runId, after, limit: 1000 });
@@ -408,39 +408,39 @@ function authenticateObservationOrigins(repositories: AuthorityRepositories, des
       const taskAttempt = Number(event.spanPath.split(".").at(-1));
       if (event.nodeId === checkpoint.nodeId && event.taskId === node.uses.id && event.attempt === checkpoint.attempt
         && Number.isSafeInteger(taskAttempt) && taskAttempt > 0
-        && event.spanPath === taskSpanPath(run.envelope.traceId, checkpoint.nodeId, taskAttempt, checkpoint.claimGeneration)) observed.push(event);
+        && event.spanPath === taskSpanPath(run.envelope.traceId, checkpoint.nodeId, taskAttempt, checkpoint.claimGeneration)) {
+        for (const point of event.points) for (const source of point.origins ?? []) {
+          observed.add(canonicalJsonStringify([[...point.field.split("."), ...source.path],source.origin]));
+        }
+      }
     }
     if (page.length < 1000) break;
     const last = page.at(-1);
     if (last === undefined) throw new Error("delegation-observation-page-unavailable");
     after = last.cursor;
   }
-  const checkpointsByProducer = new Map<string, readonly RunCheckpointRecord[]>();
+  const checkpointsByProducer = new Map<string, readonly Readonly<{ checkpoint: RunCheckpointRecord; origins: ReadonlySet<string> }>[]>();
   for (const entry of checkpoint.observationOrigins) {
     const { origin } = entry;
-    if (!observed.some(event => event.points.some(point => (point.origins ?? []).some(source =>
-      canonicalJsonStringify([...point.field.split("."), ...source.path]) === canonicalJsonStringify(entry.path)
-      && canonicalJsonStringify(source.origin) === canonicalJsonStringify(origin))))) throw new Error("delegation-observation-event-mismatch");
-    const producer = repositories.runs.get(origin.runId), source = nodes.find(node => node.id === origin.nodeId);
-    if (producer !== undefined && producer.envelope.workflow !== checkpoint.workflowId) {
-      throw new Error("delegation-observation-child-result-origin-unavailable");
-    }
-
-    if (!allowed.has(origin.nodeId) || source?.kind !== "task" || source.uses.id !== origin.taskId || producer === undefined
-      || producer.envelope.workflow !== checkpoint.workflowId || producer.envelope.itemId !== checkpoint.itemId
-      || producer.envelope.attempt !== origin.attempt || producer.envelope.contractFingerprint !== descriptor.contractFingerprint) throw new Error("delegation-observation-producer-mismatch");
-    const key = canonicalJsonStringify([checkpoint.workflowId, checkpoint.itemId, origin.nodeId, origin.attempt]);
+    if (!observed.has(canonicalJsonStringify([entry.path,origin]))) throw new Error("delegation-observation-event-mismatch");
+    const key = canonicalJsonStringify([origin.runId,origin.nodeId,origin.taskId,origin.attempt]);
     let candidates = checkpointsByProducer.get(key);
     if (candidates === undefined) {
-      candidates = repositories.runCheckpoints.listByAttempt(checkpoint.workflowId, checkpoint.itemId, origin.nodeId, origin.attempt);
+      const producer = repositories.runs.get(origin.runId), source = nodes.find(node => node.id === origin.nodeId);
+      if (producer !== undefined && producer.envelope.workflow !== checkpoint.workflowId) throw new Error("delegation-observation-child-result-origin-unavailable");
+      if (!allowed.has(origin.nodeId) || source?.kind !== "task" || source.uses.id !== origin.taskId || producer === undefined
+        || producer.envelope.workflow !== checkpoint.workflowId || producer.envelope.itemId !== checkpoint.itemId
+        || producer.envelope.attempt !== origin.attempt || producer.envelope.contractFingerprint !== descriptor.contractFingerprint) throw new Error("delegation-observation-producer-mismatch");
+      const outputSchemaHash = deriveSchemaHash(source.uses.output,"output"), implFingerprint = resolveTaskImplFingerprint(buildManifest,source.uses.id);
+      candidates = repositories.runCheckpoints.listByAttempt(checkpoint.workflowId, checkpoint.itemId, origin.nodeId, origin.attempt)
+        .filter(candidate => candidate.runId === origin.runId && candidate.contractFingerprint === descriptor.contractFingerprint
+          && candidate.output.schemaHash === outputSchemaHash && candidate.implFingerprint === implFingerprint)
+        .map(checkpoint => ({ checkpoint, origins: new Set((checkpoint.observationOrigins ?? []).map(value => canonicalJsonStringify([value.path,value.origin]))) }));
       checkpointsByProducer.set(key, candidates);
     }
-    if (!candidates.some(candidate => candidate.runId === origin.runId && candidate.contractFingerprint === descriptor.contractFingerprint
-      && candidate.output.schemaHash === deriveSchemaHash(source.uses.output, "output")
-      && candidate.implFingerprint === resolveTaskImplFingerprint(buildManifest, source.uses.id)
-      && (candidate.observationOrigins ?? []).some(value => canonicalJsonStringify(value.origin) === canonicalJsonStringify(origin)
-        && canonicalJsonStringify(value.path) === canonicalJsonStringify([...origin.field.split("."), ...origin.path]))
-      && canonicalJsonStringify(readObservationPath(candidate.output.value, [...origin.field.split("."), ...origin.path]))
+    const sourcePath = [...origin.field.split("."),...origin.path], sourceIdentity = canonicalJsonStringify([sourcePath,origin]);
+    if (!candidates.some(candidate => candidate.origins.has(sourceIdentity)
+      && canonicalJsonStringify(readObservationPath(candidate.checkpoint.output.value, sourcePath))
         === canonicalJsonStringify(readObservationPath(checkpoint.output.value, entry.path)))) throw new Error("delegation-observation-checkpoint-mismatch");
   }
 }

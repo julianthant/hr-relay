@@ -466,6 +466,13 @@ describe("secrets single source", () => {
     );
   });
 
+  it("rejects a direct SystemRoot read in the picker while admitting the canonical accessor", () => {
+    const source = "export function windowsSystemRoot() { return process.env.SystemRoot; }";
+    assert.deepEqual(auditSecretsSingleSource(inventoryEnvironmentAccesses(SECRET_OWNER, source)), []);
+    assert.equal(auditSecretsSingleSource(inventoryEnvironmentAccesses(
+      "src/backend/transports/http/native-path-picker.ts", source)).length, 1);
+  });
+
   it("rejects direct, aliased, destructured, global, imported, and mutating access outside the owner", () => {
     const fixture = [
       'import proc, { env as importedEnv } from "node:process";',

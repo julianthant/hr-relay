@@ -4,7 +4,8 @@ import { HOST_PRIMARY_DISPLAY_ENV } from "../config/host-display.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS, DEVELOPMENT_DEBUG_MIRROR_ENV } from "../config/secrets.js";
 
-const EnvironmentKeySchema = z.string().regex(/^[A-Z_][A-Z0-9_]*$/);
+const EnvironmentKeySchema = z.union([z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.literal("SystemRoot")]);
+const PROCESS_MECHANICS_ENVIRONMENT_OWNER = "src/models/config/secrets.ts";
 const EnvironmentFamilyPrefixSchema = z.string().regex(/^[A-Z][A-Z0-9_]*$/);
 const SourcePathSchema = z.string().regex(/^[a-z0-9_.-]+(?:\/[a-z0-9_.-]+)*\.(?:[cm]?[jt]sx?)$/);
 export const RuntimeEnvironmentExactSpecSchema = z.discriminatedUnion("disposition", [
@@ -12,7 +13,7 @@ export const RuntimeEnvironmentExactSpecSchema = z.discriminatedUnion("dispositi
     key: EnvironmentKeySchema,
     classification: z.enum(["secret", "direct-identifier", "non-secret-config"]),
     disposition: z.literal("active"),
-    channel: z.enum(["config", "config-default", "secret", "config-and-secret", "provider-model", "process-ownership", "development-diagnostics"]),
+    channel: z.enum(["config", "config-default", "secret", "config-and-secret", "provider-model", "process-ownership", "development-diagnostics", "process-mechanics"]),
     owner: z.string().regex(/^src\/[a-z0-9/_-]+\.ts$/),
     documented: z.boolean(),
   }),
@@ -193,6 +194,14 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     documented: true,
   },
   {
+    key: "SystemRoot",
+    classification: "non-secret-config",
+    disposition: "active",
+    channel: "process-mechanics",
+    owner: PROCESS_MECHANICS_ENVIRONMENT_OWNER,
+    documented: true,
+  },
+  {
     key: "HRAUTO_DASHBOARD_LAUNCH_NONCE",
     classification: "direct-identifier",
     disposition: "active",
@@ -241,6 +250,7 @@ export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilyS
 
 export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([
   { key: DEVELOPMENT_DEBUG_MIRROR_ENV, paths: ["src/models/config/secrets.ts"] },
+  { key: "SystemRoot", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
   { key: "NODE_OPTIONS", paths: ["playwright.parity.config.ts"] },
   { key: "RELAY_TEST_HOST", paths: ["scripts/test/pc.ts"] },
 ]));
@@ -333,8 +343,18 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
   }
 
   const exact = new Map(registry.exact.map((spec) => [spec.key, spec]));
+  const systemRoot = exact.get("SystemRoot");
+  if (systemRoot?.disposition !== "active" || systemRoot.classification !== "non-secret-config"
+    || systemRoot.channel !== "process-mechanics" || systemRoot.owner !== PROCESS_MECHANICS_ENVIRONMENT_OWNER) {
+    violations.push("SystemRoot must retain the canonical accessor's non-secret process-mechanics ownership");
+  }
+  const systemRootReader = registry.exactReaderOwners.find(reader => reader.key === "SystemRoot");
+  if (systemRootReader?.paths.length !== 1 || systemRootReader.paths[0] !== PROCESS_MECHANICS_ENVIRONMENT_OWNER) {
+    violations.push("SystemRoot exact reader must be solely the canonical environment accessor");
+  }
   for (const spec of registry.exact) {
     if (spec.disposition !== "active") continue;
+    if (spec.channel === "process-mechanics" && spec.key === "SystemRoot") continue;
     const expectedOwner = spec.channel === "process-ownership"
       ? "src/models/dashboard/dashboard-frontend-owner.ts"
       : spec.channel === "config-default"
