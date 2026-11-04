@@ -2,7 +2,6 @@
   const native = globalThis.RelayNative;
   const controllers = new Map();
   let registration;
-  let accepted = false;
   let priorHeadings = new Map();
   let documentActive = true;
   let accountRevision = 0;
@@ -61,8 +60,12 @@
     controllers.set(message.id, entry);
     let before;
     try {
-      if (message.operation === 'DUO_AUTOPILOT_ENROLL') priorHeadings = new Map(
-        [...document.querySelectorAll('h1, h2, [role="heading"]')].map(element => [element, element.textContent.trim()]));
+      if (message.operation === 'DUO_AUTOPILOT_ENROLL') {
+        // Duo adds every method on one page, so each enrollment watches for its own heading.
+        registration = undefined;
+        priorHeadings = new Map(
+          [...document.querySelectorAll('h1, h2, [role="heading"]')].map(element => [element, element.textContent.trim()]));
+      }
       before = observation();
       const request = { ...message.request, origin: before.origin, usernames: before.accountNames };
       if (message.operation === 'DUO_AUTOPILOT_ENROLL') { entry.intercepted = reportEvent('intercepted', request.requestId); await entry.intercepted; }
@@ -116,12 +119,12 @@
     } finally { if (!entry.replied) controllers.delete(message.id); }
   });
   const checkAcceptance = async () => {
-    if (!registration || accepted) return;
+    if (!registration || registration.accepted) return;
     const pattern = registration.method === 'touch' ? /^Added (?:Touch ID|Windows Hello)(?: \([^()]{1,40}\))?$/ : /^Added security key(?: \([^()]{1,40}\))?$/;
     const success = [...document.querySelectorAll('h1, h2, [role="heading"]')].filter(element =>
       element.getClientRects().length && pattern.test(element.textContent.trim()) && priorHeadings.get(element) !== element.textContent.trim());
     if (success.length !== 1) return;
-    accepted = true;
+    registration.accepted = true;
     try {
       const reply = await chrome.runtime.sendMessage({ type: 'RELAY_PORTAL_ACCEPTED', request: {
         requestId: registration.requestId, rpId: registration.rpId, origin: registration.origin } });
