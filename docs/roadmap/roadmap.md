@@ -11,7 +11,7 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 - [done] Singleton app lock and held operations — keep one app in charge of the runtime and hold maintenance operations until they settle.
 - [done] Person Lookup and Separations rerun readiness — use current inputs and readiness checks for reruns.
 - [done] Settings Test OCR — run the OCR test from Preflight.
-- [done] Automatic PR flow — run staging pull request CI on Ubuntu, reserve native platform proofs for operator-started full releases, get Cursor Bugbot review and auto-merge into staging.
+- [done] Automatic PR flow — run staging pull request CI on Ubuntu, reserve native platform proofs for operator-started full releases, require an independent Claude review before storage, schema or authority changes merge, and auto-merge the rest into staging.
 - [next] Functional spec — keep product behaviour in the charter and mechanisms in reference docs.
 
 ## Dashboard ready
@@ -19,11 +19,11 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 Complete these in order.
 
 - [done] Portable storage core — keep one database and settings per person, simplify Mac safety checks, retain the last three quit-time backups and repair crash or corruption damage automatically without relocating folders.
-- [done] Sign-up and accounts — require Touch ID and a Duo security key, both added in Duo's device management at duo.ucsd.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Keep credentials on logout. Put Delete account in Settings > General. Tell an empty machine to sign up first. Back up the old store, then start clean.
+- [now] Sign-up and accounts — require Touch ID and a Duo security key, both added in Duo's device management at duo.ucsd.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Keep credentials on logout. Put Delete account in Settings > General. Tell an empty machine to sign up first. Back up the old store, then start clean.
 - [done] Workflow logins — use fast-duo for every workflow login.
 - [done] Runs — pause and resume at completed steps, rerun failed items from saved results, confirm quitting and park interrupted submits as unknown.
 - [done] Write safety — capture browser steps and submit boundaries, retain dry-run evidence, show UCPath transaction findings for operator review and keep Kuali reload verification.
-- [next] OCR and Emergency Contact — dry-run preview is proven; complete UCPath Save and live selector support.
+- [now] OCR and Emergency Contact — dry-run preview and fake-driver Save are proven; finish review retry and per-person rows, then capture live selectors and wire production Save.
 - [done] Dashboard cleanups — make Explorer read-only, have the assistant always ask before acting and propose workflow starts, and save appearance preferences per person.
 - [done] Spreadsheet library — retain named versions, bind reference plans to approved snapshots, authenticate SharePoint Sync and publish worksheet archives.
 - [done] CRM Document Download — package verified PDFs by worksheet with retained reference choices.
@@ -31,11 +31,10 @@ Complete these in order.
 - [done] Onboarding — start selected roster rows, review hire changes and verify I-9, UCPath and master-workbook writes.
 - [done] OnBase import — import PDFs through the child workflow with durable exclusive sessions.
 - [now] Duo enrollment — verify sign-up capture and cancellation at duo.ucsd.edu.
-- [next] SharePoint Download — build the document download workflow.
 - [next] Operator preview — complete the full test pass and verify automatic backup and self-repair before preview.
 - [now] Windows support — run the local web app through `relay.cmd` on a restricted Windows laptop without admin rights.
 - [now] Encryption at rest — protect Relay's sensitive data on an unencrypted Windows disk.
-- [next] Workflow sign-off — Person Lookup live read and sign-off, then Separations dry run and sign-off, then OCR to Emergency Contact sign-off after UCPath Save and live selector support, then real runs.
+- [next] Workflow sign-off — Person Lookup live read and sign-off, then Separations dry run and sign-off, then OCR to Emergency Contact sign-off after production Save and live selector support, then real runs.
 
 ## After the dashboard is ready
 
