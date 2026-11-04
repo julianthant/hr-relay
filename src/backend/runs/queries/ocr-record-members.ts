@@ -2,7 +2,7 @@ import { DelegatedRecordBindingSchema, type DelegatedRecordBinding } from "../..
 import { delegationChildInputFingerprint } from "../../../models/workflow/delegation.js";
 import { valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { bindOcrLookupOutcomes, ocrLookupRequests } from "../../../models/workflows/ocr/lookup.js";
-import { OcrResultSchema, OcrWorkflowResultSchema } from "../../../models/workflows/ocr/result.js";
+import { OcrApprovalReferenceSchema, OcrResultSchema, OcrWorkflowResultSchema } from "../../../models/workflows/ocr/result.js";
 import { OcrCanonicalInputSchema } from "../../../models/workflows/ocr/input.js";
 import { OcrReviewSeedSchema, type OcrReviewSeed } from "../../../models/workflows/ocr/review-seed.js";
 import { OcrPageWorkflowInputSchema } from "../../../models/workflows/ocr-page/input.js";
@@ -11,7 +11,7 @@ import { DelegationRefreshRequestSchema } from "../../storage/sqlite/delegation-
 import { authenticateDelegationRefresh } from "../../storage/sqlite/delegation-refresh.js";
 import { ReadOcrSourcePages } from "../../../models/workflows/ocr/read-source-pages.js";
 import { QueueRecordMembersSchema, type QueueMemberTarget, type QueueRecordMembers } from "../../../models/dashboard/projection.js";
-import { initialOcrReviewRecords, ocrRecordName } from "../../../models/ocr/review.js";
+import { initialOcrReviewRecords, ocrRecordName, ocrSnapshotDigest } from "../../../models/ocr/review.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import { deriveRunStatus, panelKindOf } from "../../../rules/runs/run-status.js";
@@ -22,7 +22,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { childTerminalSettlement, readDelegationScopeEvidence } from "../../storage/sqlite/delegation-authority.js";
-import { authenticateOcrOperator, readOcrReviewAuthority, requireCurrentOcrSnapshot } from "../lifecycle/ocr-review-authority.js";
+import { authenticateOcrOperator, readOcrReviewAuthority, readOcrSnapshotsAuthority } from "../lifecycle/ocr-review-authority.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { ReadApprovedOcrSnapshot } from "../../../models/processing/ocr/read-approved-snapshot.js";
@@ -204,7 +204,12 @@ export function readOcrQueueMembers(repositories: AuthorityRepositories, reader:
 
 function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">,
   parent: RunRecord, source: QueueRecordMembers, approval: unknown, resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined) {
-  const snapshot = requireCurrentOcrSnapshot(repositories,reader,approval);
+  const reference = OcrApprovalReferenceSchema.parse(approval);
+  const review = readOcrReviewAuthority(repositories,reader,reference.sourceRunId);
+  if (review === undefined) throw new OcrReviewRefusedError();
+  const snapshot = readOcrSnapshotsAuthority(repositories,review).find(snapshot => snapshot.snapshotId === reference.snapshotId);
+  if (snapshot === undefined || snapshot.sourceRunId !== reference.sourceRunId || snapshot.revision !== reference.revision
+    || ocrSnapshotDigest(snapshot) !== reference.digest) throw new OcrReviewRefusedError();
   const groups = repositories.dependencies.groups(parent.envelope.runId)
     .filter(({ group }) => group.invocation.nodeId === "members" && group.invocation.edgeId === "approved-records");
   if (groups.length > 1) throw new OcrReviewRefusedError();
@@ -222,7 +227,8 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
       const record = snapshot.records.find(record => record.recordId === approved.record.recordId);
       if (record === undefined || canonicalJsonStringify(approved.approval) !== canonicalJsonStringify(approval)
         || canonicalJsonStringify(approved.record) !== canonicalJsonStringify(record)
-        || canonicalJsonStringify(group.invocation.children[index]?.sourceRecordIds) !== canonicalJsonStringify([record.recordId])
+        || group.invocation.children[index]?.sourceRecordIds !== undefined
+          && canonicalJsonStringify(group.invocation.children[index]?.sourceRecordIds) !== canonicalJsonStringify([record.recordId])
         || bound.has(record.recordId)) throw new OcrReviewRefusedError();
       bound.set(record.recordId,member);
     }
@@ -245,20 +251,20 @@ function approvedParentMembers(repositories: AuthorityRepositories, reader: Pick
         statusLabel: status === "failed" ? "Failed" : status === "blocked" ? "Blocked" : status === "cancelled" ? "Cancelled" : parent.envelope.dryRun ? "Previewing" : "Saving" };
     }
     const child = member.child, descriptor = resolve(child.envelope.workflow);
-    if (descriptor === undefined || descriptor.version !== child.envelope.descriptorVersion
-      || descriptor.contractFingerprint !== child.envelope.contractFingerprint) throw new OcrReviewRefusedError();
-    const support = workflowDryRunSupport(descriptor);
-    const readOnly = support.state === "unsupported" && support.reason === "no-transaction-node";
+    const exactDescriptor = descriptor?.version === child.envelope.descriptorVersion
+      && descriptor.contractFingerprint === child.envelope.contractFingerprint;
+    const support = exactDescriptor ? workflowDryRunSupport(descriptor) : undefined;
+    const readOnly = support?.state === "unsupported" && support.reason === "no-transaction-node";
     const status = deriveRunStatus({ ...child,delegationWait: repositories.dependencies.waitState(child.envelope.runId) });
     const terminal = member.terminal;
     if (status === "done" && terminal?.state !== "satisfied") throw new OcrReviewRefusedError();
     const statusLabel = status === "failed" ? "Failed" : status === "blocked" ? "Blocked" : status === "cancelled" ? "Cancelled"
-      : terminal?.state === "satisfied" ? terminal.kind === "preview" ? "Previewed" : readOnly ? "Verified" : "Saved"
-      : readOnly ? "Looking up" : child.envelope.dryRun ? "Previewing" : "Saving";
+      : terminal?.state === "satisfied" ? terminal.kind === "preview" ? "Previewed" : !exactDescriptor ? "Done" : readOnly ? "Verified" : "Saved"
+      : !exactDescriptor ? "Running" : readOnly ? "Looking up" : child.envelope.dryRun ? "Previewing" : "Saving";
     return { ...row, status: status === "done" || status === "failed" || status === "blocked" || status === "cancelled" ? status : "running", statusLabel,
       childRunIds: [...new Set([...row.childRunIds,...member.history])],
       target: { runId: child.envelope.runId, workflowId: child.envelope.workflow,
-        partitionDay: LocalDateSchema.parse(localDatePart(new Date(child.envelope.enqueuedAt))), label: descriptor.label,
+        partitionDay: LocalDateSchema.parse(localDatePart(new Date(child.envelope.enqueuedAt))), label: descriptor?.label ?? child.envelope.workflow,
         status, panelKind: panelKindOf(child.envelope.shape, false), section: "logs" } };
   }) });
 }
@@ -285,10 +291,10 @@ export function readQueueRecordMembers(repositories: AuthorityRepositories, read
           return [QueueRecordMembersSchema.parse({ runIds, members: [readingMember(repositories,member.child,pages[0].group,runIds,status,workflowLabel,readOcrReviewAuthority(repositories,reader,member.child.envelope.runId) !== undefined)] })];
         }
         const descriptor = resolve(run.envelope.workflow);
-        if (descriptor === undefined || descriptor.version !== run.envelope.descriptorVersion
-          || descriptor.contractFingerprint !== run.envelope.contractFingerprint) throw new OcrReviewRefusedError();
-        const hasMembers = descriptorRuntimeNodes(descriptor)
-          .some(node => node.kind === "child-run" && node.id === "members" && node.edgeId === "approved-records");
+        const hasMembers = repositories.dependencies.groups(run.envelope.runId)
+          .some(({ group }) => group.invocation.nodeId === "members" && group.invocation.edgeId === "approved-records")
+          || descriptor?.version === run.envelope.descriptorVersion && descriptor.contractFingerprint === run.envelope.contractFingerprint
+            && descriptorRuntimeNodes(descriptor).some(node => node.kind === "child-run" && node.id === "members" && node.edgeId === "approved-records");
         const source = readOcrRecordPresentation(repositories, reader, member.child.envelope.runId, workflowLabel,!hasMembers);
         if (source === undefined) return [];
         return [approval !== null && hasMembers ? approvedParentMembers(repositories,reader,run,source,approval,resolve) : source];

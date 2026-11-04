@@ -134,6 +134,13 @@ words. A line has no Retry control: the failed child's own Logs header uses its 
 revision, preserving pending and uncertain command recovery. The canonical OCR Review opens at
 the selected stable record through a lazy read; its source and fields use the existing read-only cards.
 
+Retained approved trees authenticate their recorded review, snapshot, member inputs and checkpoints
+without requiring today's execution fingerprint or a previously omitted optional record-ID association.
+A member whose current descriptor does not match its retained version and fingerprint shows Done
+for an ordinary completion, Running while active, or Previewed when its native terminal result proves
+a preview. These labels do not infer historical read or write effects from today's graph. Current
+execution, retry and snapshot freshness checks remain unchanged.
+
 Top-level Queue, calendar, notifications and Activity populations include roots and linked children.
 Visibility filtering precedes bounded pagination. An unloaded inline or hidden child never becomes a
 standalone row. Cross-workflow members stay under their parent; parent and linked chips retain exact
