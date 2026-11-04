@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { z } from "zod";
-import { readPrivateFile, noSymlinkAncestry, statDirectory, unpublishedDraftAbortMembership, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { privateFileNumber, numericFileIdentity, readPrivateFile, noSymlinkAncestry, statDirectory, unpublishedDraftAbortMembership, type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { privatePathRejects, writePrivateStage, fsyncPath } from "../private-path.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -58,8 +58,7 @@ export function existingDataFileLabel(inventoryPath: string): "lock" | "authorit
 export function profileAuthorityFileWitnesses(root: string) {
   return (["", "-wal", "-shm", "-journal"] as const).map(suffix => {
     const source = readPrivateFile(join(root, `state.db${suffix}`), { label: "authority database", maxBytes });
-    return { suffix, ...(source === undefined ? {} : { file: { device: source.identity.device,
-      inode: source.identity.inode, digest: hash(source.bytes) } }) };
+    return { suffix, ...(source === undefined ? {} : { file: { ...numericFileIdentity(source.identity), digest: hash(source.bytes) } }) };
   });
 }
 
@@ -84,7 +83,7 @@ export function inventory(root: string, prefix: string, excluded: ReadonlySet<st
       else {
         const inventoryPath = prefix === "" ? child : `${prefix}/${child}`;
         const current = file(path, prefix === "" ? "lock" : existingDataFileLabel(inventoryPath));
-        result.push({ path, file: { path: inventoryPath, digest: hash(current.bytes), size: current.bytes.byteLength, mode: current.stat.mode & 0o7777 } });
+        result.push({ path, file: { path: inventoryPath, digest: hash(current.bytes), size: current.bytes.byteLength, mode: privateFileNumber(current.stat.mode) & 0o7777 } });
       }
     }
   };
@@ -156,7 +155,7 @@ export function captureFlatArchiveSource(input: Readonly<{ workspace: string; st
         }
       } else {
         const current = file(path, choice === "copy" ? existingDataFileLabel(name) : "lock");
-        members.push({ path: name, kind, disposition: choice, size: current.bytes.byteLength, digest: hash(current.bytes), mode: current.stat.mode & 0o7777 });
+        members.push({ path: name, kind, disposition: choice, size: current.bytes.byteLength, digest: hash(current.bytes), mode: privateFileNumber(current.stat.mode) & 0o7777 });
       }
     };
     for (const [path, namespace] of [[input.stateRoot, "profile"], [join(input.workspace, ".tracker", "control"), "control"], [join(input.workspace, "data"), "workspace-data"]] as const) {

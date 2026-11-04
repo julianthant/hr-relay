@@ -134,7 +134,7 @@ it("dispatches the actual secure-bootstrap CLI plan and apply against an isolate
   try {
     cpSync(join(process.cwd(), "src"), join(f.workspace, "src"), { recursive: true });
     const isolationPath = join(f.workspace, "src/backend/app/config/runtime-isolation.ts"), isolation = readFileSync(isolationPath, "utf8");
-    const fixedReturn = 'return join(homeDirectory, "Library", "Application Support", "Relay");';
+    const fixedReturn = 'return posix.join(host.homeDirectory, "Library", "Application Support", "Relay");';
     assert.ok(isolation.includes(fixedReturn));
     writeFileSync(isolationPath, isolation.replace(fixedReturn, `return ${JSON.stringify(f.workspace)};`));
     mkdirSync(join(f.workspace, "scripts/dev"), { recursive: true });
