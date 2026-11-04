@@ -72,7 +72,7 @@ import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
 /* ── the arm partition (ref dashboard-surfaces authority) ─────────────── */
 
 const PHASE1_ACTIVE = {
-  "ocr-review": ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record"],
+  "ocr-review": ["correct-ocr-record", "discard-ocr-record", "restore-ocr-record", "add-ocr-record"],
   application: ["pause-all", "pause-all-and-quit"],
   'assistant-model-preference': ['set-assistant-model-preference'],
   "failure-resolution": ["annotate-failure"],

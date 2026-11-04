@@ -514,8 +514,9 @@ function approvedOcrSnapshotLeaves(scope: EvidenceValueScope): unknown[] {
     ...open(scope, "snapshot.revision", "snapshot.approvedBy", "snapshot.approvedAt")];
 }
 function approvedOcrRecordLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
-  return [...ocrPrivateLeaves(scope, `${prefix}recordId`, `${prefix}assertedEid`, `${prefix}fields.answers`, `${prefix}fields.blockingPaths`, `${prefix}fields.answersFingerprint`),
-    ...open(scope, `${prefix}discarded`)];
+  return [...ocrPrivateLeaves(scope, `${prefix}recordId`, `${prefix}assertedEid`, `${prefix}fields.answers`, `${prefix}fields.blockingPaths`, `${prefix}fields.answersFingerprint`,
+    `${prefix}provenance.commandId`, `${prefix}provenance.createdAt`, `${prefix}provenance.pages`),
+    ...open(scope, `${prefix}discarded`, `${prefix}provenance.kind`)];
 }
 function contactSetLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [...ocrPrivateLeaves(scope, `${prefix}emplId`, `${prefix}displayedName`, `${prefix}rows`),
