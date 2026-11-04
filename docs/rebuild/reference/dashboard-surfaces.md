@@ -516,6 +516,8 @@ Undo/Redo, mapping edits, and Excel workbook or current-sheet CSV export. Render
 50 rows and 20 columns, but search covers the full sheet. History keeps 50 versions. Stable-field
 read/write helpers preserve headers, formatting, and row identity; invalid patches refuse atomically.
 Busy states disable conflicting controls, cancellation is explicit, and file errors remain visible.
+Row and column insertion availability uses workbook-wide populated and grid limits, including each
+new column's nonempty header. Blank rows consume grid positions without consuming populated cells.
 
 Durable library storage, OCR roster matching, Person Lookup fallback, and workflow roster updates
 remain producer/authority wiring. A locally exported copy is not proof of a workflow write. A roster
