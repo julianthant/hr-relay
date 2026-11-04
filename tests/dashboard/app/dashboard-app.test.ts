@@ -21,6 +21,7 @@ import assert_m1 from "node:assert/strict";
 import { act as act_m1,createElement as createElement_m1,type ReactNode as ReactNode_m1 } from "react";
 import { createRoot as createRoot_m1,type Root as Root_m1 } from "react-dom/client";
 import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1,vi as vi_m1 } from "vitest";
+import { operatorFailureSentence } from "../../../src/models/failures/error-catalog.js";
 import { PublicProfileStateSchema } from "../../../src/models/profiles/public-profile.js";
 import {
 RUN_START_DOOR_ID as RUN_START_DOOR_ID_m1
@@ -352,6 +353,21 @@ describe_m1("served sign-up Finish", () => {
     await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(reads >= 3, true); }, { timeout: 3500 });
     assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
     assert_m1.equal(resumed, 1);
+  });
+
+  it_m1.each([
+    ["is cancelling", { state: "cancelling" as const, operationId: "00000000-0000-4000-8000-000000000003" }],
+    ["was refused while it finishes", { state: "refused" as const, code: "PROFILE_LOGOUT_BLOCKED" as const }],
+  ])("keeps checking while a logout %s and shows the login form once it completes", async (_name, waiting) => {
+    window.history.replaceState(null, "", "/");
+    let finished = false, reads = 0;
+    const client = { ...appClient(), readProfileSession: async () => { reads++; return finished ? { state: "signed-out" as const, signUpRequired: false } : waiting; } };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => { assert_m1.equal(reads >= 2, true); }, { timeout: 3000 });
+    assert_m1.equal(document.querySelector(".form-error")?.textContent, operatorFailureSentence("PROFILE_LOGOUT_BLOCKED"));
+    finished = true;
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector(".form-error")?.textContent, ""); }, { timeout: 3000 });
+    assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
   });
 
   it_m1("opens the sign-up form from the Sign up link after a refused login", async () => {
