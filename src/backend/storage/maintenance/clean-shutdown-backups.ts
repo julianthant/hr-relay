@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { inventoryFileIdentity } from "./profile-inventory.js";
 import { existsSync, lstatSync, readdirSync, renameSync } from "node:fs";
@@ -49,7 +50,9 @@ async function verifiedShutdownBackups(admission: RuntimeAdmission, clock: Clock
 export async function resumeShutdownBackupRetirement(input: RuntimeAdmission, clock: Clock): Promise<void> {
   const admission = requireRuntimeAdmission(input), directory = join(admission.stateRoot, "backups", "authority");
   admission.assertAuthorityBackupWrite(directory);
-  for (const path of retirementPaths(admission.stateRoot)) {
+  const pending = retirementPaths(admission.stateRoot);
+  if (pending.length !== 0) assertMaintenanceCustodyAvailable("backup-retirement");
+  for (const path of pending) {
     const current = await verifiedShutdownBackups(admission, clock);
     const file = readPrivateFile(path, { label: "lock", maxBytes: 64_000 });
     if (file === undefined) throw new Error("shutdown-backup-retirement-missing");
@@ -86,6 +89,7 @@ export async function retainCleanShutdownBackups(input: RuntimeAdmission, clock:
   const admission = requireRuntimeAdmission(input), directory = join(admission.stateRoot, "backups", "authority");
   admission.assertAuthorityBackupWrite(directory);
   await resumeShutdownBackupRetirement(admission, clock);
+  assertMaintenanceCustodyAvailable("backup-retirement");
   const verified = await verifiedShutdownBackups(admission, clock);
   for (const previous of verified.slice(3)) {
     const target = `${previous.manifestPath}${Retiring}`;
