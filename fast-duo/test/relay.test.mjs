@@ -19,7 +19,7 @@ function world() {
     runtime: { id: 'owned-extension' },
     tabs: { get: async id => ({ id, url: scope.url }), sendMessage: async (_id, request, target) => {
       if (target.documentId !== scope.documentId) throw new Error('document replaced');
-      if (request.type === 'RELAY_PLATFORM_PROBE') return { available: false };
+      assert.equal(request.type, 'RELAY_OBSERVE');
       return { url: scope.url, origin: new URL(scope.url).origin, documentActive: true, accountNames: [...scope.accountNames], accountRevision: scope.accountRevision };
     } },
     storage: {
@@ -80,10 +80,12 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
     }
     assert.equal((await response).success, false);
   };
-  const response = send({ type: 'STATE' }, sender);
-  const request = await owner.browserNext(); assert.equal(request.kind, 'state');
-  owner.browserReply(request.id, { ok: true, value: { state: 'onboarding' } });
-  assert.deepEqual(await response, { success: true, result: { relaySetup: true, profile: { state: 'onboarding' } } });
+  for (const [type, kind] of [['STATE', 'state'], ['RELAY_RETURN', 'return']]) {
+    const response = send({ type }, sender);
+    const request = await owner.browserNext(); assert.equal(request.kind, kind);
+    owner.browserReply(request.id, { ok: true, value: { state: 'onboarding' } });
+    assert.deepEqual(await response, { success: true, result: { relaySetup: true, profile: { state: 'onboarding' } } });
+  }
   for (const source of [
     { ...sender, id: 'another-extension' }, { ...sender, frameId: 1 },
     { ...sender, url: ORIGIN + '/setup', origin: ORIGIN },
@@ -91,9 +93,10 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
     { ...sender, url: root + 'src/popup.html' },
     { ...sender, origin: 'null' }, { ...sender, documentLifecycle: 'cached' },
     { ...sender, documentId: 'forged' }, { ...sender, tab: { ...sender.tab, url: ORIGIN } },
-  ]) assert.equal((await send({ type: 'STATE' }, source)).success, false);
+  ]) for (const type of ['STATE', 'RELAY_RETURN']) assert.equal((await send({ type }, source)).success, false);
   for (const message of [{ type: 'SAVE_ACCOUNT' }, { type: 'RELAY_START', method: 'key', attemptId: crypto.randomUUID() },
-    { type: 'STATE', password: 'must-not-be-accepted' }, { type: 'RELAY_CANCEL', method: 'touch', attemptId: 'forged' }]) {
+    { type: 'STATE', password: 'must-not-be-accepted' }, { type: 'RELAY_RETURN', method: 'key' },
+    { type: 'RELAY_RETURN', processId: 72 }, { type: 'RELAY_RETURN', attemptId: crypto.randomUUID() }, { type: 'RELAY_CANCEL', method: 'touch', attemptId: 'forged' }]) {
     assert.equal((await send(message, sender)).success, false);
   }
   for (const [type, result] of [['RELAY_CAPABILITIES', { softwareKey: false, platformAvailable: true }], ['DUO_AUTOPILOT_SIGN', { passThrough: true }]]) {
@@ -101,7 +104,7 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
     const response = send(message, SENDER);
     if (type === 'RELAY_CAPABILITIES') {
       const request = await owner.browserNext();
-      assert.equal(request.kind, 'platform'); assert.equal(request.url, SENDER.url); assert.equal(request.available, false);
+      assert.equal(request.kind, 'platform'); assert.equal(request.url, SENDER.url); assert.equal(Object.hasOwn(request, 'available'), false);
       owner.browserReply(request.id, { ok: true, value: true });
     }
     assert.deepEqual(await response, { success: true, result });
@@ -424,13 +427,13 @@ async function isolatedWorld(nativeBehavior) {
   const { runInNewContext } = await import('node:vm');
   const listeners = new Map();
   const sent = []; const output = [];
-  let nativeCalls = 0;
+  let nativeCalls = 0, headings = [], mutation;
   class Attestation {}
   class Credential {}
   const window = { addEventListener: (type, listener) => listeners.set(type, listener), postMessage: value => output.push(value) };
   const context = { window, location: { origin: ORIGIN, href: `${ORIGIN}/setup` },
-    document: { documentElement: {}, querySelectorAll: () => [] }, DuoUsername: { findUsernames: () => ['alex@example.edu'] },
-    MutationObserver: class { observe() {} }, AbortController, PublicKeyCredential: Credential, AuthenticatorAttestationResponse: Attestation,
+    document: { documentElement: {}, querySelectorAll: () => headings }, DuoUsername: { findUsernames: () => ['alex@example.edu'] },
+    MutationObserver: class { constructor(callback) { mutation = callback; } observe() {} }, AbortController, PublicKeyCredential: Credential, AuthenticatorAttestationResponse: Attestation,
     TextEncoder, TextDecoder, Uint8Array, JSON, crypto, btoa, atob,
     navigator: { credentials: { create: async options => { nativeCalls++; return nativeBehavior(options, Credential, Attestation); } } },
     chrome: { runtime: { id: 'owned-extension', onMessage: { addListener() {} }, sendMessage: async message => {
@@ -440,7 +443,17 @@ async function isolatedWorld(nativeBehavior) {
   };
   for (const file of ['relay-native.js', 'relay-content.js']) runInNewContext(await readFile(new URL(`../src/${file}`, import.meta.url), 'utf8'), context);
   return { sent, output, runtime: context.chrome.runtime, nativeCalls: () => nativeCalls,
+    setHeadings(values) { headings = values; mutation?.(); },
     message: data => listeners.get('message')({ source: window, origin: ORIGIN, data }) };
+}
+
+async function platformCredential(_options, Credential, Attestation) {
+  const authData = new Uint8Array(37); authData.set(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('duosecurity.com'))));
+  return Object.assign(new Credential(), { rawId: new Uint8Array([251, 255, 0, 1]).buffer, authenticatorAttachment: 'platform', response: Object.assign(new Attestation(), {
+    clientDataJSON: new TextEncoder().encode(JSON.stringify({ type: 'webauthn.create', origin: ORIGIN, challenge: CHALLENGE.replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_') })).buffer,
+    attestationObject: new Uint8Array([1]).buffer, getAuthenticatorData: () => authData.buffer,
+    getPublicKey: () => null, getPublicKeyAlgorithm: () => -7, getTransports: () => ['internal'],
+  }) });
 }
 
 test('abort waits for the interception receipt before ending the backend attempt', async () => {
@@ -471,12 +484,7 @@ test('native isolated completion calls captured browser create; page-created and
   const gate = new Promise(resolve => { complete = resolve; });
   const w = await isolatedWorld(async (_options, Credential, Attestation) => {
     await gate;
-    const authData = new Uint8Array(37); authData.set(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('duosecurity.com'))));
-    return Object.assign(new Credential(), { rawId: new Uint8Array([251, 255, 0, 1]).buffer, authenticatorAttachment: 'platform', response: Object.assign(new Attestation(), {
-      clientDataJSON: new TextEncoder().encode(JSON.stringify({ type: 'webauthn.create', origin: ORIGIN, challenge: CHALLENGE.replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_') })).buffer,
-      attestationObject: new Uint8Array([1]).buffer, getAuthenticatorData: () => authData.buffer,
-      getPublicKey: () => null, getPublicKeyAlgorithm: () => -7, getTransports: () => ['internal'],
-    }) });
+    return platformCredential(_options, Credential, Attestation);
   });
   const request = enrollment('platform').request;
   const operation = w.message({ type: 'RELAY_DUO_REQUEST', id: 'actual-request', operation: 'DUO_AUTOPILOT_ENROLL', request,
@@ -491,6 +499,25 @@ test('native isolated completion calls captured browser create; page-created and
   assert.equal(w.sent.find(message => message.type === 'RELAY_NATIVE_CREATED').request.credentialId, '-_8AAQ');
   assert.equal(w.output.at(-1).success, true);
   assert.ok(!JSON.stringify(w.sent).includes('privateKey'));
+});
+
+
+for (const title of ['Added Touch ID', 'Added Windows Hello']) test(`accepts one new ${title} heading after the native ceremony, excluding stale and ambiguous headings`, async () => {
+  const w = await isolatedWorld(platformCredential);
+  const heading = () => ({ textContent: title, getClientRects: () => [{}] });
+  const stale = heading(); w.setHeadings([stale]);
+  const request = enrollment('platform').request;
+  await w.message({ type: 'RELAY_DUO_REQUEST', id: 'portal-proof', operation: 'DUO_AUTOPILOT_ENROLL', request,
+    nativeOptions: { rp: { id: request.rpId }, challenge: Buffer.from(request.challenge, 'base64'), user: { name: request.username, id: Buffer.from(request.userHandle, 'base64') }, authenticatorSelection: { authenticatorAttachment: 'platform' } } });
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED').length, 1);
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_PORTAL_ACCEPTED').length, 0);
+  const fresh = heading(); w.setHeadings([fresh, heading()]); await Promise.resolve();
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_PORTAL_ACCEPTED').length, 0);
+  w.setHeadings([stale, fresh]); await Promise.resolve();
+  const accepted = w.sent.filter(message => message.type === 'RELAY_PORTAL_ACCEPTED');
+  assert.equal(accepted.length, 1); assert.equal(accepted[0].request.requestId, request.requestId);
+  w.setHeadings([fresh]); await Promise.resolve();
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_PORTAL_ACCEPTED').length, 1);
 });
 
 test('native browser refusal has no software fallback or successful ceremony', async () => {

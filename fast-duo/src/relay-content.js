@@ -23,10 +23,6 @@
     && before.accountNames.length === 1 && JSON.stringify(before.accountNames) === JSON.stringify(after.accountNames);
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (sender.id !== chrome.runtime.id) return false;
-    if (message?.type === 'RELAY_PLATFORM_PROBE') {
-      native.platformAvailable().then(available => sendResponse({ available }), () => sendResponse({ failed: true }));
-      return true;
-    }
     if (message?.type !== 'RELAY_OBSERVE') return false;
     sendResponse(observation());
     return false;
@@ -121,7 +117,7 @@
   });
   const checkAcceptance = async () => {
     if (!registration || accepted) return;
-    const pattern = registration.method === 'touch' ? /^Added Touch ID$/ : /^Added security key$/;
+    const pattern = registration.method === 'touch' ? /^Added (?:Touch ID|Windows Hello)$/ : /^Added security key$/;
     const success = [...document.querySelectorAll('h1, h2, [role="heading"]')].filter(element =>
       element.getClientRects().length && pattern.test(element.textContent.trim()) && priorHeadings.get(element) !== element.textContent.trim());
     if (success.length !== 1) return;
