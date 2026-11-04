@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { it } from "vitest";
-import { createAssistantContext, PUBLIC_ASSISTANT_REPOSITORY_ID } from "../../../src/backend/assistant/context.js";
+import { assistantKnowledgeArtifact, createAssistantContext, PUBLIC_ASSISTANT_REPOSITORY_ID } from "../../../src/backend/assistant/context.js";
 
 const PUBLIC_ASSISTANT_SOURCE = { repositoryId: PUBLIC_ASSISTANT_REPOSITORY_ID, revision: "9af76694409eeff5e0ac954fc9501bc69991643a" };
 const file = { path: "docs/rebuild/assistant.md", mode: "100644", text: "Synthetic public reference.\nDry runs stop before writes." };
@@ -42,4 +42,19 @@ it("admits a later separately trusted synthetic revision without embedding the r
   assert.throws(() => later.assertRuntime(PUBLIC_ASSISTANT_SOURCE), { code: "ASSISTANT_CONTEXT_STALE" });
   assert.throws(() => createAssistantContext(bytes, trusted));
   for (const badRevision of ["HEAD", "staging", "b".repeat(39), "B".repeat(40), "../private"]) assert.throws(() => createAssistantContext(changed, { ...trusted, revision: badRevision }));
+});
+
+it("describes supported confirmed workflow starts in exact public help citations", () => {
+  const artifact = assistantKnowledgeArtifact([{ id: "person-lookup", label: "Person Lookup" }]);
+  const context = createAssistantContext(Buffer.from(artifact.bytes), artifact.policy), source = artifact.reference.files[0];
+  const lines = source.text.split('\n');
+  for (const topic of ['assistant', 'dry-run', 'workflow person-lookup']) {
+    const text = artifact.topics[topic]; assert.match(text, /confirm/iu);
+    assert.doesNotMatch(text, /unavailable until subject binding|actions require the dashboard Run/iu);
+    const startLine = lines.findIndex(line => line.startsWith(topic + ': ')) + 1; assert.ok(startLine > 0);
+    const citation = { path: source.path, revision: artifact.policy.revision, startLine, endLine: startLine, quote: lines[startLine - 1] };
+    assert.deepEqual(context.citation(citation), citation);
+  }
+  assert.match(artifact.topics['workflow person-lookup'], /start selected workflow/u);
+  assert.match(artifact.topics['dry-run'], /stops before the external transaction commit/u);
 });
