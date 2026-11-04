@@ -309,7 +309,7 @@ The common writer uses a short cross-process nonce mutex, authenticates the curr
 
 ChatGPT `withLock()` uses one durable cross-process asynchronous operation lease spanning remote awaits, separate from the short writer mutex. Its transaction is revoked on settle and exact callback errors survive successful cleanup. Read-only account observation does not mutate credentials. Refresh, usage changes and sign-out retain CAS; close/sign-out abort and await owned inference/page/access operations. Actual response, artifact or PDF closure failures refuse sign-out and retain resources. Startup may clear only an exact prior nonce lock under genuine one-shot native workspace initialization, never ordinary PID-as-death cleanup. Unknown old lock/stage bytes remain held. The schema-1 ChatGPT payload is bounded to 64,000 bytes and contains registration plus current session, with no token history; tokens are encrypted inside the canonical frame.
 
-Duo records hold pending/ready enrolled P256 material and exact browser scope. Backend validation requires canonical Base64, EC prime256v1 and matching public/private material. Same credential identity cannot change its key. Both onboarding and workflow use the single backend FastDuo signer and public request/reply broker; no private key is installed into browsers. Every signature durably reserves a strictly advancing external counter first. Failed, crashed, cancelled and UNKNOWN attempts burn it; duplicate request IDs refuse rather than replay an allocation. The browser document token remains an exact 32-character hexadecimal `sender.documentId`, while account/operation/arm identities are UUIDs. Scope, account, origin, allowCredentials and current owner are checked before signing and after relevant awaits.
+Duo records hold pending/ready enrolled P256 material and exact browser scope. Backend validation requires canonical Base64, EC prime256v1 and matching public/private material. Same credential identity cannot change its key. Both onboarding and workflow use the single backend Fast Duo signer and public request/reply broker. Ready internal keys and their proved counter floors enter only the owned private CDP authenticator; they never enter the extension, HTTP or public state. Native replica signatures remain disabled, so the canonical signer retains assertion authority. Fresh platform enrollment initializes its pending key's canonical counter from the observed CDP count; an existing internal key without proved history refuses instead of adopting a floor. Every signature durably reserves a strictly advancing external counter first. Failed, crashed, cancelled and UNKNOWN attempts burn it; duplicate request IDs refuse rather than replay an allocation. The browser document token remains an exact 32-character hexadecimal `sender.documentId`, while account/operation/arm identities are UUIDs. Scope, account, origin, allowCredentials and current owner are checked before signing and after relevant awaits.
 
 Protected payload schema-4 authenticates current record, value-free history, retired identities and the latest exact request. Entries remain `{valueId,value,updatedAt}`. Only the latest apply/erase request retains plaintext inside ciphertext; history contains marked operations and receipts. Current reads never run old-format migration. Apply checks expectedRevision, schema hash and command/write identity; latest exact replay succeeds, divergent/reused identities refuse, and clear removes the entry while advancing revision. Retired history remains deny-only and cannot revive a value. Documents are bounded to 16 MiB and private requests to 64,000 bytes. Settings apply commits independently before the value-free SQLite audit; failed audit cannot roll back the private commit. Protected values never enter configuration fingerprints or snapshots. The local Settings editor deliberately serves authenticated protected values; unavailable authority is unknown, never an empty default.
 
@@ -643,7 +643,7 @@ approved account surface is wired.
 
 ### Private onboarding custody
 
-Show setup browser opens one draft-owned browser window (signed Google Chrome on macOS, full Chromium elsewhere) on the Relay FastDuo extension's
+Show setup browser opens one draft-owned full bundled Chromium window on macOS and Windows on the Relay Fast Duo extension's
 existing setup page. Open duo.ucsd.edu opens a separate tab in that same context, acquires the
 original protected Details only after verifying the exact UCSD SSO document and form controls,
 then submits that pinned POST form once. Reopening focuses the owned tab; failed initialization
@@ -653,8 +653,10 @@ startup, reporting, UNKNOWN retention and callbacks settle within its closure de
 same owned browser's complete context, page, process and callback closure plus profile deletion
 can then supersede that stop failure. Other failures refuse replacement; reopening never retries
 or confirms an enrollment.
-Show and Open focus the selected page and its owned Chromium window, restoring a minimized
-window. Failed attempt initialization must settle before closure; it is retained as a failure
+Show and Open focus the selected page and its owned Chromium window, restore a minimized
+window and activate its exact process through AppKit or Windows foreground APIs. Return to Relay
+uses the original app/window captured before launch; the extension cannot supply a native target.
+Close setup tab removes only that extension tab. Focus failures never establish enrollment proof. Failed attempt initialization must settle before closure; it is retained as a failure
 without preventing proved worker and browser cleanup. Reopening never rearms the failed attempt.
 The first attempt failure retains only its closed `kind` and `causeTag` values. The existing debug
 event writer records the same facts as a pinned Duo failure correlated to that attempt in the
@@ -667,9 +669,7 @@ enrollment, persisted credential, counter reservation or readiness proof.
 `profile-onboarding.ts` issues exact operation/generation/method attempts. Software FastDuo readiness
 requires native pending-key acknowledgement and ceremony plus either exact scoped operator CONFIRM
 or an observed exact-credential request; an unobserved portal acceptance remains false. Touch ID separately requires a platform ceremony with software interception disabled, actual Duo
-portal acceptance and operator confirmation. The owned extension prepares platform discovery before answering Duo availability queries. macOS enrollment requires installed signed Chrome for its WebAuthn keychain entitlements; the staged extension loads through a private DevTools pipe. A successful platform-availability probe on macOS selects native
-Touch ID when available; explicit absence or a non-macOS host selects Chromium's virtual internal authenticator before
-the ceremony. A failed probe or native ceremony never triggers an emulated retry. Virtual platform
+portal acceptance and operator confirmation. The owned extension prepares platform discovery before answering Duo availability queries. Touch ID uses Chromium's emulated internal authenticator on both macOS and Windows, without a hardware availability probe or installed Chrome dependency. The registration handoff disables native signatures before exporting the observed counter and private key. Login rehydrates ready internal material with native signatures disabled; the current backend ceremony lease remains required for signing. Virtual platform
 keys enter the same encrypted Duo custody and must be ready before Finish. The retained receipt and
 public method state identify `native-platform` or `chromium-platform`. Public method states display these receipts; they do not
 authorize publication. Each SIGN uses a distinct durable reservation nonce.

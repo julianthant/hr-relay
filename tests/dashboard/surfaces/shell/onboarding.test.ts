@@ -315,7 +315,7 @@ it("cancels sign-up from its footer only after confirmation and never repeats an
   const button = (scope: ParentNode, text: string) => { const button = [...scope.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === text); assert.ok(button); return button; };
   try {
     await act(async () => root.render(createElement(Onboarding, { port, step: "duo", onStep() { assert.fail("unconfirmed cancellation cannot navigate"); }, onDashboard() { assert.fail("cannot finish"); } })));
-    assert.match(host.querySelector(".heading p")?.textContent ?? "", /This Mac has no Touch ID/);
+    assert.match(host.querySelector(".heading p")?.textContent ?? "", /Relay manages Touch ID on this computer/);
     const cancel = button(host.querySelector("footer")!, "Cancel sign-up");
     await act(async () => cancel.click());
     assert.equal(cancellations, 0);

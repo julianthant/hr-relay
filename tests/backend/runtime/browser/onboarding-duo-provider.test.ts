@@ -11,6 +11,7 @@ import type { BrowserContext, Worker } from "playwright";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext } from "../../../../src/backend/profiles/onboarding-duo.js";
+import { ProfileOnboardingStateSchema } from "../../../../src/models/profiles/public-profile.js";
 
 function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "darwin") {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "relay-onboarding-provider-")));
@@ -27,6 +28,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   const attempt: DraftDuoAttempt = { operationId: randomUUID(), profileId: randomUUID(), accountId: randomUUID(), generation: 1,
     attemptId: randomUUID(), method, expiresAt: "2026-10-01T00:10:00.000Z" };
   const requests: unknown[] = [];
+  const browserRequests: unknown[] = [];
   let waiter: ((value: unknown) => void) | undefined;
   let browserWaiter: ((value: unknown) => void) | undefined;
   const rejectPolls = new Map<string, (error: Error) => void>();
@@ -34,7 +36,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let lostActiveStopAck = false, blockedPump = false;
   let startupHold: Promise<void> | undefined, releaseStartup: (() => void) | undefined, startupEntered: (() => void) | undefined;
   const replies = new Map<string, (value: unknown) => void>();
-  let windowFocusCount = 0, failInstall = false;
+  let windowFocusCount = 0, osFocusCount = 0, capturedRelay = 0, returnedRelay = 0, failInstall = false;
+  let captureFailure: Error | undefined;
   let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
   let launchCount = 0, nativeProbes = 0, nativeBusy = false, revokeDuringProbe = false, mutateOwnerDuringProbe = false;
   let profile = "";
@@ -56,15 +59,17 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
       if (input.method === "install") { startupEntered?.(); await startupHold; if (failInstall) throw new Error("synthetic arm initialization failed"); return; }
       if (input.method === "browserFocus") { windowFocusCount++; return; }
       if (input.method === "browserInstall") return;
-      if (input.method === "platformAvailable") return true;
-      if (input.method === "browserNext") return new Promise((resolve, reject) => { browserWaiter = resolve; rejectPolls.set(input.method, reject); });
+      if (input.method === "browserNext") {
+        if (browserRequests.length) return browserRequests.shift();
+        return new Promise((resolve, reject) => { browserWaiter = resolve; rejectPolls.set(input.method, reject); });
+      }
       if (input.method === "browserStop") { if (lostStopAck) throw new Error("synthetic worker already closed"); browserWaiter?.(null); browserWaiter = undefined; return; }
       if (input.method === "assertContext") { if (!documentCurrent) throw new Error("synthetic document drift"); return; }
       if (input.method === "next") {
         if (requests.length) return requests.shift();
         return new Promise((resolve, reject) => { waiter = resolve; rejectPolls.set(input.method, reject); });
       }
-      if (input.method === "reply") { replies.get(String(input.args[0]))?.(input.args[1]); return; }
+      if (input.method === "reply" || input.method === "browserReply") { replies.get(String(input.args[0]))?.(input.args[1]); return; }
       if (input.method === "stop") {
         if (blockedStop) await new Promise<void>(resolve => { releaseStop = resolve; });
         if (!blockedPump) { waiter?.(null); waiter = undefined; }
@@ -85,18 +90,22 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let pages = [makePage()];
   const context = { serviceWorkers: () => [worker], pages: () => pages.filter(page => !page.isClosed()), on: (_event: string, callback: () => void) => { listeners.push(callback); },
     newCDPSession: async () => ({ async send(name: string, input?: { credentialId: string }) {
-      if (name === "WebAuthn.enable") return {};
+      if (["WebAuthn.enable", "WebAuthn.setResponseOverrideBits", "WebAuthn.setUserVerified", "WebAuthn.setAutomaticPresenceSimulation"].includes(name)) return {};
       if (name === "WebAuthn.addVirtualAuthenticator") return { authenticatorId: "synthetic-platform" };
       if (name === "WebAuthn.getCredential") return { credential: { credentialId: input?.credentialId, rpId: "duosecurity.com",
         privateKey: generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
-        isResidentCredential: true } };
+        isResidentCredential: true, signCount: 1 } };
       throw new Error("unexpected platform operation");
     } }),
     newPage: async () => { const page = makePage(); pages.push(page); return page; },
     close: async () => { closed = true; if (!missingCloseEvent) for (const listener of listeners) listener(); if (!blockedPump) { waiter?.(null); waiter = undefined; } browserWaiter?.(null); browserWaiter = undefined; } } as unknown as BrowserContext;
+  const relayTarget = platform === "win32" ? { platform: "win32" as const, processId: 72, windowHandle: "8192" }
+    : { platform: "darwin" as const, processId: 72 };
   const realProvider = createProfileOnboardingDuoProvider({ browserRoots: mockBrowserRootPort().browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50, platform,
+    focus: { async captureRelay() { capturedRelay++; if (captureFailure) throw captureFailure; return relayTarget; }, async show(owned) { assert.equal(owned, context); osFocusCount++; },
+      async returnToRelay(target) { assert.equal(target, relayTarget); returnedRelay++; } },
     launcher: { launch: async input => {
-      assert.deepEqual(input.nativePlatform, platform === "darwin" ? { closeProofMs: 50 } : undefined);
+      assert.equal(Object.hasOwn(input, "nativePlatform"), false);
       if(input.nativeOnly===true){
         nativeProbes++;
         if(nativeBusy)throw new Error("Failed to create a ProcessSingleton for your profile directory.");
@@ -150,8 +159,16 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     return result;
   }
   return { sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+    sendBrowser(kind: string) {
+      const id = randomUUID(), request = { id, kind };
+      const response = new Promise(resolve => replies.set(id, resolve));
+      if (browserWaiter) { const resolve = browserWaiter; browserWaiter = undefined; resolve(request); }
+      else browserRequests.push(request);
+      return response;
+    },
+    refuseCapture(error: Error) { captureFailure = error; },
     rejectPoll(method: "next" | "browserNext", error: Error) { const reject = rejectPolls.get(method); assert.ok(reject); reject(error); },
-    loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, windowFocuses: () => windowFocusCount, failInstall: () => { failInstall = true; }, launches: () => launchCount, profile: () => profile,
+    loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, windowFocuses: () => windowFocusCount, osFocuses: () => osFocusCount, relayCaptures: () => capturedRelay, relayReturns: () => returnedRelay, failInstall: () => { failInstall = true; }, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
     loseActiveStopAck: () => { lostActiveStopAck = true; }, blockPump: () => { blockedPump = true; },
     releasePump: () => { blockedPump = false; waiter?.(null); waiter = undefined; },
@@ -166,6 +183,14 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
 const BIND = { documentId: "A0000000000040008000000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
 
 describe("draft Duo provider", () => {
+  it("classifies a failed Relay target observation before browser launch or profile creation", async () => {
+    const w = world(), failure = new Error("synthetic app observation refused"); w.refuseCapture(failure);
+    try {
+      await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError
+        && error.kind === "unavailable" && error.reason === "provider" && error.cause === failure);
+      assert.equal(w.launches(), 0); assert.equal(existsSync(onboardingProfileDirectory(w.browserRoot, w.owner)), false);
+    } finally { await w.cleanup(); }
+  });
   for (const method of ["next", "browserNext"] as const) it(`retains browser lifetime and the original cause when ${method} terminates before context closure`, async () => {
     const w = world(), original = new Error("synthetic broker transport closed");
     let reported!: (error: Error) => void;
@@ -180,6 +205,32 @@ describe("draft Duo provider", () => {
       assert.deepEqual(w.calls, []);
     } finally { await w.cleanup(); }
   });
+  for (const method of ["next", "browserNext"] as const) for (const proof of ["proved", "missing-event"] as const) {
+    it(`retains a captured key after ${method} rejects before ${proof} physical closure`, async () => {
+      const w = world();
+      let acknowledge!: () => void;
+      const retained = new Promise<void>(resolve => { acknowledge = resolve; });
+      try {
+        await w.provider.start(w.attempt, async input => ({ ...await w.bind(input),
+          async retainUnknown() { w.calls.push("unknown"); acknowledge(); },
+        }), w.reportFailure);
+        await w.send("bind", BIND);
+        await w.send("persist", { credentialId: "cHVibGljLWlk", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+          transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
+        await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId: randomUUID() });
+        await new Promise<void>(resolve => setImmediate(resolve));
+        w.rejectPoll(method, new Error("synthetic target closed before context event"));
+        await retained;
+        if (proof === "missing-event") w.withholdCloseEvent();
+        await w.closeBrowser();
+        assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
+        assert.deepEqual(w.failures, []);
+        assert.ok(w.calls.includes("unknown")); assert.ok(!w.calls.includes("portal-accepted"));
+        if (proof === "proved") { await w.provider.showBrowser(w.owner); assert.equal(w.launches(), 2); }
+        else { await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1); }
+      } finally { await w.cleanup(); }
+    });
+  }
   for(const pathKind of ["random","old-generation","changed-owner"] as const)it(`refuses an unbound ${pathKind} directory without effects`,async()=>{
     const w=world();
     const directory=pathKind==="random"?join(w.browserRoot,"onboarding-Abc123")
@@ -325,7 +376,22 @@ describe("draft Duo provider", () => {
     try {
       await w.provider.showBrowser(w.owner);
       assert.equal(w.focuses(), 1); assert.equal(w.windowFocuses(), 1);
+      assert.equal(w.osFocuses(), 1); assert.equal(w.relayCaptures(), 1);
       assert.equal(w.launches(), 1); assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
+
+  for (const platform of ["darwin", "win32"] as const) it(`activates each ${platform} show and returns to the original Relay target without starting an attempt`, async () => {
+    const w = world("key", platform);
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const state = ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
+      step: "duo", methods: { key: idle, touch: idle } });
+    w.owner.readState = () => state;
+    try {
+      await w.provider.showBrowser(w.owner); await w.provider.showBrowser(w.owner);
+      assert.equal(w.osFocuses(), 2); assert.equal(w.windowFocuses(), 2); assert.equal(w.relayCaptures(), 1);
+      assert.deepEqual(await w.sendBrowser("return"), { ok: true, value: state });
+      assert.equal(w.relayReturns(), 1); assert.equal(w.launches(), 1); assert.deepEqual(w.calls, []);
     } finally { await w.cleanup(); }
   });
 
@@ -339,6 +405,7 @@ describe("draft Duo provider", () => {
       await w.closeBrowser();
       await w.provider.showBrowser(w.owner);
       assert.equal(w.focuses(), 2); assert.equal(w.windowFocuses(), 2);
+      assert.equal(w.osFocuses(), 2);
       assert.equal(w.launches(), 2); assert.equal(w.workerCalls.filter(call => call === "install").length, 1);
       assert.equal(w.portalPages(), 0); assert.deepEqual(w.calls, []);
     } finally { await w.closeBrowser(); await w.cleanup(); }
@@ -489,16 +556,16 @@ describe("draft Duo provider", () => {
       assert.equal(w.launches(), 0);
     } finally { await w.cleanup(); }
   });
-  it("requires native ceremony and portal facts independently without persisting a private native key", async () => {
+  it("persists the emulated macOS key before recording separate ceremony and portal facts", async () => {
     const w = world("touch");
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
       await w.send("bind", BIND);
       const requestId = randomUUID();
       await w.send("native-created", { credentialId: "native-public-id", requestId });
-      assert.deepEqual(w.calls, ["native-platform"]);
+      assert.deepEqual(w.calls, ["persist", "chromium-platform"]);
       await w.send("portal-accepted", { credentialId: "native-public-id", requestId });
-      assert.deepEqual(w.calls, ["native-platform", "portal-accepted"]);
+      assert.deepEqual(w.calls, ["persist", "chromium-platform", "portal-accepted"]);
     } finally { await w.cleanup(); }
   });
 
@@ -522,7 +589,7 @@ describe("draft Duo provider", () => {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
       assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
       await w.send("native-created", { credentialId: "native-public-id", requestId: randomUUID() });
-      assert.deepEqual(w.calls, ["native-platform"]);
+      assert.deepEqual(w.calls, ["persist", "chromium-platform"]);
     } finally { await w.cleanup(); }
   });
 

@@ -19,8 +19,8 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
-| `scripts/test/` | Suite measurement, duration-balanced CI file selection, shared full-Chromium installation preflight (`chromium-preflight.ts`), direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
-| `.github/workflows/ci.yml` and `ci-checks.yml` | Per-branch supersession, FIFO pipeline admission, stable required summaries, suite execution and automatic file-timing feedback. |
+| `scripts/test/` | Suite measurement, shared typed CI selection/proof/timing-history policy (`ci-plan.ts`), duration-balanced CI file selection, shared full-Chromium installation preflight (`chromium-preflight.ts`), direct-execution detection, suite policy, and artifact policy; `pc.ts` owns leased PC execution and receipts, and dependency-free `pc-source.ts` owns filtered Git deltas and source identity. |
+| `.github/workflows/ci.yml`, `release.yml`, `ci-checks.yml`, `release-checks.yml` | Disjoint event entries and per-PR supersession; separately admitted portable-only and full-release check pipelines, stable required summaries and timing publication. |
 | `scripts/verify/` | Repository privacy, browser-login and test-target verification. Standalone verification holds the runtime listener; abandoned reservations settle through startup recovery. |
 | `scripts/verify-parity-json.ts` | Desktop parity runner. |
 | `src/` | Application source. |
@@ -71,7 +71,7 @@ src/
 ### Backend
 
 `storage/maintenance/account-deletion.ts` owns captured local-account erasure and startup continuation.
-`runtime/browser/onboarding-platform-authenticator.ts` selects native or Chromium virtual platform enrollment and exports virtual keys into canonical custody.
+`runtime/browser/duo-platform-authenticator.ts` prepares emulated platform enrollment and login, exporting fresh keys/counters to canonical custody and rehydrating ready keys over private CDP. `runtime/browser/native-browser-focus.ts` activates the exact owned Duo process and captured Relay return target on macOS and Windows.
 
 Paths in this table are relative to `src/backend/`.
 

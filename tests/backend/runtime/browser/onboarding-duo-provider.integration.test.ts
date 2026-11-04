@@ -33,7 +33,7 @@ for (const pendingClose of [false, true]) it(pendingClose
   let context: BrowserContext | undefined, launches = 0, acquisitions = 0, submissions = 0, nativeProbes = 0, nativeClosures = 0;
   const nativeContexts = new Set<BrowserContext>();
   let owner: DraftDuoBrowserOwner | undefined;
-  const provider = createProfileOnboardingDuoProvider({ browserRoots: createBrowserRoots(machine), browserRoot, extensionDirectory: realpathSync(join(process.cwd(), "fast-duo")), clock: systemClock, closeProofMs: 5000,
+  const provider = createProfileOnboardingDuoProvider({ focus: { async captureRelay() { return undefined; }, async show() {}, async returnToRelay() { throw new Error("unexpected native Return"); } }, browserRoots: createBrowserRoots(machine), browserRoot, extensionDirectory: realpathSync(join(process.cwd(), "fast-duo")), clock: systemClock, closeProofMs: 5000,
     launcher: { async launch(input) {
       if (input.nativeOnly === true) {
         assert.equal(input.headless, true); assert.equal(input.extensionDirectory, ""); assert.equal(input.acceptDownloads, false);
@@ -82,12 +82,12 @@ for (const pendingClose of [false, true]) it(pendingClose
     assert.equal((await focusCalls()).length, 1);
     let setup = context.pages()[0]; assert.ok(setup);
     assert.match(setup.url(), /^chrome-extension:\/\/[^/]+\/src\/options\.html$/);
-    await expect(setup.locator("#globalStatus")).toHaveText("Sign-in methods not started");
+    await expect(setup.locator("#globalStatus")).toHaveText("Open Duo to begin");
     await expect(setup.getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
     await expect(setup.locator(".brand small")).toHaveText("Relay sign-in setup");
-    await expect(setup.locator("footer > span:last-child")).toHaveText("Private Relay sign-in methods.");
-    await expect(setup.locator("#connection h3")).toHaveText("Set up a sign-in method");
-    await expect(setup.locator("#connection > p").first()).toContainText("same window");
+    await expect(setup.locator("footer > span:last-child")).toHaveText("Continue in Relay when both methods are added.");
+    await expect(setup.locator("#editorTitle")).toHaveText("Set up a sign-in method");
+    await expect(setup.locator(".relay-setup-steps > li")).toHaveCount(3);
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId); assert.equal(launches, 1);
     assert.equal((await focusCalls()).length, 2);
     await setup.getByRole("button", { name: "Open duo.ucsd.edu", exact: true }).click();
@@ -106,10 +106,10 @@ for (const pendingClose of [false, true]) it(pendingClose
     assert.equal(portal.url(), "https://duo.ucsd.edu/devices"); assert.equal(submissions, 1);
     for (const method of ["key", "touch"] as const) {
       await setup.getByRole("group", { name: "Sign-in method", exact: true }).getByRole("button", { name: method === "key" ? "Security key" : "Touch ID", exact: true }).click();
-      await setup.getByRole("button", { name: "Set up selected method", exact: true }).click();
+      await setup.getByRole("button", { name: `Set up ${method === "key" ? "Security key" : "Touch ID"}`, exact: true }).click();
       await expect(setup.locator("#cancelCapture")).toBeEnabled();
       assert.equal(read().methods[method].state, "pending");
-      await setup.getByRole("button", { name: "Cancel capture", exact: true }).click();
+      await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
       await expect(setup.locator("#transport button").first()).toBeEnabled();
       assert.equal(read().methods[method].state, "idle");
     }
@@ -119,13 +119,13 @@ for (const pendingClose of [false, true]) it(pendingClose
     await assert.rejects(profile.session.openOnboardingPortal(draft.token, draft.operationId));
     assert.equal(submissions, 1); assert.equal(acquisitions, 1); assert.equal(context.pages().length, 2);
     await setup.getByRole("button", { name: "Open duo.ucsd.edu", exact: true }).click();
-    await expect(setup.locator("#message")).toContainText("Duo could not complete this setup action");
+    await expect(setup.locator("#message")).toContainText("Relay could not finish that action");
     await setup.evaluate(() => new Promise<void>(resolve => {
       const list = document.getElementById("accountList"); if (!list) throw new Error("fixture method list missing");
       const observer = new MutationObserver(() => { observer.disconnect(); resolve(); });
       observer.observe(list, { childList: true });
     }));
-    await expect(setup.locator("#message")).toContainText("Duo could not complete this setup action");
+    await expect(setup.locator("#message")).toContainText("Relay could not finish that action");
     const methodsBeforeReopen = read().methods;
     await setup.close();
     await Promise.all([profile.session.showOnboardingBrowser(draft.token, draft.operationId), profile.session.showOnboardingBrowser(draft.token, draft.operationId)]);
@@ -141,7 +141,7 @@ for (const pendingClose of [false, true]) it(pendingClose
     if (pendingClose) {
       setup = context.pages()[0];
       await setup.getByRole("group", { name: "Sign-in method", exact: true }).getByRole("button", { name: "Security key", exact: true }).click();
-      await setup.getByRole("button", { name: "Set up selected method", exact: true }).click();
+      await setup.getByRole("button", { name: "Set up Security key", exact: true }).click();
       await expect(setup.locator("#cancelCapture")).toBeEnabled();
       assert.equal(read().methods.key.state, "pending");
       await context.route("https://synthetic.duosecurity.com/**", route => route.fulfill({ contentType: "text/html",
@@ -190,6 +190,9 @@ for (const pendingClose of [false, true]) it(pendingClose
       assert.equal(retained.operatorConfirmed, false); assert.equal(retained.exactCredentialRequestObserved, false);
       assert.equal(read().methods.touch.state, "idle"); assert.equal(acquisitions, 1); assert.equal(submissions, 1);
       await expect(context.pages()[0].locator("#accountList")).toContainText("Failed");
+      await assert.rejects(profile.session.startOnboardingDuo(draft.token, draft.operationId, "key"));
+      await assert.rejects(profile.session.startOnboardingDuo(draft.token, draft.operationId, "touch"));
+      assert.equal(read().methods.key.attemptId, captured.attemptId); assert.equal(launches, 3);
       assert.deepEqual(await profile.session.cancelOnboarding(draft.token, draft.operationId), { state: "signed-out" });
       assert.ok(owner); const stale = owner; assert.throws(() => stale.assertCurrent()); await assert.rejects(stale.acquireCredentials());
       assert.equal(machine.readProfileRegistry().profiles.length, 0);
@@ -217,7 +220,7 @@ for (const scenario of ["software", "abort", "timeout", "platform", "scope-refus
   const browserRoot = join(machine.stateRoot, "browsers", "onboarding");
   mkdirSync(browserRoot, { recursive: true, mode: 0o700 });
   let context: BrowserContext | undefined;
-  const provider = createProfileOnboardingDuoProvider({ browserRoots: createBrowserRoots(machine), browserRoot,
+  const provider = createProfileOnboardingDuoProvider({ focus: { async captureRelay() { return undefined; }, async show() {}, async returnToRelay() { throw new Error("unexpected native Return"); } }, browserRoots: createBrowserRoots(machine), browserRoot,
     extensionDirectory: realpathSync("fast-duo"), clock: systemClock, closeProofMs: 5000, platform: "win32",
     launcher: { async launch(input) {
       if (input.nativeOnly) return DEFAULT_BROWSER_LAUNCHER.launch(input);
@@ -240,6 +243,8 @@ for (const scenario of ["software", "abort", "timeout", "platform", "scope-refus
     await page.goto("https://enrollment.duosecurity.com/");
     const method = scenario === "platform" ? "touch" : "key";
     await profile.session.startOnboardingDuo(draft.token, draft.operationId, method);
+    await page.bringToFront();
+    assert.equal(await page.evaluate(() => document.hasFocus()), true);
     if (scenario === "platform") {
       assert.equal(await page.evaluate(() => PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()), true);
     }
