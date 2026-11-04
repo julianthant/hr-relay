@@ -17,8 +17,8 @@ export class ProfileNameValidationError extends Error {
 export const ProfileIdSchema = z.uuid();
 export const ProfileOnboardingCompletionSchema = z.strictObject({
   generation: z.number().int().safe().positive(), finishId: z.uuid(), finishedAt: IsoInstantSchema,
-  key: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), confirmation: z.enum(["operator", "exact-credential-request"]) }),
-  touch: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), softwareInterceptionDisabled: z.literal(true), operatorConfirmedAt: IsoInstantSchema }),
+  key: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), confirmation: z.enum(["operator", "portal-accepted", "exact-credential-request"]) }),
+  touch: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), softwareInterceptionDisabled: z.literal(true), operatorConfirmedAt: IsoInstantSchema.optional() }),
 });
 
 export const ProfileRegistryRowSchema = z.strictObject({

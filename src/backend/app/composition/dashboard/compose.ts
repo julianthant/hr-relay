@@ -1348,9 +1348,10 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     const draft = currentOnboarding(c.req.raw, request.operationId);
     transitioning = true;
     try {
-      const active = await profileRuntime.session.completeOnboarding(draft.token, request.operationId), result = await mountActive(active);
-      completedDraft = { operationId: request.operationId, sessionId: draft.sessionId };
+      const active = await profileRuntime.session.completeOnboarding(draft.token, request.operationId);
       onboardingSelection = undefined;
+      const result = await mountActive(active);
+      completedDraft = { operationId: request.operationId, sessionId: draft.sessionId };
       if (selection === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
       c.header("set-cookie", `${cookieName}=${selection.sessionId}; HttpOnly; SameSite=Strict; Path=/`);
       return c.json(result);

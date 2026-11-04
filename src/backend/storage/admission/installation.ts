@@ -850,12 +850,12 @@ function profileOnboardingCompletion(operation: z.infer<typeof SignUpOperationSc
   if (draft?.finish === undefined) fail("profile-onboarding-incomplete");
   const key = draft.attempts.findLast(entry => entry.method === "key" && entry.generation === draft.generation);
   const touch = draft.attempts.findLast(entry => entry.method === "touch" && entry.generation === draft.generation);
-  if (key === undefined || touch?.operatorConfirmedAt === undefined) fail("profile-onboarding-incomplete");
+  if (key === undefined || touch === undefined) fail("profile-onboarding-incomplete");
   return ProfileOnboardingCompletionSchema.parse({ generation: draft.generation, ...draft.finish,
     key: { receiptDigest: createHash("sha256").update(canonicalJsonStringify(key)).digest("hex"),
-      confirmation: key.operatorConfirmedAt === undefined ? "exact-credential-request" : "operator" },
+      confirmation: key.operatorConfirmedAt === undefined ? key.portal?.acceptance : "operator" },
     touch: { receiptDigest: createHash("sha256").update(canonicalJsonStringify(touch)).digest("hex"),
-      softwareInterceptionDisabled: true, operatorConfirmedAt: touch.operatorConfirmedAt } });
+      softwareInterceptionDisabled: true, ...(touch.operatorConfirmedAt === undefined ? {} : { operatorConfirmedAt: touch.operatorConfirmedAt }) } });
 }
 
 function assertOnboardingFinishPublicationDocument(locator: RuntimeLocator,
