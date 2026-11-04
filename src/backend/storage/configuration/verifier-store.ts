@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { ProfileVerifierDocumentSchema } from "../../../models/profiles/profile.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
-import { readPrivateFile, CREDENTIAL_DIRECTORY_MODE, ensureChildDirectory } from "./credential-safe-file.js";
+import { sameDirectory, numericFileIdentity, readPrivateFile, CREDENTIAL_DIRECTORY_MODE, ensureChildDirectory } from "./credential-safe-file.js";
 import {
   createSyntheticVerifier,
   emailKey,
@@ -99,13 +99,13 @@ export function createProfileVerifiers(machineRoot: string) {
       const assertCurrent = () => {
         for (const [path, before] of [[documentPath, document], [pepperPath, sourcePepper]] as const) {
           const after = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
-          if (after === undefined || after.identity.device !== before.identity.device || after.identity.inode !== before.identity.inode
+          if (after === undefined || !sameDirectory(after.identity, before.identity)
             || createHash("sha256").update(after.bytes).digest("hex") !== createHash("sha256").update(before.bytes).digest("hex")) throw new Error("profile-verifier-publication-source-changed");
         }
       };
       const witness = Object.freeze({ profileId });
       preparedVerifiers.set(witness, { root: machineRoot, row: Object.freeze(row), pepper: sourcePepper.bytes,
-        pepperFile: { device: sourcePepper.identity.device, inode: sourcePepper.identity.inode, digest: createHash("sha256").update(sourcePepper.bytes).digest("hex") }, assertCurrent });
+        pepperFile: { ...numericFileIdentity(sourcePepper.identity), digest: createHash("sha256").update(sourcePepper.bytes).digest("hex") }, assertCurrent });
       assertCurrent(); return witness;
     },
     save(profileId: string, email: string, password: string): void {
