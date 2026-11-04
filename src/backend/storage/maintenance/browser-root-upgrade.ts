@@ -42,7 +42,7 @@ function upgraded(prior: z.infer<typeof PriorDocument>) {
 }
 
 export async function upgradeBrowserRoots(lease: InstallationLease, operation: OfflineMaintenanceOperation,
-  createProbe: BrowserProfileProbeFactory, clock: Clock): Promise<"current" | "upgraded"> {
+  createProbe: BrowserProfileProbeFactory, clock: Clock): Promise<"current" | "upgraded" | "deferred"> {
   const held = (): void => { assertStoppedMachineMaintenance(lease, operation); lease.lifetime.assertSourceCustody(); };
   held();
   const context = lease.readInstallationContext(), state = lease.locator.stateRoot;
@@ -74,11 +74,18 @@ export async function upgradeBrowserRoots(lease: InstallationLease, operation: O
     if (!sameDirectory(observed.identity, written.identity) || !observed.bytes.equals(bytes)) refuse("publication-unproved");
   };
   let source = read(path), pending = read(journalPath);
+  if (read(join(control, "profile-control-upgrade.json")) !== undefined) {
+    if (pending !== undefined) refuse("other-maintenance-pending");
+    return "deferred";
+  }
   if (source === undefined) {
     const marker = read(join(machine, "profile-registry-version.json"));
     if (pending !== undefined || marker !== undefined && z.object({ schemaVersion: z.number() }).parse(decode(marker.bytes)).schemaVersion === 8) refuse("source-missing");
     return "current";
   }
+  const registryStages = () => readdirSync(machine).filter(name => name.startsWith("browser-roots.json.")
+    || name.startsWith(".browser-roots.") && name !== ".browser-roots.lock");
+  if (pending === undefined && registryStages().length > 0) refuse("registry-stage-pending");
   const currentSource = BrowserRootsSchema.safeParse(decode(source.bytes));
   if (pending === undefined && currentSource.success) {
     if (currentSource.data.installationId !== lease.locator.installationId) refuse("installation-mismatch");
@@ -137,6 +144,7 @@ export async function upgradeBrowserRoots(lease: InstallationLease, operation: O
   } else journal = Journal.parse(decode(pending.bytes));
   const validate = (): void => {
     held();
+    if (registryStages().some(name => name !== `.browser-roots.${journal.operationId}.compact.tmp`)) refuse("registry-stage-pending");
     if (journal.installationId !== lease.locator.installationId || journal.prior.installationId !== journal.installationId
       || !same(upgraded(journal.prior), journal.current)) refuse("journal-binding");
     const actual = Journal.parse(decode(required(journalPath).bytes));

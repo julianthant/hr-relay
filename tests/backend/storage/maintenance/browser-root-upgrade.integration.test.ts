@@ -173,3 +173,16 @@ it("rejects an unknown directory beside the retained source without hiding it in
     assert.deepEqual(readFileSync(f.path), before); assert.equal(existsSync(unknown), true); assert.equal(io.moves, 0);
   } finally { await f.cleanup(); }
 });
+
+for (const name of [".browser-roots.00000000-0000-4000-8000-000000000001.tmp", "browser-roots.json.account-deletion.tmp", "browser-roots.json.00000000-0000-4000-8000-000000000001.tmp"])
+it(`preserves unknown predecessor registry stage ${name} before any conversion effect`, async () => {
+  const f = await priorFixture();
+  try {
+    const before = readFileSync(f.path), stage = join(f.stopped.stateRoot, "machine", name);
+    writeFileSync(stage, "unknown captured publication", { mode: 0o600 });
+    await assert.rejects(f.stopped.upgradeBrowserRoots(f.probe, clock));
+    assert.deepEqual(readFileSync(f.path), before); assert.equal(readFileSync(stage, "utf8"), "unknown captured publication");
+    assert.equal(io.moves, 0); assert.deepEqual(f.probes, []);
+    assert.equal(existsSync(join(f.workspace, ".tracker", "control", "browser-root-upgrades")), false);
+  } finally { await f.cleanup(); }
+});

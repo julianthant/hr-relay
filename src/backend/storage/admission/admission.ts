@@ -1489,7 +1489,7 @@ export class RuntimeAdmission {
     return new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => this.readInstallationContext() },
       root, join(root, "artifacts"), [join(root, "state.db")], "stopped-incomplete-profile-inventory", "exclusive", this.#locator, binding, this);
   }
-  async upgradeBrowserRoots(createProbe: import("../browser-roots.js").BrowserProfileProbeFactory, clock: Clock): Promise<"current" | "upgraded"> {
+  async upgradeBrowserRoots(createProbe: import("../browser-roots.js").BrowserProfileProbeFactory, clock: Clock): Promise<"current" | "upgraded" | "deferred"> {
     const { lease, restore } = this.#stoppedMachineMaintenance();
     const { upgradeBrowserRoots } = await import("../maintenance/browser-root-upgrade.js");
     return upgradeBrowserRoots(lease, restore, createProbe, clock);

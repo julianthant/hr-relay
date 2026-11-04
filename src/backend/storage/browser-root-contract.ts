@@ -77,3 +77,5 @@ export const StoppedBrowserRootsV1Schema = z.strictObject({ schemaVersion: z.lit
 export function parseStoppedBrowserRootUpgradeSource(value: unknown) {
   return z.union([StoppedBrowserRootsV1Schema, BrowserRootsSchema]).parse(value);
 }
+
+export type StoppedBrowserRootsDocument = ReturnType<typeof parseStoppedBrowserRootUpgradeSource>;

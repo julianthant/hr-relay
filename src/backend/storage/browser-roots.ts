@@ -1,5 +1,5 @@
 import { fileStatus } from "./file-identity.js";
-import { BrowserRootHandleSchema, BrowserRootOwnerSchema, BrowserRootSchema, BrowserRootsSchema, type BrowserRootOwner, type BrowserRoot, type BrowserRootsDocument } from "./browser-root-contract.js";
+import { parseStoppedBrowserRootUpgradeSource, BrowserRootHandleSchema, BrowserRootOwnerSchema, BrowserRootSchema, BrowserRootsSchema, type BrowserRootOwner, type BrowserRoot, type BrowserRootsDocument } from "./browser-root-contract.js";
 import { BrowserProfileStillClosingError } from "../../workflow-kit/session.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -467,15 +467,15 @@ export async function probeStoppedControlBrowserRoots(admission: RuntimeAdmissio
       if (profileReservations.has(path)) throw new ProfileCustodyUnavailableError();
       profileReservations.add(path);
       try {
-        const probing = BrowserRootSchema.parse({ ...row, native: { ...row.native, phase: "probing" } });
-        const intended = BrowserRootsSchema.parse({ ...plan, revision: increment(plan.revision), roots: plan.roots.map(value => value.directory === directory ? probing : value) });
+        const probing = { ...row, native: { ...row.native, phase: "probing" } };
+        const intended = parseStoppedBrowserRootUpgradeSource({ ...plan, revision: increment(plan.revision), roots: plan.roots.map(value => value.directory === directory ? probing : value) });
         source.publishBrowserPlan(plan, intended); plan = intended;
         current();
         await runNativeBrowserProbe(join(source.machineRoot, row.profileRoot), path, options);
         current(); const after = fileStatus(path);
         if (after.dev !== before.dev || after.ino !== before.ino) throw new BrowserRootUnavailableError();
-        const observed = BrowserRootSchema.parse({ ...probing, launch: { ...probing.launch, state: "closed" }, native: { ...probing.native, phase: "observed" } });
-        source.publishBrowserPlan(plan, BrowserRootsSchema.parse({ ...plan, revision: increment(plan.revision), roots: plan.roots.map(value => value.directory === directory ? observed : value) }));
+        const observed = { ...probing, launch: { ...probing.launch, state: "closed" }, native: { ...probing.native, phase: "observed" } };
+        source.publishBrowserPlan(plan, parseStoppedBrowserRootUpgradeSource({ ...plan, revision: increment(plan.revision), roots: plan.roots.map(value => value.directory === directory ? observed : value) }));
       } finally { profileReservations.delete(path); }
     }
     current();

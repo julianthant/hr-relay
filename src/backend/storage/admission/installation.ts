@@ -1,5 +1,5 @@
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
-import { AccountDeletionRefusedError, captureAccountDeletion, publishAccountDeletion, resumeAccountDeletion } from "../maintenance/account-deletion.js";
+import { assertAccountDeletionRetainedBackups, AccountDeletionRefusedError, captureAccountDeletion, publishAccountDeletion, resumeAccountDeletion } from "../maintenance/account-deletion.js";
 import { createHash,randomBytes,randomUUID } from "node:crypto";
 import {
 closeSync,constants,existsSync,fstatSync,
@@ -34,7 +34,7 @@ import { systemClock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { BrowserRootsSchema,parseStoppedBrowserRootUpgradeSource,type BrowserRootsDocument } from "../browser-root-contract.js";
+import { BrowserRootsSchema,StoppedBrowserRootsV1Schema,parseStoppedBrowserRootUpgradeSource,type BrowserRootsDocument,type StoppedBrowserRootsDocument } from "../browser-root-contract.js";
 import type { BrowserProfileProbeFactory } from "../browser-roots.js";
 import { StoppedCredentialErasureHeadSchema as CredentialErasureHeadSchema,StoppedCredentialKeyWitnessSchema as CredentialKeyWitnessSchema,StoppedDuoContinuityRowSchema as DuoContinuityRowSchema,readStoppedCredentialConversion,releaseStoppedCredentialConversion,type StoppedDuoContinuityRow as DuoContinuityRow,type StoppedControlCredentialAttestation } from "../configuration/credential-conversion.js";
 import { captureCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
@@ -163,6 +163,12 @@ const ControlUpgradeReceiptSchema = z.discriminatedUnion("phase", [
   ControlUpgradeCommonSchema.extend({ phase: z.literal("preparing"), credentials: z.tuple([]), backups: z.tuple([]) }),
   ControlUpgradeCommonSchema.extend({ phase: z.enum(["backing-up", "publishing"]), browserStage: ControlUpgradeFileSchema, credentials: ControlUpgradeCredentialPlansSchema, backups: ControlUpgradeBackupsSchema }),
 ]);
+const PredecessorControlUpgradeCommonSchema = ControlUpgradeCommonSchema.extend({ browsers: StoppedBrowserRootsV1Schema });
+const StoppedControlUpgradeReceiptSchema = z.union([ControlUpgradeReceiptSchema, z.discriminatedUnion("phase", [
+  PredecessorControlUpgradeCommonSchema.extend({ phase: z.literal("preparing"), credentials: z.tuple([]), backups: z.tuple([]) }),
+  PredecessorControlUpgradeCommonSchema.extend({ phase: z.enum(["backing-up", "publishing"]), browserStage: ControlUpgradeFileSchema, credentials: ControlUpgradeCredentialPlansSchema, backups: ControlUpgradeBackupsSchema }),
+])]);
+type StoppedControlUpgradeReceipt = z.infer<typeof StoppedControlUpgradeReceiptSchema>;
 const GenerationSchema = z.number().int().nonnegative();
 const ProfileRestoreContextSchema = z.lazy(() => z.strictObject({ binding: ProfileDatabaseBindingSchema, continuity: ProfileContinuitySchema,
   credentials: CanonicalCredentialRestoreSnapshotSchema }));
@@ -733,7 +739,7 @@ function readProfilePublicationSource(control: string, locator: RuntimeLocator) 
   return { path, document, witnessPath, witness };
 }
 
-function finishAccountDeletion(control: string, locator: RuntimeLocator, assertHeld: () => void): void {
+function finishAccountDeletion(control: string, locator: RuntimeLocator, assertHeld: () => void, stoppedForward = false): void {
   const journal = join(control, "account-deletion.json");
   try { resumeAccountDeletion(locator, journal, assertHeld, {
     validate(prior, next) {
@@ -749,7 +755,7 @@ function finishAccountDeletion(control: string, locator: RuntimeLocator, assertH
       atomicJson(source.witnessPath, profileRegistryWitness(locator.installationId, source.path, source.document));
       dropProfileRegistryProof(control, locator);
     },
-  }); } catch (cause) { throw new AccountDeletionRefusedError(cause); }
+  }, stoppedForward); } catch (cause) { throw new AccountDeletionRefusedError(cause); }
 }
 
 function readMachineRegistry(control: string, locator: RuntimeLocator, recoverPublication = true, publicationOperationId?: string): ProfileRegistryDocument {
@@ -1323,7 +1329,7 @@ function preflightProfileFormats(control: string, workspace: string, stoppedForw
       const file = readPrivateFile(join(control, "journal.json"), { label: "lock", maxBytes: 1_048_576 });
       if (file === undefined || !JournalSchema.safeParse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes))).success) fail("profile-control-upgrade-pending-conversion-unsupported");
     }
-    if (!lstatMaybe(join(control, "profile-publication.json")) && !lstatMaybe(join(control, "journal.json"))
+    if (!lstatMaybe(join(control, "profile-publication.json")) && !lstatMaybe(join(control, "journal.json")) && !lstatMaybe(join(control, "account-deletion.json"))
       && canonicalJsonStringify(profileRegistryWitness(locator.installationId, join(machine, "profiles.json"), document)) !== canonicalJsonStringify(continuity)) fail("profile-registry-continuity-mismatch");
     return;
   }
@@ -1389,9 +1395,15 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       assertNoSymlinkComponents(machine);
       const marker = lstatMaybe(join(machine, "profile-registry-version.json")) === undefined ? undefined
         : readProfileEvidence(join(machine, "profile-registry-version.json"), z.strictObject({ schemaVersion: z.number().int() }));
-      if (marker?.schemaVersion === 8) {
+      if (marker?.schemaVersion === 8 && !lstatMaybe(join(control, "profile-control-upgrade.json"))) {
         if (lstatMaybe(join(control, "account-deletion.json"))) {
-          finishAccountDeletion(control, priorLocator, () => lifetime.assertStartupWorkspace(workspace));
+          finishAccountDeletion(control, priorLocator, () => {
+            lifetime.assertStartupWorkspace(workspace);
+            if (options?.stoppedControlForward === true) {
+              if (options.offlineOperation === undefined) fail("offline-maintenance-exclusive-root-required");
+              lifetime.assertOfflineMaintenance(options.offlineOperation, workspace);
+            }
+          }, options?.stoppedControlForward === true);
         }
         const pending = lstatMaybe(join(control, "profile-publication.json")) === undefined ? undefined
           : readProfileEvidence(join(control, "profile-publication.json"), ProfilePublicationSchema);
@@ -1835,11 +1847,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         const document = readMachineRegistry(control, locator);
         if (profileOperationInventory(locator.stateRoot).length !== 0
           || lstatMaybe(join(locator.stateRoot, "machine", "credential-operations", `${z.uuid().parse(profileId)}.json`))) fail("account-deletion-operation-pending");
-        const archives = join(control, "profile-control-upgrades");
-        if (lstatMaybe(archives)) {
-          assertNoSymlinkComponents(archives); privateDirectory(archives);
-          if (readdirSync(archives).some(name => name.includes(profileId))) fail("account-deletion-retained-installation-backup");
-        }
+        assertAccountDeletionRetainedBackups(control, locator, profileId);
         assertCanonicalProfileBinding(join(locator.stateRoot, "profiles", profileId, "state.db"), { installationId: locator.installationId, profileId });
         const plan = captureAccountDeletion(locator, document, profileId, epoch);
         guard(); publishAccountDeletion(journal, plan);
@@ -2226,8 +2234,8 @@ const stoppedControlInventories = new WeakMap<StoppedControlProfileInventory, Re
   assertCanonicalPublication(operationId: string, digest: string): void;
   readonly lifetime: RuntimeLifetimeLock;
   readonly sessionGeneration: number;
-  browserPlan(): BrowserRootsDocument | undefined;
-  publishBrowserPlan(expected: BrowserRootsDocument, document: BrowserRootsDocument): void;
+  browserPlan(): StoppedBrowserRootsDocument | undefined;
+  publishBrowserPlan(expected: StoppedBrowserRootsDocument, document: StoppedBrowserRootsDocument): void;
   assertHeld(): void; revalidateSource(): void; retainSourceClosure(error: unknown): void; readInstallationContext(): ReturnType<InstallationLease["readInstallationContext"]>;
 } & ({ credentialFormat: "legacy"; key: z.infer<typeof CredentialKeyWitnessSchema>; head: z.infer<typeof CredentialErasureHeadSchema>; duo: DuoContinuityRow }
   | { credentialFormat: "canonical" })>>();
@@ -2243,18 +2251,18 @@ const CONTROL_UPGRADE_RECEIPT_MAX_BYTES = 128 * 1024 * 1024;
 function assertControlUpgradeReceiptCapacity(receipt: unknown, reservedBytes: number): void {
   if (Buffer.byteLength(`${JSON.stringify(receipt)}\n`) + reservedBytes > CONTROL_UPGRADE_RECEIPT_MAX_BYTES) fail("profile-control-upgrade-evidence-too-large");
 }
-function writeControlUpgradeReceipt(path: string, receipt: z.infer<typeof ControlUpgradeReceiptSchema>): void {
+function writeControlUpgradeReceipt(path: string, receipt: StoppedControlUpgradeReceipt): void {
   assertControlUpgradeReceiptCapacity(receipt, 0);
   atomicJson(path, receipt);
 }
 
-function readControlUpgradeReceipt(path: string): z.infer<typeof ControlUpgradeReceiptSchema> {
+function readControlUpgradeReceipt(path: string): StoppedControlUpgradeReceipt {
   assertNoSymlinkComponents(path);
   const file = readPrivateFile(path, { label: "lock", maxBytes: CONTROL_UPGRADE_RECEIPT_MAX_BYTES });
   if (file === undefined) fail("profile-control-upgrade-evidence-missing");
   const value: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes));
   if (!z.looseObject({ schemaVersion: z.literal(3) }).safeParse(value).success) fail("profile-control-upgrade-pending-conversion-unsupported");
-  return ControlUpgradeReceiptSchema.parse(value);
+  return StoppedControlUpgradeReceiptSchema.parse(value);
 }
 
 function controlUpgradeFile(path: string, maxBytes = 1_048_576) {
@@ -2315,9 +2323,9 @@ function assertPriorRegistryLogicalBinding(locator: RuntimeLocator, prior: z.inf
     || canonicalJsonStringify(logicalOperations) !== canonicalJsonStringify(operations)) fail("profile-control-upgrade-prior-mismatch");
 }
 
-function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typeof StoppedProfileContinuitySchema>, document = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), StoppedProfileRegistryDocumentSchema), plans: readonly { profileId: string; plan: CanonicalCredentialConversionPlan }[] = [], browsers?: BrowserRootsDocument, assertBinding = assertCanonicalProfileBinding): string {
+function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typeof StoppedProfileContinuitySchema>, document = readProfileEvidence(join(locator.stateRoot, "machine", "profiles.json"), StoppedProfileRegistryDocumentSchema), plans: readonly { profileId: string; plan: CanonicalCredentialConversionPlan }[] = [], browsers?: StoppedBrowserRootsDocument, assertBinding = assertCanonicalProfileBinding): string {
   const browserPath = join(locator.stateRoot, "machine", "browser-roots.json");
-  if (lstatMaybe(browserPath) !== undefined && (browsers === undefined || canonicalJsonStringify(readProfileEvidence(browserPath, BrowserRootsSchema)) !== canonicalJsonStringify(publishedBrowserDocument(browsers)))) fail("profile-control-upgrade-browser-source-changed");
+  if (lstatMaybe(browserPath) !== undefined && (browsers === undefined || canonicalJsonStringify(parseStoppedBrowserRootUpgradeSource(readProfileEvidence(browserPath, z.unknown()))) !== canonicalJsonStringify(publishedBrowserDocument(browsers)))) fail("profile-control-upgrade-browser-source-changed");
   if (prior.schemaVersion === 5 || prior.schemaVersion === 6) {
     assertPriorRegistryLogicalBinding(locator, prior, document);
     if (document.profiles.some(row => row.lifecycle !== "ready" || row.credentialState !== "saved") || plans.length !== 0) fail("profile-control-upgrade-pending-conversion-unsupported");
@@ -2444,11 +2452,11 @@ function convertedProfileRegistry(locator: RuntimeLocator, prior: z.infer<typeof
 function convertedProfileControl(locator: RuntimeLocator, _prior: z.infer<typeof StoppedProfileContinuitySchema>, document: ProfileRegistryDocument) {
   return profileRegistryWitness(locator.installationId, join(locator.stateRoot, "machine", "profiles.json"), document);
 }
-function publishedBrowserDocument(plan: BrowserRootsDocument): BrowserRootsDocument {
+function publishedBrowserDocument(plan: StoppedBrowserRootsDocument): StoppedBrowserRootsDocument {
   if (plan.roots.some(row => row.launch.state !== "closed" || row.native?.phase !== "observed")) fail("profile-control-upgrade-browser-closure-unproved");
-  return BrowserRootsSchema.parse({ ...plan, roots: plan.roots.map(({ native: _native, ...row }) => row) });
+  return parseStoppedBrowserRootUpgradeSource({ ...plan, roots: plan.roots.map(({ native: _native, ...row }) => row) });
 }
-function validateStoppedControlUpgrade(control: string, locator: RuntimeLocator, receipt: z.infer<typeof ControlUpgradeReceiptSchema>,
+function validateStoppedControlUpgrade(control: string, locator: RuntimeLocator, receipt: StoppedControlUpgradeReceipt,
   readRetained: (name: string) => z.infer<typeof RetainedControlUpgradeEntrySchema> = name => retainedControlUpgradeEntry(join(control, "profile-control-upgrades"), name, locator.installationId),
   assertBinding = assertCanonicalProfileBinding) {
   const backupDirectory = join(control, "profile-control-upgrades"), registryPath = join(locator.stateRoot, "machine", "profiles.json"),
@@ -2497,7 +2505,7 @@ function validateStoppedControlUpgrade(control: string, locator: RuntimeLocator,
     if (lstatMaybe(browserPath) || lstatMaybe(browserStage)) fail("profile-control-upgrade-publication-uncertain");
   } else {
     const path = lstatMaybe(browserStage) ? browserStage : browserPath;
-    if (!sameControlUpgradeFile(path, receipt.browserStage) || canonicalJsonStringify(readProfileEvidence(path, BrowserRootsSchema)) !== canonicalJsonStringify(publishedBrowserDocument(receipt.browsers))) fail("profile-control-upgrade-browser-stage-changed");
+    if (!sameControlUpgradeFile(path, receipt.browserStage) || canonicalJsonStringify(parseStoppedBrowserRootUpgradeSource(readProfileEvidence(path, z.unknown()))) !== canonicalJsonStringify(publishedBrowserDocument(receipt.browsers))) fail("profile-control-upgrade-browser-stage-changed");
     if (lstatMaybe(browserStage) && lstatMaybe(browserPath)) fail("profile-control-upgrade-publication-uncertain");
     if (!lstatMaybe(browserStage) && receipt.phase !== "publishing") fail("profile-control-upgrade-publication-uncertain");
   }
@@ -2560,7 +2568,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     proof.assertUnchanged();
   };
   const controlEvidence = (prior: z.infer<typeof StoppedProfileContinuitySchema>, document?: z.infer<typeof StoppedProfileRegistryDocumentSchema>,
-    plans?: readonly { profileId: string; plan: CanonicalCredentialConversionPlan }[], browsers?: BrowserRootsDocument) =>
+    plans?: readonly { profileId: string; plan: CanonicalCredentialConversionPlan }[], browsers?: StoppedBrowserRootsDocument) =>
     priorControlUpgradeEvidence(locator, prior, document, plans, browsers, assertBinding);
   const retainedAncestry = new Map<string, { device: number; inode: number }>();
   const retainedProofs = new Map<string, { paths: readonly string[]; witness: string; entry: z.infer<typeof RetainedControlUpgradeEntrySchema> }>();
@@ -2582,7 +2590,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     retainedProofs.set(name, { paths, witness, entry });
     return entry;
   };
-  const validateControl = (receipt: z.infer<typeof ControlUpgradeReceiptSchema>) => validateStoppedControlUpgrade(control, locator, receipt, readRetained, assertBinding);
+  const validateControl = (receipt: StoppedControlUpgradeReceipt) => validateStoppedControlUpgrade(control, locator, receipt, readRetained, assertBinding);
   const issuedInventoryClaims = new Set<StoppedControlProfileInventory>();
   const inventoryProofs = new Map<string, { claim: StoppedControlProfileInventory; proof: StoppedControlCredentialAttestation }>();
   const publicationProofs = (profiles: readonly z.infer<typeof ProfileRegistryRowSchema>[]): (() => void)[] => profiles.map(profile => {
@@ -2598,7 +2606,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
     if (lstatMaybe(join(control, "profile-publication.json"))) fail("profile-control-upgrade-publication-pending");
   }
   const registryPath = join(locator.stateRoot, "machine", "profiles.json");
-  function finish(receipt: z.infer<typeof ControlUpgradeReceiptSchema>, afterPublication: readonly (() => void)[]): void {
+  function finish(receipt: StoppedControlUpgradeReceipt, afterPublication: readonly (() => void)[]): void {
     held();
     retainedProofs.clear();
     const stages = validateControl(receipt);
@@ -2789,10 +2797,10 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
             assertHeld();
             const receipt = readControlUpgradeReceipt(intentPath);
             if (receipt.phase !== "preparing" || canonicalJsonStringify(receipt.browsers) !== canonicalJsonStringify(expected)) fail("profile-control-upgrade-browser-plan-changed");
-            const next = BrowserRootsSchema.parse(document);
-            if (next.installationId !== locator.installationId || next.revision !== expected.revision + 1
+            const next = parseStoppedBrowserRootUpgradeSource(document);
+            if (next.schemaVersion !== expected.schemaVersion || next.installationId !== locator.installationId || next.revision !== expected.revision + 1
               || next.nextGeneration !== expected.nextGeneration || next.roots.length !== expected.roots.length) fail("profile-control-upgrade-browser-plan-changed");
-            writeControlUpgradeReceipt(intentPath, ControlUpgradeReceiptSchema.parse({ ...receipt, browsers: next }));
+            writeControlUpgradeReceipt(intentPath, StoppedControlUpgradeReceiptSchema.parse({ ...receipt, browsers: next }));
             if (canonicalJsonStringify(readControlUpgradeReceipt(intentPath).browsers) !== canonicalJsonStringify(next)) fail("profile-control-upgrade-browser-plan-readback");
           });
         },
@@ -2846,7 +2854,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         assertControlUpgradeReceiptCapacity({ ...pending, phase: "backing-up", credentials, backups }, 256 + backups.length * 64_128);
         const stage = join(backupDirectory, `${pending.operationId}.browser.stage`);
         writePrivateStage(stage, Buffer.from(canonicalJsonStringify(browserDocument))); fsyncPath(backupDirectory);
-        const receipt = ControlUpgradeReceiptSchema.parse({ ...pending, phase: "backing-up", credentials, browserStage: controlUpgradeFile(stage), backups });
+        const receipt = StoppedControlUpgradeReceiptSchema.parse({ ...pending, phase: "backing-up", credentials, browserStage: controlUpgradeFile(stage), backups });
         writeControlUpgradeReceipt(intentPath, receipt); validateControl(receipt);
         return { receipt, runtimeAccess };
       });
@@ -2895,11 +2903,11 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
         } finally { copy.release(); }
         inventory.revalidate();
         const verifiedBackup = { manifest: AuthorityBackupManifestSchema.parse(manifest), manifestSha256: controlUpgradeFile(verified.manifestPath, 64_000).digest };
-        receipt = ControlUpgradeReceiptSchema.parse({ ...receipt, backups: receipt.backups.map(backup => backup.profileId === row.profileId ? { ...backup, verifiedBackup } : backup) });
-        withInstallationControl(control, () => { held(); const currentReceipt = ControlUpgradeReceiptSchema.parse(receipt); validateControl(currentReceipt); writeControlUpgradeReceipt(intentPath, currentReceipt); });
+        receipt = StoppedControlUpgradeReceiptSchema.parse({ ...receipt, backups: receipt.backups.map(backup => backup.profileId === row.profileId ? { ...backup, verifiedBackup } : backup) });
+        withInstallationControl(control, () => { held(); const currentReceipt = StoppedControlUpgradeReceiptSchema.parse(receipt); validateControl(currentReceipt); writeControlUpgradeReceipt(intentPath, currentReceipt); });
       }
-      receipt = ControlUpgradeReceiptSchema.parse({ ...receipt, phase: "publishing" });
-      withInstallationControl(control, () => { held(); const currentReceipt = ControlUpgradeReceiptSchema.parse(receipt); validateControl(currentReceipt); writeControlUpgradeReceipt(intentPath, currentReceipt); });
+      receipt = StoppedControlUpgradeReceiptSchema.parse({ ...receipt, phase: "publishing" });
+      withInstallationControl(control, () => { held(); const currentReceipt = StoppedControlUpgradeReceiptSchema.parse(receipt); validateControl(currentReceipt); writeControlUpgradeReceipt(intentPath, currentReceipt); });
       for (const row of receipt.credentials) {
         const entry = inventoryProofs.get(row.profileId);
         if (entry === undefined) fail("profile-control-upgrade-inventory-required");
