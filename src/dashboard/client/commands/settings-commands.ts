@@ -14,15 +14,15 @@ export interface SettingsCommands {
 }
 
 export function createSettingsCommands(transport: DashboardTransport): SettingsCommands {
-  const runHistory = async (path: "clear" | "result", input: ClearRunHistoryRequest): Promise<ClearRunHistoryResult> => {
+  const runHistory = async (path: "/api/v1/storage/run-history/clear" | "/api/v1/storage/run-history/result", input: ClearRunHistoryRequest): Promise<ClearRunHistoryResult> => {
       const request = ClearRunHistoryRequestSchema.parse(input);
-      const result = ClearRunHistoryResultSchema.parse(await transport.requestJson(`/api/v1/storage/run-history/${path}`, { method: "POST", body: JSON.stringify(request) }));
+      const result = ClearRunHistoryResultSchema.parse(await transport.requestJson(path, { method: "POST", body: JSON.stringify(request) }));
       if (result.commandId !== request.commandId) throw new DashboardClientError({ kind: "protocol", code: "COMMAND_RESULT_IDENTITY_MISMATCH", message: "Run history result does not match the requested action." });
       return result;
   };
   return Object.freeze({
-    clearRunHistory: (input: ClearRunHistoryRequest) => runHistory("clear", input),
-    checkClearRunHistoryResult: (input: ClearRunHistoryRequest) => runHistory("result", input),
+    clearRunHistory: (input: ClearRunHistoryRequest) => runHistory("/api/v1/storage/run-history/clear", input),
+    checkClearRunHistoryResult: (input: ClearRunHistoryRequest) => runHistory("/api/v1/storage/run-history/result", input),
 
     async applySettings(request: unknown): Promise<CommandResult> {
       const command = SettingsCommandRequestSchema.parse(request);
