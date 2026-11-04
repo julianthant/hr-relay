@@ -1,4 +1,4 @@
-import { assistantCanVerify, assistantConfirmRefusal } from "../assistant/assistant-model.js";
+import { ASSISTANT_UNKNOWN_NOTICE, assistantCanVerify, assistantConfirmRefusal } from "../assistant/assistant-model.js";
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
 import { Fragment, useLayoutEffect, useRef, type HTMLAttributes, type ReactNode } from 'react';
 import { ArrowDown, Check, Folder, History, Play, Plus, Sparkles, X } from 'lucide-react';
@@ -78,7 +78,7 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
           </article>)}
         {served && turn?.state === 'waiting' && <p className="hub-footer-status" role="status">{turn.prompt === ASSISTANT_VERIFY_COMMAND ? 'Testing assistant…' : 'Preparing a reply…'}<button className="hub-btn" type="button" onClick={() => served.onAction({ type: 'cancel' })}>Cancel</button></p>}
         {served && turn?.state === 'failed' && <p className="hub-footer-status" role="alert">Reply unavailable. Your request is kept.<button className="hub-btn" type="button" disabled={!accountReady || served.state.draft !== turn.prompt} onClick={() => served.onAction({ type: 'retry' })}>Retry reply</button></p>}
-        {served && turn?.state === 'unknown' && <p className="hub-footer-status" role="alert">Action outcome is unknown. Check the current inbox before starting a new request. Do not retry this request.</p>}
+        {served && turn?.state === 'unknown' && <p className="hub-footer-status" role="alert">{ASSISTANT_UNKNOWN_NOTICE}</p>}
         {served && turn?.state === 'cancelled' && <p className="hub-caption" role="status">Reply cancelled. Your request is kept; send it again when ready.</p>}
         {served?.state.restored && <p className="hub-caption">Restored chat. Earlier sources are recorded snapshots; previous proposals cannot be confirmed.</p>}
         {served && !accountReady && <p role="status" className="hub-caption">{served.accountHeading}. {served.accountNotice}</p>}

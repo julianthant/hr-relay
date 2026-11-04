@@ -58,7 +58,7 @@ test('coupled synthetic proposal preserves conversation, holds confirmation and 
   const stop = panel.getByRole('button', { name: 'Stop reply', exact: true }); await expect(stop).toBeVisible(); await stop.focus(); await page.keyboard.press('Enter');
   await expect(panel.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
   await expect(composer).toBeFocused(); server.world.releaseReply();
-  await expect(panel).toContainText("Action outcome is unknown. Check the current inbox before starting a new request. Do not retry this request.");
+  await expect(panel).toContainText("Action outcome is unknown. Check the current run or notification state before starting a new request. Do not retry this request.");
   await expect(composer).toHaveValue('Explain while held');
   await expect(panel.getByRole('button', { name: 'Retry reply', exact: true })).toHaveCount(0);
   const requestsAfterStop = requests.length;
