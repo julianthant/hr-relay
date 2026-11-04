@@ -1,3 +1,4 @@
+import { descriptorStatus, sameDirectory, privateFileNumber } from "../../storage/file-identity.js";
 import { profileBrowserClosure } from "../../runtime/browser/profile-browser-closure.js";
 import { inspectStoppedCanonicalConversion } from "../../storage/configuration/canonical-credential-store.js";
 import { prepareStoppedCredentialConversion, releaseStoppedCredentialConversion, type StoppedCredentialCopyInspection } from "../../storage/configuration/credential-conversion.js";
@@ -13,7 +14,7 @@ import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { createHash } from "node:crypto";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
-import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, type Stats } from "node:fs";
+import { closeSync, constants, lstatSync, openSync, readSync, type BigIntStats, type Stats } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { countProfileCredentialLoginRows } from "../../profiles/credential-inventory.js";
@@ -49,13 +50,13 @@ function containsCredentialValue(value: unknown, secrets: readonly string[]): bo
   return false;
 }
 
-function withProfileCredentialCopy<T>(path: string, before: ReturnType<typeof inventoryFileIdentity>, read: (descriptor: number, identity: Stats) => T): T {
+function withProfileCredentialCopy<T>(path: string, before: ReturnType<typeof inventoryFileIdentity>, read: (descriptor: number, identity: Stats | BigIntStats) => T): T {
   const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-  let identity: Stats | undefined;
+  let identity: Stats | BigIntStats | undefined;
   let result: { value: T } | undefined, primary: { error: unknown } | undefined;
   try {
-    identity = fstatSync(descriptor);
-    if (identity.dev !== before.device || identity.ino !== before.inode || identity.size !== before.size) throw new Error('credential-copy-source-changed');
+    identity = descriptorStatus(descriptor);
+    if (!sameDirectory({ device: identity.dev, inode: identity.ino }, before) || privateFileNumber(identity.size) !== before.size) throw new Error('credential-copy-source-changed');
     result = { value: read(descriptor, identity) };
   }
   catch (error) { primary = { error }; }
@@ -74,7 +75,7 @@ export function scanProfileCredentialCopy(path: string, capturedSecrets: readonl
   const secrets = credentialSearchBytes(capturedSecrets);
   const before = inventoryFileIdentity(path);
   return withProfileCredentialCopy(path, before, (fd, opened) => {
-    if (opened.dev !== before.device || opened.ino !== before.inode || opened.size !== before.size) throw new Error("profile-inventory-file-changed");
+    if (!sameDirectory({ device: opened.dev, inode: opened.ino }, before) || privateFileNumber(opened.size) !== before.size) throw new Error("profile-inventory-file-changed");
     const digest = createHash("sha256"), chunk = Buffer.alloc(64 * 1024);
     const overlap = Math.max(privateKeyScan?.keyScanOverlap ?? 0, ...secrets.map(secret => secret.length - 1));
     if (overlap > 128 * 1024) throw new Error("profile-inventory-secret-size-invalid");
@@ -124,14 +125,14 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
               const limit = bootLog ? 5 * 1024 * 1024
                 : dirname(path) === join(root, "credentials") ? Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 : 16 * 1024 * 1024;
               if (!info.isFile() || info.size > limit) throw new Error("profile-inventory-copy-size-invalid");
-              const bytes = Buffer.alloc(info.size + 1);
+              const bytes = Buffer.alloc(privateFileNumber(info.size) + 1);
               let count = 0;
               while (count < bytes.length) {
                 const size = readSync(descriptor, bytes, count, bytes.length - count, count);
                 if (size === 0) break;
                 count += size;
               }
-              if (count !== info.size) throw new Error("profile-inventory-copy-changed");
+              if (count !== privateFileNumber(info.size)) throw new Error("profile-inventory-copy-changed");
               return bytes.subarray(0, count);
             });
             if (createHash("sha256").update(bytes).digest("hex") !== scanned.digest) throw new Error("profile-inventory-copy-changed");

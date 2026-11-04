@@ -1,4 +1,5 @@
 import { PREFERENCES_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
+import * as fileIdentities from "../../../src/backend/storage/file-identity.js";
 import { ProfileVerifierDocumentSchema } from "../../../src/models/profiles/profile.js";
 import { DatabaseSync } from "node:sqlite";
 import { ConfigSnapshotRecordSchema } from "../../../src/models/config/snapshot.js";
@@ -43,6 +44,58 @@ async function historicalPrematureFixture() {
   console.info("historical-withdrawal timing", { phase: "conversion", milliseconds: Math.round(performance.now() - created) });
   return { ...fixture, root: fixture.workspace, fields: historicalIncompleteProfileFields,
     keyBytes: readFileSync(fixture.keyPath), protectedBytes: readFileSync(fixture.protectedPath), databaseBytes: readFileSync(fixture.databasePath) };
+}
+
+for (const change of ["unchanged", "mtimeNs", "ctimeNs"] as const) {
+  it.skipIf(process.platform !== "linux")(`replays a prior numeric-timestamp withdrawal journal with ${change} membership`, async () => {
+    const f = await historicalPrematureFixture(), machine = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
+    const intentPath = join(f.root, ".tracker", "control", "profile-publication.json"), rename = nativeFs.renameSync;
+    // Numeric Stats is the persisted journal contract, including fractional milliseconds.
+    nativeFs.utimesSync(f.protectedPath, 1793779534.583591, 1793779534.583591);
+    let interrupted = false;
+    const fault = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
+      rename(source, destination);
+      if (String(destination) === intentPath) { interrupted = true; throw new Error("fixture prior journal published"); }
+    });
+    syncBuiltinESMExports();
+    try { await assert.rejects(machine.reclassifyIncompleteProfileAsDraft(f.profileId), /fixture prior journal published/u); }
+    finally { fault.mockRestore(); syncBuiltinESMExports(); machine.release(); }
+    assert.equal(interrupted, true);
+    const journal = readFileSync(intentPath), registry = readFileSync(f.registryPath), verifiers = readFileSync(f.verifierPath);
+    const captured = JSON.parse(journal.toString("utf8")) as { capture: { membership: { path: string; modified: number; changed: number }[] } };
+    const member = captured.capture.membership.find(entry => entry.path === "credentials/protected.json");
+    assert.ok(member);
+    const prior = nativeFs.lstatSync(f.protectedPath);
+    assert.equal(member.modified, prior.mtimeMs); assert.equal(member.changed, prior.ctimeMs);
+    assert.notEqual(member.modified, Math.trunc(member.modified));
+    const status = fileIdentities.fileStatus;
+    vi.spyOn(fileIdentities, "fileStatus").mockImplementation((path, missing?: true) => {
+      if (path !== f.profileRoot && !path.startsWith(`${f.profileRoot}/`)) return missing ? status(path, true) : status(path);
+      const info = nativeFs.lstatSync(path, { bigint: true, throwIfNoEntry: false });
+      if (info === undefined && !missing) return nativeFs.lstatSync(path, { bigint: true });
+      if (info !== undefined && path === f.protectedPath && change !== "unchanged") info[change] += 1_000n;
+      return info;
+    });
+    const descriptor = fileIdentities.descriptorStatus;
+    vi.spyOn(fileIdentities, "descriptorStatus").mockImplementation(fd => nativeFs.readlinkSync(`/proc/self/fd/${fd}`).startsWith(`${f.profileRoot}/`)
+      ? nativeFs.fstatSync(fd, { bigint: true }) : descriptor(fd));
+    try {
+      if (change === "unchanged") {
+        const recovered = RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime);
+        try {
+          await recovered.reclassifyIncompleteProfileAsDraft(f.profileId);
+          assert.equal(recovered.readProfileRegistry().profiles.length, 0); assert.equal(existsSync(intentPath), false);
+        }
+        finally { recovered.release(); }
+      } else {
+        assert.throws(() => RuntimeAdmission.acquireStoppedMachineControlMaintenance(f.root, f.lifetime), /profile-incomplete-copy-membership-changed/u);
+        assert.deepEqual(readFileSync(intentPath), journal);
+        assert.deepEqual(readFileSync(f.registryPath), registry); assert.deepEqual(readFileSync(f.verifierPath), verifiers);
+      }
+      assert.deepEqual(readFileSync(f.databasePath), f.databaseBytes); assert.deepEqual(readFileSync(f.keyPath), f.keyBytes);
+      assert.deepEqual(readFileSync(f.protectedPath), f.protectedBytes);
+    } finally { vi.restoreAllMocks(); await f.close(); }
+  });
 }
 
 it("withdraws historical publication but retains the draft when browser cleanup is unbound", async () => {

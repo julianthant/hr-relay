@@ -1,6 +1,7 @@
+import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
 import { default as assert } from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { existsSync, lstatSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
@@ -69,3 +70,40 @@ it("never deletes an unregistered shared winner during stopped cleanup and prese
   } finally { await profile.close(); }
 });
 }
+
+
+it.skipIf(process.platform !== "linux")("publishes and disposes a diagnostic with exact high file IDs", async () => {
+  const f = await createBoundProfileFixture(), restore = forceExactFileMetadata(f.admission.artifactRoot);
+  try {
+    const writer = createContentAddressedArtifactWriter({ admission: f.admission });
+    const bytes = Buffer.from("exact diagnostic fixture"), stage = await writer.stageDiagnostic(bytes, { mediaType: "application/json" }, "ordinary");
+    const name = readdirSync(f.admission.artifactRoot).find(name => name.endsWith(".diagnostic.tmp")); assert.ok(name);
+    const path = join(f.admission.artifactRoot, name);
+    const inode = (1n << 54n) + (lstatSync(path, { bigint: true }).ino << 2n);
+    for (const source of ["path", "descriptor"] as const) assert.ok(restore.observations.some(observation =>
+      observation.path === path && observation.source === source && observation.inode === inode), `missing exact ${source} identity`);
+    assert.equal(stage.publish().sha256, createHash("sha256").update(bytes).digest("hex"));
+    stage.dispose();
+    const chunks: Buffer[] = [];
+    for await (const chunk of await writer.open(stage.ref)) { assert.ok(chunk instanceof Uint8Array); chunks.push(Buffer.from(chunk)); }
+    assert.deepEqual(Buffer.concat(chunks), bytes);
+    assert.deepEqual(pendingDiagnosticArtifacts(f.admission), []);
+  } finally { restore(); await f.close(); }
+});
+
+it.skipIf(process.platform !== "linux")("refuses an adjacent high-ID diagnostic stage substitution", async () => {
+  const f = await createBoundProfileFixture();
+  let substituted = false;
+  const restore = forceExactFileMetadata(f.admission.artifactRoot, (path, info) => {
+    if (substituted && path.endsWith(".diagnostic.tmp")) { assert.equal(Number(info.ino), Number(info.ino + 1n)); info.ino += 1n; }
+  });
+  try {
+    const writer = createContentAddressedArtifactWriter({ admission: f.admission });
+    const bytes = Buffer.from("preserved diagnostic fixture"), stage = await writer.stageDiagnostic(bytes, { mediaType: "application/json" }, "ordinary");
+    const before = readdirSync(f.admission.artifactRoot).sort();
+    substituted = true;
+    assert.throws(() => stage.publish(), /diagnostic-stage-custody-changed/u);
+    assert.deepEqual(readdirSync(f.admission.artifactRoot).sort(), before);
+    substituted = false; stage.publish(); stage.dispose();
+  } finally { restore(); await f.close(); }
+});

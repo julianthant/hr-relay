@@ -1,3 +1,4 @@
+import { fileStatus, fileIdentityObservation } from "../file-identity.js";
 import { createHash } from "node:crypto";
 import { lstatSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
@@ -73,12 +74,12 @@ export function inventory(root: string, prefix: string, excluded: ReadonlySet<st
   const result: Array<{ path: string; file: z.infer<typeof FileSchema> }> = [];
   const walk = (directory: string, local: string) => {
     noSymlinkAncestry(directory, new Map());
-    const metadata = lstatSync(directory);
+    const metadata = fileStatus(directory);
     if (!metadata.isDirectory() || metadata.isSymbolicLink() || privatePathRejects(directory, metadata, prefix === "" ? "directory-0700" : "group-write")) throw new Error("existing-data-backup-directory-refused");
     for (const name of readdirSync(directory).sort()) {
       const child = local === "" ? name : `${local}/${name}`;
       if (excluded.has(child)) continue;
-      const path = join(directory, name), stat = lstatSync(path);
+      const path = join(directory, name), stat = fileStatus(path);
       if (stat.isDirectory()) walk(path, child);
       else {
         const inventoryPath = prefix === "" ? child : `${prefix}/${child}`;
@@ -142,13 +143,13 @@ export function captureFlatArchiveSource(input: Readonly<{ workspace: string; st
     const members: FlatArchiveSource["members"] = [], identities: unknown[] = [];
     const walk = (path: string, name: string) => {
       noSymlinkAncestry(dirname(path), ancestors);
-      const stat = lstatSync(path);
+      const stat = fileStatus(path);
       if (stat.isSymbolicLink() || privatePathRejects(path, stat, "group-write")) throw new Error("flat-archive-member-unsafe");
       const kind = stat.isDirectory() ? "directory" : "file", choice = disposition(name, kind === "directory");
       if (choice !== "copy" && privatePathRejects(path, stat, "private")) throw new Error("flat-archive-excluded-member-unsafe");
-      identities.push({ path, device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid, links: stat.nlink });
+      identities.push({ path, ...fileIdentityObservation({ device: stat.dev, inode: stat.ino }), mode: privateFileNumber(stat.mode), owner: privateFileNumber(stat.uid), links: privateFileNumber(stat.nlink) });
       if (kind === "directory") {
-        members.push({ path: name, kind, disposition: choice, mode: stat.mode & 0o7777 });
+        members.push({ path: name, kind, disposition: choice, mode: privateFileNumber(stat.mode) & 0o7777 });
         for (const child of readdirSync(path).sort()) {
           if (name === "control" && child === "storage-backups") continue;
           walk(join(path, child), `${name}/${child}`);

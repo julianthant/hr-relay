@@ -1,3 +1,4 @@
+import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { lstatSync,readdirSync } from "node:fs";
 import { dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
@@ -318,7 +319,7 @@ function issueFixedLayoutProfile(machine: RuntimeAdmission, operation: OfflineMa
   if (journal?.phase !== "configuring") throw new Error("fixed-layout-publication-required");
   const journalIdentity = canonicalJsonStringify(journal);
   assertCanonicalProfileBinding(plan.authorityPath, binding);
-  const physical = lstatSync(plan.authorityPath);
+  const physical = fileStatus(plan.authorityPath);
   const ancestry = new Map<string, DirectoryIdentity>();
   const assertHeld = () => {
     machine.assertExclusive(); machine.assertOfflineMaintenance(operation);
@@ -327,8 +328,8 @@ function issueFixedLayoutProfile(machine: RuntimeAdmission, operation: OfflineMa
       || canonicalJsonStringify(current.profiles.find(profile => profile.profileId === binding.profileId)) !== canonicalJsonStringify(plan)
       || canonicalJsonStringify(machine.readProfileRegistry()) !== canonicalJsonStringify(registry)
       || !noSymlinkAncestry(stateRoot, ancestry) || !noSymlinkAncestry(artifactRoot, ancestry)) throw new Error("fixed-layout-claim-changed");
-    const observed = lstatSync(plan.authorityPath, { throwIfNoEntry: false });
-    if (observed === undefined || !observed.isFile() || observed.isSymbolicLink() || observed.nlink !== 1
+    const observed = fileStatus(plan.authorityPath, true);
+    if (observed === undefined || !observed.isFile() || observed.isSymbolicLink() || privateFileNumber(observed.nlink) !== 1
       || observed.dev !== physical.dev || observed.ino !== physical.ino || observed.mode !== physical.mode || observed.uid !== physical.uid) throw new Error("fixed-layout-database-changed");
   };
   assertHeld(); proveProfileRootsUnused([stateRoot]); assertHeld();

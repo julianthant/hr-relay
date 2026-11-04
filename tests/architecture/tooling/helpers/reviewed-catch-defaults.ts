@@ -15,7 +15,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "statements": [
       {
         "kind": "try",
-        "sha256": "a4b621928e6b43f07bc1f5623a3be1ed04157a7938f943bd8268214a1a13abcd",
+        "sha256": "177199ce6fd8b453c7da6bbae65d93515f09e21a73bc076f09e15c0f749d334a",
         "occurrences": 1
       }
     ]
@@ -107,7 +107,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "statements": [
       {
         "kind": "try",
-        "sha256": "d9f671f830d825d9da08bd4b36e1e7f174d47eecb75a84a68d148e7eeaee32fe",
+        "sha256": "7202198420def93086d550ceeedc451ad5cd447bc7d2c9dd08364797433b206e",
         "occurrences": 1
       },
       {

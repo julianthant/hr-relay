@@ -1,7 +1,8 @@
+import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { inventoryFileIdentity } from "./profile-inventory.js";
-import { existsSync, lstatSync, readdirSync, renameSync } from "node:fs";
+import { existsSync, readdirSync, renameSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Clock } from "../../../rules/time/clock.js";
 import { requireRuntimeAdmission } from "../admission/admission-identity.js";
@@ -18,7 +19,7 @@ const Retiring = ".retiring";
 function retirementPaths(root: string): string[] {
   const directory = join(root, "backups", "authority");
   noSymlinkAncestry(directory, new Map());
-  const metadata = lstatSync(directory, { throwIfNoEntry: false });
+  const metadata = fileStatus(directory, true);
   if (metadata === undefined) return [];
   if (!metadata.isDirectory() || privatePathRejects(directory, metadata, "group-write")) throw new Error("shutdown-backup-directory-unsafe");
   return readdirSync(directory).filter(name => name.endsWith(Retiring)).map(name => {
