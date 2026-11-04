@@ -6,6 +6,7 @@ name: Merge train
 on:
   push:
     branches: [staging]
+    paths-ignore: ['docs/roadmap/**']
   workflow_call:
     inputs:
       pr: {type: string, default: ""}
