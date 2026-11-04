@@ -61,6 +61,7 @@ const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
 
 const SECTION_DESCRIPTOR_PRODUCER = "src/backend/runs/queries/run-detail/gate-park.ts";
 const WORKBOOK_DESCRIPTOR_PRODUCER = "src/backend/runs/workbooks.ts";
+const CHILD_RETRY_DESCRIPTOR_PRODUCER = "src/backend/runs/queries/run-detail.ts";
 const API_ROUTES_FILE = "src/backend/transports/http/routes/api.ts";
 const CLIENT_ROOTS = ["src/dashboard/client"];
 
@@ -239,7 +240,7 @@ function projectedRowCommands(): ReadonlySet<string> {
   return commands;
 }
 
-// Retained commands remain kernel-readable without a dashboard action opportunity.
+// Generic run Retry and Restart require the Rerun surface.
 const RETAINED_UNPROJECTED_ACTIONS = new Set(["retry", "restart"]);
 
 const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
@@ -379,6 +380,8 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       ...projectedCommandKeys(readFileSync(join(REPO_ROOT, WORKBOOK_DESCRIPTOR_PRODUCER), "utf8")),
     ]);
     assert.ok(projected.size > 3, "the descriptor-producer read under-ran; the scan or the row sweep is stale");
+    assert.deepEqual(projectedCommandKeys(readFileSync(join(REPO_ROOT, CHILD_RETRY_DESCRIPTOR_PRODUCER), "utf8"), "command"), ["retry"],
+      "run detail may directly project only its scoped child retry");
     for (const key of RETAINED_UNPROJECTED_ACTIONS) {
       assert.ok(actionKeys.includes(key) && kernelTypes.includes(key), `stale retained unprojected command: ${key}`);
       assert.ok(!projected.has(key), `retained command became directly projected: ${key}`);
@@ -429,6 +432,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
       ["retry"],
     );
     assert.deepEqual(projectedCommandKeys('// command: "unhide"\nconst a = { command: "resolve-gate" };'), ["resolve-gate"]);
+    assert.deepEqual(projectedCommandKeys('/* command: "unhide" */ const a = { key: "retry-child", command: "retry" };', "command"), ["retry"]);
 
     const projected = new Set<string>([
       ...projectedRowCommands(),

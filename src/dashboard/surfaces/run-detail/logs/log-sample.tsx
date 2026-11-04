@@ -2,7 +2,7 @@ import type { DryRunPreviewStage } from "./dry-run-preview-model.js";
 import { useCallback, useMemo, useState } from "react";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import type { WorkflowSource } from "../../../app/workflow-sources.js";
-import { Badge, Banner, Button } from "../../../ds/ui.js";
+import { Badge, Banner, Button, IconButton } from "../../../ds/ui.js";
 import { StatusBadge } from "../../shared/status/status.js";
 import { dsStatusOf } from "../../shared/status/status-model.js";
 import { LogPanel } from "../log-panel.js";
@@ -17,6 +17,7 @@ import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../st
 import { LogSkeleton } from "../../shared/loading/loading.js";
 import { queueRunHeader } from "../run-header-model.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
+import { RotateCcw } from "lucide-react";
 
 export function LogSample({ selection, nowIso, source = "served", initialStepId, confirm }: { selection?: LogSelection; nowIso?: string; source?: WorkflowSource; initialStepId?: string; confirm?: RunWiringConfirm }) {
   if (source === "served" && selection !== undefined) return <ServedLogSample selection={selection} nowIso={nowIso} initialStepId={initialStepId} confirm={confirm} />;
@@ -39,7 +40,12 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm }: { select
   const failureMissing = resource.snapshot !== undefined && initialStepId !== undefined && !projection.steps.some(step => step.id === initialStepId);
   const preview = resource.snapshot?.logs.dryRunPreview;
   const lastStepId = projection.steps.at(-1)?.id;
-  const toolbar = useMemo(() => resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" ? <Banner tone="danger" title={logsReadFailedTitle}>{resource.error}</Banner> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, logsReadFailedTitle]);
+  const toolbar = useMemo(() => <>{resource.snapshot?.detail.ocrReviewChanges !== undefined && <Banner tone="warning" title="Earlier review changes no longer apply">
+    {resource.snapshot.detail.ocrReviewChanges.map(change => <p key={`${change.revision}:${change.sourcePage}`}>Page {change.sourcePage}: OCR evidence changed in revision {change.revision}. Review the new values before approving.</p>)}
+  </Banner>}{resource.snapshot?.detail.childRetry !== undefined && <IconButton label={resource.snapshot.detail.childRetry.label}
+    icon={<RotateCcw aria-hidden className="size-3.5" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}
+    {resource.command ? <><Badge tone="neutral">{resource.command.state === "pending" ? "Pending" : resource.command.feedback}</Badge>{resource.replay && <Button size="sm" onClick={resource.replay}>Replay exact decision</Button>}</> : resource.state === "failed" ? <Banner tone="danger" title={logsReadFailedTitle}>{resource.error}</Banner> : resource.state === "loading" && resource.snapshot ? <Badge tone="neutral">Refreshing</Badge> : <>{resource.snapshot?.unavailableEvidence.map(message => <Badge key={message} tone="neutral">{message}</Badge>)}</>}
+  </>, [resource.command, resource.replay, resource.state, resource.snapshot, resource.error, resource.onChildRetry, logsReadFailedTitle]);
   const content = useMemo(() => failureMissing ? <Banner tone="danger" title={logsUnavailableTitle}>{formatErrorCatalogFailure(createErrorCatalogFailure("NOTIFICATION_TARGET_UNAVAILABLE", {})).text}</Banner> : resource.snapshot === undefined ? resource.state === "loading" ? <LogSkeleton /> : resource.state === "failed" ? <Banner tone="danger" title={logsUnavailableTitle}>{resource.error}</Banner> : undefined : resource.snapshot.actionEvidence?.state === "unavailable" && projection.steps.length === 0 ? <Banner tone="warning" title={confirmedActionsUnavailableTitle}>{incompleteActionEvidenceText}</Banner> : undefined, [failureMissing, logsUnavailableTitle, resource.snapshot, resource.state, resource.error, projection.steps.length, confirmedActionsUnavailableTitle, incompleteActionEvidenceText]);
   const afterStep = useCallback((id: string) => {
     const findings = projection.ucpathFindings;

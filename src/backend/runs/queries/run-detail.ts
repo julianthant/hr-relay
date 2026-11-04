@@ -3,7 +3,7 @@ import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import type { NativeRunEventWire } from "../../../models/dashboard/run-detail.js";
 import { availableSections, buildRunGate } from "./run-trust.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
-import { readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
+import { ocrChildRetryAvailable,readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
 import {
   RunDetailWireSchema,
   TimelineStepWireSchema,
@@ -348,12 +348,24 @@ export function buildRunDetail(
       }
     : { state: "absent", reason: `run is ${status}` };
 
+  const canonical = deps.canonical;
+  const review = authority.envelope.workflow === "ocr" && canonical !== undefined
+    ? canonical.database.withAuthorityReadSnapshot(() => readOcrReviewAuthority(canonical.database.authority, canonical.reader, runId)) : undefined;
+  const reviewAvailable = review !== undefined;
   return RunDetailWireSchema.parse({
     runId,
     rowRevision: authority.version,
-    panelKind: panelKindOf(authority.envelope.shape),
+    ...(review === undefined || review.invalidatedCorrections.length === 0 ? {} : { ocrReviewChanges: review.invalidatedCorrections }),
+    ...(canonical === undefined || !ocrChildRetryAvailable(canonical.database.authority, canonical.reader, authority,
+      workflowId => canonical.descriptors.resolve(workflowId)) ? {} : {
+      childRetry: { key: "retry-child", label: "Retry", kind: "command", command: "retry", expectedVersion: authority.version,
+        intent: "neutral", icon: "retry", placement: ["banner"] },
+    }),
+    panelKind: panelKindOf(authority.envelope.shape, reviewAvailable),
     header: {
       runId,
+      ...(authority.envelope.parent === undefined ? {} : { parentRunId: authority.envelope.parent.runId }),
+      ...(authority.envelope.retryOf === undefined ? {} : { retryOf: authority.envelope.retryOf }),
       traceId: authority.envelope.traceId,
       workflowId: authority.envelope.workflow,
       ...(row === undefined ? {} : { actorId: row.queued.actorId }),
@@ -396,9 +408,7 @@ export function buildRunDetail(
     ...(captures === undefined ? {} : { captures }),
 
     ...(omittedSteps.length === 0 ? {} : { omittedSteps }),
-    availableSections: availableSections(row, authority, deps.trust, captures, authority.envelope.workflow === "ocr"
-      && deps.canonical !== undefined && deps.canonical.database.withAuthorityReadSnapshot(() =>
-        readOcrReviewAuthority(deps.canonical!.database.authority, deps.canonical!.reader, runId) !== undefined)),
+    availableSections: availableSections(row, authority, deps.trust, captures, reviewAvailable),
   });
 }
 
