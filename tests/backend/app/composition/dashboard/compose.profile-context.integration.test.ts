@@ -80,6 +80,7 @@ for (const problem of ["absent", "stale", "foreign", "logged-out"] as const) it(
   try {
     if (problem === "stale") assert.equal(f.signIn().state, "active");
     if (problem === "logged-out") {
+      await f.runtime.drainForLogout(f.active.token);
       const logout = f.runtime.session.logOut(f.active.token, { at: f.clock.now().toISOString() });
       assert.equal(logout.state, "cancelling");
       await f.runtime.awaitClosurePreparation(f.active.profileId);
