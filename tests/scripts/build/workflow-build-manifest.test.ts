@@ -97,15 +97,17 @@ it("runs the actual generator without existing output and replaces conflicted ou
   const root = mkdtempSync(join(tmpdir(), "relay-manifest-bootstrap-"));
   try {
     writeFileSync(join(root, "package.json"), JSON.stringify({ type: "module" }));
-    for (const name of ["typescript", "zod"]) {
+    for (const name of ["typescript", "zod", "esbuild", "@esbuild"]) {
       const source = resolve("node_modules", name);
       expect(lstatSync(source).isSymbolicLink()).toBe(false);
       const target = join(root, "node_modules", name);
       mkdirSync(dirname(target), { recursive: true });
       cpSync(source, target, { recursive: true, force: false, errorOnExist: true });
     }
-    for (const name of ["scripts/build/generate-workflow-manifest.ts", "scripts/build/workflow-build-manifest.ts",
-      "src/models/workflow/build-manifest.ts", "src/workflow-kit/validation/build-manifest.ts", "src/rules/identity/ids.ts", "src/rules/validation/canonical-json.ts"]) {
+    for (const name of new Set(["scripts/build/generate-workflow-manifest.ts", "scripts/build/workflow-build-manifest.ts",
+      "src/models/workflow/build-manifest.ts", "src/workflow-kit/validation/build-manifest.ts", "src/rules/identity/ids.ts", "src/rules/validation/canonical-json.ts",
+      "scripts/build/windows-observer-policy.ts", "package-lock.json",
+      ...collectSourceClosure(process.cwd(), resolve("src/backend/storage/private-path.ts")).map(source => source.path)])) {
       const target = join(root, name);
       mkdirSync(dirname(target), { recursive: true });
       cpSync(resolve(name), target, { force: false, errorOnExist: true });
@@ -131,6 +133,13 @@ it("runs the actual generator without existing output and replaces conflicted ou
     check(1, "--check");
     check(0);
     expect(runtime().status).toBe(0);
+    const artifact = join(root, "node_modules/.cache/relay/windows-observer-policy.cjs");
+    const policyBytes = readFileSync(artifact);
+    writeFileSync(artifact, Buffer.concat([policyBytes, Buffer.from("\n// synthetic changed artifact\n")]));
+    check(1, "--check");
+    expect(readFileSync(artifact).equals(policyBytes)).toBe(false);
+    check(0);
+    expect(readFileSync(artifact).equals(policyBytes)).toBe(true);
     const bytes = readFileSync(target, "utf8");
     const modified = statSync(target).mtimeMs;
     check(0);

@@ -2,14 +2,14 @@ import { lstatSync, readdirSync } from "node:fs";
 import { join, parse, relative, resolve } from "node:path";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
-import { privatePathRejects } from "../private-path.js";
+import { assertNoReparsePath, privatePathRejects } from "../private-path.js";
 import { outermostOperationProof } from "../configuration/credential-safe-file.js";
 import { assertOfflineMaintenanceOperation, offlineMaintenanceWorkspace, type OfflineMaintenanceOperation } from "./lifetime-lock.js";
 
 function fail(reason: string): never { throw new Error(`runtime-control: ${reason}`); }
 function fixedLockRoot(workspace: string): string { return resolve(workspace, rebuildRuntimeIsolation.processLockRoot); }
 function privateDirectory(path: string): void {
-  const stat = lstatSync(path);
+  const stat = lstatSync(path, { bigint: true });
   if (!stat.isDirectory() || privatePathRejects(path, stat, "directory-0700")) fail(`unsafe directory ${path}`);
 }
 
@@ -26,16 +26,19 @@ export function assertNoSymlinkComponents(path: string): void {
   const existing = proof?.slots.get("symlink-free");
   const proven = existing instanceof Set ? existing as Set<string> : new Set<string>();
   if (proof !== undefined && existing !== proven) proof.slots.set("symlink-free", proven);
-  if (proven.has(path)) return;
+  if (process.platform !== "win32" && proven.has(path)) return;
   let component = parse(path).root;
+  if (process.platform === "win32") assertNoReparsePath(component);
   const checked: string[] = [];
   for (const part of relative(component, path).split(/[\\/]/u)) {
     component = join(component, part);
     checked.push(component);
-    if (proven.has(component)) continue;
-    if (lstatMaybe(component)?.isSymbolicLink()) fail(`symlink in root path ${component}`);
+    if (process.platform !== "win32" && proven.has(component)) continue;
+    const status = lstatMaybe(component);
+    if (status?.isSymbolicLink()) fail(`symlink in root path ${component}`);
+    if (process.platform === "win32" && status !== undefined) assertNoReparsePath(component);
   }
-  for (const item of checked) proven.add(item);
+  if (process.platform !== "win32") for (const item of checked) proven.add(item);
 }
 
 export class OldBuildRuntimeArtifactsError extends Error {

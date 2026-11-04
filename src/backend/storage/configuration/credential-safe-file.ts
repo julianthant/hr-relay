@@ -2,8 +2,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { systemClock } from "../../../rules/time/clock.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../source-closure.js";
-import { fsyncPath, privatePathRejects } from "../private-path.js";
-import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync, readdirSync, type Stats } from "node:fs";
+import { createPrivateDirectory, fsyncPath, privatePathRejects } from "../private-path.js";
+import { closeSync, constants, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, unlinkSync, writeFileSync, readdirSync, type Stats } from "node:fs";
 import { join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
@@ -12,8 +12,8 @@ import { ProcessStartIdentitySchema } from "../sqlite/runtime-process-locks.js";
 export const CREDENTIAL_DIRECTORY_MODE = 0o700;
 const CREDENTIAL_FILE_MODE = 0o600;
 export interface DirectoryIdentity {
-  readonly device: number;
-  readonly inode: number;
+  readonly device: number | bigint;
+  readonly inode: number | bigint;
 }
 
 export class PrivateFileReadTransitionError extends Error {
@@ -44,7 +44,9 @@ export function noSymlinkAncestry(path: string, identities: Map<string, Director
   let cursor = root;
   const paths = [root, ...segments.map((segment) => { cursor = join(cursor, segment); return cursor; })];
   for (const component of paths) {
-    const status = lstatSync(component, { throwIfNoEntry: false });
+    const status = process.platform === "win32"
+      ? lstatSync(component, { bigint: true, throwIfNoEntry: false })
+      : lstatSync(component, { throwIfNoEntry: false });
     const prior = identities.get(component);
     if (status === undefined) {
       if (prior !== undefined) throw new Error("directory-integrity: credential ancestor disappeared");
@@ -65,7 +67,7 @@ export function noSymlinkAncestry(path: string, identities: Map<string, Director
 export function statDirectory(path: string, label: string, exactMode?: typeof CREDENTIAL_DIRECTORY_MODE): DirectoryIdentity {
   let status;
   try {
-    status = lstatSync(path);
+    status = process.platform === "win32" ? lstatSync(path, { bigint: true }) : lstatSync(path);
   } catch {
     throw new Error(`directory-integrity: ${label} is unavailable`);
   }
@@ -119,7 +121,7 @@ export function ensureChildDirectory(
 ): void {
   statDirectory(parent, `${label} parent`);
   try {
-    mkdirSync(child, { mode: creationMode });
+    createPrivateDirectory(child, { mode: creationMode });
     fsyncPath(parent);
   } catch (error) {
     if (errorCode(error) !== "EEXIST") {
@@ -135,7 +137,7 @@ interface PrivateFileOptions {
   readonly allowedLinkCounts?: readonly number[];
 }
 
-export function readPrivateFile(path: string, options: PrivateFileOptions): { bytes: Buffer; identity: DirectoryIdentity; stat: Stats } | undefined {
+export function readPrivateFile(path: string, options: PrivateFileOptions): { bytes: Buffer; identity: { device: number; inode: number }; stat: Stats } | undefined {
   const { label, maxBytes, allowedLinkCounts = [1] } = options;
   const ordinary = label === "authority database" || label === "managed data";
   const nonce = label === "nonce lock", lock = label === "lock" || nonce, record = lock || label === "protected.json" || label === "ChatGPT" || label === "Duo credential" || label === "erasure journal" || ordinary;

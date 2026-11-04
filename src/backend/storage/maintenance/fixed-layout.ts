@@ -1,4 +1,4 @@
-import { lstatSync,mkdirSync,readdirSync } from "node:fs";
+import { lstatSync,readdirSync } from "node:fs";
 import { dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
 import { z } from "zod";
 import { ActiveRuntimeConfigRecordSchema } from "../../../models/config/runtime-generation.js";
@@ -14,7 +14,7 @@ import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { offlineMaintenanceWorkspace,type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { noSymlinkAncestry,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
-import { fsyncPath,privatePathRejects,replacePrivateFile,writePrivateStage } from "../private-path.js";
+import { createPrivateDirectory,fsyncPath,privatePathRejects,replacePrivateFile,writePrivateStage } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../source-closure.js";
 import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { file,hash,profileAuthorityFileWitnesses } from "./existing-data-backup-files.js";
@@ -189,9 +189,9 @@ export function createFixedLayoutDirectory(workspace: string): void {
   const ancestry = new Map<string, DirectoryIdentity>();
   if (!noSymlinkAncestry(dirname(workspace), ancestry)) throw new Error("fixed-layout-parent-missing");
   if (lstatSync(workspace, { throwIfNoEntry: false }) === undefined) {
-    mkdirSync(workspace, { mode: 0o700 }); fsyncPath(dirname(workspace));
+    createPrivateDirectory(workspace, { mode: 0o700 }); fsyncPath(dirname(workspace));
   }
-  const directory = lstatSync(workspace);
+  const directory = lstatSync(workspace, { bigint: true });
   if (!directory.isDirectory() || privatePathRejects(workspace, directory, "directory-0700")
     || !noSymlinkAncestry(workspace, ancestry)) throw new Error("fixed-layout-directory-unsafe");
 }
