@@ -271,7 +271,11 @@ The first four paths and extension path are ordinary settings. State, evidence, 
 absolute path, cancellation, or explicit unavailable result. The native picker owns dialog bounds
 and field typing. A selection does not save settings or move app data. The route returns
 `NATIVE_PATH_HINT_INVALID` for an invalid hint. Missing picker composition reports `dialog-failed`;
-an occupied picker reports `busy`.
+an occupied picker reports `busy`. macOS uses `/usr/bin/osascript`; Windows uses the absolute
+`SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe` with one STA WinForms dialog.
+Windows dialog kind and canonical initial directory travel as UTF-8 JSON on stdin to fixed
+script code. Both helpers have bounded output and a 120-second limit; abort and timeout close
+the helper before releasing the dialog gate. Other platforms report `unsupported-platform`.
 
 ## 6. Credential access and storage
 
@@ -361,6 +365,11 @@ migrated names without reading their values. It reports retired canary names wit
 excluded. Development worker launches add `RELAY_DEV_DEBUG_MIRROR=1` explicitly after filtering;
 production worker launches omit it even when the parent has it. Workers read operational credentials from the store themselves.
 The `secrets-single-source` architecture guard owns registered credential and environment access.
+`src/models/runtime/runtime-environment.ts` pins the exact `SystemRoot` read to `windowsSystemRoot` in
+`src/models/config/secrets.ts` under the non-secret `process-mechanics` channel. That channel accepts
+only this key and canonical owner; exact reader ownership names the same path. The native path
+picker consumes the accessor and validates the returned root before launching PowerShell. The worker's
+closed mechanics pass-through remains separately audited.
 
 `config/test-data.json` owns public subject declarations and safe fixtures.
 Ignored `config/test-data.local.json` owns private canary values and private document paths.
