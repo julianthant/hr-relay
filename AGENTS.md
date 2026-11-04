@@ -106,7 +106,9 @@ The repository holds only the current version. No compatibility readers, old mig
 - Run static, privacy and portable Ubuntu unit, integration and architecture checks for pull
   requests into `staging`. Run platform-native proofs and parity in CI only for a full release
   started by the operator: a `staging` → `main` pull request or a manual full-release dispatch. Agents must never
-  dispatch or rerun `ci.yml`. Fix a red release by a pull request into `staging`. Run the tests related
+  dispatch or rerun CI workflows. `ci.yml` runs only staging PRs through portable-only `ci-checks.yml`;
+  `release.yml` alone calls `release-checks.yml` for main PRs or operator manual releases.
+  Fix a red release by a pull request into `staging`. Run the tests related
   to your change locally before pushing, and parity when the change touches a dashboard screen.
 - A test file that needs native platform proofs goes in `NATIVE_FILES` in `scripts/test/ci-files.ts`. When CI jobs'
   end times spread more than a minute, refresh `scripts/test/ci-durations.json` (see
@@ -115,7 +117,7 @@ The repository holds only the current version. No compatibility readers, old mig
   every small fix. Keep commits logical inside it; never mix unrelated features. Title and describe
   what changed and why. Pull a branch before continuing work on it.
 - Push fixes to an open pull request as one batch. While its CI runs, push only once that run has
-  already failed: each push cancels the running check.
+  already failed: each push supersedes the older run for that PR.
 - A pull request that intentionally changes a dashboard screen updates that screen's parity, visual
   and accessibility references in the same pull request; the operator reviews them in the `staging`
   preview.
