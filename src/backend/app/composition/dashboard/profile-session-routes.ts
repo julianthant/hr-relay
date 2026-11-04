@@ -39,7 +39,7 @@ import { probePrimaryDisplay } from "../../host/primary-display.js";
 import { RuntimeCustodyUncertainError,composeProfileRuntime } from "../storage-compose.js";
 import { DashboardFrontendModeSchema,PackageVersionSchema,type DashboardComposeInput,type DashboardRuntime } from "./runtime-contracts.js";
 import { composeDashboardRuntime } from "./runtime-startup.js";
-import { composeApplicationStop } from "./shutdown-custody.js";
+import { composeApplicationStop,retainPublicFailureCustody } from "./shutdown-custody.js";
 
 export async function composeDashboardApplication(input: DashboardComposeInput): Promise<Readonly<{ port: number; shutdownRequested: Promise<void>; stop(): Promise<void> }>> {
   let resolveApplicationQuit: () => void = () => undefined;
@@ -87,7 +87,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   let completedDraft: { operationId: string; sessionId: string } | undefined;
   let pending: { sessionId: string; operationId: string; profileId: string; epoch: number; runtime: DashboardRuntime; deleting: boolean } | undefined;
   let transitioning = false;
-  const retainedFailures: unknown[] = [];
+  const retainedCustodyFailures: unknown[] = [];
   const cookieName = "relay-profile-session";
   const onboardingCookieName = "relay-profile-onboarding";
   let registeredPort: number = input.backendPortOverride ?? input.isolation.backendPort;
@@ -123,12 +123,12 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     return (path.startsWith("/api/") && !path.startsWith("/api/v1/profile/")) || path.startsWith("/events") || path.startsWith("/artifacts");
   };
   const publicFailure = (error: Error) => {
+    const custodyUnproved = retainPublicFailureCustody(error, retainedCustodyFailures);
     if (error instanceof ProfileSessionRefusedError) return { status: 409 as const,
       body: PublicProfileStateSchema.parse({ state: "refused", code: error.code }) };
     const mapped = failureStatus(error);
-    if (mapped.status === 500) retainedFailures.push(error);
     return { status: mapped.status, body: PublicProfileStateSchema.parse({ state: "error",
-      code: error instanceof RuntimeCustodyUncertainError ? "RUNTIME_CUSTODY_UNCERTAIN" : mapped.body.code }) };
+      code: custodyUnproved ? "RUNTIME_CUSTODY_UNCERTAIN" : mapped.body.code }) };
   };
   app.onError((error, c) => { const failure = publicFailure(error); return c.json(failure.body, failure.status); });
   app.use("/api/v1/profile/*", async (c, next) => {
@@ -322,7 +322,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   })();
   registeredPort = listener.port;
   return Object.freeze({ port: listener.port, shutdownRequested, stop: composeApplicationStop({
-    input, profileRuntime, listener, machine, installation, clock, retainedFailures,
+    input, profileRuntime, listener, machine, installation, clock, retainedCustodyFailures,
     beginTransition: () => { transitioning = true; },
     readSelectedRuntime: () => selection?.runtime ?? pending?.runtime,
   }) });

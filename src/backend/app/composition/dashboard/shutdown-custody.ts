@@ -1,7 +1,7 @@
 import type { Clock } from "../../../../rules/time/clock.js";
 import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { StorageMaintenanceCustodyUnavailableError } from "../../../storage/maintenance/custody-availability.js";
-import { hasUnprovedSourceClosure } from "../../../storage/source-closure.js";
+import { AuthoritySourceClosureUnprovedError,hasUnprovedSourceClosure } from "../../../storage/source-closure.js";
 import type { DashboardHttpListener } from "../../../transports/http/http-server.js";
 import { type DashboardHttpServer } from "../../../transports/http/http-server.js";
 import type { RunLogsStreamHub } from "../../../transports/http/subscriptions/run-logs-stream.js";
@@ -11,6 +11,21 @@ import type { DashboardComposeInput } from "./runtime-contracts.js";
 import { type DashboardRuntime,type StartupCleanup,type StartupCustody } from "./runtime-contracts.js";
 import type { prepareDashboardRuntime } from "./runtime-resources.js";
 import type { composeShell } from "./shell.js";
+
+export function retainPublicFailureCustody(error: Error, retainedCustodyFailures: unknown[]): boolean {
+  const causes: unknown[] = [error], seen = new Set<unknown>();
+  let custodyUnproved = false;
+  while (causes.length > 0) {
+    const current = causes.pop();
+    if (seen.has(current)) continue;
+    seen.add(current);
+    if (current instanceof RuntimeCustodyUncertainError || current instanceof AuthoritySourceClosureUnprovedError) { custodyUnproved = true; break; }
+    if (current instanceof AggregateError) { const nested: readonly unknown[] = current.errors; causes.push(...nested); }
+    if (current instanceof Error && current.cause !== undefined) causes.push(current.cause);
+  }
+  if (custodyUnproved) retainedCustodyFailures.push(error);
+  return custodyUnproved;
+}
 
 export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver"> & { timelineTimer: ReturnType<typeof setInterval>; hub: ReturnType<typeof composeShell>["hub"]; runLogsHub: RunLogsStreamHub; stopWorkerControl: StartupCleanup; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
   const { profile, selected, requireProducerClosure, notificationObserver, timelineTimer, hub, runLogsHub, stopWorkerControl, assistantAuthorization, shutdownRequested, noteWriter, server, gateParkTimer, custody } = input;
@@ -65,11 +80,11 @@ export function composeApplicationStop(resources: {
   machine: RuntimeAdmission;
   installation: NonNullable<ReturnType<RuntimeAdmission["readInstallationContext"]>>;
   clock: Clock;
-  retainedFailures: readonly unknown[];
+  retainedCustodyFailures: readonly unknown[];
   beginTransition: () => void;
   readSelectedRuntime: () => DashboardRuntime | undefined;
 }): () => Promise<void> {
-  const { input, profileRuntime, listener, machine, installation, clock, retainedFailures, beginTransition, readSelectedRuntime } = resources;
+  const { input, profileRuntime, listener, machine, installation, clock, retainedCustodyFailures, beginTransition, readSelectedRuntime } = resources;
   let stopping: Promise<void> | undefined;
   return (): Promise<void> => {
     if (stopping !== undefined) return stopping;
@@ -79,7 +94,7 @@ export function composeApplicationStop(resources: {
     const transportClosure = listener.close();
     stopping = (async () => {
       try { await transportClosure; } catch (error) { failures.push(error); }
-      failures.unshift(...retainedFailures);
+      failures.unshift(...retainedCustodyFailures);
       const selectedRuntime = readSelectedRuntime();
       if (selectedRuntime !== undefined) {
         try { await selectedRuntime.detach(); } catch (error) { failures.push(error); }
