@@ -211,3 +211,13 @@ export const childPreviewNestedRoot = compileWorkflow(defineWorkflow({ ...crashC
     { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
     return { steps: [[{ key: "nested", label: "Nested" }, [child]]], result: result(input, [], ({ input }) => input) };
   } }), { manifest: childExecutionBuildManifest });
+
+export const childPreviewMembersRoot = compileWorkflow(defineWorkflow({ ...crashCommon, id: "fixture-child-preview-members", code: "fcpm",
+  steps: ({ delegate, result }) => {
+    const members = delegate({ id: "members", target: { id: childCrashWrite.descriptor.id, input, result: output }, edgeId: "members",
+      cardinality: "many", await: "terminal", join: "all", policy: { cascadeCancel: "cascade", onChildFailed: "block-parent",
+        afterChildRetry: "manual-parent-resume", visibility: "inline" } }, [],
+      { bind: ({ input }) => [input, { eid: "10800001" }, { eid: "10800002" }],
+        deriveChildItemId: (_input, identity) => identity.canonicalItemId });
+    return { steps: [[{ key: "members", label: "Preview members" }, [members]]], result: result(input, [], ({ input }) => input) };
+  } }), { manifest: childExecutionBuildManifest });

@@ -180,7 +180,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
       rmSync(directory, { recursive: true, force: true });
     } };
 }
-const BIND = { documentId: "A0000000000040008000000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com", username: "alex@example.edu" };
+const BIND = { documentId: "A0000000000040008000000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com" };
 
 describe("draft Duo provider", () => {
   it("classifies a failed Relay target observation before browser launch or profile creation", async () => {
@@ -395,13 +395,13 @@ describe("draft Duo provider", () => {
     } finally { await w.cleanup(); }
   });
 
-  it("reopening after an unknown arm failure focuses the owned window without another attempt", async () => {
+  it("reopening after a failed arm focuses the owned window without another attempt", async () => {
     const w = world();
     try {
       await w.provider.showBrowser(w.owner); w.failInstall();
       await assert.rejects(w.rawProvider.start(w.attempt, w.bind, w.reportFailure));
       assert.equal(w.failures.length, 1);
-      const failure = w.failures[0]; assert.ok(failure instanceof ProfileOnboardingDuoProviderError); assert.equal(failure.kind, "unknown");
+      const failure = w.failures[0]; assert.ok(failure instanceof ProfileOnboardingDuoProviderError); assert.equal(failure.kind, "unavailable");
       await w.closeBrowser();
       await w.provider.showBrowser(w.owner);
       assert.equal(w.focuses(), 2); assert.equal(w.windowFocuses(), 2);
@@ -481,12 +481,14 @@ describe("draft Duo provider", () => {
     } finally { await w.closeBrowser(); await w.cleanup(); }
   });
 
-  it("retains the named scope cause when a bound attempt becomes Unknown", async () => {
+  it("retains the named scope cause when a bound attempt holding a key becomes Unknown", async () => {
     const w = world();
     try {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
       await w.send("bind", BIND);
-      assert.deepEqual(await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId: randomUUID() }), { ok: false });
+      await w.send("persist", { credentialId: "cHVibGljLWlk", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+        transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
+      assert.deepEqual(await w.send("software-created", { credentialId: "b3RoZXItaWQ", requestId: randomUUID() }), { ok: false });
       const failure = w.failures[0]; assert.ok(failure instanceof ProfileOnboardingDuoProviderError);
       assert.equal(failure.kind, "unknown"); assert.equal(failure.reason, "scope");
       assert.ok(w.calls.includes("unknown"));
@@ -500,7 +502,6 @@ describe("draft Duo provider", () => {
       await w.provider.start(w.attempt, w.bind, w.reportFailure);
       assert.equal(w.launches(), 1);
       assert.deepEqual(await w.send("bind", BIND), { ok: true, value: { accountId: w.attempt.accountId } });
-      assert.equal(w.observed()?.accountName, BIND.username);
       assert.equal(w.observed()?.tabId, 7);
       assert.equal(w.observed()?.contextId, BIND.documentId);
       const requestId = randomUUID();
@@ -678,14 +679,15 @@ describe("draft document observations around native authority awaits", () => {
     } finally { await w.cleanup(); }
   });
 
-  it("retains the issued capability when document changes during binding", async () => {
+  it("ends a keyless attempt as retryable when the document changes during binding", async () => {
     const w = world();
     try {
       await w.provider.start(w.attempt, async input => { const capability = await w.bind(input); w.drift(); return capability; }, w.reportFailure);
       assert.deepEqual(await w.send("bind", BIND), { ok: false });
       await w.provider.cancel(w.attempt);
-      assert.ok(w.calls.includes("unknown"));
+      assert.ok(!w.calls.includes("unknown"));
       assert.equal(w.failures.length, 1);
+      const failure = w.failures[0]; assert.ok(failure instanceof ProfileOnboardingDuoProviderError); assert.equal(failure.kind, "refused");
     } finally { await w.cleanup(); }
   });
 });
