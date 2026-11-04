@@ -12,7 +12,7 @@
     - heading "Edit spreadsheet type" [level=2]
   - text: Type name
   - textbox "Type name": Roster
-  - paragraph: "Columns: Email, Legal name, Preferred name, Phone, PID, TSN, Employee ID, College of residence, Supervisor email, Supervisor name, Work location, Position number, Initiator, Start date, Offer accepted, Campus forms pending, Background terms accepted, Background entered, Background cleared, Entered in UCPath, Transaction number, Ready for payroll approval, AD submitted, AD username, Ready for signing, Oath added to UCPath, Hired, I-9, JOL and employee data form, Notes"
+  - paragraph: "Columns: Email, Legal name, Lived name, Phone, UCSD PID, TSN, Employee ID, College of residence, Supervisor email, Supervisor name, Work Location, Position Number, Initiator, Start date, Offer accepted, Campus forms pending, Background terms accepted, Background entered, Background cleared, Entered in UCPath, Transaction Number, Ready for payroll approval, AD submitted, AD username, Ready for signing, Oath added to UCPath, Hired, I-9 status, JOL and employee data form, Notes"
   - contentinfo:
     - button "Cancel"
     - button "Save type"

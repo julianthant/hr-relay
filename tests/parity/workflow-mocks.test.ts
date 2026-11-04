@@ -121,7 +121,8 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
           await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
           await rail.getByRole("button", { name: flow.label, exact: true }).click();
           const sample = seedMockRuns().find(run => run.workflowId === flow.id)!;
-          await page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: new RegExp(`^${sample.subject.replaceAll("./", "\\.")} —`, "u") }).click();
+          await page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: new RegExp(`^${sample.subject.replaceAll("./", "\\.")} —`, "u") }).focus();
+          await page.keyboard.press("Enter");
           const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
           await expect(logs.getByRole("heading", { level: 2 })).toHaveText(sample.subject);
           if (flow.methods[0] === "delegated") await expect(logs).toContainText("Read Section 2 signer");
