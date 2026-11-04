@@ -48,12 +48,12 @@ it("renders the approved extension states and keeps card selection, guards and f
       assert.equal(cards()[0].querySelector(".relay-method-pill")?.textContent, label);
       assert.deepEqual([...cards()[0].querySelectorAll<HTMLElement>("ol li")].map(step => step.dataset.state), tones);
       assert.equal(document.getElementById("accountCount")?.textContent, `${state === "complete" ? 1 : 0} of 2 completed`);
-      assert.ok(choices().every(button => button.disabled === (state === "pending")));
-      assert.ok(cards().every(card => card.disabled === (state === "pending")));
+      assert.ok(choices().every(button => !button.disabled));
+      assert.ok(cards().every(card => !card.disabled));
       assert.equal(cards()[0].querySelectorAll("svg").length, 2);
       if (state === "unknown" || state === "unavailable") {
         assert.match(cards()[0].textContent ?? "", /Not confirmed/);
-        assert.match(cards()[0].textContent ?? "", /do not repeat this attempt/);
+        assert.match(cards()[0].textContent ?? "", /remove any device you do not recognize, then start over/);
       }
     }
     assert.ok(calls.includes("STATE"));
@@ -95,6 +95,38 @@ for (const lateFailure of [false, true]) it(`keeps actions available during a st
     assert.equal(document.querySelector<HTMLButtonElement>("#cancelCapture")!.disabled, false);
     assert.equal(document.querySelector<HTMLElement>('.relay-method-card[data-method="key"]')!.dataset.state, "pending");
     assert.equal(document.getElementById("message")!.hidden, true);
+  } finally {
+    window.dispatchEvent(new Event("pagehide"));
+    document.body.replaceChildren(); vi.unstubAllGlobals(); vi.useRealTimers();
+  }
+});
+
+it("a refused action leaves setup usable and an unconfirmed method can start over", async () => {
+  const { mountRelayOptions } = await import(pathToFileURL(resolve("fast-duo/src/relay-options.js")).href) as { mountRelayOptions(this: void, profile: unknown): Promise<void> };
+  vi.useFakeTimers();
+  document.body.innerHTML = readFileSync("fast-duo/src/options.html", "utf8");
+  const profile = { operationId: "synthetic-operation", profileId: "synthetic-profile",
+    methods: { key: { state: "unknown", attemptId: "synthetic-attempt" }, touch: { state: "idle" } } };
+  const calls: string[] = [];
+  vi.stubGlobal("chrome", { runtime: { sendMessage: async ({ type, method }: { type: string; method?: string }) => {
+    calls.push(method === undefined ? type : `${type}:${method}`);
+    if (type === "RELAY_START" && method === "touch") return { success: false };
+    return { success: true, result: { relaySetup: true, profile } };
+  } } });
+  const start = () => document.querySelector<HTMLButtonElement>("#startCapture")!;
+  try {
+    await mountRelayOptions(profile);
+    assert.equal(start().hidden, false); assert.equal(start().disabled, false); assert.equal(start().textContent, "Start Security key over");
+    document.querySelector<HTMLButtonElement>('.relay-method-card[data-method="touch"]')!.click();
+    start().click();
+    await vi.advanceTimersByTimeAsync(0);
+    assert.equal(document.getElementById("message")!.hidden, false);
+    await vi.advanceTimersByTimeAsync(1000);
+    assert.equal(start().disabled, false); assert.equal(document.querySelector<HTMLButtonElement>("#openLogin")!.disabled, false);
+    assert.notEqual(document.getElementById("globalStatus")!.textContent, "Reconnect to Relay");
+    start().click();
+    await vi.advanceTimersByTimeAsync(0);
+    assert.deepEqual(calls.filter(call => call.startsWith("RELAY_START")), ["RELAY_START:touch", "RELAY_START:touch"]);
   } finally {
     window.dispatchEvent(new Event("pagehide"));
     document.body.replaceChildren(); vi.unstubAllGlobals(); vi.useRealTimers();

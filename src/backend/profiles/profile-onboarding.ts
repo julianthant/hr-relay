@@ -194,16 +194,12 @@ export function createProfileOnboarding(input: {
     async start(operationId: string, method: ProfileOnboardingMethod): Promise<void> {
       const provider = input.provider; if (provider === undefined) return unavailable();
       const before = requiredDraft(input.read(operationId));
-      const prior = before.attempts.filter(entry => entry.generation === before.generation && entry.method !== method && entry.providerClosedAt === undefined);
-      if (prior.some(entry => entry.state !== "complete")) return unavailable();
-      for (const receipt of prior) await owner.cancelAttempt(operationId, receipt.method, receipt.attemptId);
-      for (const receipt of before.attempts.filter(entry => entry.generation === before.generation && entry.method === method
-        && entry.state === "closed" && entry.providerClosedAt === undefined && leases.has(entry.attemptId))) await owner.cancelAttempt(operationId, method, receipt.attemptId);
+      const running = (entry: SignUpDuoAttempt) => entry.providerClosedAt === undefined && leases.has(entry.attemptId) && leases.get(entry.attemptId)?.closed !== true;
+      for (const receipt of before.attempts.filter(entry => entry.generation === before.generation && running(entry))) await owner.cancelAttempt(operationId, receipt.method, receipt.attemptId);
       const attempt = input.update(operationId, operation => {
         const draft = requiredDraft(operation);
         if (draft.abort !== undefined || draft.finish !== undefined) return unavailable();
-        if (draft.attempts.some(entry => entry.state === "unknown" || entry.method === method
-          && (entry.state !== "closed" || entry.providerClosedAt === undefined && leases.get(entry.attemptId)?.closed !== true))) return unavailable();
+        if (draft.attempts.some(entry => entry.generation === draft.generation && (entry.method === method && entry.state === "complete" || running(entry)))) return unavailable();
         const attempt: DraftDuoAttempt = Object.freeze({ operationId, profileId: operation.profileId, accountId: draft.accountId,
           generation: draft.generation, attemptId: randomUUID(), method, expiresAt: new Date(input.clock.nowMs() + 600_000).toISOString() });
         return { operation: { ...operation, onboarding: { ...draft, attempts: [...draft.attempts, {
@@ -242,9 +238,11 @@ export function createProfileOnboarding(input: {
         if (current.generation !== draft.generation) return unavailable();
         return { operation: { ...latest, onboarding: { ...current, attempts: current.attempts.map(entry => {
           if (entry.attemptId !== attemptId) return entry;
-          const keyMayExist = entry.scope !== undefined && (entry.ceremony !== undefined || input.store(latest).readForScope(entry.scope).length > 0);
-          if (closure.state !== "closed" || entry.state === "unknown" || keyMayExist && entry.state !== "complete") return { ...entry, state: "unknown" as const };
-          return { ...entry, state: entry.state === "complete" ? "complete" as const : "closed" as const, providerClosedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) };
+          if (closure.state !== "closed") return { ...entry, state: "unknown" as const };
+          const providerClosedAt = IsoInstantSchema.parse(input.clock.now().toISOString());
+          if (entry.state === "unknown" || entry.state !== "complete" && entry.scope !== undefined
+            && (entry.ceremony !== undefined || input.store(latest).readForScope(entry.scope).length > 0)) return { ...entry, state: "unknown" as const, providerClosedAt };
+          return { ...entry, state: entry.state === "complete" ? "complete" as const : "closed" as const, providerClosedAt };
         }) } }, result: undefined };
       });
       if (closure.state !== "closed") return unavailable();

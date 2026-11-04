@@ -126,7 +126,7 @@ function retainDraftBrowserDirectory(f: Awaited<ReturnType<typeof privateDraftFi
   mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
 }
 
-it("viewing an actual draft creates no attempt and unknown enrollment cannot be rearmed by viewing or opening its browser", async () => {
+it("viewing an actual draft creates no attempt; after Unknown only an explicit start begins a new attempt", async () => {
   let browser: DraftDuoBrowserOwner | undefined, starts = 0;
   const f = await privateDraftFixture({
     async showBrowser(owner) { owner.assertCurrent(); browser = owner; },
@@ -143,8 +143,9 @@ it("viewing an actual draft creates no attempt and unknown enrollment cannot be 
     assert.equal(pending.methods.key.state, "unknown");
     await f.profile.session.showOnboardingBrowser(f.draft.token, f.draft.operationId);
     await f.profile.session.openOnboardingPortal(f.draft.token, f.draft.operationId);
-    await assert.rejects(f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, "key"));
     assert.equal(starts, 1); assert.equal(browser.readState().methods.key.state, "unknown");
+    await f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, "key");
+    assert.equal(starts, 2);
     assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
     await assert.rejects(f.profile.close(), error => error instanceof RuntimeCustodyUncertainError
       && error.errors.some(cause => cause instanceof AggregateError && cause.message === "profile-onboarding-custody-unproved"));
