@@ -31,15 +31,15 @@ jobs:
     outputs:
       plan: ${{ steps.select.outputs.plan }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
           cache: npm
       - run: npm ci
       - name: Find the latest successful file timings
         id: timings
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const { execFileSync } = require('node:child_process');
@@ -65,19 +65,19 @@ jobs:
               }
             }
             core.info('No retained successful reports; using committed file timings.');
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         if: steps.timings.outputs.run != ''
         with:
           github-token: ${{ github.token }}
           run-id: ${{ steps.timings.outputs.run }}
           name: ci-timings
           path: scripts/test/
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ci-balancing
           path: scripts/test/ci-durations.json
           retention-days: 14
-      - uses: dorny/paths-filter@15192bc058cc28a13dbf6cde61f19e18988b7af6 # v3
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         if: github.event_name == 'pull_request'
         with:
@@ -105,7 +105,7 @@ jobs:
             parity:
               - 'tests/parity/**'
               - '!**/*.md'
-      - uses: actions/github-script@v7
+      - uses: actions/github-script@v9
         id: select
         env:
           FILTERS: ${{ toJSON(steps.filter.outputs) }}
@@ -125,8 +125,8 @@ jobs:
     name: static
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
           cache: npm
@@ -148,8 +148,8 @@ jobs:
     name: privacy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
           cache: npm
@@ -166,18 +166,18 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.changes.outputs.plan).ubuntu }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
           cache: npm
       - run: npm ci
       - run: npm run build:manifest:prepare
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ci-balancing
           path: scripts/test/
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         if: matrix.suite == 'integration'
         with:
           path: ~/.cache/ms-playwright
@@ -196,7 +196,7 @@ jobs:
           SUITE: ${{ matrix.suite }}
           SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
         run: scripts/test/ci-run.sh "$SUITE" ubuntu "$SLICE" --maxWorkers=2
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}
         with:
           name: durations-ubuntu-${{ matrix.suite }}-${{ matrix.shard }}
@@ -254,8 +254,8 @@ jobs:
     if: ${{ !cancelled() && needs.changes.result == 'success' && fromJSON(needs.changes.outputs.plan).testJobs > 0 }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
           cache: npm
@@ -264,17 +264,17 @@ jobs:
           PLAN: ${{ needs.changes.outputs.plan }}
           RESULTS: ${{ toJSON(needs) }}
         run: node --import tsx scripts/test/ci-plan.ts proofs "$PLAN" "$RESULTS"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: ci-balancing
           path: scripts/test/
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: durations-*
           path: ${{ runner.temp }}/durations
           merge-multiple: true
       - run: npx tsx scripts/test/ci-files.ts durations "$RUNNER_TEMP/durations"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ci-timings
           path: scripts/test/ci-durations.json
@@ -286,8 +286,8 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
           cache: npm
