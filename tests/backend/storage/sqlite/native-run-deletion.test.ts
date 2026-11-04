@@ -14,7 +14,7 @@ import { RunCheckpointRecordSchema,checkpointRecordKey } from "../../../../src/m
 import type { RunId } from "../../../../src/rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { CONFIG_SNAPSHOT,HASH_A,NOW,UUID_1,UUID_3,UUID_5 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { CONFIG_SNAPSHOT,HASH_A,NOW,UUID_1,UUID_3,UUID_5,UUID_7 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 const databases: DatabaseSync[] = [];
 afterEach(() => { for (const db of databases.splice(0)) db.close(); });
@@ -55,6 +55,25 @@ function fixture(withParent = false) {
   return {db,run,prepare,transaction,replay,input};
 }
 describe("native terminal run deletion", () => {
+  it("clears checkpoints shared between terminal roots only under the complete history command", () => {
+    const f = fixture(), peer = f.replay();
+    expect(() => f.prepare()).toThrow(/checkpoint still referenced/u);
+    const request = { commandId: UUID_7 };
+    insertNativeCommand(f.db, { kind: "run-lifecycle", commandId: UUID_7, operation: "clear-history", request,
+      requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0clear-history\0${canonicalJsonStringify(request)}`),
+      fence: { kind: "none" }, recordedAt: NOW });
+    const deletion = (run: typeof f.run) => RunDeleteInputSchema.parse({ runId: run.envelope.runId,
+      origin: "storage", commandId: UUID_7, now: NOW, cascadeRunIds: [peer.envelope.runId, f.run.envelope.runId] });
+    for (const run of [peer, f.run]) expect(() => prepareNativeRunDeletion(f.db, run, deletion(run), () => { throw new Error("no files"); }, "preflight")).not.toThrow();
+    f.transaction(() => {
+      for (const run of [peer, f.run]) executeNativeRunDeletion(f.db, prepareNativeRunDeletion(f.db, run, deletion(run), () => { throw new Error("no files"); }));
+    });
+    expect(f.db.prepare("SELECT * FROM runs").all()).toEqual([]);
+    expect(f.db.prepare("SELECT * FROM run_checkpoints").all()).toEqual([]);
+    expect(f.db.prepare("SELECT * FROM timeline_events").all()).toEqual([]);
+    expect(f.db.prepare("SELECT * FROM deleted_runs").all()).toHaveLength(2);
+    expect(f.db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
   it.each(["valid","command-digest","audit-column"])("validates retained command and audit evidence before planning deletion: %s", fault => {
     const f=fixture();
     const request={commandId:UUID_3,runId:f.run.envelope.runId,expectedVersion:f.run.version};

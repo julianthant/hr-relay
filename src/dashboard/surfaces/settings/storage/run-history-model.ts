@@ -1,0 +1,61 @@
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { ClearRunHistoryRequestSchema, RUN_HISTORY_REFUSALS, type ClearRunHistoryRequest, type ClearRunHistoryResult, type RunHistoryStatus } from "../../../../models/dashboard/run-history.js";
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
+import { useSettingsRead } from "../../../state/settings-read-model.js";
+import { beforeEffectRefusal } from "../../../app/commands/command-result.js";
+
+type HistoryAction = { state: "pending" | "unknown"; request: ClearRunHistoryRequest }
+  | { state: "settled"; result: ClearRunHistoryResult }
+  | { state: "failed" };
+
+export function useRunHistory(onCleared?: () => void) {
+  const client = useDashboardClient();
+  const binding = useDashboardCommandBinding();
+  const status = useSettingsRead<RunHistoryStatus>(client, "run-history");
+  const action = useSettingsRead<HistoryAction>(client, "clear-run-history");
+  const read = useSyncExternalStore(status.subscribe, status.snapshot, status.snapshot);
+  const operation = useSyncExternalStore(action.subscribe, action.snapshot, action.snapshot).value;
+  const current = useRef({ action, binding, onCleared });
+  current.current = { action, binding, onCleared };
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const reload = useCallback(() => status.read(() => client.runHistoryStatus(), "STORAGE_AUTHORITY_READ_FAILED"), [client, status]);
+  const day = binding?.authority.dayState.day;
+  useEffect(() => { void reload().catch(() => undefined); }, [reload, day]);
+  const clear = useCallback(async () => {
+    const previous = action.snapshot().value;
+    if (previous?.state === "pending") return;
+    const request = previous?.state === "unknown" ? previous.request : ClearRunHistoryRequestSchema.parse({ commandId: crypto.randomUUID() });
+    action.accept({ state: "pending", request });
+    try {
+      const result = await client.clearRunHistory(request);
+      if (current.current.action !== action) return;
+      action.accept({ state: "settled", result });
+      if (result.state === "cleared" && mounted.current) {
+        current.current.binding?.authority.dayState.refresh();
+        current.current.onCleared?.();
+      }
+      void reload().catch(() => undefined);
+    } catch (error) {
+      if (current.current.action !== action) return;
+      action.accept(beforeEffectRefusal(error) ? { state: "failed" } : { state: "unknown", request });
+    }
+  }, [action, client, reload]);
+  const available = read.state === "loaded" && read.value.state === "available" ? read.value : undefined;
+  const pending = operation?.state === "pending";
+  const unknown = operation?.state === "unknown";
+  const message = pending ? "Clearing run history; cleanup is not complete."
+    : unknown ? ERROR_CATALOG.COMMAND_OUTCOME_UNCERTAIN.text
+    : operation?.state === "failed" ? ERROR_CATALOG.COMMAND_DISPATCH_FAILED.text
+    : operation?.state === "settled" ? operation.result.state === "cleared"
+      ? `${operation.result.deletedRuns} finished runs cleared.` : RUN_HISTORY_REFUSALS[operation.result.reason]
+    : undefined;
+  return { clear, pending, unknown, message,
+    disabled: pending || (!unknown && (available === undefined || available.activeRuns > 0 || available.finishedRuns === 0)),
+    description: available === undefined ? "Run history is unavailable. Refresh Storage to check again."
+      : available.activeRuns > 0 ? RUN_HISTORY_REFUSALS["active-runs"]
+      : available.finishedRuns === 0 ? "No finished runs to clear."
+      : "Remove all finished runs, logs, screenshots and run evidence. Spreadsheets, settings, credentials and your account are kept.",
+  };
+}

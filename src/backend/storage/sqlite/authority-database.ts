@@ -72,7 +72,7 @@ import { privatePathRejects } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
-import { NativeCommandAuditSchema,commandFromRow,insertNativeCommand,settleNativeCommand } from "./command-record-row.js";
+import { NativeCommandAuditSchema,commandFromRow,insertNativeCommand,settleNativeCommand,settledRunDeletionIds } from "./command-record-row.js";
 import { authoritySourceDatabaseIdentity,type AuthorityBackupExpectedSource } from "./database-identity.js";
 import { deletedRunFromRow } from "./deleted-run-row.js";
 import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
@@ -896,8 +896,7 @@ function authenticatedPublicationDeletion(database: DatabaseSync, runId: string,
     || !receipt.removed.some(entry=>entry.table === "timeline_events" && entry.rows > 0)
     || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
     || z.object({state:z.literal("succeeded"),outcome_json:z.string()}).parse(commandRaw).outcome_json !== canonicalJsonStringify(audit)
-    || !("kind" in audit) || audit.kind !== "run-lifecycle" || audit.request.operation !== "delete"
-    || audit.result.kind !== "deletion" || !audit.result.runIds.includes(RunIdSchema.parse(runId))) throw new Error("confirmed-publication-deletion-settlement-mismatch");
+    || !settledRunDeletionIds(audit)?.includes(runId)) throw new Error("confirmed-publication-deletion-settlement-mismatch");
   return true;
 }
 
@@ -3685,8 +3684,7 @@ export class AuthorityDatabase implements Disposable {
       const audit = NativeCommandAuditSchema.parse(nativeOrdinaryRecordFromRow("command_audits",auditRows[0]));
       if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
         || z.object({state:z.literal("succeeded"),outcome_json:z.string()}).parse(commandRaw).outcome_json !== canonicalJsonStringify(audit)
-        || !("kind" in audit) || audit.kind !== "run-lifecycle" || audit.request.operation !== "delete"
-        || audit.result.kind !== "deletion" || !audit.result.runIds.includes(request.runId)) throw new Error("run-deletion-cleanup-settlement-mismatch");
+        || !settledRunDeletionIds(audit)?.includes(request.runId)) throw new Error("run-deletion-cleanup-settlement-mismatch");
       if (deletion.cleanupState === "complete") return {result:"complete" as const,changes:0};
       validateAuthorityRecordSchemas(this.#database);
       for (const file of deletion.files.filter(file=>file.disposition === "remove")) {

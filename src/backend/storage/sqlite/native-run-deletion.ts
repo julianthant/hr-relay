@@ -76,17 +76,23 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: RunRecord,
     const raw = database.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(id);
     if (raw === undefined || deletedRunFromRow(raw).receipt.commandId !== request.commandId) throw new Error("run-deletion-cascade-member-missing");
   }
-  const roots = [...currentCascade.values()].filter(member=>member.envelope.parent === undefined || !cascade.has(member.envelope.parent.runId));
-  if (roots.length !== 1) throw new Error("run-deletion-cascade-disconnected");
-  const root = roots[0];
-  if (root === undefined) throw new Error("run-deletion-cascade-root-missing");
   const commandRaw = database.prepare("SELECT * FROM commands WHERE id=?").get(request.commandId);
   if (commandRaw === undefined) throw new Error("run-deletion-command-missing");
   const command = commandFromRow(commandRaw);
-  const publicDelete = "family" in command && command.family === "run" && command.type === "delete" && command.target.runId === root.envelope.runId;
-  const internalDelete = "kind" in command && command.kind === "run-lifecycle" && command.operation === "delete"
-    && z.object({request:z.object({runId:z.string()})}).safeParse(command).data?.request.runId === root.envelope.runId;
-  if (!publicDelete && !internalDelete) throw new Error("run-deletion-command-target-mismatch");
+  const history = "kind" in command && command.kind === "run-lifecycle" && command.operation === "clear-history";
+  if (request.origin !== (history ? "storage" : "queue")) throw new Error("run-deletion-command-origin-mismatch");
+  if (history) {
+    if (retained.length !== 0) throw new Error("run-history-cascade-incomplete");
+  } else {
+    const roots = [...currentCascade.values()].filter(member=>member.envelope.parent === undefined || !cascade.has(member.envelope.parent.runId));
+    if (roots.length !== 1) throw new Error("run-deletion-cascade-disconnected");
+    const root = roots[0];
+    if (root === undefined) throw new Error("run-deletion-cascade-root-missing");
+    const publicDelete = "family" in command && command.family === "run" && command.type === "delete" && command.target.runId === root.envelope.runId;
+    const internalDelete = "kind" in command && command.kind === "run-lifecycle" && command.operation === "delete"
+      && z.object({request:z.object({runId:z.string()})}).safeParse(command).data?.request.runId === root.envelope.runId;
+    if (!publicDelete && !internalDelete) throw new Error("run-deletion-command-target-mismatch");
+  }
   for (const raw of database.prepare("SELECT * FROM timeline_events").all()) {
     const event = timelineEventFromRow(raw);
     if (event.scope.kind !== "run" || !cascade.has(event.scope.runId)) retained.push(event);

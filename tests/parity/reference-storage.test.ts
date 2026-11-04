@@ -99,7 +99,7 @@ test.describe("loaded storage doctor", () => {
         await page.getByRole("button", { name: "Run storage checks", exact: true }).click();
         await expect(page.getByText(/terminal outbox/u)).toHaveCount(0);
         await expect(page.getByRole("group", { name: "Storage health checks", exact: true }).getByRole("listitem")).toHaveCount(3);
-        await expect(page.getByText("Run history", { exact: true })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Clear run history", exact: true })).toBeDisabled();
         const row = page.locator(".diagnostic-check-entry").filter({ hasText: "UCPath password" });
         await expect(row).toContainText("Unavailable");
         await page.getByRole("group", { name: "Connections", exact: true }).getByRole("button", { name: "Diagnostic details", exact: true }).click();
@@ -112,7 +112,7 @@ test.describe("loaded storage doctor", () => {
 
         const snapshot = await page.locator("body").ariaSnapshot();
         expect(snapshot).toContain("UCPath password");
-        expect(snapshot).not.toContain("Run history");
+        expect(snapshot).toContain("Clear run history");
         test.info().annotations.push({
           type: `a11y-attachment-sha256:${a11yName}`,
           description: createHash("sha256").update(snapshot).digest("hex"),
