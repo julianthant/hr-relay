@@ -10,6 +10,7 @@ import { OcrApprovalReferenceSchema } from "../../models/workflows/ocr/result.js
 import { deriveSchemaHash } from "../../models/validation/schema-bound-value.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { correctedOcrRecord } from "../surfaces/run-detail/review/review-model.js";
+import { checkedCommandResult } from "../client/commands/shared-commands.js";
 
 type ReviewState = Readonly<{ state: "loading" | "loaded" | "failed"; page?: ReviewPage; error?: string }>;
 
@@ -60,6 +61,7 @@ export async function verifyOcrReviewEffect(client: DashboardClient, request: Co
   if (!(request.family === "ocr-review" || request.family === "gate" && request.payload.ocrApproval !== undefined)) throw new Error("RUN_REVIEW_COMMAND_MISMATCH");
   const recorded = await client.ocrCommandResult(request.target.runId, request.commandId);
   if (recorded.state !== "recorded" || canonicalJsonStringify(recorded.request) !== canonicalJsonStringify(request)) return { state: "mismatch" as const, evidence: recorded };
+  if (checkedCommandResult(request, recorded.result).state !== "applied") return { state: "mismatch" as const, evidence: recorded };
   const section = await client.runSection(request.target.runId, "review");
   if (section.section !== "review" || section.payload.runId !== request.target.runId || section.payload.ocr === undefined) return { state: "mismatch" as const, evidence: section };
   const page = section.payload, review = section.payload.ocr;
@@ -69,7 +71,7 @@ export async function verifyOcrReviewEffect(client: DashboardClient, request: Co
       sourceRunId: snapshot.sourceRunId, revision: snapshot.revision, digest: ocrSnapshotDigest(snapshot) })
       ? { state: "matched" as const, evidence: page } : { state: "mismatch" as const, evidence: page };
   }
-  if (review.revision.revision > request.target.expectedRevision + 1) return { state: "conflict" as const, evidence: page };
+  if (review.revision.revision > request.target.expectedRevision + 1) return { state: "matched" as const, evidence: page };
   const record = review.revision.records.find(record => record.recordId === request.payload.recordId);
   const effect = request.type === "correct-ocr-record" ? record !== undefined && canonicalJsonStringify({ recordId: record.recordId, fields: record.fields,
     assertedEid: record.assertedEid }) === canonicalJsonStringify(request.payload) : record?.discarded === (request.type === "discard-ocr-record");
@@ -130,31 +132,37 @@ export function useOcrReviewEditor(client: DashboardClient, selection: LogSelect
     memory.attempt = { request, captured, state: "pending", text: "Pending" };
     publishReview(memory);
     const options = { scope: start.scope, readback: (input: CommandRequest) => verifyOcrReviewEffect(client, input) };
-    const outcome = check ? await start.executor.check(request.commandId, { ...options, observe: async input => {
+    let outcome = check ? await start.executor.check(request.commandId, { ...options, observe: async input => {
       if (!(input.family === "ocr-review" || input.family === "gate")) throw new Error("RUN_REVIEW_COMMAND_MISMATCH");
       const result = await client.ocrCommandResult(input.target.runId, input.commandId);
       if (result.state !== "recorded" || canonicalJsonStringify(result.request) !== canonicalJsonStringify(input)) return undefined;
       return result.result;
     } }) : await start.executor.execute(request, options);
+    const confirmed = outcome.kind === "confirmed";
     if (outcome.kind === "confirmed") {
       const saved = ReviewPageSchema.parse(outcome.readback);
       if (saved.ocr === undefined) throw new Error("RUN_REVIEW_OCR_UNAVAILABLE");
       memory.confirmed = { revision: saved.ocr.revision.revision, approved: saved.ocr.approvedSnapshots.length > 0 };
-      if (memory.draft !== undefined) {
-        const fields = Object.fromEntries(Object.entries(memory.draft.fields).flatMap(([id, values]) => {
-          const remaining = Object.fromEntries(Object.entries(values).filter(([key, value]) => captured?.fields[id]?.[key] !== value));
-          return Object.keys(remaining).length > 0 ? [[id, remaining]] : [];
-        }));
-        const includes = Object.fromEntries(Object.entries(memory.draft.includes).filter(([id, value]) => captured?.includes[id] !== value));
-        memory.draft = Object.keys(fields).length > 0 || Object.keys(includes).length > 0
-          ? { revision: saved.ocr.revision.revision, fields, includes } : undefined;
+      if (request.family === "ocr-review" && saved.ocr.revision.revision > request.target.expectedRevision + 1) {
+        outcome = { ...outcome, kind: "conflict", feedback: formatErrorCatalogFailure(createErrorCatalogFailure("COMMAND_CONFLICT", {})) };
+      } else {
+        if (memory.draft !== undefined) {
+          const fields = Object.fromEntries(Object.entries(memory.draft.fields).flatMap(([id, values]) => {
+            const remaining = Object.fromEntries(Object.entries(values).filter(([key, value]) => captured?.fields[id]?.[key] !== value));
+            return Object.keys(remaining).length > 0 ? [[id, remaining]] : [];
+          }));
+          const includes = Object.fromEntries(Object.entries(memory.draft.includes).filter(([id, value]) => captured?.includes[id] !== value));
+          memory.draft = Object.keys(fields).length > 0 || Object.keys(includes).length > 0
+            ? { revision: saved.ocr.revision.revision, fields, includes } : undefined;
+        }
+        memory.attempt = undefined;
       }
-      memory.attempt = undefined;
-    } else memory.attempt = { request, captured, state: outcome.kind === "uncertain" ? "uncertain" : outcome.kind === "conflict" ? "conflict" : "refused", text: outcome.feedback.text };
+    }
+    if (outcome.kind !== "confirmed") memory.attempt = { request, captured, state: outcome.kind === "uncertain" ? "uncertain" : outcome.kind === "conflict" ? "conflict" : "refused", text: outcome.feedback.text };
     publishReview(memory);
     if (memory.listeners.size > 0) {
       memory.binding?.feedback(outcome);
-      if (outcome.kind === "confirmed") memory.binding?.authority.dayState.refresh();
+      if (confirmed) memory.binding?.authority.dayState.refresh();
     }
   }, [client, memory]);
   const save = useCallback(() => {

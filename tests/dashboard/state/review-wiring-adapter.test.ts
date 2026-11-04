@@ -12,6 +12,7 @@ import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../src/dashboard/state/client-context.js";
 import { readRunReview } from "../../../src/dashboard/state/review-wiring-adapter.js";
 import { RunReview } from "../../../src/dashboard/surfaces/run-detail/review/review.js";
+import { correctedOcrRecord } from "../../../src/dashboard/surfaces/run-detail/review/review-model.js";
 import { QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
 import { ReviewPageSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
 import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
@@ -106,6 +107,7 @@ function editorWorld(unknownOnce = false, delegated = true) {
     ...(delegated ? { approval: { runId: page.runId, gateId: "approve-records", expectedVersion: runVersion } } : {}) } });
   const commands: CommandRequest[] = [], recorded = new Map<string, { request: CommandRequest; result: CommandResult }>();
   let loseReply = unknownOnce;
+  let recordedLookup: "recorded" | "missing" | "mismatched-request" | "mismatched-result" = "recorded";
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
     const path = new URL(url).pathname;
     if (init?.method === "POST") {
@@ -139,7 +141,9 @@ function editorWorld(unknownOnce = false, delegated = true) {
     if (path.endsWith("/review")) return Response.json({ section: "review", payload: page });
     if (path.includes("/ocr/commands/")) {
       const value = recorded.get(path.split("/").at(-1) ?? "");
-      return Response.json(value === undefined ? { state: "unavailable" } : { state: "recorded", ...value });
+      return Response.json(value === undefined || recordedLookup === "missing" ? { state: "unavailable" } : { state: "recorded",
+        request: recordedLookup === "mismatched-request" ? { ...value.request, requestedAt: "2030-01-01T00:00:00.000Z" } : value.request,
+        result: recordedLookup === "mismatched-result" ? { ...value.result, commandId: "00000000-0000-4000-8000-000000000996" } : value.result });
     }
     return Response.json(detail(selection(runVersion)));
   } });
@@ -159,12 +163,15 @@ function editorWorld(unknownOnce = false, delegated = true) {
       children: createElement(RunReview, { selection: selection(revision) }) }) });
   }
   return { client, binding, commands, Harness, page: () => page, pauseRefresh: () => { refreshPaused = true; },
-    resumeRefresh: () => { refreshPaused = false; refresh(); }, externalChange: () => {
+    recordedLookup: (mode: typeof recordedLookup) => { recordedLookup = mode; },
+    resumeRefresh: () => { refreshPaused = false; refresh(); }, externalChange: (values: Readonly<Record<string, string>> = {}) => {
     assert.ok(page.ocr);
+    const previous = page, review = page.ocr, nextRevision = review.revision.revision + 1;
+    const revision = OcrReviewRevisionSchema.parse({ ...review.revision, revision: nextRevision, id: `${page.runId}#${nextRevision}`,
+      origin: { kind: "command", commandId: crypto.randomUUID() }, records: review.revision.records.map((record, index) => index === 0
+        ? { ...record, ...correctedOcrRecord(previous, record.recordId, values) } : record) });
     runVersion++;
-    page = ocrReviewPageFixture(page.runId, page.ocr.revision.revision + 1);
-    assert.ok(page.ocr);
-    page = ReviewPageSchema.parse({ ...page, ocr: { ...page.ocr, editing: { state: "available", runVersion },
+    page = ReviewPageSchema.parse({ ...page, ocr: { ...review, revision, digest: ocrReviewDigest(revision), editing: { state: "available", runVersion },
       ...(delegated ? { approval: { runId: page.runId, gateId: "approve-records", expectedVersion: runVersion } } : {}) } });
     refresh();
   } };
@@ -232,6 +239,56 @@ it("retains an uncertain save across remount and checks its original command wit
   assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.disabled, false);
   assert.equal(h.commands.length, 1);
   assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.value, "Retained Edit");
+});
+
+it("recovers a superseded uncertain save through historical proof and explicit draft discard without redispatch", async () => {
+  const h = editorWorld(true); let host = await mountEditor(h);
+  await act(async () => changeInput(host, "contact.name", "Retained Original Edit")); await saveEdits();
+  assert.equal(h.page().ocr?.revision.revision, 2);
+  const original = h.commands[0];
+  await act(async () => h.externalChange({ "contact.name": "Later Native Edit" }));
+  assert.equal(h.page().ocr?.revision.revision, 3);
+  await act(async () => button(host, "Check result").click()); await saveEdits();
+  assert.ok(button(host, "Discard local changes"));
+  assert.equal([...host.querySelectorAll("button")].some(button => button.textContent === "Check result"), false);
+  assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.value, "Retained Original Edit");
+  assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.disabled, true);
+  assert.equal(button(host, "Approve records").disabled, true);
+  assert.equal(h.commands.length, 1);
+  await act(async () => root?.unmount()); root = undefined; host.remove(); host = await mountEditor(h);
+  await saveEdits();
+  assert.ok(button(host, "Discard local changes"));
+  assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.value, "Retained Original Edit");
+  assert.deepEqual(h.binding.executor.retainedAttempts()[0].request, original);
+  await act(async () => button(host, "Discard local changes").click()); await saveEdits();
+  assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.value, "Later Native Edit");
+  assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.disabled, false);
+  assert.equal(h.commands.length, 1);
+  await act(async () => changeInput(host, "contact.name", "Deliberate New Edit")); await saveEdits();
+  assert.equal(h.commands.length, 2);
+  assert.notEqual(h.commands[1].commandId, original.commandId);
+  assert.ok(h.commands[1].family === "ocr-review");
+  assert.equal(h.commands[1].target.expectedRevision, 3);
+  assert.equal(h.commands.filter(request => request.commandId === original.commandId).length, 1);
+  assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.value, "Deliberate New Edit");
+  assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.disabled, false);
+});
+
+it.each(["missing", "mismatched-request", "mismatched-result"] as const)("keeps a superseded save uncertain when its recorded command is %s", async mode => {
+  const h = editorWorld(true), host = await mountEditor(h);
+  await act(async () => changeInput(host, "contact.name", "Unproven Edit")); await saveEdits();
+  await act(async () => h.externalChange({ "contact.name": "Later Native Edit" }));
+  h.recordedLookup(mode);
+  await act(async () => button(host, "Check result").click()); await saveEdits();
+  assert.ok(button(host, "Check result"));
+  assert.equal([...host.querySelectorAll("button")].some(button => button.textContent === "Discard local changes"), false);
+  assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.value, "Unproven Edit");
+  assert.equal(host.querySelector<HTMLInputElement>('input[name="contact.name"]')?.disabled, true);
+  assert.equal(h.commands.length, 1);
+  await act(async () => root?.unmount()); root = undefined; host.remove();
+  const reopened = await mountEditor(h); await saveEdits();
+  assert.ok(button(reopened, "Check result"));
+  assert.equal(h.commands.length, 1);
 });
 
 it("keeps zero selections editable and restores only the records selected at footer Discard", async () => {

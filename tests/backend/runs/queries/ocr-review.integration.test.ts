@@ -20,6 +20,7 @@ import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-revie
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../../support/fixtures/intake-kernel-seams.js";
 import { healthyDashboardPreflightReport } from "../../../support/fixtures/preflight-seams.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { ReviewPageSchema } from "../../../../src/models/dashboard/run-detail.js";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -88,4 +89,31 @@ it("projects editable native records, persists corrections/exclusions and freeze
   const contact = approved.fields.answers.find(answer => answer.path === "contact.name"); assert.ok(contact?.state === "read");
   assert.equal(contact.value, "Served Contact");
   assert.equal(approved.assertedEid, "10800000");
+});
+
+it("authenticates an original correction after a later native revision replaces its value", async () => {
+  const f = await world.fixture({ record: true, release: true });
+  const reader = f.canonical.lifecycle, { stateRoot } = f.harness.authority;
+  const projection = createOperatorProjection({ database: f.database, stateRoot, clock: f.clock, reader, appVersion: "0.1.0",
+    descriptorSetHash: descriptorSetHash([f.root.descriptor.contractFingerprint]), ledger: createTransactionHistory(f.database.authority), descriptors: { resolve: f.resolve } });
+  const deps = createOperatorRunDetail({ database: f.database, stateRoot, projection, runReader: reader,
+    canonical: { reader, database: f.database, descriptors: { resolve: f.resolve } } });
+  const read = () => { const section = buildOcrReviewSection(deps, f.run.envelope.runId); assert.ok(section.section === "review"); return section.payload; };
+  const initial = read(); assert.ok(initial.ocr);
+  const recordId = initial.ocr.revision.records[0].recordId;
+  const original = CommandRequestSchema.parse({ ...f.command("correct-ocr-record", 1), payload: correctedOcrRecord(initial, recordId, { "contact.name": "Original Contact" }) });
+  assert.equal(f.canonical.kernel.execute(original).state, "applied");
+  const later = CommandRequestSchema.parse({ ...f.command("correct-ocr-record", 2), payload: correctedOcrRecord(read(), recordId, { "contact.name": "Later Native Edit" }) });
+  assert.equal(f.canonical.kernel.execute(later).state, "applied");
+  const recorded = f.sources.commandResult(f.run.envelope.runId, original.commandId); assert.ok(recorded.state === "recorded");
+  assert.deepEqual(recorded.request, original);
+  assert.equal(recorded.result.state, "applied");
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => Response.json(
+    new URL(url).pathname.endsWith("/review") ? { section: "review", payload: read() } : f.sources.commandResult(f.run.envelope.runId, original.commandId)) });
+  const verified = await verifyOcrReviewEffect(client, original);
+  assert.equal(verified.state, "matched");
+  const current = ReviewPageSchema.parse(verified.evidence); assert.ok(current.ocr);
+  assert.equal(current.ocr.revision.revision, 3);
+  const contact = current.ocr.revision.records[0].fields.answers.find(answer => answer.path === "contact.name"); assert.ok(contact?.state === "read");
+  assert.equal(contact.value, "Later Native Edit");
 });

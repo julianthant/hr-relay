@@ -201,6 +201,10 @@ The `review` section includes full source-bound OCR data and approval snapshots.
 the guarded `/api/v1/ocr/files` byte route; source pages require run, revision and original page
 coordinates. Read-only `/api/v1/runs/:runId/ocr/commands/:commandId` settlement returns the original
 authenticated result for uncertainty checks without dispatching the command again.
+If a later review revision supersedes an uncertain correction, that result still authenticates the
+original historical effect. The executor settles that command; the editor retains its draft as a
+conflict until explicit local discard reveals the current review. Missing or mismatched original
+command evidence remains uncertain and cannot enable discard or another dispatch.
 
 The review projection supplies edit availability and the current approval-gate target. The shared
 Records renderer receives canonical form fields, raw local drafts, native inclusion state and source
