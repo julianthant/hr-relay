@@ -22,7 +22,7 @@ export type SessionWorker = Readonly<{
   elapsed?: string;
   timeline?: readonly SessionNode[];
   problem?: string;
-  browsers: readonly Readonly<{ id: string; label: string; state: "ready" | "active" | "starting" | "unavailable" }>[];
+  browsers: readonly Readonly<{ id: string; label: string; state: "ready" | "active" | "starting" | "unopened" | "unavailable" }>[];
 }>;
 export type SessionsViewState = Readonly<{ state: "ready"; workers: readonly SessionWorker[] }>
   | Readonly<{ state: "loading" }> | Readonly<{ state: "unavailable"; reason: string; diagnostic?: unknown }>;
@@ -82,7 +82,7 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
       ...(timeline === undefined ? { timelineUnavailable } : { timeline }),
       ...(problem === undefined ? {} : { problem }),
       browsers: browserView.slots.map((slot, index) => slot.state === "required"
-        ? { id: `required:${card.workerId}:${index}:${slot.system}`, label: SYSTEM_LABEL[slot.system], state: card.state === "starting" ? "starting" : "unavailable" }
+        ? { id: `required:${card.workerId}:${index}:${slot.system}`, label: SYSTEM_LABEL[slot.system], state: card.state === "starting" ? "starting" : "unopened" }
         : { id: slot.browser.sessionId, label: SYSTEM_LABEL[slot.browser.system],
           state: slot.browser.observation?.state === "present" && slot.browser.observation.health === "authenticated" ? "ready" : "unavailable" }),
     });
