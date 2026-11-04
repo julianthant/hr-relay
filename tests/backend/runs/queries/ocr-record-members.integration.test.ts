@@ -32,6 +32,20 @@ import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backen
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
 
+function failAveryLookupOnce(result: Parameters<typeof createDeterministicUcpathPersonOrgDriver>[0]) {
+  let failed = false;
+  return sessionFactoryHarness({ ucpath: () => {
+    const driver = createDeterministicUcpathPersonOrgDriver(result);
+    return { ...driver, async searchPersonOrg(input: Parameters<typeof driver.searchPersonOrg>[0]) {
+      if (!failed && input.kind === "by-name" && input.name === "Example, Avery") {
+        failed = true;
+        throw new Error("Synthetic first UCPath lookup failure.");
+      }
+      return driver.searchPersonOrg(input);
+    } };
+  }, crm: () => healthyCrmDriver() });
+}
+
 const parent = composeWorkflowModule(compileFixtureWorkflow(defineWorkflow({
   requiredWorkbookTypeIds: ocrWorkflow.requiredWorkbookTypeIds, referenceLookups: ocrWorkflow.referenceLookups,
   id: "ocr-navigation-parent", version: 1, code: "onp", label: "Navigation parent", icon: "FileScan", category: "documents",
@@ -72,9 +86,10 @@ for (const visibility of ["inline", "linked", "hidden-unless-failed"] as const) 
   });
 }
 
-it("binds three records to two native queued lookups without duplicating their work", async () => {
+it("binds three records to two native queued lookups and retains their shared failed-child retry history", async () => {
+  const sessions = failAveryLookupOnce({ results: [], selection: { status: "not-found", selected: null, candidateEids: [], searchName: "Example, Robin" } });
   const f = await world.fixture({ record: true, release: true, pageCount: 3,
-    lookupNames: ["Example, Avery", "Example, Robin", "Example, Avery"], pauseAtLookup: true });
+    lookupNames: ["Example, Avery", "Example, Robin", "Example, Avery"], pauseAtLookup: true, sessions });
   const read = () => f.database.withAuthorityReadSnapshot(() => readOcrRecordBindings(f.database.authority, f.run.envelope.runId));
   const source = read(); assert.ok(source);
   assert.equal(source.seed.records.length, 3);
@@ -111,12 +126,13 @@ it("binds three records to two native queued lookups without duplicating their w
   assert.deepEqual(read(), source);
   assert.equal(f.database.getMeta().authorityGeneration, generation);
   const original = source.bindings[0]; assert.ok(original);
+  const execution = await f.canonical.execute(f.run, new AbortController().signal);
   const child = f.database.authority.runs.get(original.currentChildRunId); assert.ok(child);
-  assert.equal(f.canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard", requestedBy: "local-operator",
-    requestedAt: f.clock.now().toISOString(), target: { runId: child.envelope.runId, expectedVersion: child.version } }).state, "applied");
-  const cancelled = f.database.authority.runs.get(child.envelope.runId); assert.ok(cancelled);
-  const retry = { commandId: randomUUID(), family: "run", type: "retry", source: "dashboard", requestedBy: "local-operator",
-    requestedAt: f.clock.now().toISOString(), target: { runId: child.envelope.runId, expectedVersion: cancelled.version } };
+  assert.ok(child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed");
+  const failure = execution.outcomes.find(outcome => outcome.state === "failed"); assert.ok(failure?.state === "failed");
+  assert.equal(f.database.authority.failures.get(failure.failureId)?.code, "PERSON_LOOKUP_UCPATH_SEARCH_FAILED");
+  const retry = { commandId: randomUUID(), family: "run", type: "retry", source: "run-detail", requestedBy: "local-operator",
+    requestedAt: f.clock.now().toISOString(), target: { runId: child.envelope.runId, expectedVersion: child.version } };
   assert.equal(f.canonical.kernel.execute(retry).state, "applied");
   assert.equal(f.canonical.kernel.execute(retry).state, "already-applied");
   const retried = read(); assert.ok(retried);
@@ -127,6 +143,21 @@ it("binds three records to two native queued lookups without duplicating their w
   assert.deepEqual(replacement.childRunIds, [original.currentChildRunId, replacement.currentChildRunId]);
   assert.deepEqual(retried.bindings[1], source.bindings[1]);
 
+  const queued = f.database.authority.runs.get(replacement.currentChildRunId); assert.ok(queued);
+  assert.equal(queued.lifecycle.state, "queued");
+  assert.equal(f.canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard", requestedBy: "local-operator",
+    requestedAt: f.clock.now().toISOString(), target: { runId: queued.envelope.runId, expectedVersion: queued.version } }).state, "applied");
+  const cancelled = f.database.authority.runs.get(queued.envelope.runId); assert.ok(cancelled);
+  assert.ok(cancelled.lifecycle.state === "terminal" && cancelled.lifecycle.outcome === "cancelled");
+  const parentBefore = f.database.authority.runs.get(f.run.envelope.runId);
+  const childrenBefore = f.database.authority.runs.listChildren(f.run.envelope.runId);
+  const bindingsBefore = read();
+  const refused = f.canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "retry", source: "run-detail", requestedBy: "local-operator",
+    requestedAt: f.clock.now().toISOString(), target: { runId: cancelled.envelope.runId, expectedVersion: cancelled.version } });
+  assert.ok(refused.state === "rejected" && refused.code === "RUN_CONTINUATION_REFUSED", JSON.stringify(refused));
+  assert.deepEqual(f.database.authority.runs.get(f.run.envelope.runId), parentBefore);
+  assert.deepEqual(f.database.authority.runs.listChildren(f.run.envelope.runId), childrenBefore);
+  assert.deepEqual(read(), bindingsBefore);
 });
 
 it("keeps unidentified records without inventing a lookup child or changing native storage", async () => {
@@ -245,18 +276,24 @@ it("keeps current records and reused retry history during a partially readmitted
   let failedPage = true;
   const person = { emplId: EXECUTOR_EID, name: "Example, Avery", department: "Housing Dining Hospitality", jobTitle: "Fixture employee",
     employeeStatus: "active" as const, hdh: true, hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" };
-  const sessions = sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver({ results: [person],
-    selection: { status: "resolved", selected: person, candidateEids: [EXECUTOR_EID] } }), crm: () => healthyCrmDriver() });
+  const sessions = failAveryLookupOnce({ results: [person],
+    selection: { status: "resolved", selected: person, candidateEids: [EXECUTOR_EID] } });
   const f = await world.fixture({ record: true, release: true, pageCount: 2,
     lookupNames: ["Example, Avery", "Example, Morgan"], pauseAtLookup: true,
     sessions, manualPageFailure: page => failedPage && page === 2 });
   const lookup = f.database.authority.dependencies.groups(f.run.envelope.runId)
     .find(({ group }) => group.invocation.nodeId === "lookup-identities")?.group.children[0]?.child; assert.ok(lookup);
-  assert.equal(f.canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard", requestedBy: "local-operator",
-    requestedAt: f.clock.now().toISOString(), target: { runId: lookup.envelope.runId, expectedVersion: lookup.version } }).state, "applied");
-  const cancelled = f.database.authority.runs.get(lookup.envelope.runId); assert.ok(cancelled);
-  assert.equal(f.canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "retry", source: "dashboard", requestedBy: "local-operator",
-    requestedAt: f.clock.now().toISOString(), target: { runId: lookup.envelope.runId, expectedVersion: cancelled.version } }).state, "applied");
+  assert.equal(lookup.lifecycle.state, "queued");
+  const queuedBindings = f.database.withAuthorityReadSnapshot(() => readOcrRecordBindings(f.database.authority,f.run.envelope.runId)); assert.ok(queuedBindings);
+  assert.equal(queuedBindings.bindings.length, 1);
+  assert.equal(queuedBindings.bindings[0]?.currentChildRunId, lookup.envelope.runId);
+  const failedExecution = await f.canonical.execute(f.run, new AbortController().signal);
+  const failed = f.database.authority.runs.get(lookup.envelope.runId); assert.ok(failed);
+  assert.ok(failed.lifecycle.state === "terminal" && failed.lifecycle.outcome === "failed");
+  const failure = failedExecution.outcomes.find(outcome => outcome.state === "failed"); assert.ok(failure?.state === "failed");
+  assert.equal(f.database.authority.failures.get(failure.failureId)?.code, "PERSON_LOOKUP_UCPATH_SEARCH_FAILED");
+  assert.equal(f.canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "retry", source: "run-detail", requestedBy: "local-operator",
+    requestedAt: f.clock.now().toISOString(), target: { runId: lookup.envelope.runId, expectedVersion: failed.version } }).state, "applied");
   const initialExecution = await f.canonical.execute(f.run, new AbortController().signal);
   assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state,"parked-gate",
     JSON.stringify({ outcomes: initialExecution.outcomes, failures: [f.run, ...f.database.authority.runs.listChildren(f.run.envelope.runId)].flatMap(run =>
