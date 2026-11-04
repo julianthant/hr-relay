@@ -98,6 +98,10 @@ for (const dryRun of [false, true]) {
     assert.deepEqual(record.childRunIds.filter(id => member.history.includes(id)), member.history);
     assert.ok(record.childRunIds.some(id => f.database.authority.runs.get(id)?.envelope.workflow === "ocr-page"));
     assert.ok(!["Verified", "Saved"].includes(record.statusLabel));
+    const exactRows = f.database.withAuthorityReadSnapshot(() => readQueueRecordMembers(f.database.authority, f.canonical.lifecycle,
+      settledParent, f.database.authority.runs.listChildren(f.parentRun.envelope.runId), f.resolve));
+    assert.deepEqual(exactRows?.members.map(member => member.statusLabel), [dryRun ? "Previewed" : "Saved"]);
+    assert.deepEqual(exactRows?.members.map(member => member.childRunIds), records.members.map(member => member.childRunIds));
     assert.deepEqual(projection.buildDashboardDayWire(f.clock.todayLocal()), wire);
     assert.throws(() => f.database.withAuthorityReadSnapshot(() => requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, input.approval)), /OCR_REVIEW_REFUSED/u);
     const readQuery = (repositories: AuthorityRepositories) => f.database.withAuthorityReadSnapshot(() => readQueueRecordMembers(repositories,
