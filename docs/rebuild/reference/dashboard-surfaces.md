@@ -493,8 +493,14 @@ labelled with their current row. Inserted columns have a null source coordinate.
 
 Editable XLSX imports include hidden and filtered rows. Worksheet/table filter rules are not imported.
 Excel table filter metadata is removed only from a private parsing copy; original
-bytes stay unchanged. Standard worksheet dimensions retain selected trailing blank rows and columns;
-malformed ranges or worksheet references refuse, and declared extents count toward the workbook size limit.
+bytes stay unchanged. Imports admit up to 250,000 populated cells across the workbook; null and empty
+string cells do not count, while zero, false and formulas do. The editable grid is separately bounded
+to 500,000 cell positions. Standard worksheet dimensions retain selected trailing blank rows and columns
+when the grid fits. Otherwise imports trim only empty trailing padding, preserve all values and their
+coordinates, and flag the trimmed metadata to refuse master mutation. A populated extent beyond the
+grid bound refuses without dropping values. Malformed ranges or worksheet references still refuse.
+Import errors show the populated count, limit and recovery advice without internal codes.
+Column styles that extend to Excel's last column do not enlarge the imported data grid.
 Values, supported fills, number formats, hyperlink URLs/text and rich-text runs survive library
 save, reopen and XLSX export, while malformed table XML refuses import. The shared browser-safe
 `rules/spreadsheets/workbook-io.ts` boundary uses `@shbernal/ts-xlsx` and retains hyperlink tooltips.
