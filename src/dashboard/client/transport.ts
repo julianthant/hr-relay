@@ -1,6 +1,7 @@
 /** The ONE transport implementation (ref frontend-backend-integration ): nothing outside `src/dashboard/client/**` may call `fetch` or open an event stream.
  * The */
 import type { ErrorCatalogCode } from "../../models/failures/error-catalog.js";
+import { PublicProfileStateSchema } from "../../models/profiles/public-profile.js";
 import { debugFailureOutcome, debugFailureOutcomes, diagnosticRequestRoute } from "../../models/events/debug-report.js";
 import { DashboardClientError, httpError,networkError,markDashboardErrorReported } from "./errors.js";
 import { CHATGPT_COMPLETION_READ_DEADLINE_MS,SETTINGS_READ_DEADLINE_MS,STORAGE_DOCTOR_DEADLINE_MS,readWithDeadline } from "./read-deadline.js";
@@ -54,10 +55,16 @@ export function createDashboardTransport(input: Readonly<{
   baseUrl: string;
   fetchImpl?: FetchLike;
   onFailure?: (failure: NonNullable<ReturnType<typeof debugFailureOutcome>> & { route: string }) => void;
+  onProfileSessionStale?: () => void;
 }>): DashboardTransport {
   const baseUrl = input.baseUrl.replace(/\/$/, "");
   const baseOrigin = new URL(baseUrl).origin;
   const fetchImpl: FetchLike = input.fetchImpl ?? ((url, init) => fetch(url, init));
+  const observeProfileSession = (path: string, status: number, body: unknown): void => {
+    if (status !== 401 || /^\/api\/v1\/profile\//u.test(path) || path === "/api/v1/debug/errors") return;
+    const parsed = PublicProfileStateSchema.safeParse(body);
+    if (parsed.success && parsed.data.state === "refused" && parsed.data.code === "PROFILE_SESSION_STALE") input.onProfileSessionStale?.();
+  };
 
   /** Every non-GET request carries the transport's own Origin. A browser sets
  * (and refuses to let a page override) this header itself, so in the real */
@@ -86,6 +93,7 @@ export function createDashboardTransport(input: Readonly<{
     const body: unknown = await response.json().catch((error: unknown) => {
       throw httpError(response.status, { unparseable: String(error) });
     });
+    observeProfileSession(path, response.status, body);
     return Object.freeze({ status: response.status, ok: response.ok, body });
   };
 
@@ -156,6 +164,7 @@ export function createDashboardTransport(input: Readonly<{
         const body: unknown = await response.json().catch((error: unknown) => {
           throw httpError(response.status, { unparseable: String(error) });
         });
+        observeProfileSession(path, response.status, body);
         throw httpError(response.status, body);
       }
       return Object.freeze({ headers: response.headers, bytes: await response.arrayBuffer() });
@@ -195,7 +204,9 @@ export function createDashboardTransport(input: Readonly<{
           throw networkError(`stream ${path}`, error);
         }
         if (!response.ok || response.body === null) {
-          throw httpError(response.status, await response.json().catch(() => ({ unparseable: true })));
+          const body: unknown = await response.json().catch(() => ({ unparseable: true }));
+          observeProfileSession(path, response.status, body);
+          throw httpError(response.status, body);
         }
         const reader = response.body.getReader();
         const decoder = new TextDecoder();

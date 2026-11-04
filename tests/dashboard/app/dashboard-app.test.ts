@@ -171,6 +171,7 @@ async function mountSurface(client: DashboardClient_m1, children: ReactNode_m1):
 /** The whole app client is closed: an unserved read is a fixture defect, not an empty answer. */
 function appClient(): DashboardClient_m1 {
   const served = {
+    subscribeProfileSessionStale: () => () => undefined,
     bootstrap: () => Promise.resolve(APP_BOOTSTRAP),
     applicationLifecycle: () => Promise.resolve(ApplicationLifecycleSchema.parse({ runtimeGeneration: 1, state: "ready", targets: [], update: "installer-unavailable" })),
     chatGptAccount: () => Promise.resolve({ state: "signed-out" }),
@@ -294,6 +295,34 @@ describe_m1("served signed-out appearance", () => {
 
 describe_m1("served sign-up Finish", () => {
   afterEach_m1(_afterEachFixture0);
+
+  it_m1("reconciles an already-open dashboard after a stale cookie and resumes through fresh public authority", async () => {
+    window.history.replaceState(null, "", "/");
+    let restarted = false, resumes = 0, refusedReads = 0;
+    const active = { state: "active" as const, profileId: "00000000-0000-4000-8000-000000000002", duoState: "ready" as const, epoch: 1 };
+    const live = createDashboardClient_m2({ baseUrl: "http://fixture.test", fetchImpl: async url => {
+      const path = new URL(url).pathname;
+      if (path.endsWith("/state")) return Response.json(restarted && resumes === 0 ? { state: "signed-out", resumable: true } : { ...active, epoch: 1 + resumes });
+      if (path.endsWith("/resume")) { resumes++; return Response.json({ ...active, epoch: 1 + resumes }); }
+      if (path.endsWith("/bootstrap")) {
+        if (restarted && resumes === 0) { refusedReads++; return Response.json({ state: "refused", code: "PROFILE_SESSION_STALE" }, { status: 401 }); }
+        return Response.json(APP_BOOTSTRAP);
+      }
+      throw new Error(`unexpected restart fixture request ${path}`);
+    } });
+    const client: DashboardClient_m1 = { ...appClient(), bootstrap: () => live.bootstrap(), readProfileSession: () => live.readProfileSession(),
+      resumeProfile: () => live.resumeProfile(), subscribeProfileSessionStale: listener => live.subscribeProfileSessionStale(listener) };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => assert_m1.ok(document.querySelector(".dashboard-shell")));
+    restarted = true;
+    await act_m1(async () => { await assert_m1.rejects(client.bootstrap()); });
+    await vi_m1.waitFor(() => {
+      assert_m1.equal(resumes, 1); assert_m1.ok(document.querySelector(".dashboard-shell"));
+      assert_m1.equal(document.querySelector(".hub-onboarding"), null);
+    });
+    assert_m1.equal(refusedReads, 1);
+    assert_m1.deepEqual(await client.readProfileSession(), { ...active, epoch: 2 });
+  });
 
   it_m1("resumes the profile still signed in and shows the normal login form if that is refused", async () => {
     window.history.replaceState(null, "", "/?onboarding=signup");

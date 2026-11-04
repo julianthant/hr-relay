@@ -35,6 +35,7 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
   ocrSourcePageUrl(runId: string, revision: number, sourcePage: number): string;
   ocrCommandResult(runId: string, commandId: string, signal?: AbortSignal): Promise<ReturnType<typeof OcrCommandResultWireSchema.parse>>;
   readProfileSession(): Promise<PublicProfileState>;
+  subscribeProfileSessionStale(listener: () => void): () => void;
   signInProfile(request: ProfileLoginRequest): Promise<PublicProfileState>;
   resumeProfile(): Promise<PublicProfileState>;
   signUpProfile(request: ProfileSignUpRequest): Promise<PublicProfileState>;
@@ -60,6 +61,7 @@ export function createDashboardClient(input: Readonly<{
 }>): DashboardClient {
   const surface = input.surface;
   const clientId = crypto.randomUUID();
+  const profileSessionListeners = new Set<() => void>();
   const reportFailure = (failure: NonNullable<ReturnType<typeof debugFailureOutcome>> & { route: string }): void => {
     if (surface === undefined) return;
     void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard",
@@ -67,10 +69,15 @@ export function createDashboardClient(input: Readonly<{
       message: "Dashboard request did not complete successfully" })
       .catch(() => { window.reportError(new DashboardReportDeliveryError()); });
   };
-  const transport = createDashboardTransport({ ...input, ...(surface === undefined ? {} : { onFailure: reportFailure }) });
+  const transport = createDashboardTransport({ ...input, onProfileSessionStale: () => { for (const listener of profileSessionListeners) listener(); },
+    ...(surface === undefined ? {} : { onFailure: reportFailure }) });
   const queries = createDashboardQueries(transport);
   const commands = createDashboardCommands(transport);
   const client: DashboardClient = {
+    subscribeProfileSessionStale(listener) {
+      profileSessionListeners.add(listener);
+      return () => { profileSessionListeners.delete(listener); };
+    },
     async ocrCommandResult(runId, commandId, signal) {
       const result = OcrCommandResultWireSchema.parse(await transport.requestJson(`/api/v1/runs/${encodeURIComponent(RunIdSchema.parse(runId))}/ocr/commands/${encodeURIComponent(commandId)}`,
         signal === undefined ? undefined : { signal }));
