@@ -75,9 +75,8 @@ it("refuses a canonical Chromium orphan after owner SIGKILL before erasure, then
     await profile.session.recoverOnboarding();
     assert.equal(existsSync(ready.directory),false);assert.equal(existsSync(f.profileRoot),false);assert.equal(existsSync(f.operationPath),false);
     const priorHead=CanonicalCredentialHeadSchema.parse(JSON.parse(before.key.toString("utf8")));
-    const erased=CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(f.keyPath,"utf8")));
-    assert.equal(erased.state,"erased");assert.ok(erased.generation>priorHead.generation);
-    assert.deepEqual(erased.counters,priorHead.counters);
+    assert.equal(existsSync(f.keyPath),false);
+    assert.throws(()=>credentialKeyCustody.read(priorHead.key),{code:"CREDENTIAL_KEYCHAIN_MISSING"});
   }catch(error){primary={error};}
   const cleanupErrors:unknown[]=[];
   if(browser?.isConnected()){
@@ -200,8 +199,8 @@ for (const boundary of ["abort-intent", "erase-plan", "erase-stage", "head", "pr
       await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId));
     } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
     assert.equal(fired, true);
-    const interruptedHead = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(keyPath, "utf8")));
-    assert.ok(interruptedHead.generation >= originalHead.generation);
+    if (boundary === "operation-unlink") assert.equal(existsSync(keyPath), false);
+    else assert.ok(CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(keyPath, "utf8"))).generation >= originalHead.generation);
     await f.profile.close(); f.machine.release();
     const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime);
     const profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock });
@@ -209,9 +208,7 @@ for (const boundary of ["abort-intent", "erase-plan", "erase-stage", "head", "pr
     assert.deepEqual(machine.readProfileRegistry().profiles, []); assert.equal(machine.readProfileRegistry().activeProfileId, null);
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(eraseOperation), false);
     assert.equal(existsSync(protectedPath), false); assert.equal(existsSync(duoPath), false); assert.equal(existsSync(chatgptPath), false);
-    const erased = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(keyPath, "utf8")));
-    assert.equal(erased.state, "erased"); assert.ok(erased.generation > originalHead.generation);
-    assert.deepEqual(erased.counters, originalHead.counters);
+    assert.equal(existsSync(keyPath), false);
     assert.throws(() => credentialKeyCustody.read(originalHead.key), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
     assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot, "machine", "profile-verifiers.json"), "utf8"))).profiles.length, 0);
     await profile.close(); machine.release(); rmSync(f.root, { recursive: true });
@@ -358,7 +355,7 @@ it("holds tampered canonical abort source and preserves exact head and operation
   writeFileSync(sourcePath, original, { mode: 0o600 });
   assert.deepEqual(await f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId), { state: "signed-out" });
   assert.equal(existsSync(operationPath), false); assert.equal(existsSync(sourcePath), false);
-  assert.equal(CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(keyPath, "utf8"))).state, "erased");
+  assert.equal(existsSync(keyPath), false);
   await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true });
 });
 
@@ -551,9 +548,7 @@ it("cancels a ready sign-up, deleting local Duo material while preserving the re
     assert.deepEqual(f.machine.readProfileRegistry().profiles, []);
     assert.deepEqual(f.remoteEnrollments, remote);
     assert.deepEqual(f.providerCounts(), { starts: 2, cancels: 2, browserCloses: 1, active: false });
-    const head = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.draft.profileId}.json`), "utf8")));
-    assert.equal(head.state, "erased");
-    assert.ok(remote.some(credentialId => head.retired.includes(credentialId)));
+    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.draft.profileId}.json`)), false);
   } finally { await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true }); }
 });
 

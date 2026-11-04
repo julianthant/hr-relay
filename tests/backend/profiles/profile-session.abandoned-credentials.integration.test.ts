@@ -75,3 +75,30 @@ it("cold startup removes only a proven abandoned erased head and stays clean on 
     await restart.close();
   }
 });
+
+for (const remains of ["duo-record", "native-key", "stage-file"] as const) it(`cold startup holds an abandoned head whose ${remains} remains and preserves it`, async () => {
+  const f = await fixture(), remove = nativeFs.rmSync;
+  let erased: Buffer | undefined;
+  const spy = vi.spyOn(nativeFs, "rmSync").mockImplementation((path, options) => {
+    if (String(path) === f.profileRoot) erased = readFileSync(f.headPath);
+    return remove(path, options);
+  });
+  syncBuiltinESMExports();
+  try { await f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId); }
+  finally { spy.mockRestore(); syncBuiltinESMExports(); }
+  assert.ok(erased);
+  writeFileSync(f.headPath, erased, { mode: 0o600 });
+  if (remains === "duo-record") writeFileSync(f.duoPath, "{}", { mode: 0o600 });
+  if (remains === "native-key") f.nativeKey.setPassword("synthetic-remaining-key");
+  if (remains === "stage-file") writeFileSync(join(f.headPath, "..", `.${f.draft.profileId}.stage`), "", { mode: 0o600 });
+  await f.stop();
+  const restart = await runtimeLifetimeLock();
+  try {
+    await assert.rejects(initializeRegisteredPersonStores(f.root, restart, { primaryDisplay: null }, systemClock), error => {
+      let cause: unknown = error;
+      while (cause instanceof Error && (cause as { code?: unknown }).code !== "CREDENTIAL_ABANDONED_SIGNUP_HELD") cause = cause.cause;
+      return cause instanceof Error;
+    });
+    assert.deepEqual(readFileSync(f.headPath), erased);
+  } finally { await restart.close(); }
+});

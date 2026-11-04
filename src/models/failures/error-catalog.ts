@@ -89,6 +89,7 @@ export const ERROR_CATALOG = Object.freeze({
   CREDENTIAL_CONVERSION_REQUIRED: catalogEntry("This profile needs stopped credential conversion before it can open.", EmptyParametersSchema),
   CREDENTIAL_CONVERSION_UNSUPPORTED: catalogEntry("Credential conversion cannot prove this source format. Keep the profile stopped and preserve the original installation.", EmptyParametersSchema),
   CREDENTIAL_OPERATION_PENDING: catalogEntry("A credential operation is incomplete. Keep this profile stopped and recover that exact operation before continuing.", EmptyParametersSchema),
+  CREDENTIAL_ABANDONED_SIGNUP_HELD: catalogEntry("An unfinished sign-up left a saved sign-in record Relay cannot prove is unused. Quit Relay, keep its data folder unchanged and do not delete any key; then restore your latest Relay backup or ask your Relay maintainer to recover this sign-up.", EmptyParametersSchema),
   CREDENTIAL_CREATE_KEY_MISSING: catalogEntry("A prepared credential creation has no matching OS key. Preserve the installation; its key must not be regenerated.", EmptyParametersSchema),
   CREDENTIAL_CONTEXT_REQUIRED: catalogEntry("The selected profile credential authority is unavailable. Restart the runtime before continuing.", EmptyParametersSchema),
   CREDENTIAL_INITIALIZATION_RETAINED_DUO_KEY_MISMATCH: catalogEntry("A retained Duo credential copy uses a different encryption key. Preserve the profile and its original key before continuing credential conversion.", EmptyParametersSchema),
