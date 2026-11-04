@@ -98,7 +98,7 @@ test("Fast Duo setup keeps completion order, pending fences and Return failures 
   await expect(confirm).toBeEnabled(); await expect(page.locator("button.primary:visible")).toHaveCount(1);
   fixture.confirmReply = ProfileOnboardingStateSchema.parse({ ...fixture.profile, step: "ready", methods: { key: complete, touch: complete } });
   await confirm.click(); await expect(start).toHaveText("Return to Relay"); await expect(returning).toBeHidden();
-  await page.getByRole("button", { name: "Close setup tab", exact: true }).click();
+  await page.getByRole("button", { name: "Close tab", exact: true }).click();
   await expect.poll(() => closed).toEqual([9]);
   expect(commands.filter(command => command.type === "RELAY_RETURN")).toEqual([{ type: "RELAY_RETURN" }, { type: "RELAY_RETURN" }]);
   expect(commands.filter(command => command.type === "RELAY_CONFIRM")).toEqual([{ type: "RELAY_CONFIRM", method: "key", attemptId }]);
@@ -115,7 +115,7 @@ test("Fast Duo setup can close its own tab when initial state is unavailable", {
   await expect(page.locator("#accountList")).toHaveAttribute("aria-busy", "false");
   await expect(page.getByText("Setup details are unavailable.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Return to Relay", exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "Close setup tab", exact: true }).click();
+  await page.getByRole("button", { name: "Close tab", exact: true }).click();
   await expect.poll(() => closed).toEqual([9]);
   await attachShellA11y(page, info, "fast-duo-unavailable-close.a11y.yml");
 });

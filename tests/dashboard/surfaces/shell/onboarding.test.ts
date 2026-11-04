@@ -56,7 +56,7 @@ it("uses server authentication for Duo access and keeps a refused served login o
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "duo", authenticated: false })));
     assert.match(host.textContent ?? "", /Start with your details/);
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "duo", authenticated: true })));
-    assert.equal(host.querySelector("h1")?.textContent, "Security key");
+    assert.equal(host.querySelector("h1")?.textContent, "Set up Duo");
     assert.match(host.textContent ?? "", /could not show the setup browser/);
     assert.doesNotMatch(host.textContent ?? "", /Start with your details/);
     await act(async () => root.render(createElement(Onboarding, { ...props, step: "login", authenticated: false })));
@@ -201,7 +201,7 @@ it("unknown enrollment copy directs checking Duo before starting that method ove
     showBrowser: unavailable, openPortal: unavailable, complete: unavailable, cancel: unavailable, cancelDuo: unavailable, start: unavailable, confirmDuo: unavailable, submit: unavailable };
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
-    assert.equal(host.querySelector("h1")?.textContent, "Security key");
+    assert.equal(host.querySelector("h1")?.textContent, "Set up Duo");
     assert.match(host.textContent ?? "", /Security keyNot confirmed/);
     assert.doesNotMatch(host.textContent ?? "", /outcome unknown|Needs review|may already have been added/);
     assert.match(host.textContent ?? "", /remove any device you do not recognize, then start it over in the setup browser/);
@@ -209,7 +209,7 @@ it("unknown enrollment copy directs checking Duo before starting that method ove
     for (const state of ["pending", "unavailable"] as const) {
       const currentPort = { ...port, unavailable: false, onboarding: { ...onboarding, methods: { ...onboarding.methods, key: { ...onboarding.methods.key, state } } } };
       await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port: currentPort })));
-      assert.equal(host.querySelector("h1")?.textContent, "Security key");
+      assert.equal(host.querySelector("h1")?.textContent, "Set up Duo");
       assert.match(host.textContent ?? "", state === "pending" ? /Security keyPending/ : /Security keyUnavailable/);
       assert.doesNotMatch(host.textContent ?? "", /Start with a security key|Next, add a security key/);
     }
@@ -315,7 +315,7 @@ it("cancels sign-up from its footer only after confirmation and never repeats an
   const button = (scope: ParentNode, text: string) => { const button = [...scope.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === text); assert.ok(button); return button; };
   try {
     await act(async () => root.render(createElement(Onboarding, { port, step: "duo", onStep() { assert.fail("unconfirmed cancellation cannot navigate"); }, onDashboard() { assert.fail("cannot finish"); } })));
-    assert.match(host.querySelector(".heading p")?.textContent ?? "", /Relay manages Touch ID on this computer/);
+    assert.match(host.querySelector(".heading p")?.textContent ?? "", /Add your security key and Touch ID in the setup browser/);
     const cancel = button(host.querySelector("footer")!, "Cancel sign-up");
     await act(async () => cancel.click());
     assert.equal(cancellations, 0);
@@ -328,6 +328,33 @@ it("cancels sign-up from its footer only after confirmation and never repeats an
     await act(async () => cancel.click());
     await act(async () => host.querySelector<HTMLButtonElement>("ol button")!.click());
     assert.equal(cancellations, 1);
-    assert.match(host.querySelector('[role="status"]')?.textContent ?? "", /could not confirm|unknown|uncertain/i);
+    assert.match(host.querySelector('[role="alert"]')?.textContent ?? "", /could not confirm|unknown|uncertain/i);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("opening the setup browser spins the button and leaves the instruction in place", async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const idle = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+  const draft = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: idle, touch: idle } };
+  const unused = async (): Promise<never> => { throw new Error("unexpected command"); };
+  let settle!: (value: typeof draft) => void;
+  const port: ServedOnboardingPort = { source: "served", onboarding: draft, validate: mockOnboardingPort.validate, submit: unused, complete: unused, cancel: unused, cancelDuo: unused, start: unused, confirmDuo: unused, openPortal: unused,
+    showBrowser: () => new Promise(resolve => { settle = resolve; }) };
+  const instruction = () => host.querySelector("header p")?.textContent;
+  const show = () => [...host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Show setup browser");
+  try {
+    await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
+    const before = instruction();
+    assert.equal(show()?.getAttribute("aria-busy"), null);
+    await act(async () => show()!.click());
+    assert.equal(instruction(), before);
+    assert.equal(show()?.getAttribute("aria-busy"), "true");
+    assert.equal(show()?.disabled, true);
+    assert.ok(show()?.querySelector("svg"));
+    await act(async () => settle(draft));
+    assert.equal(instruction(), before);
+    assert.equal(show()?.getAttribute("aria-busy"), null);
+    assert.equal(show()?.disabled, false);
+    assert.equal(show()?.querySelector("svg"), null);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

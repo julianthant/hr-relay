@@ -7,10 +7,6 @@ export async function mountRelayOptions(initial) {
   let unavailable = false;
   const labels = { key: 'Security key', touch: 'Touch ID' };
   const kinds = { key: 'Fast Duo in this browser', touch: 'Touch ID on this computer' };
-  const notes = {
-    key: { idle: 'Ready to add in Duo.', pending: 'Waiting for Duo to add Security key.' },
-    touch: { idle: 'Ready to add in Duo.', pending: 'Waiting for Duo to add Touch ID.' }
-  };
   const paths = {
     key: ['M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z'],
     touch: ['M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4', 'M14 13.12c0 2.38 0 6.38-1 8.88', 'M17.29 21.02c.12-.6.43-2.3.5-3.02', 'M2 12a10 10 0 0 1 18-6', 'M2 16h.01', 'M21.8 16c.2-2 .131-5.354 0-6', 'M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2', 'M8.65 22c.21-.66.45-1.32.57-2', 'M9 6.8a6 6 0 0 1 9 5.2v2'],
@@ -32,9 +28,6 @@ export async function mountRelayOptions(initial) {
     return node;
   }
   $('accountList').className = 'relay-method-list';
-  const progress = element('div', 'relay-method-progress'); progress.setAttribute('aria-hidden', 'true');
-  $('accountList').before(progress);
-  $('accountList').after(element('p', 'relay-method-sync', 'Progress stays in sync with Relay.'));
   const states = { idle: 'Not started', pending: 'Pending', complete: 'Completed', unknown: 'Not confirmed', unavailable: 'Unavailable' };
   function render() {
     const blocked = unavailable === 'state';
@@ -45,13 +38,11 @@ export async function mountRelayOptions(initial) {
       if (next) selected = next;
     }
     const list = $('accountList'); list.replaceChildren(); list.setAttribute('aria-busy', 'false');
-    progress.replaceChildren();
     const selectionDisabled = busy;
     for (const [method, label] of Object.entries(labels)) {
       const state = methods[method].state;
       const failed = state === 'unknown' || state === 'unavailable';
       const tone = failed ? 'failed' : state;
-      const segment = element('span', ''); segment.dataset.state = tone; progress.append(segment);
       const item = element('button', 'relay-method-card'); item.type = 'button'; item.dataset.state = tone; item.dataset.method = method;
       item.setAttribute('aria-pressed', String(method === selected)); item.disabled = selectionDisabled;
       item.addEventListener('click', () => { if (!selectionDisabled) { selected = method; render(); } });
@@ -65,8 +56,7 @@ export async function mountRelayOptions(initial) {
       for (const [index, text] of ['Started', failed ? 'Not confirmed' : 'Added in Duo', 'Confirmed by Relay'].entries()) {
         const step = element('li', '', text); step.dataset.state = tones[index]; track.append(step);
       }
-      const note = state === 'complete' ? 'Verified by Relay.' : state === 'unknown' ? 'Check Duo, then start over.' : state === 'unavailable' ? 'Return to Relay to check setup.' : notes[method][state];
-      item.append(head, track, element('span', 'relay-method-note', note)); list.append(item);
+      item.append(head, track); list.append(item);
     }
     if (focusedMethod) list.querySelector(`[data-method="${focusedMethod}"]`).focus({ preventScroll: true });
     $('accountCount').textContent = `${Object.values(methods).filter(method => method.state === 'complete').length} of 2 completed`;

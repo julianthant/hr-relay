@@ -85,7 +85,7 @@ for (const pendingClose of [false, true]) it(pendingClose
     await expect(setup.locator("#editorTitle")).toHaveText("Set up Security key");
     await expect(setup.getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
     await expect(setup.locator(".brand small")).toHaveText("Relay sign-in setup");
-    await expect(setup.locator("footer > span:last-child")).toHaveText("Continue in Relay when both methods are added.");
+    await expect(setup.locator("footer")).toHaveCount(0);
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId); assert.equal(launches, 1);
     assert.equal((await focusCalls()).length, 2);
     await setup.getByRole("button", { name: "Set up Security key", exact: true }).click();
