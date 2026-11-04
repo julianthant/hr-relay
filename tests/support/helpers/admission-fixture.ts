@@ -120,14 +120,14 @@ const failedBoundProfileFixtures = new Set<Readonly<{
   lifetime: RuntimeLifetimeLock;
 }>>();
 
-export function syntheticOnboardingDuo(accountName: () => string): ProfileOnboardingDuoProvider {
+export function syntheticOnboardingDuo(): ProfileOnboardingDuoProvider {
   return {
     async showBrowser(owner) { owner.assertCurrent(); },
     async openPortal(owner) { owner.assertCurrent(); },
     async closeBrowser() { return { state: "closed" }; },
     async start(attempt, bind, _reportFailure) {
       const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
-        accountName: accountName(), origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
+        origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
       const credentialId = randomBytes(32).toString("base64url");
       if (attempt.method === "key") {
         const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
@@ -145,14 +145,8 @@ export function syntheticOnboardingDuo(accountName: () => string): ProfileOnboar
 }
 
 export function createSyntheticProfileSession(input: Parameters<typeof createProfileSession>[0]) {
-  let accountName = "";
-  const session = createProfileSession({ ...input, onboardingDuo: input.onboardingDuo ?? syntheticOnboardingDuo(() => accountName) });
+  const session = createProfileSession({ ...input, onboardingDuo: input.onboardingDuo ?? syntheticOnboardingDuo() });
   return { ...session,
-    signUp(fields: Parameters<typeof session.signUp>[0]) {
-      const draft = session.signUp(fields);
-      if (draft.state === "onboarding") accountName = fields.email;
-      return draft;
-    },
     async close() { await session.closeOnboarding(); session.close(); },
   };
 }

@@ -75,9 +75,8 @@ it("refuses a canonical Chromium orphan after owner SIGKILL before erasure, then
     await profile.session.recoverOnboarding();
     assert.equal(existsSync(ready.directory),false);assert.equal(existsSync(f.profileRoot),false);assert.equal(existsSync(f.operationPath),false);
     const priorHead=CanonicalCredentialHeadSchema.parse(JSON.parse(before.key.toString("utf8")));
-    const erased=CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(f.keyPath,"utf8")));
-    assert.equal(erased.state,"erased");assert.ok(erased.generation>priorHead.generation);
-    assert.deepEqual(erased.counters,priorHead.counters);
+    assert.equal(existsSync(f.keyPath),false);
+    assert.throws(()=>credentialKeyCustody.read(priorHead.key),{code:"CREDENTIAL_KEYCHAIN_MISSING"});
   }catch(error){primary={error};}
   const cleanupErrors:unknown[]=[];
   if(browser?.isConnected()){
@@ -126,7 +125,7 @@ function retainDraftBrowserDirectory(f: Awaited<ReturnType<typeof privateDraftFi
   mkdirSync(profileDirectory, { recursive: true, mode: 0o700 });
 }
 
-it("viewing an actual draft creates no attempt and unknown enrollment cannot be rearmed by viewing or opening its browser", async () => {
+it("viewing an actual draft creates no attempt; after Unknown only an explicit start begins a new attempt", async () => {
   let browser: DraftDuoBrowserOwner | undefined, starts = 0;
   const f = await privateDraftFixture({
     async showBrowser(owner) { owner.assertCurrent(); browser = owner; },
@@ -143,8 +142,9 @@ it("viewing an actual draft creates no attempt and unknown enrollment cannot be 
     assert.equal(pending.methods.key.state, "unknown");
     await f.profile.session.showOnboardingBrowser(f.draft.token, f.draft.operationId);
     await f.profile.session.openOnboardingPortal(f.draft.token, f.draft.operationId);
-    await assert.rejects(f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, "key"));
     assert.equal(starts, 1); assert.equal(browser.readState().methods.key.state, "unknown");
+    await f.profile.session.startOnboardingDuo(f.draft.token, f.draft.operationId, "key");
+    assert.equal(starts, 2);
     assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
     await assert.rejects(f.profile.close(), error => error instanceof RuntimeCustodyUncertainError
       && error.errors.some(cause => cause instanceof AggregateError && cause.message === "profile-onboarding-custody-unproved"));
@@ -199,8 +199,8 @@ for (const boundary of ["abort-intent", "erase-plan", "erase-stage", "head", "pr
       await assert.rejects(f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId));
     } finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
     assert.equal(fired, true);
-    const interruptedHead = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(keyPath, "utf8")));
-    assert.ok(interruptedHead.generation >= originalHead.generation);
+    if (boundary === "operation-unlink") assert.equal(existsSync(keyPath), false);
+    else assert.ok(CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(keyPath, "utf8"))).generation >= originalHead.generation);
     await f.profile.close(); f.machine.release();
     const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime);
     const profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock });
@@ -208,9 +208,7 @@ for (const boundary of ["abort-intent", "erase-plan", "erase-stage", "head", "pr
     assert.deepEqual(machine.readProfileRegistry().profiles, []); assert.equal(machine.readProfileRegistry().activeProfileId, null);
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(eraseOperation), false);
     assert.equal(existsSync(protectedPath), false); assert.equal(existsSync(duoPath), false); assert.equal(existsSync(chatgptPath), false);
-    const erased = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(keyPath, "utf8")));
-    assert.equal(erased.state, "erased"); assert.ok(erased.generation > originalHead.generation);
-    assert.deepEqual(erased.counters, originalHead.counters);
+    assert.equal(existsSync(keyPath), false);
     assert.throws(() => credentialKeyCustody.read(originalHead.key), { code: "CREDENTIAL_KEYCHAIN_MISSING" });
     assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot, "machine", "profile-verifiers.json"), "utf8"))).profiles.length, 0);
     await profile.close(); machine.release(); rmSync(f.root, { recursive: true });
@@ -263,7 +261,7 @@ async function readyFixture() {
     async start(attempt, bind, _reportFailure) {
       assert.equal(active, false); active = true; starts++;
       const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
-        accountName: "draft-recovery", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
+        origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
       const credentialId = randomUUID(); remoteEnrollments.push(credentialId);
       if (attempt.method === "key") {
         const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
@@ -357,7 +355,7 @@ it("holds tampered canonical abort source and preserves exact head and operation
   writeFileSync(sourcePath, original, { mode: 0o600 });
   assert.deepEqual(await f.profile.session.cancelOnboarding(f.draft.token, f.draft.operationId), { state: "signed-out" });
   assert.equal(existsSync(operationPath), false); assert.equal(existsSync(sourcePath), false);
-  assert.equal(CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(keyPath, "utf8"))).state, "erased");
+  assert.equal(existsSync(keyPath), false);
   await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true });
 });
 
@@ -550,14 +548,12 @@ it("cancels a ready sign-up, deleting local Duo material while preserving the re
     assert.deepEqual(f.machine.readProfileRegistry().profiles, []);
     assert.deepEqual(f.remoteEnrollments, remote);
     assert.deepEqual(f.providerCounts(), { starts: 2, cancels: 2, browserCloses: 1, active: false });
-    const head = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.draft.profileId}.json`), "utf8")));
-    assert.equal(head.state, "erased");
-    assert.ok(remote.some(credentialId => head.retired.includes(credentialId)));
+    assert.equal(existsSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.draft.profileId}.json`)), false);
   } finally { await f.profile.close(); f.machine.release(); rmSync(f.root, { recursive: true }); }
 });
 
 it("completes a recorded Finish at startup without reopening its draft", async () => {
-  const f = await privateDraftFixture(syntheticOnboardingDuo(() => "draft-recovery@ucsd.edu"));
+  const f = await privateDraftFixture(syntheticOnboardingDuo());
   await readyProfileOnboarding(f.profile.session, f.draft);
   const rename = nativeFs.renameSync, operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
   let interrupted = false;
@@ -604,8 +600,7 @@ it("keeps a pending signup key unsigned until exact scoped proof confirms it, th
     async showBrowser(owner) { owner.assertCurrent(); }, async openPortal(owner) { owner.assertCurrent(); },
     async closeBrowser() { return { state: "closed" }; }, async cancel() { return { state: "closed" }; },
     async start(attempt, bind) {
-      capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: 1, accountName: "draft-recovery",
-        origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
+      capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: 1, origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
       await capability.persistPending({ credentialId, privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
         publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"), transport: "usb", isResidentCredential: true,
         userHandle: "AQID", createdAt: new Date().toISOString() });
