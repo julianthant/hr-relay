@@ -64,3 +64,26 @@ it("refuses an invented resume node before an operator gate settlement", async (
   assert.throws(() => authenticateRootRun(f.database.authority, RunRecordSchema.parse({ ...f.run,
     envelope: { ...f.run.envelope, startAt: "approve-records" } })), /delegation-gate-resume-authority-unavailable/u);
 });
+
+it("authenticates the original gate resume after terminal timeline pruning", async () => {
+  const f = await world.fixture({ record: true, release: true });
+  const original = authenticateRootRun(f.database.authority, f.run);
+  assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
+  const approval = f.approval();
+  assert.equal(f.canonical.kernel.execute(approval).state, "applied");
+  const resumed = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(resumed);
+  await f.canonical.execute(resumed, new AbortController().signal);
+  const run = f.database.authority.runs.get(resumed.envelope.runId); assert.ok(run);
+  assert.deepEqual(run.lifecycle, { state: "terminal", outcome: "done", endedAt: f.clock.now().toISOString() });
+  const repositories = f.database.authority;
+  const eventId = lifecycleCommandId("timeline-gate-resolved", approval.commandId);
+  const resolved = repositories.timelineEvents.get(eventId); assert.ok(resolved);
+  assert.equal(authenticateRootRun(repositories, run).command.commandId, original.command.commandId);
+
+  assert.ok(repositories.timelineEvents.pruneBefore("2099-01-01") > 0);
+  assert.equal(authenticateRootRun(repositories, run).command.commandId, original.command.commandId);
+  assert.deepEqual(repositories.timelineEvents.get(eventId), resolved);
+  assert.equal(repositories.timelineEvents.pruneBefore("2099-01-01"), 0);
+  assert.throws(() => authenticateRootRun({ ...repositories, timelineEvents: { ...repositories.timelineEvents,
+    get: id => id === eventId ? undefined : repositories.timelineEvents.get(id) } }, run), /delegation-gate-resume-authority-unavailable/u);
+});
