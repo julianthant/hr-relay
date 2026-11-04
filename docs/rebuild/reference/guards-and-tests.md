@@ -136,10 +136,16 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-Run portable CI suites on Ubuntu for pull requests into `staging`. Run platform-native proofs and
+`ci.yml` triggers only for staging pull requests and admits the portable-only `ci-checks.yml` call.
+Its top parity job is a plain passing omission, with merge train after the six top summaries and
+outside admission. `release.yml` triggers only for main pull requests or operator manual releases
+and alone admits `release-checks.yml`, which owns the native/parity and complete release pipeline.
+Staging never references or loads a release/native workflow call. Both callees use shared typed
+selection/result/timing policy from `scripts/test/ci-plan.ts` and explicitly retain test budgets.
+Run platform-native proofs and
 parity in CI only for full releases started by the operator:
 `staging` → `main` pull requests or manual full-release dispatches. Only the operator may start
-one; agents must never dispatch or rerun `ci.yml`. Between releases, run Windows-native tests
+one; agents must never dispatch or rerun CI workflows. Between releases, run Windows-native tests
 locally on Windows and macOS-native tests locally on the Mac when load is low. Keep native-only
 files out of Ubuntu shards. `scripts/test/ci-files.ts` names the native
 files: `NATIVE_FILES` (storage closure, backup and restore proofs requiring native runners, unit and
@@ -164,7 +170,7 @@ Other native files count half because two workers share them.
 | native | Windows, operator-started full releases only | 5 (1 for unit only) | The same native membership and isolated serial/storage groups |
 | parity | macOS, operator-started full releases only | 3 shards | Desktop parity |
 
-With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The runner-free FIFO
+With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The job-level whole-pipeline FIFO
 admission and draft policy are described in [repository governance](../../repository-governance.md).
 Each shard downloads the same `ci-balancing` input and uploads Vitest JSON reports as `durations-*`.
 Report basenames include the runner OS and selection group, so merged artifacts preserve both platforms.
@@ -273,27 +279,47 @@ dispatches bypass the draft limit.
 | Parity helpers, fixtures or entrypoints | All four; unit and integration also import these. |
 | Local or perf test files only | Architecture; local remains machine-only and perf remains release-only. |
 
-Select the union for mixed changes. Only release pull requests from `staging` into `main` select
-native and parity jobs and add the release job. Other pull requests leave both native matrices
-empty and omit parity. Other heads targeting `main` also omit expensive release work, but their
-required release summary runs and fails head validation. Valid Markdown-only release PRs retain
-the intentional release omission. Treat machine-readable inputs under `docs/`, including the guard inventory,
-as configuration. Only the operator may start a manual full-release dispatch. It bypasses
-filtering and selects all four routine suites, including native and parity jobs. Agents must never dispatch or rerun
-`ci.yml`. Do not repeat CI on protected-branch pushes.
-Run required summaries (`unit`, `integration`, `architecture`, `parity`) on Ubuntu even when a runner
-job is intentionally omitted. Require successful change detection and either an explicit suite
-omission or successful selected runners. For unit and integration, require Ubuntu success and each
-native platform to succeed when its matrix is nonempty or be skipped when its matrix is empty.
-For architecture, require Ubuntu success. For selected parity, require macOS success.
-Fail the summary when a required runner fails, is cancelled, or is unexpectedly skipped.
+Select the union for mixed changes. Staging PRs execute only the portable entry workflow. Valid
+`staging` → `main` releases select native/parity work and the isolated coverage/performance batch.
+Other heads into main omit native/batch work and fail the required release source-head check.
+Markdown-only releases omit those expensive jobs but explicitly pass the required release summary
+after proof validation. Operator manual releases select all routine native/parity suites; the
+coverage/performance batch remains PR-only. Treat machine-readable docs as configuration. Only
+the operator may start a manual release; agents must never dispatch or rerun CI workflows. Protected
+branch pushes do not repeat CI.
+
+Both event entries use per-PR/manual-branch workflow concurrency with cancellation enabled. New
+pushes supersede older runs for the same workflow/PR-or-ref key. Each entry admits one complete
+reusable check call through the shared job-level `ci-runners` FIFO, `queue: max` and
+`cancel-in-progress: false`. Every mandatory proof, selected batch and timing publisher remains
+inside that callee; no callee reacquires admission. Merge train follows the six top summaries
+outside the admitted call; the standalone staging-push train is unchanged.
+
+Each callee's final `unit` runs unless cancelled and checks all mandatory proofs and timing
+publication, rejecting failed or missing outcomes. Cancellation stops its checkout/install work.
+In releases it also checks the selected batch, after
+`unit-proofs` allows batch execution without a cycle. The required outer `unit` always validates
+both the complete call result and inner unit output as success. Train is excluded from the inner
+fence because it runs downstream. Staging's required parity is plain successful omission; release
+parity validates actual proof output. Portable selected suites require Ubuntu success. Selected
+eligible full-release unit/integration require both native platforms to succeed, regardless of
+matrix absence or emptiness; native omission is valid only outside such a selected suite.
+Selected parity requires macOS success. An expected omission must be exactly skipped. Invalid
+selectors, matrix counts and missing outputs never become successful defaults.
+
+Timing discovery first enumerates registered IDs for exactly the CI and release workflow paths.
+It can therefore use CI history before a new release workflow is registered, without ignoring a
+404 or any other API error. Both successful feeds are sorted together; the newest retained timing
+artifact wins, and no-history/no-retained-artifact is the valid committed-seed case.
 
 Membership verification compares an unsharded `vitest list --filesOnly --json` for unit,
 integration and architecture with the union of the exact CI selections. `tests/scripts/test/ci-files.test.ts`
 proves the selections give each file to exactly one job, so selected paths need no Vitest sharding.
-`tests/scripts/test/ci-files.workflow.test.ts` executes workflow selection and summary scripts for
-staging PRs, `staging` → `main` release PRs, other PRs into `main` and manual runs, including
-operator-started full-release native/parity membership and failure propagation.
+`tests/scripts/test/ci-plan.test.ts` tests the shared typed plan, proof and timing policy.
+`tests/scripts/test/ci-files.workflow.test.ts` tests actual event entry filters, supersession and transitive admission coverage,
+selection/history adapters and actual summary-shell failures for staging, source/head, Markdown
+and manual cases. Source/API-list checks are not the Actions graph proof: the operator reviews
+the actual published staging graph to confirm no release workflow is loaded.
 Parity's three Playwright shards' `--list --reporter=json` test identities must also form the
 unsharded listing exactly once. Coverage, perf and local selection are unchanged.
 
