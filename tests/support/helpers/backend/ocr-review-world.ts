@@ -21,7 +21,7 @@ import { bindManualOcrPageReading } from "../../../../src/models/workflows/ocr/p
 import { buildOcrSourceManifest, ocrPageInputs } from "../../../../src/models/workflows/ocr/source-manifest.js";
 import { ExtractPdfPages, type ExtractPdfPagesOutputSchema } from "../../../../src/models/processing/extraction/extract-pdf-pages.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
-import { defineServiceStore, defineTaskStoreRegistry, type RegisteredTaskStore } from "../../../../src/workflow-kit/task-registry.js";
+import { defineServiceStore, defineWorkflowStore, defineTaskStoreRegistry, type RegisteredTaskStore } from "../../../../src/workflow-kit/task-registry.js";
 import { submittedPage, READING_ID } from "../../fixtures/ocr/source-pages.js";
 import { canonicalChildExecution } from "./canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "./run-executor-world.js";
@@ -36,6 +36,10 @@ import { createWriteSequencer } from "../../../../src/backend/runtime/writes/wri
 import { testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
 import type { SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import type { WorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
+import { ocrPageStore } from "../../../../src/workflows/ocr-page/task-registry.js";
+import { ReadManualOcrReading } from "../../../../src/models/workflows/ocr-page/read-manual-reading.js";
+import { readManualOcrReadingTask } from "../../../../src/workflows/ocr-page/tasks/read-manual-reading.js";
+import { OcrPageWorkflowInputSchema } from "../../../../src/models/workflows/ocr-page/input.js";
 
 interface ReviewedPageFacts {
   readonly employeeName: string;
@@ -49,10 +53,11 @@ export function createOcrReviewWorld() {
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number;
       retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule; ocr?: WorkflowModule;
-      lookupNames?: readonly string[]; pauseAtLookup?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
+      lookupNames?: readonly string[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
       reviewedPages?: readonly ReviewedPageFacts[]; operatorEvidence?: boolean;
       screenshotCapture?: NonNullable<Parameters<typeof world.executorHarness>[0]>["screenshotCapture"];
       member?: WorkflowModule;
+      manualPageFailure?: (sourcePage: number) => boolean;
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       if (options.reviewedPages !== undefined) assert.equal(options.reviewedPages.length, options.pageCount);
@@ -69,7 +74,13 @@ export function createOcrReviewWorld() {
       const coordinator = options.coordinator === true ? workflowModuleOf("emergency-contact") : undefined;
       const member = options.member ?? (options.coordinator === true ? childWorkflowModuleOf("emergency-contact", "emergency-contact-member") : undefined);
       const root = options.parent ?? coordinator ?? ocrRoot;
-      const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction" && store.namespace !== "workflow:ocr"),
+      const pageStore = options.manualPageFailure === undefined ? ocrPageStore : defineWorkflowStore("ocr-page", {
+        ...ocrPageStore.tasks, readManualReading: defineTask(ReadManualOcrReading, { sessions: [], async run(context) {
+          if (options.manualPageFailure?.(context.input.page.sourcePage) === true) return context.ctx.fail("INCONSISTENT_INPUTS", "Synthetic manual page reading refused.");
+          return readManualOcrReadingTask.impl.run(context);
+        } }),
+      });
+      const entries: readonly RegisteredTaskStore[] = [...taskStoreRegistry.stores.filter(store => store.namespace !== "extraction" && store.namespace !== "workflow:ocr" && store.namespace !== "workflow:ocr-page"), pageStore,
         defineServiceStore("extraction", { render }), options.retainedProducer === true ? retainedOcrStore : ocrWorkflowStore];
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
@@ -119,7 +130,7 @@ export function createOcrReviewWorld() {
       const formType = options.formType ?? "emergency-contact";
       const readings = ocrPageInputs(manifest, READING_ID, formType).map((page, index) => {
         const facts = options.reviewedPages?.[index];
-        const original = submittedPage(page, facts?.employeeName ?? options.lookupNames?.[index] ?? "Example, Avery", options.record === true ? ocrForm(formType).pageKinds[0] : "blank");
+        const original = submittedPage(page, facts?.employeeName ?? options.lookupNames?.[index] ?? "Example, Avery", options.record === true && (options.recordPages === undefined || options.recordPages.includes(page.sourcePage)) ? ocrForm(formType).pageKinds[0] : "blank");
         const valid = { ...original, source: { kind: "operator" as const, actorId },
           record: original.record === null ? null : { answers: { ...original.record.answers,
             ...(facts === undefined ? {} : { "contact.name": { state: "read" as const, raw: facts.contactName, confidence: 0.9 } }) } } };
@@ -147,8 +158,14 @@ export function createOcrReviewWorld() {
         while (!lookupAdmitted()) {
           const next = await canonical.step(parentRun, signal);
           outcomes.push(next.outcome);
-          if (!lookupAdmitted()) assert.ok(next.outcome.state === "done" || next.outcome.state === "yielded-delegation",
-            `OCR stopped before native lookup admission: ${next.outcome.state}`);
+          if (!lookupAdmitted()) {
+            const failure = next.outcome.state === "failed" ? database.authority.failures.get(next.outcome.failureId) : undefined;
+            const expectedPageFailure = next.run.envelope.workflow === "ocr-page" && failure?.nodeId === "manual-reading"
+              && failure.taskId === ReadManualOcrReading.id && failure.code === "INCONSISTENT_INPUTS"
+              && options.manualPageFailure?.(OcrPageWorkflowInputSchema.parse(next.run.input.parsed.value).page.sourcePage) === true;
+            assert.ok(next.outcome.state === "done" || next.outcome.state === "yielded-delegation" || expectedPageFailure,
+              `OCR stopped before native lookup admission: ${JSON.stringify({ state: next.outcome.state, workflow: next.run.envelope.workflow, code: failure?.code, summary: failure?.summary })}`);
+          }
         }
         return { run: database.authority.runs.get(parentRun.envelope.runId), outcomes };
       };
@@ -164,7 +181,10 @@ export function createOcrReviewWorld() {
             frames: [...(failure.debug?.stack ?? "").matchAll(/(?:src|tests)\/[A-Za-z0-9_./-]+\.ts:\d+:\d+/gu)]
               .map(match => match[0]).slice(0, 8) };
         });
-        assert.deepEqual(failures, [], `OCR fixture execution failed: ${JSON.stringify(failures)}`);
+        if (options.manualPageFailure === undefined) assert.deepEqual(failures, [], `OCR fixture execution failed: ${JSON.stringify(failures)}`);
+        else assert.deepEqual(failures.map(({ nodeId,taskId,code }) => ({ nodeId,taskId,code })),
+          manifest.pages.filter(page => options.manualPageFailure?.(page.sourcePage) === true)
+            .map(() => ({ nodeId: "manual-reading", taskId: ReadManualOcrReading.id, code: "INCONSISTENT_INPUTS" })));
         const lifecycle = root === ocrRoot ? result.run?.lifecycle : database.authority.runs.get(run.envelope.runId)?.lifecycle;
         assert.ok(options.pauseAtLookup === true ? lookupAdmitted() && (lifecycle?.state === "queued" || lifecycle?.state === "parked-gate")
           : (options.release === true || coordinator !== undefined) ? lifecycle?.state === "parked-gate"

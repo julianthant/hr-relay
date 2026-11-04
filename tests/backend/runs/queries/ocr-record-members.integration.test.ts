@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { scaledMs } from "../../../support/time-scale.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
 import { afterEach, it } from "vitest";
 import { readOcrRecordBindings, readOcrQueueMembers } from "../../../../src/backend/runs/queries/ocr-record-members.js";
 import type { DelegatedRecordBinding } from "../../../../src/models/workflow/delegated-record.js";
+import { readDelegationScopeEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
+import { OcrReviewSeedSchema } from "../../../../src/models/workflows/ocr/review-seed.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { createOperatorProjection, createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/operator.js";
 import { buildRunDetail, readRunSection } from "../../../../src/backend/runs/queries/run-detail.js";
@@ -16,6 +19,7 @@ import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/modu
 import { defineWorkflow, composeWorkflowModule, compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { compileFixtureWorkflow } from "../../../support/fixtures/workflow-definition-fixtures.js";
 import { FingerprintSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
+import { queueKeyboardEntries } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { ocrReviewCards } from "../../../../src/dashboard/surfaces/run-detail/review/review-model.js";
 import { ocrWorkflow } from "../../../../src/workflows/ocr/workflow.js";
 import { buildOcr } from "../../../../src/workflows/ocr/steps/source-pages/step.js";
@@ -234,3 +238,102 @@ it("binds I-9 signer records to their own native group and keeps its history cov
   assert.deepEqual(presentation.members.map(member => member.statusLabel), ["Looking up", "Looking up"]);
   assert.ok(presentation.runIds.includes(child.child.envelope.runId));
 });
+
+it("keeps current records and reused retry history during a partially readmitted OCR lookup epoch", async () => {
+  let failedPage = true;
+  const person = { emplId: EXECUTOR_EID, name: "Example, Avery", department: "Housing Dining Hospitality", jobTitle: "Fixture employee",
+    employeeStatus: "active" as const, hdh: true, hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" };
+  const sessions = sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver({ results: [person],
+    selection: { status: "resolved", selected: person, candidateEids: [EXECUTOR_EID] } }), crm: () => healthyCrmDriver() });
+  const f = await world.fixture({ record: true, release: true, pageCount: 2,
+    lookupNames: ["Example, Avery", "Example, Morgan"], pauseAtLookup: true,
+    sessions, manualPageFailure: page => failedPage && page === 2 });
+  const lookup = f.database.authority.dependencies.groups(f.run.envelope.runId)
+    .find(({ group }) => group.invocation.nodeId === "lookup-identities")?.group.children[0]?.child; assert.ok(lookup);
+  assert.equal(f.canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "cancel", source: "dashboard", requestedBy: "local-operator",
+    requestedAt: f.clock.now().toISOString(), target: { runId: lookup.envelope.runId, expectedVersion: lookup.version } }).state, "applied");
+  const cancelled = f.database.authority.runs.get(lookup.envelope.runId); assert.ok(cancelled);
+  assert.equal(f.canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "retry", source: "dashboard", requestedBy: "local-operator",
+    requestedAt: f.clock.now().toISOString(), target: { runId: lookup.envelope.runId, expectedVersion: cancelled.version } }).state, "applied");
+  const initialExecution = await f.canonical.execute(f.run, new AbortController().signal);
+  assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state,"parked-gate",
+    JSON.stringify({ outcomes: initialExecution.outcomes, failures: [f.run, ...f.database.authority.runs.listChildren(f.run.envelope.runId)].flatMap(run =>
+      f.database.authority.failures.listByRun(run.envelope.runId).map(failure => ({ node: failure.nodeId, summary: failure.summary }))) }));
+  assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record",1)).state,"applied");
+  const reviewed = f.database.withAuthorityReadSnapshot(() => readOcrQueueMembers(f.database.authority,f.canonical.lifecycle,
+    f.run.envelope.runId,id => f.resolve(id)?.label ?? id)); assert.ok(reviewed);
+  assert.equal(reviewed.members[0]?.title,"Example, Avery · EID 10800000");
+  const before = f.database.withAuthorityReadSnapshot(() => readOcrRecordBindings(f.database.authority,f.run.envelope.runId)); assert.ok(before);
+  assert.equal(before.seed.records.length,1);
+  assert.equal(before.bindings[0]?.childRunIds.length,2);
+  assert.equal(before.bindings[0]?.childRunIds[0],lookup.envelope.runId);
+  const page = f.database.authority.runs.listChildren(f.run.envelope.runId)
+    .find(child => child.envelope.workflow === "ocr-page" && child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed"); assert.ok(page);
+  failedPage = false;
+  assert.equal(f.canonical.kernel.execute({ commandId: randomUUID(), family: "run", type: "retry", source: "dashboard", requestedBy: "local-operator",
+    requestedAt: f.clock.now().toISOString(), target: { runId: page.envelope.runId, expectedVersion: page.version } }).state, "applied");
+  assert.equal((await f.canonical.step(f.run,new AbortController().signal)).outcome.state,"done");
+  const readmitted = await f.canonical.step(f.run,new AbortController().signal);
+  assert.equal(readmitted.outcome.state,"yielded-delegation", JSON.stringify(readmitted.outcome.state === "failed"
+    ? f.database.authority.failures.get(readmitted.outcome.failureId) : readmitted.outcome));
+  f.database.withAuthorityReadSnapshot(() => {
+    const lookupSeeds = f.database.authority.dependencies.groups(f.run.envelope.runId)
+      .filter(({ group }) => ["lookup-identities", "lookup-signers"].includes(group.invocation.nodeId))
+      .map(({ group }) => {
+        const checkpoint = readDelegationScopeEvidence(f.database.authority,group.parent,group.invocation.scopeEvidence)
+          .find(source => source.nodeId === "build-review" && "checkpoint" in source);
+        assert.ok(checkpoint !== undefined && "checkpoint" in checkpoint && checkpoint.checkpoint !== undefined);
+        return [group.invocation.nodeId,OcrReviewSeedSchema.parse(checkpoint.checkpoint.output.value).records.length];
+      });
+    assert.deepEqual(lookupSeeds,[["lookup-identities",2],["lookup-signers",1]]);
+    const current = readOcrRecordBindings(f.database.authority,f.run.envelope.runId); assert.ok(current);
+    const expectedRecords = [1,2].map(page => `${f.reading.input.document.sha256}#emergency-contact#${page}`);
+    assert.deepEqual(current.seed.records.map(record => record.recordId),expectedRecords);
+    assert.deepEqual(current.bindings[0]?.record,before.bindings[0]?.record);
+    assert.deepEqual(current.bindings[0]?.childRunIds,before.bindings[0]?.childRunIds);
+    const rows = readOcrQueueMembers(f.database.authority,f.canonical.lifecycle,f.run.envelope.runId,id => f.resolve(id)?.label ?? id); assert.ok(rows);
+    assert.deepEqual(rows.members.map(row => row.kind === "record" ? row.record.recordId : row.kind),current.seed.records.map(record => record.recordId));
+    assert.ok(rows.runIds.includes(lookup.envelope.runId));
+    assert.deepEqual([...rows.runIds].sort(),f.database.authority.runs.listChildren(f.run.envelope.runId).map(run => run.envelope.runId).sort());
+    assert.equal(rows.members[0]?.title,`Example, Avery · EID ${EXECUTOR_EID}`);
+    assert.deepEqual(rows.members.map(row => row.childRunIds.includes(lookup.envelope.runId)),[true,false]);
+    assert.equal(rows.members[1]?.statusLabel,"Looking up");
+    assert.equal(rows.members.some(row => row.kind === "page-failure"),false);
+    const generation = f.database.getMeta().authorityGeneration;
+    assert.throws(() => readOcrQueueMembers(f.database.authority,{ read: id => {
+      const read = f.canonical.lifecycle.read(id);
+      if (read.state !== "present" || id !== f.run.envelope.runId) return read;
+      const { delegationRefresh: _refresh,...run } = read.run;
+      return { ...read,run };
+    } },f.run.envelope.runId,id => f.resolve(id)?.label ?? id),/OCR_REVIEW_REFUSED/u);
+    assert.throws(() => readOcrRecordBindings({ ...f.database.authority, dependencies: { ...f.database.authority.dependencies,
+      groups: (id,selection) => f.database.authority.dependencies.groups(id,selection).map(entry => entry.group.invocation.nodeId !== "lookup-identities" ? entry : {
+        ...entry,group: { ...entry.group,invocation: { ...entry.group.invocation,children: entry.group.invocation.children.map((child,index) => index !== 0 ? child : { ...child,sourceRecordIds: [] }) } },
+      }),
+    } },f.run.envelope.runId),/OCR_REVIEW_REFUSED/u);
+    assert.equal(f.database.getMeta().authorityGeneration,generation);
+  });
+  const projection = createOperatorProjection({ database: f.database,stateRoot: f.harness.authority.stateRoot,clock: f.clock,
+    reader: f.canonical.lifecycle,appVersion: "0.1.0",descriptorSetHash: FingerprintSchema.parse("a".repeat(64)),
+    ledger: createTransactionHistory(f.database.authority),descriptors: { resolve: f.resolve } });
+  const wire = projection.buildDashboardDayWire(f.clock.todayLocal());
+  const row = wire.queueSurfaces.find(row => row.runId === f.run.envelope.runId);
+  assert.ok(row?.surfaceKind === "operation");
+  assert.deepEqual(row.recordMembers?.members.map(member => member.kind === "record" ? member.record.recordId : member.kind),
+    [1,2].map(page => `${f.reading.input.document.sha256}#emergency-contact#${page}`));
+  const children = new Set<string>(f.database.authority.runs.listChildren(f.run.envelope.runId).map(run => run.envelope.runId));
+  assert.equal(queueKeyboardEntries(wire.queueSurfaces).some(entry => entry.kind === "run" && children.has(entry.runId)),false);
+}, scaledMs(60_000));
+
+it("authenticates canonical shared lookup membership while preserving source page order", async () => {
+  const f = await world.fixture({ record: true, release: true, pageCount: 10, pauseAtLookup: true,
+    lookupNames: Array.from({ length: 10 },() => "Example, Avery"),recordPages: [2,10] });
+  const source = f.database.withAuthorityReadSnapshot(() => readOcrRecordBindings(f.database.authority,f.run.envelope.runId)); assert.ok(source);
+  const expected = [2,10].map(page => `${f.reading.input.document.sha256}#emergency-contact#${page}`);
+  const group = f.database.authority.dependencies.groups(f.run.envelope.runId)
+    .find(({ group }) => group.invocation.nodeId === "lookup-identities"); assert.ok(group);
+  assert.deepEqual(group.group.invocation.children[0]?.sourceRecordIds,expected.toReversed());
+  assert.deepEqual(source.seed.records.map(record => record.recordId),expected);
+  assert.deepEqual(source.bindings.map(binding => binding.record.recordId),expected);
+  assert.equal(source.bindings[0]?.currentChildRunId,source.bindings[1]?.currentChildRunId);
+},scaledMs(60_000));
