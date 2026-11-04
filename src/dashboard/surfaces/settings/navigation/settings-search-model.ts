@@ -26,7 +26,7 @@ export function settingsSearchIndex(groups: readonly SettingsNavGroup[], documen
   add("performance", "Performance", undefined, "Advanced");
   add("general", "Animations", "appearance.animations", "Appearance subtle motion reduced motion");
   add("general", "Browser window", "browser.window", "Browser width height size");
-  add("general", "Dark theme", "appearance.theme", "Appearance dashboard color light dark");
+  add("general", "Theme", "appearance.theme", "Appearance dashboard color light dark");
   add("general", "ChatGPT account", "chatgpt.account", "OpenAI sign in login subscription plan OCR manage usage");
   if (runtimePaths && document !== undefined) {
     add("paths", "Data", "paths.stateRoot", "Persistent settings and run data; runtime state folder");
