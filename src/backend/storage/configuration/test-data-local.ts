@@ -1,6 +1,7 @@
+import { descriptorStatus } from "../file-identity.js";
 import { fsyncPath, privatePathRejects } from "../private-path.js";
 import { randomUUID } from "node:crypto";
-import { closeSync, constants, fstatSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, type Stats } from "node:fs";
+import { closeSync, constants, openSync, readFileSync, renameSync, unlinkSync, writeFileSync, type BigIntStats, type Stats } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { privateEqual } from "../../../rules/validation/private-equal.js";
@@ -71,13 +72,13 @@ export function assertNoDuplicateKeys(text: string, label: string): void {
 
 export interface TestDataLocalAccess {
   readonly open: (path: string, flags: number) => number;
-  readonly inspect: (descriptor: number) => Readonly<Pick<Stats, "isFile" | "isSymbolicLink" | "mode" | "uid" | "dev" | "ino" | "size">>;
+  readonly inspect: (descriptor: number) => Readonly<Pick<Stats | BigIntStats, "isFile" | "isSymbolicLink" | "mode" | "uid" | "dev" | "ino" | "size">>;
   readonly read: (descriptor: number) => Buffer;
   readonly close: (descriptor: number) => void;
 }
 const DEFAULT_LOCAL_ACCESS: TestDataLocalAccess = {
   open: openSync,
-  inspect: fstatSync,
+  inspect: descriptorStatus,
   read: (descriptor) => readFileSync(descriptor),
   close: closeSync,
 };

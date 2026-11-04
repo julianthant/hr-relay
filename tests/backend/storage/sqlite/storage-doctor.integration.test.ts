@@ -108,11 +108,11 @@ afterEach(_afterEachFixture0);
     if (event === "nested-root") roots.push(repoRoot);
     if (event === "nested-root") {
       const actualParent = join(repoRoot, "owned");
-      mkdirSync(actualParent);
+      mkdirSync(actualParent, { mode: 0o700 });
       fs.symlinkSync(actualParent, join(repoRoot, marker), "dir");
       const stateRoot = join(repoRoot, marker, "state");
       const authorityPath = join(repoRoot, "owned", "state", "state.db");
-      mkdirSync(dirname(authorityPath), { recursive: true });
+      mkdirSync(dirname(authorityPath), { recursive: true, mode: 0o700 });
       const doctorOptions = {
         stateRootTrustAnchor: repoRoot, stateRoot, authorityPath,
         backupDirectory: join(stateRoot, "backups", "authority"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,

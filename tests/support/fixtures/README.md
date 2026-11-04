@@ -90,6 +90,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `fixtures/workflow-definition-fixtures.ts` | workflow definition fixtures |
 | `fixtures/write-sequencer-fixtures.ts` | write sequencer fixtures |
 | `fixtures/workbook-reference-choice.ts` | captured roster candidates, exact command target and retained native Logs states |
+| `helpers/exact-file-metadata.ts` | deferred Linux filesystem metadata overrides that inject exact high IDs into real file operations; restore before fixture cleanup |
 | `helpers/windows-private-path-fixture.ts` | deferred owned Windows private directory and DACL-only synthetic ACL mutation |
 | `helpers/admission-fixture.ts` | admission fixture |
 | `helpers/credential-keychain-fake.ts` | process-local fake keychain and child custody snapshots |

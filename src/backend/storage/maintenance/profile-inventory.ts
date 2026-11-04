@@ -1,3 +1,4 @@
+import { fileStatus, fileIdentityObservation, privateFileNumber } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "./custody-availability.js";
 import { createHash } from "node:crypto";
 import { existsSync,readFileSync,lstatSync,opendirSync,readdirSync,type Dirent } from "node:fs";
@@ -130,12 +131,12 @@ export function flatBackupBrowserCensus(root: string, operation: OfflineMaintena
     if (config.paths.browserProfileRoot !== profileRoot) throw new StorageBackupClosureUnprovedError();
     timing = { launchTimeoutMs: config.timeouts.sessionAcquireMs, closeProofMs: config.browser.closeProofMs };
   }
-  const identities: Array<{ path: string; device: number; inode: number; mode: number; owner: number }> = [];
+  const identities: Array<{ path: string; device: number | string; inode: number | string; mode: number; owner: number }> = [];
   const profiles: RetainedBrowserProfile[] = [];
   const inspect = (path: string) => {
-    const info = lstatSync(path);
+    const info = fileStatus(path);
     if (!info.isDirectory() || info.isSymbolicLink() || privatePathRejects(path, info, "group-write")) throw new StorageBackupClosureUnprovedError();
-    identities.push({ path, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid });
+    identities.push({ path, ...fileIdentityObservation({ device: info.dev, inode: info.ino }), mode: privateFileNumber(info.mode), owner: privateFileNumber(info.uid) });
   };
   const children = (path: string) => {
     inspect(path);
@@ -283,12 +284,12 @@ function restoreBrowserCensus(admission: RuntimeAdmission, scope: "browser-roots
   const binding = admission.captureBrowserRegistryContext();
   const rows = createBrowserRoots(admission).inventory().roots.filter(row => row.profileId === binding.profileId);
   const roots = [...new Set([join(admission.stateRoot, "browsers"), ...rows.map(row => join(binding.machineRoot, row.profileRoot))])];
-  const identities: Array<{ path: string; device: number; inode: number; mode: number; owner: number }> = [];
+  const identities: Array<{ path: string; device: number | string; inode: number | string; mode: number; owner: number }> = [];
   const profiles: RetainedBrowserProfile[] = [];
   const inspect = (path: string) => {
-    const stat = lstatSync(path);
+    const stat = fileStatus(path);
     if (!stat.isDirectory() || stat.isSymbolicLink() || privatePathRejects(path, stat, "group-write")) throw new ProfileRestoreBrowserCustodyUnprovedError();
-    identities.push({ path, device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid });
+    identities.push({ path, ...fileIdentityObservation({ device: stat.dev, inode: stat.ino }), mode: privateFileNumber(stat.mode), owner: privateFileNumber(stat.uid) });
   };
   const children = (path: string) => {
     inspect(path);
@@ -374,11 +375,11 @@ async function probeUnreadableRestoreBrowsersClosed(admission: RuntimeAdmission,
 }
 
 export function inventoryFileIdentity(path: string) {
-  const info = lstatSync(path);
-  if (info.isSymbolicLink() || (!info.isFile() && !info.isDirectory()) || info.isFile() && info.nlink !== 1
+  const info = fileStatus(path);
+  if (info.isSymbolicLink() || (!info.isFile() && !info.isDirectory()) || info.isFile() && privateFileNumber(info.nlink) !== 1
     || privatePathRejects(path, info, "group-write")) throw new Error("profile-inventory-path-unsafe");
-  return { path, directory: info.isDirectory(), device: info.dev, inode: info.ino, size: info.size,
-    mode: info.mode, modified: info.mtimeMs, changed: info.ctimeMs };
+  return { path, directory: info.isDirectory(), ...fileIdentityObservation({ device: info.dev, inode: info.ino }), size: privateFileNumber(info.size),
+    mode: privateFileNumber(info.mode), modified: "mtimeNs" in info ? info.mtimeNs.toString() : info.mtimeMs, changed: "ctimeNs" in info ? info.ctimeNs.toString() : info.ctimeMs };
 }
 
 export function enumerateProfileCredentialMembership<Custody extends CredentialMembershipCustody>(admission: RuntimeAdmission, custody: Custody, savedBrowserRoot: string, browserClosure: Pick<ProfileBrowserClosure, "workerDirectory">, ownedWriter?: Readonly<{ acquisitionId: string; pid: number }>, ownedCredentialStages: readonly string[] = []) {

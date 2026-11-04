@@ -1,3 +1,4 @@
+import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { deriveEvidenceReceiptId } from "../../../models/trust/evidence-identity.js";
 import { CURRENT_RUN_SETTLEMENT_SQL, readRunSettlementRow, runSettlementContext, runSettlementColumns } from "./run-settlement-row.js";
@@ -6,7 +7,7 @@ import { readContinuationGate, validateRunContinuation } from "./run-continuatio
 import { AuthenticatedRunContinuation } from "./run-continuation-delegation.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash,randomUUID } from "node:crypto";
-import { existsSync,lstatSync,statSync } from "node:fs";
+import { existsSync,statSync } from "node:fs";
 import { basename,dirname,join,relative,sep } from "node:path";
 import { DatabaseSync,backup as sqliteBackup } from "node:sqlite";
 import { pathToFileURL } from "node:url";
@@ -61,7 +62,7 @@ import { type InstallationLease } from "../admission/installation.js";
 import { RuntimeLifetimeLock,offlineMaintenanceWorkspace,type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { inspectArtifactDeletionFile,pendingDiagnosticArtifacts,reclaimDiagnosticStages,removeArtifactDeletionFile } from "../artifacts/content-addressed-artifact-writer.js";
-import { clearOperationProofSlots,outermostOperationProof,readPrivateFile,revalidateOperationProof,withOperationProof } from "../configuration/credential-safe-file.js";
+import { numericFileIdentity,sameDirectory,type DirectoryIdentity, clearOperationProofSlots,outermostOperationProof,readPrivateFile,revalidateOperationProof,withOperationProof } from "../configuration/credential-safe-file.js";
 import { assertCredentialStoreOwner,stoppedProfileOwnsCredentialCommand } from "../configuration/credential-store.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
@@ -1962,7 +1963,7 @@ export class AuthorityDatabase implements Disposable {
   #busyTimeoutMs: number;
   #credentialCommandIds: (commandId: string) => boolean;
   #closed = false;
-  #openedFileIdentity: Readonly<{ device: number; inode: number }> | undefined;
+  #openedFileIdentity: DirectoryIdentity | undefined;
   #coldLogout: Readonly<{ machine: RuntimeAdmission; operationId: string; admission: RuntimeAdmission; restore: OfflineMaintenanceOperation;
     sourcePath: string; owner: RuntimeAdmission; inspection: ReturnType<RuntimeAdmission["capturePendingLogoutSnapshot"]> }> | undefined;
   #logoutCapturedMembers: readonly Readonly<{ member: WorkerPoolMember; processId: number; leaseGeneration: number }>[] | undefined;
@@ -2034,8 +2035,8 @@ export class AuthorityDatabase implements Disposable {
     }
     if (existed) {
       requireDatabaseSourcePath(options.path);
-      const identity = lstatSync(options.path);
-      if (!identity.isFile() || identity.nlink !== 1 || privatePathRejects(options.path, identity, "owner")) throw new Error("profile-database-identity-invalid");
+      const identity = fileStatus(options.path);
+      if (!identity.isFile() || (identity.nlink !== 1 && identity.nlink !== 1n) || privatePathRejects(options.path, identity, "owner")) throw new Error("profile-database-identity-invalid");
       this.#openedFileIdentity = Object.freeze({ device: identity.dev, inode: identity.ino });
     }
     if (existed && statSync(options.path).size === 0) {
@@ -2063,7 +2064,7 @@ export class AuthorityDatabase implements Disposable {
     const admittedDataVersion = readIntPragma(this.#database, "data_version");
     try {
       if (options.path !== ":memory:") {
-        const identity = lstatSync(options.path);
+        const identity = fileStatus(options.path);
         if (this.#openedFileIdentity !== undefined && (identity.dev !== this.#openedFileIdentity.device || identity.ino !== this.#openedFileIdentity.inode)) throw new Error("profile-database-open-source-changed");
         this.#openedFileIdentity ??= Object.freeze({ device: identity.dev, inode: identity.ino });
       }
@@ -2714,9 +2715,9 @@ export class AuthorityDatabase implements Disposable {
   assertPendingLogoutCompletion(admission: RuntimeAdmission, operation: LogoutOperation): void {
     const state = this.#logoutCompletion;
     if (!this.#closed || state?.admission !== admission || canonicalJsonStringify(state.operation) !== canonicalJsonStringify(operation)) throw new Error("profile-logout-native-completion-required");
-    const file = lstatSync(state.path);
-    if (!file.isFile() || file.nlink !== 1 || privatePathRejects(state.path, file, "owner")
-      || file.dev !== operation.source.database.device || file.ino !== operation.source.database.inode) throw new Error("profile-logout-completion-source-changed");
+    const file = fileStatus(state.path);
+    if (!file.isFile() || (file.nlink !== 1 && file.nlink !== 1n) || privatePathRejects(state.path, file, "owner")
+      || !sameDirectory({ device: file.dev, inode: file.ino }, operation.source.database)) throw new Error("profile-logout-completion-source-changed");
     const observed = withReadonlyAuthoritySnapshot(state.path, native => inspectNativeAuthority(native, CURRENT_AUTHORITY_SCHEMA_VERSION));
     if (observed.installationId !== state.binding.installationId || observed.profileId !== state.binding.profileId
       || observed.authorityContentFingerprint !== operation.settlement?.after) throw new Error("profile-logout-completion-source-changed");
@@ -2825,15 +2826,15 @@ export class AuthorityDatabase implements Disposable {
       if (hasUnprovedSourceClosure(error)) { this.#admission.retainSourceClosure(error); retainUnprovedSourceOwners(error, { admission: this.#admission, database: this }); }
       throw error;
     }
-    if (cold === undefined && (this.#openedFileIdentity === undefined || canonicalJsonStringify(this.#openedFileIdentity) !== canonicalJsonStringify(operation.source.database))) throw new Error("profile-logout-native-source-changed");
+    if (cold === undefined && (this.#openedFileIdentity === undefined || !sameDirectory(this.#openedFileIdentity, operation.source.database))) throw new Error("profile-logout-native-source-changed");
     let restore: OfflineMaintenanceOperation | undefined, admission: RuntimeAdmission | undefined, copyAdmission: RuntimeAdmission | undefined, database: AuthorityDatabase | undefined;
     let snapshot: ReturnType<typeof createReadonlyAuthoritySnapshot> | undefined;
     let inspection: ReturnType<RuntimeAdmission["capturePendingLogoutSnapshot"]> | undefined;
     try {
       if (this.#closed || !this.#database.isOpen) throw new Error("profile-logout-native-source-unavailable");
       const observed = inspectNativeAuthority(this.#database, CURRENT_AUTHORITY_SCHEMA_VERSION);
-      const source = lstatSync(path);
-      if (source.dev !== operation.source.database.device || source.ino !== operation.source.database.inode) throw new Error("profile-logout-native-source-changed");
+      const source = fileStatus(path);
+      if (!sameDirectory({ device: source.dev, inode: source.ino }, operation.source.database)) throw new Error("profile-logout-native-source-changed");
       this.close();
       if (cold === undefined) {
         const context = machine.readInstallationContext();
@@ -2845,8 +2846,8 @@ export class AuthorityDatabase implements Disposable {
         restore = cold.restore; admission = cold.admission;
       }
       const afterClose = profileAuthorityFileWitnesses(admission.stateRoot);
-      const closedSource = lstatSync(path);
-      if (closedSource.dev !== operation.source.database.device || closedSource.ino !== operation.source.database.inode) throw new Error("profile-logout-native-source-changed");
+      const closedSource = fileStatus(path);
+      if (!sameDirectory({ device: closedSource.dev, inode: closedSource.ino }, operation.source.database)) throw new Error("profile-logout-native-source-changed");
       const copied = withAuthorityDatabaseReadOnly(admission, path, native => inspectNativeAuthority(native, CURRENT_AUTHORITY_SCHEMA_VERSION));
       if (copied.installationId !== observed.installationId || copied.profileId !== observed.profileId || copied.schemaVersion !== observed.schemaVersion
         || copied.authorityGeneration !== observed.authorityGeneration || copied.authorityContentFingerprint !== observed.authorityContentFingerprint
@@ -2972,8 +2973,8 @@ export class AuthorityDatabase implements Disposable {
   capturePendingLogoutSource() {
     this.#assertOpen(); this.#admission.assertProfileRuntime();
     if (this.#openedFileIdentity === undefined) throw new Error("profile-logout-native-source-required");
-    const identity = lstatSync(this.#path);
-    if (!identity.isFile() || identity.nlink !== 1 || privatePathRejects(this.#path, identity, "owner")
+    const identity = fileStatus(this.#path);
+    if (!identity.isFile() || (identity.nlink !== 1 && identity.nlink !== 1n) || privatePathRejects(this.#path, identity, "owner")
       || identity.dev !== this.#openedFileIdentity.device || identity.ino !== this.#openedFileIdentity.inode) throw new Error("profile-logout-native-source-changed");
     const facts = this.readProfileResourceCustody();
     this.#logoutCapturedMembers = Object.freeze(facts.leases.map(lease => {
@@ -2983,7 +2984,7 @@ export class AuthorityDatabase implements Disposable {
         poolIndex: slot.poolIndex, membershipRevision: slot.membershipRevision }), processId: lease.processId, leaseGeneration: lease.leaseGeneration });
     }));
     this.#admission.assertProfileRuntime();
-    return Object.freeze({ database: this.#openedFileIdentity });
+    return Object.freeze({ database: numericFileIdentity(this.#openedFileIdentity) });
   }
 
   #failNativeClosure(errors: readonly unknown[]): never {

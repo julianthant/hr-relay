@@ -1,5 +1,6 @@
+import { asyncFileStatus, asyncDescriptorStatus, privateFileNumber } from "../file-identity.js";
 // Replace the file before atomically committing head and ack; an interrupted replace is an explicit conflict, never an automatic overwrite.
-import { lstat, mkdir, open, realpath, unlink } from "node:fs/promises";
+import { mkdir, open, realpath, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../source-closure.js";
 import type { ArtifactOutboxStorageRecord } from "../sqlite/storage-records.js";
@@ -39,7 +40,7 @@ export function createArtifactSinkProjector(options: ArtifactSinkProjectorOption
   const withSinkLock = async <Result>(row: ArtifactOutboxStorageRecord, sink: ArtifactSink,
     work: (lockPath: string, assertCurrent: () => Promise<void>) => Promise<Result>): Promise<Result> => {
     options.assertCurrent?.(); await mkdir(options.lockDir, { recursive: true }); options.assertCurrent?.();
-    const lockPath = await sink.writerLockPath(row), directory = dirname(lockPath), parent = await lstat(directory);
+    const lockPath = await sink.writerLockPath(row), directory = dirname(lockPath), parent = await asyncFileStatus(directory);
     let handle;
     try { handle = await open(lockPath, "wx", 0o600); }
     catch (error) {
@@ -47,7 +48,7 @@ export function createArtifactSinkProjector(options: ArtifactSinkProjectorOption
       throw error;
     }
     let identity;
-    try { identity = await handle.stat(); }
+    try { identity = await asyncDescriptorStatus(handle); }
     catch (error) {
       try { await handle.close(); }
       catch (close) { throw retainAuthoritySourceClosure([error, close], { directory: { handle, lockPath } }); }
@@ -55,8 +56,8 @@ export function createArtifactSinkProjector(options: ArtifactSinkProjectorOption
     }
     const assertCurrent = () => { options.assertCurrent?.(); };
     const assertLock = async () => {
-      assertCurrent(); const current = await lstat(lockPath), currentParent = await lstat(directory);
-      if (current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino || current.nlink !== 1
+      assertCurrent(); const current = await asyncFileStatus(lockPath), currentParent = await asyncFileStatus(directory);
+      if (current.isSymbolicLink() || current.dev !== identity.dev || current.ino !== identity.ino || privateFileNumber(current.nlink) !== 1
         || currentParent.dev !== parent.dev || currentParent.ino !== parent.ino || await realpath(directory) !== directory) throw new Error("artifact-sink-lock-custody-changed");
       assertCurrent();
     };
