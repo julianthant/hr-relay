@@ -17,8 +17,8 @@ export class ProfileNameValidationError extends Error {
 export const ProfileIdSchema = z.uuid();
 export const ProfileOnboardingCompletionSchema = z.strictObject({
   generation: z.number().int().safe().positive(), finishId: z.uuid(), finishedAt: IsoInstantSchema,
-  key: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), confirmation: z.enum(["operator", "exact-credential-request"]) }),
-  touch: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), softwareInterceptionDisabled: z.literal(true), operatorConfirmedAt: IsoInstantSchema }),
+  key: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), confirmation: z.enum(["operator", "portal-accepted", "exact-credential-request"]) }),
+  touch: z.strictObject({ receiptDigest: z.string().regex(/^[0-9a-f]{64}$/u), softwareInterceptionDisabled: z.literal(true), operatorConfirmedAt: IsoInstantSchema.optional() }),
 });
 
 export const ProfileRegistryRowSchema = z.strictObject({
@@ -188,8 +188,9 @@ export function assertFinishedProfileOnboarding(operation: SignUpOperation): voi
     const attempt = draft.attempts.findLast(entry => entry.method === method && entry.generation === draft.generation);
     if (attempt?.state !== "complete" || attempt.scope?.accountId !== draft.accountId || attempt.providerClosedAt === undefined
       || attempt.ceremony === undefined || attempt.portal !== undefined && attempt.ceremony.credentialId !== attempt.portal.credentialId
-      || (method === "key" ? attempt.ceremony.mechanism !== "fast-duo" || attempt.operatorConfirmedAt === undefined && attempt.portal?.acceptance !== "exact-credential-request"
-        : attempt.portal?.acceptance !== "portal-accepted" || (attempt.ceremony.mechanism !== "native-platform" && attempt.ceremony.mechanism !== "chromium-platform") || !attempt.ceremony.softwareInterceptionDisabled || attempt.operatorConfirmedAt === undefined)) {
+      || attempt.operatorConfirmedAt === undefined && attempt.portal?.acceptance !== "portal-accepted" && !(method === "key" && attempt.portal?.acceptance === "exact-credential-request")
+      || (method === "key" ? attempt.ceremony.mechanism !== "fast-duo"
+        : (attempt.ceremony.mechanism !== "native-platform" && attempt.ceremony.mechanism !== "chromium-platform") || !attempt.ceremony.softwareInterceptionDisabled)) {
       throw new Error("profile-onboarding-incomplete");
     }
   }

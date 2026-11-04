@@ -239,7 +239,18 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(result, { state: "owned" });
   });
 
+  it("accepts the dashboard index after Vite stamps its entry with a hot-update timestamp", async () => {
+    const { result } = await probeViteIdentity({
+      owner: OWNER_NONCE,
+      index: '<title>Relay</title><script type="module" src="/app/main.tsx?t=1793770896671"></script>',
+      client: OWNED_VITE_CLIENT,
+    });
+
+    assert.deepEqual(result, { state: "owned" });
+  });
+
   it.each([
+    ["dashboard entry query", { owner: OWNER_NONCE, index: '<title>Relay</title><script type="module" src="/app/main.tsx?foreign=1"></script>', client: OWNED_VITE_CLIENT }, "index-identity-invalid", [DASHBOARD_FRONTEND_OWNER_PATH, "/"]],
     ["launcher nonce", { owner: FOREIGN_NONCE, index: OWNED_VITE_INDEX, client: OWNED_VITE_CLIENT }, "owner-proof-invalid", [DASHBOARD_FRONTEND_OWNER_PATH]],
     ["dashboard index", { owner: OWNER_NONCE, index: '<title>Foreign</title><script type="module" src="/app/main.tsx"></script>', client: OWNED_VITE_CLIENT }, "index-identity-invalid", [DASHBOARD_FRONTEND_OWNER_PATH, "/"]],
     ["Vite client", { owner: OWNER_NONCE, index: OWNED_VITE_INDEX, client: "export function createForeignContext() {}" }, "vite-client-identity-invalid", [DASHBOARD_FRONTEND_OWNER_PATH, "/", "/@vite/client"]],

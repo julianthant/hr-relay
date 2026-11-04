@@ -20,7 +20,8 @@ import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m1 } from ".
 import assert_m1 from "node:assert/strict";
 import { act as act_m1,createElement as createElement_m1,type ReactNode as ReactNode_m1 } from "react";
 import { createRoot as createRoot_m1,type Root as Root_m1 } from "react-dom/client";
-import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1 } from "vitest";
+import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1,vi as vi_m1 } from "vitest";
+import { PublicProfileStateSchema } from "../../../src/models/profiles/public-profile.js";
 import {
 RUN_START_DOOR_ID as RUN_START_DOOR_ID_m1
 } from "../../../src/dashboard/app/dashboard-app-model.js";
@@ -288,6 +289,100 @@ describe_m1("served signed-out appearance", () => {
       } finally { localStorage.clear(); }
     });
   }
+});
+
+describe_m1("served sign-up Finish", () => {
+  afterEach_m1(_afterEachFixture0);
+
+  it_m1("resumes the profile still signed in and shows the normal login form if that is refused", async () => {
+    window.history.replaceState(null, "", "/?onboarding=signup");
+    let resumed = 0;
+    const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: false, resumable: true as const }),
+      resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_TRANSITION_BLOCKED" as const }; } };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+    await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
+    await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Log in")?.click(); });
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+    assert_m1.equal(resumed, 1);
+  });
+
+
+
+  it_m1.each(["login", "signup"] as const)("a successful automatic resume from the %s URL opens the dashboard shell", async onboarding => {
+    window.history.replaceState(null, "", `/?onboarding=${onboarding}`);
+    const active = { state: "active" as const, profileId: "00000000-0000-4000-8000-000000000002", duoState: "ready" as const, epoch: 7 };
+    let resumed = 0;
+    const client = { ...appClient(),
+      readProfileSession: async () => resumed > 0 ? active : { state: "signed-out" as const, signUpRequired: false, resumable: true as const },
+      resumeProfile: async () => { resumed++; return active; } };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => {
+      assert_m1.equal(resumed, 1);
+      assert_m1.equal(new URLSearchParams(window.location.search).has("onboarding"), false);
+      assert_m1.equal(["Log in to Relay", "Create your profile"].includes(document.querySelector("h1")?.textContent ?? ""), false);
+    }, { timeout: 3000 });
+  });
+
+  it_m1("a tab whose resume lost the race adopts the winner's session once it is in place", async () => {
+    window.history.replaceState(null, "", "/");
+    const active = { state: "active" as const, profileId: "00000000-0000-4000-8000-000000000002", duoState: "ready" as const, epoch: 7 };
+    let cookie = false, resumed = 0, readsBeforeWinner = 0;
+    let release!: () => void;
+    const winner = new Promise<void>(resolve => { release = resolve; }).then(() => { cookie = true; });
+    const client = { ...appClient(),
+      readProfileSession: async () => { if (cookie) return active; readsBeforeWinner++; return { state: "signed-out" as const, signUpRequired: false, resumable: true as const }; },
+      resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_TRANSITION_BLOCKED" as const }; } };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(readsBeforeWinner >= 2, true); }, { timeout: 3000 });
+    assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
+    release(); await winner;
+    await vi_m1.waitFor(() => { assert_m1.notEqual(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+    assert_m1.equal(resumed, 1);
+  });
+
+  it_m1("keeps the login form when resume is genuinely refused and no session appears", async () => {
+    window.history.replaceState(null, "", "/");
+    let resumed = 0, reads = 0;
+    const client = { ...appClient(),
+      readProfileSession: async () => { reads++; return { state: "signed-out" as const, signUpRequired: false, resumable: true as const }; },
+      resumeProfile: async () => { resumed++; return { state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const }; } };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => { assert_m1.equal(resumed, 1); assert_m1.equal(reads >= 3, true); }, { timeout: 3500 });
+    assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay");
+    assert_m1.equal(resumed, 1);
+  });
+
+  it_m1("opens the sign-up form from the Sign up link after a refused login", async () => {
+    window.history.replaceState(null, "", "/");
+    const client = { ...appClient(), readProfileSession: async () => ({ state: "refused" as const, code: "PROFILE_SIGN_IN_REFUSED" as const }) };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+    await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Sign up")?.click(); });
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
+    await act_m1(async () => { [...document.querySelectorAll("a")].find(link => link.textContent === "Log in")?.click(); });
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+  });
+
+  it_m1("opens sign-up on a computer with no profiles", async () => {
+    window.history.replaceState(null, "", "/");
+    const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: true }) };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Create your profile"); }, { timeout: 3000 });
+  });
+
+  it_m1("moves to login when the published sign-up cannot start the dashboard", async () => {
+    const method = { state: "complete" as const, ceremonyObserved: true, portalAccepted: true, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const ready = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
+    let finished = false;
+    const client = { ...appClient(), readProfileSession: async () => finished ? { state: "signed-out" as const, signUpRequired: false } : ready,
+      completeProfileOnboarding: async () => { finished = true; return PublicProfileStateSchema.parse({ state: "error", code: "INTERNAL_FAILURE" }); } };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await act_m1(async () => { [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Go to dashboard")?.click(); });
+    assert_m1.equal(finished, true);
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+  });
 });
 
 describe_m1("ds/TakeoverFrame — entering a takeover moves focus into it", () => {

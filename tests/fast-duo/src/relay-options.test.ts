@@ -51,11 +51,13 @@ it("renders the approved extension states and keeps card selection, guards and f
       assert.equal(cards()[0].querySelectorAll("svg").length, 2);
       if (state === "unknown" || state === "unavailable") {
         assert.match(cards()[0].textContent ?? "", /Not confirmed/);
-        assert.match(cards()[0].textContent ?? "", state === "unknown" ? /Check Duo, then start over/ : /Return to Relay to check setup/);
+        cards()[0].click();
+        assert.equal(title(), state === "unknown" ? "Check Security key in Duo" : "Security key unavailable");
+        assert.match(document.getElementById("instruction")?.textContent ?? "", state === "unknown" ? /remove any device you do not recognize, then start over/ : /Return to Relay to check setup/);
       }
     }
     assert.ok(calls.includes("STATE"));
-    assert.equal(document.querySelector(".relay-method-sync")?.textContent, "Progress stays in sync with Relay.");
+    assert.equal(document.querySelector(".relay-method-sync"), null);
   } finally {
     window.dispatchEvent(new Event("pagehide"));
     document.body.replaceChildren(); vi.unstubAllGlobals(); vi.useRealTimers();
