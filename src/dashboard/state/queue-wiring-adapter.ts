@@ -18,6 +18,7 @@ export function useQueueWiring(input: Readonly<{
   nowIso: string;
   selectRun: (runId: string, partitionDay?: string) => void;
   setActiveWorkflowId: (workflowId: string) => boolean;
+  openLinkedRun: NonNullable<QueueHandlers["onOpenLinked"]>;
   onWells: (next: ReadonlySet<string>) => void;
   onBulkIds: (next: ReadonlySet<string>) => void;
   setBatchGrouping: NonNullable<QueueHandlers["onSetBatchGrouping"]>;
@@ -25,7 +26,7 @@ export function useQueueWiring(input: Readonly<{
   runQueueAction: NonNullable<QueueHandlers["onAction"]>;
 }>) {
   const { allRows, attemptHistory, rows, activeWorkflowId, filter, selectedRunId, openWells, selectMode, bulkIds, nowIso,
-    selectRun, setActiveWorkflowId, onWells, onBulkIds, setBatchGrouping, exitQueueSelection,
+    selectRun, setActiveWorkflowId, openLinkedRun, onWells, onBulkIds, setBatchGrouping, exitQueueSelection,
     runQueueAction } = input;
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (allRows === undefined) return [];
@@ -100,13 +101,9 @@ export function useQueueWiring(input: Readonly<{
         if (!setActiveWorkflowId(String(parent.workflowId))) return;
         selectRun(String(parent.runId), parent.partitionDay);
       },
-      /* Use the served child route; current-day lookup cannot find cross-day delegation. */
-      onOpenLinked: (link) => {
-        if (!setActiveWorkflowId(String(link.workflowId))) return;
-        selectRun(String(link.runId), link.partitionDay);
-      },
+      onOpenLinked: openLinkedRun,
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, setActiveWorkflowId, exitQueueSelection],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, setActiveWorkflowId, openLinkedRun, exitQueueSelection],
   );
 
   const actionsOf = useCallback((surface: QueueSurfaceWire): readonly ActionDescriptorWire[] => surface.actions, []);

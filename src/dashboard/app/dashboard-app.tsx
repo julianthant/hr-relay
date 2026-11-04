@@ -96,7 +96,7 @@ import "../surfaces/shell/permanent-shell.css";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/shared/status/status-model.js";
 import { StorageBanner } from "../surfaces/settings/storage/storage-settings.js";
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
-import { resolveNotificationNavigation } from "./navigation/notification-navigation.js";
+import { resolveRunNavigation } from "./navigation/run-navigation.js";
 import { notificationDestinationRefusal, useWorkspaceNotifications } from "../surfaces/notifications/notifications-preview-model.js";
 import type { NotificationDestination } from "../surfaces/notifications/notifications-view-model.js";
 import {
@@ -380,6 +380,8 @@ function LoadedApp({
   else if (dayResource.state !== "loading" || retainedLogRow.current?.identity !== logIdentity) retainedLogRow.current = undefined;
   const logRow = selectedRow ?? (dayResource.state === "loading" ? retainedLogRow.current?.row : undefined);
   const activeWorkflowId = (selectedRow === undefined ? undefined : queueScopeWorkflow(selectedRow, dayWire?.queueSurfaces ?? NO_QUEUE_ROWS)) ?? route.view?.workflow ?? chosenWorkflowId;
+  const queueWorkflowAvailable = workflows.some(workflow => workflow.id === activeWorkflowId)
+    || queueRows.some(row => row.workflowId === activeWorkflowId && row.parent !== null);
   const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, catalog: workflowCatalog, nowIso, today, day, dayState,
     selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, workflowCatalog, nowIso, today, day, dayState, route, activeWorkflowId]);
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID, authorityEpoch);
@@ -730,9 +732,34 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       document.getElementById(RUN_START_DOOR_ID)?.focus({ preventScroll: true });
     });
   }, [onSelectMode, onBulkIds]);
+  const linkedNavigation = useRef(0);
+  const openLinkedRun = useCallback<Parameters<typeof useQueueWiring>[0]["openLinkedRun"]>(link => {
+    const request = ++linkedNavigation.current;
+    const origin = routeRef.current, scope = commandScope;
+    const current = () => linkedNavigation.current === request && routeRef.current === origin && currentCommandScope.current === scope;
+    const resolve = () => resolveRunNavigation(client, { kind: "run", runId: link.runId, day: link.partitionDay }, origin,
+      (id, row) => id === link.workflowId && row.panelKind === link.panelKind && (row.parent !== null || canSelectWorkflowId(id)));
+    const open = (result: Awaited<ReturnType<typeof resolveRunNavigation>>) => {
+      if (!current()) return;
+      if (result.state === "refused") {
+        toast({ tone: "danger", title: "Workflow unavailable", description: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text });
+        return;
+      }
+      if (canSelectWorkflowId(link.workflowId) && !setActiveWorkflowId(link.workflowId)) return;
+      setRoute(result.route);
+    };
+    void resolve().then(result => {
+      if (!current()) return;
+      if (result.state === "refused") { open(result); return; }
+      leaveSettings(() => {
+        if (origin.settings === undefined) open(result);
+        else void resolve().then(open);
+      });
+    });
+  }, [client, commandScope, canSelectWorkflowId, setActiveWorkflowId, leaveSettings, setRoute, toast]);
   const { surfaces, outcomes, viewState, queueHandlers, actionsOf } = useQueueWiring({
     allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
-    openWells, selectMode, bulkIds, nowIso, selectRun, setActiveWorkflowId, onWells, onBulkIds,
+    openWells, selectMode, bulkIds, nowIso, selectRun, setActiveWorkflowId, openLinkedRun, onWells, onBulkIds,
     setBatchGrouping, exitQueueSelection, runQueueAction,
   });
 
@@ -907,7 +934,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       const scope = commandScope;
       const origin = routeRef.current;
       const current = () => notificationNavigation.current === request && currentCommandScope.current === scope && routeRef.current === origin;
-      const open = (result: Awaited<ReturnType<typeof resolveNotificationNavigation>>) => {
+      const open = (result: Awaited<ReturnType<typeof resolveRunNavigation>>) => {
         if (!current()) return;
         if (result.state === "refused") { refused(result.message); return; }
         setLaunchOpen(false);
@@ -917,7 +944,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         opened();
         requestAnimationFrame(() => document.getElementById(DASHBOARD_MAIN_REGION_ID)?.focus({ preventScroll: true }));
       };
-      const resolve = () => resolveNotificationNavigation(client, destination, origin, notificationContext.current.canOpenRegisteredWorkflow);
+      const resolve = () => resolveRunNavigation(client, destination, origin, notificationContext.current.canOpenRegisteredWorkflow);
       void resolve().then(result => {
         if (!current()) return;
         if (result.state === "refused") { refused(result.message); return; }
@@ -1060,7 +1087,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               {startRestrictions.has(activeWorkflowId) && previewFlow ? <Panel className="min-h-0"><PanelBody><EmptyState title="Workflow unavailable" description={startRestrictions.get(activeWorkflowId)} /></PanelBody></Panel> : previewFlow && dateSelection.state === "valid" ? <WorkflowMockQueue label={previewFlow.label} runs={railQueueRows} allRuns={mockRuns} selected={railRun} onSelect={setRailRun}
                 onRetry={id => { const source = mockRetrySource(mockRuns, id); openMockLaunch({ workflowId: source.workflowId, source }); }}
                 onDelete={ids => { setDeletedMockRuns(previous => new Set([...previous, ...ids])); setMockRuns(previous => previous.filter(run => !ids.includes(run.id))); toast({ tone: "success", title: "Run deleted" }); if (railRun && ids.includes(railRun)) { setRailRun(undefined); setRailReviewId(undefined); } }}
-                day={day} nowIso={nowIso} anchorIso={boot.serverClock.now} sort={sort} filter={queueFilterScope} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
+                day={day} nowIso={nowIso} anchorIso={boot.serverClock.now} sort={sort} filter={queueFilterScope} /> : dayWire === undefined || !queueWorkflowAvailable ? (
                 dateError === undefined && dayResource.state !== "failed" && dayWire === undefined ? <QueueSkeleton label={workflows.find(workflow => workflow.id === activeWorkflowId)?.label} /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
                     description={dateError ?? (dayResource.state === "failed" ? dayFailureText : dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />
