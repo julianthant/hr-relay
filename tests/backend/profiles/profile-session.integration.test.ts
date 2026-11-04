@@ -1,3 +1,5 @@
+import * as fileIdentities from "../../../src/backend/storage/file-identity.js";
+import { forceExactFileMetadata } from "../../support/helpers/exact-file-metadata.js";
 import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { reconcileStoppedLogout } from "../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { createCanonicalCredentials } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
@@ -931,4 +933,39 @@ it("rechecks a registry proof after another async context publishes", async () =
     })();
     await Promise.all([reader, writer]);
   } finally { await f.close(); }
+});
+
+
+it.skipIf(process.platform !== "linux")("reads a signed-in profile file with exact high file identities", async () => {
+  const f = await readIsolationFixture(), restore = forceExactFileMetadata(f.directory);
+  try {
+    const bytes = f.session.readFile(f.active.token, "notes/note.bin");
+    assert.equal(bytes instanceof Uint8Array && Buffer.from(bytes).equals(f.own), true);
+    const inode = (1n << 54n) + (fs.lstatSync(f.path, { bigint: true }).ino << 2n);
+    for (const source of ["path", "descriptor"] as const) assert.ok(restore.observations.some(observation =>
+      observation.path === f.path && observation.source === source && observation.inode === inode), `missing exact ${source} identity`);
+  } finally { restore(); }
+});
+
+it.skipIf(process.platform !== "linux")("refuses an adjacent high-ID profile descriptor substitution", async () => {
+  const f = await readIsolationFixture(), restore = forceExactFileMetadata(f.directory, (path, info, source) => {
+    if (path === f.path && source === "descriptor") { assert.equal(Number(info.ino), Number(info.ino + 1n)); info.ino += 1n; }
+  });
+  try {
+    assert.throws(() => f.session.readFile(f.active.token, "notes/note.bin"), { message: "profile file read refused" });
+    assert.deepEqual(readFileSync(f.path), f.own);
+  } finally { restore(); }
+});
+
+
+it.skipIf(process.platform !== "linux").each(["mtimeNs", "ctimeNs"] as const)("refuses a profile timestamp change below one millisecond: %s", async field => {
+  const f = await readIsolationFixture(), restore = forceExactFileMetadata(f.directory);
+  const observe = vi.mocked(fileIdentities.descriptorStatus).getMockImplementation(); assert.ok(observe);
+  vi.mocked(fileIdentities.descriptorStatus).mockImplementation(fd => {
+    const info = observe(fd);
+    if ("mtimeNs" in info) info[field] += 100n;
+    return info;
+  });
+  try { assert.throws(() => f.session.readFile(f.active.token, "notes/note.bin"), { message: "profile file read refused" }); }
+  finally { restore(); }
 });

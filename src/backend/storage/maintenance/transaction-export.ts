@@ -1,4 +1,5 @@
-import { openSync, closeSync, writeFileSync, fsyncSync, unlinkSync, fstatSync, lstatSync } from "node:fs";
+import { descriptorStatus, fileStatus } from "../file-identity.js";
+import { openSync, closeSync, writeFileSync, fsyncSync, unlinkSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -18,11 +19,11 @@ export function exportTransactions(history: TransactionHistory, input: unknown) 
   const bytes = `${canonicalJsonStringify({ ...content, sourceDigest })}\n`;
   const output = resolve(request.output);
   const fd = openSync(output, "wx", 0o600);
-  const owned = fstatSync(fd);
+  const owned = descriptorStatus(fd);
   try { writeFileSync(fd, bytes); fsyncSync(fd); }
   catch (error) {
     closeSync(fd);
-    const named = lstatSync(output, { throwIfNoEntry: false });
+    const named = fileStatus(output, true);
     if (named !== undefined && named.dev === owned.dev && named.ino === owned.ino) unlinkSync(output);
     throw error;
   }

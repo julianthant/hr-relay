@@ -1,6 +1,7 @@
+import { fileModified, fileChanged, fileStatus, descriptorStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { createHash,randomUUID } from "node:crypto";
-import { closeSync,constants,existsSync,fstatSync,lstatSync,openSync,readdirSync,readSync,realpathSync,type Stats,type BigIntStats } from "node:fs";
+import { closeSync,constants,existsSync,lstatSync,openSync,readdirSync,readSync,realpathSync,type Stats,type BigIntStats } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename,dirname,isAbsolute,join,parse,relative,resolve } from "node:path";
 import { z } from "zod";
@@ -14,7 +15,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { captureCanonicalCredentialPublication,captureStoppedCanonicalCredentialHead,captureStoppedIncompleteCredentials } from "../configuration/canonical-credential-store.js";
-import { fileIdentityObservation,privateFileNumber,ensureChildDirectory,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { sameDirectory,fileIdentityObservation,privateFileNumber,ensureChildDirectory,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { authenticateDocument } from "../configuration/credential-store.js";
 import { validateDuoKeyPair } from "../configuration/duo-signing.js";
 import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js";
@@ -83,7 +84,7 @@ function assertSyntheticDirectory(path: string): void {
   if (temp === undefined) throw new Error("runtime-admission: fixture must be beneath system temp");
   let ancestor = path;
   while (ancestor !== temp) {
-    const info = process.platform === "win32" ? lstatSync(ancestor, { bigint: true, throwIfNoEntry: false }) : lstatSync(ancestor, { throwIfNoEntry: false });
+    const info = fileStatus(ancestor, true);
     if (info !== undefined && (!info.isDirectory() || info.isSymbolicLink()
       || privatePathRejects(ancestor, info, "group-write"))) {
       throw new Error("runtime-admission: unsafe synthetic fixture ancestor");
@@ -102,10 +103,10 @@ function assertActiveRootSafe(path: string): void {
   for (const part of relative(component, path).split(/[\\/]/u)) {
     if (part === "") continue;
     component = join(component, part);
-    const info = process.platform === "win32" ? lstatSync(component, { bigint: true }) : lstatSync(component);
+    const info = fileStatus(component);
     if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("runtime-admission: storage root path changed shape");
   }
-  const root = process.platform === "win32" ? lstatSync(path, { bigint: true }) : lstatSync(path);
+  const root = fileStatus(path);
   if (privatePathRejects(path, root, "group-write")) {
     throw new Error("runtime-admission: storage root ownership changed");
   }
@@ -260,7 +261,7 @@ export class RuntimeAdmission {
     const ancestry = new Map<string, DirectoryIdentity>();
     noSymlinkAncestry(root, ancestry);
     noSymlinkAncestry(artifacts, ancestry);
-    const physical = lstatSync(path);
+    const physical = fileStatus(path);
     const capture = lease.captureStoppedProfileUpgrade(id, purpose);
     const qualification: ReadyProfileUpgrade["qualification"] = { current: { kind: "inspection" } };
     const assertHeld = () => {
@@ -272,8 +273,8 @@ export class RuntimeAdmission {
         claim?.verify("issue");
         capture.assertHeld();
         if (!noSymlinkAncestry(root, ancestry) || !noSymlinkAncestry(artifacts, ancestry)) throw new Error("profile-stopped-upgrade-root-changed");
-        const current = lstatSync(path, { throwIfNoEntry: false });
-        if (current === undefined || !current.isFile() || current.isSymbolicLink() || current.nlink !== 1
+        const current = fileStatus(path, true);
+        if (current === undefined || !current.isFile() || current.isSymbolicLink() || (current.nlink !== 1 && current.nlink !== 1n)
           || current.dev !== physical.dev || current.ino !== physical.ino || current.uid !== physical.uid || current.mode !== physical.mode) throw new Error("profile-stopped-upgrade-source-changed");
       } catch (error) { qualification.current = { kind: "revoked" }; throw error; }
     };
@@ -283,8 +284,8 @@ export class RuntimeAdmission {
       { purpose, sourcePath: path, processLockRoot, sourceSchemaVersion: observed.schemaVersion, qualification, capture });
     const assertUnpublishedSource = () => {
       assertHeld();
-      const current = lstatSync(path);
-      if (current.size !== physical.size || current.mtimeMs !== physical.mtimeMs || current.ctimeMs !== physical.ctimeMs) throw new Error("profile-stopped-upgrade-source-changed");
+      const current = fileStatus(path);
+      if (current.size !== physical.size || fileModified(current) !== fileModified(physical) || fileChanged(current) !== fileChanged(physical)) throw new Error("profile-stopped-upgrade-source-changed");
     };
     try {
       const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
@@ -1291,9 +1292,9 @@ export class RuntimeAdmission {
     const operation = this.assertPendingLogoutSettlementDatabase(path);
     const checkSource = () => {
       this.assertPendingLogoutSettlementDatabase(path);
-      const file = lstatSync(path);
-      if (!file.isFile() || file.nlink !== 1 || privatePathRejects(path, file, "owner")
-        || file.dev !== operation.source.database.device || file.ino !== operation.source.database.inode) throw new Error("profile-logout-native-source-changed");
+      const file = fileStatus(path);
+      if (!file.isFile() || (file.nlink !== 1 && file.nlink !== 1n) || privatePathRejects(path, file, "owner")
+        || !sameDirectory({ device: file.dev, inode: file.ino }, operation.source.database)) throw new Error("profile-logout-native-source-changed");
     };
     checkSource();
     let snapshot: ReturnType<typeof createReadonlyAuthoritySnapshot> | undefined, admission: RuntimeAdmission | undefined;
@@ -1356,20 +1357,20 @@ export class RuntimeAdmission {
     for (const part of relative(component, canonical).split(/[\\/]/u)) {
       if (part === "") continue;
       component = join(component, part);
-      const info = lstatSync(component);
+      const info = fileStatus(component);
       if (info.isSymbolicLink()) throw new Error("runtime-admission: inspected copy contains symlink");
     }
     const verifyBytes = () => {
       this.assertReadable(); snapshot?.assertUnchanged();
-      const file = lstatSync(canonical);
-      if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1 || privatePathRejects(canonical, file, "group-write")) {
+      const file = fileStatus(canonical);
+      if (!file.isFile() || file.isSymbolicLink() || (file.nlink !== 1 && file.nlink !== 1n) || privatePathRejects(canonical, file, "group-write")) {
         throw new Error("runtime-admission: inspected copy has unsafe shape");
       }
       const descriptor = openSync(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);
       let primary: { error: unknown } | undefined;
       let descriptorIdentity = file;
       try {
-        const opened = fstatSync(descriptor); descriptorIdentity = opened;
+        const opened = descriptorStatus(descriptor); descriptorIdentity = opened;
         if (opened.dev !== file.dev || opened.ino !== file.ino || opened.size !== file.size) {
           throw new Error("runtime-admission: inspected copy changed during open");
         }
@@ -1377,9 +1378,9 @@ export class RuntimeAdmission {
         const buffer = Buffer.allocUnsafe(64 * 1024);
         let read = 0;
         while ((read = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, read));
-        const final = fstatSync(descriptor);
+        const final = descriptorStatus(descriptor);
         if (final.dev !== opened.dev || final.ino !== opened.ino || final.size !== opened.size
-          || final.mtimeMs !== opened.mtimeMs || hash.digest("hex") !== expectedSha256) {
+          || fileModified(final) !== fileModified(opened) || hash.digest("hex") !== expectedSha256) {
           throw new Error("runtime-admission: inspected copy digest changed");
         }
       } catch (error) { primary = { error }; }
@@ -1559,7 +1560,7 @@ export class RuntimeAdmission {
     const assertHeld = () => {
       assertSource();
       if (lease.flatStoreMigrationPending()) return;
-      for (const source of sources) if (canonicalJsonStringify(source.identity(process.platform === "win32" ? lstatSync(source.sourcePath, { bigint: true, throwIfNoEntry: false }) : lstatSync(source.sourcePath, { throwIfNoEntry: false })) ?? null) !== source.before) throw new Error("flat-backup-source-changed");
+      for (const source of sources) if (canonicalJsonStringify(source.identity(fileStatus(source.sourcePath, true)) ?? null) !== source.before) throw new Error("flat-backup-source-changed");
     };
     const child = new RuntimeAdmission(issuanceToken, { assertHeld, readInstallationContext: () => this.readInstallationContext(), release: () => this.release() },
       root, join(root, "artifacts"), [path], "flat-backup", "exclusive", this.#locator, undefined, this, undefined, undefined,
@@ -1677,7 +1678,7 @@ export class RuntimeAdmission {
     lifetime.assertHeld();
     const canonical = realpathSync(workspace);
     const control = join(canonical, ".tracker/control/installation.json");
-    if (lstatSync(control, { throwIfNoEntry: false }) === undefined) {
+    if (fileStatus(control, true) === undefined) {
       const lease = acquireInstallation(canonical, "exclusive", lifetime, { machine: true, defaultPair: {
         stateRoot: resolve(canonical, rebuildRuntimeIsolation.stateRoot), artifactRoot: resolve(canonical, rebuildRuntimeIsolation.artifactRoot),
       } });
@@ -1726,7 +1727,7 @@ export class RuntimeAdmission {
   static syntheticFixture(databasePath: string): RuntimeAdmission {
     if (databasePath !== ":memory:") {
       assertSyntheticDirectory(dirname(databasePath));
-      const file = process.platform === "win32" ? lstatSync(databasePath, { bigint: true, throwIfNoEntry: false }) : lstatSync(databasePath, { throwIfNoEntry: false });
+      const file = fileStatus(databasePath, true);
       if (file !== undefined && (!file.isFile() || file.isSymbolicLink() || (file.nlink !== 1 && file.nlink !== 1n)
         || privatePathRejects(databasePath, file, "group-write"))) {
         throw new Error("runtime-admission: unsafe synthetic fixture database");

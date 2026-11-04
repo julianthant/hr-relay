@@ -1,3 +1,4 @@
+import { fileStatus, privateFileNumber } from "../../storage/file-identity.js";
 import type { ExclusiveSessionLease } from "../../../models/sessions/exclusive-session-lease.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { createNativeBrowserProbe, BrowserLaunchUncertainError, chromiumProfileInUse, DEFAULT_BROWSER_LAUNCHER as DEFAULT_LAUNCHER, closeContextWithProof, observeContextLifecycle, type ContextLifecycle, type BrowserDeadlineScheduler, type PersistentContextLauncher } from "./native-browser.js";
@@ -641,10 +642,10 @@ function deleteOwnedExtension(profileRoot: string, profileDirectory: string): vo
   assertPrivateProfilePath(root, directory);
   if ([...profileReservations].some(path => path === directory || path.startsWith(`${directory}${sep}`))) throw new ProfileCustodyUnavailableError();
   const verify = (path: string): void => {
-    const metadata = lstatSync(path, { throwIfNoEntry: false });
+    const metadata = fileStatus(path, true);
     if (metadata === undefined) return;
     if (metadata.isSymbolicLink() || privatePathRejects(path, metadata, "group-write")
-      || !(metadata.isDirectory() || metadata.isFile()) || metadata.isFile() && metadata.nlink !== 1) throw new ProfileCustodyUnavailableError();
+      || !(metadata.isDirectory() || metadata.isFile()) || metadata.isFile() && privateFileNumber(metadata.nlink) !== 1) throw new ProfileCustodyUnavailableError();
     if (metadata.isDirectory()) for (const name of readdirSync(path)) {
       if (["SingletonLock", "SingletonSocket", "SingletonCookie"].includes(name)) throw new ProfileCustodyUnavailableError();
       verify(join(path, name));

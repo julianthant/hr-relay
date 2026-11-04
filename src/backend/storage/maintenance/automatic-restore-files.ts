@@ -1,3 +1,4 @@
+import { fileStatus, privateFileNumber } from "../file-identity.js";
 import { lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -16,8 +17,8 @@ export function assertRestoreRootMembership(root: string, operationId: string): 
   const stage = `.restore-${operationId}.sqlite.tmp`;
   const files = new Set(["state.db", "state.db-wal", "state.db-shm", stage, `${stage}-wal.live-companion`, `${stage}-shm.live-companion`]);
   for (const name of readdirSync(root)) {
-    const path = join(root, name), metadata = lstatSync(path);
+    const path = join(root, name), metadata = fileStatus(path);
     if (metadata.isSymbolicLink() || privatePathRejects(path, metadata, "group-write")
-      || (metadata.isDirectory() ? !directories.has(name) : !metadata.isFile() || metadata.nlink !== 1 || !files.has(name))) throw new Error("automatic-restore-root-membership-unknown");
+      || (metadata.isDirectory() ? !directories.has(name) : !metadata.isFile() || privateFileNumber(metadata.nlink) !== 1 || !files.has(name))) throw new Error("automatic-restore-root-membership-unknown");
   }
 }

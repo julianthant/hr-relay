@@ -17,7 +17,7 @@ export const BrowserRootOwnerSchema = z.discriminatedUnion("kind", [WorkerOwner,
 const Launch = z.strictObject({ launchId: z.uuid(), generation: Generation,
   state: z.enum(["launching", "open", "closing", "closed", "unknown"]) });
 const NativeAction = z.strictObject({ operationId: z.uuid(), launchId: z.uuid(), generation: Generation,
-  source: z.strictObject({ device: Integer, inode: Integer }), priorLaunchDigest: Digest, phase: z.enum(["probing", "observed", "deleting"]) });
+  source: z.strictObject({ device: z.union([Integer, z.string().regex(/^(0|[1-9][0-9]*)$/u)]), inode: z.union([Integer, z.string().regex(/^(0|[1-9][0-9]*)$/u)]) }), priorLaunchDigest: Digest, phase: z.enum(["probing", "observed", "deleting"]) });
 export const BrowserRootSchema = z.strictObject({ profileId: z.uuid(), profileRoot: RelativePath, directory: RelativePath,
   owner: BrowserRootOwnerSchema, sessionGeneration: Integer, credentialFingerprint: Digest.nullable(), launch: Launch,
   native: NativeAction.optional() }).superRefine((row, context) => {
