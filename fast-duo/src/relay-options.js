@@ -6,10 +6,10 @@ export async function mountRelayOptions(initial) {
   let selected = 'key';
   let unavailable = false;
   const labels = { key: 'Security key', touch: 'Touch ID' };
-  const kinds = { key: 'Software key in this browser', touch: 'Built-in sensor on this Mac' };
+  const kinds = { key: 'Fast Duo in this browser', touch: 'Touch ID on this computer' };
   const notes = {
-    key: { idle: 'Fast Duo creates the software key only when Duo requests it.', pending: 'Waiting for Duo security key enrollment.' },
-    touch: { idle: 'Uses the native Mac prompt, with software interception disabled.', pending: 'Waiting for native Touch ID.' }
+    key: { idle: 'Ready to add in Duo.', pending: 'Waiting for Duo to add Security key.' },
+    touch: { idle: 'Ready to add in Duo.', pending: 'Waiting for Duo to add Touch ID.' }
   };
   const paths = {
     key: ['M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z'],
@@ -34,15 +34,18 @@ export async function mountRelayOptions(initial) {
   $('accountList').className = 'relay-method-list';
   const progress = element('div', 'relay-method-progress'); progress.setAttribute('aria-hidden', 'true');
   $('accountList').before(progress);
-  $('accountList').after(element('p', 'relay-method-sync', 'Same status as the Relay sign-up step. Updated every second.'));
+  $('accountList').after(element('p', 'relay-method-sync', 'Progress stays in sync with Relay.'));
   const states = { idle: 'Not started', pending: 'Pending', complete: 'Completed', unknown: 'Failed', unavailable: 'Failed' };
   function render() {
     const focusedMethod = document.activeElement?.closest('.relay-method-card')?.dataset.method;
     const methods = profile.methods;
-    if (methods[selected].state === 'complete' && methods.touch.state !== 'complete') selected = 'touch';
+    if (methods[selected].state === 'complete') {
+      const next = Object.keys(labels).find(method => methods[method].state !== 'complete');
+      if (next) selected = next;
+    }
     $('transport').dataset.value = selected === 'key' ? 'usb' : 'internal';
-    $('globalStatus').textContent = unavailable ? 'Setup unavailable' : Object.values(methods).some(method => method.state === 'unknown') ? 'Setup failed' : Object.values(methods).every(method => method.state === 'complete') ? 'Both methods completed' : Object.values(methods).some(method => method.state === 'unavailable') ? 'Setup failed' : Object.values(methods).some(method => method.state === 'pending') ? 'Pending' : Object.values(methods).some(method => method.state === 'complete') ? 'One method completed' : 'Sign-in methods not started';
-    $('globalDetail').textContent = unavailable === 'action' ? 'Duo could not complete this setup action. Return to Relay to check setup.' : unavailable ? 'Setup authority is unavailable. Return to Relay.' : Object.values(methods).some(method => method.state === 'unknown') ? 'Relay could not confirm that setup completed. Review your Duo devices without repeating this attempt.' : Object.values(methods).every(method => method.state === 'complete') ? 'Both sign-in methods are verified. Return to Relay to finish your profile.' : Object.values(methods).some(method => method.state === 'pending') ? 'Complete the selected method in Duo. Capture alone does not prove enrollment.' : 'Open Duo in this same window. Relay uses your saved profile details to sign in once; complete MFA yourself.';
+    $('globalStatus').textContent = unavailable ? 'Reconnect to Relay' : Object.values(methods).some(method => method.state === 'unknown') ? 'Check your Duo devices' : Object.values(methods).every(method => method.state === 'complete') ? 'Finish setup in Relay' : Object.values(methods).some(method => method.state === 'unavailable') ? 'Reconnect to Relay' : Object.values(methods).some(method => method.state === 'pending') ? 'Continue in Duo' : 'Open Duo to begin';
+    $('globalDetail').textContent = unavailable === 'return' ? 'Could not bring Relay forward. Select its window to review setup.' : unavailable === 'action' ? 'Relay could not finish that action. Return to Relay to check setup.' : unavailable ? 'Open the setup browser again from Relay.' : Object.values(methods).some(method => method.state === 'unknown') ? 'Relay could not confirm this attempt. Review your Duo devices without repeating it.' : Object.values(methods).every(method => method.state === 'complete') ? 'Both methods are verified. Return to Relay to continue.' : Object.values(methods).some(method => method.state === 'pending') ? 'When Duo says the device was added, confirm it below.' : 'Approve with an existing device, then add the methods you need for Relay.';
     const list = $('accountList'); list.replaceChildren(); list.setAttribute('aria-busy', 'false');
     progress.replaceChildren();
     const selectionDisabled = busy || Object.values(methods).some(method => method.state === 'pending');
@@ -70,12 +73,15 @@ export async function mountRelayOptions(initial) {
     if (focusedMethod) list.querySelector(`[data-method="${focusedMethod}"]`).focus({ preventScroll: true });
     $('accountCount').textContent = `${Object.values(methods).filter(method => method.state === 'complete').length} of 2 completed`;
     const attempt = methods[selected], pending = attempt.state === 'pending';
-    document.querySelector('#connection .fine-print').textContent = unavailable || attempt.state === 'unavailable' ? 'Setup is unavailable. Return to Relay to check your profile session.'
-      : attempt.state === 'unknown' ? 'Relay could not confirm that setup completed. Review your Duo devices; do not repeat this attempt.'
-      : attempt.state === 'complete' ? 'This sign-in method is verified. No further enrollment is needed.'
-      : selected === 'touch'
-      ? 'Choose Touch ID in Duo. This method uses the native Mac prompt, with software interception disabled.'
-      : 'Then select Add a device in Duo. FastDuo creates the software key only when Duo requests it.';
+    $('startCapture').hidden = attempt.state !== 'idle';
+    $('startCapture').textContent = `Set up ${labels[selected]}`;
+    $('returnRelay').disabled = busy;
+    $('returnRelay').className = Object.values(methods).every(method => method.state === 'complete') ? 'primary' : 'secondary';
+    document.querySelector('#connection .fine-print').textContent = unavailable || attempt.state === 'unavailable' ? 'Open setup again from Relay.'
+      : attempt.state === 'unknown' ? 'Relay could not confirm this attempt. Review your Duo devices; do not repeat it.'
+      : attempt.state === 'complete' ? 'This method is verified. No further setup is needed.'
+      : selected === 'touch' ? 'Choose Touch ID or Windows Hello in Duo. No fingerprint prompt is needed.'
+      : 'Relay checks that it is your Duo account.';
     $('transport').setAttribute('aria-disabled', String(selectionDisabled));
     for (const button of $('transport').querySelectorAll('button')) {
       button.disabled = selectionDisabled;
@@ -85,19 +91,19 @@ export async function mountRelayOptions(initial) {
     $('openLogin').disabled = busy || unavailable;
     $('captureState').hidden = !pending;
     $('cancelCapture').disabled = busy || unavailable || !pending;
-    $('captureTitle').textContent = selected === 'touch' ? 'Waiting for native Touch ID' : 'Waiting for Duo security key enrollment';
-    $('captureText').textContent = 'Complete the selected method in Duo. Capture alone does not prove enrollment.';
+    $('captureTitle').textContent = `Waiting for Duo to add ${labels[selected]}`;
+    $('captureText').textContent = 'When Duo says the device was added, confirm it below.';
     const pendingKeys = $('pendingKeys'); pendingKeys.replaceChildren();
     if (pending && attempt.ceremonyObserved) {
       const button = document.createElement('button'); button.className = 'primary full';
-      button.textContent = 'Duo confirmed the device was added';
+      button.textContent = 'Duo added this device';
       button.disabled = busy || unavailable || selected === 'touch' && !attempt.portalAccepted;
       const method = selected, attemptId = attempt.attemptId;
       button.addEventListener('click', () => { void command('RELAY_CONFIRM', method, attemptId); });
       pendingKeys.append(button);
     }
     $('message').hidden = !unavailable && !['unknown', 'unavailable'].includes(attempt.state);
-    $('message').textContent = unavailable === 'action' ? 'Duo could not complete this setup action. Return to Relay; do not repeat an unconfirmed attempt.' : unavailable ? 'Setup authority is unavailable. Return to Relay.' : attempt.state === 'unknown' ? `${labels[selected]} setup failed. Relay could not confirm completion; review your Duo devices without repeating this attempt.` : `${labels[selected]} is unavailable. Return to Relay to check setup.`;
+    $('message').textContent = unavailable === 'return' ? 'Could not bring Relay forward. Select its window to review setup; do not repeat an unconfirmed attempt.' : unavailable === 'action' ? 'Relay could not finish that action. Return to Relay; do not repeat an unconfirmed attempt.' : unavailable ? 'Setup is unavailable. Open it again from Relay.' : attempt.state === 'unknown' ? `${labels[selected]} setup failed. Relay could not confirm completion; review your Duo devices without repeating this attempt.` : attempt.state === 'unavailable' ? `${labels[selected]} is unavailable. Return to Relay to check setup.` : '';
     $('message').setAttribute('role', 'alert');
   }
   async function command(type, method, attemptId) {
@@ -115,10 +121,14 @@ export async function mountRelayOptions(initial) {
       const next = response.result.profile;
       if (next.operationId !== profile.operationId || next.profileId !== profile.profileId) throw new Error('Relay setup replaced');
       profile = next; if (type !== 'STATE' || unavailable === 'state') unavailable = false;
-    } catch { if ((!stateRead || generation === actionGeneration) && (type !== 'STATE' || !unavailable)) unavailable = type === 'STATE' ? 'state' : 'action'; }
+    } catch {
+      if (type === 'RELAY_RETURN') unavailable = 'return';
+      else if ((!stateRead || generation === actionGeneration) && (type !== 'STATE' || !unavailable)) unavailable = type === 'STATE' ? 'state' : 'action';
+    }
     finally { if (stateRead) polling = false; else busy = false; render(); if (focusedMethod && document.activeElement === document.body) $('accountList').querySelector(`[data-method="${focusedMethod}"]`).focus({ preventScroll: true }); }
   }
   for (const button of $('transport').querySelectorAll('button')) button.addEventListener('click', () => { selected = button.dataset.method; render(); });
+  $('returnRelay').addEventListener('click', () => { void command('RELAY_RETURN'); });
   $('openLogin').addEventListener('click', () => { void command('RELAY_OPEN_PORTAL'); });
   $('startCapture').addEventListener('click', () => { void command('RELAY_START', selected); });
   $('cancelCapture').addEventListener('click', () => { void command('RELAY_CANCEL', selected, profile.methods[selected].attemptId); });

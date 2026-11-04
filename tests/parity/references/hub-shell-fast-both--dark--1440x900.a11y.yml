@@ -28,9 +28,9 @@
             - listitem: Confirmed by Relay
           - text: This sign-in method is verified. No further enrollment is needed.
       - listitem:
-        - button "Touch ID Platform authenticator · hardware or Chromium virtual authenticator Completed Touch ID progress This sign-in method is verified. No further enrollment is needed." [disabled] [pressed]:
+        - button "Touch ID Touch ID on this computer Completed Touch ID progress This sign-in method is verified. No further enrollment is needed." [disabled] [pressed]:
           - strong: Touch ID
-          - text: Platform authenticator · hardware or Chromium virtual authenticator Completed
+          - text: Touch ID on this computer Completed
           - list "Touch ID progress":
             - listitem: Started
             - listitem: Added in Duo

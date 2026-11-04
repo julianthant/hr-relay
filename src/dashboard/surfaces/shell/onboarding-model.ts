@@ -91,8 +91,8 @@ export function duoMethodPresentation(method: keyof DuoMethods, state: keyof typ
   return {
     note: state === "complete" ? "This sign-in method is verified. No further enrollment is needed."
       : failed ? "Relay could not confirm that setup completed. Review your Duo devices; do not repeat this attempt."
-      : state === "pending" ? method === "key" ? "Waiting for Duo security key enrollment." : "Waiting for native Touch ID."
-      : method === "key" ? "Fast Duo creates the software key only when Duo requests it." : "Uses the native Mac prompt, with software interception disabled.",
+      : state === "pending" ? method === "key" ? "Waiting for Duo security key enrollment." : "Waiting for Duo to add Touch ID."
+      : method === "key" ? "Fast Duo creates the software key only when Duo requests it." : "Choose Touch ID or Windows Hello in Duo.",
     track: [
       { label: "Started", tone: state === "idle" ? "off" : "complete" },
       { label: failed ? "Not confirmed" : "Added in Duo", tone: failed ? "failed" : state === "idle" ? "off" : state },

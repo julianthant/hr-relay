@@ -17,16 +17,13 @@ as `manifest.json`:
 - `relay-manifest.json` loads the enrollment background, page bridges and native
   credential observer. `onboarding-duo-provider.ts` opens `src/options.html` for
   the private profile draft. Its controls request state, open Duo, start, cancel
-  or confirm an enrollment through the backend-owned browser broker.
+  or confirm an enrollment through the backend-owned browser broker. Return to Relay
+  activates the original app/window captured before the setup browser opens; Close
+  setup tab closes only that extension tab.
 
-Workflow sessions and non-macOS enrollment use full Playwright Chromium
-(`channel: "chromium"`); the headless shell cannot load extensions. macOS
-enrollment and its closure probes use installed, signed Google Chrome
-(`channel: "chrome"`) so native Touch ID can access its entitled keychain group.
-The owned enrollment context loads only its staged extension with
-`Extensions.loadUnpacked` over Playwright's private DevTools pipe. Chrome must be
-installed; a launch or load failure refuses setup without changing browser. Both
-manifests require Chromium 140 or later.
+All enrollment, login and closure-probe sessions use full bundled Playwright Chromium
+(`channel: "chromium"`); the headless shell cannot load extensions. No installed
+Chrome dependency is required. Both manifests require Chromium 140 or later.
 
 ## Credentials and enrollment
 
@@ -39,14 +36,21 @@ before success. Closing setup clears that state.
 Enrollment binds the exact account, tab, frame, document, Duo origin and RP ID.
 Software registration waits for backend persistence and ceremony acknowledgments.
 Platform discovery prepares the verified top-level Duo page before replying to
-Duo's availability check. Native Touch ID passes through with software interception disabled. When a successful platform
-probe reports no authenticator, or the host is not macOS, Relay uses Chromium’s virtual internal authenticator
-and retains its key in canonical encrypted custody. A failed probe or native ceremony
-never triggers an emulated retry. A captured
+Duo's availability check. Touch ID uses Chromium's emulated internal platform
+authenticator on macOS and Windows. Its key and observed registration counter
+enter canonical encrypted custody. Each login re-adds ready internal keys through
+the owned private CDP pipe. Native signatures are disabled after enrollment and
+for login replicas; the backend signer and current ceremony lease retain counter
+and assertion authority. No hardware probe or native-to-emulated retry is used.
+A captured
 key becomes usable only after the required confirmation or exact credential
 request; request aborts, timeouts and scoped refusals retain UNKNOWN before another
 capture can start. Redacted hop events use the profile debug timeline and its
 development terminal mirror; an uncertain enrollment must not be repeated.
+
+Show and Open keep in-browser focus and activate the exact owned browser process
+at the OS level: AppKit on macOS, foreground-window activation on Windows. Failed
+activation refuses visibly; it does not confirm or retry enrollment.
 
 ## Development
 
