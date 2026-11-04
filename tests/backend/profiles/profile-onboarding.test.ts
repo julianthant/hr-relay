@@ -51,7 +51,7 @@ for (const path of ["provider", "scope-loss"] as const) it(`persists and logs on
         starts++;
         if (path === "provider") await reportFailure(new ProfileOnboardingDuoProviderError("unknown", "worker", new Error("private diagnostic must never be logged")));
         else {
-          const capability = await bind({ contextId: "A0000000000040008000000000000007", tabId: 7, accountName: "synthetic@ucsd.edu", origin: "https://synthetic.duosecurity.com", rpId: "duosecurity.com" });
+          const capability = await bind({ contextId: "A0000000000040008000000000000007", tabId: 7, origin: "https://synthetic.duosecurity.com", rpId: "duosecurity.com" });
           await capability.retainUnknown(diagnostic);
           await capability.retainUnknown({ kind: "unknown", causeTag: "browser-lifetime" });
         }
@@ -69,7 +69,36 @@ for (const path of ["provider", "scope-loss"] as const) it(`persists and logs on
     assert.doesNotMatch(JSON.stringify(events), /private diagnostic|synthetic@ucsd.edu|password|stack/);
     await owner.showBrowser(operationId);
     assert.equal(starts, 1);
-    await assert.rejects(owner.start(operationId, "key"));
-    assert.equal(starts, 1); assert.equal(operation.onboarding?.attempts.length, 1);
+    await owner.start(operationId, "touch");
+    await owner.start(operationId, "key");
+    assert.equal(starts, 3); assert.deepEqual(operation.onboarding?.attempts.map(entry => [entry.method, entry.state]),
+      [["key", "unknown"], ["touch", "unknown"], ["key", "unknown"]]);
+  } finally { await owner.close(); }
+});
+
+it("starting the other method closes an unfinished attempt instead of refusing", async () => {
+  const operationId = randomUUID(), profileId = randomUUID();
+  let operation = SignUpOperationSchema.parse({ schemaVersion: 2, kind: "sign-up", operationId, profileId,
+    commandId: randomUUID(), writeId: randomUUID(), emailKey: "a".repeat(64), firstName: "Synthetic", lastName: "Operator",
+    createdAt: "2026-11-03T08:00:00.000Z", commandFingerprint: "b".repeat(64), phase: "applying",
+    credentials: { operationId: randomUUID(), keyId: randomUUID(), generation: 1, phase: "ready" },
+    onboarding: { accountId: randomUUID(), generation: 1, attempts: [] } });
+  const cancelled: string[] = [];
+  const noSecretAccess = (): never => { throw new Error("unexpected secret access"); };
+  const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)), onEvent() {}, onFailure() {},
+    failureDiagnostic: error => error instanceof ProfileOnboardingDuoProviderError ? { kind: error.kind, causeTag: error.reason } : { kind: "unknown", causeTag: "provider" },
+    read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
+    email: () => "synthetic@ucsd.edu", credentials: noSecretAccess, store: noSecretAccess, publicState: noSecretAccess,
+    provider: { async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { throw new Error("unexpected portal"); },
+      async closeBrowser() { return { state: "closed" }; }, async cancel(attempt) { cancelled.push(attempt.method); return { state: "closed" }; },
+      async start() {} },
+  });
+  try {
+    await owner.start(operationId, "key");
+    await owner.start(operationId, "touch");
+    assert.deepEqual(cancelled, ["key"]);
+    assert.deepEqual(operation.onboarding?.attempts.map(entry => [entry.method, entry.state]), [["key", "closed"], ["touch", "pending"]]);
+    await owner.start(operationId, "key");
+    assert.deepEqual(operation.onboarding?.attempts.map(entry => [entry.method, entry.state]), [["key", "closed"], ["touch", "closed"], ["key", "pending"]]);
   } finally { await owner.close(); }
 });

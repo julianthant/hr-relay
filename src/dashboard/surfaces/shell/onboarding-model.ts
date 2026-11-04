@@ -85,12 +85,13 @@ export function createServedOnboardingPort(client: DashboardClient, settled: (st
   });
 }
 
-export const duoMethodLabels = Object.freeze({ idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Unknown", unavailable: "Unavailable" });
+export const duoMethodLabels = Object.freeze({ idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Not confirmed", unavailable: "Unavailable" });
 export function duoMethodPresentation(method: keyof DuoMethods, state: keyof typeof duoMethodLabels) {
   const failed = state === "unknown" || state === "unavailable";
   return {
     note: state === "complete" ? "This sign-in method is verified. No further enrollment is needed."
-      : failed ? "Relay could not confirm that setup completed. Review your Duo devices; do not repeat this attempt."
+      : state === "unknown" ? "Relay could not confirm this attempt. In Duo, open Manage devices and remove any device you do not recognize, then start over."
+      : failed ? "Relay cannot set up this method from here. Return to Relay to check setup."
       : state === "pending" ? method === "key" ? "Waiting for Duo security key enrollment." : "Waiting for Duo to add Touch ID."
       : method === "key" ? "Fast Duo creates the software key only when Duo requests it." : "Choose Touch ID or Windows Hello in Duo.",
     track: [

@@ -265,7 +265,7 @@ it("moves an unfinished sign-up with no settings activation, preserving its oper
     try { assert.equal(inspectOpenDatabase(database, CURRENT_AUTHORITY_SCHEMA_VERSION).profileId, operation.profileId); } finally { database.close(); }
     machine = acquireEntrypointAdmission(target, "shared", lifetime);
     assert.equal(machine.readProfileRegistry().profiles.some(row => row.profileId === operation.profileId), false);
-    runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu") });
+    runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts, onboardingDuo: syntheticOnboardingDuo() });
     await runtime.session.recoverOnboarding();
     assert.equal(existsSync(movedOperation), false); assert.equal(existsSync(stateRoot), false);
     const resumed = runtime.session.signUp({ firstName: operation.firstName, lastName: operation.lastName, createdAt: operation.createdAt,

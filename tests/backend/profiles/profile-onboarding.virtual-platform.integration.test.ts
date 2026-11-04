@@ -19,7 +19,7 @@ for (const custody of ["ready", "retained", "missing"] as const) it(`requires ${
   const root = realpathSync(mkdtempSync(join(tmpdir(), "virtual-signup-"))), lifetime = await runtimeLifetimeLock();
   const machine = acquireEntrypointAdmission(root, "exclusive", lifetime), email = "fixture@ucsd.edu";
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
-  const synthetic = syntheticOnboardingDuo(() => email);
+  const synthetic = syntheticOnboardingDuo();
   let virtualCapability: DraftDuoCapability | undefined;
   const session = createProfileSession({ machineRoot: machine.stateRoot, admission: machine, clock: systemClock,
     onboardingDuo: { ...synthetic, start(attempt, bind, failure) {

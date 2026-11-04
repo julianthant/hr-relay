@@ -20,7 +20,7 @@
   });
   const sameObservation = (before, after) => before.documentActive && after.documentActive
     && before.url === after.url && before.origin === after.origin && before.accountRevision === after.accountRevision
-    && before.accountNames.length === 1 && JSON.stringify(before.accountNames) === JSON.stringify(after.accountNames);
+    && JSON.stringify(before.accountNames) === JSON.stringify(after.accountNames);
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (sender.id !== chrome.runtime.id) return false;
     if (message?.type !== 'RELAY_OBSERVE') return false;

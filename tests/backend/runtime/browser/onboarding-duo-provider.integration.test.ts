@@ -82,16 +82,14 @@ for (const pendingClose of [false, true]) it(pendingClose
     assert.equal((await focusCalls()).length, 1);
     let setup = context.pages()[0]; assert.ok(setup);
     assert.match(setup.url(), /^chrome-extension:\/\/[^/]+\/src\/options\.html$/);
-    await expect(setup.locator("#globalStatus")).toHaveText("Open Duo to begin");
+    await expect(setup.locator("#editorTitle")).toHaveText("Set up Security key");
     await expect(setup.getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
     await expect(setup.locator(".brand small")).toHaveText("Relay sign-in setup");
     await expect(setup.locator("footer > span:last-child")).toHaveText("Continue in Relay when both methods are added.");
-    await expect(setup.locator("#editorTitle")).toHaveText("Set up a sign-in method");
-    await expect(setup.locator(".relay-setup-steps > li")).toHaveCount(3);
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId); assert.equal(launches, 1);
     assert.equal((await focusCalls()).length, 2);
-    await setup.getByRole("button", { name: "Open duo.ucsd.edu", exact: true }).click();
-    await expect(setup.locator("#openLogin")).toBeEnabled();
+    await setup.getByRole("button", { name: "Set up Security key", exact: true }).click();
+    await expect(setup.getByRole("button", { name: "Show Duo", exact: true })).toBeEnabled();
     assert.equal(context.pages().length, 2);
     const portal = context.pages().find(page => page !== setup); assert.ok(portal);
     const worker = context.serviceWorkers()[0]; assert.ok(worker);
@@ -99,18 +97,22 @@ for (const pendingClose of [false, true]) it(pendingClose
     const tabWindows = z.array(z.number().int()).parse(await worker.evaluate("chrome.tabs.query({}).then(tabs => tabs.map(tab => tab.windowId))"));
     assert.equal(windows.length, 1); assert.equal(tabWindows.length, 2); assert.ok(tabWindows.every(id => id === windows[0]));
     await expect(portal.getByRole("heading", { name: "Awaiting native MFA" })).toBeVisible();
-    assert.equal(portal.url(), SSO); assert.equal(acquisitions, 1); assert.equal(submissions, 1); assert.equal(read().methods.key.state, "idle");
+    assert.equal(portal.url(), SSO); assert.equal(acquisitions, 1); assert.equal(submissions, 1); assert.equal(read().methods.key.state, "pending");
+    await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
+    await expect(setup.getByRole("button", { name: "Set up Security key", exact: true })).toBeEnabled();
+    assert.equal(read().methods.key.state, "idle");
     await context.route("https://duo.ucsd.edu/devices", route => route.fulfill({ contentType: "text/html", body: "<h1>Duo device management</h1>" }));
     await portal.goto("https://duo.ucsd.edu/devices");
     await profile.session.openOnboardingPortal(draft.token, draft.operationId); assert.equal(context.pages().length, 2); assert.equal(acquisitions, 1);
     assert.equal(portal.url(), "https://duo.ucsd.edu/devices"); assert.equal(submissions, 1);
     for (const method of ["key", "touch"] as const) {
-      await setup.getByRole("group", { name: "Sign-in method", exact: true }).getByRole("button", { name: method === "key" ? "Security key" : "Touch ID", exact: true }).click();
-      await setup.getByRole("button", { name: `Set up ${method === "key" ? "Security key" : "Touch ID"}`, exact: true }).click();
-      await expect(setup.locator("#cancelCapture")).toBeEnabled();
+      const label = method === "key" ? "Security key" : "Touch ID";
+      await setup.locator(`.relay-method-card[data-method="${method}"]`).click();
+      await setup.getByRole("button", { name: `Set up ${label}`, exact: true }).click();
+      await expect(setup.getByRole("button", { name: "Cancel setup", exact: true })).toBeEnabled();
       assert.equal(read().methods[method].state, "pending");
       await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
-      await expect(setup.locator("#transport button").first()).toBeEnabled();
+      await expect(setup.getByRole("button", { name: `Set up ${label}`, exact: true })).toBeEnabled();
       assert.equal(read().methods[method].state, "idle");
     }
     assert.equal(launches, 1); assert.equal(submissions, 1);
@@ -118,7 +120,7 @@ for (const pendingClose of [false, true]) it(pendingClose
     await portal.goto("https://foreign.invalid/");
     await assert.rejects(profile.session.openOnboardingPortal(draft.token, draft.operationId));
     assert.equal(submissions, 1); assert.equal(acquisitions, 1); assert.equal(context.pages().length, 2);
-    await setup.getByRole("button", { name: "Open duo.ucsd.edu", exact: true }).click();
+    await setup.getByRole("button", { name: "Set up Touch ID", exact: true }).click();
     await expect(setup.locator("#message")).toContainText("Relay could not finish that action");
     await setup.evaluate(() => new Promise<void>(resolve => {
       const list = document.getElementById("accountList"); if (!list) throw new Error("fixture method list missing");
@@ -126,6 +128,8 @@ for (const pendingClose of [false, true]) it(pendingClose
       observer.observe(list, { childList: true });
     }));
     await expect(setup.locator("#message")).toContainText("Relay could not finish that action");
+    await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
+    await expect(setup.getByRole("button", { name: "Set up Touch ID", exact: true })).toBeEnabled();
     const methodsBeforeReopen = read().methods;
     await setup.close();
     await Promise.all([profile.session.showOnboardingBrowser(draft.token, draft.operationId), profile.session.showOnboardingBrowser(draft.token, draft.operationId)]);
@@ -140,9 +144,9 @@ for (const pendingClose of [false, true]) it(pendingClose
     await expect(context.pages()[0].getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
     if (pendingClose) {
       setup = context.pages()[0];
-      await setup.getByRole("group", { name: "Sign-in method", exact: true }).getByRole("button", { name: "Security key", exact: true }).click();
+      await setup.locator('.relay-method-card[data-method="key"]').click();
       await setup.getByRole("button", { name: "Set up Security key", exact: true }).click();
-      await expect(setup.locator("#cancelCapture")).toBeEnabled();
+      await expect(setup.getByRole("button", { name: "Cancel setup", exact: true })).toBeEnabled();
       assert.equal(read().methods.key.state, "pending");
       await context.route("https://synthetic.duosecurity.com/**", route => route.fulfill({ contentType: "text/html",
         body: "<!doctype html><body>Signed in as: synthetic-user@ucsd.edu</body>" }));
@@ -188,11 +192,11 @@ for (const pendingClose of [false, true]) it(pendingClose
       } finally { debugAdmission.release(); }
       assert.equal(retained.ceremonyObserved, true); assert.equal(retained.portalAccepted, false);
       assert.equal(retained.operatorConfirmed, false); assert.equal(retained.exactCredentialRequestObserved, false);
-      assert.equal(read().methods.touch.state, "idle"); assert.equal(acquisitions, 1); assert.equal(submissions, 1);
-      await expect(context.pages()[0].locator("#accountList")).toContainText("Failed");
-      await assert.rejects(profile.session.startOnboardingDuo(draft.token, draft.operationId, "key"));
-      await assert.rejects(profile.session.startOnboardingDuo(draft.token, draft.operationId, "touch"));
-      assert.equal(read().methods.key.attemptId, captured.attemptId); assert.equal(launches, 3);
+      assert.equal(read().methods.touch.state, "idle"); assert.equal(acquisitions, 2); assert.equal(submissions, 2);
+      await expect(context.pages()[0].locator("#accountList")).toContainText("Not confirmed");
+      await profile.session.startOnboardingDuo(draft.token, draft.operationId, "touch");
+      assert.equal(read().methods.touch.state, "pending");
+      assert.equal(read().methods.key.state, "unknown"); assert.equal(read().methods.key.attemptId, captured.attemptId); assert.equal(launches, 3);
       assert.deepEqual(await profile.session.cancelOnboarding(draft.token, draft.operationId), { state: "signed-out" });
       assert.ok(owner); const stale = owner; assert.throws(() => stale.assertCurrent()); await assert.rejects(stale.acquireCredentials());
       assert.equal(machine.readProfileRegistry().profiles.length, 0);
@@ -213,7 +217,7 @@ for (const pendingClose of [false, true]) it(pendingClose
   if (failure !== undefined) throw new Error("onboarding fixture failed", { cause: failure });
 });
 
-for (const scenario of ["software", "abort", "timeout", "platform", "scope-refused"] as const) it(`real enrollment bridge: ${scenario}`, async () => {
+for (const scenario of ["software", "abort", "timeout", "platform"] as const) it(`real enrollment bridge: ${scenario}`, async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "duo-enrollment-")));
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(root, file));
   const machine = acquireEntrypointAdmission(root, "exclusive", await runtimeLifetimeLock());
@@ -226,7 +230,7 @@ for (const scenario of ["software", "abort", "timeout", "platform", "scope-refus
       if (input.nativeOnly) return DEFAULT_BROWSER_LAUNCHER.launch(input);
       context = await DEFAULT_BROWSER_LAUNCHER.launch({ ...input, headless: true });
       await context.route("https://enrollment.duosecurity.com/**", route => route.fulfill({ contentType: "text/html",
-        body: scenario === "scope-refused" ? "<!doctype html><body>Duo device management</body>" : "<!doctype html><body>Signed in as: synthetic-enrollment@ucsd.edu</body>" }));
+        body: scenario === "software" ? "<!doctype html><body>Signed in as: synthetic-enrollment@ucsd.edu</body>" : "<!doctype html><body>Duo device management</body>" }));
       return context;
     } },
   });
@@ -272,13 +276,16 @@ for (const scenario of ["software", "abort", "timeout", "platform", "scope-refus
         return { state: "failed", name: error instanceof Error ? error.name : "unknown" };
       }
     }, scenario);
-    if (scenario === "abort" || scenario === "timeout" || scenario === "scope-refused") {
+    if (scenario === "abort" || scenario === "timeout") {
       assert.equal(outcome.state, "failed");
       assert.equal(outcome.name, scenario === "abort" ? "AbortError" : "NotAllowedError");
-      await expect.poll(() => profile.session.readOnboarding(draft.token, draft.operationId).methods.key.state).toBe("unknown");
-      await assert.rejects(profile.session.startOnboardingDuo(draft.token, draft.operationId, "key"));
-      const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`), "utf8")));
-      assert.equal(operation.onboarding?.attempts[0]?.failure?.causeTag, scenario === "scope-refused" ? "request-refused" : scenario === "abort" ? "aborted" : "timed-out");
+      await expect.poll(() => SignUpOperationSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`), "utf8"))).onboarding?.attempts[0]?.failure)
+        .toEqual({ kind: "refused", causeTag: scenario === "abort" ? "aborted" : "timed-out" });
+      const failed = profile.session.readOnboarding(draft.token, draft.operationId).methods.key;
+      assert.equal(failed.state, "idle");
+      await profile.session.startOnboardingDuo(draft.token, draft.operationId, "key");
+      const restarted = profile.session.readOnboarding(draft.token, draft.operationId).methods.key;
+      assert.equal(restarted.state, "pending"); assert.notEqual(restarted.attemptId, failed.attemptId);
     } else {
       assert.deepEqual(outcome, { state: "created", attachment: scenario === "platform" ? "platform" : "cross-platform" });
       const state = profile.session.readOnboarding(draft.token, draft.operationId).methods[method];
@@ -292,7 +299,7 @@ for (const scenario of ["software", "abort", "timeout", "platform", "scope-refus
         assert.ok(reasons.includes("intercepted"));
         if (scenario === "software" || scenario === "platform") {
           for (const reason of ["forwarded", "backend-received", "replied"]) assert.ok(reasons.includes(reason), reason);
-        } else assert.ok(reasons.includes(scenario === "scope-refused" ? "refused-account" : scenario === "abort" ? "aborted" : "timed-out"));
+        } else assert.ok(reasons.includes(scenario === "abort" ? "aborted" : "timed-out"));
         assert.doesNotMatch(JSON.stringify(events), /synthetic-enrollment@ucsd.edu|synthetic-enrollment-password|synthetic-handle|synthetic-enrollment-challenge|privateKey|publicKey|stack/);
       });
     } finally { debugAdmission.release(); }
