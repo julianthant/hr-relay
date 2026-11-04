@@ -99,11 +99,12 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
   const generation = useRef(0);
   const pending = useRef(false);
   const currentAuthority = useRef(served?.authorityKey); currentAuthority.current = served?.authorityKey;
+  const servedMode = served !== undefined;
   useEffect(() => {
     let current = true;
-    void accountClient.chatGptAccount().then(value => { if (current) setAccount(value); }, () => { if (current) setError('Could not load ChatGPT account. Open Settings to try again.'); });
+    if (!servedMode) void accountClient.chatGptAccount().then(value => { if (current) setAccount(value); }, () => { if (current) setError('Could not load ChatGPT account. Open Settings to try again.'); });
     return () => { current = false; generation.current += 1; };
-  }, [accountClient]);
+  }, [accountClient, servedMode]);
   async function perform(work: () => Promise<AssistantConversation>): Promise<boolean> {
     if (pending.current) return false;
     pending.current = true; setBusy(true); setError(null);
