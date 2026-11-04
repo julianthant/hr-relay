@@ -2,9 +2,8 @@ name: CI
 
 on:
   pull_request:
-    branches: [staging, main]
+    branches: [staging]
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -46,7 +45,7 @@ jobs:
   unit:
     name: unit
     needs: checks
-    if: always()
+    if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
       - env:
@@ -82,19 +81,7 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - env:
-          RESULT: ${{ needs.checks.outputs.parity }}
-        run: test "$RESULT" = success
-
-  release:
-    name: release
-    needs: checks
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.base_ref == 'main' && needs.checks.outputs.release != 'skipped' }}
-    runs-on: ubuntu-latest
-    steps:
-      - env:
-          RESULT: ${{ needs.checks.outputs.release }}
-        run: test "$RESULT" = success
+      - run: echo "Desktop parity is verified during full releases."
 
   train:
     name: merge train

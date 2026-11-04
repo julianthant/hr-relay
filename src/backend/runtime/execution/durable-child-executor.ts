@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { RunRecordSchema, runClaim, type RunRecord } from "../../../models/run/record.js";
-import { delegationEvidenceOutput, RunResultRecordSchema, type DelegationTerminalEvidence } from "../../../models/run/result.js";
+import { resolveDelegationEvidenceOutput, readRunPreviewResult, DelegationTerminalEvidenceSchema, RunResultRecordSchema, type DelegationTerminalEvidence } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
-import { assertDelegationReplayMatches, joinDelegationOutcomes, type DelegationPlan } from "../../../models/workflow/delegation.js";
-import { childRunOutcomeSchema, DelegationManifestRefSchema, type AnyWorkflowRef } from "../../../models/workflow/graph.js";
+import { assertDelegationReplayMatches, type DelegationPlan } from "../../../models/workflow/delegation.js";
+import { DelegationManifestRefSchema, type AnyWorkflowRef } from "../../../models/workflow/graph.js";
 import { CommandIdSchema, DelegationManifestIdSchema, RunIdSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { DelegationManifestSchema, type DelegationManifest } from "../../../rules/workflow/dependencies.js";
@@ -90,7 +90,7 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
           const { node } = context;
           const member = admitted.entries[index];
           if (member?.state === "reused") {
-            values[node.id] = delegationEvidenceOutput(member.evidence, node.target.result);
+            values[node.id] = resolveDelegationEvidenceOutput(member.evidence, node.target.result).output;
             continue;
           }
           const manifest = DelegationManifestSchema.parse(member?.manifest);
@@ -105,7 +105,8 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
               !== canonicalJsonStringify(plan.children.map(({ childItemId, canonicalInputFingerprint }) => ({ childItemId, canonicalInputFingerprint })))) {
             throw new Error("delegation-manifest-plan-mismatch");
           }
-          const children = authority.authority.dependencies.members(manifest.manifestId).map(({ entry, child, dependency }, index) => {
+          const authenticated = authority.authority.dependencies.authenticateGroup(manifest);
+          const children = authenticated.children.map(({ entry, child, dependency, terminal }, index) => {
             assertChildBinding(parent, child, context, target);
             if (child.envelope.descriptorVersion !== target.version || child.envelope.contractFingerprint !== target.contractFingerprint
               || child.input.ingressSchemaHash !== manifest.inputSchemaHash
@@ -115,7 +116,7 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
               || dependency.childItemId !== entry.childItemId || child.envelope.itemId !== entry.childItemId
               || dependency.manifestId !== manifest.manifestId || dependency.edgeId !== manifest.edgeId
               || canonicalJsonStringify(dependency.policy) !== canonicalJsonStringify(plan.policy)) throw new Error("delegation-dependency-binding-mismatch");
-            return { child, dependency };
+            return { child, dependency, terminal };
           });
           if (admitted.state === "released") continue;
           assertHeldParent(batch, parent);
@@ -123,21 +124,23 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
             values[node.id] = DelegationManifestRefSchema.parse({ manifestId: manifest.manifestId, edgeId: manifest.edgeId, childCount: children.length });
             continue;
           }
-          const outcomes = children.map(({ child, dependency }) => {
+          const settled = children.map(({ child: currentChild, dependency, terminal }) => {
+            const child = terminal?.run ?? currentChild;
             if (child.lifecycle.state !== "terminal") throw new Error("delegation-child-not-terminal");
-            const identity = { runId: child.envelope.runId, itemId: child.envelope.itemId };
+            const result = RunResultRecordSchema.parse(terminal?.result ?? authority.authority.runResults.get(child.envelope.runId));
             switch (child.lifecycle.outcome) {
               case "done": {
                 if (dependency.state !== "satisfied") throw new Error("delegation-dependency-unsettled");
-                const result = RunResultRecordSchema.parse(authority.authority.runResults.get(child.envelope.runId));
+                const preview = readRunPreviewResult(result);
                 if (result.runId !== child.envelope.runId || result.workflowId !== child.envelope.workflow
                   || result.attempt !== child.envelope.attempt || result.descriptorVersion !== child.envelope.descriptorVersion
-                  || result.contractFingerprint !== child.envelope.contractFingerprint || result.resultSchemaHash !== manifest.resultSchemaHash
+                  || result.contractFingerprint !== child.envelope.contractFingerprint
+                  || (preview === undefined ? result.resultSchemaHash !== manifest.resultSchemaHash : !child.envelope.dryRun || !parent.envelope.dryRun)
                   || child.completion?.kind !== "done" || child.completion.resultDigest !== result.resultDigest
                   || result.configFingerprint !== child.envelope.configFingerprint || result.configSnapshotId !== child.envelope.configSnapshotId) {
                   throw new Error("delegation-child-result-mismatch");
                 }
-                return childRunOutcomeSchema(node.target.result).parse({ state: "done", ...identity, output: result.result.value });
+                return { run: child, result };
               }
               case "failed": {
                 const failureId = child.lifecycle.failureId;
@@ -145,21 +148,22 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
                 const failure = authority.authority.failures.get(failureId);
                 if (dependency.state !== "failed" || failure === undefined || failure.runId !== child.envelope.runId
                   || failure.attempt !== child.envelope.attempt || failure.workflowId !== child.envelope.workflow) throw new Error("delegation-child-failure-mismatch");
-                return childRunOutcomeSchema(node.target.result).parse({ state: "failed", ...identity, failureId });
+                return { run: child, result };
               }
               case "cancelled": {
                 if (dependency.state !== "cancelled") throw new Error("delegation-dependency-unsettled");
                 const source = authority.authority.dependencies.cancellationOutcome(child.envelope.runId);
                 if (source.reason === undefined) throw new Error("delegation-child-cancellation-reason-unavailable");
-                return childRunOutcomeSchema(node.target.result).parse({ state: "cancelled", ...identity, ...source });
+                return { run: child, result, cancellation: source };
               }
               default:
                 throw new Error("delegation-child-terminal-outcome-unresolved");
             }
           });
-          const joined = joinDelegationOutcomes(plan, outcomes);
-          if (joined.state !== "satisfied") throw new Error(`delegation-join-${joined.state}: ${joined.reason}`);
-          values[node.id] = node.cardinality === "one" ? outcomes[0] : outcomes;
+          const evidence = DelegationTerminalEvidenceSchema.parse({ state: "delegation-resolved", nodeId: node.id,
+            parentRunId: parent.envelope.runId, edgeId: manifest.edgeId, invocationCommandId: authenticated.invocation.commandId,
+            manifest, children: settled });
+          values[node.id] = resolveDelegationEvidenceOutput(evidence, node.target.result).output;
         }
         if (admitted.state === "released") {
           const wait = authority.authority.dependencies.wait(parent.envelope.runId, batch.descriptor);

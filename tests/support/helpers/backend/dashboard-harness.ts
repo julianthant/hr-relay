@@ -230,6 +230,7 @@ export async function makeWorld(input?: Readonly<{
   timeline?: TimelineRepository;
   collectRebuilds?: boolean;
   profileFixture?: () => Promise<BoundProfileStorageFixture>;
+  busyTimeoutMs?: number;
 
   descriptors?: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
 }>): Promise<DashboardWorld> {
@@ -240,7 +241,7 @@ export async function makeWorld(input?: Readonly<{
   const stateRoot = fixture.stateRoot;
   const clock = manualClock(AT);
   const authority = authorityFake();
-  const database = AuthorityDatabase.open({ path: fixture.path, busyTimeoutMs: 500, migrationOwner: "history-dashboard-fixture" }, clock);
+  const database = AuthorityDatabase.open({ path: fixture.path, busyTimeoutMs: input?.busyTimeoutMs ?? 500, migrationOwner: "history-dashboard-fixture" }, clock);
   held.database = database;
   database.authority.runtimeConfig.initialize(CONFIG_SNAPSHOT);
   const synchronizeOwner = (runId: string, visiting = new Set<string>()): void => {

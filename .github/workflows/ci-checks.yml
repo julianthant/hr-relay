@@ -1,4 +1,4 @@
-name: CI checks
+name: Portable CI checks
 
 on:
   workflow_call:
@@ -15,8 +15,6 @@ on:
         value: ${{ jobs.architecture.result }}
       parity:
         value: ${{ jobs.parity.result }}
-      release:
-        value: ${{ jobs.release.result }}
 
 permissions:
   contents: read
@@ -31,34 +29,38 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      unit: ${{ steps.select.outputs.unit }}
-      integration: ${{ steps.select.outputs.integration }}
-      architecture: ${{ steps.select.outputs.architecture }}
-      parity: ${{ steps.select.outputs.parity }}
-      ubuntu: ${{ steps.select.outputs.ubuntu }}
-      macos: ${{ steps.select.outputs.macos }}
+      plan: ${{ steps.select.outputs.plan }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version-file: package.json
           cache: npm
+      - run: npm ci
       - name: Find the latest successful file timings
         id: timings
         uses: actions/github-script@v7
         with:
           script: |
-            const { data: { workflow_runs: runs } } = await github.rest.actions.listWorkflowRuns({
-              ...context.repo, workflow_id: 'ci.yml', status: 'success', per_page: 100,
-            });
-            for (const run of runs) {
-              if (run.id === context.runId) continue;
-              const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
-                ...context.repo, run_id: run.id, per_page: 100,
+            const { execFileSync } = require('node:child_process');
+            const policy = (command, payload) => JSON.parse(execFileSync('node', [
+              '--import', 'tsx', 'scripts/test/ci-plan.ts', command, JSON.stringify(payload),
+            ], { encoding: 'utf8' }));
+            const registered = await github.paginate(github.rest.actions.listRepoWorkflows, { ...context.repo, per_page: 100 });
+            const workflows = policy('workflows', registered.map(({ id, path }) => ({ id, path })));
+            const histories = await Promise.all(workflows.map(async workflow_id => {
+              const { data: { workflow_runs } } = await github.rest.actions.listWorkflowRuns({
+                ...context.repo, workflow_id, status: 'success', per_page: 100,
               });
-              if (artifacts.some(a => a.name === 'ci-timings' && !a.expired)) {
-                core.setOutput('run', String(run.id));
-                core.info(`Balancing from successful CI run ${run.id}`);
+              return workflow_runs.map(({ id, created_at, conclusion }) => ({ id, created_at, conclusion }));
+            }));
+            for (const run_id of policy('history', { currentRunId: context.runId, runs: histories.flat() })) {
+              const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+                ...context.repo, run_id, per_page: 100,
+              });
+              if (policy('artifact', artifacts.map(({ name, expired }) => ({ name, expired })))) {
+                core.setOutput('run', String(run_id));
+                core.info(`Balancing from successful CI run ${run_id}`);
                 return;
               }
             }
@@ -109,35 +111,15 @@ jobs:
           FILTERS: ${{ toJSON(steps.filter.outputs) }}
         with:
           script: |
-            const filters = JSON.parse(process.env.FILTERS);
-            const suites = ['unit', 'integration', 'architecture', 'parity'];
-            if (context.eventName === 'pull_request' &&
-                ['shared', ...suites].some(name => !['true', 'false'].includes(filters[name]))) {
-              throw new Error('Path-filter outputs are incomplete or invalid.');
-            }
-            const manual = context.eventName === 'workflow_dispatch';
-            const release = manual || context.payload.pull_request?.base.ref === 'main';
-            const selected = Object.fromEntries(suites.map(suite => [suite,
-              (suite !== 'parity' || release) && (manual || filters.shared === 'true' || filters[suite] === 'true')
-            ]));
-            if (!manual && context.payload.pull_request?.draft) {
-              selected.integration = false;
-              selected.architecture = false;
-              selected.parity = false;
-            }
-            const jobs = (suite, shards) => Array.from({ length: shards }, (_, i) => ({ suite, shard: i + 1, shards }));
-            // scripts/test/ci-files.ts balances each suite's files across its jobs by measured duration.
-            // Release runs give three of the five macOS runners to parity.
-            const macosShards = selected.integration ? (selected.parity ? 2 : 5) : selected.unit ? 1 : 0;
-            const ubuntu = [
-              ...(selected.unit ? jobs('unit', selected.integration ? 2 : 3) : []),
-              ...(selected.architecture ? jobs('architecture', 2) : []),
-              ...(selected.integration ? jobs('integration', 14) : []),
-            ];
-            const macos = [...(selected.parity ? jobs('parity', 3) : []), ...jobs('native', macosShards)];
-            for (const suite of suites) core.setOutput(suite, String(selected[suite]));
-            core.setOutput('ubuntu', JSON.stringify({ include: ubuntu }));
-            core.setOutput('macos', JSON.stringify({ include: macos }));
+            const { execFileSync } = require('node:child_process');
+            const input = {
+              workflow: 'portable', event: context.eventName,
+              base: context.payload.pull_request?.base.ref ?? '', head: context.payload.pull_request?.head.ref ?? '',
+              draft: context.payload.pull_request?.draft ?? false, filters: JSON.parse(process.env.FILTERS),
+            };
+            core.setOutput('plan', execFileSync('node', [
+              '--import', 'tsx', 'scripts/test/ci-plan.ts', 'plan', JSON.stringify(input),
+            ], { encoding: 'utf8' }).trim());
 
   static:
     name: static
@@ -162,15 +144,27 @@ jobs:
       - run: npm run stores:catalog:check
       - run: npm run roadmap:check
 
+  privacy:
+    name: privacy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - run: npm run privacy:check
+
   ubuntu:
-    name: ubuntu ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}
     needs: changes
-    if: needs.changes.outputs.ubuntu != '{"include":[]}'
+    name: ubuntu ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}
+    if: ${{ fromJSON(needs.changes.outputs.plan).ubuntu.include[0] != null }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.ubuntu) }}
+      matrix: ${{ fromJSON(needs.changes.outputs.plan).ubuntu }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -210,163 +204,23 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  macos:
-    name: macOS ${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.shards }}
-    needs: changes
-    if: needs.changes.outputs.macos != '{"include":[]}'
-    runs-on: macos-15
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.macos) }}
-    steps:
-      # Spotlight indexing competes with the tests for the runner's three CPUs.
-      - run: sudo mdutil -a -i off
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - run: npm run build:manifest:prepare
-      - uses: actions/download-artifact@v4
-        with:
-          name: ci-balancing
-          path: scripts/test/
-      - uses: actions/cache@v4
-        id: browsers
-        if: matrix.suite == 'parity' || needs.changes.outputs.integration == 'true'
-        with:
-          path: ~/Library/Caches/ms-playwright
-          key: ${{ runner.os }}-${{ runner.arch }}-macos-15-playwright-${{ matrix.suite == 'parity' && 'chromium-webkit' || 'chromium' }}-${{ hashFiles('package-lock.json') }}
-      - name: Install browsers on cache miss
-        if: steps.browsers.outcome == 'success' && steps.browsers.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium ${{ matrix.suite == 'parity' && 'webkit' || '' }}
-      - run: npm run web:build
-        if: matrix.suite == 'native' && needs.changes.outputs.integration == 'true'
-      - name: Mount test temp on a RAM disk
-        run: |
-          dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
-          vol=$(dirname "$dir")
-          case "$(mount | grep -F " on ${vol} " || true)" in
-            *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
-          esac
-          sudo mdutil -i off "$vol"
-          printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - name: Verify full Chromium installation before timed native proofs
-        if: matrix.suite == 'native' && needs.changes.outputs.integration == 'true'
-        timeout-minutes: 1
-        run: |
-          node --input-type=module <<'NODE'
-          import assert from 'node:assert/strict';
-          import { once } from 'node:events';
-          import { chromium } from 'playwright';
-          const started = performance.now();
-          const server = await chromium.launchServer({ channel: 'chromium', headless: true });
-          const exited = once(server.process(), 'close');
-          let startupMs;
-          try {
-            const browser = await chromium.connect(server.wsEndpoint());
-            const context = await browser.newContext();
-            await context.newPage();
-            startupMs = Math.round(performance.now() - started);
-            await context.close();
-            await browser.close();
-          } finally {
-            await server.close();
-            const [code, signal] = await exited;
-            assert.equal(code, 0);
-            assert.equal(signal, null);
-          }
-          console.log(JSON.stringify({ event: 'chromium-installation-verified', startupMs }));
-          NODE
-      - name: Check native browser process proofs without competing files
-        if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.integration == 'true' }}
-        env:
-          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        # Samples machine state every 5s so a stalled proof shows whether memory, CPU or the RAM disk ran out.
-        run: |
-          ( while true; do
-              echo "[machine] $(date -u +%T) load=$(sysctl -n vm.loadavg) $(memory_pressure | tail -1) tmp-free=$(df -m "$TMPDIR" | awk 'NR==2{print $4}')MB"
-              ps -Ao pcpu=,rss=,comm= | sort -rn | head -4 | awk '{printf "[machine]   %s%% cpu %d MB %s\n", $1, $2/1024, $3}'
-              sleep 5
-            done ) &
-          sampler=$!
-          set +e
-          scripts/test/ci-run.sh integration serial "$SLICE" --maxWorkers=1 --no-file-parallelism
-          status=$?
-          kill "$sampler"
-          exit "$status"
-      - name: Storage upgrade files without competing files
-        if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.integration == 'true' }}
-        env:
-          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh integration storage "$SLICE" --maxWorkers=1 --no-file-parallelism
-      - name: macOS-only unit files
-        if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.unit == 'true' }}
-        env:
-          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh unit macos "$SLICE" --maxWorkers=2
-      - name: macOS-only integration files
-        if: ${{ !cancelled() && matrix.suite == 'native' && needs.changes.outputs.integration == 'true' }}
-        env:
-          SLICE: ${{ matrix.shard }}/${{ matrix.shards }}
-        run: scripts/test/ci-run.sh integration macos "$SLICE" --maxWorkers=2
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() && matrix.suite == 'native' }}
-        with:
-          name: durations-macos-${{ matrix.shard }}
-          path: ${{ runner.temp }}/durations/
-          if-no-files-found: ignore
-          retention-days: 14
-      - name: Desktop parity
-        if: ${{ !cancelled() && matrix.suite == 'parity' }}
-        run: npm run test:parity -- --shard=${{ matrix.shard }}/${{ matrix.shards }} --workers=2
-      - uses: actions/upload-artifact@v4
-        if: ${{ always() && matrix.suite == 'parity' }}
-        with:
-          name: parity-results-${{ matrix.shard }}
-          path: tests/parity/.output/
-          include-hidden-files: true
-
-  unit:
-    name: unit
-    needs: [changes, ubuntu, macos]
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require the selected suite's runner jobs
-        env:
-          FILTER_RESULT: ${{ needs.changes.result }}
-          SELECTED: ${{ needs.changes.outputs.unit }}
-          RUNNER_RESULTS: ${{ needs.ubuntu.result }} ${{ needs.macos.result }}
-        run: |
-          test "$FILTER_RESULT" = success
-          if [ "$SELECTED" = false ]; then
-            echo "Suite not selected for this pull request."
-          else
-            test "$SELECTED" = true
-            test "$RUNNER_RESULTS" = "success success"
-          fi
-
   integration:
     name: integration
-    needs: [changes, ubuntu, macos]
+    needs: [changes, ubuntu]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Require the selected suite's runner jobs
-        env:
-          FILTER_RESULT: ${{ needs.changes.result }}
-          SELECTED: ${{ needs.changes.outputs.integration }}
-          RUNNER_RESULTS: ${{ needs.ubuntu.result }} ${{ needs.macos.result }}
+      - env:
+          PLAN_RESULT: ${{ needs.changes.result }}
+          SELECTED: ${{ fromJSON(needs.changes.outputs.plan).integration }}
+          UBUNTU_RESULT: ${{ needs.ubuntu.result }}
         run: |
-          test "$FILTER_RESULT" = success
+          test "$PLAN_RESULT" = success
           if [ "$SELECTED" = false ]; then
             echo "Suite not selected for this pull request."
           else
             test "$SELECTED" = true
-            test "$RUNNER_RESULTS" = "success success"
+            test "$UBUNTU_RESULT" = success
           fi
 
   architecture:
@@ -375,87 +229,29 @@ jobs:
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Require the selected suite's runner jobs
-        env:
-          FILTER_RESULT: ${{ needs.changes.result }}
-          SELECTED: ${{ needs.changes.outputs.architecture }}
-          RUNNER_RESULTS: ${{ needs.ubuntu.result }}
+      - env:
+          PLAN_RESULT: ${{ needs.changes.result }}
+          SELECTED: ${{ fromJSON(needs.changes.outputs.plan).architecture }}
+          UBUNTU_RESULT: ${{ needs.ubuntu.result }}
         run: |
-          test "$FILTER_RESULT" = success
+          test "$PLAN_RESULT" = success
           if [ "$SELECTED" = false ]; then
             echo "Suite not selected for this pull request."
           else
             test "$SELECTED" = true
-            test "$RUNNER_RESULTS" = "success"
+            test "$UBUNTU_RESULT" = success
           fi
 
   parity:
     name: parity
-    needs: [changes, macos]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
-      - name: Require the selected suite's runner jobs
-        env:
-          FILTER_RESULT: ${{ needs.changes.result }}
-          SELECTED: ${{ needs.changes.outputs.parity }}
-          RUNNER_RESULTS: ${{ needs.macos.result }}
-        run: |
-          test "$FILTER_RESULT" = success
-          if [ "$SELECTED" = false ]; then
-            echo "Suite not selected for this pull request."
-          else
-            test "$SELECTED" = true
-            test "$RUNNER_RESULTS" = "success"
-          fi
-
-  privacy:
-    name: privacy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - run: npm run privacy:check
-
-  release:
-    name: release
-    if: github.event_name == 'pull_request' && github.base_ref == 'main' && needs.changes.outputs.architecture == 'true'
-    needs: [changes, static, unit, integration, architecture, parity, privacy]
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: package.json
-          cache: npm
-      - run: npm ci
-      - run: npm run build:manifest:prepare
-      - uses: actions/cache@v4
-        id: browsers
-        with:
-          path: ~/Library/Caches/ms-playwright
-          key: ${{ runner.os }}-${{ runner.arch }}-macos-15-playwright-chromium-${{ hashFiles('package-lock.json') }}
-      - run: npx playwright install --with-deps chromium
-        if: steps.browsers.outputs.cache-hit != 'true'
-      - run: npm run web:build
-      - name: Mount test temp on a RAM disk
-        run: |
-          dir=$(scripts/test/ram-tmp.sh "$RELAY_TEST_RAM_MB")
-          vol=$(dirname "$dir")
-          case "$(mount | grep -F " on ${vol} " || true)" in
-            *noowners*) echo "RAM disk is still mounted noowners" >&2; exit 1 ;;
-          esac
-          printf 'TMPDIR=%s\nTEMP=%s\nTMP=%s\n' "$dir" "$dir" "$dir" >> "$GITHUB_ENV"
-      - run: npm run test:coverage
-      - run: npm run test:perf
+      - run: echo "Desktop parity is verified during full releases."
 
   timings:
-    needs: [changes, ubuntu, macos]
-    if: ${{ !cancelled() && needs.changes.result == 'success' && !contains(needs.*.result, 'failure') && (needs.ubuntu.result == 'success' || needs.macos.result == 'success') }}
+    needs: [changes, static, privacy, ubuntu, integration, architecture, parity]
+    if: ${{ !cancelled() && needs.changes.result == 'success' && fromJSON(needs.changes.outputs.plan).testJobs > 0 }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -464,6 +260,10 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
+      - env:
+          PLAN: ${{ needs.changes.outputs.plan }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: node --import tsx scripts/test/ci-plan.ts proofs "$PLAN" "$RESULTS"
       - uses: actions/download-artifact@v4
         with:
           name: ci-balancing
@@ -479,3 +279,20 @@ jobs:
           name: ci-timings
           path: scripts/test/ci-durations.json
           retention-days: 14
+
+  unit:
+    name: unit
+    needs: [changes, static, privacy, ubuntu, integration, architecture, parity, timings]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - env:
+          PLAN: ${{ needs.changes.outputs.plan }}
+          RESULTS: ${{ toJSON(needs) }}
+        run: node --import tsx scripts/test/ci-plan.ts verify "$PLAN" "$RESULTS"

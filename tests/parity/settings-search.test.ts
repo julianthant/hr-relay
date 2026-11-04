@@ -108,7 +108,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       }
       await page.goto(`${server.baseUrl}/?settings=spreadsheets`);
       await expect(page.getByRole("searchbox", { name: "Find a spreadsheet", exact: true })).toHaveCount(0);
-      const libraryOpen = page.getByRole("button", { name: "26–27 Student applicants.xlsx", exact: true });
+      const libraryOpen = page.getByRole("button", { name: "Open 26–27 Student applicants.xlsx", exact: true });
       await libraryOpen.focus(); await libraryOpen.press("Enter");
       await expect(page.getByRole("region", { name: "Spreadsheet editor", exact: true })).toBeVisible();
       await page.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("button", { name: "Spreadsheets", exact: true }).click();

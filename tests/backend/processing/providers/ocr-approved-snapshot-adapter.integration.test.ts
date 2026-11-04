@@ -1,3 +1,14 @@
+import { scaledMs } from "../../../support/time-scale.js";
+import { childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
+import { dataOriginViewsOf } from "../../../../src/backend/app/composition/dashboard/run-detail-descriptors.js";
+import { buildRunLogsSection } from "../../../../src/backend/runs/queries/run-logs.js";
+import { approvedEmergencyContact, contactEffect } from "../../../../src/rules/ucpath/emergency-contact.js";
+import { interpretContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-operation.js";
+import { UCPATH_CONTACT_DISPLAYED_NAME } from "../../../../src/models/ui/ucpath-emergency-contact.js";
+import { SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
+import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach,it } from "vitest";
@@ -6,16 +17,22 @@ import { createOcrApprovedSnapshotAdapter } from "../../../../src/backend/proces
 import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
 import { authenticateOriginalDelegationGroup,retainedDelegationManifests } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
-import { StartPlanWireSchema } from "../../../../src/models/dashboard/start-plan.js";
 import { OcrApprovedSnapshotSchema } from "../../../../src/models/ocr/review.js";
 import { OcrApprovalReadRequestSchema,OcrApprovalReadResultSchema } from "../../../../src/models/processing/ocr/approved-snapshot.js";
 import { ReadApprovedOcrSnapshot } from "../../../../src/models/processing/ocr/read-approved-snapshot.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { deriveSchemaHash,schemaBoundValueSchema } from "../../../../src/models/validation/schema-bound-value.js";
 import { EmergencyContactMemberInputSchema } from "../../../../src/models/workflows/emergency-contact-member/input.js";
-import { EmergencyContactResultSchema } from "../../../../src/models/workflows/emergency-contact/result.js";
+import { EmergencyContactResultSchema, EmergencyContactMemberResultSchema } from "../../../../src/models/workflows/emergency-contact/result.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
+
+import { createDeterministicUcpathContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
+import { UcpathContactPageSnapshotSchema, type UcpathContactPageSnapshot } from "../../../../src/models/ui/ucpath-emergency-contact.js";
+import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, readRunPreviewResult } from "../../../../src/models/run/result.js";
+import { healthyCrmDriver, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
+import contactPage from "../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
@@ -36,9 +53,11 @@ async function admitMembers(f: Fixture) {
   assert.equal(ocr.run.envelope.workflow, "ocr"); assert.equal(ocr.outcome.state, "done");
   const parent = await f.canonical.step(f.parentRun, new AbortController().signal);
   assert.equal(parent.run.envelope.runId, f.parentRun.envelope.runId); assert.equal(parent.outcome.state, "yielded-delegation");
-  const manifest = retainedDelegationManifests(f.database.authority, f.parentRun.envelope.runId).find(manifest => manifest.edgeId === "approved-records");
-  assert.ok(manifest);
-  return authenticateOriginalDelegationGroup(f.database.authority, manifest).children.map(child => child.original);
+  return f.database.withAuthorityReadSnapshot(() => {
+    const manifest = retainedDelegationManifests(f.database.authority, f.parentRun.envelope.runId).find(manifest => manifest.edgeId === "approved-records");
+    assert.ok(manifest);
+    return authenticateOriginalDelegationGroup(f.database.authority, manifest).children.map(child => child.original);
+  });
 }
 it("ocr/approved-snapshot — consumes a corrected released record and admits its exact native member", async () => {
   const f = await world.fixture({ coordinator: true, record: true, pageCount: 1 });
@@ -116,25 +135,173 @@ it("accounts for an actual unavailable real member as failed without inventing a
   assert.equal(f.harness.sessions.opens(), 0);
 });
 
-it("refuses a nonempty Emergency Contact parent dry run at native start planning before child admission", async () => {
-  let harness: Fixture["harness"] | undefined;
-  await assert.rejects(world.fixture({ coordinator: true, record: true, pageCount: 1, dryRun: true, onHarness: value => { harness = value; } }), error => {
-    assert.ok(error instanceof assert.AssertionError);
-    assert.equal(error.actual, 0);
-    assert.equal(error.expected, 1);
-    const refusals = StartPlanWireSchema.shape.refused.parse(JSON.parse(error.message.split("\n")[0]));
-    assert.equal(refusals.length, 1);
-    const [refusal] = refusals; assert.ok(refusal);
-    assert.deepEqual({ entry: refusal.entry, code: refusal.code }, { entry: 1, code: "dry-run-unsupported" });
-    assert.match(refusal.message, /emergency-contact has no transaction node/u);
-    return true;
-  });
-  assert.ok(harness);
-  assert.equal(harness.sessions.opens(), 0);
-  for (const workflow of ["emergency-contact", "ocr", "ocr-page", "emergency-contact-member"]) {
-    assert.deepEqual(harness.authority.database.authority.runs.listByWorkflow(workflow), []);
+it("previews a nonempty parent through ordinary OCR, selected child preparations and authenticated aggregation with zero writes", async () => {
+  const reviewedPages = [
+    { employeeName: "Example, Avery", contactName: "Robin Draft", correctedContactName: "Robin Corrected" },
+    { employeeName: "Sample, Blair", contactName: "Casey Draft", correctedContactName: "Casey Corrected" },
+    { employeeName: "Fixture, Cameron", contactName: "Drew Draft", correctedContactName: "Drew Corrected" },
+  ];
+  const selection = [2, 0];
+  const ports = new Map<string, ReturnType<typeof createDeterministicUcpathContactPage>>();
+  const captures = new Map<string, UcpathContactPageSnapshot[]>(), searched: string[] = [];
+  const target = childWorkflowModuleOf("emergency-contact", "emergency-contact-member");
+  const nativeMembers = new Map<string, { input: z.output<typeof EmergencyContactMemberInputSchema>; fingerprint: string }>();
+  let released = false;
+  function contactDriver(eid: string) {
+    assert.equal(released, true, "contact acquisition must follow the native OCR release");
+    const index = selection.find(index => String(10800000 + index) === eid); assert.ok(index !== undefined);
+    const facts = reviewedPages[index]; assert.ok(facts);
+    let port = ports.get(eid);
+    if (port === undefined) {
+      port = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse({ ...contactPage.page,
+        displayedEid: eid, displayedName: facts.employeeName }) });
+      ports.set(eid, port);
+    }
+    return createDeterministicUcpathPersonOrgDriver(undefined, undefined, port);
   }
-  assert.ok(harness.emitter.events().every(event => event.t !== "transaction.fenced"));
-  const date = harness.authority.clock.now().toISOString().slice(0, 10);
-  assert.deepEqual(createTransactionHistory(harness.authority.database.authority).query({ from: date, to: date }).rows, []);
-});
+  const sessions = sessionFactoryHarness({ ucpath: (): ReturnType<typeof createDeterministicUcpathPersonOrgDriver> => {
+    const driver = createDeterministicUcpathPersonOrgDriver();
+    let activeEid: string | undefined;
+    return { ...driver,
+      async searchPersonOrg(input) {
+        assert.ok(input.kind === "by-name"); searched.push(input.name);
+        const index = reviewedPages.findIndex(page => page.employeeName === input.name); assert.ok(index >= 0);
+        if (index !== 0) return SearchPersonOrgOutputSchema.parse({ results: [],
+          selection: { status: "not-found", selected: null, candidateEids: [], searchName: input.name } });
+        const candidate = { emplId: String(10800000 + index), name: input.name, department: "Housing Dining Hospitality", jobTitle: "Fixture employee",
+          employeeStatus: "active", hdh: true, hrStatus: "Active", startDate: "", effectiveDate: "", terminationDate: "", terminationReason: "" };
+        return SearchPersonOrgOutputSchema.parse({ results: [candidate], selection: { status: "resolved", selected: candidate, candidateEids: [candidate.emplId] } });
+      },
+      async readEmergencyContacts(input) { activeEid = input.emplId; return contactDriver(input.emplId).readEmergencyContacts(input); },
+      async stageEmergencyContact(input, plan) { activeEid = input.emplId; return contactDriver(input.emplId).stageEmergencyContact(input, plan); },
+      async read(id) { if (id !== UCPATH_CONTACT_DISPLAYED_NAME) return driver.read(id); assert.ok(activeEid); return contactDriver(activeEid).read(id); },
+    };
+  }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
+  const f = await world.fixture({ coordinator: true, record: true, pageCount: 3, reviewedPages, operatorEvidence: true, dryRun: true, sessions,
+    screenshotCapture: { capture: async context => {
+      assert.equal(context.screenshot.state, "available");
+      const member = nativeMembers.get(context.runId);
+      if (member === undefined) { assert.notEqual(context.descriptorFingerprint, target.descriptor.contractFingerprint); return; }
+      assert.equal(context.descriptorFingerprint, member.fingerprint);
+      assert.ok(member.input.record.assertedEid);
+      const port = ports.get(member.input.record.assertedEid); assert.ok(port);
+      const snapshot = await port.snapshot(); assert.equal(snapshot.displayedEid, member.input.record.assertedEid);
+      const previous = captures.get(context.runId) ?? []; previous.push(snapshot); captures.set(context.runId, previous);
+    } },
+  });
+  assert.equal(f.parentRun.envelope.dryRun, true);
+  assert.equal(ports.size, 0);
+  assert.deepEqual(searched, reviewedPages.map(page => page.employeeName));
+  assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.lifecycle.state, "parked-gate");
+  const review = f.database.authority.ocrReviews.latest(f.run.envelope.runId); assert.ok(review);
+  assert.equal(review.records.length, 3);
+  const identities = f.readResult().identities;
+  assert.equal(identities.length, 3);
+  for (const [index, identity] of identities.entries()) {
+    assert.ok(identity.outcome.state === "done");
+    assert.ok("activeStatus" in identity.outcome.output);
+    assert.equal(identity.outcome.output.activeStatus.state, index === 0 ? "active" : "not-found");
+    assert.equal(identity.outcome.output.activeStatus.details.eid, index === 0 ? "10800000" : null);
+  }
+  const selected = release(f, selection);
+  released = true;
+  const members = await admitMembers(f);
+  for (const member of members) {
+    assert.equal(member.envelope.contractFingerprint, target.descriptor.contractFingerprint);
+    nativeMembers.set(member.envelope.runId, { input: EmergencyContactMemberInputSchema.parse(member.input.parsed.value), fingerprint: member.envelope.contractFingerprint });
+  }
+  const snapshot = f.database.authority.ocrReviews.snapshots(f.run.envelope.runId)[0]; assert.ok(snapshot);
+  assert.deepEqual(snapshot.selectedRecordIds, selected);
+  assert.deepEqual(snapshot.records.map(record => approvedEmergencyContact(record).contact.name), selection.map(index => reviewedPages[index]?.correctedContactName));
+  assert.ok(snapshot.records.every(record => record.recordId !== review.records[1]?.recordId));
+  assert.deepEqual(members.map(member => EmergencyContactMemberInputSchema.parse(member.input.parsed.value).record), snapshot.records);
+  assert.deepEqual(members.map(member => EmergencyContactMemberInputSchema.parse(member.input.parsed.value).record.recordId), selected);
+  const ocrResult = f.database.authority.runResults.get(f.run.envelope.runId); assert.ok(ocrResult);
+  assert.equal(readRunPreviewResult(ocrResult), undefined);
+  const result = await f.canonical.execute(f.parentRun, new AbortController().signal);
+  assert.ok(result.run?.lifecycle.state === "terminal" && result.run.lifecycle.outcome === "done",
+    JSON.stringify(result.outcomes.map(outcome => ({ state: outcome.state }))));
+  f.database.withAuthorityReadSnapshot(() => {
+    const parentResult = f.database.authority.runResults.get(f.parentRun.envelope.runId); assert.ok(parentResult);
+    const preview = RunDelegatedDryRunPreviewResultSchema.parse(parentResult.result.value);
+    assert.equal(preview.externalCommit, "none");
+    assert.equal(preview.steps.find(step => step.nodeId === "members")?.state, "delegation-preview");
+    assert.equal(preview.steps.find(step => step.nodeId === "read-result")?.state, "unavailable");
+    assert.equal(EmergencyContactResultSchema.safeParse(parentResult.result.value).success, false);
+    const receipt = parentResult.dependencies.find(dependency => dependency.nodeId === "members");
+    assert.ok(receipt?.state === "delegation-resolved");
+    assert.deepEqual(receipt.members.map(member => member.runId), members.map(member => member.envelope.runId));
+    for (const member of members) {
+      assert.equal(member.envelope.dryRun, true);
+      const stored = f.database.authority.runResults.get(member.envelope.runId); assert.ok(stored);
+      assert.equal(RunDryRunPreviewResultSchema.parse(stored.result.value).externalCommit, "none");
+      assert.equal(EmergencyContactMemberResultSchema.safeParse(stored.result.value).success, false);
+    }
+    const all = [f.parentRun];
+    for (let index = 0; index < all.length; index++) { const run = all[index]; assert.ok(run); all.push(...f.database.authority.runs.listChildren(run.envelope.runId)); }
+    assert.equal(all.filter(run => run.envelope.workflow === "person-lookup").length, 3);
+    assert.equal(all.filter(run => run.envelope.workflow === "i9-lookup").length, 0);
+    for (const run of all) {
+      assert.equal(run.envelope.dryRun, true);
+      const stored = f.database.authority.runResults.get(run.envelope.runId); assert.ok(stored);
+      assert.equal(readRunPreviewResult(stored) !== undefined, ["emergency-contact", "emergency-contact-member"].includes(run.envelope.workflow));
+      assert.deepEqual(f.database.authority.writeIntents.listByRun(run.envelope.runId), []);
+      assert.deepEqual(f.database.authority.writeIntents.countDryRunEvidenceByRun(run.envelope.runId), { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
+    }
+  });
+  assert.equal(ports.size, 2);
+  for (const member of members) {
+    const input = EmergencyContactMemberInputSchema.parse(member.input.parsed.value), desired = contactEffect(approvedEmergencyContact(input.record));
+    assert.ok(input.record.assertedEid);
+    const port = ports.get(input.record.assertedEid); assert.ok(port);
+    assert.ok(port.actions.includes("demote-primary:0") && port.actions.includes("fill-fields:1") && port.actions.includes("fill-name:1"));
+    assert.ok(port.actions.indexOf("demote-primary:0") < port.actions.indexOf("fill-fields:1"));
+    assert.ok(port.actions.indexOf("fill-fields:1") < port.actions.indexOf("fill-name:1"));
+    const pair = captures.get(member.envelope.runId); assert.ok(pair && pair.length >= 2);
+    const original = pair[0], final = pair.at(-1); assert.ok(original && final);
+    assert.equal(original.observation, "persisted"); assert.equal(original.rows[0]?.primary, true);
+    assert.equal(final.observation, "staged"); assert.equal(final.rows[0]?.primary, false);
+    const primaries = interpretContactPage(final, approvedEmergencyContact(input.record)).rows.filter(row => row.kind === "contact" && row.effect.primary);
+    assert.equal(primaries.length, 1); assert.ok(primaries[0]?.kind === "contact"); assert.deepEqual(primaries[0].effect, desired);
+    assert.ok(!("save" in port) && !("commit" in port));
+  }
+
+  const currentParent = f.database.authority.runs.get(f.parentRun.envelope.runId); assert.ok(currentParent?.appVersion);
+  const projection = createOperatorProjection({ database: f.database, reader: f.canonical.lifecycle, stateRoot: f.harness.authority.stateRoot,
+    clock: f.clock, appVersion: currentParent.appVersion, descriptorSetHash: FingerprintSchema.parse(sha256Hex(f.root.descriptor.contractFingerprint)),
+    ledger: createTransactionHistory(f.database.authority), descriptors: { resolve: f.resolve } });
+  projection.rebuildFromTimeline();
+  const surface = projection.queueSurface(f.parentRun.envelope.runId); assert.ok(surface?.surfaceKind === "operation");
+  assert.deepEqual([...surface.memberRunIds].sort(), members.map(member => member.envelope.runId).sort());
+  assert.deepEqual(surface.memberRollup, { total: 2, terminal: 2, failed: 0 });
+  assert.deepEqual(surface.linkedRuns.map(link => link.runId), [f.run.envelope.runId]);
+  const ocrSurface = projection.queueSurface(f.run.envelope.runId); assert.ok(ocrSurface);
+  assert.equal(ocrSurface.parent?.runId, f.parentRun.envelope.runId);
+  assert.equal(ocrSurface.parent?.visibility, "linked");
+  for (const member of members) {
+    const memberSurface = projection.queueSurface(member.envelope.runId); assert.ok(memberSurface);
+    assert.equal(memberSurface.parent?.runId, f.parentRun.envelope.runId);
+    const current = f.database.authority.runs.get(member.envelope.runId); assert.ok(current);
+    const descriptor = f.resolve(current.envelope.workflow); assert.ok(descriptor);
+    const view = { ...descriptor, dataOrigins: dataOriginViewsOf({ descriptor, stores: f.stores.stores }) };
+    const logs = buildRunLogsSection({ stateRoot: f.harness.authority.stateRoot, timeline: f.database.authority.timelineEvents, projection,
+      runReader: f.canonical.lifecycle, canonical: { database: f.database, reader: f.canonical.lifecycle, descriptors: { resolve: f.resolve } },
+      authority: { getRun: f.database.authority.runs.get, latestCheckpoint: f.database.authority.runCheckpoints.latest,
+        listCheckpoints: f.database.authority.runCheckpoints.listByItem, getWriteIntent: f.database.authority.writeIntents.get,
+        listGateResults: f.database.authority.gateResults.listByRun }, descriptors: { resolve: () => view } }, current.envelope.runId, undefined, current);
+    assert.ok(logs.section === "logs");
+    const input = EmergencyContactMemberInputSchema.parse(current.input.parsed.value);
+    const planLines = (logs.payload.rows ?? []).flatMap(row => row.kind === "note" && row.note.operatorAction?.state === "confirmed"
+      && row.note.operatorAction.value !== undefined ? [row.note.operatorAction.value] : []);
+    assert.deepEqual(planLines, ["Uncheck Primary on row 1 (Taylor Sample)", `Add ${approvedEmergencyContact(input.record).contact.name} as Primary`]);
+  }
+  let cursor = 0;
+  for (;;) {
+    const events = f.database.authority.timelineEvents.page({ after: cursor, limit: 1000 });
+    assert.ok(events.every(event => event.payload.kind !== "span" || event.payload.event.t !== "transaction.fenced"));
+    if (events.length < 1000) break;
+    const last = events.at(-1); assert.ok(last); cursor = last.cursor;
+  }
+  const date = f.clock.now().toISOString().slice(0, 10);
+  assert.deepEqual(createTransactionHistory(f.database.authority).query({ from: date, to: date }).rows, []);
+}, scaledMs(60_000));

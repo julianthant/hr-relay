@@ -115,8 +115,13 @@ for (const theme of ["light", "dark"] as const) {
       const touchCard = fast.locator(".method-card").filter({ hasText: "Touch ID" });
       await touchCard.focus(); await fast.keyboard.press("Enter");
       await expect(touchCard).toHaveAttribute("aria-pressed", "true");
-      await expect(fast.getByLabel("Device type", { exact: true })).toHaveValue("touch");
-      await fast.getByLabel("Device type", { exact: true }).selectOption("key");
+      await expect(fast.getByLabel("Device type", { exact: true })).toHaveAttribute("data-value", "touch");
+      await expect(fast.locator("select#device-type")).toHaveCount(0);
+      await fast.getByLabel("Device type", { exact: true }).focus();
+      await fast.keyboard.press("Enter");
+      await expect(fast.getByRole("option", { name: "Security key", exact: true })).toBeVisible();
+      await fast.keyboard.press("ArrowUp"); await fast.keyboard.press("Enter");
+      await expect(fast.getByLabel("Device type", { exact: true })).toHaveAttribute("data-value", "key");
       await capture(page, info, "duo-waiting", theme);
       const child = fast.waitForEvent("popup"); await fast.getByRole("button", { name: "Start capture", exact: true }).click();
       const duo = await child;

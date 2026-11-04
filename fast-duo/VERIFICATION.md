@@ -15,6 +15,10 @@ The repository suites add:
   import closure, private file custody and a real Chromium workflow extension.
 - `tests/backend/runtime/browser/onboarding-duo-provider*.test.ts`: draft browser
   ownership, broker validation, native enrollment and closure.
+- `tests/backend/runtime/browser/duo-platform-authenticator*.test.ts`: emulated
+  platform registration, private credential rehydration and canonical signer handoff.
+- `tests/backend/runtime/browser/native-browser-focus.test.ts`: exact owned browser
+  process activation and returning to the captured Relay window on both platforms.
 - `tests/backend/app/composition/dashboard/compose.public-profile-shell.integration.test.ts`:
   dashboard profile enrollment composition.
 
@@ -22,3 +26,5 @@ CI runs the registered unit, integration and architecture suites. The assigned
 lane's `common.md` owns any restriction on local checks. These fixtures do not
 establish live Duo page compatibility, server acceptance, application login or
 operator sign-off; those require an authorized dashboard session.
+Command tests do not prove physical window activation; the operator verifies that
+on macOS and Windows.

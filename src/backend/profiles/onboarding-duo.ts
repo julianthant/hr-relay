@@ -1,7 +1,7 @@
 import type { DuoAssertion, DuoAssertionRequest } from "../storage/configuration/duo-signing.js";
 import type { DuoEnrollmentScope } from "../../models/config/duo-credential-store.js";
 import type { ProfileOnboardingMethod, ProfileOnboardingState } from "../../models/profiles/public-profile.js";
-import type { ProfileOnboardingDuoFailure } from "../../models/profiles/profile.js";
+import type { ProfileOnboardingDuoEvent, ProfileOnboardingDuoFailure } from "../../models/profiles/profile.js";
 
 export interface DraftDuoBrowserOwner {
   readonly operationId: string;
@@ -11,6 +11,7 @@ export interface DraftDuoBrowserOwner {
   assertCurrent(): void;
   acquireCredentials(): Promise<Readonly<{ userId: string; password: string }>>;
   readState(): ProfileOnboardingState;
+  reportEvent(event: ProfileOnboardingDuoEvent): void;
   start(method: ProfileOnboardingMethod): Promise<void>;
   cancel(method: ProfileOnboardingMethod, attemptId: string): Promise<void>;
   confirm(method: ProfileOnboardingMethod, attemptId: string): void;
@@ -42,6 +43,7 @@ export interface DraftDuoPendingCredential {
   readonly transport: "internal" | "usb";
   readonly isResidentCredential: boolean;
   readonly createdAt: string;
+  readonly initialSignCount?: number;
 }
 
 export interface DraftDuoCeremonyReceipt {

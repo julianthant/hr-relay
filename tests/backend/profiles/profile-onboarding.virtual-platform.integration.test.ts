@@ -33,7 +33,7 @@ for (const custody of ["ready", "retained", "missing"] as const) it(`requires ${
               await capability.persistPending({ credentialId: proof.credentialId,
                 privateKeyPkcs8: key.privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
                 publicKeySpki: key.publicKey.export({ format: "der", type: "spki" }).toString("base64"),
-                transport: "internal", isResidentCredential: true, createdAt: systemClock.now().toISOString() });
+                transport: "internal", isResidentCredential: true, initialSignCount: 1, createdAt: systemClock.now().toISOString() });
             }
             await capability.recordCeremony({ ...proof, mechanism: "chromium-platform" });
           } else await capability.recordCeremony(proof);

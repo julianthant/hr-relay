@@ -1162,6 +1162,29 @@ export function createCanonicalCredentials(admissionInput: RuntimeAdmission,
         return locked(() => replace(kind, expectedRevision, value));
       } catch (error) { translate(error); }
     },
+    initializePendingDuoCounter(credentialId: string, count: number): void {
+      try { locked(() => {
+        const record = read("duo"), document = DuoCredentialRecordSchema.parse(record?.value);
+        const credential = document.credentials.find(candidate => candidate.credentialId === credentialId);
+        if (credential?.state !== "pending" || credential.authenticator?.transport !== "internal") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+        validateDuoKeyPair(credential.privateKeyPkcs8, credential.publicKeySpki);
+        const { head, key } = readHead();
+        if (head.retired.includes(credentialId) || head.counters.some(counter => counter.credentialId === credentialId)) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");
+        const counter = Counter.parse({ credentialId, publicKeySpki: credential.publicKeySpki, count, requests: [] });
+        const { mac: _mac, ...priorBody } = head;
+        const body = ActiveHeadBody.parse({ ...priorBody, revision: increment(head.revision), counters: [...head.counters, counter] });
+        publish(headPath, encode({ ...body, mac: headMac(body, key) }));
+      }); } catch (error) { translate(error); }
+    },
+    readDuoCounter(credentialId: string): number {
+      try {
+        const document = DuoCredentialRecordSchema.parse(read("duo")?.value);
+        const credential = document.credentials.find(candidate => candidate.credentialId === credentialId);
+        const { head } = readHead(), counter = head.counters.find(candidate => candidate.credentialId === credentialId);
+        if (credential === undefined || counter === undefined || counter.publicKeySpki !== credential.publicKeySpki || head.retired.includes(credentialId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
+        return counter.count;
+      } catch (error) { translate(error); }
+    },
     reserveDuoCounter(credentialId: string, requestId: string): Readonly<{ count: number; revision: number }> {
       try { return locked(() => {
         if (requestId.length === 0) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
@@ -1172,6 +1195,7 @@ export function createCanonicalCredentials(admissionInput: RuntimeAdmission,
         const { head, key } = readHead();
         if (head.retired.includes(credentialId)) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
         const prior = head.counters.find(counter => counter.credentialId === credentialId);
+        if (prior === undefined && credential.authenticator?.transport === "internal") throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
         if (prior !== undefined && prior.publicKeySpki !== credential.publicKeySpki) throw new CanonicalCredentialError("CREDENTIAL_UNAVAILABLE");
         const existing = prior?.requests.find(request => request.requestId === requestId);
         if (existing !== undefined) throw new CanonicalCredentialError("CREDENTIAL_CONFLICT");

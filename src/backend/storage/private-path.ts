@@ -1,9 +1,11 @@
-import { closeSync, constants, fstatSync, fsyncSync, openSync, renameSync, writeFileSync } from "node:fs";
+import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdirSync, openSync, renameSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
+import { assertWindowsNoReparse, assertWindowsPrivateParent, createWindowsPrivateDirectory, flushWindowsPath, windowsPrivatePathRejects } from "./windows-private-path.js";
 import { retainAuthoritySourceClosure } from "./source-closure.js";
 
 export type PrivacyRule = "owner" | "ancestor" | "group-write" | "directory-0700" | "file-0600" | "file-0400" | "private" | "private-read-write" | "owner-write-only";
 
-interface PathStat {
+export interface PathStat {
   readonly mode: number | bigint;
   readonly uid: number | bigint;
   readonly dev: number | bigint;
@@ -11,8 +13,12 @@ interface PathStat {
   isSymbolicLink(): boolean;
 }
 
-/** The SQLite observer executes this self-contained policy. */
-export function privatePathRejects(_path: string, stat: PathStat, rule: PrivacyRule): boolean {
+export function privatePathRejects(path: string, stat: PathStat, rule: PrivacyRule): boolean {
+  if (process.platform === "win32") return windowsPrivatePathRejects(path, stat, rule);
+  return posixPrivatePathRejects(path, stat, rule);
+}
+
+export function posixPrivatePathRejects(_path: string, stat: PathStat, rule: PrivacyRule): boolean {
   if (stat.isSymbolicLink() || typeof process.getuid !== "function") return true;
   const owner = BigInt(stat.uid), current = BigInt(process.getuid());
   const mode = Number(stat.mode);
@@ -31,6 +37,7 @@ export function privatePathRejects(_path: string, stat: PathStat, rule: PrivacyR
 }
 
 export function fsyncPath(path: string): void {
+  if (process.platform === "win32") { flushWindowsPath(path); return; }
   const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   let primary: { error: unknown } | undefined;
   let descriptorIdentity: ReturnType<typeof fstatSync> | undefined;
@@ -43,8 +50,45 @@ export function fsyncPath(path: string): void {
 }
 
 export function writePrivateStage(path: string, bytes: Uint8Array): void {
+  if (process.platform === "win32") {
+    assertWindowsPrivateParent(dirname(path));
+    const descriptor = openSync(path, "wx", 0o600);
+    let primary: { error: unknown } | undefined;
+    let identity: ReturnType<typeof fstatSync> | undefined;
+    try {
+      identity = fstatSync(descriptor);
+      if (privatePathRejects(path, fstatSync(descriptor, { bigint: true }), "file-0600")) throw new Error("private-stage-unsafe");
+      writeFileSync(descriptor, bytes); fsyncSync(descriptor);
+    } catch (error) { primary = { error }; }
+    try { closeSync(descriptor); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error],
+      { descriptor: { descriptor, ...(identity === undefined ? {} : { identity }) } }); }
+    if (primary !== undefined) throw primary.error;
+    return;
+  }
   writeFileSync(path, bytes, { mode: 0o600, flag: "wx" });
   fsyncPath(path);
 }
 
 export function replacePrivateFile(stage: string, path: string): void { renameSync(stage, path); }
+
+export function assertNoReparsePath(path: string): void {
+  if (process.platform === "win32") { assertWindowsNoReparse(path); return; }
+  if (lstatSync(path).isSymbolicLink()) throw new Error("private-path-reparse-refused");
+}
+
+export function createPrivateDirectory(path: string, options: { recursive?: boolean; mode: number }): void {
+  if (process.platform !== "win32") { mkdirSync(path, options); return; }
+  const existing = lstatSync(path, { bigint: true, throwIfNoEntry: false });
+  if (existing !== undefined) {
+    assertNoReparsePath(path);
+    if (options.recursive) {
+      if (!existing.isDirectory() || windowsPrivatePathRejects(path, existing, "directory-0700")) throw new Error("private-directory-unsafe");
+      return;
+    }
+    throw Object.assign(new Error("private-directory-already-exists"), { code: "EEXIST" });
+  }
+  const parent = dirname(path);
+  if (options.recursive && lstatSync(parent, { throwIfNoEntry: false }) === undefined) createPrivateDirectory(parent, options);
+  createWindowsPrivateDirectory(path);
+}

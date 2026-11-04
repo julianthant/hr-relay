@@ -7,7 +7,7 @@ import { OcrApprovedSnapshotSchema,ocrSnapshotDigest,type OcrApprovedSnapshot } 
 import { RunRecordSchema,type RunRecord } from "../../../models/run/record.js";
 import {
 DelegationTerminalEvidenceSchema,
-RunDryRunPreviewResultSchema,
+readRunPreviewResult,
 RunResultRecordSchema,
 deriveCheckpointOutputDigest,
 deriveTerminalDependencyDigest,
@@ -73,6 +73,7 @@ type WriteIntentRecord,
 } from "../../../rules/write-safety/write-safety.js";
 import {
 descriptorRuntimeNodes,
+workflowDryRunSupport,
 workflowTerminalResultExecution,
 type AnyWorkflowDescriptor,
 } from "../../../workflow-kit/workflow.js";
@@ -91,6 +92,7 @@ export interface ReceiptWriteEvidence {
 }
 
 export interface ReceiptBuildInput {
+  readonly settlementVersion?: number;
   readonly descriptor: AnyWorkflowDescriptor;
   /** The TERMINAL run record. A non-terminal run has no settled verdict. */
   readonly run: unknown;
@@ -397,7 +399,7 @@ export function deriveRunEvidenceReceipt(
   });
   if (binding.state === "incompatible") throw new Error(binding.message);
 
-  const receiptId = deriveEvidenceReceiptId(envelope.runId, envelope.attempt);
+  const receiptId = deriveEvidenceReceiptId(envelope.runId, envelope.attempt, input.settlementVersion);
   const generatedAt = lifecycle.endedAt;
   const entryId = (
     kind: Parameters<typeof deriveEvidenceEntryId>[1],
@@ -773,19 +775,15 @@ export function deriveRunEvidenceReceipt(
   /* ── outputs ───────────────────────────────────────────────────────────── */
 
   // Preview envelope and terminal schema must agree; neither alone proves a coherent preview.
-  const previewResultSchemaHash = deriveSchemaHash(RunDryRunPreviewResultSchema, "output");
-  const previewed = result !== undefined && result.resultSchemaHash === previewResultSchemaHash;
-  if (previewed !== (envelope.dryRun && lifecycle.outcome === "done" && result !== undefined)) {
-    throw new Error(
-      `run ${envelope.runId} has dryRun=${String(envelope.dryRun)} but its terminal result is bound to `
-      + `${result === undefined ? "no schema" : result.resultSchemaHash}; a receipt cannot describe a run `
-      + "whose envelope and terminal record disagree about whether it committed anything",
-    );
+  const preview = result === undefined ? undefined : readRunPreviewResult(result);
+  const support = workflowDryRunSupport(descriptor);
+  const ordinaryRead = envelope.parent !== undefined && support.state === "unsupported" && support.reason === "no-transaction-node";
+  if (preview !== undefined && (!envelope.dryRun || lifecycle.outcome !== "done")
+    || envelope.dryRun && lifecycle.outcome === "done" && result !== undefined && preview === undefined && !ordinaryRead) {
+    throw new Error(`run ${envelope.runId} has incompatible dry-run and terminal result authority`);
   }
 
-  if (previewed && result !== undefined) {
-    const preview = RunDryRunPreviewResultSchema.parse(result.result.value);
-
+  if (preview !== undefined && result !== undefined) {
     verification.push({
       id: terminalResultVerificationId,
       obligation: "completion.terminal-result",
@@ -795,7 +793,8 @@ export function deriveRunEvidenceReceipt(
       evidence: [],
     });
 
-    const reached = preview.steps.flatMap(step => step.state !== "transaction-preview" ? [] : [
+    const reached = preview.steps.flatMap(step => step.state === "delegation-preview" ? [`child stage "${step.nodeId}" previewed changes without saving`]
+      : step.state !== "transaction-preview" ? [] : [
       `transaction node "${step.nodeId}" ${step.preview.outcome.state === "would-prepare"
         ? `staged its page and observed subject ${step.preview.outcome.subject.state}`
         : `settled already-present at its ${step.preview.probe.state} probe, before anything was staged`}`,
@@ -804,8 +803,10 @@ export function deriveRunEvidenceReceipt(
     const samples = preview.steps.flatMap(step => step.state === "transaction-preview" ? step.samples : []);
     warnings.push({
       id: entryId("warning", "dry-run-preview"), code: ErrorCodeSchema.parse("DRY_RUN_PREVIEW"),
-      summary: `this run was a DRY RUN: ${reached}. `
-        + (preview.coverage.state === "partial" ? "Historical partial preview; later stages were not recorded. " : "Every declared stage is accounted for. ")
+      summary: `this run was a DRY RUN: ${reached || "no preparation was completed"}. `
+        + (preview.coverage.state === "partial" ? preview.coverage.reason === "historical-first-transaction-only"
+          ? "Historical partial preview; later stages were not recorded. " : "Some delegated work was dispatched without waiting for its preview. "
+          : "Every declared stage is accounted for. ")
         + (unavailable.length === 0 ? "" : `Unavailable stages: ${unavailable.join(", ")}. `)
         + (samples.length === 0 ? "" : samples.map(sample => `${sample.label}: ${sample.field} = ${canonicalJsonStringify(sample.value)}. `).join(""))
         + "No external write was attempted — no write intent, no fence, no commit. Samples are preview-only values, never receipts or write authority.",
@@ -867,7 +868,7 @@ export function deriveRunEvidenceReceipt(
       obligationId: entryId("verification", obligation.obligation),
       inputValues,
       resultFacts: outputs,
-      resultValues: result !== undefined && terminalEvidence === undefined && !previewed ? new Map(evidenceLeaves(result.result.value).map(leaf => [leaf.path, leaf.value])) : new Map(),
+      resultValues: result !== undefined && terminalEvidence === undefined && preview === undefined ? new Map(evidenceLeaves(result.result.value).map(leaf => [leaf.path, leaf.value])) : new Map(),
       byNode,
     }));
   }
@@ -1008,6 +1009,7 @@ export function assertEvidenceRefsResolve(receipt: RunEvidenceReceipt): void {
 
 /** What the ensure step needs from authority. Reads only, plus the one insert. */
 export interface EvidenceReceiptStore {
+  refreshedSettlementVersion?(runId: string): number | undefined;
   getRun(runId: string): unknown;
   getResult(runId: string): unknown;
   getFailure(failureId: string): unknown;
@@ -1048,6 +1050,7 @@ export function ensureRunEvidenceReceipt(
     descriptor,
     run,
     result: store.getResult(runId),
+    ...(store.refreshedSettlementVersion === undefined ? {} : { settlementVersion: store.refreshedSettlementVersion(runId) }),
     ...(lifecycle.failureId === undefined ? {} : { failure: store.getFailure(lifecycle.failureId) }),
     checkpoints: store.listCheckpointsByRun(runId),
     writes: store.listWritesByRun(runId),

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import { deepFreeze } from "../validation/immutability.js";
 import {
+  CommandIdSchema,
   DelegationEdgeIdSchema,
   DelegationManifestIdSchema,
   DependencyIdSchema,
@@ -14,6 +15,11 @@ import {
 /** Preserve one delegation vocabulary; validate policy JSON rather than narrowing it to a SQL enum. */
 import { DelegationPolicySchema } from "../../models/workflow/delegation-policy.js";
 
+export const RefreshedRunSettlementSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  appliedVersion: PositiveIntSchema,
+});
+
 export const DependencyRecordSchema = z.strictObject({
   dependencyId: DependencyIdSchema,
   manifestId: DelegationManifestIdSchema,
@@ -23,6 +29,7 @@ export const DependencyRecordSchema = z.strictObject({
   childItemId: ItemIdSchema,
   policy: DelegationPolicySchema,
   state: z.enum(["active", "satisfied", "failed", "cancelled"]),
+  settlement: RefreshedRunSettlementSchema.optional(),
   version: PositiveIntSchema,
   createdAt: IsoInstantSchema,
   updatedAt: IsoInstantSchema,
@@ -35,7 +42,10 @@ export const DependencyRecordSchema = z.strictObject({
   }
 });
 
+export const DelegationReadReuseSchema = z.strictObject({ manifestId: DelegationManifestIdSchema, dependencyId: DependencyIdSchema, runId: RunIdSchema, appliedVersion: PositiveIntSchema });
+
 const DelegatedChildManifestEntrySchema = z.strictObject({
+  reuse: DelegationReadReuseSchema.optional(),
   dependencyId: DependencyIdSchema,
   childRunId: RunIdSchema,
   childItemId: ItemIdSchema,
@@ -44,6 +54,7 @@ const DelegatedChildManifestEntrySchema = z.strictObject({
 
 /** Three shapes the manifest record needs: `policy` recorded, `join` with all four arms, and `children` allowed to be empty for a zero-child fan-out. */
 export const DelegationManifestSchema = z.strictObject({
+  revision: z.strictObject({ previousInvocationCommandId: CommandIdSchema, previousManifestId: DelegationManifestIdSchema, refreshCommandId: CommandIdSchema, settlementCommandId: CommandIdSchema }).optional(),
   manifestId: DelegationManifestIdSchema,
   parentRunId: RunIdSchema,
   edgeId: DelegationEdgeIdSchema,
@@ -84,8 +95,7 @@ export type DelegationManifest = z.infer<typeof DelegationManifestSchema>;
 
 export type DelegationReadiness = Readonly<{ state: "ready" }>
   | Readonly<{ state: "waiting"; childRunId: string }>
-  | Readonly<{ state: "blocked"; childRunId: string; reason: "child-failed" | "manual-parent-resume" | "child-cancellation-unavailable" }>
-  | Readonly<{ state: "blocked"; childRunId: string; reason: "child-preview"; manifestId: DelegationManifest["manifestId"]; resultDigest: z.infer<typeof FingerprintSchema> }>;
+  | Readonly<{ state: "blocked"; childRunId: string; reason: "child-failed" | "manual-parent-resume" | "child-cancellation-unavailable" }>;
 
 export function delegationJoinDisposition(plan: Pick<DelegationManifest, "join" | "policy">, states: readonly string[]): "satisfied" | "blocked" | "failed" {
   if (plan.join === "none" || states.every(state => state === "done") || plan.join === "all-settled" || plan.policy.onChildFailed === "allow-partial") return "satisfied";

@@ -287,9 +287,19 @@ control after the retry settles. That acknowledgement binds the exact child atte
 another retry requires another Resume. `block-parent` holds the same parent row and propagates its
 block through waiting ancestors. Approval gates remain visible only on their owning run.
 
+For record-based reads, declare `sourceRecordIds(scope)` as nonempty unique record sets aligned
+with the bound children. Rebuild pure review tasks with `replay: "always-rerun"` when child retries
+can change their records. The runtime authenticates revised membership and checkpoint rebinding;
+it reuses a read only when its input, record association, schemas, configuration and freshness match.
+Approval snapshots remain immutable, and refresh never replays a successful transaction.
+
 During a parent dry run, a delegated child with no transactions keeps the dry-run flag and returns
-its normal typed read-only observations. A child with an unsupported transaction refuses admission.
-Standalone read-only workflows still have no transaction-preview option.
+its normal typed read-only observations. Registered descendants that support preparation make a
+parent eligible for preview even when the parent has no local transaction. Awaited child previews
+aggregate as preview evidence; they cannot feed ordinary typed bindings or the authored terminal
+derive. Dependent stages remain unavailable. Dispatch without waiting records partial coverage.
+A child with an unsupported transaction refuses admission. Standalone read-only workflows still
+have no transaction-preview option. Declare the real child and transaction graph; support is derived.
 
 ## 9 · Add a task only when needed
 
@@ -338,7 +348,7 @@ Parity uses the fixed desktop presentation contract; do not update references to
 Follow the assigned brief's additional checks and resource limits.
 
 Use the signed-in dashboard Run surface for workflow execution. Select Dry Run only where the
-workflow graph supports a transaction preview; transaction-free reads use their ordinary mode.
+registered workflow graph supports local or delegated preparation; graphs containing only reads use their ordinary mode.
 Rehearsal declarations and test-target availability validate verification inputs, not authentication
 or permission to execute. Missing manifests and unavailable subjects remain explicit refusals;
 do not substitute a fixture or another subject.

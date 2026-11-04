@@ -25,6 +25,7 @@ import { createDashboardCommandService } from "../../../../../src/backend/runs/c
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
 import { createStartPlanService } from "../../../../../src/backend/runs/commands/start-plan-service.js";
 import { RunRecordService } from "../../../../../src/backend/runs/lifecycle/run-record-service.js";
+import { createApplicationLifecycle } from "../../../../../src/backend/runs/lifecycle/application-lifecycle.js";
 import { createRunQueueProjection } from "../../../../../src/backend/runs/projections/run-queue-projection.js";
 import { createCalendarQuery } from "../../../../../src/backend/runs/queries/calendar.js";
 import { createItemAttemptHistoryQuery } from "../../../../../src/backend/runs/queries/item-attempt-history.js";
@@ -150,6 +151,10 @@ createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<Dashboard
           work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),
       },
       preflight: healthyDashboardPreflightExecutor(clock),
+      applicationLifecycle: createApplicationLifecycle({ database,
+        requestQuit: () => { throw new Error("seeded fixture cannot quit the process"); },
+        onFailure: error => { throw error; },
+      }),
       bootstrap: {
         appVersion: SEEDED_APP_VERSION,
         clock,

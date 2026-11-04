@@ -7,6 +7,7 @@ import { DiagnosticSafetyVersionSchema } from "../trust/failure.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { RunDisplayNameSchema } from "./display-name.js";
 import {
+  CommandIdSchema,
   EvidenceReceiptIdSchema,
   FailureIdSchema,
   FingerprintSchema,
@@ -199,6 +200,14 @@ export const RunPauseSchema = z.discriminatedUnion("state", [
 ]);
 export type RunPause = z.infer<typeof RunPauseSchema>;
 
+export const RunDelegationRefreshSchema = z.strictObject({
+  commandId: CommandIdSchema,
+  nodeId: NodeIdSchema,
+  phase: z.enum(["waiting", "settled"]),
+  retryCommandIds: z.array(CommandIdSchema).min(1),
+}).refine(value => new Set(value.retryCommandIds).size === value.retryCommandIds.length,
+  { message: "delegation refresh retries must be unique" });
+
 const RunRecordBaseSchema = z.strictObject({
   envelope: RunEnvelopeSchema,
   input: RunInputStorageSchema,
@@ -208,6 +217,7 @@ const RunRecordBaseSchema = z.strictObject({
     /** Operator intent; a claimed worker alone settles the cancellation. */
   cancelRequested: z.literal(true).optional(),
   pause: RunPauseSchema.optional(),
+  delegationRefresh: RunDelegationRefreshSchema.optional(),
     /** Operator-assigned label over a stable id; never identity. */
   displayName: RunDisplayNameSchema.optional(),
     /* The app build this run was enqueued under, stamped once and never rewritten; optional because it is read forward, never back-filled. */
@@ -251,6 +261,10 @@ const RunRecordBaseSchema = z.strictObject({
 export const RunRecordSchema = RunRecordBaseSchema.safeExtend({
   completion: RunCompletionSchema.optional(),
 }).superRefine((run, context) => {
+  if (run.delegationRefresh?.phase === "waiting" && run.lifecycle.state !== "queued"
+    && !(run.lifecycle.state === "terminal" && !["done", "failed"].includes(run.lifecycle.outcome))) {
+    context.addIssue({ code: "custom", path: ["delegationRefresh"], message: "a waiting delegation refresh cannot execute or complete" });
+  }
   const completion = run.completion;
   const settled = run.lifecycle.state === "terminal" && ["done", "failed"].includes(run.lifecycle.outcome);
   if (settled !== (completion !== undefined)) {

@@ -48,6 +48,21 @@ include the static module, and run without `src/` or the development generator. 
 packaged data must refuse startup. There is no current Electron packaging system or acceptance
 proof; frontend bundle checks do not establish packaged-runtime acceptance.
 
+`scripts/build/windows-observer-policy.ts` bundles the canonical shared `privatePathRejects`
+implementation as CommonJS for the two isolated Windows SQLite observers. esbuild is a direct
+pinned build dependency; Node builtins and Koffi remain external. The ignored artifact and input/digest
+metadata live under `node_modules/.cache/relay/`. Source-tool configuration and manifest preparation
+prepare them without regenerating registries; the independent manifest check rebuilds expected bytes
+in memory and refuses missing or stale outputs without writing. Unchanged bytes keep their timestamps.
+
+Only Windows observer calls validate the metadata's confined public source/dependency inputs and
+artifact SHA256; the child checks its artifact again before loading the shared native policy. Missing,
+stale or changed assets refuse explicitly. There is no runtime build or TypeScript loader. POSIX
+children retain plain CommonJS and never read this Windows asset. Restart source tools after changing
+canonical policy inputs. Future desktop packaging must embed and bind expected metadata, ship the
+artifact and Koffi, and validate independently before bundling; absent source files never imply a
+packaged mode. That packaging mode is not implemented by this source build.
+
 ## 1. Test layers and ownership
 
 Tests mirror source once under `tests/`. A source path under `src/` drops that prefix. Tests for
@@ -136,8 +151,19 @@ arguments include `--no-experimental-webstorage`, avoiding process-global Node l
 The worker default belongs to the root configuration so CLI limits apply to every named project.
 Project/file/suite and full behavior or refusal titles remain visible. Short units do not emit
 per-assertion progress messages. Multi-stage harnesses may emit stable phase markers.
-CI runs test files on Ubuntu unless they need macOS. `scripts/test/ci-files.ts` names the macOS
-files: `MACOS_FILES` (storage closure, backup and restore proofs that refuse off macOS, unit and
+`ci.yml` triggers only for staging pull requests and admits the portable-only `ci-checks.yml` call.
+Its top parity job is a plain passing omission, with merge train after the six top summaries and
+outside admission. `release.yml` triggers only for main pull requests or operator manual releases
+and alone admits `release-checks.yml`, which owns the native/parity and complete release pipeline.
+Staging never references or loads a release/native workflow call. Both callees use shared typed
+selection/result/timing policy from `scripts/test/ci-plan.ts` and explicitly retain test budgets.
+Run platform-native proofs and
+parity in CI only for full releases started by the operator:
+`staging` → `main` pull requests or manual full-release dispatches. Only the operator may start
+one; agents must never dispatch or rerun CI workflows. Between releases, run Windows-native tests
+locally on Windows and macOS-native tests locally on the Mac when load is low. Keep native-only
+files out of Ubuntu shards. `scripts/test/ci-files.ts` names the native
+files: `NATIVE_FILES` (storage closure, backup and restore proofs requiring native runners, unit and
 integration) and `SERIAL_FILES` (native browser process proofs that require file isolation). `scripts/test/ci-run.sh` lists a project through
 Vitest, selects the job's files with that script and passes the paths explicitly; Vitest 4.1.11's
 CLI exclusions do not reach these named projects. Selection refuses when a named file is no longer
@@ -148,25 +174,29 @@ Zero-rounded measurements still receive positive work. Native proofs and `SERIAL
 count their full time and run in separate single-worker invocations. The padded-receipt upgrade
 and startup-upgrade fixture run in the storage group: their stopped backups and real native
 closure probes require isolation from competing storage files within their existing budgets.
-Other macOS files count half because two workers share them.
+Other native files count half because two workers share them.
 
 | Job | Runner | Jobs | Contents |
 | --- | --- | --- | --- |
-| unit | Ubuntu | 2 (3 without integration) | unit files except `MACOS_FILES` |
+| unit | Ubuntu | 2 (3 without integration) | unit files except `NATIVE_FILES` |
 | architecture | Ubuntu | 2 | architecture files |
-| integration | Ubuntu | 14 | integration files except `MACOS_FILES` and `SERIAL_FILES` |
-| native | macOS | 5 (2 when parity runs) | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then macOS unit and other integration files |
-| parity | macOS | 3 shards | Desktop parity, release pull requests only |
+| integration | Ubuntu | 14 | integration files except `NATIVE_FILES` and `SERIAL_FILES` |
+| native | macOS, operator-started full releases only | 5 (2 when parity runs) | `SERIAL_FILES` alone, `SERIAL_STORAGE_FILES` alone, then native unit and other integration files |
+| native | Windows, operator-started full releases only | 5 (1 for unit only) | The same native membership and isolated serial/storage groups |
+| parity | macOS, operator-started full releases only | 3 shards | Desktop parity |
 
-With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The runner-free FIFO
+With `static` and `privacy`, full staging runs fit twenty Ubuntu runners. The job-level whole-pipeline FIFO
 admission and draft policy are described in [repository governance](../../repository-governance.md).
 Each shard downloads the same `ci-balancing` input and uploads Vitest JSON reports as `durations-*`.
-CI merges successful groups into inherited timings and publishes `ci-timings` for the next run;
+Report basenames include the runner OS and selection group, so merged artifacts preserve both platforms.
+For a file reported by both platforms, the shared timing map retains the slower observation regardless
+of report order. CI merges successful groups into inherited timings and publishes `ci-timings` for the next run;
 omitted suites retain their prior measurements. When shard end times spread more than a minute,
 also refresh the committed seed from a successful run:
 `gh run download <run-id> -n ci-timings -D <dir>` then copy its generated `ci-durations.json` to
 `scripts/test/ci-durations.json`. Corrupt reports and download failures fail CI.
-A new test file that needs macOS fails on Ubuntu with the darwin refusal; add it to `MACOS_FILES`.
+A new test file requiring native platform proofs belongs in `NATIVE_FILES`, outside Ubuntu shards.
+Both platforms select from this one list; platform refusals remain failures until their proof is implemented.
 
 ### Pre-push tests on the PC
 
@@ -184,7 +214,7 @@ satisfying `package.json`, Git, flock, and Chromium's libraries installed with
 `npx playwright install --with-deps chromium`. Keep its private host in local configuration.
 Normal SSH host verification applies.
 
-Vitest selects the files; the runner subtracts `MACOS_FILES`, `SERIAL_FILES` and
+Vitest selects the files; the runner subtracts `NATIVE_FILES`, `SERIAL_FILES` and
 `SERIAL_STORAGE_FILES` with one skip note. Those files run in GitHub CI. Each leased slot fetches
 `origin/staging`'s pinned commit directly from the public GitHub repository. The Mac verifies that
 base is advertised by origin before sending a binary Git patch of the allowed candidate tree.
@@ -250,7 +280,8 @@ Local runs use 1. Product defaults are unchanged. Remaining steps run after a fa
 unless the workflow is cancelled, preserving failure visibility, and any shard failure fails its suite.
 
 PR filtering uses these rules. Static and privacy always run. Draft PRs select only affected unit files;
-`ready_for_review` triggers all applicable suites, and explicit dispatches bypass the draft limit.
+`ready_for_review` triggers all applicable suites. Only operator-started manual full-release
+dispatches bypass the draft limit.
 
 | Changed paths | Routine suites selected |
 | --- | --- |
@@ -263,18 +294,47 @@ PR filtering uses these rules. Static and privacy always run. Draft PRs select o
 | Parity helpers, fixtures or entrypoints | All four; unit and integration also import these. |
 | Local or perf test files only | Architecture; local remains machine-only and perf remains release-only. |
 
-Mixed changes select the union. Pull requests into `staging` then drop parity; pull requests into
-`main` keep it and add the release job. Machine-readable inputs under `docs/`, including the guard
-inventory, count as configuration. A manual run (workflow_dispatch) bypasses filtering and selects all four suites; pushes to protected branches do not run CI, since their pull request already passed up to date.
-Required summaries (`unit`, `integration`, `architecture`, `parity`) always run on Ubuntu, including
-when no runner job was selected. They require successful change detection and either an explicit
-omission or successful runner jobs: unit and integration need both the Ubuntu and macOS jobs,
-architecture the Ubuntu jobs and parity the macOS jobs. Failure or cancellation of a needed runner
-job fails the summary.
+Select the union for mixed changes. Staging PRs execute only the portable entry workflow. Valid
+`staging` → `main` releases select native/parity work and the isolated coverage/performance batch.
+Other heads into main omit native/batch work and fail the required release source-head check.
+Markdown-only releases omit those expensive jobs but explicitly pass the required release summary
+after proof validation. Operator manual releases select all routine native/parity suites; the
+coverage/performance batch remains PR-only. Treat machine-readable docs as configuration. Only
+the operator may start a manual release; agents must never dispatch or rerun CI workflows. Protected
+branch pushes do not repeat CI.
+
+Both event entries use per-PR/manual-branch workflow concurrency with cancellation enabled. New
+pushes supersede older runs for the same workflow/PR-or-ref key. Each entry admits one complete
+reusable check call through the shared job-level `ci-runners` FIFO, `queue: max` and
+`cancel-in-progress: false`. Every mandatory proof, selected batch and timing publisher remains
+inside that callee; no callee reacquires admission. Merge train follows the six top summaries
+outside the admitted call; the standalone staging-push train is unchanged.
+
+Each callee's final `unit` runs unless cancelled and checks all mandatory proofs and timing
+publication, rejecting failed or missing outcomes. Cancellation stops its checkout/install work.
+In releases it also checks the selected batch, after
+`unit-proofs` allows batch execution without a cycle. The required outer `unit` always validates
+both the complete call result and inner unit output as success. Train is excluded from the inner
+fence because it runs downstream. Staging's required parity is plain successful omission; release
+parity validates actual proof output. Portable selected suites require Ubuntu success. Selected
+eligible full-release unit/integration require both native platforms to succeed, regardless of
+matrix absence or emptiness; native omission is valid only outside such a selected suite.
+Selected parity requires macOS success. An expected omission must be exactly skipped. Invalid
+selectors, matrix counts and missing outputs never become successful defaults.
+
+Timing discovery first enumerates registered IDs for exactly the CI and release workflow paths.
+It can therefore use CI history before a new release workflow is registered, without ignoring a
+404 or any other API error. Both successful feeds are sorted together; the newest retained timing
+artifact wins, and no-history/no-retained-artifact is the valid committed-seed case.
 
 Membership verification compares an unsharded `vitest list --filesOnly --json` for unit,
 integration and architecture with the union of the exact CI selections. `tests/scripts/test/ci-files.test.ts`
 proves the selections give each file to exactly one job, so selected paths need no Vitest sharding.
+`tests/scripts/test/ci-plan.test.ts` tests the shared typed plan, proof and timing policy.
+`tests/scripts/test/ci-files.workflow.test.ts` tests actual event entry filters, supersession and transitive admission coverage,
+selection/history adapters and actual summary-shell failures for staging, source/head, Markdown
+and manual cases. Source/API-list checks are not the Actions graph proof: the operator reviews
+the actual published staging graph to confirm no release workflow is loaded.
 Parity's three Playwright shards' `--list --reporter=json` test identities must also form the
 unsharded listing exactly once. Coverage, perf and local selection are unchanged.
 

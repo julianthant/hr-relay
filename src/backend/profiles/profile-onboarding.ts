@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { z } from "zod";
 import { DuoEnrollmentScopeSchema } from "../../models/config/duo-credential-store.js";
-import { assertFinishedProfileOnboarding, ProfileOnboardingDuoFailureSchema, type ProfileOnboardingDuoFailure, type SignUpDuoAttempt, type SignUpOperation } from "../../models/profiles/profile.js";
+import { assertFinishedProfileOnboarding, ProfileOnboardingDuoFailureSchema, type ProfileOnboardingDuoEvent, type ProfileOnboardingDuoFailure, type SignUpDuoAttempt, type SignUpOperation } from "../../models/profiles/profile.js";
 import type { ProfileOnboardingMethod, ProfileOnboardingState } from "../../models/profiles/public-profile.js";
 import type { Clock } from "../../rules/time/clock.js";
 import type { createDuoCredentialStore } from "../storage/configuration/duo-credential-store.js";
@@ -21,6 +21,7 @@ export function createProfileOnboarding(input: {
   readonly provider?: ProfileOnboardingDuoProvider;
   readonly failureDiagnostic: (error: Error) => ProfileOnboardingDuoFailure;
   readonly onFailure: (attempt: DraftDuoAttempt, failure: ProfileOnboardingDuoFailure) => void;
+  readonly onEvent: (operation: SignUpOperation, event: ProfileOnboardingDuoEvent) => void;
   readonly read: (operationId: string) => SignUpOperation;
   readonly update: <T>(operationId: string, change: (operation: SignUpOperation) => Readonly<{ operation: SignUpOperation; result: T }>) => T;
   readonly email: (operation: SignUpOperation) => string;
@@ -60,6 +61,7 @@ export function createProfileOnboarding(input: {
       assertCurrent() { currentDraft(); },
       async acquireCredentials() { const value = input.credentials(currentDraft()); currentDraft(); return value; },
       readState() { return input.publicState(currentDraft()); },
+      reportEvent(event: ProfileOnboardingDuoEvent) { input.onEvent(currentDraft(), event); },
       async start(method: ProfileOnboardingMethod) { currentDraft(); await owner.start(operationId, method); currentDraft(); },
       async cancel(method: ProfileOnboardingMethod, attemptId: string) { currentDraft(); await owner.cancelAttempt(operationId, method, attemptId); currentDraft(); },
       confirm(method: ProfileOnboardingMethod, attemptId: string) { currentDraft(); owner.confirm(operationId, method, attemptId); currentDraft(); },
@@ -131,6 +133,7 @@ export function createProfileOnboarding(input: {
         if (store.readForScope(scope).length !== 0) return unavailable();
         const result = store.enroll({ credentialId: credential.credentialId, scope,
           privateKeyPkcs8: credential.privateKeyPkcs8, publicKeySpki: credential.publicKeySpki,
+          ...(credential.initialSignCount === undefined ? {} : { initialSignCount: credential.initialSignCount }),
           authenticator: { ...(credential.userHandle === undefined ? {} : { userHandle: credential.userHandle }),
             transport: credential.transport, isResidentCredential: credential.isResidentCredential } });
         assertCurrent(); return { revision: result.revision };
