@@ -125,16 +125,18 @@ it("keeps idle, loading, failure, successful refresh and failed refresh distinct
 });
 
 for (const phase of ["baseline", "planned", "committed", "settled"] as const) {
-  it(`renders safe ${phase} upgrade history and independent present/absent credentials`, async () => {
+  it(`keeps the ${phase} upgrade status and independent present/absent credentials`, async () => {
     const report = StorageDoctorWireSchema.parse({...HEALTHY,
       authorityUpgrades: {state: "available", phases: [{phase, fromSchemaVersion: 46, toSchemaVersion: 51, recordedAt: HEALTHY.checkedAt}]},
       protectedSettings: {state: "available", entries: ProtectedSettingsNameSchema.options.map((name, index) => ({name, present: index === 0}))}});
     const dom = await mountDoctor(report);
     assert.match(dom.querySelector('[aria-label="Connections"]')?.textContent ?? "", /UCPath user ID.*Present/su);
-    await openDisclosure(dom, "Update history");
-    const labels = {baseline: "Starting version recorded", planned: "Update planned", committed: "Update applied", settled: "Update completed"};
-    assert.ok(dom.textContent?.includes(labels[phase]));
-    assert.equal(dom.querySelector('.diagnostic-storage-updates time')?.getAttribute('dateTime'), HEALTHY.checkedAt);
+    const updates = [...dom.querySelectorAll(".diagnostic-check-entry")].find(row => row.textContent?.includes("Storage updates"));
+    assert.ok(updates);
+    assert.equal(updates.querySelector(".ds-result-row-side")?.textContent, "Recorded");
+    assert.equal(updates.querySelector("button"), null);
+    assert.equal(dom.querySelector(".diagnostic-storage-updates"), null);
+    assert.doesNotMatch(updates.textContent ?? "", /Update history|Starting version recorded|Update planned|Update applied|Update completed/u);
     assert.doesNotMatch(dom.textContent ?? "", /v46|v51|schema|committed:|settled:/iu);
     assert.match(dom.textContent ?? "", /UCPath password.*Not set/su);
   });

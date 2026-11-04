@@ -72,8 +72,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.locator('.settings-nav-group a')).toHaveCount(10);
       await expect(clear).toHaveCount(0);
 
-      await search.fill("Dark theme");
-      await page.getByRole("link", { name: "Dark theme General", exact: true }).click();
+      await search.fill("Theme");
+      await page.getByRole("link", { name: "Theme General", exact: true }).click();
       const appearance = page.locator('[data-settings-path="appearance.theme"]');
       await expect(appearance).toBeFocused();
       await expect(appearance).toHaveClass(/settings-search-arrival/u);

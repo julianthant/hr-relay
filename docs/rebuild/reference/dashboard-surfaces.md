@@ -434,7 +434,7 @@ Every assistant mutation requires an explicit Confirm. Settings grants enable pr
 account capability. Browser dimensions use the canonical `display.screenWidth` and `display.screenHeight` editor leaves, including
 draft validation, autosave, uncertainty and readback. Explicit parity previews keep their local controls.
 
-General composes appearance, ordinary General fields, annual dates, ChatGPT account, and Delete account. The assistant permission row and its search destination are absent; Relay always requires explicit confirmation for its actions. Appearance names the current person after confirmed preference readback and retains loading, saving, failure and uncertain states.
+General composes ChatGPT account, appearance, ordinary General fields and annual dates, with Delete account last. The assistant permission row and its search destination are absent; Relay always requires explicit confirmation for its actions. Appearance has a Light/Dark toggle and an Animations switch with no row descriptions or person names. Preference feedback retains loading, saving, failure and uncertain states below the rows.
 Delete account presents ready, explicit confirmation, deleting, and unavailable states. Deletion has
 no blocked presentation. Until the person deletion owner supplies authority and a callback, the served
 control is unavailable.
@@ -487,7 +487,7 @@ profile lifetime. Neither page load, scope refresh, sign-in nor Run preflight di
 The result is a diagnostic only and never contributes to readiness reports or admission.
 
 Storage displays health and doctor reports through its typed client. Authority availability differs
-from backup age. Storage excludes run-history presentation. Recovery actions require their exact
+from backup age. Storage updates show their status without an update-history disclosure. Storage excludes run-history presentation. Recovery actions require their exact
 served admission. Startup completes automatic repair before ordinary runtime admission; Settings rendering performs no repair or backup. A read-only notice identifies restored person data and its backup time.
 
 ### Keyboard
