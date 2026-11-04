@@ -10,7 +10,6 @@ type ConfigProvenance,
 } from "../../../models/config/provenance.js";
 import {
 ConfigSchema,
-ONBOARDING_DOCUMENTS_DIRECTORY_NAME,
 DEFAULT_DISPLAY,
 SettingsOverrideInputSchema,
 type Config,
@@ -142,9 +141,7 @@ function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts
   if (admittedPair !== undefined && settings.paths?.browserProfileRoot !== undefined
     && settings.paths.browserProfileRoot !== join(admittedPair.stateRoot, "browsers")) throw new Error("fixed-person-browser-root-required");
   const defaults = ConfigSchema.parse({
-    paths: { ...defaultRuntimePaths(), ...admittedPair,
-      ...(admittedPair === undefined ? {} : { reportsDir: join(admittedPair.stateRoot, "files", "reports"), downloadsDir: join(admittedPair.stateRoot, "files", "downloads"),
-        onboardingDocsDir: join(admittedPair.stateRoot, "files", ONBOARDING_DOCUMENTS_DIRECTORY_NAME), i9CheckTrackerPath: join(admittedPair.stateRoot, "files", "reports", "i9-check-tracker.xlsx"), browserProfileRoot: join(admittedPair.stateRoot, "browsers"), duoCredential: join(admittedPair.stateRoot, "credentials", "duo-webauthn.json") }) }, display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
+    paths: defaultRuntimePaths(admittedPair), display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
   });
   const config = mergeSettings(defaults, settings);
 
