@@ -2,7 +2,8 @@ param([Parameter(Mandatory = $true)][string]$OwnedPidsJson)
 $ErrorActionPreference = 'Stop'
 $reason = 'json-parse'
 try {
-  $ownedIds = @($OwnedPidsJson | ConvertFrom-Json)
+  $decodedIds = $OwnedPidsJson | ConvertFrom-Json
+  $ownedIds = @($decodedIds)
   $reason = 'pid-count'
   if ($ownedIds.Count -ne 2) { throw 'native-owned-pid-count' }
   $reason = 'pid-distinct'
