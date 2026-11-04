@@ -615,6 +615,17 @@ export class RuntimeAdmission {
       || operation.onboarding?.accountId !== signup.accountId || operation.onboarding.generation !== signup.providerGeneration) throw new Error("browser-registry-signup-unavailable");
     return operation;
   }
+  hasCapturedAuthorityRestore(): boolean {
+    this.assertLive();
+    return this.#automaticRestore !== undefined && (this.#scope === "profile-restore" || this.#scope === "profile-maintenance");
+  }
+  assertAutomaticRestoreBrowserRegistry(): void {
+    this.assertLive();
+    if ((this.#scope !== "profile-restore" && this.#scope !== "profile-maintenance") || this.#automaticRestore === undefined) throw new Error("profile-restore-browser-custody-required");
+    const operation = this.maintenanceOperation();
+    this.assertOfflineMaintenance(operation);
+    this.assertAuthorityRestoreCurrent(this.#automaticRestore, operation);
+  }
   assertBrowserRegistryMaintenance(): OfflineMaintenanceOperation {
     const operation = this.maintenanceOperation();
     this.assertOfflineMaintenance(operation);
@@ -1488,6 +1499,11 @@ export class RuntimeAdmission {
     assertHeld();
     return new RuntimeAdmission(issuanceToken, { assertHeld, release() {}, readInstallationContext: () => this.readInstallationContext() },
       root, join(root, "artifacts"), [join(root, "state.db")], "stopped-incomplete-profile-inventory", "exclusive", this.#locator, binding, this);
+  }
+  async upgradeBrowserRoots(createProbe: import("../browser-roots.js").BrowserProfileProbeFactory, clock: Clock): Promise<"current" | "upgraded" | "deferred"> {
+    const { lease, restore } = this.#stoppedMachineMaintenance();
+    const { upgradeBrowserRoots } = await import("../maintenance/browser-root-upgrade.js");
+    return upgradeBrowserRoots(lease, restore, createProbe, clock);
   }
   async startCleanFlatStore(browserClosure: ProfileBrowserClosure): Promise<void> {
     const { lease, restore } = this.#stoppedMachineMaintenance();

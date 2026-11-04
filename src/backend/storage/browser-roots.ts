@@ -1,5 +1,5 @@
 import { fileStatus } from "./file-identity.js";
-import { BrowserRootOwnerSchema, BrowserRootSchema, BrowserRootsSchema, type BrowserRootOwner, type BrowserRoot, type BrowserRootsDocument } from "./browser-root-contract.js";
+import { StoppedBrowserRootsV1Schema, parseStoppedBrowserRootUpgradeSource, type StoppedBrowserRootsDocument, type StoppedBrowserRoot, BrowserRootHandleSchema, BrowserRootOwnerSchema, BrowserRootSchema, BrowserRootsSchema, type BrowserRootOwner, type BrowserRoot, type BrowserRootsDocument } from "./browser-root-contract.js";
 import { BrowserProfileStillClosingError } from "../../workflow-kit/session.js";
 import type { ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -36,12 +36,8 @@ export function workerProfileDirectory(input: Readonly<{ profileRoot: string; sl
   return resolve(AbsolutePathSchema.parse(input.profileRoot), `w${String(PositiveIntSchema.parse(input.slotOrdinal))}`, BrowserSystemIdSchema.parse(input.system));
 }
 
-export function onboardingProfileDirectory(profileRoot: string, owner: Readonly<{
-  operationId: string; profileId: string; accountId: string; generation: number;
-}>): string {
-  const operationId=z.uuid().parse(owner.operationId),profileId=z.uuid().parse(owner.profileId),accountId=z.uuid().parse(owner.accountId);
-  const generation=PositiveIntSchema.parse(owner.generation);
-  return resolve(AbsolutePathSchema.parse(profileRoot),`onboarding-${operationId}-${profileId}-${accountId}-g${String(generation)}`);
+export function onboardingProfileDirectory(profileRoot: string, handle: number): string {
+  return resolve(AbsolutePathSchema.parse(profileRoot), `r${BrowserRootHandleSchema.parse(handle).toString(36)}`);
 }
 
 async function runNativeBrowserProbe(profileRoot: string, profileDirectory: string, probe: BrowserProfileProbeOptions): Promise<void> {
@@ -118,10 +114,21 @@ export interface BrowserRootLaunchInput {
   readonly owner: BrowserLaunchOwner;
   readonly credentialFingerprint: string | null;
 }
+export type SignupBrowserRootInput = Readonly<Omit<BrowserRootLaunchInput, "profileDirectory" | "owner"> & { owner: z.infer<typeof SignupOwner> }>;
+export interface BrowserRootLaunch {
+  readonly launchId: string;
+  readonly generation: number;
+  opened(): void;
+  closing(): void;
+  closed(): void;
+  uncertain(error: unknown): never;
+}
 export class BrowserRootUnavailableError extends Error {
   readonly code = "BROWSER_ROOT_UNAVAILABLE";
   constructor(options?: ErrorOptions) { super(ERROR_CATALOG.BROWSER_ROOT_UNAVAILABLE.text, options); this.name = "BrowserRootUnavailableError"; }
 }
+type BrowserRegistryDraft = (Omit<BrowserRootsDocument, "roots"> | Omit<z.infer<typeof StoppedBrowserRootsV1Schema>, "roots">)
+  & Readonly<{ roots: readonly StoppedBrowserRoot[] }>;
 const encode = (value: unknown) => Buffer.from(canonicalJsonStringify(value));
 const digest = (value: unknown) => createHash("sha256").update(encode(value)).digest("hex");
 const same = (left: unknown, right: unknown) => canonicalJsonStringify(left) === canonicalJsonStringify(right);
@@ -129,12 +136,29 @@ function increment(value: number): number {
   return Generation.parse(value + 1);
 }
 
-export function createBrowserRoots(input: RuntimeAdmission) {
+function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
   const admission = requireRuntimeAdmission(input), binding = admission.captureBrowserRegistryContext(), lifetime = admission.lifetime;
   const directory = join(binding.machineRoot, "machine"), path = join(directory, "browser-roots.json");
   const ancestry = new Map<string, DirectoryIdentity>();
   const stages = new Set<string>();
-  function assertHeld(): void { admission.assertBrowserRegistryCustody(); lifetime.assertSourceCustody(); }
+  let format: 1 | 2 | undefined = recovery ? undefined : 2;
+  function parseDocument(value: unknown): StoppedBrowserRootsDocument {
+    if (format === undefined) {
+      admission.assertAutomaticRestoreBrowserRegistry();
+      const document = parseStoppedBrowserRootUpgradeSource(value);
+      format = document.schemaVersion;
+      return document;
+    }
+    return format === 1 ? StoppedBrowserRootsV1Schema.parse(value) : BrowserRootsSchema.parse(value);
+  }
+  function parseRow(value: unknown): StoppedBrowserRoot {
+    if (format === undefined) throw new BrowserRootUnavailableError();
+    return format === 1 ? StoppedBrowserRootsV1Schema.shape.roots.element.parse(value) : BrowserRootSchema.parse(value);
+  }
+  function assertHeld(): void {
+    admission.assertBrowserRegistryCustody(); lifetime.assertSourceCustody();
+    if (recovery) admission.assertAutomaticRestoreBrowserRegistry();
+  }
   function retain(error: unknown): never {
     if (hasUnprovedSourceClosure(error)) {
       admission.retainSourceClosure(error); lifetime.retainSourceClosure(error);
@@ -142,11 +166,11 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     }
     throw error instanceof BrowserRootUnavailableError ? error : new BrowserRootUnavailableError({ cause: error });
   }
-  function read(): BrowserRootsDocument {
+  function read(): StoppedBrowserRootsDocument {
     try { assertHeld(); return withPrivateFileLock(directory, ".browser-roots.lock", readLocked); }
     catch (error) { return retain(error); }
   }
-  function readLocked(): BrowserRootsDocument {
+  function readLocked(): StoppedBrowserRootsDocument {
     try {
     assertHeld();
     if (!noSymlinkAncestry(directory, ancestry)) throw new BrowserRootUnavailableError();
@@ -154,16 +178,16 @@ export function createBrowserRoots(input: RuntimeAdmission) {
       && !stages.has(join(directory, name)))) throw new BrowserRootUnavailableError();
     const file = readPrivateFile(path, { label: "lock", maxBytes: 1_048_576 });
     if (file === undefined) throw new BrowserRootUnavailableError();
-    const document = BrowserRootsSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
+    const document = parseDocument(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(file.bytes)));
     if (document.installationId !== binding.installationId) throw new BrowserRootUnavailableError();
     return document;
     } catch (error) { return retain(error); }
   }
-  function mutate<T>(body: (document: BrowserRootsDocument) => Readonly<{ document: BrowserRootsDocument; result: T }>,
+  function mutate<T>(body: (document: StoppedBrowserRootsDocument) => Readonly<{ document: BrowserRegistryDraft; result: T }>,
     guard: () => void = assertHeld): T {
     let publicationStarted = false;
     try { return withPrivateFileLock(directory, ".browser-roots.lock", () => {
-      const prior = readLocked(), outcome = body(prior), next = BrowserRootsSchema.parse({ ...outcome.document, revision: increment(prior.revision) });
+      const prior = readLocked(), outcome = body(prior), next = parseDocument({ ...outcome.document, revision: increment(prior.revision) });
       if (next.installationId !== prior.installationId) throw new BrowserRootUnavailableError();
       const stage = join(directory, `.browser-roots.${randomUUID()}.tmp`), bytes = encode(next);
       guard(); publicationStarted = true; writePrivateStage(stage, bytes); stages.add(stage); fsyncPath(directory);
@@ -199,19 +223,37 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     if (!(cleanup && (owner.kind === "signup" || owner.kind === "command")) && !same(captured, binding)) throw new BrowserRootUnavailableError();
     return owner;
   }
-  function assertRow(document: BrowserRootsDocument, expected: BrowserRoot): BrowserRoot {
+  function assertRow(document: StoppedBrowserRootsDocument, expected: StoppedBrowserRoot): StoppedBrowserRoot {
     const row = document.roots.find(row => row.directory === expected.directory);
     if (row === undefined || !same(row, expected)) throw new BrowserRootUnavailableError();
     return row;
   }
-  function replaceRow(document: BrowserRootsDocument, before: BrowserRoot, after: BrowserRoot) {
+  function replaceRow(document: StoppedBrowserRootsDocument, before: StoppedBrowserRoot, after: StoppedBrowserRoot): BrowserRegistryDraft {
     assertRow(document, before);
     return { ...document, roots: document.roots.map(row => row.directory === before.directory ? after : row) };
   }
-  function beginLaunch(input: BrowserRootLaunchInput) {
-    const owner = current(input), profileRoot = relativeDirectory(input.profileRoot), root = relativeDirectory(input.profileDirectory);
-    const assertCurrent = () => { if (!same(current(input), owner)) throw new BrowserRootUnavailableError(); };
-    let captured = mutate(document => {
+  function signupRoot(input: SignupBrowserRootInput, cleanup = false): BrowserRootLaunchInput | undefined {
+    const owner = ownerOf(input.owner, input.profileId, input.profileRoot, cleanup), profileRoot = relativeDirectory(input.profileRoot);
+    const row = read().roots.find(row => row.profileId === input.profileId && row.profileRoot === profileRoot && same(row.owner, owner));
+    if (row === undefined) return undefined;
+    const result = { ...input, profileDirectory: join(binding.machineRoot, ...row.directory.split("/")) };
+    current(result, cleanup);
+    return result;
+  }
+  function allocateLaunch(request: BrowserRootLaunchInput | SignupBrowserRootInput) {
+    let selected: Readonly<{ input: BrowserRootLaunchInput; owner: BrowserRootOwner }> | undefined;
+    const assertCurrent = () => { if (selected === undefined || !same(current(selected.input), selected.owner)) throw new BrowserRootUnavailableError(); };
+    const allocated = mutate(document => {
+      if (document.schemaVersion !== 2) throw new BrowserRootUnavailableError();
+      let input: BrowserRootLaunchInput;
+      if ("profileDirectory" in request) input = request;
+      else {
+        const owner = ownerOf(request.owner, request.profileId, request.profileRoot), profileRoot = relativeDirectory(request.profileRoot);
+        const prior = document.roots.find(row => row.profileId === request.profileId && row.profileRoot === profileRoot && same(row.owner, owner));
+        input = { ...request, profileDirectory: onboardingProfileDirectory(request.profileRoot, prior?.handle ?? document.nextHandle) };
+      }
+      const owner = current(input), profileRoot = relativeDirectory(input.profileRoot), root = relativeDirectory(input.profileDirectory);
+      selected = { input, owner };
       assertCurrent();
       const prior = document.roots.find(row => row.directory === root);
       const commandRotation = prior?.owner.kind === 'command' && owner.kind === 'command' && prior.profileId === input.profileId && prior.profileRoot === profileRoot;
@@ -219,12 +261,14 @@ export function createBrowserRoots(input: RuntimeAdmission) {
         || !commandRotation && !same(prior.owner, owner) || prior.profileRoot !== profileRoot || prior.credentialFingerprint !== null && prior.credentialFingerprint !== input.credentialFingerprint
           && !(commandRotation && fileStatus(input.profileDirectory, true) === undefined))) throw new BrowserRootUnavailableError();
       if (prior === undefined && fileStatus(input.profileDirectory, true) !== undefined) throw new BrowserRootUnavailableError();
-      const row = BrowserRootSchema.parse({ profileId: input.profileId, profileRoot, directory: root, owner,
+      const row = BrowserRootSchema.parse({ handle: prior?.handle ?? document.nextHandle, profileId: input.profileId, profileRoot, directory: root, owner,
         sessionGeneration: binding.sessionGeneration, credentialFingerprint: input.credentialFingerprint,
         launch: { launchId: randomUUID(), generation: document.nextGeneration, state: "launching" } });
-      return { document: { ...document, nextGeneration: increment(document.nextGeneration), roots: prior === undefined
-        ? [...document.roots, row] : document.roots.map(entry => entry === prior ? row : entry) }, result: row };
+      return { document: { ...document, nextHandle: prior === undefined ? increment(document.nextHandle) : document.nextHandle,
+        nextGeneration: increment(document.nextGeneration), roots: prior === undefined
+        ? [...document.roots, row] : document.roots.map(entry => entry === prior ? row : entry) }, result: { row, input } };
     }, assertCurrent);
+    let captured = allocated.row;
     function transition(state: BrowserRoot["launch"]["state"], requireCurrent: boolean): void {
       if (requireCurrent) assertCurrent(); else assertHeld();
       captured = mutate(document => {
@@ -234,7 +278,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
         return { document: replaceRow(document, captured, row), result: row };
       }, () => { if (requireCurrent) assertCurrent(); else assertHeld(); });
     }
-    return Object.freeze({ launchId: captured.launch.launchId, generation: captured.launch.generation,
+    return Object.freeze({ input: Object.freeze(allocated.input), launchId: captured.launch.launchId, generation: captured.launch.generation,
       opened() { transition("open", true); }, closing() { transition("closing", false); }, closed() { transition("closed", false); },
       uncertain(error: unknown): never {
         try { transition("unknown", false); }
@@ -246,6 +290,8 @@ export function createBrowserRoots(input: RuntimeAdmission) {
         admission.retainSourceClosure(failure); lifetime.retainSourceClosure(failure); throw failure;
       } });
   }
+  function beginLaunch(input: BrowserRootLaunchInput): BrowserRootLaunch { return allocateLaunch(input); }
+  function beginSignupLaunch(input: SignupBrowserRootInput) { return allocateLaunch(input); }
   async function withUnused<T>(profileDirectory: string, probe: BrowserProfileProbeOptions, body: (unused: Readonly<{ remove(): void; assertCurrent(): void }>) => Promise<T>, owner?: BrowserRootLaunchInput): Promise<T> {
     assertHeld();
     if (profileReservations.has(profileDirectory)) throw new ProfileCustodyUnavailableError();
@@ -286,13 +332,13 @@ export function createBrowserRoots(input: RuntimeAdmission) {
       const source = fileStatus(profileDirectory, true);
       if (source === undefined || !source.isDirectory() || source.isSymbolicLink() || privatePathRejects(profileDirectory, source, "private")
         || prior.native !== undefined && (!sameDirectory(prior.native.source, { device: source.dev, inode: source.ino }))) throw new BrowserRootUnavailableError();
-      const row = BrowserRootSchema.parse({ ...prior, native: { operationId: operation?.operationId ?? randomUUID(),
+      const row = parseRow({ ...prior, native: { operationId: operation?.operationId ?? randomUUID(),
         launchId: randomUUID(), generation: document.nextGeneration, source: fileIdentityObservation({ device: source.dev, inode: source.ino }),
         priorLaunchDigest: digest(prior.launch), phase: "probing" } });
       return { document: { ...replaceRow(document, prior, row), nextGeneration: increment(document.nextGeneration) }, result: row };
     }, assertOwner);
     let removed = false;
-    function assertExcluded(document?: BrowserRootsDocument): void {
+    function assertExcluded(document?: StoppedBrowserRootsDocument): void {
       assertOwner(); assertRow(document ?? read(), captured);
       const source = fileStatus(profileDirectory, true);
       if (removed ? source !== undefined : source === undefined || captured.native === undefined
@@ -304,7 +350,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
       assertExcluded();
       captured = mutate(document => {
         assertExcluded(document);
-        const row = BrowserRootSchema.parse({ ...captured, native: { ...captured.native, phase: "observed" } });
+        const row = parseRow({ ...captured, native: { ...captured.native, phase: "observed" } });
         return { document: replaceRow(document, captured, row), result: row };
       }, assertOwner);
       assertExcluded();
@@ -315,7 +361,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
         if (captured.native?.phase !== "observed" || removed) throw new BrowserRootUnavailableError();
         captured = mutate(document => {
           assertExcluded(document);
-          const row = BrowserRootSchema.parse({ ...captured, native: { ...captured.native, phase: "deleting" } });
+          const row = parseRow({ ...captured, native: { ...captured.native, phase: "deleting" } });
           return { document: replaceRow(document, captured, row), result: row };
         }, assertOwner);
         const verify = (path: string): void => {
@@ -338,7 +384,7 @@ export function createBrowserRoots(input: RuntimeAdmission) {
         if (owner !== undefined && expectedOwner !== undefined && (prior.owner.kind === "worker" && expectedOwner.kind === "worker"
           && prior.owner.membershipRevision !== expectedOwner.membershipRevision
           || owner.credentialFingerprint !== null && owner.credentialFingerprint !== prior.credentialFingerprint)) throw new BrowserRootUnavailableError();
-        const row = BrowserRootSchema.parse({ ...prior, launch: { ...prior.launch, state: "closed" } });
+        const row = parseRow({ ...prior, launch: { ...prior.launch, state: "closed" } });
         if (expectedOwner !== undefined) { row.owner = expectedOwner; row.sessionGeneration = binding.sessionGeneration; }
         return { document: replaceRow(document, captured, row), result: undefined };
       }, assertOwner);
@@ -371,14 +417,36 @@ export function createBrowserRoots(input: RuntimeAdmission) {
     finally { profileReservations.delete(input.profileDirectory); }
   }
   return Object.freeze({
-    inventory() { assertHeld(); return deepFreeze(read()); }, beginLaunch, withUnused, probe,
+    inventory() { assertHeld(); return deepFreeze(read()); }, beginLaunch, beginSignupLaunch, signupRoot, withUnused, probe,
   });
 }
+export function createBrowserRoots(input: RuntimeAdmission) {
+  const registry = createBrowserRootRegistry(input);
+  return Object.freeze({ ...registry, inventory() {
+    const document = registry.inventory();
+    if (document.schemaVersion !== 2) throw new BrowserRootUnavailableError();
+    return document;
+  } });
+}
+
+export function createAutomaticRestoreBrowserRoots(input: RuntimeAdmission) {
+  const admission = requireRuntimeAdmission(input);
+  admission.assertAutomaticRestoreBrowserRegistry();
+  const registry = createBrowserRootRegistry(admission, true), binding = admission.captureBrowserRegistryContext();
+  return Object.freeze({ inventory: registry.inventory,
+    async probeClosed(directory: string, options: BrowserProfileProbeOptions): Promise<void> {
+      admission.assertAutomaticRestoreBrowserRegistry();
+      const row = registry.inventory().roots.find(row => join(binding.machineRoot, row.directory) === directory);
+      if (binding.profileId === null || row?.profileId !== binding.profileId) throw new BrowserRootUnavailableError();
+      await registry.withUnused(directory, options, async () => undefined);
+    },
+  });
+}
+
 export type BrowserRoots = ReturnType<typeof createBrowserRoots>;
-export type BrowserRootLaunch = ReturnType<BrowserRoots["beginLaunch"]>;
 
 
-export function planStoppedBrowserRoots(admission: RuntimeAdmission, claim: StoppedControlProfileInventory, nextGeneration: number, clock: Clock): BrowserRootsDocument {
+export function planStoppedBrowserRoots(admission: RuntimeAdmission, claim: StoppedControlProfileInventory, nextGeneration: number, nextHandle: number, clock: Clock): BrowserRootsDocument {
   const source = admission.readStoppedControlCredentialInventorySource(claim);
   if (source !== requireStoppedControlProfileInventory(claim)) throw new BrowserRootUnavailableError();
   source.assertHeld(); source.lifetime.assertSourceCustody();
@@ -411,7 +479,7 @@ export function planStoppedBrowserRoots(admission: RuntimeAdmission, claim: Stop
     const lease = custody.leases.find(row => row.workerId === slot?.workerId);
     if (browser === undefined || slot === undefined || lease === undefined || browser.health !== "closed" || lease.lifecycle.state !== "stopped") throw new BrowserRootUnavailableError();
     const launch = Launch.parse({ launchId: randomUUID(), generation: nextGeneration++, state: "unknown" });
-    const row = BrowserRootSchema.parse({ profileId: source.binding.profileId, profileRoot: relativePath(profile.profileRoot), directory: relativePath(profile.profileDirectory),
+    const row = BrowserRootSchema.parse({ handle: nextHandle++, profileId: source.binding.profileId, profileRoot: relativePath(profile.profileRoot), directory: relativePath(profile.profileDirectory),
       owner: { kind: "worker", workerId: slot.workerId, workflowId: slot.workflow, ordinal: slot.ordinal, membershipRevision: slot.membershipRevision, leaseGeneration: lease.leaseGeneration },
       sessionGeneration: source.sessionGeneration, credentialFingerprint: browser.signInFingerprint, launch,
       native: { operationId: source.conversionOperationId, launchId: randomUUID(), generation: nextGeneration++,
@@ -419,7 +487,7 @@ export function planStoppedBrowserRoots(admission: RuntimeAdmission, claim: Stop
     roots.push(row);
   }
   source.revalidateSource(); source.assertHeld();
-  return BrowserRootsSchema.parse({ schemaVersion: 1, installationId: source.binding.installationId, revision: 0, nextGeneration, roots });
+  return BrowserRootsSchema.parse({ schemaVersion: 2, installationId: source.binding.installationId, revision: 0, nextHandle, nextGeneration, roots });
 }
 
 export async function probeStoppedControlBrowserRoots(admission: RuntimeAdmission, claim: StoppedControlProfileInventory, options: BrowserProfileProbeOptions): Promise<void> {
@@ -442,15 +510,15 @@ export async function probeStoppedControlBrowserRoots(admission: RuntimeAdmissio
       if (profileReservations.has(path)) throw new ProfileCustodyUnavailableError();
       profileReservations.add(path);
       try {
-        const probing = BrowserRootSchema.parse({ ...row, native: { ...row.native, phase: "probing" } });
-        const intended = BrowserRootsSchema.parse({ ...plan, revision: increment(plan.revision), roots: plan.roots.map(value => value.directory === directory ? probing : value) });
+        const probing = { ...row, native: { ...row.native, phase: "probing" } };
+        const intended = parseStoppedBrowserRootUpgradeSource({ ...plan, revision: increment(plan.revision), roots: plan.roots.map(value => value.directory === directory ? probing : value) });
         source.publishBrowserPlan(plan, intended); plan = intended;
         current();
         await runNativeBrowserProbe(join(source.machineRoot, row.profileRoot), path, options);
         current(); const after = fileStatus(path);
         if (after.dev !== before.dev || after.ino !== before.ino) throw new BrowserRootUnavailableError();
-        const observed = BrowserRootSchema.parse({ ...probing, launch: { ...probing.launch, state: "closed" }, native: { ...probing.native, phase: "observed" } });
-        source.publishBrowserPlan(plan, BrowserRootsSchema.parse({ ...plan, revision: increment(plan.revision), roots: plan.roots.map(value => value.directory === directory ? observed : value) }));
+        const observed = { ...probing, launch: { ...probing.launch, state: "closed" }, native: { ...probing.native, phase: "observed" } };
+        source.publishBrowserPlan(plan, parseStoppedBrowserRootUpgradeSource({ ...plan, revision: increment(plan.revision), roots: plan.roots.map(value => value.directory === directory ? observed : value) }));
       } finally { profileReservations.delete(path); }
     }
     current();
@@ -466,11 +534,15 @@ export function createProfileBrowserClosure(createProbe: BrowserProfileProbeFact
     async probeClosed(profiles, timing, clock, signal, owner, operation) {
       const options = createProbe({ ...timing, clock, signal });
       if ("assertLive" in owner && !owner.isFlatBackup()) {
-        const admission = requireRuntimeAdmission(owner), roots = createBrowserRoots(admission);
+        const admission = requireRuntimeAdmission(owner);
+        const recovery = admission.hasCapturedAuthorityRestore() ? createAutomaticRestoreBrowserRoots(admission) : undefined;
+        const roots = recovery === undefined ? createBrowserRoots(admission) : undefined;
         for (const profile of profiles) {
           const present = fileStatus(profile.profileDirectory, true);
           if (present === undefined) { if (!profile.cleanupCompleted) throw new BrowserRootUnavailableError(); continue; }
-          await roots.withUnused(profile.profileDirectory, options, async () => undefined);
+          if (recovery !== undefined) await recovery.probeClosed(profile.profileDirectory, options);
+          else if (roots !== undefined) await roots.withUnused(profile.profileDirectory, options, async () => undefined);
+          else throw new BrowserRootUnavailableError();
         }
         return;
       }
