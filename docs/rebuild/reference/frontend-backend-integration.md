@@ -170,6 +170,7 @@ field membership and discriminated states. The client checks identity as well as
 | Settings | `queries/settings-queries.ts`, `commands/settings-commands.ts` | `settings.ts`: `GET /api/v1/settings/facts`, `/editable`; `POST /api/v1/settings/path-picker`; commands through `/api/v1/commands` |
 | Preflight | `queries/preflight-queries.ts`, `queries/chatgpt-account-queries.ts` | `settings-preflight.ts`: `GET /api/v1/preflight`, `POST /api/v1/preflight/rerun`; explicit diagnostic through the existing `chatgpt-account.ts`: `POST /api/v1/settings/chatgpt-account/test-ocr` |
 | Storage doctor | `queries/storage-queries.ts` | `storage.ts`: `GET /api/v1/storage/doctor/latest`, `/api/v1/storage/doctor` |
+| Clear run history | `queries/storage-queries.ts`, `commands/settings-commands.ts` | `storage.ts`: `GET /api/v1/storage/run-history`, confirmed `POST /api/v1/storage/run-history/clear`, result-only `POST /api/v1/storage/run-history/result` (never starts an unrecorded command); requires the selected-person `runHistory` service in composition |
 | Notifications | `queries/notification-queries.ts` | `notifications.ts`: `GET /api/v1/notifications`, `/status`, `/:notificationId/target` |
 | Analytics | `queries/activity-queries.ts` | `activity.ts`: `GET /api/v1/reports/activity`, `/api/v1/reports/activity.csv`, `/api/v1/reports/activity/population`, `/api/v1/reports/activity/population/selected`, `/api/v1/reports/activity/population.csv` |
 | Explorer | `queries/explorer-queries.ts` | `explorer.ts`: read-only `GET /api/v1/explorer` |

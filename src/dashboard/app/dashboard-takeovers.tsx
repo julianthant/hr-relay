@@ -61,6 +61,8 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
               onExitGuardChange={onSettingsExitGuardChange}
               onSaved={onSettingsSaved}
               onSaveProblem={onSettingsSaveProblem}
+              onHistoryCleared={() => setRoute(current => ({ ...current, run: undefined,
+                view: { ...current.view, queueMember: undefined, logFailure: undefined, records: undefined } }), "replace")}
             />
           ) : takeover === "intake" && route.intake !== undefined ? (
              /** The surface owns the same full-bleed `TakeoverFrame` as every other

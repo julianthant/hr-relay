@@ -164,6 +164,7 @@ export function SettingsPage({
   onSaved,
   onSaveProblem,
   onClose,
+  onHistoryCleared,
 }: {
   storage: StorageHealthSummary;
   sections: readonly SettingsSection[];
@@ -183,6 +184,7 @@ export function SettingsPage({
   onSection: (next: string, target?: string) => void;
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onClose: () => void;
+  onHistoryCleared?: () => void;
   onSaved?: SettingsSaveListener;
   onSaveProblem?: SettingsSaveProblemListener;
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
@@ -317,7 +319,7 @@ export function SettingsPage({
         {isDataSection && dataContent}
         {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SpreadsheetsSettings onOpenRun={onOpenRun} source={spreadsheetSource} workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection onSaved={onSaved} />}
-        {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} />}
+        {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} onHistoryCleared={onHistoryCleared} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} workflowLabels={workflowLabels} />}
         {resolution.state === "open" && resolution.entry.id === "routes" && <RoutesSection editor={editor} />}
         {resolution.state === "open" && resolution.entry.id !== "routes" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (

@@ -1,4 +1,5 @@
 import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
+import { ClearRunHistoryRequestSchema } from "../../../models/dashboard/run-history.js";
 import { z } from "zod";
 import { DelegationAdmissionRequestSchema, DelegationInvocationRequestSchema, DelegationSettlementRequestSchema, DelegationRefreshRequestSchema, DelegationRetryRequestSchema } from "./delegation-contracts.js";
 import { PublicRerunPlanSchema, SourceBoundRunSchema } from "../../../models/run/rerun.js";
@@ -23,11 +24,12 @@ const schemas = {
   terminalize:z.union([CanonicalFailureTerminalizeRequestSchema,CanonicalSuccessTerminalizeRequestSchema,CanonicalCancellationTerminalizeRequestSchema]),
   recover:CanonicalRecoverRunRequestSchema,requeue:CanonicalRequeueRequestSchema,retry:CanonicalRetrySourceRequestSchema,restart:CanonicalRetrySourceRequestSchema,
   delete:CanonicalDeleteRequestSchema,purge:CanonicalPurgeRequestSchema,
+  "clear-history": ClearRunHistoryRequestSchema,
 };
 export function validateNativeLifecycleRequest(input: unknown): void {
   const command = RunLifecycleCommandRecordSchema.parse(input);
   if (!Object.hasOwn(schemas,command.operation)) throw new Error("run-lifecycle-operation-unavailable");
-  const operation = z.enum(["application-admission","pause","resume","acknowledge-pause","delegation-invocation","delegation-admission","delegation-settlement","delegation-refresh","delegation-retry","create","claim-next","transition","recover-crash","renew-claim","worker-transition","worker-admission","worker-standing-recovery","worker-verification-admission","worker-verification-retirement","terminalize","requeue","retry","restart","recover","delete","purge"]).parse(command.operation);
+  const operation = z.enum(["application-admission","pause","resume","acknowledge-pause","delegation-invocation","delegation-admission","delegation-settlement","delegation-refresh","delegation-retry","create","claim-next","transition","recover-crash","renew-claim","worker-transition","worker-admission","worker-standing-recovery","worker-verification-admission","worker-verification-retirement","terminalize","requeue","retry","restart","recover","delete","purge","clear-history"]).parse(command.operation);
   const parsed = schemas[operation].parse(command.request);
   if (z.object({commandId:z.string()}).parse(parsed).commandId !== command.commandId
     || canonicalJsonStringify(parsed) !== canonicalJsonStringify(command.request)
@@ -35,7 +37,7 @@ export function validateNativeLifecycleRequest(input: unknown): void {
     throw new Error("run-lifecycle-request-binding-mismatch");
   }
   let expectedFence: unknown;
-  if (["application-admission","delegation-invocation","create","claim-next","purge","worker-admission","worker-standing-recovery","worker-verification-admission","worker-verification-retirement"].includes(operation)) expectedFence = {kind:"none"};
+  if (["application-admission","delegation-invocation","create","claim-next","purge","clear-history","worker-admission","worker-standing-recovery","worker-verification-admission","worker-verification-retirement"].includes(operation)) expectedFence = {kind:"none"};
   else if (operation === "delegation-admission") {
     const request = DelegationAdmissionRequestSchema.parse(parsed);
     expectedFence = { kind: "terminal", expectedVersion: request.expectedVersion, ...request.claim };

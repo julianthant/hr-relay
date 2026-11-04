@@ -13,9 +13,14 @@ const catalog = buildWorkflowCatalog(served);
 const ids = (query = "") => runPickerGroups(catalog, query).flatMap(group => group.entries.flatMap(node => [node.entry.id, ...node.members.map(child => child.entry.id)]));
 
 describe("shared run catalog", () => {
-  it("keeps all registered workflows visible and marks delegated entries unavailable for direct launch", () => {
-    expect(ids()).toHaveLength(15);
-    expect(ids("OCR")).toEqual(["ocr"]); expect(ids("i-9")).toEqual(["i9-lookup", "i9-check-start"]);
+  it("omits only parent-only previews from the picker while retaining the complete catalog", () => {
+    const visible = ["crm-doc-download", "emergency-contact", "i9-check-start", "kronos-pay-rule", "oath-signature", "oath-upload", "ocr", "old-kronos-reports", "onbase", "onboarding", "person-lookup", "separations", "work-study"];
+    expect(ids().sort()).toEqual(visible);
+    expect(catalog.map(flow => flow.id).sort()).toEqual([...visible, "i9-lookup", "sharepoint-download"].sort());
+    expect(ids()).not.toContain("i9-lookup"); expect(ids()).not.toContain("sharepoint-download");
+    expect(ids("OCR")).toEqual(["ocr"]); expect(ids("i-9")).toEqual(["i9-check-start"]);
+    expect(ids("I-9 Lookup")).toEqual([]); expect(ids("SharePoint")).toEqual([]);
+    expect(ids("Download")).toEqual(["crm-doc-download"]); expect(ids("Search")).toEqual(["person-lookup"]);
     expect(catalog.filter(flow => flow.launch.state === "unavailable").map(flow => flow.id).sort()).toEqual(["i9-lookup", "sharepoint-download"]);
   });
   it("uses served capability instead of restoring a preview launch when served input is absent", () => {
