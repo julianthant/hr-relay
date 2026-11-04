@@ -287,6 +287,12 @@ control after the retry settles. That acknowledgement binds the exact child atte
 another retry requires another Resume. `block-parent` holds the same parent row and propagates its
 block through waiting ancestors. Approval gates remain visible only on their owning run.
 
+For record-based reads, declare `sourceRecordIds(scope)` as nonempty unique record sets aligned
+with the bound children. Rebuild pure review tasks with `replay: "always-rerun"` when child retries
+can change their records. The runtime authenticates revised membership and checkpoint rebinding;
+it reuses a read only when its input, record association, schemas, configuration and freshness match.
+Approval snapshots remain immutable, and refresh never replays a successful transaction.
+
 During a parent dry run, a delegated child with no transactions keeps the dry-run flag and returns
 its normal typed read-only observations. Registered descendants that support preparation make a
 parent eligible for preview even when the parent has no local transaction. Awaited child previews
