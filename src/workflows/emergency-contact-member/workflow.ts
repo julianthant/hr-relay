@@ -35,9 +35,9 @@ export const emergencyContactMemberWorkflow = defineWorkflow({
       { id: "contact-plan", entryId: "contact-plan", contractRole: "task", occurrencePath: ["contact-plan"], bindings: [] },
       { id: "probe-contact", entryId: "contact-preview", contractRole: "probe", occurrencePath: ["contact-preview", "probe"], bindings: [] },
       { id: "prepare-contact", entryId: "contact-preview", contractRole: "prepare", occurrencePath: ["contact-preview", "prepare"], bindings: [] },
-      { id: "save-unavailable", entryId: "contact-preview", contractRole: "commit", occurrencePath: ["contact-preview", "commit"], bindings: [] },
+      { id: "save-contact", entryId: "contact-preview", contractRole: "commit", occurrencePath: ["contact-preview", "commit"], bindings: [] },
       { id: "verify-contact", entryId: "contact-preview", contractRole: "verify", occurrencePath: ["contact-preview", "verify"], bindings: [] },
-    ], presentation: ["approved-record", "map-contact", "read-contacts", "contact-plan", "probe-contact", "prepare-contact", "save-unavailable", "verify-contact"]
+    ], presentation: ["approved-record", "map-contact", "read-contacts", "contact-plan", "probe-contact", "prepare-contact", "save-contact", "verify-contact"]
       .map(id => ({ id, kind: "operation" as const, invocationId: id })),
   },
   steps: author => {
