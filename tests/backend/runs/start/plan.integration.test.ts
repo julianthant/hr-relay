@@ -1,3 +1,6 @@
+import { deriveProfileNames } from "../../../../src/models/profiles/profile.js";
+import { KualiFinalizationVariablesSchema, KualiFinalizationTargetSchema, kualiFinalizationFields } from "../../../../src/models/ui/kuali-separation-finalization.js";
+import { kualiFinalizationVariablesInput } from "../../../support/helpers/kuali-finalization-input-fixtures.js";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { RuntimeInputSnapshotSchema } from "../../../../src/models/config/secrets.js";
@@ -65,6 +68,25 @@ async function openDatabase(): Promise<AuthorityDatabase> {
 
 describe("separations — start planning through the existing service", () => {
 afterEach(_afterEachFixture0);
+
+  for (const [first, last] of [["André", "José"], ["A".repeat(64), "B".repeat(64)]]) {
+    it(`plans the complete profile name through Separations and Kuali validation (${first.length}/${last.length})`, async () => {
+      const names = deriveProfileNames(first, last), authority = await openDatabase();
+      const result = planStart({ authority, clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000,
+        protectedSecrets: protectedSecretSource({ profileName: names.timekeeperName }) }, {
+        descriptor: separationsDescriptor, submissions: [{ documentNumber: "4511" }], dryRun: true, priority: "bulk", shape: "single",
+        configFingerprint: HASH_A, configSnapshotId: UUID_4, plannedBy: "local-operator" });
+      assert.deepEqual(result.refused, []); assert.equal(result.planned.length, 1);
+      const value = separationsDescriptor.canonicalInput.parse(result.planned[0].input.value);
+      assert.equal(value.timekeeperName, `${first} ${last}`);
+      const variables = KualiFinalizationVariablesSchema.parse({ ...kualiFinalizationVariablesInput(), timekeeperName: value.timekeeperName });
+      const target = KualiFinalizationTargetSchema.parse({ actionId: "a".repeat(24), documentNumber: "4511", emplId: "10873698", variables });
+      assert.equal(kualiFinalizationFields(target.variables).timekeeperName, names.timekeeperName);
+      for (const invalid of ["Injected\nSigner", "Injected\u0000Signer", "A".repeat(130), " padded "]) {
+        assert.equal(KualiFinalizationVariablesSchema.safeParse({ ...variables, timekeeperName: invalid }).success, false);
+      }
+    });
+  }
 
   it("captures admitted profile identity for each plan and rerun, refusing override or missing authority before IDs", async () => {
     const authority = await openDatabase();

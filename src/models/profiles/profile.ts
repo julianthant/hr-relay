@@ -91,6 +91,7 @@ export function deriveProfileNames(firstName: string, lastName: string): {
   assertNameInitial(first.data);
   assertNameInitial(last.data);
   const timekeeperName = `${first.data} ${last.data}`;
+  if (!ProfileDisplayNameSchema.safeParse(timekeeperName).success) throw new ProfileNameValidationError();
   return { firstName: first.data, lastName: last.data, initials: profileInitials(timekeeperName), timekeeperName };
 }
 
