@@ -1,3 +1,4 @@
+import { fileStatus, descriptorStatus, fileIdentityObservation, privateFileNumber, sameDirectory } from "../file-identity.js";
 import { fsyncPath, privatePathRejects } from "../private-path.js";
 import { proveProfileRootsUnused } from "../maintenance/process-closure.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
@@ -7,7 +8,6 @@ import { spawnSync } from "node:child_process";
 import {
   closeSync,
   constants,
-  fstatSync,
   lstatSync,
   readSync,
   existsSync,
@@ -90,8 +90,12 @@ export const WorkerProcessLockFileSchema = z.union([
 ]);
 export type WorkerProcessLockFile = z.infer<typeof WorkerProcessLockFileSchema>;
 
-export const ProcessCustodyFileSchema = z.strictObject({ path: z.string().min(1), device: z.number().int().nonnegative(),
-  inode: z.number().int().nonnegative(), digest: FingerprintSchema });
+const ObservedInteger = z.union([z.number().int().safe().nonnegative(), z.string().regex(/^(0|[1-9][0-9]*)$/u)]);
+export const ProcessCustodyFileSchema = z.strictObject({ path: z.string().min(1), device: ObservedInteger,
+  inode: ObservedInteger, digest: FingerprintSchema });
+function sameCustodyFile(left: z.input<typeof ProcessCustodyFileSchema>, right: z.input<typeof ProcessCustodyFileSchema>): boolean {
+  return left.path === right.path && left.digest === right.digest && sameDirectory(left, right);
+}
 const ProcessCustodyRootSchema = ProcessCustodyFileSchema.omit({ digest: true }).extend({ mode: z.number().int(), owner: z.number().int().nonnegative() });
 const RecoverySingletonClaimSchema = z.strictObject({ role: z.enum(["server", "live-smoke", "geocode"]),
   generation: PositiveIntSchema, acquisitionId: z.uuid(), pid: PositiveIntSchema, processIdentity: ProcessStartIdentitySchema,
@@ -130,7 +134,7 @@ const STARTUP_PROCESS_CLOSURE_DIRECTORY = "startup-process-closure";
 function startupClosureDirectory(root: string) {
   const directory = join(root, STARTUP_PROCESS_CLOSURE_DIRECTORY);
   if (!existsSync(directory)) return undefined;
-  const info = lstatSync(directory);
+  const info = fileStatus(directory);
   if (!info.isDirectory() || info.isSymbolicLink() || realpathSync(directory) !== directory || privatePathRejects(directory, info, "directory-0700")) throw new Error("startup-process-closure-directory-unsafe");
   if (readdirSync(directory).some(name => !/^[0-9a-f-]{36}\.json$/u.test(name) || !z.uuid().safeParse(name.slice(0, -5)).success)) throw new Error("startup-process-closure-publication-uncertain");
   return directory;
@@ -146,13 +150,13 @@ function assertStartupClosureOriginal(receipt: z.infer<typeof StartupProcessClos
   if (original.name === "workers" ? observeProcessIdentity(original.pid).state !== "gone"
     : recordOwnerIsAlive(original, observeProcessIdentity)) throw new Error("startup-process-closure-owner-unproved");
   const file = readProcessCustodyFile(expected);
-  if (canonicalJsonStringify(file.witness) !== canonicalJsonStringify(receipt.file)
+  if (!sameCustodyFile(file.witness, receipt.file)
     || canonicalJsonStringify(JSON.parse(file.bytes.toString("utf8"))) !== canonicalJsonStringify(original)) throw new Error("startup-process-closure-original-changed");
-  for (const witness of receipt.witnesses) if (canonicalJsonStringify(readProcessCustodyFile(witness.path).witness) !== canonicalJsonStringify(witness)) throw new Error("startup-process-closure-witness-changed");
+  for (const witness of receipt.witnesses) if (!sameCustodyFile(readProcessCustodyFile(witness.path).witness, witness)) throw new Error("startup-process-closure-witness-changed");
   for (const root of receipt.roots) {
-    const info = lstatSync(root.path);
-    if (realpathSync(root.path) !== root.path || !info.isDirectory() || info.isSymbolicLink() || info.dev !== root.device
-      || info.ino !== root.inode || info.mode !== root.mode || info.uid !== root.owner) throw new Error("startup-process-closure-root-changed");
+    const info = fileStatus(root.path);
+    if (realpathSync(root.path) !== root.path || !info.isDirectory() || info.isSymbolicLink() || !sameDirectory({ device: info.dev, inode: info.ino }, root)
+      || privateFileNumber(info.mode) !== root.mode || privateFileNumber(info.uid) !== root.owner) throw new Error("startup-process-closure-root-changed");
   }
 }
 
@@ -434,15 +438,15 @@ function restoreAdmissionPath(root: string): string {
 
 type SingletonRole = "server" | "live-smoke" | "geocode";
 const GeocodeReleaseSchema = z.strictObject({ generation: PositiveIntSchema, acquisitionId: z.uuid(), releasedAt: IsoInstantSchema });
-export interface GeocodeFileCustody { readonly dev: number; readonly ino: number; readonly size: number; readonly mtimeMs: number }
+export interface GeocodeFileCustody { readonly dev: number | bigint; readonly ino: number | bigint; readonly size: number; readonly mtimeMs: number | bigint }
 
 function claimDirectory(root: string, role: SingletonRole, create = false): string {
   if (create) mkdirSync(root, { recursive: true, mode: 0o700 });
-  const parent = lstatSync(root);
+  const parent = fileStatus(root);
   if (!parent.isDirectory() || parent.isSymbolicLink() || privatePathRejects(root, parent, "private")) throw new Error(`${role}-root-unsafe`);
   const directory = join(root, `${role}-claims`);
   if (create) mkdirSync(directory, { mode: 0o700, recursive: true });
-  const stat = lstatSync(directory);
+  const stat = fileStatus(directory);
   if (!stat.isDirectory() || stat.isSymbolicLink() || privatePathRejects(directory, stat, "private")) throw new Error(`${role}-directory-unsafe`);
   return directory;
 }
@@ -451,9 +455,9 @@ function claimFilePath(root: string, role: SingletonRole, name: string): string 
   return join(claimDirectory(root, role), name);
 }
 function privateClaimFile(path: string, fd: number, role: SingletonRole): GeocodeFileCustody {
-  const stat = fstatSync(fd);
-  if (!stat.isFile() || stat.nlink !== 1 || privatePathRejects(path, stat, "private-read-write") || stat.size > 65_536) throw new Error(`${role}-file-unsafe`);
-  return { dev: stat.dev, ino: stat.ino, size: stat.size, mtimeMs: stat.mtimeMs };
+  const stat = descriptorStatus(fd);
+  if (!stat.isFile() || (stat.nlink !== 1 && stat.nlink !== 1n) || privatePathRejects(path, stat, "private-read-write") || stat.size > 65_536) throw new Error(`${role}-file-unsafe`);
+  return { dev: stat.dev, ino: stat.ino, size: privateFileNumber(stat.size), mtimeMs: stat.mtimeMs };
 }
 function custodyEquals(a: GeocodeFileCustody, b: GeocodeFileCustody): boolean { return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs; }
 
@@ -505,7 +509,7 @@ function removeOwnedClaimRuntimeFile(root: string, role: SingletonRole, name: st
 }
 function readSingletonClaims(root: string, role: SingletonRole): readonly z.output<typeof CurrentRuntimeProcessLockFileSchema>[] {
   if (lstatSync(lockPath(root, role), { throwIfNoEntry: false }) !== undefined) throw new Error(`${role}-mutable-lock-unsupported`);
-  const parent = lstatSync(root, { throwIfNoEntry: false });
+  const parent = fileStatus(root, true);
   if (parent === undefined) return [];
   if (!parent.isDirectory() || parent.isSymbolicLink() || privatePathRejects(root, parent, "private")) throw new Error(`${role}-root-unsafe`);
   if (lstatSync(join(root, `${role}-claims`), { throwIfNoEntry: false }) === undefined) return [];
@@ -589,7 +593,7 @@ function writeWorkerProcessLockFile(root: string, record: WorkerProcessLockFile)
   const directory = join(root, WORKER_PROCESS_LOCK_DIRECTORY);
   mkdirSync(directory, { recursive: true, mode: 0o700 });
   for (const path of [root, directory]) {
-    const stat = lstatSync(path);
+    const stat = fileStatus(path);
     if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(path) !== resolve(path)
       || privatePathRejects(path, stat, "private")) throw new Error("worker-process-custody-directory-unsafe");
   }
@@ -729,14 +733,14 @@ export function acquireRuntimeRestoreAdmission(
         released = true;
       },
     });
-    const lockPath = restoreAdmissionPath(root), before = lstatSync(lockPath);
+    const lockPath = restoreAdmissionPath(root), before = fileStatus(lockPath);
     restoreCustodyHandles.set(handle, { root, assertHeld: () => {
       if (released) throw new Error("restore-admission-handle-released");
       if (realpathSync(root) !== root) throw new Error("restore-admission-root-unsafe");
-      const directory = lstatSync(root), file = lstatSync(lockPath), current = readRestoreAdmission(root);
+      const directory = fileStatus(root), file = fileStatus(lockPath), current = readRestoreAdmission(root);
       const observed = observeProcessIdentity(process.pid);
       if (!directory.isDirectory() || directory.isSymbolicLink() || privatePathRejects(root, directory, "private")
-        || !file.isFile() || file.nlink !== 1 || privatePathRejects(lockPath, file, "file-0600")
+        || !file.isFile() || (file.nlink !== 1 && file.nlink !== 1n) || privatePathRejects(lockPath, file, "file-0600")
         || file.dev !== before.dev || file.ino !== before.ino
         || canonicalJsonStringify(current) !== canonicalJsonStringify(record)
         || record.pid !== process.pid || observed.state !== "alive" || record.processIdentity.platform !== observed.identity.platform
@@ -747,25 +751,26 @@ export function acquireRuntimeRestoreAdmission(
 }
 
 export function readProcessCustodyFile(path: string, maxBytes = 1_048_576) {
-  const parent = dirname(path), before = lstatSync(path);
-  if (realpathSync(parent) !== parent || !lstatSync(parent).isDirectory() || !before.isFile() || before.isSymbolicLink()
-    || before.nlink !== 1 || before.size > maxBytes || privatePathRejects(path, before, "private")) throw new Error("worker-process-recovery-file-unsafe");
+  const parent = dirname(path), before = fileStatus(path);
+  if (realpathSync(parent) !== parent || !fileStatus(parent).isDirectory() || !before.isFile() || before.isSymbolicLink()
+    || (before.nlink !== 1 && before.nlink !== 1n) || before.size > maxBytes || privatePathRejects(path, before, "private")) throw new Error("worker-process-recovery-file-unsafe");
   const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   let bytes: Buffer | undefined, primary: { error: unknown } | undefined;
   try {
-    const opened = fstatSync(descriptor);
+    const opened = descriptorStatus(descriptor);
     if (opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("worker-process-recovery-source-changed");
     bytes = readFileSync(descriptor);
-    const after = fstatSync(descriptor), live = lstatSync(path);
-    const identity = (stat: typeof before) => [stat.dev, stat.ino, stat.mode, stat.uid, stat.nlink, stat.size, stat.mtimeMs, stat.ctimeMs];
+    const after = descriptorStatus(descriptor);
+    const live = fileStatus(path);
+    const identity = (stat: typeof before) => [stat.dev, stat.ino, stat.mode, stat.uid, stat.nlink, stat.size, stat.mtimeMs, stat.ctimeMs].map(value => typeof value === "bigint" ? value.toString() : value);
     if (canonicalJsonStringify(identity(before)) !== canonicalJsonStringify(identity(after))
-      || canonicalJsonStringify(identity(before)) !== canonicalJsonStringify(identity(live)) || bytes.length !== before.size) throw new Error("worker-process-recovery-source-changed");
+      || canonicalJsonStringify(identity(before)) !== canonicalJsonStringify(identity(live)) || bytes.length !== privateFileNumber(before.size)) throw new Error("worker-process-recovery-source-changed");
   } catch (error) { primary = { error }; }
   try { closeSync(descriptor); }
   catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { descriptor: { descriptor, identity: before } }); }
   if (primary !== undefined) throw primary.error;
   if (bytes === undefined) throw new Error("worker-process-recovery-read-unproved");
-  return { bytes, witness: { path, device: before.dev, inode: before.ino, digest: createHash("sha256").update(bytes).digest("hex") } };
+  return { bytes, witness: { path, ...fileIdentityObservation({ device: before.dev, inode: before.ino }), digest: createHash("sha256").update(bytes).digest("hex") } };
 }
 
 export function captureWorkerProcessRecoveryFile(processLockRoot: string, acquisitionId: string) {
@@ -786,13 +791,13 @@ export function assertWorkerProcessRecoveryCapture(capture: WorkerProcessRecover
       join(workspace, ".tracker/control/installation.json"), join(workspace, ".tracker/control/locator.json"),
       join(state, ".runtime-owner.json"), join(artifacts, ".runtime-owner.json")])
     || canonicalJsonStringify(parsed.roots.map(root => root.path)) !== canonicalJsonStringify([state, artifacts, parsed.processLockRoot])) throw new Error("worker-process-recovery-binding-unproved");
-  if (canonicalJsonStringify(captureWorkerProcessRecoveryFile(parsed.processLockRoot, parsed.original.acquisitionId))
-    !== canonicalJsonStringify({ original: parsed.original, file: parsed.file })) throw new Error("worker-process-recovery-source-changed");
-  for (const file of parsed.witnesses) if (canonicalJsonStringify(readProcessCustodyFile(file.path).witness) !== canonicalJsonStringify(file)) throw new Error("worker-process-recovery-source-changed");
+  const current = captureWorkerProcessRecoveryFile(parsed.processLockRoot, parsed.original.acquisitionId);
+  if (canonicalJsonStringify(current.original) !== canonicalJsonStringify(parsed.original) || !sameCustodyFile(current.file, parsed.file)) throw new Error("worker-process-recovery-source-changed");
+  for (const file of parsed.witnesses) if (!sameCustodyFile(readProcessCustodyFile(file.path).witness, file)) throw new Error("worker-process-recovery-source-changed");
   for (const root of parsed.roots) {
-    const stat = lstatSync(root.path);
+    const stat = fileStatus(root.path);
     if (realpathSync(root.path) !== root.path || !stat.isDirectory() || stat.isSymbolicLink()
-      || stat.dev !== root.device || stat.ino !== root.inode || stat.mode !== root.mode || stat.uid !== root.owner
+      || !sameDirectory({ device: stat.dev, inode: stat.ino }, root) || privateFileNumber(stat.mode) !== root.mode || privateFileNumber(stat.uid) !== root.owner
       || privatePathRejects(root.path, stat, "group-write")) throw new Error("worker-process-recovery-root-changed");
   }
 }
@@ -828,18 +833,18 @@ export function assertWorkerProcessRecoveryRuntimeStopped(root: string, acquisit
 export function workerProcessRecoveryProved(root: string, record: WorkerProcessLockFile, observer: ProcessIdentityObserver = observeProcessIdentity): boolean {
   if (readStartupProcessClosure(root, record) !== undefined) return true;
   const directory = join(root, WORKER_PROCESS_RECOVERY_DIRECTORY);
-  const stat = lstatSync(directory, { throwIfNoEntry: false });
+  const stat = fileStatus(directory, true);
   if (stat === undefined) return false;
   if (!stat.isDirectory() || stat.isSymbolicLink() || realpathSync(directory) !== directory || privatePathRejects(directory, stat, "private")) throw new Error("worker-process-recovery-receipt-unsafe");
   for (const name of readdirSync(directory)) if (!/^[0-9a-f-]{36}\.json$/u.test(name) || !z.uuid().safeParse(name.slice(0, -5)).success) throw new Error("worker-process-recovery-publication-uncertain");
   const path = join(directory, `${record.acquisitionId}.json`);
-  if (lstatSync(path, { throwIfNoEntry: false }) === undefined) return false;
+  if (fileStatus(path, true) === undefined) return false;
   const receipt = validateWorkerProcessRecoveryReceipt(JSON.parse(readProcessCustodyFile(path).bytes.toString("utf8")));
   if (receipt.capture.processLockRoot !== root || canonicalJsonStringify(receipt.capture.original) !== canonicalJsonStringify(record)) throw new Error("worker-process-recovery-receipt-mismatch");
   assertWorkerProcessRecoveryCapture(receipt.capture);
   for (const name of ["server-claims", "live-smoke-claims", "geocode-claims", WORKER_PROCESS_LOCK_DIRECTORY]) {
     const path = join(root, name);
-    if (lstatSync(path, { throwIfNoEntry: false }) !== undefined && readdirSync(path).some(entry => entry.startsWith(".")
+    if (fileStatus(path, true) !== undefined && readdirSync(path).some(entry => entry.startsWith(".")
       || entry.endsWith(".tmp") || entry.endsWith(".channel.json"))) throw new Error("worker-process-recovery-publication-uncertain");
   }
   if (observer(record.pid).state !== "gone") throw new Error("worker-process-recovery-owner-not-gone");

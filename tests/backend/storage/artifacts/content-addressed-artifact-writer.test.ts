@@ -1,3 +1,4 @@
+import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
 import { default as assert } from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
@@ -69,3 +70,18 @@ it("never deletes an unregistered shared winner during stopped cleanup and prese
   } finally { await profile.close(); }
 });
 }
+
+
+it.skipIf(process.platform !== "linux")("publishes and disposes a diagnostic with exact high file IDs", async () => {
+  const f = await createBoundProfileFixture(), restore = forceExactFileMetadata(f.admission.artifactRoot);
+  try {
+    const writer = createContentAddressedArtifactWriter({ admission: f.admission });
+    const bytes = Buffer.from("exact diagnostic fixture"), stage = await writer.stageDiagnostic(bytes, { mediaType: "application/json" }, "ordinary");
+    assert.equal(stage.publish().sha256, createHash("sha256").update(bytes).digest("hex"));
+    stage.dispose();
+    const chunks: Buffer[] = [];
+    for await (const chunk of await writer.open(stage.ref)) { assert.ok(chunk instanceof Uint8Array); chunks.push(Buffer.from(chunk)); }
+    assert.deepEqual(Buffer.concat(chunks), bytes);
+    assert.deepEqual(pendingDiagnosticArtifacts(f.admission), []);
+  } finally { restore(); await f.close(); }
+});

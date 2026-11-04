@@ -1,3 +1,4 @@
+import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -133,4 +134,13 @@ it("refuses changed staging before preparing or publishing the output", async ()
     await assert.rejects(f.sink.project(f.request), /staged-bytes-changed/u);
     assert.equal(existsSync(f.path), false); assert.equal(f.prepared(), undefined);
   } finally { f.close(); }
+});
+
+
+it.skipIf(process.platform !== "linux")("publishes named output with exact high file and directory IDs", async () => {
+  const f = await fixture(), restore = forceExactFileMetadata(f.directory);
+  try {
+    assert.deepEqual(await f.sink.project(f.request), { contentSha256: f.artifact.sha256, artifact: f.artifact });
+    assert.deepEqual(readFileSync(f.path), f.bytes);
+  } finally { restore(); f.close(); }
 });

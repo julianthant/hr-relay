@@ -1,10 +1,11 @@
+import { fileStatus, privateFileNumber } from "../file-identity.js";
 import { createHash } from "node:crypto";
 import {
 existsSync,
-lstatSync,
 readdirSync,
 statSync,
 type Stats,
+type BigIntStats,
 } from "node:fs";
 import { constants as systemConstants } from "node:os";
 import { basename,dirname,isAbsolute,join,relative,resolve,sep } from "node:path";
@@ -58,8 +59,8 @@ function errnoCode(error: unknown): string {
 class SafeSpanCorpusError extends Error {}
 
 type DirectoryIdentity = Readonly<{
-  device: number;
-  inode: number;
+  device: number | bigint;
+  inode: number | bigint;
 }>;
 
 const MISSING_DIRECTORY = Symbol("missing-directory");
@@ -68,10 +69,10 @@ function inspectNoFollowDirectory(
   path: string,
   label: string,
   allowMissing = false,
-): Stats | typeof MISSING_DIRECTORY {
-  let before: Stats;
+): Stats | BigIntStats | typeof MISSING_DIRECTORY {
+  let before: Stats | BigIntStats;
   try {
-    before = lstatSync(path);
+    before = fileStatus(path);
   } catch (error) {
     if (allowMissing && errnoCode(error) === "ENOENT") return MISSING_DIRECTORY;
     throw new SafeSpanCorpusError(`${label} could not be inspected (${errnoCode(error)})`, { cause: error });
@@ -82,11 +83,11 @@ function inspectNoFollowDirectory(
   return before;
 }
 
-function directoryIdentity(stat: Stats): DirectoryIdentity {
+function directoryIdentity(stat: Stats | BigIntStats): DirectoryIdentity {
   return { device: stat.dev, inode: stat.ino };
 }
 
-function sameDirectoryIdentity(stat: Stats, expected: DirectoryIdentity): boolean {
+function sameDirectoryIdentity(stat: Stats | BigIntStats, expected: DirectoryIdentity): boolean {
   return stat.isDirectory() && stat.dev === expected.device && stat.ino === expected.inode;
 }
 
@@ -108,7 +109,7 @@ function withNoFollowRelativeDirectory<T>(
     throw new SafeSpanCorpusError(`${label} could not be entered relative to its held parent (${errnoCode(error)})`, { cause: error });
   }
   try {
-    const opened = statSync(".");
+    const opened = process.platform === "win32" ? statSync(".", { bigint: true }) : statSync(".");
     if (!sameDirectoryIdentity(opened, expected)) {
       throw new SafeSpanCorpusError(`${label} changed identity before enumeration`);
     }
@@ -138,7 +139,7 @@ function withStateRootWorkingDirectory<T>(
   if (anchorBefore === MISSING_DIRECTORY) throw new SafeSpanCorpusError("span corpus trust anchor unexpectedly disappeared");
   try {
     process.chdir(trustAnchor);
-    if (!sameDirectoryIdentity(statSync("."), directoryIdentity(anchorBefore))) {
+    if (!sameDirectoryIdentity(process.platform === "win32" ? statSync(".", { bigint: true }) : statSync("."), directoryIdentity(anchorBefore))) {
       throw new SafeSpanCorpusError(`span corpus trust anchor ${basename(trustAnchor)} changed identity before traversal`);
     }
     const descend = (index: number): T => {
@@ -328,10 +329,10 @@ function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: str
   authorityGeneration: number; authorityContentFingerprint: string;
   recoveryEvidence: ReturnType<typeof AuthorityDatabase.inspectTimelineReadOnly>["recoveryEvidence"];
 }> {
-  const file = lstatSync(authorityPath);
+  const file = fileStatus(authorityPath);
   if (!file.isFile() || file.isSymbolicLink()) throw new SafeSpanCorpusError("timeline authority is not a regular no-follow file");
   const snapshot = AuthorityDatabase.inspectTimelineReadOnly(admission, authorityPath, busyTimeoutMs, includeRecoveryEvidence);
-  const after = lstatSync(authorityPath);
+  const after = fileStatus(authorityPath);
   if (file.dev !== after.dev || file.ino !== after.ino) throw new SafeSpanCorpusError("timeline authority file changed identity during inspection");
   const rows = snapshot.records;
   const roots: MutableSpanAuthorityRoot[] = [];
@@ -401,13 +402,13 @@ function displacedAuthorityProblems(admission: RuntimeAdmission, current: Return
     const accepted = new Set(databases.flatMap((name) => [name, `${name}-wal`, `${name}-shm`]));
     if (names.some((name) => !accepted.has(name))) throw new SafeSpanCorpusError("preserved authority directory contains an unexpected entry");
     let bytes = 0;
-    const observed = new Map<string, Stats>();
+    const observed = new Map<string, Stats | BigIntStats>();
     for (const name of names) {
-      const file = lstatSync(name);
-      if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1) {
+      const file = fileStatus(name);
+      if (!file.isFile() || file.isSymbolicLink() || privateFileNumber(file.nlink) !== 1) {
         throw new SafeSpanCorpusError("preserved authority is not a direct regular file");
       }
-      bytes += file.size;
+      bytes += privateFileNumber(file.size);
       if (bytes > 256 * 1024 * 1024) throw new SafeSpanCorpusError("preserved authority bytes exceed the inspection limit");
       observed.set(name, file);
     }
@@ -440,21 +441,21 @@ function displacedAuthorityProblems(admission: RuntimeAdmission, current: Return
       }
     }
     const afterNames = readdirSync(".").sort();
-    if (!sameDirectoryIdentity(statSync("."), directory)
+    if (!sameDirectoryIdentity(process.platform === "win32" ? statSync(".", { bigint: true }) : statSync("."), directory)
       || names.some((name) => !afterNames.includes(name))) {
       throw new SafeSpanCorpusError("preserved authority directory changed during inspection");
     }
     // A read-only SQLite connection may initialize an empty WAL and shared-memory
     // cache for a checkpointed copy. Neither carries a new authority transaction.
     for (const name of afterNames.filter((name) => !observed.has(name))) {
-      const file = lstatSync(name);
-      const cache = accepted.has(name) && (name.endsWith("-shm") || (name.endsWith("-wal") && file.size === 0));
-      if (!cache || !file.isFile() || file.isSymbolicLink() || file.nlink !== 1 || file.size > 64 * 1024) {
+      const file = fileStatus(name);
+      const cache = accepted.has(name) && (name.endsWith("-shm") || (name.endsWith("-wal") && privateFileNumber(file.size) === 0));
+      if (!cache || !file.isFile() || file.isSymbolicLink() || privateFileNumber(file.nlink) !== 1 || file.size > 64 * 1024) {
         throw new SafeSpanCorpusError("preserved authority directory changed during inspection");
       }
     }
     for (const [name, before] of observed) {
-      const after = lstatSync(name);
+      const after = fileStatus(name);
       // SQLite read locks may update the shared-memory cache. The database and
       // WAL carry authority bytes; their identities and timestamps stay fixed.
       if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
@@ -693,7 +694,7 @@ export function summarizeBackupHealth(
   const activeIdentity = AuthorityDatabase.sourceDatabaseIdentity(expected);
   let manifests: string[];
   try {
-    if (!lstatSync(directory).isDirectory()) return "missing";
+    if (!fileStatus(directory).isDirectory()) return "missing";
     manifests = readdirSync(directory, { withFileTypes: true })
       .filter((entry) => entry.isFile() && entry.name.endsWith(".manifest.json"))
       .map(({ name }) => name);
@@ -706,8 +707,8 @@ export function summarizeBackupHealth(
       const manifest = parseBackupManifestFile(join(directory, name));
       if (manifest.sourceDatabaseIdentity !== activeIdentity || manifest.installationId !== expected.binding.installationId
         || manifest.profileId !== expected.binding.profileId) continue;
-      const copy = lstatSync(join(directory, manifest.backupFileName));
-      if (!copy.isFile() || copy.size !== manifest.byteSize) continue;
+      const copy = fileStatus(join(directory, manifest.backupFileName));
+      if (!copy.isFile() || privateFileNumber(copy.size) !== manifest.byteSize) continue;
       createdAtMs = Date.parse(manifest.createdAt);
       authorityGeneration = manifest.authorityGeneration;
     } catch (error) {
@@ -747,7 +748,7 @@ async function inspectCandidates(
   clock: Clock,
 ): Promise<readonly CandidateWithMtime[]> {
   requireDatabaseSourcePath(join(directory, "probe"));
-  try { lstatSync(directory); } catch (error) { if (errnoCode(error) === "ENOENT") return []; throw error; }
+  try { fileStatus(directory); } catch (error) { if (errnoCode(error) === "ENOENT") return []; throw error; }
   const manifestNames = readdirSync(directory, { withFileTypes: true })
     .filter((entry) => entry.name.endsWith(".manifest.json"))
     .map(({ name }) => name)
@@ -755,7 +756,7 @@ async function inspectCandidates(
   const candidates: CandidateWithMtime[] = [];
   for (const manifestFileName of manifestNames) {
     const manifestPath = join(directory, manifestFileName);
-    const modifiedMs = lstatSync(manifestPath).mtimeMs;
+    const modifiedMs = Number(fileStatus(manifestPath).mtimeMs);
     try {
       requireDatabaseSourcePath(manifestPath);
       if (join(stateRoot, "state.db") !== join(admission.stateRoot, "state.db")) throw new Error("backup-location-active-path-mismatch");

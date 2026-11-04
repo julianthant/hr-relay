@@ -1,3 +1,4 @@
+import { forceExactFileMetadata } from "../../support/helpers/exact-file-metadata.js";
 import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { reconcileStoppedLogout } from "../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { createCanonicalCredentials } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
@@ -931,4 +932,13 @@ it("rechecks a registry proof after another async context publishes", async () =
     })();
     await Promise.all([reader, writer]);
   } finally { await f.close(); }
+});
+
+
+it.skipIf(process.platform !== "linux")("reads a signed-in profile file with exact high file identities", async () => {
+  const f = await readIsolationFixture(), restore = forceExactFileMetadata(f.directory);
+  try {
+    const bytes = f.session.readFile(f.active.token, "notes/note.bin");
+    assert.equal(bytes instanceof Uint8Array && Buffer.from(bytes).equals(f.own), true);
+  } finally { restore(); }
 });

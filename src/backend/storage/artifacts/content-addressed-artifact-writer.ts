@@ -1,11 +1,11 @@
+import { asyncFileStatus, descriptorStatus, fileStatus, asyncDescriptorStatus, privateFileNumber } from "../file-identity.js";
 import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { createHash, randomUUID } from "node:crypto";
-import { constants, openSync, closeSync, fstatSync, readFileSync, readSync, lstatSync, unlinkSync, fsyncSync, linkSync, readdirSync } from "node:fs";
+import { constants, openSync, closeSync, readFileSync, readSync, unlinkSync, fsyncSync, linkSync, readdirSync } from "node:fs";
 import {
   link,
-  lstat,
   mkdir,
   open,
   readdir,
@@ -60,7 +60,7 @@ async function materialize(source: Uint8Array | Readable, admission: RuntimeAdmi
 
 async function rejectSymlink(path: string, label: string): Promise<void> {
   try {
-    const stat = await lstat(path);
+    const stat = await asyncFileStatus(path);
     if (stat.isSymbolicLink()) throw new Error(`${label} cannot be a symbolic link: ${path}`);
     if (!stat.isDirectory()) throw new Error(`${label} must be a directory: ${path}`);
   } catch (error) {
@@ -108,7 +108,7 @@ function inspectDeletionFile(admission: RuntimeAdmission, input: ArtifactRef) {
   const path = join(admission.artifactRoot, `${ref.sha256}.artifact`);
   const handle = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
-    const status = fstatSync(handle);
+    const status = descriptorStatus(handle);
     if (!status.isFile()) throw new Error("artifact-deletion-file-not-regular");
     const stored = readFileSync(handle);
     const decoded = decodeStoredArtifact(JSON.parse(stored.toString("utf8")) as unknown, ref.sha256);
@@ -133,7 +133,7 @@ export function removeArtifactDeletionFile(admission: RuntimeAdmission,
   }
   if (observed.storedSha256 !== captured.storedSha256 || observed.storedBytes !== captured.storedBytes) throw new Error("artifact-deletion-captured-bytes-mismatch");
   admission.assertReadable();
-  const current = lstatSync(observed.path);
+  const current = fileStatus(observed.path);
   if (!current.isFile() || current.isSymbolicLink() || current.dev !== observed.device || current.ino !== observed.inode) throw new Error("artifact-deletion-custody-changed");
   unlinkSync(observed.path);
   const directory = openSync(admission.artifactRoot,constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -147,7 +147,7 @@ async function readStoredArtifact(admission: RuntimeAdmission, path: string, exp
   let outcome: { readonly kind: "read"; readonly text: string } | { readonly kind: "error"; readonly error: unknown };
   try {
     admission.assertReadable();
-    if (!(await handle.stat()).isFile()) throw new Error(`artifact ${expectedDigest} is not a regular file`);
+    if (!(await asyncDescriptorStatus(handle)).isFile()) throw new Error(`artifact ${expectedDigest} is not a regular file`);
     admission.assertReadable();
     outcome = { kind: "read", text: await handle.readFile("utf8") };
   } catch (error) { outcome = { kind: "error", error }; }
@@ -247,10 +247,10 @@ function inspectStoredFile(admission: RuntimeAdmission, path: string, digest: st
 function inspectOwnedStoredFile(path: string, digest: string) {
   const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
-    const status = fstatSync(descriptor);
+    const status = descriptorStatus(descriptor);
     if (!status.isFile()) throw new Error("diagnostic-stage-not-regular");
     if (status.size > MAX_DIAGNOSTIC_ENVELOPE_BYTES) throw new Error("diagnostic-stage-size-exceeded");
-    const buffer = Buffer.alloc(status.size + 1);
+    const buffer = Buffer.alloc(privateFileNumber(status.size) + 1);
     let length = 0;
     while (length < buffer.byteLength) {
       const read = readSync(descriptor, buffer, length, buffer.byteLength - length, null);
@@ -258,8 +258,8 @@ function inspectOwnedStoredFile(path: string, digest: string) {
       length += read;
     }
     const stored = buffer.subarray(0, length);
-    const after = fstatSync(descriptor), pathStatus = lstatSync(path);
-    if (stored.byteLength !== status.size || after.size !== status.size || after.mtimeMs !== status.mtimeMs
+    const after = descriptorStatus(descriptor), pathStatus = fileStatus(path);
+    if (stored.byteLength !== privateFileNumber(status.size) || after.size !== status.size || after.mtimeMs !== status.mtimeMs
       || after.ctimeMs !== status.ctimeMs || !pathStatus.isFile() || pathStatus.isSymbolicLink()
       || pathStatus.dev !== status.dev || pathStatus.ino !== status.ino) throw new Error("diagnostic-stage-custody-changed");
     const decoded = decodeStoredArtifact(JSON.parse(stored.toString("utf8")) as unknown, digest);
@@ -371,11 +371,11 @@ export function createContentAddressedArtifactWriter(
       const tempPath = join(root, `${digest}.${process.pid}.${randomUUID()}.tmp`);
       admission.assertWritable();
       const handle = await open(tempPath, "wx", 0o600);
-      let identity: Awaited<ReturnType<typeof handle.stat>> | undefined;
+      let identity: Awaited<ReturnType<typeof asyncDescriptorStatus>> | undefined;
       let linked = false;
       try {
         try {
-          identity = await handle.stat();
+          identity = await asyncDescriptorStatus(handle);
           admission.assertWritable();
           await handle.writeFile(stored, "utf8");
           admission.assertWritable();
@@ -393,10 +393,10 @@ export function createContentAddressedArtifactWriter(
         admission.assertWritable();
       } catch (error) {
         try {
-          const current = lstatSync(tempPath);
+          const current = fileStatus(tempPath);
           if (!current.isFile() || current.isSymbolicLink() || identity === undefined || current.dev !== identity.dev || current.ino !== identity.ino) throw new Error("diagnostic-preparation-custody-changed", { cause: error });
           if (linked) {
-            const stage = lstatSync(path);
+            const stage = fileStatus(path);
             if (!stage.isFile() || stage.isSymbolicLink() || stage.dev !== identity.dev || stage.ino !== identity.ino) throw new Error("diagnostic-preparation-custody-changed", { cause: error });
             unlinkSync(path);
           }
@@ -405,7 +405,7 @@ export function createContentAddressedArtifactWriter(
         } catch (cleanup) { throw new AggregateError([error, cleanup], "diagnostic-stage-preparation-failed", { cause: cleanup }); }
         throw error;
       }
-      const current = lstatSync(tempPath);
+      const current = fileStatus(tempPath);
       if (!current.isFile() || current.isSymbolicLink() || identity === undefined || current.dev !== identity.dev || current.ino !== identity.ino) throw new Error("diagnostic-preparation-custody-changed");
       unlinkSync(tempPath);
       syncArtifactDirectory(root);

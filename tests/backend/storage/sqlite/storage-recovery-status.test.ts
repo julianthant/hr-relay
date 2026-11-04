@@ -1,3 +1,4 @@
+import { forceExactFileMetadata } from "../../../support/helpers/exact-file-metadata.js";
 import { AuthorityRestoreJournalSchema } from "../../../../src/backend/storage/admission/installation.js";
 import { linkSync,mkdirSync,mkdtempSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -87,4 +88,12 @@ describe("native recovery evidence inventory",()=>{
     const f=fixture();faults.root=f.root;faults.onList=()=>writeFileSync(f.staged,"interrupted bytes",{mode:0o600});
     expect(f.read().report.state).toBe("unavailable");
   });
+});
+
+
+it.skipIf(process.platform !== "linux")("inspects retained recovery evidence with high exact identities", () => {
+  const f = fixture(true); writeFileSync(f.staged, "owned fixture", { mode: 0o600 });
+  const restore = forceExactFileMetadata(f.root);
+  try { expect(f.read().report.state).toBe("interrupted"); }
+  finally { restore(); }
 });
