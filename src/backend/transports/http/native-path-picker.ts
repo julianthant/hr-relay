@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 import { lstatSync } from "node:fs";
-import { dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, parse, relative, resolve, sep, win32 } from "node:path";
 import type { NativePathField, NativePathPickerRequest, NativePathPickerResponse } from "../../../models/dashboard/native-path-picker.js";
+import { windowsSystemRoot } from "../../../models/config/secrets.js";
 
 const TIMEOUT_MS = 120_000;
 const MAX_OUTPUT_BYTES = 8192;
@@ -35,21 +36,59 @@ const FILE_SCRIPT = `on run argv
   end try
 end run`;
 
+const WINDOWS_SCRIPT = `$ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$dialog = $null
+try {
+  Add-Type -AssemblyName System.Windows.Forms
+  $request = ConvertFrom-Json ([Console]::In.ReadToEnd())
+  if ($request.kind -eq 'folder') {
+    $dialog = New-Object System.Windows.Forms.FolderBrowserDialog
+    $dialog.ShowNewFolderButton = $false
+    if ($null -ne $request.hint) { $dialog.SelectedPath = $request.hint }
+  } elseif ($request.kind -eq 'file') {
+    $dialog = New-Object System.Windows.Forms.OpenFileDialog
+    $dialog.Multiselect = $false
+    $dialog.CheckFileExists = $true
+    $dialog.DereferenceLinks = $false
+    $dialog.RestoreDirectory = $true
+    if ($null -ne $request.hint) { $dialog.InitialDirectory = $request.hint }
+  } else { throw 'Invalid picker kind' }
+  $result = $dialog.ShowDialog()
+  if ($result -eq [System.Windows.Forms.DialogResult]::Cancel) {
+    [Console]::WriteLine('${CANCELLED}')
+  } elseif ($result -eq [System.Windows.Forms.DialogResult]::OK) {
+    if ($request.kind -eq 'folder') { [Console]::WriteLine($dialog.SelectedPath) }
+    else { [Console]::WriteLine($dialog.FileName) }
+  } else { throw 'Unexpected picker result' }
+} catch { exit 1 }
+finally { if ($null -ne $dialog) { $dialog.Dispose() } }
+`;
+const WINDOWS_ARGS = Object.freeze(["-NoLogo", "-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand",
+  Buffer.from(WINDOWS_SCRIPT, "utf16le").toString("base64")]);
+
 type PickerProcessResult = Readonly<
   | { state: "exited"; code: number; stdout: string }
   | { state: "timeout" | "aborted" | "failed" }
 >;
-export type NativePickerExecutor = (file: string, args: readonly string[], signal: AbortSignal) => Promise<PickerProcessResult>;
+export type NativePickerExecutor = (file: string, args: readonly string[], signal: AbortSignal, input?: string) => Promise<PickerProcessResult>;
 
-const executeNativePicker: NativePickerExecutor = (file, args, signal) => new Promise(resolveResult => {
+const executeNativePicker: NativePickerExecutor = (file, args, signal, input) => new Promise(resolveResult => {
+  let inputFailed = false;
+  let result: PickerProcessResult | undefined;
   const child = execFile(file, [...args], { encoding: "utf8", timeout: TIMEOUT_MS, killSignal: "SIGKILL",
     maxBuffer: MAX_OUTPUT_BYTES, windowsHide: true, signal }, (error, stdout) => {
     signal.removeEventListener("abort", killOnAbort);
-    if (signal.aborted) resolveResult({ state: "aborted" });
-    else if (error !== null && "killed" in error && error.killed) resolveResult({ state: "timeout" });
-    else if (error !== null) resolveResult({ state: "failed" });
-    else resolveResult({ state: "exited", code: 0, stdout });
+    if (signal.aborted) result = { state: "aborted" };
+    else if (inputFailed || (error !== null && error.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER")) result = { state: "failed" };
+    else if (error !== null && "killed" in error && error.killed) result = { state: "timeout" };
+    else if (error !== null) result = { state: "failed" };
+    else result = { state: "exited", code: 0, stdout };
   });
+  child.once("close", () => { resolveResult(result ?? { state: "failed" }); });
+  child.stdin?.on("error", () => { inputFailed = true; });
+  child.stdin?.end(input);
   const killOnAbort = () => { child.kill("SIGKILL"); };
   signal.addEventListener("abort", killOnAbort, { once: true });
   if (signal.aborted) killOnAbort();
@@ -109,13 +148,22 @@ export function createNativePathPicker(options: Readonly<{ platform?: NodeJS.Pla
     async pick(request: NativePathPickerRequest, signal: AbortSignal): Promise<NativePathPickerResponse> {
       const kind = pathKind(request.field);
       const hint = request.initialPath === undefined ? undefined : existingDirectoryHint(request.initialPath, kind);
-      if (platform !== "darwin") return { state: "unavailable", field: request.field, reason: "unsupported-platform" };
+      if (platform !== "darwin" && platform !== "win32") return { state: "unavailable", field: request.field, reason: "unsupported-platform" };
       if (active) return { state: "unavailable", field: request.field, reason: "busy" };
       if (signal.aborted) return { state: "unavailable", field: request.field, reason: "dialog-failed" };
       active = true;
       try {
-        const result = await execute("/usr/bin/osascript", ["-e", kind === "folder" ? FOLDER_SCRIPT : FILE_SCRIPT,
-          ...(hint === undefined ? [] : [hint])], signal);
+        let result: PickerProcessResult;
+        if (platform === "win32") {
+          const systemRoot = windowsSystemRoot();
+          if (systemRoot === undefined || !/^[a-z]:\\/iu.test(systemRoot) || win32.resolve(systemRoot) !== systemRoot
+            || /[\0\r\n]/u.test(systemRoot)) return { state: "unavailable", field: request.field, reason: "dialog-failed" };
+          result = await execute(win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
+            WINDOWS_ARGS, signal, JSON.stringify({ kind, ...(hint === undefined ? {} : { hint }) }));
+        } else {
+          result = await execute("/usr/bin/osascript", ["-e", kind === "folder" ? FOLDER_SCRIPT : FILE_SCRIPT,
+            ...(hint === undefined ? [] : [hint])], signal);
+        }
         if (result.state !== "exited") return { state: "unavailable", field: request.field,
           reason: result.state === "timeout" ? "timeout" : "dialog-failed" };
         if (result.code !== 0) return { state: "unavailable", field: request.field, reason: "dialog-failed" };

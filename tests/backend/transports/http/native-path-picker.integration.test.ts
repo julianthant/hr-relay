@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync,mkdtempSync,realpathSync,rmSync,symlinkSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach,describe,it } from "vitest";
+import { afterEach,beforeEach,describe,it,vi } from "vitest";
 import { createNativePathPicker,InvalidNativePickerHintError,type NativePickerExecutor } from "../../../../src/backend/transports/http/native-path-picker.js";
 import { NativePathPickerRequestSchema } from "../../../../src/models/dashboard/native-path-picker.js";
 
@@ -11,7 +11,7 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 function paths() {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "native-path-picker-"));
   roots.push(root);
-  const folder = join(root, "Folder with spaces ");
+  const folder = join(root, process.platform === "win32" ? "Folder with spaces" : "Folder with spaces ");
   mkdirSync(folder);
   const file = join(folder, "synthetic file.json");
   writeFileSync(file, "synthetic", { mode: 0o600 });
@@ -64,7 +64,7 @@ describe("native macOS path picker", () => {
 
   it("rejects unsafe hints, omits missing hints, and refuses concurrent dialogs", async () => {
     const p = paths();
-    symlinkSync(p.folder, join(p.root, "linked"));
+    symlinkSync(p.folder, join(p.root, "linked"), "junction");
     let release: ((value: { state: "exited"; code: 0; stdout: string }) => void) | undefined;
     const seen: string[][] = [];
     const picker = createNativePathPicker({ platform: "darwin", execute: async (_file, args) => {
@@ -110,4 +110,112 @@ describe("native macOS path picker", () => {
     assert.equal((await picker.pick({ field: "paths.reportsDir" }, controller().signal)).state, "cancelled");
     assert.equal(calls, 1);
   });
+});
+
+describe("Windows native picker command contract (mocked process)", () => {
+  beforeEach(() => { vi.stubEnv("SystemRoot", "C:\\Windows"); });
+  afterEach(() => { vi.unstubAllEnvs(); });
+  it("selects folders and files with a fixed STA helper and sends hints only as JSON data", async () => {
+    const p = paths();
+    const seen: Array<{ file: string; args: readonly string[]; input?: string }> = [];
+    const execute: NativePickerExecutor = async (file: string, args: readonly string[], _signal: AbortSignal, input?: string) => {
+      seen.push({ file, args, input });
+      return { state: "exited", code: 0, stdout: `${seen.length === 1 ? p.folder : p.file}\r\n` };
+    };
+    const picker = createNativePathPicker({ platform: "win32", execute });
+    assert.deepEqual(await picker.pick({ field: "paths.reportsDir", initialPath: p.folder }, controller().signal),
+      { state: "selected", field: "paths.reportsDir", path: p.folder });
+    assert.deepEqual(await picker.pick({ field: "paths.i9CheckTrackerPath", initialPath: p.file }, controller().signal),
+      { state: "selected", field: "paths.i9CheckTrackerPath", path: p.file });
+    assert.equal(seen.length, 2);
+    for (const call of seen) {
+      assert.match(call.file, /^[A-Za-z]:\\Windows\\System32\\WindowsPowerShell\\v1\.0\\powershell\.exe$/iu);
+      assert.deepEqual(call.args.slice(0, -1), ["-NoLogo", "-NoProfile", "-NonInteractive", "-STA", "-EncodedCommand"]);
+      const script = Buffer.from(call.args.at(-1) ?? "", "base64").toString("utf16le");
+      assert.ok(!script.includes(p.folder));
+      assert.match(script, /Console\]::In.ReadToEnd/u);
+      assert.match(script, /FolderBrowserDialog/u);
+      assert.match(script, /OpenFileDialog/u);
+      assert.match(script, /finally[\s\S]*Dispose/u);
+      assert.doesNotMatch(script, /Start-Process|Invoke-Expression/u);
+    }
+    assert.equal(seen[0]?.args.at(-1), seen[1]?.args.at(-1));
+    assert.deepEqual(JSON.parse(seen[0]?.input ?? "null"), { kind: "folder", hint: p.folder });
+    assert.deepEqual(JSON.parse(seen[1]?.input ?? "null"), { kind: "file", hint: p.folder });
+  });
+
+  it("keeps quotes and PowerShell syntax in canonical hints out of executable code", async () => {
+    const p = paths();
+    const folder = join(p.root, "O'Brien $(Get-Process); & café");
+    mkdirSync(folder);
+    let input: string | undefined;
+    const picker = createNativePathPicker({ platform: "win32", execute: async (_file, args, _signal, data) => {
+      input = data;
+      assert.ok(!Buffer.from(args.at(-1) ?? "", "base64").toString("utf16le").includes(folder));
+      return { state: "exited", code: 0, stdout: `${folder}\r\n` };
+    } });
+    assert.deepEqual(await picker.pick({ field: "paths.downloadsDir", initialPath: folder }, controller().signal),
+      { state: "selected", field: "paths.downloadsDir", path: folder });
+    assert.deepEqual(JSON.parse(input ?? "null"), { kind: "folder", hint: folder });
+  });
+
+  it("distinguishes cancellation, abort, timeout and failures and releases the gate", async () => {
+    const p = paths();
+    const responses = [
+      { state: "exited", code: 0, stdout: "__HRAUTO_NATIVE_PICKER_CANCELLED__\r\n" },
+      { state: "aborted" }, { state: "timeout" }, { state: "failed" },
+      { state: "exited", code: 1, stdout: "__HRAUTO_NATIVE_PICKER_CANCELLED__\r\n" },
+      { state: "exited", code: 1, stdout: `${p.folder}\r\n` },
+      { state: "exited", code: 0, stdout: "relative\\unsafe\r\n" },
+      { state: "exited", code: 0, stdout: `${p.folder}\r\nextra\r\n` },
+      { state: "exited", code: 0, stdout: `${p.file}\r\n` },
+      { state: "exited", code: 0, stdout: "" },
+      { state: "exited", code: 0, stdout: `${join(p.root, "absent")}\r\n` },
+      { state: "exited", code: 0, stdout: `${p.folder}\r\n` },
+    ] as const;
+    let index = 0;
+    const picker = createNativePathPicker({ platform: "win32", execute: async () => responses[index++] ?? { state: "failed" } });
+    const request = { field: "paths.reportsDir" } as const;
+    assert.deepEqual(await picker.pick(request, controller().signal), { state: "cancelled", field: request.field });
+    for (const reason of ["dialog-failed", "timeout", ...Array<string>(8).fill("dialog-failed")]) {
+      assert.deepEqual(await picker.pick(request, controller().signal), { state: "unavailable", field: request.field, reason });
+    }
+    assert.deepEqual(await picker.pick(request, controller().signal), { state: "selected", field: request.field, path: p.folder });
+  });
+
+  it("validates hints before launch and refuses busy and pre-aborted requests", async () => {
+    const p = paths();
+    let release: ((value: { state: "aborted" }) => void) | undefined;
+    let launches = 0;
+    let input: string | undefined;
+    const picker = createNativePathPicker({ platform: "win32", execute: async (_file, _args, _signal, data) => {
+      launches += 1;
+      input = data;
+      return new Promise(resolve => { release = resolve; });
+    } });
+    for (const initialPath of ["relative", `${p.folder}\n`, `${p.folder}/../x`]) {
+      await assert.rejects(picker.pick({ field: "paths.reportsDir", initialPath }, controller().signal), InvalidNativePickerHintError);
+    }
+    const aborted = controller();
+    aborted.abort();
+    assert.deepEqual(await picker.pick({ field: "paths.reportsDir" }, aborted.signal),
+      { state: "unavailable", field: "paths.reportsDir", reason: "dialog-failed" });
+    assert.equal(launches, 0);
+    const pending = picker.pick({ field: "paths.reportsDir", initialPath: join(p.folder, "not-created") }, controller().signal);
+    assert.deepEqual(JSON.parse(input ?? "null"), { kind: "folder", hint: p.folder });
+    assert.deepEqual(await picker.pick({ field: "paths.reportsDir" }, controller().signal),
+      { state: "unavailable", field: "paths.reportsDir", reason: "busy" });
+    release?.({ state: "aborted" });
+    assert.deepEqual(await pending, { state: "unavailable", field: "paths.reportsDir", reason: "dialog-failed" });
+  });
+
+  it("refuses missing, relative or noncanonical Windows executable roots without launch", async () => {
+    const picker = createNativePathPicker({ platform: "win32", execute: async () => { throw new Error("must not execute"); } });
+    for (const root of [undefined, "Windows", "C:\\Windows\\..\\Windows", "\\\\server\\Windows"]) {
+      vi.stubEnv("SystemRoot", root);
+      assert.deepEqual(await picker.pick({ field: "paths.reportsDir" }, controller().signal),
+        { state: "unavailable", field: "paths.reportsDir", reason: "dialog-failed" });
+    }
+  });
+
 });

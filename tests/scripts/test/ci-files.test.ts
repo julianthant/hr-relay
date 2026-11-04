@@ -22,8 +22,16 @@ describe("CI file selection", () => {
     expect([...run(unit, "unit", "ubuntu", 2), ...run(unit, "unit", "native", 5)].sort()).toEqual([...unit].sort());
   });
 
+  it("routes the Windows picker dialog proof only through native serial jobs", () => {
+    const picker = "tests/backend/transports/http/native-path-picker.windows-native.integration.test.ts";
+    const listed = [...new Set([...integration, picker])];
+    expect(run(listed, "integration", "ubuntu", 3)).not.toContain(picker);
+    expect(run(listed, "integration", "serial", 5)).toContain(picker);
+    expect(run(listed, "integration", "native", 5)).not.toContain(picker);
+  });
+
   it("keeps serial proofs apart and balances measured time", () => {
-    const serialJobs = [1, 2, 3, 4, 5].map(job => selectCiFiles(integration, "integration", "serial", job, 5, durations).length);
+    const serialJobs = [1, 2, 3, 4, 5, 6, 7, 8].map(job => selectCiFiles(integration, "integration", "serial", job, 8, durations).length);
     expect(Math.max(...serialJobs)).toBe(1);
     expect(balance(["x", "y", "z", "w"], 2, file => ({ x: 4, y: 3, z: 2, w: 1 })[file]!)).toEqual([["w", "x"], ["y", "z"]]);
   });
