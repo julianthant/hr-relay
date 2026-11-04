@@ -1181,7 +1181,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   let completedDraft: { operationId: string; sessionId: string } | undefined;
   let pending: { sessionId: string; operationId: string; profileId: string; epoch: number; runtime: DashboardRuntime; deleting: boolean } | undefined;
   let transitioning = false;
-  const retainedFailures: unknown[] = [];
+  const retainedCustodyFailures: unknown[] = [];
   const cookieName = "relay-profile-session";
   const onboardingCookieName = "relay-profile-onboarding";
   let registeredPort: number = input.backendPortOverride ?? input.isolation.backendPort;
@@ -1217,12 +1217,22 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     return (path.startsWith("/api/") && !path.startsWith("/api/v1/profile/")) || path.startsWith("/events") || path.startsWith("/artifacts");
   };
   const publicFailure = (error: Error) => {
+    const causes: unknown[] = [error], seen = new Set<unknown>();
+    let custodyUnproved = false;
+    while (causes.length > 0) {
+      const current = causes.pop();
+      if (seen.has(current)) continue;
+      seen.add(current);
+      if (current instanceof RuntimeCustodyUncertainError || current instanceof AuthoritySourceClosureUnprovedError) { custodyUnproved = true; break; }
+      if (current instanceof AggregateError) { const nested: readonly unknown[] = current.errors; causes.push(...nested); }
+      if (current instanceof Error && current.cause !== undefined) causes.push(current.cause);
+    }
+    if (custodyUnproved) retainedCustodyFailures.push(error);
     if (error instanceof ProfileSessionRefusedError) return { status: 409 as const,
       body: PublicProfileStateSchema.parse({ state: "refused", code: error.code }) };
     const mapped = failureStatus(error);
-    if (mapped.status === 500) retainedFailures.push(error);
     return { status: mapped.status, body: PublicProfileStateSchema.parse({ state: "error",
-      code: error instanceof RuntimeCustodyUncertainError ? "RUNTIME_CUSTODY_UNCERTAIN" : mapped.body.code }) };
+      code: custodyUnproved ? "RUNTIME_CUSTODY_UNCERTAIN" : mapped.body.code }) };
   };
   app.onError((error, c) => { const failure = publicFailure(error); return c.json(failure.body, failure.status); });
   app.use("/api/v1/profile/*", async (c, next) => {
@@ -1424,7 +1434,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     const transportClosure = listener.close();
     stopping = (async () => {
       try { await transportClosure; } catch (error) { failures.push(error); }
-      failures.unshift(...retainedFailures);
+      failures.unshift(...retainedCustodyFailures);
       const selectedRuntime = selection?.runtime ?? pending?.runtime;
       if (selectedRuntime !== undefined) {
         try { await selectedRuntime.detach(); } catch (error) { failures.push(error); }

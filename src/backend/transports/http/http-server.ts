@@ -170,6 +170,19 @@ class DashboardShutdownError extends Error {
   }
 }
 
+class DashboardClientDisconnectedError extends Error {
+  constructor(phase: string) {
+    super(`dashboard client disconnected ${phase}`);
+    this.name = "DashboardClientDisconnectedError";
+  }
+}
+
+function expectedCancellation(error: unknown, reason: Error | undefined): boolean {
+  return (reason instanceof DashboardShutdownError || reason instanceof DashboardClientDisconnectedError)
+    && (error === reason || error instanceof DashboardResponseClosedError
+      || error instanceof Error && error.name === "AbortError" && error.cause === reason);
+}
+
 async function pipeResponse(
   response: Response,
   res: ServerResponse,
@@ -185,7 +198,7 @@ async function pipeResponse(
     const reader = response.body.getReader();
     await cancellation.attachBody(reader);
     if (res.destroyed) {
-      await cancellation.cancel(new Error("dashboard client disconnected before response handoff"));
+      await cancellation.cancel(new DashboardClientDisconnectedError("before response handoff"));
       return;
     }
     res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
@@ -238,7 +251,7 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
     const ownership: Transfer = { cancellation, response: res };
     const disconnect = (): void => {
       const phase = cancellation.hasBody ? "during response transfer" : "before response handoff";
-      void cancellation.cancel(new Error(`dashboard client disconnected ${phase}`)).catch((error: unknown) => {
+      void cancellation.cancel(new DashboardClientDisconnectedError(phase)).catch((error: unknown) => {
         ownership.mount?.failures.push(error);
         if (!res.destroyed) res.destroy(asError(error));
       });
@@ -266,12 +279,20 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
       if (mount?.state === "open" && mount.accepts(request)) ownership.mount = mount;
       const response = await (ownership.mount?.app ?? deps.app).fetch(request);
       await pipeResponse(response, res, cancellation);
-    })().catch((error: unknown) => {
+    })().catch(async (error: unknown) => {
       if (error instanceof DashboardShutdownError && error === cancellation.reason) return;
-      const normalized = asError(error);
-      ownership.mount?.failures.push(normalized);
+      const closure = res.destroyed && expectedCancellation(error, cancellation.reason)
+        ? await cancellation.settle().then(
+          () => ({ state: "proved" as const }),
+          (cleanup: unknown) => ({ state: "unproved" as const,
+            error: primaryFirstAggregate(error, cleanup, "dashboard cancellation closure is unproved") }),
+        ) : { state: "unproved" as const, error: asError(error) };
+      if (closure.state === "proved" && cancellation.reason instanceof DashboardShutdownError) return;
+      const normalized = closure.state === "proved" ? asError(error) : closure.error;
+      if (closure.state === "unproved") ownership.mount?.failures.push(normalized);
       if (!res.destroyed) res.destroy(normalized);
       if (deps.onTransferError === undefined) {
+        if (closure.state === "proved") return;
         retainObserverFailure(new AggregateError(
           [normalized],
           "dashboard transfer failure had no local observer",
@@ -287,10 +308,11 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
           observerFailure,
           "dashboard transfer and local failure observation both failed",
         );
+        ownership.mount?.failures.push(aggregate);
         retainObserverFailure(aggregate);
         throw aggregate;
       }
-      throw normalized;
+      if (closure.state === "unproved") throw normalized;
     });
     const task: Promise<void> = transfer.finally(() => {
       req.removeListener("aborted", disconnect);

@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import * as httpServer from "../../../../../src/backend/transports/http/http-server.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../../../src/backend/storage/source-closure.js";
 import * as storageCompose from "../../../../../src/backend/app/composition/storage-compose.js";
 import * as dashboardRunners from "../../../../../src/backend/app/preflight/dashboard-runners.js";
 
@@ -21,7 +22,7 @@ import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/a
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
-import { ProfileVerifierDocumentSchema } from "../../../../../src/models/profiles/profile.js";
+import { ProfileRegistryDocumentSchema, ProfileVerifierDocumentSchema } from "../../../../../src/models/profiles/profile.js";
 import type { DraftDuoCapability, ProfileOnboardingDuoProvider } from "../../../../../src/backend/profiles/onboarding-duo.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
@@ -288,7 +289,64 @@ it("aborts an unpublished pre-enrollment draft through erasure before accepting 
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
 
-for (const fault of ["prior-request", "profile-close"] as const) it(`fences and drains real public transfers before retaining ${fault} shutdown failure`, async () => {
+for (const scenario of ["idle-tab", "in-flight", "ordinary-500"] as const) it(`cleanly stops the public shell after ${scenario} while awaiting admitted cleanup`, async () => {
+  const f = await fixture(), entered = Promise.withResolvers<void>(), cancelled = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const actualStart = (await vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js")).startDashboardHttpServer;
+  const start = vi.spyOn(httpServer, "startDashboardHttpServer").mockImplementation(async input => {
+    input.app.get("/gate11-ordinary-failure", () => { const error = new Error("fixture handled request failure"); error.cause = error; throw error; });
+    input.app.get("/gate11-tab", async c => {
+      entered.resolve();
+      if (scenario === "in-flight") {
+        c.req.raw.signal.addEventListener("abort", () => cancelled.resolve(), { once: true });
+        await release.promise; return new Response(null, { status: 204 });
+      }
+      return new Response(new ReadableStream<Uint8Array>({
+        start(controller) { controller.enqueue(new Uint8Array([1])); },
+        async cancel() { cancelled.resolve(); await release.promise; },
+      }), { headers: { "content-type": "text/event-stream" } });
+    });
+    return actualStart(input);
+  });
+  let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, held: Promise<unknown> | undefined;
+  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined, stopping: Promise<void> | undefined;
+  try {
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+      backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+    const base = `http://127.0.0.1:${String(runtime.port)}`;
+    if (scenario === "ordinary-500") {
+      const failed = await fetch(`${base}/gate11-ordinary-failure`); assert.equal(failed.status, 500);
+      assert.deepEqual(await failed.json(), { state: "error", code: "INTERNAL_FAILURE" });
+      const live = await fetch(`${base}/api/v1/profile/state`); assert.equal(live.status, 200); await live.arrayBuffer();
+    } else {
+      held = fetch(`${base}/gate11-tab`).then(async response => {
+        reader = response.body?.getReader(); assert.ok(reader);
+        if (scenario === "idle-tab") assert.equal((await reader.read()).done, false);
+      }).catch((error: unknown) => error);
+      await entered.promise;
+      if (scenario === "idle-tab") await held;
+    }
+    let terminal = false;
+    stopping = runtime.stop(); assert.equal(runtime.stop(), stopping);
+    const observed = stopping.then(() => { terminal = true; return undefined; }, (error: unknown) => { terminal = true; return error; });
+    if (scenario !== "ordinary-500") {
+      await cancelled.promise; assert.equal(terminal, false);
+      f.machine.assertLive(); await assertRuntimeLifetimeHeld(f.lifetime);
+    }
+    release.resolve();
+    assert.equal(await observed, undefined, "settled ordinary requests must not poison shutdown custody");
+    await held;
+    assert.throws(() => f.machine.assertLive());
+    await assertRuntimeLifetimeHeld(f.lifetime);
+    await assert.rejects(fetch(`${base}/api/v1/profile/state`));
+    await runtime.stop();
+  } finally {
+    release.resolve(); await held;
+    if (reader !== undefined) { try { await reader.cancel(); } catch (error) { assert.ok(error instanceof Error); assert.match(error.message, /terminated|aborted|closed/u); } }
+    start.mockRestore(); f.machine.release(); rmSync(f.root, { recursive: true, force: true });
+  }
+});
+
+for (const fault of ["prior-custody", "wrapped-source-custody", "profile-close"] as const) it(`fences and drains real public transfers before retaining ${fault} shutdown failure`, async () => {
   const controllerLock=await runtimeLifetimeLock();
   const f = await fixture(controllerLock), primary = new Error("fixture custody failure");
   const entered = Promise.withResolvers<void>(), aborted = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
@@ -304,7 +362,10 @@ for (const fault of ["prior-request", "profile-close"] as const) it(`fences and 
       c.req.raw.signal.addEventListener("abort", () => { aborted.resolve(); }, { once: true });
       entered.resolve(); await release.promise; return new Response(null, { status: 204 });
     });
-    input.app.get("/prior-custody-fault", () => { throw primary; });
+    input.app.get("/prior-custody-fault", () => {
+      if (fault === "wrapped-source-custody") throw new Error("fixture request wrapper", { cause: new AggregateError([new AuthoritySourceClosureUnprovedError([primary])]) });
+      throw new storageCompose.RuntimeCustodyUncertainError([primary]);
+    });
     return actualStart(input);
   });
   const compose = vi.spyOn(storageCompose, "composeProfileRuntime").mockImplementation(input => {
@@ -315,10 +376,10 @@ for (const fault of ["prior-request", "profile-close"] as const) it(`fences and 
     runtime = await composeDashboardApplication({ lifetimeLock: controllerLock, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
       backendPortOverride: 0, frontendPortOverride: 0, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
-    if (fault === "prior-request") {
+    if (fault !== "profile-close") {
       const response = await fetch(`${base}/prior-custody-fault`);
       assert.equal(response.status, 500);
-      assert.deepEqual(await response.json(), { state: "error", code: "INTERNAL_FAILURE" });
+      assert.deepEqual(await response.json(), { state: "error", code: "RUNTIME_CUSTODY_UNCERTAIN" });
     }
     outcome = fetch(`${base}/held-public-transition`).catch((error: unknown) => error);
     await entered.promise;
@@ -351,7 +412,8 @@ for (const fault of ["prior-request", "profile-close"] as const) it(`fences and 
       };
       assert.equal(injectedCloseCalls, 1, `shutdown must reach the injected profile-close failure; ${JSON.stringify(project(observedFailure))}`);
     }
-    const retainsPrimary = (value: unknown): boolean => value === primary || value instanceof AggregateError && value.errors.some(retainsPrimary);
+    const retainsPrimary = (value: unknown): boolean => value === primary || value instanceof AggregateError && value.errors.some(retainsPrimary)
+      || value instanceof Error && value.cause !== undefined && retainsPrimary(value.cause);
     assert.equal(retainsPrimary(observedFailure), true, "original closure failure must survive nested custody aggregation");
     await assert.rejects(fetch(`${base}/api/v1/profile/state`));
     f.machine.assertLive();
@@ -365,7 +427,7 @@ for (const fault of ["prior-request", "profile-close"] as const) it(`fences and 
   }
 });
 
-for (const fault of ["prior-request", "transport-cancellation"] as const) it(`drains genuine selected producers despite ${fault} while retaining profile custody`, async () => {
+for (const fault of ["prior-custody", "transport-cancellation"] as const) it(`drains genuine selected producers despite ${fault} while retaining profile custody`, async () => {
   const controllerLock=await runtimeLifetimeLock();
   const f = await fixture(controllerLock), primary = new Error("fixture selected custody failure");
   const entered = Promise.withResolvers<void>(), aborted = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
@@ -385,7 +447,7 @@ for (const fault of ["prior-request", "transport-cancellation"] as const) it(`dr
     };
   });
   vi.spyOn(httpServer, "startDashboardHttpServer").mockImplementation(async input => {
-    input.app.get("/prior-selected-fault", () => { throw primary; });
+    input.app.get("/prior-selected-fault", () => { throw new storageCompose.RuntimeCustodyUncertainError([primary]); });
     input.app.get("/held-selected-stop", async c => {
       c.req.raw.signal.addEventListener("abort", () => { aborted.resolve(); }, { once: true });
       entered.resolve(); await release.promise; return new Response(null, { status: 204 });
@@ -404,7 +466,7 @@ for (const fault of ["prior-request", "transport-cancellation"] as const) it(`dr
     assert.equal(PublicProfileStateSchema.parse(await signup.json()).state, "active");
     assert.ok(context !== undefined && token !== undefined);
     context.database.getMeta(); profile.assertCurrent(token);
-    if (fault === "prior-request") {
+    if (fault === "prior-custody") {
       const response = await fetch(`${base}/prior-selected-fault`); assert.equal(response.status, 500); await response.arrayBuffer();
     } else {
       const response = await fetch(`${base}/throwing-selected-stream`), reader = response.body?.getReader();
@@ -419,7 +481,8 @@ for (const fault of ["prior-request", "transport-cancellation"] as const) it(`dr
     await aborted.promise; assert.equal(terminal, false); assert.equal(finalCloses, 0);
     release.resolve(); const error = await outcome; await held;
     assert.ok(error instanceof storageCompose.RuntimeCustodyUncertainError);
-    const retainsPrimary = (value: unknown): boolean => value === primary || value instanceof AggregateError && value.errors.some(retainsPrimary);
+    const retainsPrimary = (value: unknown): boolean => value === primary || value instanceof AggregateError && value.errors.some(retainsPrimary)
+      || value instanceof Error && value.cause !== undefined && retainsPrimary(value.cause);
     assert.equal(retainsPrimary(error), true);
     assert.ok(preparations > 0, "actual selected activity cancellation and preparation completed");
     assert.ok(dashboardHubClose.mock.calls.length > 0 && logsHubClose.mock.calls.length > 0);
@@ -516,8 +579,14 @@ it("a refused dashboard start after Finish keeps the published profile signed in
     assert.equal(PublicProfileStateSchema.parse(await login.json()).state, "active");
     const session = login.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(session);
     assert.equal((await fetch(`${base}/api/v1/bootstrap`, { headers: { cookie: session, origin: base } })).status, 200);
+    const registryPath = join(f.machine.stateRoot, "machine", "profiles.json"), registration = f.machine.readProfileRegistry().profiles[0]?.registration;
     const stopping = runtime; runtime = undefined;
-    await assert.rejects(stopping.stop(), storageCompose.RuntimeCustodyUncertainError);
+    await stopping.stop();
+    assert.throws(() => f.machine.assertLive());
+    await assertRuntimeLifetimeHeld(f.lifetime);
+    const retained = ProfileRegistryDocumentSchema.parse(JSON.parse(readFileSync(registryPath, "utf8")));
+    assert.equal(retained.profiles.length, 1); assert.deepEqual(retained.profiles[0]?.registration, registration);
+    await assert.rejects(fetch(`${base}/api/v1/profile/state`));
   } finally { spy.mockRestore(); await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
 

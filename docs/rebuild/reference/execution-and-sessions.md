@@ -356,6 +356,11 @@ Closing the supervisor cancels its timers and returns any remaining live-child e
 structured fault sink. The dashboard closes its database before releasing its process lock and
 runtime admission. After clean resource closure, the held lifetime owns verified person backups and last-three shutdown retention before it can release the listener. Failed closure or backup verification prevents a successful shutdown.
 
+HTTP closure awaits admitted route tasks and response-body cancellation. A known client or shutdown
+cancellation with fulfilled cleanup does not retain uncertain custody. Failed cancellation or local
+failure observation keeps its original causes. Handled request failures retain their catalogued HTTP
+response; only runtime/source-custody failures, including nested causes, hold later storage closure.
+
 Confirmed application quit and whole-runtime shutdown first hold new-work admission, then request
 pause on every nonterminal run except parked UNKNOWN writes. Active callbacks, including an in-flight
 submit, settle before claim release and worker drainage. Queued, gate and delegation holds retain
