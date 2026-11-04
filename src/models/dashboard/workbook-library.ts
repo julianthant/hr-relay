@@ -51,7 +51,9 @@ export const WorkbookLibraryChangeSchema = z.discriminatedUnion("kind", [
     from: z.discriminatedUnion("kind", [
       z.strictObject({ kind: z.literal("version"), versionId: WorkbookIdSchema }),
       z.strictObject({ kind: z.literal("sharepoint") }),
-    ]), useNow: z.boolean() }),
+      z.strictObject({ kind: z.literal("values"), workbook: EditableWorkbookWireSchema }),
+    ]), useNow: z.boolean() }).refine(change => change.from.kind !== 'values' || !change.useNow,
+      { message: 'Values-only versions leave the original version in use' }),
   z.strictObject({ kind: z.literal("rename-version"), versionId: WorkbookIdSchema, name: NameSchema }),
   z.strictObject({ kind: z.literal("delete-version"), versionId: WorkbookIdSchema }),
   z.strictObject({ kind: z.literal("use-version"), versionId: WorkbookIdSchema }),

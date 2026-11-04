@@ -695,6 +695,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   WORKBOOK_OPERATION_CONFLICT: catalogEntry("This workbook operation ID was already used with different input.", EmptyParametersSchema),
+  WORKBOOK_TYPE_IN_USE: catalogEntry("This type is used by workbook history. You can rename columns and change required fields; create a new type to change its columns or key.", EmptyParametersSchema),
   WORKBOOK_VERSION_IN_USE: catalogEntry("This version is in use. Choose another version and finish runs using it before deleting it.", EmptyParametersSchema),
   WORKBOOK_LIBRARY_IN_USE: catalogEntry("This spreadsheet is in use by a run or pending change. Finish that work before removing it.", EmptyParametersSchema),
   WORKBOOK_MERGE_INVALID: catalogEntry("These spreadsheets cannot be merged with that duplicate policy. Check their types, worksheet layouts, and matching keys, or keep both rows.", EmptyParametersSchema),

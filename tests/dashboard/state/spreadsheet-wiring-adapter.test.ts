@@ -3,10 +3,10 @@ import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import assert from 'node:assert/strict';
 import { describe, it, vi } from 'vitest';
 import { createSpreadsheetWiringAdapter } from '../../../src/dashboard/state/spreadsheet-wiring-adapter.js';
-import { newEditableWorkbook } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { newEditableWorkbook, spreadsheetValuesOnly } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { DashboardClientError } from '../../../src/dashboard/client/errors.js';
 import type { WorkbookLibraryQueries } from '../../../src/dashboard/client/queries/workbook-library-queries.js';
-import { SavedWorkbookSchema, type SavedWorkbook } from '../../../src/models/dashboard/workbooks.js';
+import { SavedWorkbookSchema, encodeEditableWorkbook, type SavedWorkbook } from '../../../src/models/dashboard/workbooks.js';
 const book = () => ({ ...newEditableWorkbook(), libraryId: 'saved' });
 const saved = (version = 3, workbook = book()): SavedWorkbook => SavedWorkbookSchema.parse({ libraryId: workbook.libraryId, version, createdAt: '2026-10-01T00:00:00Z', savedAt: '2026-10-15T00:00:00Z', workbook });
 function setup() {
@@ -183,6 +183,28 @@ describe('named library actions', () => {
     type: { id: 'roster', name: 'Roster', fields: ['eid'], keyFieldId: 'eid', defaultWorkbookId: null },
     state: { libraryId: 'saved', revision: 1, selectedVersionId: 'original', removed: false, origin: { kind: 'local' },
       versions: [{ id: 'original', name: 'Original', snapshotId: 'original', version: 3, savedAt: '2026-11-01T00:00:00Z', source: 'import' }] } });
+  it('saves a dirty values-only draft once and confirms only its exact named snapshot after response loss', async () => {
+    const { client, adapter } = setup(), file = entry(), document = spreadsheetValuesOnly(book());
+    client.workbookCatalog.mockResolvedValue([file]); client.workbookTypes.mockResolvedValue([file.type]);
+    await adapter.list(); await adapter.refreshCatalog(); await adapter.open('saved'); adapter.change('saved', document, true);
+    client.workbookLibraryAction.mockRejectedValue(new Error('lost response')); client.workbookLibraryActionStatus.mockResolvedValue({ state: 'absent' });
+    assert.equal((await adapter.saveValuesVersion('saved', 'Edited values', document)).state, 'uncertain');
+    assert.equal((await adapter.saveValuesVersion('saved', 'Other name', document)).state, 'refused');
+    assert.equal((await adapter.saveValuesVersion('saved', 'Edited values', document)).state, 'uncertain');
+    const action = client.workbookLibraryAction.mock.calls[0][1];
+    assert.deepEqual(action.change, { kind: 'create-version', name: 'Edited values', from: { kind: 'values', workbook: encodeEditableWorkbook(document) }, useNow: false });
+    const version = { ...file.state.versions[0], id: action.operationId, snapshotId: action.operationId, name: 'Edited values' };
+    const result = { ...file.state, revision: 2, versions: [...file.state.versions, version] };
+    client.workbookCatalog.mockResolvedValue([{ ...file, state: result }]);
+    client.workbookLibraryActionStatus.mockResolvedValue({ state: 'recorded', record: { libraryId: 'saved', action, at: version.savedAt, result } });
+    client.workbookLibraryVersion.mockResolvedValue({ libraryId: 'saved', version, workbook: encodeEditableWorkbook({ ...document, name: 'Wrong.xlsx' }) });
+    assert.equal((await adapter.saveValuesVersion('saved', 'Edited values', document)).state, 'uncertain');
+    client.workbookLibraryVersion.mockResolvedValue({ libraryId: 'saved', version, workbook: encodeEditableWorkbook(document) });
+    assert.equal((await adapter.saveValuesVersion('saved', 'Edited values', document)).state, 'confirmed');
+    assert.equal(client.workbookLibraryAction.mock.calls.length, 1); assert.equal(client.workbookSave.mock.calls.length, 0);
+    assert.equal(adapter.draft('saved')?.document, document); assert(adapter.draft('saved')?.dirty);
+    assert.equal(adapter.snapshot().catalog[0].state.selectedVersionId, 'original');
+  });
   it('retains uncertain actions and reserves every merge source without a second POST', async () => {
     const { client, adapter } = setup(), file = entry(), other = { ...entry(), libraryId: 'other', state: { ...entry().state, libraryId: 'other' } };
     client.workbookCatalog.mockResolvedValue([file, other]); client.workbookTypes.mockResolvedValue([file.type]);

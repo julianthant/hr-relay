@@ -4,7 +4,7 @@ import { act, createElement, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, it, vi } from 'vitest';
 import { SpreadsheetEditor } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor.js';
-import { newEditableWorkbook, spreadsheetSaveMatches, type SpreadsheetSaveResult } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { newEditableWorkbook, spreadsheetSaveMatches, spreadsheetValuesOnly, type SpreadsheetSaveResult } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 import { type EditableWorkbook } from '../../../../src/rules/spreadsheets/workbook-io.js';
 import { registeredSpreadsheetWorkbook, resetSpreadsheetMocks, saveMockSpreadsheet, useSpreadsheetMocks } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-mock-model.js';
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
@@ -27,6 +27,20 @@ async function edit(value: string) {
   await act(async () => { cell.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(cell, value); cell.dispatchEvent(new Event('input', { bubbles: true })); });
   return cell;
 }
+it('requires an explicit values-only confirmation and keeps the original draft after an uncertain result', async () => {
+  const original = { ...newEditableWorkbook(), libraryId: 'original', unsupportedMetadata: true };
+  const onSaveValues = vi.fn(async () => ({ state: 'uncertain' as const, message: 'Check the version result.' }));
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(SpreadsheetEditor, { document: original, dirty: true, onDocument: vi.fn(), onSaveValues })));
+  await act(async () => button('Save as new version (values only)').click());
+  assert.equal(onSaveValues.mock.calls.length, 0);
+  assert.match(document.querySelector('[role=dialog]')?.textContent ?? '', /Merged cells, formulas, formatting, colors, rich text and links are dropped/);
+  const name = document.querySelector<HTMLInputElement>('[role=dialog] input'); assert(name);
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(name, 'Edited values'); name.dispatchEvent(new Event('input', { bubbles: true })); });
+  await act(async () => button('Save values-only version').click());
+  assert.deepEqual(onSaveValues.mock.calls[0], ['Edited values', spreadsheetValuesOnly(original)]);
+  assert.equal(name.disabled, true); assert(button('Check result')); assert.equal(original.unsupportedMetadata, true);
+});
 describe('explicit workbook Save', () => {
   it('disables unavailable Save and keeps Export copy available', async () => {
     await mount(); assert(button('Save').disabled); assert(!button('Export copy').disabled);

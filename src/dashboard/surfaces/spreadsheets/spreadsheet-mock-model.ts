@@ -5,8 +5,9 @@ import { useSyncExternalStore } from "react";
 import { MOCK_ROSTER_ROWS, ROSTER_FIELDS, ROSTER_SHEETS } from "./spreadsheet-mock-data.js";
 import { fieldForSpreadsheetHeader, spreadsheetField, spreadsheetHeaderKey, type SpreadsheetColumnBinding } from './spreadsheet-fields-model.js';
 import { setSpreadsheetHeaderRow } from './spreadsheet-column-import-model.js';
+import { WorkbookTypeSchema, type WorkbookType } from '../../../models/dashboard/workbooks.js';
 
-export interface SpreadsheetType { readonly id: string; readonly name: string; readonly fields: readonly string[] }
+export interface SpreadsheetType { readonly id: string; readonly name: string; readonly fields: readonly string[]; readonly definition?: WorkbookType }
 export interface SpreadsheetSheet { readonly name: string; readonly headerRow: number; readonly columns: readonly string[]; readonly mapping: readonly string[]; readonly bindings?: readonly SpreadsheetColumnBinding[] }
 export interface RegisteredSpreadsheet { readonly id: string; readonly name: string; readonly typeId: string; readonly sheets: readonly SpreadsheetSheet[]; readonly addedAt?: string; readonly rowCount?: number; readonly version?: number; readonly status?: "Attached" | "Generated" | "Updated" }
 export interface SpreadsheetMockState { readonly types: readonly SpreadsheetType[]; readonly files: readonly RegisteredSpreadsheet[] }
@@ -56,7 +57,7 @@ export function registerMockSpreadsheet(file: Omit<RegisteredSpreadsheet, "id">,
   if (errors.length) throw new Error(errors.join(" "));
   if (file.sheets.some(sheet => sheet.mapping.some(field => field !== NOT_MAPPED && field !== WORKBOOK_ONLY && !type.fields.includes(field)))) throw new Error("SPREADSHEET_FIELD_NOT_FOUND");
   if (existingId && !state.files.some(entry => entry.id === existingId)) throw new Error("SPREADSHEET_NOT_FOUND");
-  const record = { addedAt: state.files.find(entry => entry.id === existingId)?.addedAt ?? clock.now().toISOString(), ...structuredClone(file), sheets: file.sheets.map((sheet, index) => ({ ...sheet, bindings: sheet.columns.map((sourceHeader, column) => ({ id: `sheet-${index + 1}:column:${column}`, sourceColumn: column, sourceHeader, fieldId: [NOT_MAPPED, WORKBOOK_ONLY].includes(sheet.mapping[column]) ? null : fieldForSpreadsheetHeader(sheet.mapping[column])!.id, basis: 'manual' as const })) })), id: existingId ?? `mock-import-${state.files.length + 1}` };
+  const record = { addedAt: state.files.find(entry => entry.id === existingId)?.addedAt ?? clock.now().toISOString(), ...structuredClone(file), sheets: file.sheets.map((sheet, index) => ({ ...sheet, bindings: sheet.columns.map((sourceHeader, column) => ({ id: `sheet-${index + 1}:column:${column}`, sourceColumn: column, sourceHeader, fieldId: [NOT_MAPPED, WORKBOOK_ONLY].includes(sheet.mapping[column]) ? null : type.definition?.fields[type.fields.indexOf(sheet.mapping[column])] ?? fieldForSpreadsheetHeader(sheet.mapping[column])!.id, basis: 'manual' as const })) })), id: existingId ?? `mock-import-${state.files.length + 1}` };
   publish({ ...state, files: existingId ? state.files.map(entry => entry.id === existingId ? record : entry) : [record, ...state.files] });
   return record;
 }
@@ -82,6 +83,12 @@ export function renameMockSpreadsheetType(id: string, name: string): Spreadsheet
   publish({ ...state, types: state.types.map(entry => entry.id === id ? type : entry) });
   return type;
 }
+export function putMockSpreadsheetType(value: WorkbookType): void {
+  const definition = WorkbookTypeSchema.parse(value);
+  if (state.types.some(type => type.id !== definition.id && normalize(type.name) === normalize(definition.name))) throw new Error('A spreadsheet type with this name already exists.');
+  const next = { id: definition.id, name: definition.name, fields: definition.fields.map(field => definition.fieldLabels?.[field] ?? spreadsheetField(field).label), definition };
+  publish({ ...state, types: state.types.some(type => type.id === next.id) ? state.types.map(type => type.id === next.id ? next : type) : [...state.types, next] });
+}
 export function searchMockSpreadsheet(file: RegisteredSpreadsheet, sheetName: string, query: string): readonly Readonly<Record<string, string>>[] {
   const sheet = file.sheets.find(entry => entry.name === sheetName);
   if (!sheet) throw new Error("SPREADSHEET_SHEET_NOT_FOUND");
@@ -101,7 +108,7 @@ export function registeredSpreadsheetWorkbook(file: RegisteredSpreadsheet): Edit
     const fields = sheet.mapping.flatMap((field, column) => field === NOT_MAPPED || field === WORKBOOK_ONLY ? [] : [{ field, title: sheet.columns[column] }]);
     if (!fields.length) throw new Error("SPREADSHEET_NO_VISIBLE_COLUMNS");
     return { id: `sheet-${index + 1}`, name: sheet.name, width: fields.length, hidden: [], headerRow: 1, sourceHeaderRow: sheet.headerRow,
-      columnBindings: fields.map(({ field, title }, column) => ({ id: `sheet-${index + 1}:column:${column}`, sourceColumn: sheet.columns.indexOf(title), sourceHeader: title, fieldId: fieldForSpreadsheetHeader(field)?.id ?? null, basis: 'manual' as const })), rows: [
+      columnBindings: fields.map(({ field, title }, column) => ({ id: `sheet-${index + 1}:column:${column}`, sourceColumn: sheet.columns.indexOf(title), sourceHeader: title, fieldId: sheet.bindings?.[sheet.columns.indexOf(title)]?.fieldId ?? fieldForSpreadsheetHeader(field)?.id ?? null, basis: 'manual' as const })), rows: [
       { id: "header", cells: fields.map(({ title }) => ({ value: title })) },
       ...MOCK_ROSTER_ROWS.map((row, number) => ({ id: `row-${number + 1}`, cells: fields.map(({ field }) => ({ value: row[field] ?? "" })) })),
     ] };

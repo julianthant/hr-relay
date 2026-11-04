@@ -403,6 +403,13 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
           snapshotId = putLibrarySnapshot(id, action.operationId, mapped.workbook);
           changes++;
           version = before.version;
+        } else if (change.from.kind === 'values') {
+          const workbook = change.from.workbook;
+          if (workbook.libraryId !== id || workbook.hasFormulas || workbook.unsupportedMetadata || Object.values(workbook.themes).length
+            || workbook.sheets.some(sheet => sheet.rows.some(row => row.cells.some(cell => Object.keys(cell).some(key => key !== 'value'))))) throw new WorkbookLibraryError('WORKBOOK_INVALID');
+          snapshotId = putLibrarySnapshot(id, action.operationId, workbook);
+          version = before.version;
+          changes++;
         } else {
           const source = selected(change.from.versionId);
           version = source.version;
@@ -499,8 +506,10 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
     putType: value => storage(() => deps.mutate(() => {
       const record = WorkbookTypeSchema.parse(value);
       if (record.defaultWorkbookId !== null && metadata(record.defaultWorkbookId).typeId !== record.id) throw new WorkbookLibraryError('WORKBOOK_INVALID');
+      if (!record.fields.length) throw new WorkbookLibraryError('WORKBOOK_INVALID');
       const before = type(record.id);
-      if (before && canonicalJsonStringify({ ...before, name: record.name, defaultWorkbookId: record.defaultWorkbookId }) !== canonicalJsonStringify(record)) throw new WorkbookLibraryError('WORKBOOK_INVALID');
+      if (before && (before.keyFieldId !== record.keyFieldId || canonicalJsonStringify(before.fields) !== canonicalJsonStringify(record.fields))
+        && (record.id === 'general' || database.prepare("SELECT 1 FROM workbook_operations WHERE json_extract(request_json,'$.change.metadata.typeId')=? LIMIT 1").get(record.id))) throw new WorkbookLibraryError('WORKBOOK_TYPE_IN_USE');
       database.prepare('INSERT INTO workbook_types(id,payload_json) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET payload_json=excluded.payload_json').run(record.id, canonicalJsonStringify(record));
       return { result: record, changes: 1 };
     })),
@@ -523,7 +532,8 @@ export function createWorkbookLibraryRepository(deps: Readonly<{
           return [field, row.cells[indexes[0]].value];
         }));
       const schema = selected === undefined ? WorkbookReferenceSnapshotSchema : WorkbookNamedReferenceSnapshotSchema;
-      return schema.parse({ libraryId: id, version: record.version, type: workbookType,
+      const { fieldLabels: _labels, requiredFields: _required, ...referenceType } = workbookType;
+      return schema.parse({ libraryId: id, version: record.version, type: referenceType,
         ...(selected === undefined ? {} : { versionId: selected.version.id, versionName: selected.version.name }),
         worksheets: workbook.sheets.map(sheet => ({ sheetId: sheet.id, name: sheet.name })),
         rows: "mode" in request ? workbook.sheets.flatMap(sheet => sheet.rows.slice(sheet.headerRow ?? 1).map(row => ({

@@ -52,6 +52,7 @@ export const SPREADSHEET_FIELDS: readonly SpreadsheetField[] = [
 export const spreadsheetHeaderKey = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/gu, '');
 export function spreadsheetField(id: string): SpreadsheetField {
   const field = SPREADSHEET_FIELDS.find(entry => entry.id === id);
+  if (!field && /^roster\.[a-zA-Z][a-zA-Z\d]*$/u.test(id)) return { id, label: id.slice(7), type: 'text', format: 'Text', aliases: [] };
   if (!field) throw new Error('SPREADSHEET_FIELD_NOT_FOUND');
   return field;
 }
