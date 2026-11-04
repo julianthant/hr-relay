@@ -167,11 +167,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(dateField.getByRole("spinbutton", { name: /^day/u })).toHaveText("03");
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "General", exact: true }).click();
-      const themeSwitch = page.getByRole("switch", { name: /^Dark theme/u });
-      await expect(themeSwitch).toBeChecked({ checked: theme.attribute === "dark" });
-      await themeSwitch.focus();
-      await themeSwitch.press("Space");
-      await expect(themeSwitch).toBeChecked({ checked: theme.attribute !== "dark" });
+      const themeToggle = page.getByRole("button", { name: `Switch to ${theme.attribute === "dark" ? "light" : "dark"} theme`, exact: true });
+      await expect(themeToggle).toHaveText(theme.attribute === "dark" ? "Dark" : "Light");
+      await themeToggle.focus();
+      await themeToggle.press("Space");
+      await expect(page.getByRole("button", { name: `Switch to ${theme.attribute} theme`, exact: true })).toHaveText(theme.attribute === "dark" ? "Light" : "Dark");
       expect(requests).toEqual([]);
       await expect(page.getByRole("region", { name: "Settings", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Back to dashboard", exact: true })).toBeVisible();
