@@ -1,3 +1,4 @@
+import { mockReviewProps } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { createElement as createElement_m1,createElement as createElement_m6 } from "react";
 import { renderToStaticMarkup as renderToStaticMarkup_m1,renderToStaticMarkup as renderToStaticMarkup_m6 } from "react-dom/server";
 import { describe as describe_m0,describe as describe_m1,describe as describe_m2,describe as describe_m3,describe as describe_m4,describe as describe_m5,describe as describe_m6,expect as expect_m0,expect as expect_m1,expect as expect_m2,expect as expect_m3,expect as expect_m4,expect as expect_m5,expect as expect_m6,it as it_m0,it as it_m1,it as it_m2,it as it_m3,it as it_m4,it as it_m5,it as it_m6 } from "vitest";
@@ -13,7 +14,7 @@ import { completeMockReviewAction as completeMockReviewAction_m5 } from "../../.
 import { discardMockReview as discardMockReview_m4,editReviewRecord as editReviewRecord_m1,editReviewRecord as editReviewRecord_m2,editReviewRecord as editReviewRecord_m4,editReviewRecord as editReviewRecord_m6,reviewCanApprove as reviewCanApprove_m2,reviewRecords as reviewRecords_m1,reviewRecords as reviewRecords_m2,reviewRecords as reviewRecords_m3,reviewRecords as reviewRecords_m4,reviewRecords as reviewRecords_m5,reviewRecords as reviewRecords_m6,reviewValue as reviewValue_m6,seedReviewRecords as seedReviewRecords_m2,seedReviewRecords as seedReviewRecords_m6,updateMockReview as updateMockReview_m1,updateMockReview as updateMockReview_m2,updateMockReview as updateMockReview_m4,updateMockReview as updateMockReview_m6 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { reviewFieldBlocks as reviewFieldBlocks_m6,reviewFieldGroups as reviewFieldGroups_m6 } from "../../../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
 import { reviewSourcePages as reviewSourcePages_m3,reviewSourcePages as reviewSourcePages_m6 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-source-model.js";
-import { WorkflowMockReview as WorkflowMockReview_m1,WorkflowMockReview as WorkflowMockReview_m6 } from "../../../../../src/dashboard/surfaces/run-detail/review/review.js";
+import { RecordReview as RecordReview_m1,RecordReview as RecordReview_m6 } from "../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 
 
 {
@@ -50,7 +51,7 @@ describe_m1("document-complete OCR previews", () => {
   });
   it_m1("renders every document response field, including blank, boolean and unresolved values", () => {
     for (const run of seedMockRuns_m1().filter(run => run.workflowId === "ocr")) for (const record of reviewRecords_m1(run)) {
-      const markup = renderToStaticMarkup_m1(createElement_m1(WorkflowMockReview_m1, { run: { ...run, records: [record] }, onChange: () => {}, onApprove: () => {}, onRestore: () => {} }));
+      const markup = renderToStaticMarkup_m1(createElement_m1(RecordReview_m1, mockReviewProps({ run: { ...run, records: [record] }, onChange: () => {}, onApprove: () => {}, onRestore: () => {} })));
       for (const field of record.fields) expect_m1(markup).toContain(field.label.replaceAll("&", "&amp;"));
       expect_m1(record.fields.some(field => field.value === "")).toBe(true);
     }
@@ -611,17 +612,17 @@ const preparation = () => mockRunsForDraft_m6("emergency-contact", { ...initialM
 describe_m6("OCR source comparison and corrected handoff", () => {
   it_m6("presents extracted oath dates with four-digit years without changing the source image", () => {
     const run = seedMockRuns_m6().find(run => run.id === "mock:oath-signature:sample:ocr")!;
-    const markup = renderToStaticMarkup_m6(createElement_m6(WorkflowMockReview_m6, { run, sourcePages: { "person-1": documentSourcePages_m6(run.draft, reviewRecords_m6(run)[0])! }, onChange: () => {}, onRestore: () => {} }));
+    const markup = renderToStaticMarkup_m6(createElement_m6(RecordReview_m6, mockReviewProps({ run, sourcePages: { "person-1": documentSourcePages_m6(run.draft, reviewRecords_m6(run)[0])! }, onChange: () => {}, onRestore: () => {} })));
     expect_m6(markup).toContain('value="04/27/2026"'); expect_m6(markup).toContain('value="04/23/2026"');
     expect_m6(markup).not.toContain('value="04/27/26"'); expect_m6(markup).not.toContain('value="4-23-26"');
     expect_m6(markup).toContain('single-oath-1.webp');
   });
   it_m6("accepts source image URLs separately from the extracted field response", () => {
     const run = preparation()[1];
-    const markup = renderToStaticMarkup_m6(createElement_m6(WorkflowMockReview_m6, { run, sourcePages: { "person-1": [{ page: 1, imageUrl: "/retained/source-page-1.png" }] }, onChange: () => {}, onRestore: () => {} }));
+    const markup = renderToStaticMarkup_m6(createElement_m6(RecordReview_m6, mockReviewProps({ run, sourcePages: { "person-1": [{ page: 1, imageUrl: "/retained/source-page-1.png" }] }, onChange: () => {}, onRestore: () => {} })));
     expect_m6(markup).toContain('src="/retained/source-page-1.png"');
     expect_m6(markup).not.toContain("data:image/svg");
-    const missing = renderToStaticMarkup_m6(createElement_m6(WorkflowMockReview_m6, { run, sourcePages: {}, onChange: () => {}, onRestore: () => {} }));
+    const missing = renderToStaticMarkup_m6(createElement_m6(RecordReview_m6, mockReviewProps({ run, sourcePages: {}, onChange: () => {}, onRestore: () => {} })));
     expect_m6(missing).toContain("No source page for this record"); expect_m6(missing).not.toContain("<img");
   });
   it_m6("preserves every response field exactly once in the editor, including blank and unknown fields", () => {
@@ -640,7 +641,7 @@ describe_m6("OCR source comparison and corrected handoff", () => {
     const run = preparation()[1], record = reviewRecords_m6(run)[0];
     const corrected = editReviewRecord_m6(record, "relationship", "Cousin");
     const raw = { ...corrected, fields: [...corrected.fields, { key: "rawDate", label: "Date as printed", value: "4-23-26", kind: "date" as const }] };
-    const markup = renderToStaticMarkup_m6(createElement_m6(WorkflowMockReview_m6, { run: { ...run, records: [raw] }, onChange: () => {}, onRestore: () => {} }));
+    const markup = renderToStaticMarkup_m6(createElement_m6(RecordReview_m6, mockReviewProps({ run: { ...run, records: [raw] }, onChange: () => {}, onRestore: () => {} })));
     expect_m6(markup).toContain('name="rawDate"'); expect_m6(markup).toContain('value="4-23-26"');
     expect_m6(markup).not.toContain('type="date"'); expect_m6(markup).toContain("Cousin");
     const oathRuns = mockRunsForDraft_m6("oath-signature", { ...initialMockDraft_m6("oath-signature"), method: "pdf", files: [{ name: "oath.pdf", size: 1024, digest: "fixture" }] }, 1);

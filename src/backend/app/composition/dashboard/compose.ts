@@ -862,6 +862,7 @@ async function composeDashboardRuntimeStartup(
   });
   startupCleanups.push(() => applicationLifecycle.dispose());
   const kernel = createCommandKernel({
+    readableDescriptors: { resolve: workflowId => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor },
     workbookRows: createRunWorkbookService({ database, clock }),
     applicationQuitAvailable: true,
     preflight: runtimePreflight.admission,

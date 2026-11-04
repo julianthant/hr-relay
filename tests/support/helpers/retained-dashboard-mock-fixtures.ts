@@ -183,7 +183,7 @@ export function createRetainedDashboardMockFixtures() {
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"VariableDeclaration:hasRecords\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:WorkflowMockLog\"],\"run.workflowId===\\\"ocr\\\"\"]",
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"ArrowFunction:\",\"CallExpression:\",\"VariableDeclaration:toolbar\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:WorkflowMockLog\"],\"run.workflowId!==\\\"ocr\\\"\"]",
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ParenthesizedExpression:\",\"PrefixUnaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"JsxExpression:\",\"JsxElement:\",\"ArrowFunction:\",\"CallExpression:\",\"VariableDeclaration:toolbar\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:WorkflowMockLog\"],\"run.workflowId===\\\"ocr\\\"\"]",
-    "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"JsxExpression:\",\"JsxAttribute:onDiscard\",\"JsxAttributes:\",\"JsxSelfClosingElement:\",\"JsxElement:\",\"ConditionalExpression:\",\"JsxExpression:\",\"JsxAttribute:content\",\"JsxAttributes:\",\"JsxSelfClosingElement:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:WorkflowMockLog\"],\"run.workflowId===\\\"ocr\\\"\"]"
+    "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"PropertyAssignment:onDiscard\",\"ObjectLiteralExpression:\",\"CallExpression:\",\"JsxSpreadAttribute:\",\"JsxAttributes:\",\"JsxSelfClosingElement:\",\"JsxElement:\",\"ConditionalExpression:\",\"ArrowFunction:\",\"CallExpression:\",\"VariableDeclaration:reviewContent\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:WorkflowMockLog\"],\"run.workflowId===\\\"ocr\\\"\"]"
   ],
   "src/dashboard/surfaces/workflows/mocks/workflow-queue-model.ts": [
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"ParenthesizedExpression:\",\"SpreadElement:\",\"ArrayLiteralExpression:\",\"PropertyAssignment:availableSections\",\"ObjectLiteralExpression:\",\"CallExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:mockQueueSurface\"],\"run.workflowId===\\\"ocr\\\"\"]"
@@ -205,9 +205,6 @@ export function createRetainedDashboardMockFixtures() {
   ],
   "src/backend/runs/commands/command-kernel.ts": [
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"IfStatement:\",\"Block:\",\"FunctionDeclaration:executeResolveGate\"],\"current.envelope.workflow===\\\"ocr\\\"\"]"
-  ],
-  "src/backend/runs/queries/bootstrap.ts": [
-    "[\"ocr\",[\"StringLiteral:\",\"ArrayLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:DEFERRED_FEATURES\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"[\\\"ocr\\\",\\\"OCRreviewsurfaceslandin2h\\\"]\"]"
   ],
   "src/backend/runs/queries/run-detail.ts": [
     "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:review\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:buildRunDetail\"],\"authority.envelope.workflow===\\\"ocr\\\"\"]"

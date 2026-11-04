@@ -295,6 +295,7 @@ export interface CommandKernelDependencies {
 
   readonly appVersion: string;
   readonly descriptors: WorkflowDescriptorResolver;
+  readonly readableDescriptors?: WorkflowDescriptorResolver;
   readonly writeResolution: WriteResolutionExecutor;
   readonly workerRuntime: WorkerPoolRuntimeAdoption;
   readonly intakeParser: IntakeParser;
@@ -390,7 +391,7 @@ function resolveDescriptorOrReject(
   request: CommandRequest,
   workflowId: string,
 ): AnyWorkflowDescriptor {
-  const descriptor = dependencies.descriptors.resolve(workflowId);
+  const descriptor = (request.family === "gate" ? dependencies.readableDescriptors ?? dependencies.descriptors : dependencies.descriptors).resolve(workflowId);
   if (descriptor === undefined) {
     reject(request, "target-not-found", `workflow ${workflowId} is not registered; the command names an unknown target`);
   }
@@ -2517,6 +2518,7 @@ function dispatchActive(
       if (request.requestedBy !== "local-operator" || request.source !== "dashboard") reject(request, "policy-refused", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
       const current = readOcrReviewAuthority(repositories, dependencies.lifecycle, request.target.runId);
       if (current === undefined) reject(request, "invalid-state", ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
+      if (readOcrSnapshotsAuthority(repositories, current).length > 0) throw new OcrReviewRefusedError();
       if (current.revision.revision !== request.target.expectedRevision) conflict(request, current.revision.revision, ERROR_CATALOG.OCR_REVIEW_REFUSED.text);
       const revision = repositories.ocrReviews.append(reviseOcrReview(current.revision, request, now), current.revision.revision);
       const updated = lifecycleRun(request, dependencies.lifecycle.transition({

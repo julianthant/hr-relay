@@ -11,9 +11,9 @@ import { QueuePanel, type QueueFilterScope } from "../../queue/queue.js";
 import type { QueueSortKey, QueueSurfaceWire } from "../../queue/queue-model.js";
 import { StatusBadge } from "../../shared/status/status.js";
 import { dsStatusOf } from "../../shared/status/status-model.js";
-import { reviewRecords, seedReviewRecords, type ReviewRecord } from "./workflow-review-model.js";
+import { mockReviewProps, reviewRecords, seedReviewRecords, type ReviewRecord } from "./workflow-review-model.js";
 import { reviewSourcePages } from "./workflow-review-source-model.js";
-import { WorkflowMockReview } from "../../run-detail/review/review.js";
+import { RecordReview } from "../../run-detail/review/review.js";
 import { documentSourcePages } from "./workflow-document-model.js";
 import { mockDeletionCopy, mockDeletionIds } from "./workflow-mock-model.js";
 
@@ -126,11 +126,12 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
           </PopoverContent>
         </Popover>}
       </span>, [hasRecords, recordsVisible, recordsButton, run, linked, linksOpen, setLinksOpen, setRecordsVisible, onSelect, onRerun]);
+  const reviewContent = useMemo(() => recordsVisible ? <div id={`records-${mockQueueId(run.id)}`} className="flex min-h-0 min-w-0 flex-1">
+    <RecordReview key={run.id} {...mockReviewProps({ approvalError: mockApprovalError(run), run, sourcePages, onChange, onApprove: mockNeedsReview(run) ? onApprove : undefined, onDiscard: mockNeedsReview(run) || run.workflowId === "ocr" && !run.parentId && !run.discarded ? onDiscard : undefined, onRestore })} />
+  </div> : undefined, [recordsVisible, run, sourcePages, onChange, onApprove, onDiscard, onRestore]);
   return <LogPanel title={run.subject} steps={steps} timeline={timeline} context={queueRunHeader(surface, mockWorkflow(run.workflowId).label, nowIso)}
       onReview={hasRecords ? openRecords : undefined}
       status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
       toolbar={toolbar}
-      content={recordsVisible ? <div id={`records-${mockQueueId(run.id)}`} className="flex min-h-0 min-w-0 flex-1">
-        <WorkflowMockReview key={run.id} approvalError={mockApprovalError(run)} run={run} sourcePages={sourcePages} onChange={onChange} onApprove={mockNeedsReview(run) ? onApprove : undefined} onDiscard={mockNeedsReview(run) || run.workflowId === "ocr" && !run.parentId && !run.discarded ? onDiscard : undefined} onRestore={onRestore} />
-      </div> : undefined} />;
+      content={reviewContent} />;
 }

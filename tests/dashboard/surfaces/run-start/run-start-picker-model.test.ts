@@ -21,7 +21,8 @@ describe("shared run catalog", () => {
     expect(ids("OCR")).toEqual(["ocr"]); expect(ids("i-9")).toEqual(["i9-check-start"]);
     expect(ids("I-9 Lookup")).toEqual([]); expect(ids("SharePoint")).toEqual([]);
     expect(ids("Download")).toEqual(["crm-doc-download"]); expect(ids("Search")).toEqual(["person-lookup"]);
-    expect(catalog.filter(flow => flow.launch.state === "unavailable").map(flow => flow.id).sort()).toEqual(["i9-lookup", "sharepoint-download"]);
+    expect(catalog.filter(flow => flow.launch.state === "unavailable").map(flow => flow.id).sort()).toEqual(["i9-lookup", "ocr", "sharepoint-download"]);
+    expect(catalog.find(flow => flow.id === "ocr")).toMatchObject({ source: "served", role: { kind: "composition" }, launch: { state: "unavailable" } });
   });
   it("uses served capability instead of restoring a preview launch when served input is absent", () => {
     const absent: RunStartWorkflow = { ...served[0], inputRun: { state: "absent", reason: "Delegation only" } };

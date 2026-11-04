@@ -40,7 +40,7 @@ Reflect.set(globalThis, "cancelAnimationFrame", clearTimeout);
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); localStorage.clear(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/"); });
 async function mount(missing = false, mixed = false) {
-  const sources: WorkflowSourcePolicy = mixed ? PRODUCT_WORKFLOW_COMPOSITION.sources : mockProductSources();
+  const sources: WorkflowSourcePolicy = mixed ? { ...mockProductSources(), "person-lookup": "served" } : mockProductSources();
   const { app } = createFixtureBff();
   const transport = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => app.request(url, init) });
   const reads: string[] = [];
@@ -151,7 +151,10 @@ it("mounts served inbox controls and reports only the served search authority to
 
 it("admits a canonical Separations historical target while Person Lookup is served and Separations stays mock", async () => {
   requested.target = { kind: "run", runId: RunIdSchema.parse(FIXTURE_IDS.failedRun), day: FIXTURE_DAY_WIRE.day };
-  const { host, reads } = await mount(false, true);
+  const { host, reads, sources } = await mount(false, true);
+  assert.equal(sources["person-lookup"], "served");
+  assert.equal(sources.separations, "mock");
+  assert.equal(sources.ocr, "mock");
   assert.deepEqual(reads, [FIXTURE_DAY_WIRE.day]);
   assert.equal(new URLSearchParams(location.search).get("run"), FIXTURE_IDS.failedRun);
   assert.equal(parseRoute(location.search).view?.workflow, "separations");

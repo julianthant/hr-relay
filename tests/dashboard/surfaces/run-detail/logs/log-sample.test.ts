@@ -14,6 +14,7 @@ import { DryRunPreviewWireSchema } from '../../../../../src/models/dashboard/run
 const { useRunWiring, projectRunLogs } = vi.hoisted(() => ({ useRunWiring: vi.fn(), projectRunLogs: vi.fn() }));
 vi.mock('../../../../../src/dashboard/state/client-context.js', () => ({ useDashboardClient: () => ({}), useDashboardCommandBinding: () => undefined }));
 vi.mock('../../../../../src/dashboard/state/run-wiring-adapter.js', () => ({ projectRunLogs, useRunWiring }));
+vi.mock('../../../../../src/dashboard/surfaces/run-detail/review/review.js', () => ({ RunReview: () => null }));
 
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -100,6 +101,24 @@ describe('compact run headers', () => {
     const markup = renderToStaticMarkup(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'OCR' } }));
     assert.match(markup, /Earlier review changes no longer apply/);
     assert.match(markup, /Page 2: OCR evidence changed in revision 4/);
+  });
+
+  it('opens native Records from its served count and returns to Logs with the same toggle', () => {
+    const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
+    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Native OCR' }, availableSections: ['logs', 'review'], ocrRecordCount: 2 }, logs: {}, unavailableEvidence: [] } });
+    projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
+    const onReview = vi.fn(), onLogs = vi.fn();
+    const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
+    try {
+      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'OCR' }, onReview, onLogs })));
+      const toggle = [...host.querySelectorAll('button')].find(button => button.textContent === 'Records 2'); assert.ok(toggle);
+      assert.equal(toggle.getAttribute('aria-pressed'), 'false');
+      act(() => toggle.click()); assert.equal(onReview.mock.calls.length, 1);
+      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'OCR' }, reviewOpen: true, onReview, onLogs })));
+      const selected = host.querySelector<HTMLButtonElement>('button[aria-pressed="true"]'); assert.ok(selected);
+      act(() => selected.click()); assert.equal(onLogs.mock.calls.length, 1);
+    } finally { act(() => root.unmount()); host.remove(); }
   });
 
   it.each([

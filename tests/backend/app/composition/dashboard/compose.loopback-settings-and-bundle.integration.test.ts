@@ -10,8 +10,9 @@ import { afterEach, describe, it, vi } from "vitest";
 import { writeDashboardBuildIdentity } from "../../../../../src/backend/app/composition/dashboard/build-identity.js";
 import { type DashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
-import { createDashboardClient, type DashboardClient, type SubscriptionState } from "../../../../../src/dashboard/client/index.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, DESCRIPTORS, READABLE_WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { createDashboardClient, DashboardClientError, type DashboardClient, type SubscriptionState } from "../../../../../src/dashboard/client/index.js";
+import { WorkflowBootstrapPrimitiveSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/protected-settings.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
 import { ProtectedSettingsCommandRequestSchema } from "../../../../../src/rules/commands/commands.js";
@@ -254,10 +255,30 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       const bootstrap = await client.bootstrap();
       assert.equal(bootstrap.appVersion, "0.1.0");
 
-      assert.deepEqual(
-        (bootstrap.workflows as { id: string }[]).map(({ id }) => id).toSorted(),
-        DESCRIPTORS.map(({ id }) => id).toSorted(),
-      );
+      const workflows = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows);
+      const publicIds = DESCRIPTORS.map(({ id }) => String(id)).toSorted();
+      const reviewIds = READABLE_WORKFLOW_MODULES.filter(({ descriptor }) => descriptor.capabilities?.review === true)
+        .map(({ descriptor }) => String(descriptor.id));
+      assert.deepEqual(workflows.map(({ id }) => String(id)).toSorted(), [...new Set([...publicIds, ...reviewIds])].toSorted());
+      assert.deepEqual(workflows.filter(({ id }) => publicIds.includes(id)).map(({ id }) => String(id)).toSorted(), publicIds);
+      const nonReviewChildren = CHILD_ONLY_WORKFLOW_MODULES.filter(({ descriptor }) => descriptor.capabilities?.review !== true)
+        .map(({ descriptor }) => String(descriptor.id));
+      assert.deepEqual(workflows.filter(({ id }) => nonReviewChildren.includes(id)), []);
+      assert.equal(nonReviewChildren.includes("ocr-page"), true);
+      const ocr = workflows.find(({ id }) => id === "ocr"); assert.ok(ocr);
+      assert.equal(CHILD_ONLY_WORKFLOW_MODULES.some(({ descriptor }) => descriptor.id === ocr.id), true);
+      assert.equal(publicIds.includes(ocr.id), false);
+      assert.equal(ocr.role.kind, "composition");
+      assert.equal(ocr.start.inputRun, undefined);
+      assert.equal(ocr.start.uploadRun, undefined);
+      await assert.rejects(client.submitStartPlan({ workflowId: "ocr", submissions: [{}], dryRun: true,
+        browserMode: "headless", captureBrowserScreenshots: false }), error => {
+        assert.ok(error instanceof DashboardClientError);
+        assert.equal(error.kind, "http");
+        assert.equal(error.status, 404);
+        assert.equal(error.code, "TARGET_NOT_FOUND");
+        return true;
+      });
       assert.equal(bootstrap.storage.authority, "healthy");
 
       const today = new Date().toISOString().slice(0, 10);

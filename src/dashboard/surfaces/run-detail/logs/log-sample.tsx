@@ -1,6 +1,6 @@
 import type { DryRunPreviewStage } from "./dry-run-preview-model.js";
 import { useCallback, useMemo, useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { ListChecks, RotateCcw } from "lucide-react";
 import type { DelegatedRecordRef } from "../../../../models/workflow/delegated-record.js";
 import { createErrorCatalogFailure, formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
 import type { WorkflowSource } from "../../../app/workflow-sources.js";
@@ -18,7 +18,7 @@ import { pauseTimeline, type LogTimelineStage } from "./log-timeline-model.js";
 import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
 import { projectRunLogs, useRunWiring, type RunWiringConfirm } from "../../../state/run-wiring-adapter.js";
 import { LogSkeleton } from "../../shared/loading/loading.js";
-import { queueRunHeader, runHeaderAction } from "../run-header-model.js";
+import { queueRunHeader } from "../run-header-model.js";
 import { RunReview } from "../review/review.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
 
@@ -70,8 +70,8 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
   const toolbar = useMemo(() => <>{resource.snapshot?.detail.ocrReviewChanges !== undefined && <Banner tone="warning" title="Earlier review changes no longer apply">
     {resource.snapshot.detail.ocrReviewChanges.map(change => <p key={`${change.revision}:${change.sourcePage}`}>Page {change.sourcePage}: OCR evidence changed in revision {change.revision}. Review the new values before approving.</p>)}
   </Banner>}{resource.snapshot?.detail.childRetry !== undefined && <IconButton label={resource.snapshot.detail.childRetry.label}
-    icon={<RotateCcw aria-hidden className="size-3.5" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}{reviewOpen ? <Button size="sm" onClick={onLogs}>Logs</Button> : reviewAvailable && onReview !== undefined && runHeaderAction(projection.steps, projection.timeline)?.label !== "Review" ? <Button size="sm" onClick={onReview}>Review</Button> : undefined}
-      {retry !== undefined && onAction !== undefined && <IconButton size="sm" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,reviewOpen,onLogs,reviewAvailable,onReview,projection.steps,projection.timeline,retry,onAction,retryEnabled,retryRun,feedback]);
+    icon={<RotateCcw aria-hidden className="size-3.5" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}{reviewAvailable && resource.snapshot?.detail.ocrRecordCount !== undefined && onReview !== undefined && <Button size="sm" variant={reviewOpen ? "secondary" : "outline"} aria-pressed={Boolean(reviewOpen)} icon={<ListChecks aria-hidden className="size-4" />} onClick={reviewOpen ? onLogs : onReview}>Records {resource.snapshot.detail.ocrRecordCount}</Button>}
+      {retry !== undefined && onAction !== undefined && <IconButton size="sm" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,reviewOpen,onLogs,reviewAvailable,onReview,retry,onAction,retryEnabled,retryRun,feedback]);
   return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? selection.row.title} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision}
     onReview={reviewAvailable ? onReview : undefined}
     context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}
