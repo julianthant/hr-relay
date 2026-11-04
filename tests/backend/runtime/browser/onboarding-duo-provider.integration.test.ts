@@ -213,7 +213,7 @@ for (const pendingClose of [false, true]) it(pendingClose
   if (failure !== undefined) throw new Error("onboarding fixture failed", { cause: failure });
 });
 
-for (const scenario of ["software", "abort", "timeout", "platform", "account-mismatch"] as const) it(`real enrollment bridge: ${scenario}`, async () => {
+for (const scenario of ["software", "abort", "timeout", "platform"] as const) it(`real enrollment bridge: ${scenario}`, async () => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "duo-enrollment-")));
   for (const file of ["package.json", "package-lock.json"]) copyFileSync(file, join(root, file));
   const machine = acquireEntrypointAdmission(root, "exclusive", await runtimeLifetimeLock());
@@ -259,7 +259,7 @@ for (const scenario of ["software", "abort", "timeout", "platform", "account-mis
         const credential = await navigator.credentials.create({ signal: controller.signal, publicKey: {
           rp: { id: "duosecurity.com", name: "Duo Security" },
           challenge: new TextEncoder().encode("synthetic-enrollment-challenge"),
-          user: { id: new TextEncoder().encode("synthetic-handle"), name: scenario === "account-mismatch" ? "someone-else@ucsd.edu" : "synthetic-enrollment@ucsd.edu", displayName: "Synthetic Enrollment" },
+          user: { id: new TextEncoder().encode("synthetic-handle"), name: "synthetic-enrollment@ucsd.edu", displayName: "Synthetic Enrollment" },
           pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
           excludeCredentials: [{ type: "public-key", id: new Uint8Array([8, 9]), transports: ["usb", "internal"] }],
           authenticatorSelection: { authenticatorAttachment: scenario === "platform" ? "platform" : "cross-platform",
@@ -272,11 +272,11 @@ for (const scenario of ["software", "abort", "timeout", "platform", "account-mis
         return { state: "failed", name: error instanceof Error ? error.name : "unknown" };
       }
     }, scenario);
-    if (scenario === "abort" || scenario === "timeout" || scenario === "account-mismatch") {
+    if (scenario === "abort" || scenario === "timeout") {
       assert.equal(outcome.state, "failed");
       assert.equal(outcome.name, scenario === "abort" ? "AbortError" : "NotAllowedError");
       await expect.poll(() => SignUpOperationSchema.parse(JSON.parse(readFileSync(join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`), "utf8"))).onboarding?.attempts[0]?.failure)
-        .toEqual({ kind: "refused", causeTag: scenario === "account-mismatch" ? "provider" : scenario === "abort" ? "aborted" : "timed-out" });
+        .toEqual({ kind: "refused", causeTag: scenario === "abort" ? "aborted" : "timed-out" });
       const failed = profile.session.readOnboarding(draft.token, draft.operationId).methods.key;
       assert.equal(failed.state, "idle");
       await profile.session.startOnboardingDuo(draft.token, draft.operationId, "key");
@@ -295,7 +295,7 @@ for (const scenario of ["software", "abort", "timeout", "platform", "account-mis
         assert.ok(reasons.includes("intercepted"));
         if (scenario === "software" || scenario === "platform") {
           for (const reason of ["forwarded", "backend-received", "replied"]) assert.ok(reasons.includes(reason), reason);
-        } else assert.ok(reasons.includes(scenario === "account-mismatch" ? "refused-backend" : scenario === "abort" ? "aborted" : "timed-out"));
+        } else assert.ok(reasons.includes(scenario === "abort" ? "aborted" : "timed-out"));
         assert.doesNotMatch(JSON.stringify(events), /synthetic-enrollment@ucsd.edu|synthetic-enrollment-password|synthetic-handle|synthetic-enrollment-challenge|privateKey|publicKey|stack/);
       });
     } finally { debugAdmission.release(); }

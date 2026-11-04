@@ -51,7 +51,7 @@ for (const path of ["provider", "scope-loss"] as const) it(`persists and logs on
         starts++;
         if (path === "provider") await reportFailure(new ProfileOnboardingDuoProviderError("unknown", "worker", new Error("private diagnostic must never be logged")));
         else {
-          const capability = await bind({ contextId: "A0000000000040008000000000000007", tabId: 7, accountName: "synthetic@ucsd.edu", origin: "https://synthetic.duosecurity.com", rpId: "duosecurity.com" });
+          const capability = await bind({ contextId: "A0000000000040008000000000000007", tabId: 7, origin: "https://synthetic.duosecurity.com", rpId: "duosecurity.com" });
           await capability.retainUnknown(diagnostic);
           await capability.retainUnknown({ kind: "unknown", causeTag: "browser-lifetime" });
         }

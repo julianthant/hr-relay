@@ -2,7 +2,6 @@ import { createService } from './service.js';
 import { isDuoOrigin, normalizeUsername } from './accounts.js';
 import { base64ToBytes, bytesToBase64url } from './crypto.js';
 
-const accountKey = name => normalizeUsername(name).replace(/^([^@]+)@ucsd\.edu$/, '$1');
 const canonicalJson = value => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
 function requireDuoSender(api, sender) {
@@ -40,9 +39,8 @@ export function createRelayWorker(api, reportEvent) {
     try { return await api.tabs.sendMessage(tabId, { type: 'RELAY_OBSERVE' }, { documentId }); }
     catch (cause) { throw new Error('ONBOARDING_DUO_SCOPE', { cause }); }
   }
-  async function observe(sender, username) {
+  async function observe(sender) {
     requireSender(sender);
-    if (typeof username !== 'string' || !/^[a-z0-9][a-z0-9._@+-]{0,127}$/i.test(username.trim())) throw new Error('ONBOARDING_DUO_SCOPE_USERNAME');
     const tab = await api.tabs.get(sender.tab.id);
     requireCurrent();
     if (tab.id !== sender.tab.id || tab.url !== sender.url) throw new Error('ONBOARDING_DUO_SCOPE_DOCUMENT');
@@ -51,18 +49,17 @@ export function createRelayWorker(api, reportEvent) {
     const after = await api.tabs.get(tab.id);
     if (after.url !== tab.url || observed?.url !== tab.url || observed.origin !== sender.origin
       || observed.documentActive !== true || !Number.isSafeInteger(observed.accountRevision) || observed.accountRevision < 0
-      || !Array.isArray(observed.accountNames)
-      || observed.accountNames.some(name => typeof name !== 'string' || accountKey(name) !== accountKey(username))) throw new Error('ONBOARDING_DUO_SCOPE_ACCOUNT');
+      || !Array.isArray(observed.accountNames)) throw new Error('ONBOARDING_DUO_SCOPE_ACCOUNT');
     const confirmed = await documentObservation(tab.id, sender.documentId);
     requireCurrent();
     if (canonicalJson(confirmed) !== canonicalJson(observed)) throw new Error('ONBOARDING_DUO_SCOPE');
     return { documentId: sender.documentId, tabId: tab.id, url: tab.url, origin: observed.origin,
-      accountName: normalizeUsername(username), accountRevision: observed.accountRevision };
+      accountRevision: observed.accountRevision };
   }
   async function assertScope() {
     if (!pending) throw new Error('ONBOARDING_DUO_SCOPE');
-    const actual = await observe(pending.sender, pending.scope.accountName);
-    for (const key of ['documentId', 'tabId', 'url', 'origin', 'accountName', 'accountRevision']) {
+    const actual = await observe(pending.sender);
+    for (const key of ['documentId', 'tabId', 'url', 'origin', 'accountRevision']) {
       if (actual[key] !== pending.scope[key]) throw new Error('ONBOARDING_DUO_SCOPE');
     }
     requireCurrent();
@@ -92,18 +89,20 @@ export function createRelayWorker(api, reportEvent) {
       intercept({ requestId: data.requestId }, sender);
       await reportEvent({ stage: 'forwarded', requestId: data.requestId });
       if (pending) throw new Error('ONBOARDING_DUO_ALREADY_STARTED');
-      const scope = await observe(sender, data.username);
-      pending = { scope, sender, requestId: data.requestId };
+      if (typeof data.username !== 'string' || !/^[a-z0-9][a-z0-9._@+-]{0,127}$/i.test(data.username.trim())) throw new Error('ONBOARDING_DUO_SCOPE_USERNAME');
+      const scope = await observe(sender);
+      const accountName = normalizeUsername(data.username);
+      pending = { scope, sender, requestId: data.requestId, accountName };
       const binding = await checked(() => call('bind', { documentId: scope.documentId, tabId: scope.tabId,
-        origin: scope.origin, rpId: data.rpId, username: scope.accountName }));
+        origin: scope.origin, rpId: data.rpId }));
       if (installed.method === 'touch') {
         if (data.authenticatorAttachment !== 'platform') throw new Error('ONBOARDING_DUO_NATIVE_REQUIRED');
         await assertScope();
         return { native: true, requestId: data.requestId };
       }
       if (data.authenticatorAttachment === 'platform') throw new Error('ONBOARDING_DUO_KEY_REQUIRED');
-      const aliases = data.username === scope.accountName ? [] : [data.username];
-      await checked(() => service.run('SAVE_ACCOUNT', { id: binding.accountId, username: scope.accountName, aliases, enabled: true }));
+      const aliases = data.username === accountName ? [] : [data.username];
+      await checked(() => service.run('SAVE_ACCOUNT', { id: binding.accountId, username: accountName, aliases, enabled: true }));
       await checked(() => service.run('ARM', { accountId: binding.accountId, tabId: scope.tabId, tabUrl: scope.url, transport: 'usb' }));
       const result = await checked(() => service.run('ENROLL', data, sender));
       if (!result.ok) throw new Error('ONBOARDING_DUO_ENROLL_REFUSED');
@@ -112,7 +111,7 @@ export function createRelayWorker(api, reportEvent) {
       return result;
     }
     if (!pending || sender.tab.id !== pending.scope.tabId || sender.documentId !== pending.scope.documentId) throw new Error('ONBOARDING_DUO_SCOPE');
-    if (message.type === 'DUO_AUTOPILOT_SIGN') return checked(() => service.run('SIGN', { ...data, usernames: [pending.scope.accountName] }, sender));
+    if (message.type === 'DUO_AUTOPILOT_SIGN') return checked(() => service.run('SIGN', { ...data, usernames: [pending.accountName] }, sender));
     if (message.type === 'RELAY_SCOPE_LOST') {
       failureReport ||= call('scope-lost', { requestId: pending.requestId });
       try { await failureReport; } finally { invalidated = true; }

@@ -36,7 +36,7 @@ const PendingSchema = z.strictObject({
 const BrokerRequestSchema = z.discriminatedUnion("kind", [
   z.strictObject({ id: z.uuid(), kind: z.literal("enrollment-failed"), data: z.strictObject({ requestId: z.uuid(), reason: z.enum(["aborted", "timed-out", "request-refused"]) }) }),
   z.strictObject({ id: z.uuid(), kind: z.literal("bind"), data: z.strictObject({
-    documentId: BrowserDocumentIdSchema, tabId: z.number().int().nonnegative(), origin: z.url(), rpId: z.literal("duosecurity.com"), username: z.string().min(1).max(128),
+    documentId: BrowserDocumentIdSchema, tabId: z.number().int().nonnegative(), origin: z.url(), rpId: z.literal("duosecurity.com"),
   }) }),
   z.strictObject({ id: z.uuid(), kind: z.literal("persist"), data: PendingSchema }),
   z.strictObject({ id: z.uuid(), kind: z.literal("sign"), data: DuoAssertionRequestSchema }),
@@ -81,7 +81,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     closeProofMs: options.closeProofMs, launchTimeoutMs: options.closeProofMs, signal: new AbortController().signal, launcher: browserLauncher });
   type ProviderSession = {
     attempt: DraftDuoAttempt; profileDirectory: string; context?: BrowserContext; launching?: Promise<BrowserContext>; worker?: Worker;
-    capability?: DraftDuoCapability; platform?: DuoPlatformAuthenticator; credentialId?: string; requestId?: string; accepted: boolean; revoked: boolean;
+    capability?: DraftDuoCapability; platform?: DuoPlatformAuthenticator; credentialId?: string; requestId?: string; keyRequested?: boolean; accepted: boolean; revoked: boolean;
     startup?: Promise<void>; pump?: Promise<void>;
     reportFailure: (error: Error) => Promise<void>; reporting?: Promise<void>; failure?: ProfileOnboardingDuoProviderError; retentionFailed?: boolean; stopFailureAfterSettlement?: ProfileOnboardingDuoProviderError; expiry?: ReturnType<typeof setTimeout>; close?: Promise<Readonly<{ state: "closed" | "uncertain" }>>;
     enrollmentRequestId?: string;
@@ -103,8 +103,8 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     a.operationId === b.operationId && a.profileId === b.profileId && a.accountId === b.accountId && a.generation === b.generation;
 
 
-  const mayHoldDevice = (session: ProviderSession): boolean => session.credentialId !== undefined || session.requestId !== undefined;
-  const failureKind = (session: ProviderSession) => mayHoldDevice(session) ? "unknown" as const : "refused" as const;
+  const keyMayExist = (session: ProviderSession): boolean => session.keyRequested === true || session.requestId !== undefined;
+  const failureKind = (session: ProviderSession) => keyMayExist(session) ? "unknown" as const : "refused" as const;
 
   function current(session: ProviderSession): void {
     if (active !== session || session.revoked || options.clock.nowMs() >= Date.parse(session.attempt.expiresAt)) throw new ProfileOnboardingDuoProviderError("refused", "revoked");
@@ -140,6 +140,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     if (!capability) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     if (request.kind === "persist") {
       if (session.attempt.method !== "key" || session.credentialId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+      session.keyRequested = true;
       const result = await scoped(session, () => capability.persistPending(request.data));
       current(session);
       session.credentialId = request.data.credentialId;
@@ -156,6 +157,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       if (native !== (session.attempt.method === "touch") || session.requestId || !native && credentialId !== session.credentialId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
       if (native && session.platform?.mechanism === "chromium-platform") {
         const platform = session.platform;
+        session.keyRequested = true;
         await scoped(session, async () => capability.persistPending(await platform.credential(credentialId, capability.scope.rpId, options.clock.now().toISOString())));
       }
       const mechanism = native ? session.platform?.mechanism : "fast-duo";
@@ -194,7 +196,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     session.revoked = true;
     clearTimeout(session.expiry);
     const failure = error instanceof ProfileOnboardingDuoProviderError
-      ? mayHoldDevice(session) && error.kind !== "unknown" ? new ProfileOnboardingDuoProviderError("unknown", error.reason, error) : error
+      ? keyMayExist(session) && error.kind !== "unknown" ? new ProfileOnboardingDuoProviderError("unknown", error.reason, error) : error
       : new ProfileOnboardingDuoProviderError(failureKind(session), "provider", error);
     session.failure = failure;
     session.reporting = (async () => {
@@ -405,7 +407,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
             session.revoked = true;
             if (active) {
               if (active.accepted || active.attempt.method === "key" && active.requestId) active.revoked = true;
-              else void reportFailure(active, new ProfileOnboardingDuoProviderError(mayHoldDevice(active) ? "unknown" : "unavailable", "browser-lifetime"));
+              else void reportFailure(active, new ProfileOnboardingDuoProviderError(keyMayExist(active) ? "unknown" : "unavailable", "browser-lifetime"));
               void close(active);
             }
           }
@@ -537,7 +539,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
                   session.platform = await platformForPage(browser, pages[0]);
                   await observedCurrent(session);
                 }
-                const capability = await bindObservedContext({ contextId: request.data.documentId, tabId: request.data.tabId, accountName: request.data.username,
+                const capability = await bindObservedContext({ contextId: request.data.documentId, tabId: request.data.tabId,
                   origin: request.data.origin, rpId: request.data.rpId });
                 if (canonicalJsonStringify(capability.attempt) !== canonicalJsonStringify(attempt)
                   || capability.scope.contextId !== request.data.documentId || capability.scope.tabId !== request.data.tabId

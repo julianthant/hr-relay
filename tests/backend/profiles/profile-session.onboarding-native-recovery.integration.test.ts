@@ -263,7 +263,7 @@ async function readyFixture() {
     async start(attempt, bind, _reportFailure) {
       assert.equal(active, false); active = true; starts++;
       const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
-        accountName: "draft-recovery", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
+        origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
       const credentialId = randomUUID(); remoteEnrollments.push(credentialId);
       if (attempt.method === "key") {
         const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
@@ -557,7 +557,7 @@ it("cancels a ready sign-up, deleting local Duo material while preserving the re
 });
 
 it("completes a recorded Finish at startup without reopening its draft", async () => {
-  const f = await privateDraftFixture(syntheticOnboardingDuo(() => "draft-recovery@ucsd.edu"));
+  const f = await privateDraftFixture(syntheticOnboardingDuo());
   await readyProfileOnboarding(f.profile.session, f.draft);
   const rename = nativeFs.renameSync, operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
   let interrupted = false;
@@ -604,8 +604,7 @@ it("keeps a pending signup key unsigned until exact scoped proof confirms it, th
     async showBrowser(owner) { owner.assertCurrent(); }, async openPortal(owner) { owner.assertCurrent(); },
     async closeBrowser() { return { state: "closed" }; }, async cancel() { return { state: "closed" }; },
     async start(attempt, bind) {
-      capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: 1, accountName: "draft-recovery",
-        origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
+      capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: 1, origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
       await capability.persistPending({ credentialId, privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
         publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"), transport: "usb", isResidentCredential: true,
         userHandle: "AQID", createdAt: new Date().toISOString() });

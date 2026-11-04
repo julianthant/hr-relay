@@ -23,7 +23,7 @@ async function fixture(withForeign = false) {
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   if (withForeign) {
     const runtime = composeProfileRuntime({ admission: originalMachine, clock, hostFacts: { primaryDisplay: null },
-      onboardingDuo: syntheticOnboardingDuo(() => "foreign@ucsd.edu") });
+      onboardingDuo: syntheticOnboardingDuo() });
     try {
       const foreign = await finishProfileOnboarding(runtime.session, runtime.session.signUp({ email: "foreign@ucsd.edu", password: "foreign-fixture-password",
         firstName: "Other", lastName: "Fixture", createdAt: "2026-10-22T11:59:00.000Z" }));
@@ -35,7 +35,7 @@ async function fixture(withForeign = false) {
     } finally { await runtime.close(); }
   }
   const source = createProfileSession({ machineRoot: originalMachine.stateRoot, admission: originalMachine, clock,
-    onboardingDuo: syntheticOnboardingDuo(() => fields.email),
+    onboardingDuo: syntheticOnboardingDuo(),
     activity: { hasUnquiescedWork: () => true },
     prepareLogout: () => {
       assert.ok(database);

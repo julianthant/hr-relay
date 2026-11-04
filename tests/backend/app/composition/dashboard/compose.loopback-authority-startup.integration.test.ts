@@ -183,7 +183,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     try {
       vi.mocked(readFileSync).mockClear();
       application = await composeDashboardApplication({ lifetimeLock: controllerLock, admission: machine, isolation: rebuildRuntimeIsolation,
-        repoRoot, backendPortOverride: 0, frontendPortOverride: 0, env: {}, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu") });
+        repoRoot, backendPortOverride: 0, frontendPortOverride: 0, env: {}, onboardingDuo: syntheticOnboardingDuo() });
       assert.equal(existsSync(join(machine.stateRoot, "state.db")), false);
       assert.equal(machine.readProfileRegistry().profiles.length, 0);
       assert.equal(vi.mocked(readFileSync).mock.calls.filter(([path]) => typeof path === "string" && path.includes("/credentials/")).length, 0);

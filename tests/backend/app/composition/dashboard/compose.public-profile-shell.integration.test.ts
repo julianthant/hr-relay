@@ -152,7 +152,7 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
       async start(attempt, bind, _reportFailure) {
         assert.equal(providerActive, false); providerActive = true;
         const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2,
-          accountName: "fixture@ucsd.edu", origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
+          origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
         const credentialId = attempt.method === "key" ? "Zml4dHVyZS1zb2Z0d2FyZS1rZXk" : "fixture-native-touch";
         if (attempt.method === "key") {
           keyCapture.capability = capability;
@@ -394,7 +394,7 @@ for (const fault of ["prior-request", "transport-cancellation"] as const) it(`dr
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, held: Promise<unknown> | undefined;
   try {
     runtime = await composeDashboardApplication({ lifetimeLock: controllerLock, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
-      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu"), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const signup = await finishPublicSignUp(base);
     assert.equal(PublicProfileStateSchema.parse(await signup.json()).state, "active");
@@ -459,7 +459,7 @@ it("revokes retained selected producers before a genuine in-flight public transp
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, held: Promise<unknown> | undefined, stopping: Promise<void> | undefined;
   try {
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
-      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(() => "fixture@ucsd.edu"), env: {} });
+      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {} });
     const base = `http://127.0.0.1:${String(runtime.port)}`;
     const signup = await finishPublicSignUp(base);
     assert.equal(PublicProfileStateSchema.parse(await signup.json()).state, "active");

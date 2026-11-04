@@ -114,8 +114,7 @@ export function createProfileOnboarding(input: {
     const lease = leases.get(attempt.attemptId); if (lease !== undefined) lease.revoked = true;
   }
   async function bind(attempt: DraftDuoAttempt, observed: DraftDuoObservedContext): Promise<DraftDuoCapability> {
-    const { operation, receipt } = current(attempt);
-    if (receipt.scope !== undefined || !duoAccountMatches(input.email(operation), observed.accountName)) return unavailable();
+    if (current(attempt).receipt.scope !== undefined) return unavailable();
     const scope = DuoEnrollmentScopeSchema.parse({ armId: attempt.attemptId, contextId: observed.contextId, tabId: observed.tabId,
       accountId: attempt.accountId, origin: observed.origin, rpId: observed.rpId,
       armedAt: new Date(Date.parse(attempt.expiresAt) - 600_000).toISOString(), expiresAt: attempt.expiresAt });
@@ -243,7 +242,8 @@ export function createProfileOnboarding(input: {
         if (current.generation !== draft.generation) return unavailable();
         return { operation: { ...latest, onboarding: { ...current, attempts: current.attempts.map(entry => {
           if (entry.attemptId !== attemptId) return entry;
-          if (closure.state !== "closed" || entry.state === "unknown" || entry.scope !== undefined && entry.state !== "complete") return { ...entry, state: "unknown" as const };
+          const keyMayExist = entry.scope !== undefined && (entry.ceremony !== undefined || input.store(latest).readForScope(entry.scope).length > 0);
+          if (closure.state !== "closed" || entry.state === "unknown" || keyMayExist && entry.state !== "complete") return { ...entry, state: "unknown" as const };
           return { ...entry, state: entry.state === "complete" ? "complete" as const : "closed" as const, providerClosedAt: IsoInstantSchema.parse(input.clock.now().toISOString()) };
         }) } }, result: undefined };
       });

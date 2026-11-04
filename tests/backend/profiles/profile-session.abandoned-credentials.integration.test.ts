@@ -20,7 +20,7 @@ async function fixture() {
   const machine = acquireEntrypointAdmission(root, "exclusive", lifetime);
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   const profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock,
-    onboardingDuo: syntheticOnboardingDuo(() => "abandoned-fixture@ucsd.edu") });
+    onboardingDuo: syntheticOnboardingDuo() });
   let stopped = false;
   const stop = async () => {
     if (stopped) return;
