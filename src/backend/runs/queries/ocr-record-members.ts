@@ -15,6 +15,7 @@ import { initialOcrReviewRecords, ocrRecordName } from "../../../models/ocr/revi
 import type { RunRecord } from "../../../models/run/record.js";
 import { titleCasePersonName } from "../../../models/fields/cell-coercion.js";
 import { deriveRunStatus, panelKindOf } from "../../../rules/runs/run-status.js";
+import { directIdentifierDisplay } from "../../../rules/redaction/redaction.js";
 import { LocalDateSchema } from "../../../rules/identity/ids.js";
 import { localDatePart } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -179,7 +180,7 @@ function readOcrRecordPresentation(repositories: AuthorityRepositories, reader: 
     const ref = { runId: owner.envelope.runId, recordId: record.recordId };
     const eid = current.assertedEid ?? (review === undefined ? record.assertedEid : null);
     const name = ocrRecordName(current.fields);
-    const title = [name === null ? null : titleCasePersonName(name), eid === null ? null : `EID ${eid}`]
+    const title = [name === null ? null : titleCasePersonName(name), eid === null ? null : `EID ${directIdentifierDisplay(eid)}`]
       .filter(part => part !== null).join(" · ") || `Page ${record.sourcePage}`;
     const pending = childStatus !== undefined && childStatus !== "done"
       || children.length === 0 && requested.has(record.recordId) && review === undefined;
