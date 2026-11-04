@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Config } from "../../../models/config/schema.js";
 import { DuoWorkflowRequestSchema, type DuoSigningSource } from "../../storage/configuration/duo-signing.js";
 import { duoAccountMatches } from "../../profiles/profile-onboarding.js";
+import { prepareDuoPlatformAuthenticator } from "./duo-platform-authenticator.js";
 
 const RequestSchema = z.strictObject({ id: z.uuid(), request: DuoWorkflowRequestSchema });
 
@@ -23,6 +24,13 @@ export async function provisionWorkflowDuo(input: Readonly<{
   const signingCurrent = (): void => { current(); input.assertSigningScope(); };
   const ownedWorker = (url: string): boolean => /^chrome-extension:\/\/[a-p]{32}\/src\/workflow-background\.js$/u.test(url);
   current();
+  const platformCredentials = source.platformCredentials();
+  if (platformCredentials.length > 0) {
+    const page = context.pages()[0] ?? await context.newPage();
+    current();
+    await prepareDuoPlatformAuthenticator(context, page, { purpose: "login", credentials: platformCredentials });
+    current();
+  }
   const workers = context.serviceWorkers().filter(worker => ownedWorker(worker.url()));
   if (workers.length > 1) throw new Error("duo-worker-ambiguous");
   const worker = workers[0] ?? await context.waitForEvent("serviceworker", { predicate: value => ownedWorker(value.url()), timeout: config.timeouts.navigationMs });

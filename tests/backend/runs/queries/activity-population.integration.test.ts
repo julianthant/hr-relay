@@ -1,3 +1,4 @@
+import { runSettlementColumns } from "../../../../src/backend/storage/sqlite/run-settlement-row.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -68,8 +69,11 @@ async function fixture() {
     raw.prepare(`INSERT INTO runs(${Object.keys(row).join(",")}) VALUES(${Object.keys(row).map(() => "?").join(",")})`).run(...Object.values(row));
     if (failure !== undefined) raw.prepare("INSERT INTO run_failures(id,run_id,fingerprint,code,payload_json,resolution_json,resolution_version,created_at) VALUES(?,?,?,?,?,?,1,?)")
         .run(failure.failureId, failure.runId, failure.fingerprint, failure.code, canonicalJsonStringify(failure), '{"status":"unresolved","version":1}', failure.occurredAt);
-    if (result !== undefined) raw.prepare("INSERT INTO run_results(run_id,workflow,attempt,result_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
-      .run(result.runId, result.workflowId, result.attempt, result.resultDigest, canonicalJsonStringify(result), result.createdAt);
+    if (result !== undefined) {
+      const settlement = runSettlementColumns(record, result);
+      raw.prepare(`INSERT INTO run_results (${Object.keys(settlement).join(",")}) VALUES (${Object.keys(settlement).map(() => "?").join(",")})`)
+        .run(...Object.values(settlement));
+    }
     if (isCancelled) {
       publish();
       const outcome = testRunService(database, clock).transition({ commandId: uuidOf(seed + 1000), runId: record.envelope.runId, expectedVersion: record.version, lifecycle });
@@ -171,8 +175,8 @@ describe("selected Analytics population", () => {
     for (let seed = 1; seed <= 4; seed++) f.add(seed, { lifecycle: done(1000) });
     const partial = RunEvidenceReceiptSchema.parse({ ...cleanReceiptOf({ seed: 4 }), confidence: "partial", result: "partial" });
     for (const receipt of [cleanReceiptOf({ seed: 1 }), receiptWithWarningsOf({ seed: 2, summaries: ["Synthetic warning"] }), partial]) {
-      f.raw.prepare("INSERT INTO run_receipts(id,run_id,workflow,attempt,result,confidence,failure_id,payload_json,created_at) VALUES(?,?,?,?,?,?,NULL,?,?)")
-        .run(receipt.receiptId, receipt.runId, receipt.workflowId, receipt.attempt, receipt.result, receipt.confidence, canonicalJsonStringify(receipt), receipt.generatedAt);
+      f.raw.prepare("INSERT INTO run_receipts(id,run_id,settlement_version,workflow,attempt,result,confidence,failure_id,payload_json,created_at) VALUES(?,?,(SELECT settlement_version FROM run_results WHERE run_id=?),?,?,?,?,NULL,?,?)")
+        .run(receipt.receiptId, receipt.runId, receipt.runId, receipt.workflowId, receipt.attempt, receipt.result, receipt.confidence, canonicalJsonStringify(receipt), receipt.generatedAt);
     }
     f.publish();
     const selected = f.service.read(range);

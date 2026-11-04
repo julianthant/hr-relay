@@ -139,7 +139,7 @@ export function createRunStartDialogHarness() {
         if (reply.state !== "applied" && reply.state !== "already-applied") return { ...reply, commandId: command.commandId };
         assert.ok(reviewedPlan, "applied fixture requires its reviewed plan");
         const plan = reviewedPlan;
-        const base = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.lineage.state === "root");
+        const base = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent === null);
         assert.ok(base, "fixture has a canonical root row");
         const rows = plan.planned.map((_, index) => QueueSurfaceWireSchema.parse({ ...base,
           runId: uuidOf(600 + index), workflowId: command.target.workflowId, actorId: command.requestedBy,

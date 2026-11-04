@@ -17,8 +17,9 @@ function world() {
   const scope = { documentId: DOCUMENT, url: `${ORIGIN}/setup`, accountNames: ['alex@example.edu'], accountRevision: 0 };
   const api = {
     runtime: { id: 'owned-extension' },
-    tabs: { get: async id => ({ id, url: scope.url }), sendMessage: async (_id, _request, target) => {
+    tabs: { get: async id => ({ id, url: scope.url }), sendMessage: async (_id, request, target) => {
       if (target.documentId !== scope.documentId) throw new Error('document replaced');
+      assert.equal(request.type, 'RELAY_OBSERVE');
       return { url: scope.url, origin: new URL(scope.url).origin, documentActive: true, accountNames: [...scope.accountNames], accountRevision: scope.accountRevision };
     } },
     storage: {
@@ -33,7 +34,8 @@ function world() {
       },
     },
   };
-  return { api, scope, worker: createRelayWorker(api), state: () => saved, localReads: () => localReads, cleared: () => cleared };
+  const events = [];
+  return { api, scope, events, worker: createRelayWorker(api, async event => { events.push(event); }), state: () => saved, localReads: () => localReads, cleared: () => cleared };
 }
 const enrollment = (attachment = 'cross-platform') => ({ type: 'DUO_AUTOPILOT_ENROLL', request: {
   origin: ORIGIN, rpId: 'duosecurity.com', requestId: crypto.randomUUID(), challenge: CHALLENGE,
@@ -70,10 +72,20 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
   const sender = { id: w.api.runtime.id, url: root + 'src/options.html', origin: root.slice(0, -1),
     tab: { id: 9, url: root + 'src/options.html' }, frameId: 0, documentId: DOCUMENT, documentLifecycle: 'active' };
   const send = (message, source) => new Promise(resolve => { receive(message, source, resolve); });
-  const response = send({ type: 'STATE' }, sender);
-  const request = await owner.browserNext(); assert.equal(request.kind, 'state');
-  owner.browserReply(request.id, { ok: true, value: { state: 'onboarding' } });
-  assert.deepEqual(await response, { success: true, result: { relaySetup: true, profile: { state: 'onboarding' } } });
+  const denied = async (message, source) => {
+    const response = send(message, source);
+    if (source.id === w.api.runtime.id && new URL(source.url).origin === ORIGIN && message.request?.rpId === 'duosecurity.com') {
+      const event = await owner.browserNext(); assert.equal(event.kind, 'event'); assert.equal(event.event.stage, 'refused');
+      owner.browserReply(event.id, { ok: true, value: { observed: true } });
+    }
+    assert.equal((await response).success, false);
+  };
+  for (const [type, kind] of [['STATE', 'state'], ['RELAY_RETURN', 'return']]) {
+    const response = send({ type }, sender);
+    const request = await owner.browserNext(); assert.equal(request.kind, kind);
+    owner.browserReply(request.id, { ok: true, value: { state: 'onboarding' } });
+    assert.deepEqual(await response, { success: true, result: { relaySetup: true, profile: { state: 'onboarding' } } });
+  }
   for (const source of [
     { ...sender, id: 'another-extension' }, { ...sender, frameId: 1 },
     { ...sender, url: ORIGIN + '/setup', origin: ORIGIN },
@@ -81,20 +93,27 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
     { ...sender, url: root + 'src/popup.html' },
     { ...sender, origin: 'null' }, { ...sender, documentLifecycle: 'cached' },
     { ...sender, documentId: 'forged' }, { ...sender, tab: { ...sender.tab, url: ORIGIN } },
-  ]) assert.equal((await send({ type: 'STATE' }, source)).success, false);
+  ]) for (const type of ['STATE', 'RELAY_RETURN']) assert.equal((await send({ type }, source)).success, false);
   for (const message of [{ type: 'SAVE_ACCOUNT' }, { type: 'RELAY_START', method: 'key', attemptId: crypto.randomUUID() },
-    { type: 'STATE', password: 'must-not-be-accepted' }, { type: 'RELAY_CANCEL', method: 'touch', attemptId: 'forged' }]) {
+    { type: 'STATE', password: 'must-not-be-accepted' }, { type: 'RELAY_RETURN', method: 'key' },
+    { type: 'RELAY_RETURN', processId: 72 }, { type: 'RELAY_RETURN', attemptId: crypto.randomUUID() }, { type: 'RELAY_CANCEL', method: 'touch', attemptId: 'forged' }]) {
     assert.equal((await send(message, sender)).success, false);
   }
-  for (const [type, result] of [['RELAY_CAPABILITIES', { softwareKey: false }], ['DUO_AUTOPILOT_SIGN', { passThrough: true }]]) {
+  for (const [type, result] of [['RELAY_CAPABILITIES', { softwareKey: false, platformAvailable: true }], ['DUO_AUTOPILOT_SIGN', { passThrough: true }]]) {
     const message = { type, request: { origin: ORIGIN, rpId: 'duosecurity.com' } };
-    assert.deepEqual(await send(message, SENDER), { success: true, result });
-    assert.equal((await send(message, { ...SENDER, id: 'foreign' })).success, false);
-    assert.equal((await send(message, { ...SENDER, frameId: 1 })).success, false);
-    assert.equal((await send(message, { ...SENDER, documentId: 'replaced' })).success, false);
-    assert.equal((await send({ ...message, request: { ...message.request, rpId: 'foreign' } }, SENDER)).success, false);
+    const response = send(message, SENDER);
+    if (type === 'RELAY_CAPABILITIES') {
+      const request = await owner.browserNext();
+      assert.equal(request.kind, 'platform'); assert.equal(request.url, SENDER.url); assert.equal(Object.hasOwn(request, 'available'), false);
+      owner.browserReply(request.id, { ok: true, value: true });
+    }
+    assert.deepEqual(await response, { success: true, result });
+    await denied(message, { ...SENDER, id: 'foreign' });
+    await denied(message, { ...SENDER, frameId: 1 });
+    await denied(message, { ...SENDER, documentId: 'replaced' });
+    await denied({ ...message, request: { ...message.request, rpId: 'foreign' } }, SENDER);
   }
-  assert.equal((await send(enrollment(), SENDER)).success, false);
+  await denied(enrollment(), SENDER);
   assert.deepEqual(w.state(), {}); assert.equal(w.localReads(), 0);
   await owner.browserStop(); assert.equal((await send({ type: 'STATE' }, sender)).success, false);
 });
@@ -408,13 +427,13 @@ async function isolatedWorld(nativeBehavior) {
   const { runInNewContext } = await import('node:vm');
   const listeners = new Map();
   const sent = []; const output = [];
-  let nativeCalls = 0;
+  let nativeCalls = 0, headings = [], mutation;
   class Attestation {}
   class Credential {}
   const window = { addEventListener: (type, listener) => listeners.set(type, listener), postMessage: value => output.push(value) };
   const context = { window, location: { origin: ORIGIN, href: `${ORIGIN}/setup` },
-    document: { documentElement: {}, querySelectorAll: () => [] }, DuoUsername: { findUsernames: () => ['alex@example.edu'] },
-    MutationObserver: class { observe() {} }, AbortController, PublicKeyCredential: Credential, AuthenticatorAttestationResponse: Attestation,
+    document: { documentElement: {}, querySelectorAll: () => headings }, DuoUsername: { findUsernames: () => ['alex@example.edu'] },
+    MutationObserver: class { constructor(callback) { mutation = callback; } observe() {} }, AbortController, PublicKeyCredential: Credential, AuthenticatorAttestationResponse: Attestation,
     TextEncoder, TextDecoder, Uint8Array, JSON, crypto, btoa, atob,
     navigator: { credentials: { create: async options => { nativeCalls++; return nativeBehavior(options, Credential, Attestation); } } },
     chrome: { runtime: { id: 'owned-extension', onMessage: { addListener() {} }, sendMessage: async message => {
@@ -423,21 +442,49 @@ async function isolatedWorld(nativeBehavior) {
     } } },
   };
   for (const file of ['relay-native.js', 'relay-content.js']) runInNewContext(await readFile(new URL(`../src/${file}`, import.meta.url), 'utf8'), context);
-  return { sent, output, nativeCalls: () => nativeCalls,
+  return { sent, output, runtime: context.chrome.runtime, nativeCalls: () => nativeCalls,
+    setHeadings(values) { headings = values; mutation?.(); },
     message: data => listeners.get('message')({ source: window, origin: ORIGIN, data }) };
 }
+
+async function platformCredential(_options, Credential, Attestation) {
+  const authData = new Uint8Array(37); authData.set(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('duosecurity.com'))));
+  return Object.assign(new Credential(), { rawId: new Uint8Array([251, 255, 0, 1]).buffer, authenticatorAttachment: 'platform', response: Object.assign(new Attestation(), {
+    clientDataJSON: new TextEncoder().encode(JSON.stringify({ type: 'webauthn.create', origin: ORIGIN, challenge: CHALLENGE.replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_') })).buffer,
+    attestationObject: new Uint8Array([1]).buffer, getAuthenticatorData: () => authData.buffer,
+    getPublicKey: () => null, getPublicKeyAlgorithm: () => -7, getTransports: () => ['internal'],
+  }) });
+}
+
+test('abort waits for the interception receipt before ending the backend attempt', async () => {
+  const w = await isolatedWorld(() => assert.fail('aborted enrollment must not call native create'));
+  let release, entered;
+  const gate = new Promise(resolve => { release = resolve; });
+  const intercepting = new Promise(resolve => { entered = resolve; });
+  const send = w.runtime.sendMessage;
+  w.runtime.sendMessage = async message => {
+    if (message.type === 'RELAY_DUO_EVENT' && message.event.stage === 'intercepted') { entered(); await gate; }
+    return send(message);
+  };
+  const request = enrollment().request;
+  const operation = w.message({ type: 'RELAY_DUO_REQUEST', id: 'abort-before-ack', operation: 'DUO_AUTOPILOT_ENROLL', request });
+  await intercepting;
+  const aborted = w.message({ type: 'RELAY_DUO_ABORT', id: 'abort-before-ack', reason: 'aborted' });
+  try {
+    await Promise.resolve();
+    assert.equal(w.sent.filter(message => message.type === 'RELAY_ENROLLMENT_FAILED').length, 0);
+  } finally { release(); await Promise.all([operation, aborted]); }
+  assert.equal(w.nativeCalls(), 0);
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_ENROLLMENT_FAILED').length, 1);
+  assert.equal(w.sent.find(message => message.type === 'RELAY_ENROLLMENT_FAILED').request.reason, 'aborted');
+});
 
 test('native isolated completion calls captured browser create; page-created and page-failed messages cannot attest', async () => {
   let complete;
   const gate = new Promise(resolve => { complete = resolve; });
   const w = await isolatedWorld(async (_options, Credential, Attestation) => {
     await gate;
-    const authData = new Uint8Array(37); authData.set(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode('duosecurity.com'))));
-    return Object.assign(new Credential(), { rawId: new Uint8Array([1, 2, 3]).buffer, authenticatorAttachment: 'platform', response: Object.assign(new Attestation(), {
-      clientDataJSON: new TextEncoder().encode(JSON.stringify({ type: 'webauthn.create', origin: ORIGIN, challenge: CHALLENGE.replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_') })).buffer,
-      attestationObject: new Uint8Array([1]).buffer, getAuthenticatorData: () => authData.buffer,
-      getPublicKey: () => null, getPublicKeyAlgorithm: () => -7, getTransports: () => ['internal'],
-    }) });
+    return platformCredential(_options, Credential, Attestation);
   });
   const request = enrollment('platform').request;
   const operation = w.message({ type: 'RELAY_DUO_REQUEST', id: 'actual-request', operation: 'DUO_AUTOPILOT_ENROLL', request,
@@ -449,8 +496,28 @@ test('native isolated completion calls captured browser create; page-created and
   complete(); await operation;
   assert.equal(w.nativeCalls(), 1);
   assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED').length, 1);
+  assert.equal(w.sent.find(message => message.type === 'RELAY_NATIVE_CREATED').request.credentialId, '-_8AAQ');
   assert.equal(w.output.at(-1).success, true);
   assert.ok(!JSON.stringify(w.sent).includes('privateKey'));
+});
+
+
+for (const title of ['Added Touch ID', 'Added Windows Hello']) test(`accepts one new ${title} heading after the native ceremony, excluding stale and ambiguous headings`, async () => {
+  const w = await isolatedWorld(platformCredential);
+  const heading = () => ({ textContent: title, getClientRects: () => [{}] });
+  const stale = heading(); w.setHeadings([stale]);
+  const request = enrollment('platform').request;
+  await w.message({ type: 'RELAY_DUO_REQUEST', id: 'portal-proof', operation: 'DUO_AUTOPILOT_ENROLL', request,
+    nativeOptions: { rp: { id: request.rpId }, challenge: Buffer.from(request.challenge, 'base64'), user: { name: request.username, id: Buffer.from(request.userHandle, 'base64') }, authenticatorSelection: { authenticatorAttachment: 'platform' } } });
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED').length, 1);
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_PORTAL_ACCEPTED').length, 0);
+  const fresh = heading(); w.setHeadings([fresh, heading()]); await Promise.resolve();
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_PORTAL_ACCEPTED').length, 0);
+  w.setHeadings([stale, fresh]); await Promise.resolve();
+  const accepted = w.sent.filter(message => message.type === 'RELAY_PORTAL_ACCEPTED');
+  assert.equal(accepted.length, 1); assert.equal(accepted[0].request.requestId, request.requestId);
+  w.setHeadings([fresh]); await Promise.resolve();
+  assert.equal(w.sent.filter(message => message.type === 'RELAY_PORTAL_ACCEPTED').length, 1);
 });
 
 test('native browser refusal has no software fallback or successful ceremony', async () => {
@@ -461,10 +528,21 @@ test('native browser refusal has no software fallback or successful ceremony', a
   assert.equal(w.nativeCalls(), 1);
   assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_CREATED').length, 0);
   assert.equal(w.sent.filter(message => message.type === 'RELAY_NATIVE_FAILED').length, 1);
+  assert.equal(w.sent.find(message => message.event?.stage === 'refused').event.detail, 'native-other');
   assert.equal(w.output.at(-1).success, false);
 });
 
-test('page realm creates and reads software credentials with browser readonly prototype getters', async () => {
+test('native security refusal emits only its closed diagnostic tag', async () => {
+  const w = await isolatedWorld(async () => { throw new DOMException('private native error detail', 'SecurityError'); });
+  const request = enrollment('platform').request;
+  await w.message({ type: 'RELAY_DUO_REQUEST', id: 'security-refused', operation: 'DUO_AUTOPILOT_ENROLL', request,
+    nativeOptions: { rp: { id: request.rpId }, challenge: Buffer.from(request.challenge, 'base64'), user: { name: request.username, id: Buffer.from(request.userHandle, 'base64') }, authenticatorSelection: { authenticatorAttachment: 'platform' } } });
+  assert.equal(w.sent.find(message => message.event?.stage === 'refused').event.detail, 'native-security');
+  assert.ok(!JSON.stringify([...w.sent, ...w.output]).includes('private native error detail'));
+  assert.equal(w.output.at(-1).success, false);
+});
+
+for (const credentialId of ['+/8=', '-_8']) test(`page realm creates and reads credentials with browser readonly prototype getters: ${credentialId}`, async () => {
   const { readFile } = await import('node:fs/promises');
   const { runInNewContext } = await import('node:vm');
   class Response {}
@@ -478,16 +556,19 @@ test('page realm creates and reads software credentials with browser readonly pr
   ]) for (const field of fields) Object.defineProperty(prototype, field, { get() { throw new TypeError('Illegal invocation'); } });
   let listener;
   const requests = [];
-  const result = { ok: true, credentialId: '+/8=', clientDataJSON: 'AQ==', attestationObject: 'Ag==', authData: 'Aw==',
+  const settled = [];
+  const result = { ok: true, credentialId, clientDataJSON: 'AQ==', attestationObject: 'Ag==', authData: 'Aw==',
     publicKeySpki: 'BA==', authenticatorData: 'BQ==', signature: 'Bg==', userHandle: 'Bw==', transport: 'usb' };
   const window = { addEventListener: (_type, callback) => { listener = callback; }, postMessage: message => {
+    if (message.type === 'RELAY_DUO_SETTLED') settled.push(message.id);
+    if (message.type !== 'RELAY_DUO_REQUEST') return;
     requests.push(message);
-    listener({ source: window, origin: ORIGIN, data: { type: 'RELAY_DUO_RESPONSE', id: message.id, success: true, result } });
+    queueMicrotask(() => listener({ source: window, origin: ORIGIN, data: { type: 'RELAY_DUO_RESPONSE', id: message.id, success: true, result } }));
   } };
   const credentials = { create: () => assert.fail('unexpected native create'), get: () => assert.fail('unexpected native get') };
   runInNewContext(await readFile(new URL('../src/relay-inpage.js', import.meta.url), 'utf8'), {
     window, location: { origin: ORIGIN, hostname: 'test.duosecurity.com' }, navigator: { credentials },
-    crypto, Uint8Array, btoa, atob, DOMException, PublicKeyCredential: Credential,
+    crypto, Uint8Array, btoa, atob, DOMException, setTimeout, clearTimeout, PublicKeyCredential: Credential,
     AuthenticatorAttestationResponse: Attestation, AuthenticatorAssertionResponse: Assertion,
   });
   const created = await credentials.create({ publicKey: { rp: { id: 'duosecurity.com' }, challenge: new Uint8Array([8]),
@@ -510,6 +591,7 @@ test('page realm creates and reads software credentials with browser readonly pr
   assert.deepEqual(Buffer.from(signed.response.signature), Buffer.from([6]));
   assert.deepEqual(Buffer.from(signed.response.userHandle), Buffer.from([7]));
   assert.equal(requests[1].request.allowCredentials[0], '+/8=');
+  assert.deepEqual(settled, requests.map(request => request.id));
 });
 
 for (const invalid of ['origin', 'challenge', 'type', 'attachment', 'rpHash']) test(`native ${invalid} mismatch cannot produce a ceremony`, async () => {

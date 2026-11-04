@@ -6,7 +6,7 @@ import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
 import type { FailureRecord } from "../../../models/trust/failure.js";
 import { descriptorRuntimeNodes,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
-import { readDelegationEvidence,retainedDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { readDelegationEvidence,currentDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
 import { DelegationInvocationRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/index.js";
 import { authenticateOcrSnapshotApproval } from "../lifecycle/ocr-review-authority.js";
@@ -39,6 +39,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
   const failures = createFailureResolutionQuery(authority);
 
   const store: EvidenceReceiptStore = Object.freeze({
+    refreshedSettlementVersion: (runId: string) => authority.runResults.refreshedSettlementVersion(runId),
     getRun: (runId: string) => {
       const run = requireTrustRun(deps.runReader, runId);
       return run;
@@ -73,11 +74,11 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
     listGateResultsByRun: (runId: string) => authority.gateResults.listByRun(runId),
     listDelegationsByRun: (runId: string) => {
       const run = requireTrustRun(deps.runReader, runId);
-      if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done" || run.envelope.dryRun) return [];
+      if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "done") return [];
       const descriptor = byId.get(run.envelope.workflow);
       if (descriptor === undefined) throw new Error("receipt-delegation-descriptor-unavailable");
       const nodes = descriptorRuntimeNodes(descriptor).filter(node => node.kind === "child-run");
-      const manifests = retainedDelegationManifests(authority, runId);
+      const manifests = currentDelegationManifests(authority, runId);
       if (manifests.some(manifest => nodes.filter(node => node.edgeId === manifest.edgeId).length !== 1)) throw new Error("receipt-delegation-edge-unavailable");
       return nodes.filter(node => manifests.some(manifest => manifest.edgeId === node.edgeId))
         .map(node => {

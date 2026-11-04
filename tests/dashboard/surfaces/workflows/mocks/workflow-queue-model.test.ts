@@ -25,7 +25,7 @@ describe("canonical workflow mock queue presentations", () => {
   it.each(["2026-08-03T00:00:01.000Z", "2026-08-03T03:15:00-07:00", "2026-11-01T01:00:01-08:00"])("anchors fixtures before an early or offset clock: %s", anchorIso => {
     const runs = seedMockRuns();
     for (const run of runs) {
-      const row = mockQueueSurface(run, anchorIso);
+      const row = mockQueueSurface(run, anchorIso, runs.find(parent => parent.id === run.parentId));
       const duration = mockRunLog(run).durationSeconds * 1000;
       expect(Date.parse(row.startedAt)).toBe(Date.parse(anchorIso) - duration);
       expect(Date.parse(row.updatedAt)).toBe(Date.parse(anchorIso));
@@ -33,37 +33,38 @@ describe("canonical workflow mock queue presentations", () => {
       else {
         const later = Date.parse(anchorIso) + 60000;
         expect(later - Date.parse(row.startedAt)).toBe(duration + 60000);
-        expect(mockQueueSurface(run, anchorIso)).toEqual(row);
+        expect(mockQueueSurface(run, anchorIso, runs.find(parent => parent.id === run.parentId))).toEqual(row);
       }
     }
   });
   it("keeps presentation identities stable through edits, filters and reordering", () => {
     const runs = seedMockRuns(), contact = runs.find(run => run.workflowId === "ocr")!;
     const id = mockQueueId(contact.id);
-    expect(mockQueueSurface({ ...contact, subject: "Renamed" }, anchor).runId).toBe(id);
+    expect(mockQueueSurface({ ...contact, subject: "Renamed" }, anchor, runs.find(parent => parent.id === contact.parentId)).runId).toBe(id);
     expect(mockQueueSurfaces([...runs].reverse(), anchor).find(row => row.runId === id)?.title).toBe(contact.subject);
-    expect(mockQueueSurfaces(mockQueueView(runs, ["needsYou"], "attention"), anchor).some(row => row.runId === id)).toBe(true);
-    expect(() => mockQueueSurfaces([contact, contact], anchor)).toThrow("MOCK_QUEUE_ID_COLLISION");
+    expect(mockQueueSurfaces(mockQueueView(runs, ["needsYou"], "attention"), anchor, runs).some(row => row.runId === id)).toBe(true);
+    expect(() => mockQueueSurfaces([contact, contact], anchor, runs)).toThrow("MOCK_QUEUE_ID_COLLISION");
     expect(() => mockQueueSurface(contact, "invalid-day")).toThrow();
   });
   it("shows approval gates only on pending preparation and retains independent child lineage", () => {
     const runs = seedMockRuns(), parent = runs.find(run => run.workflowId === "emergency-contact")!, source = runs.find(run => run.id === parent.ocrRunId)!;
-    const waiting = mockQueueSurface(source, anchor);
+    const waiting = mockQueueSurface(source, anchor, parent);
     expect(mockQueueSurface(parent, anchor).status).toBe("running");
     expect(mockQueueSurface(parent, anchor).liveMessage).toEqual({ state: "present", value: "Read emergency contact" }); expect(mockQueueSurface(parent, anchor).gateOpenedAt.state).toBe("absent");
     expect(waiting.status).toBe("awaiting-approval"); expect(waiting.gateOpenedAt.state).toBe("present"); expect(waiting.endedAt.state).toBe("absent");
     const approved = approveMockRun(runs, source.id);
     const child = approved.find(run => run.parentId === parent.id && run.role === "person")!;
-    const row = mockQueueSurface(child, anchor);
-    expect(row.containment).toBe("linked"); expect(row.lineage).toEqual({ state: "child", parentRunId: mockQueueId(parent.id) });
+    const row = mockQueueSurface(child, anchor, parent);
+    expect(row.parent?.visibility).toBe("linked"); expect(row.parent?.runId).toBe(mockQueueId(parent.id));
     expect(row.status).toBe("done"); expect(row.endedAt.state).toBe("present"); expect(row.gateOpenedAt.state).toBe("absent");
-    const ocr = mockQueueSurface(runs.find(run => run.workflowId === "ocr")!, anchor);
+    const ocrRun = runs.find(run => run.workflowId === "ocr")!;
+    const ocr = mockQueueSurface(ocrRun, anchor, runs.find(run => run.id === ocrRun.parentId));
     expect(ocr.status).toBe("awaiting-approval"); expect(ocr.gateOpenedAt.state).toBe("present");
   });
   it("keeps discarded records out of completed and approval counts and filters", () => {
-    const parent = seedMockRuns().find(run => run.workflowId === "ocr")!;
+    const runs = seedMockRuns(), parent = runs.find(run => run.workflowId === "ocr")!;
     const discarded = discardMockReview([parent], parent.id);
-    expect(mockQueueSurface(discarded[0], anchor).status).toBe("cancelled");
+    expect(mockQueueSurface(discarded[0], anchor, runs.find(run => run.id === parent.parentId)).status).toBe("cancelled");
     expect(mockQueueView(discarded, ["done"], "attention")).toEqual([]);
     expect(mockQueueView(discarded, ["cancelled"], "attention")).toEqual(discarded);
     expect(mockQueueCounts(discarded)).toEqual([{ status: "awaiting-approval", count: 0 }, { status: "running", count: 0 }, { status: "done", count: 0 }, { status: "cancelled", count: 1 }]);

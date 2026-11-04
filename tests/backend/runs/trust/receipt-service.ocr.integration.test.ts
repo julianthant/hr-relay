@@ -15,6 +15,21 @@ import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/d
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
 
+it("derives ordinary read-only OCR receipts under a delegated parent dry run with every authenticated delegation retained", async () => {
+  const f = await world.fixture({ coordinator: true, dryRun: true, record: true });
+  assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");
+  assert.equal(f.canonical.kernel.execute(f.approval()).state, "applied");
+  const completed = await f.canonical.step(f.parentRun, new AbortController().signal);
+  assert.equal(completed.run.envelope.runId, f.run.envelope.runId);
+  assert.equal(completed.outcome.state, "done");
+  const descriptor = f.resolve("ocr"); assert.ok(descriptor);
+  const service = createReceiptService({ database: f.database, runReader: f.canonical.lifecycle, descriptors: [descriptor] });
+  const receipt = service.ensureReceipt(f.run.envelope.runId);
+  assert.deepEqual(service.ensureReceipt(f.run.envelope.runId), receipt);
+  assert.equal(receipt.warnings.some(warning => warning.code === "DRY_RUN_PREVIEW"), false);
+  assert.equal(receipt.decisions.some(decision => decision.kind === "gate" && decision.outcome === "approved"), true);
+});
+
 it("derives the existing receipt format from the exact authenticated OCR snapshot approval", async () => {
   const f = await world.fixture({ record: true, release: true });
   assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 1)).state, "applied");

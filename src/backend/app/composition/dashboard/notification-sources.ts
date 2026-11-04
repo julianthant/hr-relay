@@ -37,7 +37,8 @@ export function readNotificationSources(database: AuthorityDatabase, reader: Pic
     };
     for (const run of live) {
       for (const failure of database.authority.failures.listByRun(run.envelope.runId)) consumeFailure(failure, run);
-      const receipts = database.authority.evidenceReceipts.listByRun(run.envelope.runId);
+      const currentReceipt = database.authority.evidenceReceipts.findByRun(run.envelope.runId);
+      const receipts = currentReceipt === undefined ? [] : [currentReceipt];
       for (const receipt of receipts) consumeReceipt(receipt, run);
       const state = run.lifecycle;
       if (!run.envelope.dryRun && state.state === "terminal" && state.outcome === "done" && receipts.length === 0) diagnostics.push("NOTIFICATION_RECEIPT_MISSING");

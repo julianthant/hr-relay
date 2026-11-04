@@ -15,7 +15,7 @@ import { ASSISTANT_INPUT_PROJECTION_VERSION,assistantKnowledgeArtifact } from ".
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
-import { captureDelegationResume,delegationResumeCommandId,retainedDelegationManifests } from "../../storage/sqlite/delegation-authority.js";
+import { captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
 import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { admitWorkerLifecycle,admitWorkerReset } from "../../storage/sqlite/worker-control.js";
 import { admitWorkerPoolRoster,requireWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
@@ -65,7 +65,7 @@ import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-read
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { activeRunsForItem,fanOutQueuedRuns,requireApplied,runTarget,type TargetReference,type VersionChange } from "../lifecycle/run-fan-out.js";
-import { lifecycleCommandId,type RunMutationOutcome,type RunRecordService } from "../lifecycle/run-record-service.js";
+import { lifecycleCommandId,type RelatedRunChange,type RunMutationOutcome,type RunRecordService } from "../lifecycle/run-record-service.js";
 import { dryRunRefusalMessage,resolveInstances,supportsDryRun } from "../start/plan.js";
 import { buildRerunPlan,RerunRefusedError } from "../start/rerun.js";
 
@@ -447,11 +447,14 @@ function lifecycleRefusal(request: CommandRequest, refusal: RunRecordRefusal): n
   }
 }
 
-function lifecycleRun(request: CommandRequest, outcome: RunMutationOutcome | RunExistence): RunRecord {
+function lifecycleRun(request: CommandRequest, outcome: RunMutationOutcome | RunExistence, relatedRunChanges?: RelatedRunChange[]): RunRecord {
   if (outcome.state === "refused") lifecycleRefusal(request, outcome.refusal);
   if (outcome.state === "deleted") reject(request, "target-deleted", "run was deleted");
   if (outcome.state === "absent") reject(request, "target-not-found", "run does not exist");
-  if ((outcome.state === "applied" || outcome.state === "applied-already") && "run" in outcome) return outcome.run;
+  if ((outcome.state === "applied" || outcome.state === "applied-already") && "run" in outcome) {
+    relatedRunChanges?.push(...outcome.relatedRunChanges ?? []);
+    return outcome.run;
+  }
   throw new Error(`unexpected operator lifecycle result: ${outcome.state}`);
 }
 
@@ -621,6 +624,7 @@ function executeRecover(
   const publication = { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({
     title: planning.title(current.input.parsed.value), subtitle: planning.subtitle(current.input.parsed.value),
   })), actorId: request.requestedBy };
+  const relatedRunChanges: RelatedRunChange[] = [];
   let record: RunRecord;
   let children: readonly RunRecord[];
   try {
@@ -630,18 +634,14 @@ function executeRecover(
       runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
       runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
       sourceCommandId: request.commandId,
-    }, descriptor, publication));
-    children = dependencies.lifecycle.continueDelegations(record, request.commandId);
+    }, descriptor, publication), relatedRunChanges);
+    children = dependencies.lifecycle.continueDelegations(record, request.commandId, relatedRunChanges);
   } catch (error) {
     if (error instanceof RerunRefusedError || error instanceof RunContinuationRefusedError)
       reject(request, "RUN_CONTINUATION_REFUSED", ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);
     throw error;
   }
-  return applied(request, [runTarget(record.envelope.runId), runTarget(current.envelope.runId),
-    ...children.map(child => runTarget(child.envelope.runId))], [
-    { target: runTarget(record.envelope.runId), before: 0, after: record.version },
-    ...children.map(child => ({ target: runTarget(child.envelope.runId), before: 0, after: child.version })),
-  ]);
+  return recoveryApplication(request, repositories, record, current, children, relatedRunChanges);
 }
 
 function executeRetry(
@@ -691,6 +691,7 @@ function executeRetry(
   const planning = workflowPlanning(descriptor);
   const value = current.input.parsed?.value;
   if (value === undefined) throw new Error("retry source lacks canonical input");
+  const relatedRunChanges: RelatedRunChange[] = [];
   let record: RunRecord;
   let children: readonly RunRecord[] = [];
   try {
@@ -699,18 +700,32 @@ function executeRetry(
       runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
       runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
       sourceCommandId: request.commandId,
-    }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({ title: planning.title(value), subtitle: planning.subtitle(value) })), actorId: request.requestedBy }));
-    if (current.envelope.parent !== undefined) children = dependencies.lifecycle.continueDelegations(record, request.commandId);
+    }, descriptor, { ...protectedSubjectDisplay(retainedRunProtectedBindings(current), () => ({ title: planning.title(value), subtitle: planning.subtitle(value) })), actorId: request.requestedBy }), relatedRunChanges);
+    if (current.envelope.parent !== undefined) children = dependencies.lifecycle.continueDelegations(record, request.commandId, relatedRunChanges);
   } catch (error) {
     if (current.envelope.parent !== undefined && (error instanceof RerunRefusedError || error instanceof RunContinuationRefusedError))
       reject(request, "RUN_CONTINUATION_REFUSED", ERROR_CATALOG.RUN_CONTINUATION_REFUSED.text);
     throw error;
   }
-  return applied(request, [runTarget(record.envelope.runId), runTarget(request.target.runId), ...children.map(child => runTarget(child.envelope.runId))], [
-    { target: runTarget(record.envelope.runId), before: 0, after: record.version },
-    ...children.map(child => ({ target: runTarget(child.envelope.runId), before: 0, after: child.version })),
-  ]);
+  return recoveryApplication(request, repositories, record, current, children, relatedRunChanges);
 
+}
+
+function recoveryApplication(request: CommandRequest, repositories: AuthorityRepositories, record: RunRecord, original: RunRecord,
+  children: readonly RunRecord[], related: readonly RelatedRunChange[]) {
+  const targets = new Map([record, original, ...children].map(run => [run.envelope.runId,runTarget(run.envelope.runId)]));
+  const changes = new Map<string, VersionChange>();
+  for (const run of [record, ...children]) {
+    const current = repositories.runs.get(run.envelope.runId);
+    if (current === undefined) throw new Error("delegation-recovery-result-unavailable");
+    changes.set(run.envelope.runId,{ target: runTarget(run.envelope.runId), before: 0, after: current.version });
+  }
+  for (const change of related) {
+    targets.set(change.runId,runTarget(change.runId));
+    const previous = changes.get(change.runId);
+    changes.set(change.runId,{ target: runTarget(change.runId), before: previous?.before ?? change.before, after: change.after });
+  }
+  return applied(request,[...targets.values()],[...changes.values()]);
 }
 
 interface CancelTarget {
@@ -768,21 +783,17 @@ function executeCancel(
   const dependencyIds: string[] = [];
   const visited = new Set<string>([current.envelope.runId]);
   const walk = (parent: RunRecord): void => {
-    const members = retainedDelegationManifests(repositories, parent.envelope.runId)
-      .flatMap(manifest => repositories.dependencies.members(manifest.manifestId));
+    const groups = retainedDelegationManifests(repositories,parent.envelope.runId).map(manifest => ({ manifest, group: { children: repositories.dependencies.members(manifest.manifestId) } }));
+    const currentIds = new Set(currentDelegationManifests(repositories,parent.envelope.runId).map(manifest => String(manifest.manifestId)));
     for (const child of repositories.runs.listChildren(parent.envelope.runId)) {
       const childRunId = child.envelope.runId;
       if (visited.has(childRunId)) {
         throw new Error(`run ${childRunId} appears twice in the dependency tree under ${request.target.runId}`);
       }
       visited.add(childRunId);
-      const edge = members.find(member => member.history.includes(childRunId))?.dependency;
-      if (edge === undefined) {
-        throw new Error(
-          `run ${childRunId} is a child of ${parent.envelope.runId} but has no dependency edge in authority; `
-          + "the tree is inconsistent, so no target was cancelled",
-        );
-      }
+      const selected = selectDelegationGroupForChild(groups,currentIds,childRunId);
+      const edge = selected?.group.children.find(member => member.history.includes(childRunId))?.dependency;
+      if (edge === undefined) throw new Error(`run ${childRunId} is a child of ${parent.envelope.runId} but has no dependency edge in authority; the tree is inconsistent, so no target was cancelled`);
       if (edge.policy.cascadeCancel !== "cascade") continue;
       dependencyIds.push(edge.dependencyId);
       if (!isTerminalRunState(child.lifecycle)) targets.push({ run: child, dependencyId: edge.dependencyId });
@@ -867,7 +878,9 @@ function deleteTreeOrder(
         throw new Error(`run ${childRunId} appears twice in the dependency tree under ${root.envelope.runId}`);
       }
       visited.add(childRunId);
-      if (!edges.some((candidate) => candidate.childRunId === childRunId)) {
+      if (edges.length === 0) {
+        repositories.dependencies.lifecycleEdgeForChild(parent.envelope.runId, childRunId);
+      } else if (!edges.some((candidate) => candidate.childRunId === childRunId)) {
         throw new Error(
           `run ${childRunId} is a child of ${parent.envelope.runId} but has no dependency edge in authority; `
           + "the tree is inconsistent, so nothing was deleted",

@@ -28,22 +28,20 @@
             - listitem: Confirmed by Relay
           - text: Fast Duo creates the software key only when Duo requests it.
       - listitem:
-        - button "Touch ID Platform authenticator · hardware or Chromium virtual authenticator Not started Touch ID progress Uses the native Mac prompt, with software interception disabled.":
+        - button "Touch ID Touch ID on this computer Not started Touch ID progress Choose Touch ID or Windows Hello in Duo.":
           - strong: Touch ID
-          - text: Platform authenticator · hardware or Chromium virtual authenticator Not started
+          - text: Touch ID on this computer Not started
           - list "Touch ID progress":
             - listitem: Started
             - listitem: Added in Duo
             - listitem: Confirmed by Relay
-          - text: Uses the native Mac prompt, with software interception disabled.
+          - text: Choose Touch ID or Windows Hello in Duo.
     - paragraph: Same status as the Relay sign-up step. Updated every second.
     - paragraph: Security key and Touch ID not added
   - heading "Add a security key" [level=2]
   - paragraph: Open Duo, approve with an existing method, then choose Other options → Manage devices.
   - text: Device type
-  - combobox "Device type":
-    - option "Security key" [selected]
-    - option "Touch ID"
+  - combobox "Device type": Security key
   - button "Open duo.ucsd.edu"
   - button "Start capture"
   - status: Capture alone does not mean the device is added.

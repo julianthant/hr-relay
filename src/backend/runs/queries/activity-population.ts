@@ -1,3 +1,4 @@
+import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { z } from "zod";
 import { ActivityPopulationRangeSchema, ActivityPopulationRunSchema, ActivitySuccessfulTimingSchema, ActivityPopulationIdentitySchema, ActivityPopulationSelectionSchema, ActivityPopulationBrowseSchema, ActivityPopulationBrowseResultSchema, ActivityPopulationSelectedReadSchema, ActivityPopulationExportSchema, type ActivityPopulationRun, type ActivityPopulationSelection, type ActivityPopulationBrowseResult, type ActivityPopulationSelectedRead, type ActivityPopulationExport } from "../../../models/dashboard/activity-population.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -65,8 +66,8 @@ export function createActivityPopulationService(input: {
       const report = selected === undefined ? reports.read(from, to) : reports.readSelected(from, to, selected.reportToken);
       const population: ActivityPopulationRun[] = [];
       visitActivitySummaryRange(database, from, to, report.volume.timeZone, row => {
-        if (row.shape === "operation-member") return;
-        population.push(ActivityPopulationRunSchema.parse({ runId: row.runId, workflowId: row.workflow, title: row.title, attempt: row.attempt, day: row.localDay, parentRunId: row.parentRunId, shape: row.shape,
+        if (!isQueueTopLevel(row)) return;
+        population.push(ActivityPopulationRunSchema.parse({ runId: row.runId, workflowId: row.workflow, title: row.title, attempt: row.attempt, day: row.localDay, parentRunId: row.parent?.runId ?? null, shape: row.shape,
           status: deriveRunStatus(row), terminal: row.lifecycle.state === "terminal", durationMs: row.durationMs,
           receiptResult: row.receiptResult, warningCount: row.warningCount, readback: row.receiptResult === null ? null : row.receiptResult === "verified-done" }));
       });

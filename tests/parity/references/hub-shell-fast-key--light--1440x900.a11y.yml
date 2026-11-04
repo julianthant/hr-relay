@@ -28,22 +28,20 @@
             - listitem: Confirmed by Relay
           - text: This sign-in method is verified. No further enrollment is needed.
       - listitem:
-        - button "Touch ID Platform authenticator · hardware or Chromium virtual authenticator Not started Touch ID progress Uses the native Mac prompt, with software interception disabled." [pressed]:
+        - button "Touch ID Touch ID on this computer Not started Touch ID progress Choose Touch ID or Windows Hello in Duo." [pressed]:
           - strong: Touch ID
-          - text: Platform authenticator · hardware or Chromium virtual authenticator Not started
+          - text: Touch ID on this computer Not started
           - list "Touch ID progress":
             - listitem: Started
             - listitem: Added in Duo
             - listitem: Confirmed by Relay
-          - text: Uses the native Mac prompt, with software interception disabled.
+          - text: Choose Touch ID or Windows Hello in Duo.
     - paragraph: Same status as the Relay sign-up step. Updated every second.
     - paragraph: Security key ready · Touch ID not added
   - heading "Add Touch ID" [level=2]
   - paragraph: Open Duo, approve with an existing method, then choose Other options → Manage devices.
   - text: Device type
-  - combobox "Device type":
-    - option "Security key" [disabled]
-    - option "Touch ID" [selected]
+  - combobox "Device type": Touch ID
   - button "Open duo.ucsd.edu"
   - button "Start capture"
   - status: Capture alone does not mean the device is added.

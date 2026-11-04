@@ -4,7 +4,6 @@ import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import { filterQueueSurfaces, type QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
 import type { QueueHandlers, QueueViewState } from "../surfaces/queue/queue.js";
 import type { StatusBucket } from "../surfaces/shell/shell-model.js";
-import { dsStatusOf } from "../surfaces/shared/status/status-model.js";
 
 export function useQueueWiring(input: Readonly<{
   allRows: readonly QueueSurfaceWire[] | undefined;
@@ -17,7 +16,6 @@ export function useQueueWiring(input: Readonly<{
   selectMode: boolean;
   bulkIds: ReadonlySet<string>;
   nowIso: string;
-  workflowLabelOf: (workflowId: string) => string;
   selectRun: (runId: string, partitionDay?: string) => void;
   setActiveWorkflowId: (workflowId: string) => boolean;
   onWells: (next: ReadonlySet<string>) => void;
@@ -27,7 +25,7 @@ export function useQueueWiring(input: Readonly<{
   runQueueAction: NonNullable<QueueHandlers["onAction"]>;
 }>) {
   const { allRows, attemptHistory, rows, activeWorkflowId, filter, selectedRunId, openWells, selectMode, bulkIds, nowIso,
-    workflowLabelOf, selectRun, setActiveWorkflowId, onWells, onBulkIds, setBatchGrouping, exitQueueSelection,
+    selectRun, setActiveWorkflowId, onWells, onBulkIds, setBatchGrouping, exitQueueSelection,
     runQueueAction } = input;
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (allRows === undefined) return [];
@@ -38,9 +36,22 @@ export function useQueueWiring(input: Readonly<{
       return surface === undefined ? [] : [surface];
     });
     const items = new Set(visible.map(row => JSON.stringify([row.workflowId, row.itemId])));
-    const candidates = metadata === undefined ? visible : allRows;
+    const visibleIds = new Set(visible.map(surface => surface.runId));
+    const candidates = metadata === undefined ? [...visible, ...allRows.filter(surface => !visibleIds.has(surface.runId))] : allRows;
+    const roots = metadata === undefined ? visible : candidates.filter(surface => items.has(JSON.stringify([surface.workflowId, surface.itemId])));
+    const included = new Set(roots.filter(surface => surface.workflowId === activeWorkflowId).map(surface => String(surface.runId)));
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const surface of candidates) {
+        if (metadata === undefined && surface.workflowId === activeWorkflowId && !visibleIds.has(surface.runId)) continue;
+        if (surface.parent === null || surface.parent.visibility === "linked" || !included.has(surface.parent.runId) || included.has(surface.runId)) continue;
+        included.add(surface.runId);
+        changed = true;
+      }
+    }
     const scoped = candidates.flatMap((surface) => {
-      if (!items.has(JSON.stringify([surface.workflowId, surface.itemId])) || surface.workflowId !== activeWorkflowId) return [];
+      if (!included.has(surface.runId)) return [];
       const timing = metadata?.get(surface.runId);
       if (metadata !== undefined && timing === undefined) throw new Error("queue run has no selected-day attempt metadata");
       const actions = surface.actions.filter((action) => action.kind !== "command" || action.command !== "archive");
@@ -53,21 +64,6 @@ export function useQueueWiring(input: Readonly<{
   const outcomes = useMemo((): ReadonlyMap<string, QueueBusinessOutcome> => new Map(
     surfaces.flatMap(surface => surface.outcome === undefined ? [] : [[surface.runId, surface.outcome] as const]),
   ), [surfaces]);
-
-  const parentOf = useCallback(
-    (parentRunId: string) => {
-      const parent = allRows?.find((surface) => String(surface.runId) === parentRunId);
-      return parent === undefined
-        ? undefined
-        : {
-          runId: String(parent.runId),
-          title: parent.title,
-          workflowLabel: workflowLabelOf(String(parent.workflowId)),
-          status: dsStatusOf(parent.status),
-        };
-    },
-    [allRows, workflowLabelOf],
-  );
 
   const viewState = useMemo(
     (): QueueViewState => ({
@@ -100,10 +96,9 @@ export function useQueueWiring(input: Readonly<{
         onBulkIds(next);
       },
       /* Cross-workflow parent jumps switch scope before selecting the run. */
-      onOpenParent: (runId) => {
-        const parent = allRows?.find((s) => String(s.runId) === runId);
-        if (parent !== undefined && !setActiveWorkflowId(String(parent.workflowId))) return;
-        selectRun(runId);
+      onOpenParent: (parent) => {
+        if (!setActiveWorkflowId(String(parent.workflowId))) return;
+        selectRun(String(parent.runId), parent.partitionDay);
       },
       /* Use the served child route; current-day lookup cannot find cross-day delegation. */
       onOpenLinked: (link) => {
@@ -111,9 +106,9 @@ export function useQueueWiring(input: Readonly<{
         selectRun(String(link.runId), link.partitionDay);
       },
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, allRows, setActiveWorkflowId, exitQueueSelection],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, setActiveWorkflowId, exitQueueSelection],
   );
 
   const actionsOf = useCallback((surface: QueueSurfaceWire): readonly ActionDescriptorWire[] => surface.actions, []);
-  return { surfaces, outcomes, parentOf, viewState, queueHandlers, actionsOf };
+  return { surfaces, outcomes, viewState, queueHandlers, actionsOf };
 }

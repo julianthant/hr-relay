@@ -17,7 +17,7 @@
     - paragraph: Verified in Duo.
     - text: Not added
     - heading "Security key" [level=2]
-    - paragraph: Use FastDuo in Relay’s setup browser.
+    - paragraph: Use Fast Duo in Relay’s setup browser.
     - button "Add Security key"
     - button "Back to login"
     - button "Finish" [disabled]

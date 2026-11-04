@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { QueueSurfaceWire } from "../../../models/dashboard/projection.js";
 import { mockWorkflow } from "../workflows/mocks/workflow-mock-catalog.js";
 import { mockNeedsReview,mockRunStatus,mockWaitsForOcr,type MockRun } from "../workflows/mocks/workflow-mock-model.js";
@@ -47,7 +48,7 @@ function mockItem(run: MockRun, read: boolean, input: PreviewInput): Notificatio
   const records = run.records !== undefined;
   const waiting = mockNeedsReview(run);
   const count = records ? reviewRecords(run).length : 0;
-  const row = mockQueueSurfaces([run], input.anchorIso)[0];
+  const row = mockQueueSurfaces([run], input.anchorIso, input.runs)[0];
   const instant = input.eventTimes?.[run.id] ?? (waiting && row.gateOpenedAt.state === "present" ? row.gateOpenedAt.value : row.endedAt.state === "present" ? row.endedAt.value : undefined);
   return { id: `preview:${input.day}:${run.id}`, subject: row.title, workflow: mockWorkflow(run.workflowId).label, read,
     title: waiting ? "Records ready for approval" : run.discarded ? "Records discarded" : records ? "Records approved" : "Run completed",
@@ -60,7 +61,7 @@ export function notificationPreviewState(scenario: string, input: PreviewInput):
   if (!["normal", "ping"].includes(scenario)) return notificationsSample(scenario);
   if (input.unavailable) return { state: "unavailable", reason: input.unavailable };
   if (!input.rows) return { state: "loading" };
-  const rows = input.rows.filter(row => (row.surfaceKind === "single" || row.surfaceKind === "operation")
+  const rows = input.rows.filter(row => isQueueTopLevel(row) && (row.surfaceKind === "single" || row.surfaceKind === "operation")
     && ["failed", "done", "awaiting-approval", "blocked", "partial"].includes(row.status));
   const failed = rows.find(row => row.status === "failed");
   const done = rows.find(row => row.status === "done");

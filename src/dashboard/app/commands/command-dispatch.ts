@@ -463,12 +463,13 @@ export async function verifyShellCommandEffect(
     const next = recovered[0];
     if (next.descriptorHash !== root.descriptorHash || next.configFingerprint !== root.configFingerprint || next.dryRun !== root.dryRun) return mismatch(rows);
     for (const row of rows) {
+      if (root.parent !== null && next.parent?.runId === root.parent.runId && row.runId === root.parent.runId) continue;
       let current = row;
       const visited = new Set<string>();
       while (current.runId !== root.runId && current.runId !== next.runId) {
-        if (visited.size >= 32 || visited.has(current.runId) || current.lineage.state !== "child") return mismatch(rows);
+        if (visited.size >= 32 || visited.has(current.runId) || current.parent === null) return mismatch(rows);
         visited.add(current.runId);
-        const parent = await readRow(current.lineage.parentRunId);
+        const parent = await readRow(current.parent.runId);
         if (parent === undefined) return mismatch(rows);
         current = parent;
       }
@@ -495,9 +496,9 @@ export async function verifyShellCommandEffect(
     const path = new Map<string, QueueSurfaceWire>();
     while (descendant !== undefined && !legal.has(descendant.runId)) {
       const row = descendant;
-      if (path.has(row.runId) || row.lineage.state !== "child") return mismatch([...path.values()]);
+      if (path.has(row.runId) || row.parent === null) return mismatch([...path.values()]);
       path.set(row.runId, row);
-      descendant = await readRow(row.lineage.parentRunId);
+      descendant = await readRow(row.parent.runId);
     }
     if (descendant === undefined) return mismatch([...snapshots.values()]);
     for (const [runId, row] of path) legal.set(runId, row);

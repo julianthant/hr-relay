@@ -1,3 +1,4 @@
+import type { StableRecordId } from "../rules/identity/ids.js";
 import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
 import type { JsonValue } from "../rules/validation/canonical-json.js";
@@ -13,7 +14,7 @@ import type {
 import { assertFactorySealedTaskContract } from "../models/task/task-contract.js";
 import type { BuildManifest } from "../models/workflow/build-manifest.js";
 import type { CompletionProgram } from "../models/workflow/completion.js";
-import type { DelegationPolicy } from "../models/workflow/delegation-policy.js";
+import type { ChildVisibility, DelegationPolicy } from "../models/workflow/delegation-policy.js";
 import { DelegationPolicySchema } from "../models/workflow/delegation-policy.js";
 import type {
   AnyWorkflowRef,
@@ -195,7 +196,7 @@ export interface DelegateEntryIdentity<
   readonly cardinality: "one" | "many";
   readonly await: "none" | "terminal";
   readonly join: "one" | "all" | "all-settled" | "none";
-  readonly policy: DelegationPolicy;
+  readonly policy: Omit<DelegationPolicy, "visibility"> & { readonly visibility?: ChildVisibility };
 }
 
 export type DelegateEntryOutput<
@@ -254,6 +255,7 @@ interface ParallelEntry<Id extends string, Output> extends WorkflowEntry<Id, Out
 
 interface DelegateEntry<Id extends string, Output> extends WorkflowEntry<Id, Output, false> {
   readonly kind: "delegate";
+  readonly sourceRecordIds?: (scope: unknown) => readonly (readonly StableRecordId[])[];
   readonly label?: string;
   readonly target: AnyWorkflowRef;
   readonly edgeId: string;
@@ -364,6 +366,7 @@ export interface WorkflowAuthor<InputSchema extends z.ZodType> {
     identity: Identity,
     references: References,
     binds: Readonly<{
+      sourceRecordIds?: (scope: WorkflowEntryScope<InputSchema, References>) => readonly (readonly StableRecordId[])[];
       bind: (scope: WorkflowEntryScope<InputSchema, References>) =>
         Identity["cardinality"] extends "one"
           ? z.input<Identity["target"]["input"]>
@@ -390,7 +393,7 @@ function withStep(identity: StepOwned): { step?: WorkflowTimelineGroup } {
   return identity.step === undefined ? {} : { step: identity.step };
 }
 
-function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSchema> {
+function workflowAuthor<InputSchema extends z.ZodType>(delegationDisplay: ChildVisibility = "inline"): WorkflowAuthor<InputSchema> {
   const author = {
     group(
       step: WorkflowTimelineGroup,
@@ -558,11 +561,13 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
       references: readonly AnyWorkflowEntry[],
       binds: Readonly<{
         bind: (scope: never) => unknown;
+        sourceRecordIds?: (scope: never) => readonly (readonly StableRecordId[])[];
         deriveChildItemId: (input: never, context: ChildRunIdentityContext) => ItemId;
       }>,
     ) {
       DelegationEdgeIdSchema.parse(identity.edgeId);
-      DelegationPolicySchema.parse(identity.policy);
+      const policy = DelegationPolicySchema.parse({ ...identity.policy,
+        visibility: identity.policy.visibility === undefined ? delegationDisplay : identity.policy.visibility });
       const shape = `${identity.cardinality}/${identity.await}/${identity.join}`;
       const admitted = identity.await === "none"
         ? identity.join === "none"
@@ -575,6 +580,7 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
           + "typed child-run shapes: one/terminal/one, many/terminal/all, many/terminal/all-settled, or */none/none",
         );
       }
+      const sourceRecordIds = binds.sourceRecordIds;
       const entry: DelegateEntry<string, unknown> = {
         entryKind: "workflow-entry",
         kind: "delegate",
@@ -588,8 +594,9 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
         cardinality: identity.cardinality,
         await: identity.await,
         join: identity.join,
-        policy: identity.policy,
+        policy,
         bind: (scope) => binds.bind(scope as never),
+        ...(sourceRecordIds === undefined ? {} : { sourceRecordIds: (scope: unknown) => sourceRecordIds(scope as never) }),
         deriveChildItemId: (input, context) => binds.deriveChildItemId(input as never, context),
       };
       return Object.freeze(entry);
@@ -908,7 +915,7 @@ export function defineWorkflow<
   WorkflowModuleRoleSchema.parse(spec.role);
   const requiredWorkbookTypeIds = parseRequiredWorkbookTypeIds(spec.requiredWorkbookTypeIds);
   const { steps: authorSteps, input, role, intake, operationDisplay, ...presentation } = spec;
-  const authored = authorSteps(workflowAuthor<InputSchema>());
+  const authored = authorSteps(workflowAuthor<InputSchema>(spec.capabilities?.delegationDisplay));
   validateSteps(id, authored.steps, authored.result.references);
   for (const entry of flattenEntries(authored.steps)) Object.freeze(entry.references);
   Object.freeze(authored.result.references);
@@ -1000,6 +1007,7 @@ interface RuntimeFlowBuilder {
     edgeId: string;
     cardinality: "one" | "many";
     bind: (scope: unknown) => unknown;
+    sourceRecordIds?: (scope: unknown) => readonly (readonly StableRecordId[])[];
     deriveChildItemId: (input: unknown, context: ChildRunIdentityContext) => ItemId;
     await: "none" | "terminal";
     join: "one" | "all" | "all-settled" | "none";
@@ -1072,6 +1080,7 @@ function compileFlow<InputSchema extends z.ZodType, ResultSchema extends z.ZodTy
         edgeId: entry.edgeId,
         cardinality: entry.cardinality,
         bind: entry.bind,
+        ...(entry.sourceRecordIds === undefined ? {} : { sourceRecordIds: entry.sourceRecordIds }),
         deriveChildItemId: entry.deriveChildItemId,
         await: entry.await,
         join: entry.join,

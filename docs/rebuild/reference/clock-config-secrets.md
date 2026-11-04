@@ -271,7 +271,11 @@ The first four paths and extension path are ordinary settings. State, evidence, 
 absolute path, cancellation, or explicit unavailable result. The native picker owns dialog bounds
 and field typing. A selection does not save settings or move app data. The route returns
 `NATIVE_PATH_HINT_INVALID` for an invalid hint. Missing picker composition reports `dialog-failed`;
-an occupied picker reports `busy`.
+an occupied picker reports `busy`. macOS uses `/usr/bin/osascript`; Windows uses the absolute
+`SystemRoot/System32/WindowsPowerShell/v1.0/powershell.exe` with one STA WinForms dialog.
+Windows dialog kind and canonical initial directory travel as UTF-8 JSON on stdin to fixed
+script code. Both helpers have bounded output and a 120-second limit; abort and timeout close
+the helper before releasing the dialog gate. Other platforms report `unsupported-platform`.
 
 ## 6. Credential access and storage
 
@@ -305,7 +309,7 @@ The common writer uses a short cross-process nonce mutex, authenticates the curr
 
 ChatGPT `withLock()` uses one durable cross-process asynchronous operation lease spanning remote awaits, separate from the short writer mutex. Its transaction is revoked on settle and exact callback errors survive successful cleanup. Read-only account observation does not mutate credentials. Refresh, usage changes and sign-out retain CAS; close/sign-out abort and await owned inference/page/access operations. Actual response, artifact or PDF closure failures refuse sign-out and retain resources. Startup may clear only an exact prior nonce lock under genuine one-shot native workspace initialization, never ordinary PID-as-death cleanup. Unknown old lock/stage bytes remain held. The schema-1 ChatGPT payload is bounded to 64,000 bytes and contains registration plus current session, with no token history; tokens are encrypted inside the canonical frame.
 
-Duo records hold pending/ready enrolled P256 material and exact browser scope. Backend validation requires canonical Base64, EC prime256v1 and matching public/private material. Same credential identity cannot change its key. Both onboarding and workflow use the single backend FastDuo signer and public request/reply broker; no private key is installed into browsers. Every signature durably reserves a strictly advancing external counter first. Failed, crashed, cancelled and UNKNOWN attempts burn it; duplicate request IDs refuse rather than replay an allocation. The browser document token remains an exact 32-character hexadecimal `sender.documentId`, while account/operation/arm identities are UUIDs. Scope, account, origin, allowCredentials and current owner are checked before signing and after relevant awaits.
+Duo records hold pending/ready enrolled P256 material and exact browser scope. Backend validation requires canonical Base64, EC prime256v1 and matching public/private material. Same credential identity cannot change its key. Both onboarding and workflow use the single backend Fast Duo signer and public request/reply broker. Ready internal keys and their proved counter floors enter only the owned private CDP authenticator; they never enter the extension, HTTP or public state. Native replica signatures remain disabled, so the canonical signer retains assertion authority. Fresh platform enrollment initializes its pending key's canonical counter from the observed CDP count; an existing internal key without proved history refuses instead of adopting a floor. Every signature durably reserves a strictly advancing external counter first. Failed, crashed, cancelled and UNKNOWN attempts burn it; duplicate request IDs refuse rather than replay an allocation. The browser document token remains an exact 32-character hexadecimal `sender.documentId`, while account/operation/arm identities are UUIDs. Scope, account, origin, allowCredentials and current owner are checked before signing and after relevant awaits.
 
 Protected payload schema-4 authenticates current record, value-free history, retired identities and the latest exact request. Entries remain `{valueId,value,updatedAt}`. Only the latest apply/erase request retains plaintext inside ciphertext; history contains marked operations and receipts. Current reads never run old-format migration. Apply checks expectedRevision, schema hash and command/write identity; latest exact replay succeeds, divergent/reused identities refuse, and clear removes the entry while advancing revision. Retired history remains deny-only and cannot revive a value. Documents are bounded to 16 MiB and private requests to 64,000 bytes. Settings apply commits independently before the value-free SQLite audit; failed audit cannot roll back the private commit. Protected values never enter configuration fingerprints or snapshots. The local Settings editor deliberately serves authenticated protected values; unavailable authority is unknown, never an empty default.
 
@@ -317,6 +321,37 @@ SQLite precommit proofs cover registry/verifier/control evidence, registry opera
 
 Offline restore replaces SQLite only. It preserves current canonical head/key/generation/floors and credentials, and retains existing source/stage/suspect, settings and UNKNOWN-write proofs. Same-machine native key absence refuses. Same-person restore candidate checks bind immutable IDs, current paths, and verified manifest facts before replacement.
 
+### Private paths on Windows
+
+`storage/private-path.ts` is the shared privacy and flush boundary. POSIX systems use owner IDs
+and mode bits. Windows loads pinned Koffi only when a native operation is needed and observes NTFS
+owner SIDs, DACLs, file identity and reparse metadata through native handles. Null, malformed or
+unsupported ACLs, uncertain identities and all reparse points refuse. Security observations are fresh.
+
+Application paths require the current token's owner SID. Private access is limited to that SID,
+SYSTEM and Administrators; private directories also require safe inheritable ACEs. The `group-write`
+and `owner-write-only` rules permit other principals to read managed data while refusing mutation.
+Ancestors may be
+owned by those principals or the exact TrustedInstaller service SID. Other principals may read and
+traverse ancestors and create sibling directories, but cannot replace descendants or change security.
+Inherit-only ACEs do not grant access to the ancestor itself. Unsupported ACE types refuse rather
+than approximating their effective access.
+
+New private directories receive a protected inheritable DACL during native creation. Existing unsafe
+directories are refused. Private stages verify safe parent inheritance and the created descriptor
+before writing bytes. Windows ancestry retains bigint identities. Native volume serial and 64-bit
+file IDs must agree with exact Node observations; unsafe numeric witnesses and unsupported 128-bit
+file-ID mappings refuse. Persisted numeric witnesses are not silently rounded or migrated.
+
+Both isolated SQLite observers import this same policy. Their source descriptors stay in the child;
+parent observations do not claim exclusive Windows source custody. Backup, restore and deletion
+retain their existing Windows refusals.
+
+Windows path flushing opens the exact object for writing with reparse-point handling, verifies its
+identity, calls `FlushFileBuffers` and checks handle closure. Failed native handles or security
+allocations remain retained through the existing source-closure error. A successful native flush
+does not establish rename, journal-recovery or power-loss durability for Windows maintenance.
+
 ### Environment and private test inputs
 
 The secure bootstrap does not load `.env` or `.env.providers`. Provider families and their file
@@ -327,8 +362,20 @@ migrated names without reading their values. It reports retired canary names wit
 `workerBootstrapEnvironment` copies only `HRAUTO_HOST_PRIMARY_DISPLAY` and
 `WORKER_PROCESS_MECHANIC_KEYS`: `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`, `WINDIR`,
 `COMSPEC`, `PATHEXT`, `LANG`, `LC_ALL`, and `TZ`. `NODE_OPTIONS` and arbitrary parent bindings are
-excluded. Workers read operational credentials from the store themselves.
+excluded. Development worker launches add `RELAY_DEV_DEBUG_MIRROR=1` explicitly after filtering;
+production worker launches omit it even when the parent has it. Workers read operational credentials from the store themselves.
 The `secrets-single-source` architecture guard owns registered credential and environment access.
+`windowsLocalApplicationData()` in `secrets.ts` alone reads `LOCALAPPDATA`, registered as a
+direct-identifier `host-storage` authority. It is read only by Windows host selection and is excluded
+from worker bootstrap keys; workers receive the admitted workspace over genuine IPC. Config paths
+supplied with an admitted state/artifact pair are derived from that pair without resolving host
+workspace authority again; source asset paths remain repository-owned.
+
+`src/models/runtime/runtime-environment.ts` pins the exact `SystemRoot` read to `windowsSystemRoot` in
+`src/models/config/secrets.ts` under the non-secret `process-mechanics` channel. That channel accepts
+only this key and canonical owner; exact reader ownership names the same path. The native path
+picker consumes the accessor and validates the returned root before launching PowerShell. The worker's
+closed mechanics pass-through remains separately audited.
 
 `config/test-data.json` owns public subject declarations and safe fixtures.
 Ignored `config/test-data.local.json` owns private canary values and private document paths.
@@ -340,8 +387,13 @@ Application settings, credentials, and environment files are not test-input fall
 
 ## Installation roots, boot, and maintenance
 
-`applicationDataWorkspace()` uses the OS user's home directory and fixes the macOS workspace at
-`~/Library/Application Support/Relay`, independently of cwd and `HOME`. Source and bundled entrypoints
+`applicationDataWorkspace()` selects `%LOCALAPPDATA%\Relay` on Windows and the OS user's
+`~/Library/Application Support/Relay` on macOS and other POSIX hosts, independently of cwd and `HOME`.
+Its discriminated host facts admit only the authority for that platform. Windows requires a canonical
+drive-letter path: missing values, relative/UNC/device paths and Win32 normalization aliases refuse with
+`APPLICATION_DATA_WORKSPACE_REFUSED` before application state I/O. There is no home fallback, old-state
+migration, copy or deletion. Native SID/DACL, NTFS identity and reparse checks still govern actual
+Windows storage admission. Source and bundled entrypoints
 use that workspace; repository paths select code and assets. Explicit private test workspaces remain
 separate from operator data. `rebuildRuntimeIsolation` defines the inner `.tracker/data` state root,
 its `artifacts`, `browsers`, and `locks` directories, backend port `3938`, lifetime lock port `3939`,
@@ -398,7 +450,7 @@ Fresh workbook storage contains one General type seed. Incomplete-profile invent
 The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17 and 18. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 19` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 20` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
@@ -634,7 +686,7 @@ approved account surface is wired.
 
 ### Private onboarding custody
 
-Show setup browser opens one draft-owned full Chromium window on the Relay FastDuo extension's
+Show setup browser opens one draft-owned full bundled Chromium window on macOS and Windows on the Relay Fast Duo extension's
 existing setup page. Open duo.ucsd.edu opens a separate tab in that same context, acquires the
 original protected Details only after verifying the exact UCSD SSO document and form controls,
 then submits that pinned POST form once. Reopening focuses the owned tab; failed initialization
@@ -644,12 +696,14 @@ startup, reporting, UNKNOWN retention and callbacks settle within its closure de
 same owned browser's complete context, page, process and callback closure plus profile deletion
 can then supersede that stop failure. Other failures refuse replacement; reopening never retries
 or confirms an enrollment.
-Show and Open focus the selected page and its owned Chromium window, restoring a minimized
-window. Failed attempt initialization must settle before closure; it is retained as a failure
+Show and Open focus the selected page and its owned Chromium window, restore a minimized
+window and activate its exact process through AppKit or Windows foreground APIs. Return to Relay
+uses the original app/window captured before launch; the extension cannot supply a native target.
+Close setup tab removes only that extension tab. Focus failures never establish enrollment proof. Failed attempt initialization must settle before closure; it is retained as a failure
 without preventing proved worker and browser cleanup. Reopening never rearms the failed attempt.
 The first attempt failure retains only its closed `kind` and `causeTag` values. The existing debug
 event writer records the same facts as a pinned Duo failure correlated to that attempt in the
-draft profile timeline. Raw exception messages, stacks, credentials and account values are excluded.
+draft profile timeline. Raw exception messages, stacks, credentials and account values are excluded. Interception, forwarding, backend receipt, reply, scoped refusal, abort and timeout stages use the same writer. Abort and timeout retain UNKNOWN, including before scope binding, and never permit another capture.
 The extension UI receives public draft status and exact attempt commands, never login credentials.
 Before enrollment capture is armed, verified native Duo documents may query capability support or
 pass a sign-in request to the captured browser implementation. This path exposes no software key,
@@ -658,9 +712,7 @@ enrollment, persisted credential, counter reservation or readiness proof.
 `profile-onboarding.ts` issues exact operation/generation/method attempts. Software FastDuo readiness
 requires native pending-key acknowledgement and ceremony plus either exact scoped operator CONFIRM
 or an observed exact-credential request; an unobserved portal acceptance remains false. Touch ID separately requires a platform ceremony with software interception disabled, actual Duo
-portal acceptance and operator confirmation. A successful platform-availability probe on macOS selects native
-Touch ID when available; explicit absence or a non-macOS host selects Chromium's virtual internal authenticator before
-the ceremony. A failed probe or native ceremony never triggers an emulated retry. Virtual platform
+portal acceptance and operator confirmation. The owned extension prepares platform discovery before answering Duo availability queries. Touch ID uses Chromium's emulated internal authenticator on both macOS and Windows, without a hardware availability probe or installed Chrome dependency. The registration handoff disables native signatures before exporting the observed counter and private key. Login rehydrates ready internal material with native signatures disabled; the current backend ceremony lease remains required for signing. Virtual platform
 keys enter the same encrypted Duo custody and must be ready before Finish. The retained receipt and
 public method state identify `native-platform` or `chromium-platform`. Public method states display these receipts; they do not
 authorize publication. Each SIGN uses a distinct durable reservation nonce.

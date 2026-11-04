@@ -1,21 +1,13 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
-import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
-import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
-import { readDelegationEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
-import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
-import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { queryQueueSummaries } from "../../../../src/backend/runs/queries/queue-summaries.js";
 import { childExecutionParallelRoot as root, childExecutionParallelModules as modules, childExecutionStores, childWaitModules, childPolicyModules } from "../../../support/fixtures/child-execution-workflows.js";
-import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
-import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
-import { createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
+import { createDelegationExecutionWorld } from "../../../support/helpers/backend/delegation-execution-world.js";
 import { plan1TransientFailureStores } from "../../../support/fixtures/plan1-operation-workflows.js";
 
-import type { AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
+import { composeQueueSummaries } from "../../../../src/backend/app/composition/dashboard/queue-summaries.js";
 import { createOperatorProjection } from "../../../../src/backend/app/composition/dashboard/queue.js";
 import { createOperatorRunDetail } from "../../../../src/backend/app/composition/dashboard/run-detail.js";
 import { buildRunDetail } from "../../../../src/backend/runs/queries/run-detail.js";
@@ -24,27 +16,103 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { DelegationAdmissionRequestSchema } from "../../../../src/backend/storage/sqlite/delegation-contracts.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
-import { readDelegationWait } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
+import { readDelegationEvidence, readDelegationWait } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { stopSyntheticDatabaseWorkers } from "../../../support/helpers/synthetic-database-admission.js";
 import { AuthorityDatabase } from "../../../support/helpers/synthetic-storage-admission.js";
+import { partition } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import { isQueueMember, isQueueTopLevel } from "../../../../src/models/dashboard/queue-parent.js";
 
-const world = createRunExecutorTestWorld();
+const world = createDelegationExecutionWorld({ root,modules });
 afterEach(world.cleanup);
 
-async function fixture(stores = childExecutionStores, mode: "ok" | "fail" = "ok", workflows: { root: { descriptor: AnyWorkflowDescriptor }; modules: readonly { descriptor: AnyWorkflowDescriptor }[] } = { root, modules }) {
-  const { root, modules } = workflows;
-  const h = await world.executorHarness({ descriptor: root.descriptor, stores });
-  const { database, clock, path, stateRoot } = h.authority;
-  const patch = { "actor.label": { set: "Synthetic operator" } } as const;
-  assert.equal(executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
-    settings: createSettingsApplicationExecutor(value => resolveConfigWithProvenance(value, hostConfigFacts({}), clock), createCredentialStore({ stateRoot })) },
-  { commandId: randomUUID(), family: "settings", type: "apply-settings", source: "settings-surface", requestedBy: "local-operator",
-    requestedAt: clock.now().toISOString(), target: { expectedRevision: 1 },
-    payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }).state, "applied");
-  const execution = canonicalChildExecution(h.deps, database, path, id => modules.find(module => module.descriptor.id === id)?.descriptor);
-  const run = execution.start(root.descriptor, { emplId: "10800000", text: "parallel", mode }, { dryRun: false });
-  return { ...h.authority, execution, run, modules };
+const fixture = world.fixture;
+
+for (const choice of [
+  { visibility: "inline", topLevel: false, pendingMember: true, doneMember: true, failedMember: true },
+  { visibility: "linked", topLevel: true, pendingMember: false, doneMember: false, failedMember: false },
+  { visibility: "hidden-unless-failed", topLevel: false, pendingMember: false, doneMember: false, failedMember: true },
+] as const) for (const mode of ["ok", "fail"] as const) {
+it(`authenticates ${choice.visibility} parent membership through admission and ${mode} settlement`, async () => {
+  const f = await fixture(childExecutionStores, mode, childPolicyModules("cascade", choice.visibility));
+  assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "yielded-delegation");
+  const child = f.database.authority.runs.listChildren(f.run.envelope.runId)[0]; assert.ok(child);
+  const v = views(f);
+  const verifyPresentation = (memberVisible: boolean) => {
+    const rows = v.projection.buildDashboardDayWire(f.run.envelope.enqueuedAt.slice(0, 10)).queueSurfaces;
+    const parentRow = rows.find(row => row.runId === f.run.envelope.runId);
+    const childRow = rows.find(row => row.runId === child.envelope.runId);
+    assert.ok(parentRow); assert.ok(childRow);
+    assert.deepEqual(childRow.parent, { runId: parentRow.runId, visibility: choice.visibility,
+      workflowId: parentRow.workflowId, partitionDay: parentRow.startedAt.slice(0, 10),
+      label: f.modules.find(module => module.descriptor.id === parentRow.workflowId)?.descriptor.label,
+      title: parentRow.title, panelKind: parentRow.panelKind, status: parentRow.status });
+    assert.deepEqual(parentRow.linkedRuns.map(link => link.runId), choice.topLevel ? [childRow.runId] : []);
+    const layout = partition(rows);
+    assert.equal(layout.top.some(row => row.runId === childRow.runId), choice.topLevel);
+    assert.deepEqual(layout.membersOf.get(parentRow.runId)?.map(row => row.runId) ?? [], memberVisible ? [childRow.runId] : []);
+    assert.equal(parentRow.surfaceKind === "operation", memberVisible);
+    assert.equal(f.database.authority.runs.get(f.run.envelope.runId)?.envelope.shape, "single");
+  };
+  verifyPresentation(choice.pendingMember);
+  const source = () => f.database.withAuthorityReadSnapshot(() => f.database.authority.dependencies.parents([f.run.envelope, child.envelope]));
+  const parents = source(), parent = parents.get(child.envelope.runId); assert.ok(parent);
+  assert.equal(parents.get(f.run.envelope.runId), null);
+  assert.deepEqual(parent, { runId: f.run.envelope.runId, visibility: choice.visibility });
+  assert.equal(isQueueTopLevel({ parent }), choice.topLevel);
+  assert.equal(isQueueMember({ parent, status: "queued" }), choice.pendingMember);
+  const manifest = f.database.authority.delegationManifests.listByParentRun(f.run.envelope.runId)[0]; assert.ok(manifest);
+  f.database.withAuthorityReadSnapshot(() => {
+    const proof = f.database.authority.dependencies.authenticateGroup(manifest);
+    const member = proof.children[0]; assert.ok(member);
+    member.history.length = 0;
+    assert.deepEqual(f.database.authority.dependencies.authenticateGroup(manifest).children[0]?.history, [child.envelope.runId]);
+    const altered = structuredClone(manifest);
+    altered.policy.visibility = choice.visibility === "linked" ? "inline" : "linked";
+    assert.throws(() => f.database.authority.dependencies.authenticateGroup(altered), /delegation-manifest-binding-mismatch/u);
+    assert.deepEqual(f.database.authority.dependencies.authenticateGroup(manifest).children[0]?.history, [child.envelope.runId]);
+  });
+  const first = queryQueueSummaries(f.database, { topLevel: true, limit: 1 });
+  const next = first.next === null ? [] : queryQueueSummaries(f.database, { topLevel: true, limit: 1, after: first.next }).items;
+  assert.deepEqual([...first.items, ...next].map(row => row.runId).sort(),
+    (choice.topLevel ? [f.run.envelope.runId, child.envelope.runId] : [f.run.envelope.runId]).sort());
+  const day = f.run.envelope.enqueuedAt.slice(0, 10);
+  assert.deepEqual(f.database.queryRunCalendar({ month: day.slice(0, 7), day, today: day }).monthCounts,
+    [{ day, count: choice.topLevel ? 2 : 1 }]);
+  await f.execution.execute(f.run, world.SIGNAL);
+  const settled = f.database.authority.runs.get(child.envelope.runId);
+  assert.ok(settled?.lifecycle.state === "terminal");
+  assert.equal(settled.lifecycle.outcome, mode === "ok" ? "done" : "failed");
+  v.projection.ingestFromTimeline();
+  verifyPresentation(mode === "ok" ? choice.doneMember : choice.failedMember);
+  assert.deepEqual(source(), parents);
+  assert.equal(isQueueMember({ parent, status: settled.lifecycle.outcome }), mode === "ok" ? choice.doneMember : choice.failedMember);
+});
 }
+
+it("keeps later-day inline children under their original parent day with exact attempt metadata", async () => {
+  const f = await fixture(childExecutionStores, "ok", childPolicyModules("cascade", "inline"));
+  const parentDay = f.clock.todayLocal();
+  f.clock.advanceWall(24 * 60 * 60 * 1000);
+  assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "yielded-delegation");
+  const child = f.database.authority.runs.listChildren(f.run.envelope.runId)[0]; assert.ok(child);
+  const reader = { read: f.execution.lifecycle.read.bind(f.execution.lifecycle), list: f.execution.lifecycle.list.bind(f.execution.lifecycle),
+    withRunTreeSnapshot: f.execution.lifecycle.withRunTreeSnapshot.bind(f.execution.lifecycle),
+    summaries: { ...composeQueueSummaries(f.database), activity() { throw new Error("unrequested activity"); } } };
+  const projection = createOperatorProjection({ database: f.database, reader,
+    descriptors: { resolve: id => f.modules.find(module => module.descriptor.id === id)?.descriptor },
+    stateRoot: f.stateRoot, clock: f.clock, appVersion: "0.1.0", descriptorSetHash: f.run.envelope.contractFingerprint,
+    ledger: { foldActivityRange: () => { throw new Error("unrequested activity"); } } });
+  projection.rebuildFromTimeline();
+  const day = projection.buildDashboardDayWire(parentDay);
+  const layout = partition(day.queueSurfaces);
+  assert.deepEqual(layout.top.map(row => row.runId), [f.run.envelope.runId]);
+  assert.deepEqual(layout.membersOf.get(f.run.envelope.runId)?.map(row => row.runId), [child.envelope.runId]);
+  assert.ok(day.attemptHistory);
+  assert.equal(day.attemptHistory.length, 2);
+  assert.equal(day.attemptHistory.find(row => row.runId === child.envelope.runId)?.startedAt, child.envelope.enqueuedAt);
+  assert.equal(day.queueSurfaces.find(row => row.runId === child.envelope.runId)?.parent?.partitionDay, parentDay);
+  assert.deepEqual(projection.buildDashboardDayWire(f.clock.todayLocal()).workflowCounts, []);
+});
 
 it("admits both different fan-outs before one release and completes their nested work on one home worker", async () => {
   const f = await fixture();
@@ -225,6 +293,12 @@ it("propagates a block-parent failure through both waiting ancestors and refresh
   const v = views(f), changes: string[] = [];
   v.projection.onChange(change => changes.push(change.kind));
   assert.equal(v.projection.queueSurface(f.run.envelope.runId)?.status, "running");
+  f.database.withAuthorityReadSnapshot(() => {
+    const wait = f.database.authority.dependencies.waitState(f.run.envelope.runId); assert.ok(wait);
+    assert.equal(wait.state, "running");
+    wait.state = "blocked";
+    assert.equal(f.database.authority.dependencies.waitState(f.run.envelope.runId)?.state, "running");
+  });
   assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "failed");
   v.projection.ingestFromTimeline();
   assert.equal(v.projection.health().state, "live");

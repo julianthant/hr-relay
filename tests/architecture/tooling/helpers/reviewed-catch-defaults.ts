@@ -33,16 +33,16 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
-    "reason": "Failed UNKNOWN retention or failure-report callbacks retain both causes and leave attempt/browser closure unproved. Context or broker termination revokes the owner and settles the attempt; physical profile deletion waits for owner cleanup and keeps all private-path and native closure checks. Worker stop failure remains uncertain until pump/report settlement and enclosing browser closure are proved; replacement or relaunch remains refused after unproved cleanup. Platform-probe, emulation and virtual-key custody failures enter the same scoped UNKNOWN retention and closure path; no native failure triggers a second ceremony.",
+    "reason": "Failed UNKNOWN retention or failure-report callbacks retain both causes and leave attempt/browser closure unproved. Captured software-key browser termination retains UNKNOWN through the capability, without a permanent custody failure; context or broker termination revokes the owner and settles the attempt; physical profile deletion waits for owner cleanup and keeps all private-path and native closure checks. Worker stop failure remains uncertain until pump/report settlement and enclosing browser closure are proved; replacement or relaunch remains refused after unproved cleanup. Emulation, focus and virtual-key custody failures enter the same scoped UNKNOWN retention and closure path; no native failure triggers a second ceremony.",
     "statements": [
       {
         "kind": "try",
-        "sha256": "4d3ee7e31620333f8251128364095f699b8edeef272ee9d9fb531c24b8667a10",
+        "sha256": "cfb3cfacd7e87830912b55d6cb2bbfc5852c2e5ee180ac77a2d9674613914494",
         "occurrences": 1
       },
       {
         "kind": "promise",
-        "sha256": "64bf800505690b8b38425719d7092bddc523dc8b4ae4a43d2ed0647c42276bea",
+        "sha256": "afbb00e9d00f1d566b131ac713c18461ce9c6fddde0dafbef369d05c104950a3",
         "occurrences": 1
       }
     ]

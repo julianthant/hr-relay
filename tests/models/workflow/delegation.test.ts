@@ -10,13 +10,14 @@ joinDelegationOutcomes,
 planDelegationFanOut,
 } from "../../../src/models/workflow/delegation.js";
 import type { ChildRunOutcome,WorkflowRef } from "../../../src/models/workflow/graph.js";
-import type { ItemId } from "../../../src/rules/identity/ids.js";
+import type { ItemId, StableRecordId } from "../../../src/rules/identity/ids.js";
 import {
 DelegationEdgeIdSchema,
 EidSchema,
 FailureIdSchema,
 ItemIdSchema,
 RunIdSchema,
+StableRecordIdSchema,
 WorkflowIdSchema,
 } from "../../../src/rules/identity/ids.js";
 
@@ -102,6 +103,28 @@ describe("delegation fan-out planning", () => {
       planMany(["10800001", "10800002"]).planFingerprint,
       planMany(["10800002", "10800001"]).planFingerprint,
     );
+  });
+
+  it("authenticates each member's source record set separately from canonical input", () => {
+    const a = `${"a".repeat(64)}#contact#1`, b = `${"a".repeat(64)}#contact#2`, c = `${"a".repeat(64)}#contact#3`;
+    const sources = (ids: readonly string[]) => [ids.map(id => StableRecordIdSchema.parse(id))];
+    const plan = (ids: readonly string[]) => planDelegationFanOut({
+      edgeId: EDGE, target: CHILD, cardinality: "many", join: "all-settled", policy: POLICY,
+      bound: [{ eid: "10800001" }], deriveChildItemId: byEid, sourceRecordIds: sources(ids),
+    });
+    const original = plan([a, b]);
+    assert.deepEqual(original.children[0]?.sourceRecordIds, [a, b]);
+    assert.equal(original.planFingerprint, plan([b, a]).planFingerprint);
+    assert.equal(original.children[0]?.canonicalInputFingerprint, plan([c]).children[0]?.canonicalInputFingerprint);
+    assert.notEqual(original.planFingerprint, plan([c]).planFingerprint);
+    assert.throws(() => assertDelegationReplayMatches(original, plan([a])), /replay does not match/);
+    assert.throws(() => plan([]), /delegation-source-membership-invalid/);
+    assert.throws(() => plan([a, a]), /delegation-source-membership-invalid/);
+    assert.throws(() => planDelegationFanOut({ edgeId: EDGE, target: CHILD, cardinality: "many", join: "all", policy: POLICY,
+      bound: [{ eid: "10800001" }], deriveChildItemId: byEid, sourceRecordIds: [] }), /delegation-source-membership-count-mismatch/);
+    const missing = new Array<readonly StableRecordId[]>(1);
+    assert.throws(() => planDelegationFanOut({ edgeId: EDGE, target: CHILD, cardinality: "many", join: "all", policy: POLICY,
+      bound: [{ eid: "10800001" }], deriveChildItemId: byEid, sourceRecordIds: missing }), /delegation-source-membership-invalid/);
   });
 
   it("makes the policy part of the plan fingerprint", () => {

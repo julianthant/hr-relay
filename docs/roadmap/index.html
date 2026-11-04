@@ -46,7 +46,7 @@ li div, .intro { overflow-wrap: anywhere; }
 </head>
 <body>
 <main>
-<header><h1>Relay roadmap</h1><p class="intro">Statuses: `done`, `now`, `next`, `later`. One line per key implementation.</p></header>
+<header><h1>Relay roadmap</h1><p class="intro">Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation; track operator preview and live sign-off separately.</p></header>
 <section>
 <h2>Foundation</h2>
 
@@ -56,87 +56,119 @@ li div, .intro { overflow-wrap: anywhere; }
 <span class="count later">later <strong>0</strong></span></div>
 <ul><li>
 <span class="pill done">done</span>
-<div><strong class="name">Approved mock dashboard frozen</strong><p class="description">parity screenshots define the visual contract.</p></div>
+<div><strong class="name">Approved mock dashboard frozen</strong><p class="description">keep parity screenshots as the visual contract.</p></div>
 </li>
 <li>
 <span class="pill done">done</span>
-<div><strong class="name">One combined codebase</strong><p class="description">frontend, backend and launch fixes share one codebase.</p></div>
+<div><strong class="name">One combined codebase</strong><p class="description">keep frontend, backend and launch fixes in one codebase.</p></div>
 </li>
 <li>
 <span class="pill done">done</span>
-<div><strong class="name">Renamed to Relay</strong><p class="description">app title, README, favicon and repository name.</p></div>
+<div><strong class="name">Renamed to Relay</strong><p class="description">use Relay in the app title, README, favicon and repository name.</p></div>
 </li>
 <li>
 <span class="pill done">done</span>
-<div><strong class="name">AI limited to ChatGPT</strong><p class="description">OCR and the dashboard assistant use the operator&#39;s subscription.</p></div>
+<div><strong class="name">AI limited to ChatGPT</strong><p class="description">use the operator&#39;s subscription for OCR and the dashboard assistant.</p></div>
 </li>
 <li>
 <span class="pill done">done</span>
-<div><strong class="name">Singleton app lock and held operations</strong><p class="description">one app owns the runtime and holds maintenance operations until they settle.</p></div>
+<div><strong class="name">Singleton app lock and held operations</strong><p class="description">keep one app in charge of the runtime and hold maintenance operations until they settle.</p></div>
 </li>
 <li>
 <span class="pill done">done</span>
-<div><strong class="name">Person Lookup and Separations rerun readiness</strong><p class="description">reruns use the current inputs and readiness checks.</p></div>
+<div><strong class="name">Person Lookup and Separations rerun readiness</strong><p class="description">use current inputs and readiness checks for reruns.</p></div>
 </li>
 <li>
 <span class="pill done">done</span>
-<div><strong class="name">Settings Test OCR</strong><p class="description">the OCR test runs from Preflight.</p></div>
+<div><strong class="name">Settings Test OCR</strong><p class="description">run the OCR test from Preflight.</p></div>
 </li>
 <li>
 <span class="pill done">done</span>
-<div><strong class="name">Automatic PR flow</strong><p class="description">publish history, run cloud CI on Ubuntu with macOS for macOS-only tests, get Cursor Bugbot review and auto-merge into staging.</p></div>
+<div><strong class="name">Automatic PR flow</strong><p class="description">run staging pull request CI on Ubuntu, reserve native platform proofs for operator-started full releases, get Cursor Bugbot review and auto-merge into staging.</p></div>
 </li>
 <li>
 <span class="pill next">next</span>
-<div><strong class="name">Functional spec</strong><p class="description">the charter owns product behaviour; reference docs own mechanisms.</p></div>
+<div><strong class="name">Functional spec</strong><p class="description">keep product behaviour in the charter and mechanisms in reference docs.</p></div>
 </li></ul>
 </section>
 <section>
 <h2>Dashboard ready</h2>
 <p class="intro">Complete these in order.</p>
-<div class="counts" aria-label="Status counts"><span class="count done">done <strong>0</strong></span>
-<span class="count now">now <strong>4</strong></span>
-<span class="count next">next <strong>6</strong></span>
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>11</strong></span>
+<span class="count now">now <strong>3</strong></span>
+<span class="count next">next <strong>4</strong></span>
 <span class="count later">later <strong>0</strong></span></div>
 <ul><li>
-<span class="pill now">now</span>
-<div><strong class="name">Portable storage core</strong><p class="description">one database and settings per person, simpler safety checks on Mac, automatic backups when the app quits (the last three are kept) and automatic self-repair after a crash or corruption, with no manual backup or restore and no folder relocation.</p></div>
+<span class="pill done">done</span>
+<div><strong class="name">Portable storage core</strong><p class="description">keep one database and settings per person, simplify Mac safety checks, retain the last three quit-time backups and repair crash or corruption damage automatically without relocating folders.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Sign-up and accounts</strong><p class="description">require Touch ID and a Duo security key, both added in Duo&#39;s device management at duo.ucsd.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Keep credentials on logout. Put Delete account in Settings &gt; General. Tell an empty machine to sign up first. Back up the old store, then start clean.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Workflow logins</strong><p class="description">use fast-duo for every workflow login.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Runs</strong><p class="description">pause and resume at completed steps, rerun failed items from saved results, confirm quitting and park interrupted submits as unknown.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Write safety</strong><p class="description">capture browser steps and submit boundaries, retain dry-run evidence, show UCPath transaction findings for operator review and keep Kuali reload verification.</p></div>
 </li>
 <li>
 <span class="pill next">next</span>
-<div><strong class="name">Sign-up and accounts</strong><p class="description">require Touch ID and a Duo security key, both added in Duo&#39;s device management at duo.ucsd.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Logout keeps credentials. Put Delete account in Settings &gt; General. An empty machine says to sign up first. Back up the old store, then start clean.</p></div>
+<div><strong class="name">OCR and Emergency Contact</strong><p class="description">dry-run preview is proven; complete UCPath Save and live selector support.</p></div>
 </li>
 <li>
-<span class="pill now">now</span>
-<div><strong class="name">Workflow logins</strong><p class="description">use fast-duo for every workflow login and remove duo-autopilot before the dry runs.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Runs</strong><p class="description">add Pause and Resume and reruns of failed items only. Quitting asks first and pauses every run at its last completed step; a submit already in progress finishes first. After a crash or force-quit, interrupted runs show as failed with a rerun from the last completed step, and items caught mid-submit are parked as unknown. Resume and reruns reuse the saved results of completed steps. App updates install when the app quits or is idle, never under running work.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">Write safety</strong><p class="description">take screenshots at every browser step and before and after submit. Dry runs fill the whole workflow with sample values where needed, without submitting. UCPath shows transaction-list findings for the operator to decide. Kuali keeps its reload check.</p></div>
-</li>
-<li>
-<span class="pill next">next</span>
-<div><strong class="name">OCR and Emergency Contact on the new core</strong><p class="description">review OCR, save corrections as revisions and feed approved snapshots into Emergency Contact.</p></div>
-</li>
-<li>
-<span class="pill now">now</span>
+<span class="pill done">done</span>
 <div><strong class="name">Dashboard cleanups</strong><p class="description">make Explorer read-only, have the assistant always ask before acting and propose workflow starts, and save appearance preferences per person.</p></div>
 </li>
 <li>
+<span class="pill done">done</span>
+<div><strong class="name">Spreadsheet library</strong><p class="description">retain named versions, bind reference plans to approved snapshots, authenticate SharePoint Sync and publish worksheet archives.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">CRM Document Download</strong><p class="description">package verified PDFs by worksheet with retained reference choices.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">I-9 Check and Lookup</strong><p class="description">start reviewed PDF batches, delegate person checks and publish retention results.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Onboarding</strong><p class="description">start selected roster rows, review hire changes and verify I-9, UCPath and master-workbook writes.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">OnBase import</strong><p class="description">import PDFs through the child workflow with durable exclusive sessions.</p></div>
+</li>
+<li>
 <span class="pill now">now</span>
-<div><strong class="name">New workflows</strong><p class="description">CRM Document Download, I-9 Check, I-9 Lookup, SharePoint Download and Onboarding, built in parallel; OnBase Emergency Contact after the storage core. Live sign-off follows the operator preview.</p></div>
+<div><strong class="name">Duo enrollment</strong><p class="description">verify sign-up capture and cancellation at duo.ucsd.edu.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">SharePoint Download</strong><p class="description">build the document download workflow.</p></div>
 </li>
 <li>
 <span class="pill next">next</span>
 <div><strong class="name">Operator preview</strong><p class="description">complete the full test pass and verify automatic backup and self-repair before preview.</p></div>
 </li>
 <li>
+<span class="pill now">now</span>
+<div><strong class="name">Windows support</strong><p class="description">run the local web app through `relay.cmd` on a restricted Windows laptop without admin rights.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Encryption at rest</strong><p class="description">protect Relay&#39;s sensitive data on an unencrypted Windows disk.</p></div>
+</li>
+<li>
 <span class="pill next">next</span>
-<div><strong class="name">Workflow sign-off</strong><p class="description">Person Lookup live read and sign-off, then Separations dry run and sign-off, then OCR to Emergency Contact dry run and sign-off, then real runs.</p></div>
+<div><strong class="name">Workflow sign-off</strong><p class="description">Person Lookup live read and sign-off, then Separations dry run and sign-off, then OCR to Emergency Contact sign-off after UCPath Save and live selector support, then real runs.</p></div>
 </li></ul>
 </section>
 <section>
@@ -145,22 +177,14 @@ li div, .intro { overflow-wrap: anywhere; }
 <div class="counts" aria-label="Status counts"><span class="count done">done <strong>0</strong></span>
 <span class="count now">now <strong>0</strong></span>
 <span class="count next">next <strong>0</strong></span>
-<span class="count later">later <strong>6</strong></span></div>
+<span class="count later">later <strong>4</strong></span></div>
 <ul><li>
 <span class="pill later">later</span>
-<div><strong class="name">Shared-laptop access</strong><p class="description">add a login screen and profile menu.</p></div>
+<div><strong class="name">Desktop app</strong><p class="description">after the local web app, package a per-user Windows installer and signed macOS build; install updates only on quit or while idle.</p></div>
 </li>
 <li>
 <span class="pill later">later</span>
-<div><strong class="name">Windows support</strong><p class="description">portable storage and required Windows checks.</p></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">Desktop app</strong><p class="description">package for Mac and Windows with updates.</p></div>
-</li>
-<li>
-<span class="pill later">later</span>
-<div><strong class="name">Remaining workflows, one at a time</strong><p class="description">Oath Signature, Oath Upload, Work-Study, Kronos Pay Rule, Old Kronos Reports and Background Check.</p></div>
+<div><strong class="name">Remaining workflows, one at a time</strong><p class="description">implement Oath Signature, Oath Upload, Work-Study, Kronos Pay Rule, Old Kronos Reports and Background Check.</p></div>
 </li>
 <li>
 <span class="pill later">later</span>

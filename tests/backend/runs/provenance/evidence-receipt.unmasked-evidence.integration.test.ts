@@ -1,3 +1,4 @@
+import { runSettlementColumns } from "../../../../src/backend/storage/sqlite/run-settlement-row.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -11,7 +12,6 @@ import { createRunTerminalEvidenceResult,deriveTerminalFailureDigest,RunResultRe
 import { projectReceiptForOperator } from "../../../../src/models/trust/evidence.js";
 import { FailureRecordSchema } from "../../../../src/models/trust/failure.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { CONFIG_SNAPSHOT } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { kualiReceiptEvidence } from "../../../support/fixtures/receipt-run-fixtures.js";
 import { failureRecordOf } from "../../../support/helpers/backend/dashboard-harness.js";
@@ -48,8 +48,11 @@ describe("durable receipt boundaries", () => {
         search.installTracking();
         const row = runRecordColumns(run);
         raw.prepare(`INSERT INTO runs(${Object.keys(row).join(",")}) VALUES(${Object.keys(row).map(()=>"?").join(",")})`).run(...Object.values(row));
-        raw.prepare("INSERT INTO run_results(run_id,workflow,attempt,result_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
-          .run(result.runId,result.workflowId,result.attempt,result.resultDigest,canonicalJsonStringify(result),result.createdAt);
+        {
+          const settlement = runSettlementColumns(run, result);
+          raw.prepare(`INSERT INTO run_results (${Object.keys(settlement).join(",")}) VALUES (${Object.keys(settlement).map(() => "?").join(",")})`)
+            .run(...Object.values(settlement));
+        }
         search.rebuild({ restart: true, limit: 500 }, generation, run.updatedAt);
       } finally { raw.close(); }
       database = AuthorityDatabase.open(admission, options, clock);

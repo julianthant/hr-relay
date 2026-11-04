@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import type { BrowserContext } from "playwright";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
+import type { BrowserContext, Page } from "playwright";
+import { z } from "zod";
 import { describe, it } from "vitest";
 import { provisionWorkflowDuo } from "../../../../src/backend/runtime/browser/workflow-duo-provider.js";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
@@ -11,6 +12,40 @@ import { fixtureDuoSigningSource, fixtureWorkflowWorker } from "../../../support
 import { AuthoritySourceClosureUnprovedError, hasUnprovedSourceClosure } from "../../../../src/backend/storage/source-closure.js";
 
 const config = resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date("2026-11-01T00:00:00Z"))).config;
+
+for (const failImport of [false, true]) it(`hydrates the protected platform key before installing the workflow broker; import failure=${String(failImport)}`, async () => {
+  const broker = fixtureWorkflowWorker(), page = {} as Page, calls: string[] = [];
+  const key = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const material = { credentialId: "-_8AAQ", rpId: "duosecurity.com" as const, transport: "internal" as const,
+    privateKeyPkcs8: key.privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"), isResidentCredential: true,
+    userHandle: "AQID", signCount: 42 };
+  const source = fixtureDuoSigningSource({ platformCredentials: () => [material] });
+  broker.owner.install = (...args) => { assert.deepEqual(args, []); calls.push("install"); };
+  const context = { serviceWorkers: () => [broker.worker], pages: () => [page], async newCDPSession(target: Page) {
+    assert.equal(target, page);
+    return { async send(method: string, parameters?: unknown) {
+      calls.push(method);
+      if (method === "WebAuthn.addVirtualAuthenticator") return { authenticatorId: "synthetic-platform" };
+      if (method === "WebAuthn.addCredential") {
+        const { credential } = z.object({ credential: z.object({ credentialId: z.string(), privateKey: z.string(), signCount: z.number() }) }).parse(parameters);
+        assert.ok(credential.privateKey === material.privateKeyPkcs8);
+        assert.equal(credential.credentialId, "+/8AAQ=="); assert.equal(credential.signCount, 42);
+        if (failImport) throw new Error("synthetic platform import refused");
+      }
+      return {};
+    } };
+  } } as unknown as BrowserContext;
+  const opening = provisionWorkflowDuo({ context, config, source, accountName: "alex@ucsd.edu", assertOwner() {},
+    assertSigningScope() { throw new Error("no signing lease during hydration"); } });
+  if (failImport) {
+    await assert.rejects(opening, /synthetic platform import refused/u);
+    assert.equal(broker.installed.length, 0); assert.equal(calls.includes("install"), false);
+  } else {
+    const owner = await opening;
+    try { assert.deepEqual(calls, ["WebAuthn.enable", "WebAuthn.addVirtualAuthenticator", "WebAuthn.setResponseOverrideBits", "WebAuthn.addCredential", "install"]); }
+    finally { await owner.stop(); }
+  }
+});
 function retainsSourceFailure(error: unknown, ...expected: Error[]): boolean {
   const pending: unknown[] = [error], seen = new Set<unknown>();
   while (pending.length > 0) {

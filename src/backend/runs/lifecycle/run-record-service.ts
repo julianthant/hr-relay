@@ -33,7 +33,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { authenticateParkedWriteRecheck,authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
 import { deriveWriteAuthorityReason } from "../../../rules/write-safety/write-safety.js";
-import { descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { authorizeWorkflowDelegationRefresh, descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { ChildRunBatchContext } from "../../runtime/execution/run-executor.js";
 import { RuntimeLifetimeLock } from "../../storage/admission/lifetime-lock.js";
@@ -79,8 +79,10 @@ const TERMINAL_SELF_EDGE_REFUSAL = "terminal has no self-edge; a settled outcome
 export const CreateRunRequestSchema = CanonicalCreateRunRequestSchema;
 export type CreateRunRequest = z.input<typeof CreateRunRequestSchema>;
 
+export type RelatedRunChange = Readonly<{ runId: RunRecord["envelope"]["runId"]; before: number; after: number }>;
+
 export type RunMutationOutcome =
-  | Readonly<{ state: "applied" | "applied-already"; run: RunRecord }>
+  | Readonly<{ state: "applied" | "applied-already"; run: RunRecord; relatedRunChanges?: readonly RelatedRunChange[] }>
   | Readonly<{ state: "applied-already"; tombstone: DeletedRunRecord; appliedVersion: number }>
   | Readonly<{ state: "refused"; refusal: RunRecordRefusal }>;
 
@@ -1065,7 +1067,7 @@ export class RunRecordService {
       if (repositories.workerControls.resetForRun(run.envelope.runId) !== undefined) return refused({ reason: "policy-refused" });
       if (run.envelope.parent !== undefined && restart) return refused({ reason: "policy-refused" });
       assertOcrChildRetryCurrent(repositories, this, run);
-      const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, request);
+      const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, { ...request, refreshAuthorization: this.parentRefreshAuthorization(repositories, run) });
       if (delegation !== undefined && (repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
         || request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint)) return refused({ reason: "runtime-stale" });
       if (descriptor.id !== run.envelope.workflow || descriptor.version !== run.envelope.descriptorVersion
@@ -1102,6 +1104,7 @@ export class RunRecordService {
       this.dependencies.admitQueuedRun?.(next);
       repositories.runs.enqueue(next);
       this.recordJournal(repositories, journal.command, journalRun(next));
+      const relatedRunChanges: RelatedRunChange[] = [];
       if (delegation !== undefined) {
         const retryRequest = DelegationRetryRequestSchema.parse({ commandId: lifecycleCommandId("delegation-retry", {
           dependencyId: delegation.child.dependency.dependencyId, previousRunId: run.envelope.runId }),
@@ -1114,12 +1117,13 @@ export class RunRecordService {
           planFingerprint: delegation.group.manifest.manifestFingerprint, policy: delegation.group.manifest.policy });
         const retryJournal = this.inspectJournal(repositories, "delegation-retry", retryRequest, { kind: "version", expectedVersion: retryRequest.expectedVersion });
         if (retryJournal.state !== "new") throw new Error("delegation-retry-replay-divergent");
-        repositories.dependencies.activateRetry(retryRequest, now);
+        repositories.dependencies.activateRetry(retryRequest, now, delegation.refreshAuthorization);
         this.recordJournal(repositories, retryJournal.command, journalRun(next));
-        this.holdParentAfterChildRetry(delegation, retryRequest);
+        const change = this.holdParentAfterChildRetry(delegation, retryRequest);
+        if (change !== undefined) relatedRunChanges.push(change);
       }
       this.dependencies.publishQueued(next, publication);
-      return { state: "applied", run: next };
+      return { state: "applied", run: next, relatedRunChanges };
     });
     return outcome;
   }
@@ -1152,7 +1156,7 @@ export class RunRecordService {
       if (run.envelope.parent !== undefined && run.lifecycle.outcome === "interrupted")
         throw new RunContinuationRefusedError("run-recovery-interrupted-child-terminal-proof-unavailable");
       assertOcrChildRetryCurrent(repositories, this, run);
-      const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, request);
+      const delegation = run.envelope.parent === undefined ? undefined : prepareDelegationRetry(repositories, run, { ...request, refreshAuthorization: this.parentRefreshAuthorization(repositories, run) });
       if (delegation !== undefined && (request.continuationOwner === undefined
         && repositories.runtimeConfig.get()?.configSnapshotId !== run.envelope.configSnapshotId
         || !runSettingsAvailable(repositories, run.envelope)
@@ -1193,6 +1197,7 @@ export class RunRecordService {
       this.dependencies.admitQueuedRun?.(next);
       repositories.runs.enqueue(next);
       this.recordJournal(repositories, journal.command, journalRun(next));
+      const relatedRunChanges: RelatedRunChange[] = [];
       if (delegation !== undefined) {
         const retryRequest = DelegationRetryRequestSchema.parse({
           ...(request.continuationOwner === undefined ? {} : { continuationOwner: request.continuationOwner }), commandId: lifecycleCommandId("delegation-retry", {
@@ -1206,27 +1211,41 @@ export class RunRecordService {
           planFingerprint: delegation.group.manifest.manifestFingerprint, policy: delegation.group.manifest.policy });
         const retryJournal = this.inspectJournal(repositories, "delegation-retry", retryRequest, { kind: "version", expectedVersion: retryRequest.expectedVersion });
         if (retryJournal.state !== "new") throw new Error("delegation-retry-replay-divergent");
-        repositories.dependencies.activateRetry(retryRequest, now);
+        repositories.dependencies.activateRetry(retryRequest, now, delegation.refreshAuthorization);
         this.recordJournal(repositories, retryJournal.command, journalRun(next));
-        this.holdParentAfterChildRetry(delegation, retryRequest);
+        const change = this.holdParentAfterChildRetry(delegation, retryRequest);
+        if (change !== undefined) relatedRunChanges.push(change);
       }
       this.dependencies.publishQueued(next, publication);
-      return { state: "applied", run: next };
+      return { state: "applied", run: next, relatedRunChanges };
     });
     return outcome;
   }
 
+  private parentRefreshAuthorization(repositories: AuthorityRepositories, child: RunRecord) {
+    const parent = child.envelope.parent === undefined ? undefined : repositories.runs.get(child.envelope.parent.runId);
+    if (parent === undefined || !(parent.lifecycle.state === "parked-gate" || parent.lifecycle.state === "terminal" && parent.lifecycle.outcome === "done"
+      || parent.lifecycle.state === "queued" && parent.delegationRefresh !== undefined)) return;
+    const descriptor = this.dependencies.resolveDescriptor?.(parent.envelope.workflow);
+    return descriptor === undefined ? undefined : authorizeWorkflowDelegationRefresh(descriptor, parent);
+  }
+
   private holdParentAfterChildRetry(delegation: ReturnType<typeof prepareDelegationRetry>, retry: z.infer<typeof DelegationRetryRequestSchema>) {
-    if (delegation.group.manifest.join === "none" || delegation.group.manifest.policy.afterChildRetry !== "manual-parent-resume") return;
+    const authorization = delegation.refreshAuthorization;
+    if (authorization !== undefined) this.dependencies.database.withAuthorityTransaction(repositories =>
+      repositories.dependencies.refreshAfterRetry(retry, authorization, this.dependencies.clock.now().toISOString()));
     const ownerId = retry.continuationOwner?.runId ?? delegation.parent.envelope.runId;
     const owner = this.read(ownerId);
     if (owner.state !== "present") throw new RunContinuationRefusedError("delegation-parent-unavailable");
-    if (owner.run.lifecycle.state === "terminal") return;
-    requireLifecycleApplied(this.pause({ commandId: lifecycleCommandId("delegation-manual-pause", retry.commandId),
+    if (delegation.group.manifest.join !== "none" && delegation.group.manifest.policy.afterChildRetry === "manual-parent-resume" && owner.run.lifecycle.state !== "terminal") requireLifecycleApplied(this.pause({ commandId: lifecycleCommandId("delegation-manual-pause", retry.commandId),
       runId: ownerId, expectedVersion: owner.run.version }));
+    const after = this.read(ownerId);
+    if (after.state !== "present") throw new RunContinuationRefusedError("delegation-parent-unavailable");
+    const before = ownerId === delegation.parent.envelope.runId ? delegation.parent.version : owner.run.version;
+    return after.run.version === before ? undefined : { runId: ownerId, before, after: after.run.version };
   }
 
-  continueDelegations(parent: RunRecord, sourceCommandId: string): readonly RunRecord[] {
+  continueDelegations(parent: RunRecord, sourceCommandId: string, relatedRunChanges: RelatedRunChange[] = []): readonly RunRecord[] {
     return this.dependencies.database.withAuthorityTransaction(repositories => {
       const replacements: RunRecord[] = [];
       for (const { group } of continuationDelegationGroups(repositories, parent.envelope)) {
@@ -1246,8 +1265,9 @@ export class RunRecordService {
           })), actorId: "local-operator" });
           if (outcome.state === "refused") throw new RunContinuationRefusedError(`run-continuation-child-${outcome.refusal.reason}`);
           const replacement = requireLifecycleApplied(outcome);
+          if ((outcome.state === "applied" || outcome.state === "applied-already") && "run" in outcome) relatedRunChanges.push(...outcome.relatedRunChanges ?? []);
           replacements.push(replacement);
-          replacements.push(...this.continueDelegations(replacement, sourceCommandId));
+          replacements.push(...this.continueDelegations(replacement, sourceCommandId, relatedRunChanges));
         }
       }
       return replacements;
@@ -1498,18 +1518,16 @@ export class RunRecordService {
     const existence = this.read(journal.result.runId);
     if (existence.state !== "present") return this.replayRun(journal.result);
     const { run } = existence;
-    const authorization = run.completion;
-    const failureCount = repositories.failures.listByRun(journal.result.runId).length;
-    const result = repositories.runResults.get(journal.result.runId);
+    const settlement = repositories.runResults.getSettlement(journal.result.runId,journal.result.appliedVersion);
+    const authorization = settlement?.run.completion;
     if (journal.result.appliedVersion !== journal.command.fence.expectedVersion + 1
-      || run.version < journal.result.appliedVersion
-      || run.lifecycle.state !== "terminal"
-      || authorization === undefined
+      || run.version < journal.result.appliedVersion || settlement === undefined
+      || settlement.run.lifecycle.state !== "terminal" || authorization === undefined
       || authorization.kind !== expectedKind
       || authorization.expectedVersion !== journal.command.fence.expectedVersion
       || authorization.claim.workerId !== journal.command.fence.workerId
       || authorization.claim.claimGeneration !== journal.command.fence.claimGeneration
-      || (expectedKind === "failed" ? failureCount !== 1 || result === undefined : failureCount !== 0 || result === undefined)) {
+      || expectedKind === "failed" && (authorization.kind !== "failed" || repositories.failures.get(authorization.failureId) === undefined)) {
       throw new Error(`terminalize replay for ${journal.result.runId} does not match its composite authority`);
     }
     return { state: "applied-already", run };

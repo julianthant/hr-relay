@@ -1,13 +1,14 @@
+import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
+import { runClaim } from "../../../../src/models/run/record.js";
+import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
+import { createConfirmedActionPublisher } from "../../../../src/backend/logs/confirmed-action-publisher.js";
 import { createApprovedOcrRecordReader } from "../../../../src/backend/runs/lifecycle/approved-ocr-records.js";
-import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
-import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
-import { emergencyContactMemberWorkflow } from "../../../../src/workflows/emergency-contact-member/workflow.js";
 import { EmergencyContactInputSchema } from "../../../../src/models/workflows/emergency-contact/input.js";
 import { createOcrApprovedSnapshotAdapter } from "../../../../src/backend/processing/providers/ocr-approved-snapshot-adapter.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { ocrModule, CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { ocrModule, CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY, workflowModuleOf, childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createOcrCheckpointPublication } from "../../../../src/backend/runs/lifecycle/ocr-checkpoint-publication.js";
 import { createOcrSourceService } from "../../../../src/backend/runs/commands/ocr-source-service.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
@@ -30,6 +31,9 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { retainedOcrModule, retainedOcrStore, retainedOcrCheckpointPublication } from "../../fixtures/ocr/retained-review-producer.js";
 import { ocrWorkflowStore } from "../../../../src/workflows/ocr/task-registry.js";
+import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
+import { testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
+import type { SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import type { WorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { ocrPageStore } from "../../../../src/workflows/ocr-page/task-registry.js";
 import { readManualOcrReadingTask } from "../../../../src/workflows/ocr-page/tasks/read-manual-reading.js";
@@ -38,15 +42,25 @@ import { I9LookupError, type I9LookupInput } from "../../../../src/models/system
 import { sessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { i9PageSubmission } from "../../fixtures/i9-check-start.js";
 
+interface ReviewedPageFacts {
+  readonly employeeName: string;
+  readonly contactName: string;
+  readonly correctedContactName: string;
+}
+
 export function createOcrReviewWorld() {
   const world = createRunExecutorTestWorld();
   return {
     cleanup: world.cleanup,
     async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule;
       failManualPageOnce?: number; stopAfterPageFailure?: boolean;
-      signerLookup?: Readonly<{ firstNames: readonly string[]; failOnce: string }>;
+      signerLookup?: Readonly<{ firstNames: readonly string[]; failOnce?: string }>;
+      reviewedPages?: readonly ReviewedPageFacts[]; operatorEvidence?: boolean;
+      sessions?: SessionFactoryHarness; screenshotCapture?: NonNullable<Parameters<typeof world.executorHarness>[0]>["screenshotCapture"];
+      member?: WorkflowModule;
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
+      if (options.reviewedPages !== undefined) assert.equal(options.reviewedPages.length, options.pageCount);
       const rendered: { value?: z.output<typeof ExtractPdfPagesOutputSchema> } = {};
       const render = defineTask(ExtractPdfPages, { sessions: [], async run({ ctx }) {
         assert.ok(rendered.value);
@@ -57,13 +71,13 @@ export function createOcrReviewWorld() {
         return rendered.value;
       } });
       const ocrRoot = options.retainedProducer === true ? retainedOcrModule : ocrModule;
-      const coordinator = options.coordinator === true ? compileWorkflow(emergencyContactWorkflow) : undefined;
-      const member = options.coordinator === true ? compileWorkflow(emergencyContactMemberWorkflow) : undefined;
+      const coordinator = options.coordinator === true ? workflowModuleOf("emergency-contact") : undefined;
+      const member = options.member ?? (options.coordinator === true ? childWorkflowModuleOf("emergency-contact", "emergency-contact-member") : undefined);
       const root = options.parent ?? coordinator ?? ocrRoot;
       let failedPage = false;
       let failedSigner = false;
       const signerReads: string[] = [];
-      const sessions = options.signerLookup === undefined ? undefined : sessionFactoryHarness({ i9: () => ({
+      const sessions = options.signerLookup === undefined ? options.sessions : sessionFactoryHarness({ i9: () => ({
         ...createDeterministicI9Driver({ lookup: { i9Status: "not-found", signerName: "" }, now: READ_AT }),
         async readSection2Signer(input: I9LookupInput) {
           signerReads.push(input.firstName);
@@ -89,7 +103,10 @@ export function createOcrReviewWorld() {
       const tasks = entries.flatMap(store => Object.values(store.tasks));
       const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))],
         tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
-      const harness = await world.executorHarness({ descriptor: root.descriptor, stores, ...(sessions === undefined ? {} : { sessions }) });
+      const harness = await world.executorHarness({ descriptor: root.descriptor, stores,
+        ...(sessions === undefined ? {} : { sessions }),
+        ...(options.screenshotCapture === undefined ? {} : { screenshotCapture: options.screenshotCapture }),
+      });
       options.onHarness?.(harness);
       const { database, path, clock } = harness.authority;
       const workbooks = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: unexpectedWorkbookSync });
@@ -105,12 +122,20 @@ export function createOcrReviewWorld() {
       const artifactReader = createServerVerifiedArtifactReader({ admission }); await artifactReader.ready;
       const resolve = (id: string) => id === root.descriptor.id ? root.descriptor : id === "ocr" ? ocrRoot.descriptor : id === coordinator?.descriptor.id ? coordinator.descriptor : id === member?.descriptor.id ? member.descriptor
         : (CHILD_ONLY_WORKFLOW_MODULES.find(module => module.descriptor.id === id) ?? SERVER_REGISTRY[id])?.descriptor;
-      const canonical = canonicalChildExecution({ ...harness.deps, artifacts }, database, path, resolve,
+      const writeSequencer = options.dryRun === true || options.member !== undefined ? createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: database,
+        sessions: harness.manager, emitter: harness.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: harness.scheduler,
+        taskDeadlineMs: 60_000, operator: "local-operator", log: harness.deps.log }) : undefined;
+      const notes = options.operatorEvidence === true ? createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }) : undefined;
+      const canonical = canonicalChildExecution({ ...harness.deps, artifacts, ...(writeSequencer === undefined ? {} : { writeSequencer }) }, database, path, resolve,
         options.retainedProducer === true ? retainedOcrCheckpointPublication : createOcrCheckpointPublication,
-        { workbooks, resources: (reader, run) => ({ providers: { configSnapshots: database.authority.configSnapshots,
+        { workbooks, resources: (reader, run) => { const claim = runClaim(run); assert.ok(claim); const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
+          const needsPlanEvidence = notes !== undefined && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction");
+          return { ...(!needsPlanEvidence ? {} : { taskNotes: notes,
+          confirmedActionPublisher: createConfirmedActionPublisher({ workerId: claim.workerId, streamId: randomUUID(), clock, capacity: 256,
+            append: event => { const current = database.authority.runs.get(event.action.runId); assert.ok(current); notes.emitConfirmedAction(event, current); } }) }), providers: { configSnapshots: database.authority.configSnapshots,
           idFactory: { next: () => randomUUID() }, adapters: { "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({clock,
             reader: createApprovedOcrRecordReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime()}),
-          }) } } }) });
+          }) } } }; } });
       const sources = createOcrSourceService({ database, reader: canonical.lifecycle, clock, artifacts, artifactReader,
         assertCurrent: () => admission.assertProfileRuntime() });
       const upload = await sources.upload({ actorId: "local-operator", fileName: "source.pdf", mediaType: "application/pdf",
@@ -123,15 +148,21 @@ export function createOcrReviewWorld() {
       if (options.signerLookup !== undefined) {
         assert.equal(options.record, true);
         assert.equal(options.signerLookup.firstNames.length, manifest.pages.length);
-        assert.ok(options.signerLookup.firstNames.includes(options.signerLookup.failOnce));
+        if (options.signerLookup.failOnce !== undefined) assert.ok(options.signerLookup.firstNames.includes(options.signerLookup.failOnce));
       }
-      const readings = ocrPageInputs(manifest, READING_ID, formType).map(page => {
-        const original = options.signerLookup === undefined ? submittedPage(page, "Example, Avery", options.record === true ? "emergency-contact" : "blank")
-          : i9PageSubmission(page, { eid: "10800000", firstName: options.signerLookup.firstNames[page.sourcePage - 1], kind: "i9-section1" });
-        const valid = { ...original, source: { kind: "operator" as const, actorId } };
+      const readings = ocrPageInputs(manifest, READING_ID, formType).map((page, index) => {
+        const facts = options.reviewedPages?.[index];
+        const original = options.signerLookup === undefined ? submittedPage(page, facts?.employeeName ?? "Example, Avery", options.record === true ? "emergency-contact" : "blank")
+          : i9PageSubmission(page, { eid: "10800000", firstName: options.signerLookup.firstNames[index], kind: "i9-section1" });
+        const valid = { ...original, source: { kind: "operator" as const, actorId },
+          record: original.record === null ? null : { answers: { ...original.record.answers,
+            ...(facts === undefined ? {} : { "contact.name": { state: "read" as const, raw: facts.contactName, confidence: 0.9 } }) } } };
+        const corrected = { ...valid, record: valid.record === null ? null : { answers: { ...valid.record.answers,
+          ...(facts === undefined ? {} : { "contact.name": { state: "read" as const, raw: facts.correctedContactName, confidence: 1 } }) } } };
         return { reading: bindManualOcrPageReading(page, actorId, { ...valid,
-          record: valid.record === null || options.signerLookup !== undefined ? valid.record : { answers: { ...valid.record.answers, "employee.name": { state: "absent", reason: "blank" } } } }),
-          corrected: bindManualOcrPageReading(page, actorId, valid).extraction.record };
+          record: valid.record === null ? null : { answers: { ...valid.record.answers,
+            ...(facts === undefined && options.signerLookup === undefined ? { "employee.name": { state: "absent" as const, reason: "blank" as const } } : {}) } } }),
+          corrected: bindManualOcrPageReading(page, actorId, corrected).extraction.record };
       });
       const first = readings[0]; assert.ok(first);
       const { reading, corrected } = first;
@@ -167,10 +198,10 @@ export function createOcrReviewWorld() {
       }
       const command = (type: "correct-ocr-record" | "discard-ocr-record" | "restore-ocr-record", expectedRevision: number, recordIndex = 0) => {
         const review = database.authority.ocrReviews.latest(run.envelope.runId); assert.ok(review);
-        const record = review.records[recordIndex]; assert.ok(record && corrected);
+        const record = review.records[recordIndex], correctedRecord = readings[recordIndex]?.corrected; assert.ok(record && correctedRecord);
         return { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "dashboard",
           family: "ocr-review" as const, type, target: { runId: run.envelope.runId, expectedRevision },
-          payload: type === "correct-ocr-record" ? { recordId: record.recordId, fields: corrected, assertedEid: "10800000" } : { recordId: record.recordId } };
+          payload: type === "correct-ocr-record" ? { recordId: record.recordId, fields: correctedRecord, assertedEid: "10800000" } : { recordId: record.recordId } };
       };
       const approval = (selectedRecordIds?: readonly string[]) => {
         const review = database.authority.ocrReviews.latest(run.envelope.runId); assert.ok(review);
@@ -187,7 +218,7 @@ export function createOcrReviewWorld() {
           } }, ocrApproval: { expectedRevision: review.revision, reviewDigest: ocrReviewDigest(review), selectedRecordIds: snapshot.selectedRecordIds } } };
       };
       return { harness, database, path, clock, admission, artifacts, artifactReader, sources, canonical, run, parentRun, result, approval,
-        reading, corrected, pageBytes, command, root, resolve, signerReads, readResult: () => {
+        reading, corrected, pageBytes, command, root, resolve, stores, signerReads, readResult: () => {
           const checkpoint = database.authority.runCheckpoints.listByAttempt(run.envelope.workflow, run.envelope.itemId,
             "read-result", run.envelope.attempt).at(-1); assert.ok(checkpoint);
           return OcrResultSchema.parse(checkpoint.output.value);

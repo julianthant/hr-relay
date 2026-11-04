@@ -1,3 +1,4 @@
+import { runSettlementContext } from "./run-settlement-row.js";
 import { confirmationPublicationFromRow } from "../../../models/events/confirmed-operation.js";
 import { WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
 import { validateNotificationPublicationArray } from "./notification-publications.js";
@@ -51,7 +52,7 @@ function valueAt(record: unknown, path: string): string | number | null {
   return z.union([z.string(),z.number()]).parse(value);
 }
 export function isNativeOrdinaryTable(table: AuthorityTableName): table is NativeOrdinaryTable { return Object.hasOwn(fields,table); }
-export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: unknown): unknown {
+export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: unknown, schemaVersion = 20): unknown {
   const row = RowSchema.parse(input);
   let record: unknown;
   if (table === "run_results") {
@@ -63,7 +64,22 @@ export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: u
   }
   const object = z.record(z.string(),z.unknown()).parse(record);
   const extras: Record<string,string | number | null> = {};
-  if (table === "run_checkpoints") {
+  if (schemaVersion >= 20 && table === "run_results") {
+    const terminal = runSettlementContext(row);
+    if (terminal.lifecycle.state !== "terminal"
+      || ([["runId","runId"],["workflow","workflowId"],["attempt","attempt"],["descriptorVersion","descriptorVersion"],
+        ["contractFingerprint","contractFingerprint"],["configSnapshotId","configSnapshotId"],["configFingerprint","configFingerprint"]] as const).some(
+        ([field,key]) => Reflect.get(terminal.envelope,field) !== object[key])) throw new Error("run-settlement-result-mismatch");
+    if (terminal.completion === undefined) {
+      const evidence = z.object({ value: z.object({ kind: z.literal("lifecycle-evidence"), appliedVersion: z.number().int().positive() }) }).parse(object.result).value;
+      if (evidence.appliedVersion !== terminal.version) throw new Error("run-settlement-context-mismatch");
+    }
+    extras.id = `${String(object.runId)}:${terminal.version}`;
+    extras.settlement_version = terminal.version;
+    extras.terminal_run_json = z.string().parse(row.terminal_run_json);
+  } else if (schemaVersion >= 20 && table === "run_receipts") {
+    extras.settlement_version = z.number().int().positive().parse(row.settlement_version);
+  } else if (table === "run_checkpoints") {
     extras.id = checkpointRecordKey(RunCheckpointRecordSchema.parse(record));
     extras.output_digest = deriveCheckpointOutputDigest(object.output);
   } else if (table === "gate_results") extras.id = `${String(object.runId)}:${String(object.gateId)}`;

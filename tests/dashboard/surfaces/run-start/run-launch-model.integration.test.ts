@@ -1,4 +1,5 @@
 import { ItemAttemptHistoryResponseSchema } from "../../../../src/models/dashboard/item-attempt-history.js";
+import { queueParentFixture } from "../../../support/helpers/dashboard/queue-parent-fixture.js";
 import { requireLifecycleApplied } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
@@ -57,7 +58,7 @@ describe("Start enqueue verification through the actual command and day transpor
     ["another config", (row: QueueSurfaceWire) => ({ ...row, configFingerprint: "f".repeat(64) })],
     ["another descriptor", (row: QueueSurfaceWire) => ({ ...row, descriptorHash: "f".repeat(64) })],
     ["another rehearsal flag", (row: QueueSurfaceWire) => ({ ...row, dryRun: false })],
-    ["unrelated lineage", (row: QueueSurfaceWire) => ({ ...row, lineage: { state: "child", parentRunId: OTHER_RUN }, containment: "linked" })],
+    ["unrelated parent", (row: QueueSurfaceWire) => ({ ...row, parent: queueParentFixture(OTHER_RUN, { visibility: "linked" }) })],
   ] as const) {
     it(`retains uncertainty for ${name} without publishing enqueue success`, async () => {
       const w = await setup();

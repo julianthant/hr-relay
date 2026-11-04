@@ -14,7 +14,7 @@
   - region "Required Duo methods":
     - text: Not added
     - heading "Touch ID" [level=2]
-    - paragraph: Use Touch ID on this Mac.
+    - paragraph: Use Touch ID on this computer.
     - button "Add Touch ID"
     - text: Unavailable
     - heading "Security key" [level=2]

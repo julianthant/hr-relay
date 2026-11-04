@@ -149,13 +149,18 @@ it("pins package prehooks and consuming CI checkout preparation without autoheal
   assert.equal(pkg.scripts["build:manifest:prepare"], "tsx scripts/build/generate-workflow-manifest.ts");
   assert.equal(pkg.scripts["build:manifest:check"], "npm run build:registries:check && tsx scripts/build/generate-workflow-manifest.ts --check");
   for (const name of ["build:manifest:check", "build:registries:check", "stores:catalog:check"]) assert.equal(pkg.scripts[`pre${name}`], undefined);
-  const ci = readFileSync(join(REPO_ROOT, ".github/workflows/ci-checks.yml"), "utf8");
-  for (const name of ["static", "ubuntu", "macos", "release"]) {
-    const job = ci.split(`\n  ${name}:\n`)[1]?.split(/\n {2}[a-z]+:\n/u)[0];
-    assert.ok(job, name);
-    assert.match(job, /- run: npm ci\n {6}- run: npm run build:manifest:prepare/u);
+  for (const [workflow, names] of [
+    ["ci-checks", ["static", "ubuntu"]],
+    ["release-checks", ["static", "ubuntu", "macos", "windows", "release-batch"]],
+  ] as const) {
+    const ci = readFileSync(join(REPO_ROOT, `.github/workflows/${workflow}.yml`), "utf8");
+    for (const name of names) {
+      const job = ci.split(`\n  ${name}:\n`)[1]?.split(/\n {2}[a-z]+:\n/u)[0];
+      assert.ok(job, `${workflow}/${name}`);
+      assert.match(job, /- run: npm ci\n {6}- run: npm run build:manifest:prepare/u);
+    }
   }
-  assert.match(ci, /npm run build:manifest:check/u);
+  assert.match(readFileSync(join(REPO_ROOT, ".github/workflows/ci-checks.yml"), "utf8"), /npm run build:manifest:check/u);
 });
 
 it("prepares the cold train catalog consumer after registry generation while its check stays read-only", () => {

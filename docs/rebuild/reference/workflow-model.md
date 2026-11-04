@@ -375,9 +375,11 @@ wrong-attempt freshness overrides, duplicate patches, and a patch aimed at the e
 authority-supplied attempt greater than the current attempt.
 
 `dryRun` is envelope state, not workflow input. `workflowDryRunSupport` derives support from all
-transaction nodes. A standalone graph with no transaction refuses preview as `no-transaction-node`; a graph
-with an unsupported transaction refuses as `node-declares-unsupported`. Otherwise `firstTransactionNodeId` names
-the first preparation boundary. `supportsDryRun` on an input-run surface is derived and cannot be authored.
+transaction nodes and the genuine descriptors bound by the workflow registry. A graph may prepare
+locally or delegate preparation to a registered descendant; `firstTransactionNodeId` or
+`firstDelegationNodeId` names that boundary. An unsupported transaction in the graph or its
+descendants refuses preview. A standalone graph containing only reads refuses as
+`no-transaction-node`. `supportsDryRun` on an input-run surface is derived and cannot be authored.
 
 A delegated child with no transaction inherits `dryRun: true` and executes its normal read-only
 graph, including its gates and nested delegation. It returns the normal typed observational result
@@ -386,10 +388,20 @@ and parent dry-run flags must match. This exception does not offer standalone re
 
 ### 2.1 Preview terminal result
 
-For a transaction preview, `executeClaimedRun` traverses the declared graph and stores `RunDryRunPreviewResult`, independently
-of the authored terminal derive. Every node has exercised, transaction-preview, unavailable or
-not-run accounting. Each transaction prepares, verifies and captures without invoking commit.
+For a transaction preview, `executeClaimedRun` traverses the declared graph and stores
+`RunDryRunPreviewResult`, independently of the authored terminal derive. A parent aggregating
+delegated preparation stores `RunDelegatedDryRunPreviewResult` with a distinct kind and schema hash.
+Every node has exercised, transaction-preview, delegation-preview, unavailable or not-run accounting.
+Each transaction prepares, verifies and captures without invoking commit.
 Existing completion may be observed at the durable lookup or read probe without restaging a form.
+
+An awaited preview child resolves through its authenticated native result, completion, manifest and
+settlement evidence. Its parent retains ordered grouped receipts and a delegation-preview step.
+The preview cannot supply a normal typed child output, ordinary parent result or single-child
+operation lineage. Tasks, gates and transactions requiring that unsubmitted output remain
+unavailable. Read-only children retain ordinary typed results. A dependency's stored `satisfied`
+state records resolution; the authenticated result schema and dry-run ancestry distinguish a
+preview from an ordinary result. Retry, cancellation, continuation and UNKNOWN fences still apply.
 
 A transaction may declare `previewBind` for dependencies whose real output does not exist until
 submit. It returns separately schema-checked prepare/commit inputs and labelled sample provenance.
@@ -408,6 +420,9 @@ Receipt derivation reports `DRY_RUN_PREVIEW`, empty workflow output and unknown 
 Full coverage means every declared node is accounted for; it does not mean every stage was
 exercised. The partial-coverage arm explicitly represents a historical first-boundary preview
 whose later stages were not recorded. It does not infer their membership from the current graph.
+Delegated dispatch without a terminal wait records partial coverage as `descendant-not-awaited`;
+it does not claim the child prepared. An empty fan-out retains its zero-member manifest without
+inventing child preparation. Previews never supply Saved output or write completion.
 
 ## 3. Graph execution
 
@@ -443,6 +458,10 @@ gate, or retry boundary between its arms and no independently resumable commit t
 and `visibility`. `src/models/workflow/delegation.ts` owns `planDelegationFanOut`,
 `assertDelegationReplayMatches`, and `joinDelegationOutcomes`.
 
+Authored delegates inherit an omitted visibility from `capabilities.delegationDisplay`, or `inline`
+when the workflow declares no default. An explicit edge visibility wins. The compiler resolves the
+default before planning, so native policy records always contain the full visibility value.
+
 Planning parses child inputs through the target schema before deriving stable child item ids.
 The fingerprint includes edge, target, cardinality, join, policy, and ordered children. Replay
 requires the same plan. A join requires the complete outcome set; zero children remain an explicit
@@ -464,7 +483,10 @@ appears only on that child; waiting ancestors remain `running`. Queue status fil
 before pagination, so released parents are never counted or selected as queued work. Queue, Logs
 and Activity use the same authenticated wait facts.
 
-`resume-parent` makes a completed retry eligible for joining. `manual-parent-resume` pauses the
+`resume-parent` makes a completed retry eligible for joining. For a genuine transaction-free
+parent at an unresolved gate or completed before approval, accepting a joined child retry opens a
+waiting refresh on the same run and attempt. One native wakeup follows settlement of every accepted
+replacement. Approved snapshots and resolved gates cannot reopen through this operation. `manual-parent-resume` pauses the
 waiting parent through its existing pause control while the replacement child can execute. Resume
 requires terminal evidence for every current manual retry and binds its native command identity to the exact dependency, child,
 attempt and result digest. A later retry needs its own acknowledgement. Resume keeps the parent's
@@ -482,6 +504,20 @@ owner; registered leaves, retained invocations and continuation evidence prove c
 membership. All admissions share the held claim and parent version, and exactly one requeue receipt
 proves the release. These facts derive the wait without changing stored record shapes.
 
+A trusted read-only parent refresh may revise a fan-out through a new immutable invocation and
+manifest. Each revision cites its immediate predecessor and the settled retry cohort. Joins and
+review inputs select the current member set; retained receipts keep their exact invocation,
+member attempts and settlement versions. Removed members retain their original control history.
+A rebuilt review checkpoint receives a new binding even when its lookup inputs are identical.
+
+Reuse requires the same canonical input, explicit individual source-record set, target contract,
+configuration and fresh authenticated observations. Otherwise admission creates a new read,
+bound to fresh execution and checkpoints owned by that child. Complete accepted retry membership
+derives from native admission and extension journals through the owner's recorded version;
+an omitted extension refuses authentication and settlement. Refresh never retries a successful
+write or changes an earlier manifest. A ready parent can accept another
+retry cohort before being claimed; an executing refresh refuses a concurrent child retry.
+
 ### 3.3 Conditions
 
 `src/models/workflow/node-condition.ts` owns `NodeConditionSpec`, `evaluateNodeCondition`, and
@@ -496,7 +532,10 @@ execution evaluate the same condition; a skipped gate creates no operator decisi
 `src/models/run/record.ts` defines the durable states `queued`, `claimed`, `validating`, `running`,
 `parked-gate`, `parked-write`, and `terminal`. Terminal outcomes are `done`, `failed`, `cancelled`,
 `discarded`, `interrupted`, and `superseded`. `runTransitionViolation` checks legal edges.
-Only a terminal `interrupted` run may return to `queued`. An ordinary retry creates another run.
+A terminal `interrupted` run may return to `queued`. An ordinary retry creates another run.
+An authenticated read-only delegation refresh can also return an unapproved completed parent to
+`queued` on its existing row. It retains the earlier terminal result and receipt as immutable
+settlements; current output remains unavailable until the refreshed execution settles.
 
 A gate records its typed result separately from checkpoints. The executor emits `gate.opened`,
 closes sessions, and persists `parked-gate` with `gateId` and `resumeAt`. Resolution requeues the
@@ -763,3 +802,5 @@ through `defineStep`. Their proof recipes retain proof identity and order; `inde
 harness with `defineStepProof`. `inheritStepProof` shares parent ingress and presentation without
 copying declarations. Specialized proof ingress remains explicit in `StepProofSpec`. Workflow
 composition uses typed build results, without runtime group or entry lookups.
+
+A delegate may declare `sourceRecordIds(scope)`, an ordered list of record sets aligned with its bound children. Each set is nonempty and unique; planning sorts it and includes it in the immutable plan fingerprint. Canonical input equality does not replace this source membership proof. OCR identity and signer lookups declare the records that requested each read.

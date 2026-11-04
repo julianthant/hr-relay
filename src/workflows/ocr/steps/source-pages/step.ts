@@ -60,6 +60,7 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
     edgeId: "ocr-identities", cardinality: "many", await: "terminal", join: "all-settled", policy: childPolicy
   }, [review], {
     bind: ({ outputs }) => ocrPersonLookupRequests(outputs["build-review"]).map(request => request.input),
+    sourceRecordIds: ({ outputs }) => ocrPersonLookupRequests(outputs["build-review"]).map(request => request.recordIds),
     deriveChildItemId: (_input, context) => context.canonicalItemId,
   });
   const signers = delegate({
@@ -68,6 +69,7 @@ export function buildOcr(author: WorkflowAuthor<typeof OcrInputSchema>) {
     edgeId: "ocr-signers", cardinality: "many", await: "terminal", join: "all-settled", policy: childPolicy
   }, [review], {
     bind: ({ outputs }) => ocrSignerLookupRequests(outputs["build-review"]).map(request => request.input),
+    sourceRecordIds: ({ outputs }) => ocrSignerLookupRequests(outputs["build-review"]).map(request => request.recordIds),
     deriveChildItemId: (_input, context) => context.canonicalItemId,
   });
   const completed = task({ id: "read-result", contract: ReadOcrResult, replay: "always-rerun" }, [review, identities, signers],
