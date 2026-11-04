@@ -3,11 +3,11 @@ import type { SaxesTagNS } from 'saxes';
 import { parse } from 'csv-parse/browser/esm/sync';
 import { ERROR_CATALOG } from '../../models/failures/error-catalog.js';
 import type { EditableWorkbook as LibraryWorkbook } from '../../models/dashboard/workbooks.js';
+import { MAX_WORKBOOK_GRID_CELLS, MAX_WORKBOOK_POPULATED_CELLS, populatedSpreadsheetValue, workbookSizeIssue } from './workbook-size.js';
 export type SheetCell = Readonly<{ value: string | number | boolean | Date | null; fill?: LibraryWorkbook['sheets'][number]['rows'][number]['cells'][number]['fill']; background?: string; numFmt?: string; richText?: LibraryWorkbook['sheets'][number]['rows'][number]['cells'][number]['richText']; hyperlink?: string; tooltip?: string }>;
 export type SheetRow = Readonly<{ id: string; sourceRow?: number; cells: readonly SheetCell[] }>;
 export type EditableSheet = Readonly<{ id: string; name: string; rows: readonly SheetRow[]; width: number; hidden: readonly number[]; headerRow?: number; sourceHeaderRow?: number; columnBindings?: ReadonlyArray<NonNullable<LibraryWorkbook['sheets'][number]['columnBindings']>[number]> }>;
 export type EditableWorkbook = Readonly<{ name: string; libraryId?: string; sheets: readonly EditableSheet[]; themes: LibraryWorkbook['themes']; hasFormulas: boolean; unsupportedMetadata?: boolean }>;
-const MAX_CELLS = 100_000;
 const indexedColors = ['000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF','000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF','800000','008000','000080','808000','800080','008080','C0C0C0','808080','9999FF','993366','FFFFCC','CCFFFF','660066','FF8080','0066CC','CCCCFF','000080','FF00FF','FFFF00','00FFFF','800080','800000','008080','0000FF','00CCFF','CCFFFF','CCFFCC','FFFF99','99CCFF','FF99CC','CC99FF','FFCC99','3366FF','33CCCC','99CC00','FFCC00','FF9900','FF6600','666699','969696','003366','339966','003300','333300','993300','993366','333399','333333'];
 const themeKeys = ['lt1','dk1','lt2','dk2','accent1','accent2','accent3','accent4','accent5','accent6','hlink','folHlink'];
 
@@ -115,7 +115,6 @@ async function spreadsheetValueInput(data: ArrayBuffer): Promise<{ data: ArrayBu
       || path.split('/').some(part => !part || part === '.' || part === '..')) throw new Error(`SPREADSHEET_WORKSHEET_REFERENCE_INVALID: ${ERROR_CATALOG.SPREADSHEET_WORKSHEET_REFERENCE_INVALID.text}`);
     targets.set(id, path);
   });
-  let declaredCells = 0;
   for (const sheet of sheets) {
     const target = targets.get(sheet.relationship);
     if (!target) throw new Error(`SPREADSHEET_WORKSHEET_REFERENCE_INVALID: ${ERROR_CATALOG.SPREADSHEET_WORKSHEET_REFERENCE_INVALID.text}`);
@@ -127,10 +126,8 @@ async function spreadsheetValueInput(data: ArrayBuffer): Promise<{ data: ArrayBu
       const left = column(match[1]), top = Number(match[2]), width = column(match[3] ?? match[1]), height = Number(match[4] ?? match[2]);
       if (left > width || top > height || width > 16_384 || height > 1_048_576) throw new Error(`SPREADSHEET_DIMENSIONS_INVALID: ${ERROR_CATALOG.SPREADSHEET_DIMENSIONS_INVALID.text}`);
       dimensions.set(sheet.name, { width, height });
-      declaredCells += width * height;
     });
   }
-  if (declaredCells > MAX_CELLS) throw new Error('SPREADSHEET_SIZE_UNSUPPORTED: maximum workbook size is 100,000 cells.');
   let changed = false;
   for (const entry of Object.values(archive.files).filter(file => /^xl\/tables\/[^/]+\.xml$/u.test(file.name))) {
     const xml = await entry.async('string');
@@ -273,9 +270,12 @@ async function hasUnsupportedMetadata(data: ArrayBuffer): Promise<boolean> {
 export async function importWorkbook(name: string, data: ArrayBuffer): Promise<EditableWorkbook> {
   if (data.byteLength > 20 * 1024 * 1024) throw new Error('SPREADSHEET_TOO_LARGE: maximum file size is 20 MB.');
   if (/\.csv$/i.test(name)) {
-    const values = parse(new TextDecoder().decode(data), { bom: true, relax_column_count: true, skip_empty_lines: false });
+    const values: string[][] = parse(new TextDecoder().decode(data), { bom: true, relax_column_count: true, skip_empty_lines: false });
     const width = values.reduce((max, row) => Math.max(max, row.length), 1);
-    if (!values.length || values.length * width > MAX_CELLS) throw new Error('SPREADSHEET_SIZE_UNSUPPORTED: use a nonempty file with at most 100,000 cells.');
+    if (!values.length) throw new Error(`SPREADSHEET_SIZE_UNSUPPORTED: This file has 0 populated cells (limit ${MAX_WORKBOOK_POPULATED_CELLS.toLocaleString('en-US')}). Choose a nonempty CSV file and try again.`);
+    const populatedCells = values.reduce((count, row) => count + row.filter(populatedSpreadsheetValue).length, 0);
+    const issue = workbookSizeIssue(populatedCells, values.length * width);
+    if (issue) throw new Error(`SPREADSHEET_SIZE_UNSUPPORTED: ${issue}`);
     return { name, themes: [], hasFormulas: false, sheets: [{ id: 'csv', name: 'Sheet 1', width, hidden: [], rows: values.map((row, index) => ({ id: `row-${index}`, sourceRow: index + 1, cells: Array.from({ length: width }, (_, column) => ({ value: row[column] ?? '' })) })) }] };
   }
   if (!/\.xlsx$/i.test(name)) throw new Error('SPREADSHEET_FORMAT_UNSUPPORTED: choose XLSX or CSV.');
@@ -285,12 +285,30 @@ export async function importWorkbook(name: string, data: ArrayBuffer): Promise<E
     if (part.path.endsWith('.xml') && part.path.includes('/theme/')) parts[part.path.split('/').at(-1)!.replace('.xml', '')] = new TextDecoder().decode(part.bytes);
     return parts;
   }, {}) ?? {};
-  let hasFormulas = false, unsupportedCellMetadata = false, total = 0;
-  const sheets = workbook.worksheets.map(sheet => {
+  let populatedCells = 0;
+  const extents = workbook.worksheets.map(sheet => {
     const dimension = input.dimensions.get(sheet.name);
-    const width = Math.max(1, sheet.columnCount, dimension?.width ?? 0), height = Math.max(1, sheet.rowCount, dimension?.height ?? 0);
-    total += width * height;
-    if (total > MAX_CELLS) throw new Error('SPREADSHEET_SIZE_UNSUPPORTED: maximum workbook size is 100,000 cells.');
+    let width = Math.max(1, dimension?.width ?? 0), valueWidth = 1, valueHeight = 1;
+    const height = Math.max(1, sheet.rowCount, dimension?.height ?? 0);
+    for (const row of sheet.rows()) for (const cell of row.cells) {
+      width = Math.max(width, cell.col);
+      const value = cell.value;
+      const populated = value !== null && typeof value === 'object' && 'richText' in value
+        ? value.richText.some(run => run.text !== '') : populatedSpreadsheetValue(value);
+      if (!populated) continue;
+      populatedCells++;
+      valueWidth = Math.max(valueWidth, cell.col);
+      valueHeight = Math.max(valueHeight, cell.row);
+    }
+    return { width, height, valueWidth, valueHeight };
+  });
+  const trimPadding = extents.reduce((count, size) => count + size.width * size.height, 0) > MAX_WORKBOOK_GRID_CELLS;
+  const sizes = extents.map(size => trimPadding ? { width: size.valueWidth, height: size.valueHeight } : size);
+  const issue = workbookSizeIssue(populatedCells, sizes.reduce((count, size) => count + size.width * size.height, 0));
+  if (issue) throw new Error(`SPREADSHEET_SIZE_UNSUPPORTED: ${issue}`);
+  let hasFormulas = false, unsupportedCellMetadata = sizes.some((size, index) => size.width !== extents[index].width || size.height !== extents[index].height || workbook.worksheets[index].columnCount > size.width);
+  const sheets = workbook.worksheets.map((sheet, index) => {
+    const { width, height } = sizes[index];
     const rows = Array.from({ length: height }, (_, rowIndex) => ({ id: `${sheet.id}-${rowIndex}`, sourceRow: rowIndex + 1, cells: Array.from({ length: width }, (_, columnIndex): SheetCell => {
       const cell = sheet.getRow(rowIndex + 1).getCell(columnIndex + 1);
       if (!defaultCellFont(cell.style.font) || (cell.style.border && Object.keys(cell.style.border).length > 0)
