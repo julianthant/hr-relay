@@ -1,7 +1,7 @@
 import { CommandExecutor } from "../../../src/dashboard/app/commands/command-executor.js";
 import type { DashboardCommandBinding } from "../../../src/dashboard/app/dashboard-app-model.js";
 import { CommandRequestSchema, CommandResultSchema, type CommandRequest, type CommandResult } from "../../../src/rules/commands/commands.js";
-import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, ocrReviewDigest } from "../../../src/models/ocr/review.js";
+import { OcrReviewRevisionSchema, OcrApprovedSnapshotSchema, ocrReviewDigest, operatorOcrRecordId, blankOperatorOcrFields } from "../../../src/models/ocr/review.js";
 import { FIXTURE_BOOTSTRAP } from "../../support/fixtures/dashboard/fixture-bootstrap.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
@@ -118,8 +118,17 @@ function editorWorld(unknownOnce = false, delegated = true) {
         assert.equal(request.target.expectedRevision, page.ocr.revision.revision);
         const revision = OcrReviewRevisionSchema.parse({ ...page.ocr.revision, revision: request.target.expectedRevision + 1,
           id: `${page.runId}#${request.target.expectedRevision + 1}`, createdAt: request.requestedAt, origin: { kind: "command", commandId: request.commandId },
-          records: page.ocr.revision.records.map(record => record.recordId !== request.payload.recordId ? record : request.type === "correct-ocr-record"
-            ? { ...record, ...request.payload } : { ...record, discarded: request.type === "discard-ocr-record" }) });
+          records: request.type === "add-ocr-record" ? [...page.ocr.revision.records, {
+            recordId: operatorOcrRecordId(page.ocr.revision.seed, request.commandId),
+            fields: blankOperatorOcrFields(page.ocr.revision.seed, request.payload.pages, request.requestedAt), assertedEid: null, discarded: true,
+            provenance: { kind: "operator-added", commandId: request.commandId, createdAt: request.requestedAt, pages: request.payload.pages },
+          }] : page.ocr.revision.records.map(record => {
+            if (record.recordId !== request.payload.recordId) return record;
+            if (request.type !== "correct-ocr-record") return { ...record, discarded: request.type === "discard-ocr-record" };
+            const { pages, ...fields } = request.payload;
+            return { ...record, ...fields, ...(record.provenance === undefined ? {} : {
+              provenance: { ...record.provenance, pages: pages ?? record.provenance.pages } }) };
+          }) });
         runVersion++;
         page = ReviewPageSchema.parse({ ...page, ocr: { ...page.ocr, revision, digest: ocrReviewDigest(revision), editing: { state: "available", runVersion },
           ...(delegated ? { approval: { runId: page.runId, gateId: "approve-records", expectedVersion: runVersion } } : {}) } });
@@ -195,9 +204,80 @@ function button(host: HTMLElement, label: string) {
   const target = [...host.querySelectorAll("button")].find(button => button.textContent === label); assert.ok(target); return target;
 }
 
+it("adds an unselected durable record, locks repeat creation until native refresh and persists its fields and source binding", async () => {
+  const h = editorWorld(), host = await mountEditor(h);
+  h.pauseRefresh();
+  await act(async () => button(host, "Add record").click()); await saveEdits();
+  assert.equal(h.commands.length, 1); assert.equal(h.commands[0].type, "add-ocr-record");
+  assert.equal(button(host, "Add record").disabled, true);
+  await act(async () => button(host, "Add record").click()); await saveEdits();
+  assert.equal(h.commands.length, 1);
+  await act(async () => h.resumeRefresh()); await saveEdits();
+  const record = h.page().ocr?.revision.records.at(-1); assert.ok(record?.provenance);
+  const card = [...host.querySelectorAll<HTMLElement>("[data-review-record-id]")].find(card => card.dataset.reviewRecordId === record.recordId); assert.ok(card);
+  assert.equal(host.querySelectorAll("[data-review-record-id]").length, 3);
+  assert.match(card.textContent ?? "", /Operator-added record/u);
+  assert.equal(card.querySelector('[role="checkbox"]')?.getAttribute("aria-checked"), "false");
+  assert.equal(document.activeElement?.closest<HTMLElement>("[data-review-record-id]")?.dataset.reviewRecordId, record.recordId);
+  const viewport = card.querySelector<HTMLElement>('[aria-label="PDF page image"]'); assert.ok(viewport);
+  const scrollTo = vi.fn(); Object.defineProperty(viewport, "scrollTo", { value: scrollTo });
+  await act(async () => {
+    changeInput(card, "employee.employeeId", "10800001"); changeInput(card, "employee.name", "Example, Manual");
+    changeInput(card, "contact.name", "Manual Contact");
+  });
+  await saveEdits();
+  assert.equal(h.commands.length, 2); assert.equal(h.commands[1].type, "correct-ocr-record");
+  await act(async () => {
+    const source = card.querySelector<HTMLButtonElement>('button[aria-label="Source page"]'); assert.ok(source); source.click();
+  });
+  const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent === "Page 2"); assert.ok(option);
+  await act(async () => option.click());
+  await saveEdits();
+  assert.equal(h.commands.length, 3); assert.equal(h.commands[2].type, "correct-ocr-record");
+  const saved = h.page().ocr?.revision.records.at(-1); assert.ok(saved);
+  assert.equal(saved.assertedEid, "10800001");
+  assert.equal(saved.fields.answers.find(answer => answer.path === "contact.name")?.state, "read");
+  assert.equal(saved.provenance?.pages[0].sourcePage, 2);
+  assert.equal(saved.provenance?.commandId, h.commands[0].commandId);
+  assert.deepEqual(scrollTo.mock.calls, [[{ left: 0, top: 0 }]]);
+});
+
+it.each([false, true])("reconciles a lost Add record reply with one POST when a later revision exists: %s", async later => {
+  const h = editorWorld(true); let host = await mountEditor(h);
+  await act(async () => button(host, "Add record").click()); await saveEdits();
+  const original = h.commands[0]; assert.ok(original?.family === "ocr-review" && original.type === "add-ocr-record");
+  assert.equal(button(host, "Add record").disabled, true);
+  if (later) await act(async () => h.externalChange({ "contact.name": "Later native edit" }));
+  await act(async () => root?.unmount()); root = undefined; host.remove(); host = await mountEditor(h);
+  assert.equal(button(host, "Add record").disabled, true);
+  await act(async () => button(host, "Check result").click()); await saveEdits();
+  assert.equal(h.commands.length, 1);
+  assert.equal(h.page().ocr?.revision.records.length, 3);
+  assert.equal(h.page().ocr?.revision.records.at(-1)?.provenance?.commandId, original.commandId);
+  assert.equal([...host.querySelectorAll("button")].some(button => button.textContent === "Check result"), false);
+  if (later) {
+    assert.equal(button(host, "Add record").disabled, true);
+    await act(async () => button(host, "Discard local changes").click()); await saveEdits();
+  }
+  assert.equal(button(host, "Add record").disabled, false);
+  assert.equal(h.commands.length, 1);
+});
+
+it.each(["missing", "mismatched-request", "mismatched-result"] as const)("keeps Add record uncertain with one POST when recorded proof is %s", async mode => {
+  const h = editorWorld(true), host = await mountEditor(h);
+  await act(async () => button(host, "Add record").click()); await saveEdits();
+  await act(async () => h.externalChange());
+  h.recordedLookup(mode);
+  await act(async () => button(host, "Check result").click()); await saveEdits();
+  assert.ok(button(host, "Check result"));
+  assert.equal(button(host, "Add record").disabled, true);
+  assert.equal(h.commands.length, 1);
+  assert.equal(h.page().ocr?.revision.records.length, 3);
+});
+
 it("coalesces existing-record edits, confirms revision readback before approval and freezes approved inputs", async () => {
   const h = editorWorld(), host = await mountEditor(h);
-  assert.equal(host.textContent?.includes("Add record"), false);
+  assert.equal(button(host, "Add record").disabled, false);
   await act(async () => {
     changeInput(host, "contact.name", "Draft"); changeInput(host, "contact.name", "Edited Contact");
     changeInput(host, "employee.employeeId", "10800000");

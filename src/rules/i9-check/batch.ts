@@ -8,6 +8,7 @@ import { I9_CHECK_REFERENCE } from "../../models/workflows/i9-check/start.js";
 import { deriveItemId } from "../identity/logical-item.js";
 import { deriveStableUuid } from "../identity/stable-uuid.js";
 import { parseUsOrIsoDate } from "../../models/fields/cell-coercion.js";
+import { ocrRecordSourcePages } from "../../models/ocr/review-record.js";
 
 type Person = z.output<typeof I9CheckPeopleSchema>["people"][number];
 const mergeFields = ["firstName", "lastName", "dob", "ssn", "hireDate"] as const;
@@ -23,16 +24,16 @@ export function i9CheckApprovedPeople({ request, selection }: z.output<typeof Re
     }
     documents.add(document.id);
     for (const record of snapshot.records) {
-      const seed = review.records.find(seed => seed.recordId === record.recordId);
-      if (seed === undefined || record.assertedEid === null) throw new Error("i9-check-approved-record-unavailable");
+      if (record.assertedEid === null) throw new Error("i9-check-approved-record-unavailable");
+      const pages = ocrRecordSourcePages(review.records, record);
       const values = new Map(record.fields.answers.flatMap(answer => answer.state === "read" && typeof answer.value === "string" ? [[answer.path, answer.value] as const] : []));
       const firstName = values.get("firstName"), lastName = values.get("lastName");
       if (firstName === undefined || lastName === undefined) throw new Error("i9-check-approved-name-unavailable");
-      const sourcePage = { documentId: document.id, documentSha256: document.sha256, ocrRunId: snapshot.sourceRunId,
-        snapshotId: snapshot.snapshotId, recordId: record.recordId, sourcePage: seed.sourcePage };
+      const sources = pages.map(sourcePage => ({ documentId: document.id, documentSha256: document.sha256, ocrRunId: snapshot.sourceRunId,
+        snapshotId: snapshot.snapshotId, recordId: record.recordId, sourcePage }));
       const candidate = I9CheckInput.parse({ ocrRunId: snapshot.sourceRunId, recordId: deriveStableUuid("i9-check-person", record.assertedEid),
         asOf: request.asOf, reviewerName: request.reviewerName, roster: { rows: [] }, person: {
-          name: `${lastName}, ${firstName}`, firstName, lastName, sourcePages: [seed.sourcePage],
+          name: `${lastName}, ${firstName}`, firstName, lastName, sourcePages: pages,
           ...(values.has("dateOfBirth") ? { dob: values.get("dateOfBirth") } : {}),
           ...(values.has("ssn") ? { ssn: values.get("ssn") } : {}),
           ...(values.has("hireDate") ? { hireDate: values.get("hireDate") } : {}),
@@ -40,7 +41,7 @@ export function i9CheckApprovedPeople({ request, selection }: z.output<typeof Re
       const previous = people.get(record.assertedEid);
       if (previous === undefined) {
         people.set(record.assertedEid, { eid: record.assertedEid, ocrRunId: candidate.ocrRunId,
-          recordId: candidate.recordId, person: candidate.person, sources: [sourcePage] });
+          recordId: candidate.recordId, person: candidate.person, sources });
         continue;
       }
       for (const field of mergeFields) {
@@ -49,9 +50,9 @@ export function i9CheckApprovedPeople({ request, selection }: z.output<typeof Re
       }
       const person = I9CheckInput.parse({ ...candidate, person: { ...candidate.person, ...previous.person,
         ...Object.fromEntries(mergeFields.flatMap(field => previous.person[field] === undefined && candidate.person[field] !== undefined ? [[field, candidate.person[field]]] : [])),
-        sourcePages: [...new Set([...previous.person.sourcePages, ...(previous.ocrRunId === snapshot.sourceRunId ? [seed.sourcePage] : [])])],
+        sourcePages: [...new Set([...previous.person.sourcePages, ...(previous.ocrRunId === snapshot.sourceRunId ? pages : [])])],
       } }).person;
-      people.set(record.assertedEid, { ...previous, person, sources: [...previous.sources, sourcePage] });
+      people.set(record.assertedEid, { ...previous, person, sources: [...previous.sources, ...sources] });
     }
   }
   return I9CheckPeopleSchema.parse({ people: [...people.values()] });

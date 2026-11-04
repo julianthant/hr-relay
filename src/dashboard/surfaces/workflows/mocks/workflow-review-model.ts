@@ -121,6 +121,6 @@ export function mockReviewProps({ run, sourcePages, approvalError, onChange, onA
         label: run.discarded ? "Discarded" : record.selected ? "Approved" : "Excluded" } } : {}) })),
     onEditField: (recordId, key, value) => onChange(records.map(record => record.id === recordId ? editReviewRecord(record, key, value) : record)),
     onChange: updated => onChange(records.map(record => record.id === updated.id ? { ...record, ...updated } : record)),
-    onAdd: () => { const next = addMockReviewRecord(records); onChange(next); return next[next.length - 1].id; },
+    onAdd: records.length === 0 ? undefined : () => { const next = addMockReviewRecord(records); onChange(next); return next[next.length - 1].id; },
   };
 }
