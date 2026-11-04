@@ -27,6 +27,7 @@ import { EmergencyContactMemberInputSchema } from "../../../../src/models/workfl
 import { EmergencyContactResultSchema, EmergencyContactMemberResultSchema } from "../../../../src/models/workflows/emergency-contact/result.js";
 import { testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
+import { ocrProofReadDatabase } from "../../../support/helpers/backend/ocr-proof-reads.js";
 
 import { createDeterministicUcpathContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
@@ -98,7 +99,7 @@ it("ocr/approved-snapshot — consumes a corrected released record and admits it
   assert.deepEqual(readRows(), rows);
   assert.equal(f.harness.sessions.opens(), 0);
 });
-it("authenticates record reads under an admitted member's actual claim and node, refusing task, claim, record, reference and later-draft substitutions", async () => {
+it("authenticates record reads under an admitted member's actual claim and node, refusing task, claim, record, reference and stale-snapshot substitutions while freezing approved authority", async () => {
   const f = await world.fixture({ coordinator: true, record: true }); release(f, [0]);
   const [member] = await admitMembers(f); assert.ok(member);
   const owner = testWorkerLifetime(f.database, f.parentRun.envelope.workflow, 1), runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
@@ -119,10 +120,10 @@ it("authenticates record reads under an admitted member's actual claim and node,
   const request = { capability: "ocr.approved-snapshot" as const, payload: { schemaHash: deriveSchemaHash(OcrApprovalReadRequestSchema, "output"),
     value: { kind: "record", approval: input.approval, recordId: input.record.recordId } } };
   const options = { signal: new AbortController().signal, deadlineMonotonicMs: 60_000, requestId: "native-member-record" };
-  const adapter = (run = claimed.run) => createOcrApprovedSnapshotAdapter({ clock: f.clock, reader: createApprovedOcrRecordReader({ database: f.database, run, reader: f.canonical.lifecycle,
+  const adapter = (run = claimed.run, database = f.database) => createOcrApprovedSnapshotAdapter({ clock: f.clock, reader: createApprovedOcrRecordReader({ database, run, reader: f.canonical.lifecycle,
     resolveDescriptor: f.resolve, assertCurrent: () => f.admission.assertProfileRuntime() }) });
-  const read = async (run = claimed.run, query: z.input<typeof OcrApprovalReadRequestSchema> = rawQuery) => {
-    const result = await adapter(run).invoke({ ...request, payload: { ...request.payload, value: query } }, options); assert.ok(result.response.state === "produced");
+  const read = async (run = claimed.run, query: z.input<typeof OcrApprovalReadRequestSchema> = rawQuery, database = f.database) => {
+    const result = await adapter(run, database).invoke({ ...request, payload: { ...request.payload, value: query } }, options); assert.ok(result.response.state === "produced");
     return schemaBoundValueSchema(OcrApprovalReadResultSchema, deriveSchemaHash(OcrApprovalReadResultSchema, "output")).parse(result.response.value).value;
   };
   assert.equal((await read()).state, "refused");
@@ -136,8 +137,30 @@ it("authenticates record reads under an admitted member's actual claim and node,
   }
   assert.equal((await read(claimed.run, { ...rawQuery, recordId: `${"b".repeat(64)}#emergency-contact#2` })).state, "refused");
   const snapshot = f.database.authority.ocrReviews.snapshot(input.approval.snapshotId); assert.ok(snapshot);
-  assert.equal(f.canonical.kernel.execute(f.command("correct-ocr-record", 2)).state, "applied");
-  assert.equal((await read()).state, "refused");
+  const repositories = f.database.authority, sourceRunId = f.run.envelope.runId;
+  const custody = () => ({ meta: f.database.getMeta(), review: repositories.ocrReviews.latest(sourceRunId),
+    source: repositories.runs.get(sourceRunId), consumer: repositories.runs.get(member.envelope.runId),
+    snapshots: repositories.ocrReviews.snapshots(sourceRunId), gate: repositories.gateResults.get(`${sourceRunId}:approve-records`) });
+  const frozen = custody();
+  const correction = f.command("correct-ocr-record", snapshot.revision);
+  const result = f.canonical.kernel.execute({ ...correction, payload: { ...correction.payload, assertedEid: "10899999" } });
+  assert.ok(result.state === "rejected" && result.code === "OCR_REVIEW_REFUSED");
+  assert.equal(repositories.commands.get(correction.commandId), undefined);
+  assert.equal(repositories.commandAudits.findByCommand(correction.commandId), undefined);
+  assert.deepEqual(custody(), frozen);
+  assert.deepEqual(await read(), accepted);
+  const earlier = repositories.ocrReviews.revision(sourceRunId, 1); assert.ok(earlier);
+  assert.notEqual(earlier.revision, snapshot.revision);
+  for (const change of ["stale review", "altered snapshot"] as const) {
+    const database = ocrProofReadDatabase(f.database, { ...repositories, ocrReviews: { ...repositories.ocrReviews,
+      latest: id => change === "stale review" && id === sourceRunId ? earlier : repositories.ocrReviews.latest(id),
+      snapshots: id => repositories.ocrReviews.snapshots(id).map(value => change === "altered snapshot" && value.snapshotId === snapshot.snapshotId
+        ? OcrApprovedSnapshotSchema.parse({ ...value, reviewDigest: "f".repeat(64) }) : value),
+    } });
+    assert.deepEqual(await read(claimed.run, rawQuery, database), { state: "refused", code: "OCR_REVIEW_REFUSED" }, change);
+  }
+  assert.deepEqual(custody(), frozen);
+  assert.deepEqual(await read(), accepted);
   assert.deepEqual(f.database.authority.ocrReviews.snapshot(input.approval.snapshotId), snapshot);
   assert.equal(f.harness.sessions.opens(), 0);
 });
