@@ -88,7 +88,7 @@ function ReviewRecordCard({ runId, subject, record, name, original, pages, readO
     </Field>;
   };
   return <section aria-label={`Record ${record.id}`} data-review-record-id={record.id} onFocusCapture={onFocus} className="grid min-w-0 grid-cols-[minmax(0,3fr)_minmax(0,2fr)] overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel">
-    <ReviewSourcePreview key={JSON.stringify(pages.map(page => page.identity ?? page.imageUrl))} recordId={`${runId}:${record.id}`} subject={subject} pages={pages} recordPage={record.page} onPageChange={record.manualEntry && !readOnly && record.kind !== "i9" ? page => onChange?.({ ...record, page }) : undefined} />
+    <ReviewSourcePreview key={JSON.stringify([runId, pages.map(page => page.identity ?? page.imageUrl)])} recordId={`${runId}:${record.id}`} subject={subject} pages={pages} recordPage={record.page} onPageChange={record.manualEntry && !readOnly && record.kind !== "i9" ? page => onChange?.({ ...record, page }) : undefined} />
     <div data-review-fields className="@container/record min-w-0 space-y-3 bg-ui-table p-3">
       <Card role="group" aria-label="Record selection">
         <CardBody className="space-y-2 p-3">
@@ -117,10 +117,11 @@ export function RecordReview({ runId, subject, cards, readOnly, discarded, selec
   const focused = useRef<string>(undefined);
   useEffect(() => {
     const id = requestedFocus ?? cards[0]?.record.id;
-    if (focused.current === id) return;
-    const frame = requestAnimationFrame(() => { focusRecord(id, "[data-ocr-review-heading]", requestedFocus === undefined); focused.current = id; });
+    const owner = JSON.stringify([runId, id]);
+    if (focused.current === owner) return;
+    const frame = requestAnimationFrame(() => { focusRecord(id, "[data-ocr-review-heading]", requestedFocus === undefined); focused.current = owner; });
     return () => cancelAnimationFrame(frame);
-  }, [requestedFocus, cards]);
+  }, [runId, requestedFocus, cards]);
   return <section aria-label="OCR records" onBlurCapture={event => {
     if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) onCommit?.();
   }} onKeyDown={event => {

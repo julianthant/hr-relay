@@ -19,7 +19,7 @@ All source paths in this table are relative to `src/dashboard/`.
 | Action panel and date | `surfaces/queue/queue-focus.tsx`, app composition | Selected workflow/day, filters, and shared served clock |
 | Queue | `surfaces/queue/queue.tsx`, `workflows/mocks/workflow-mock-queue.tsx` | Day/preview model or workflow mock runs |
 | Logs | `surfaces/run-detail/log-panel.tsx`, `logs/log-sample.tsx`, `workflows/mocks/workflow-mock-queue.tsx` | Local ordered log and workflow producers |
-| OCR Records | `surfaces/run-detail/review/review.tsx` | Run-bound local records and source-page manifest |
+| OCR Records | `surfaces/run-detail/review/review.tsx` | Authenticated review revisions, edit/gate authority and source-page manifest; explicit previews supply local records |
 | Run and Rerun | `surfaces/run-start/run-launch.tsx`, `workflows/mocks/workflow-mock-run.tsx` | Catalog, planner/client for served launches, mock drafts for previews |
 | Notifications | `surfaces/notifications/notifications-view.tsx`, workspace rail | App preview destinations with rail-local read state |
 | Sessions | `surfaces/sessions/session-panel.tsx`, `sessions-view.tsx` | `sessionsSample` and `createSessionPreviewPort` |
@@ -147,7 +147,7 @@ standalone row. Cross-workflow members stay under their parent; parent and linke
 workflow and day coordinates. Native parent authority still governs actions and deletion eligibility.
 Linked Queue navigation rechecks the destination day, run detail and workflow identity. Native child
 rows can open Logs and existing gate review without public catalog selection or a source-policy switch.
-The served OCR Records editor remains a separate wiring requirement.
+Served OCR Records uses the authenticated review section and revision-bound command paths.
 
 The product's workflow preview mounts `WorkflowMockQueue` and local `MockRun` state. Retry opens
 Rerun with the exact source. Local deletion removes the selected runs and clears their Logs/Records

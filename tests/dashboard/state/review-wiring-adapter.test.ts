@@ -85,6 +85,20 @@ it("refuses foreign record focus and a mismatched detail revision without select
   assert.equal(host.querySelectorAll("[data-review-record-id]").length, 0);
 });
 
+it("focuses a newly selected run even when the same document record ID appears in both runs", async () => {
+  let selected = selection();
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async input => Response.json(
+    String(input).endsWith("/review") ? { section: "review", payload: ocrReviewPageFixture(selected.row.runId) } : detail(selected)) });
+  const host = document.createElement("div"), outside = document.createElement("button"); document.body.append(host, outside); root = createRoot(host);
+  const render = () => createElement(DashboardClientProvider, { client, children: createElement(RunReview, { selection: selected }) });
+  await act(async () => root?.render(render()));
+  await vi.waitFor(() => assert.ok(document.activeElement?.hasAttribute("data-ocr-review-heading")));
+  outside.focus();
+  selected = { ...selected, row: QueueSurfaceWireSchema.parse({ ...selected.row, runId: "00000000-0000-4000-8000-000000000997" }) };
+  await act(async () => root?.render(render()));
+  await vi.waitFor(() => assert.ok(document.activeElement?.hasAttribute("data-ocr-review-heading")));
+});
+
 function editorWorld(unknownOnce = false, delegated = true) {
   let runVersion = 1;
   let page = ocrReviewPageFixture(); assert.ok(page.ocr);
