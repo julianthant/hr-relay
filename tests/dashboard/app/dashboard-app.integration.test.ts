@@ -530,13 +530,19 @@ it_m1("keeps served Logs failures while explicit parity composition selects mock
 });
 it_m1("passes the app client to a served Explorer read while parity explicitly retains mock Explorer", async () => {
   try {
+    const explorer = structuredClone(FIXTURE_EXPLORER_WIRE);
+    const lookup = explorer.workflows.find(workflow => workflow.id === "person-lookup");
+    assert_m1.ok(lookup?.walkthrough);
+    lookup.walkthrough.steps[0].title = "Registered Person Lookup";
+    lookup.walkthrough.steps[0].parts[0] = { kind: "note", text: "Purpose from the served definition" };
     let calls = 0;
     await mount("?explore=person-lookup&view=%7B%22explorerWorkflow%22%3A%22person-lookup%22%7D", {
-      workflowExplorer: async () => { calls++; return { ...FIXTURE_EXPLORER_WIRE, workflows: FIXTURE_EXPLORER_WIRE.workflows.map(workflow => workflow.id === "person-lookup" ? { ...workflow, version: parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows).find(entry => entry.id === workflow.id)!.start.version } : workflow) }; },
+      workflowExplorer: async () => { calls++; return { ...explorer, workflows: explorer.workflows.map(workflow => workflow.id === "person-lookup" ? { ...workflow, version: parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows).find(entry => entry.id === workflow.id)!.start.version } : workflow) }; },
     }, "icon", workflows => servedWorkflowComposition(servedFixtureSources(workflows)));
     assert_m1.equal(calls, 1);
-    assert_m1.ok(document.body.textContent?.includes(FIXTURE_EXPLORER_WIRE.workflows.find(workflow => workflow.id === "person-lookup")!.nodes[0].label), document.body.textContent ?? "");
-    assert_m1.ok(document.body.textContent?.includes("No run values are available."));
+    assert_m1.ok(document.body.textContent?.includes("Registered Person Lookup"), document.body.textContent ?? "");
+    assert_m1.ok(document.body.textContent?.includes("Purpose from the served definition"));
+    assert_m1.equal(document.body.textContent?.includes("No run values are available."), false);
     assert_m1.equal(document.body.textContent?.includes("Separation filed and Kuali document verified"), false);
     await _afterEachFixture0();
     calls = 0;
@@ -544,6 +550,8 @@ it_m1("passes the app client to a served Explorer read while parity explicitly r
       workflowExplorer: async () => { calls++; throw new Error("mock Explorer must not read served definitions"); },
     });
     assert_m1.equal(calls, 0);
+    assert_m1.equal(document.body.textContent?.includes("Registered Person Lookup"), false);
+    assert_m1.equal(document.body.textContent?.includes("Purpose from the served definition"), false);
     assert_m1.ok(document.body.textContent?.includes("Browse workflows, their steps and field sources."));
     assert_m1.equal(document.body.textContent?.includes("Fictional preview data"), false);
     assert_m1.equal(document.body.textContent?.includes("No run values are available."), false);
