@@ -375,6 +375,8 @@ tab’s session storage, scoped only after the server verifies the selected pers
 key is never adopted. Saved text confers no command or model authority: restored pending requests
 remain unknown, review proposals expire, and verification proof is never restored. File bodies and
 executable action identities are not saved. Storage failures remain visible without erasing data.
+Deleting a chat retires its controller before removing history. Pending decisions become unknown;
+their late success or failure cannot write history, revive the chat or replay the action.
 
 For a currently selected served Queue run, send `start selected workflow` to propose the same
 workflow for that run's canonical subject input. The model receives a request-scoped opaque reference,

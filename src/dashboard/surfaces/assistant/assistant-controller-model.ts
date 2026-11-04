@@ -63,8 +63,10 @@ function presentResult(result: AssistantResult, requestId: number, prompt: strin
 export function createAssistantController(client: AssistantQueries, initialBinding: Binding, history?: { read(): AssistantState | undefined; retain(state: AssistantState): void }) {
   let state = history?.read() ?? emptyState(), binding = initialBinding;
   let outstanding: { requestId: number; prompt: string; abort: AbortController; binding: Binding } | undefined;
+  let pendingDecision: { actionId: string; abort: AbortController; binding: Binding } | undefined;
+  let retired = false;
   const listeners = new Set<() => void>();
-  function publish(next: AssistantState) { state = next; history?.retain(state); for (const listener of listeners) listener(); }
+  function publish(next: AssistantState) { if (retired) return; state = next; history?.retain(state); for (const listener of listeners) listener(); }
   function abort() {
     if (outstanding !== undefined) publish(assistantReducer(state, assistantSetupCommand(outstanding.prompt) === 'verify' ? { type: 'cancel' } : { type: 'uncertain', requestId: outstanding.requestId }));
     outstanding?.abort.abort(); outstanding = undefined;
@@ -73,7 +75,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
   async function respond(requestId: number, prompt: string) {
     const request = { requestId, prompt, abort: new AbortController(), binding };
     outstanding = request;
-    const current = () => outstanding === request && !request.abort.signal.aborted && binding === request.binding;
+    const current = () => !retired && outstanding === request && !request.abort.signal.aborted && binding === request.binding;
     const complete = (message: string) => {
       if (current()) publish(assistantReducer(state, { type: "settle", requestId,
         message: { id: 'assistant-' + requestId, role: 'assistant', text: message } }));
@@ -138,27 +140,41 @@ export function createAssistantController(client: AssistantQueries, initialBindi
   }
   async function decide(decision: 'confirm' | 'cancel') {
     const turn = state.turn;
-    if (turn.state !== 'proposal' || turn.proposal.action === undefined || turn.disposition !== 'review'
+    if (retired || turn.state !== 'proposal' || turn.proposal.action === undefined || turn.disposition !== 'review'
       || state.draft !== turn.proposal.prompt || client.assistantDecide === undefined) return;
-    const proposal = turn.proposal, identity = turn.proposal.action, capturedBinding = binding, abort = new AbortController();
+    const proposal = turn.proposal, identity = turn.proposal.action;
     if (identity === undefined) return;
+    const request = { actionId: proposal.id, binding, abort: new AbortController() };
+    pendingDecision = request;
+    const current = () => !retired && pendingDecision === request && binding === request.binding;
     publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'confirming' }));
     try {
-      const result = await client.assistantDecide({ ...identity, decision }, abort.signal);
-      if (binding !== capturedBinding) return;
+      const result = await client.assistantDecide({ ...identity, decision }, request.abort.signal);
+      if (!current()) return;
       const disposition = result.state === 'applied' ? 'confirmed' : result.state === 'cancelled' ? 'cancelled' : result.state === 'unknown' ? 'unknown' : 'stale';
       publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition,
         message: { id: `action-${proposal.id}`, role: 'assistant', text: result.state === 'applied' ? 'Confirmed action accepted.'
           : result.state === 'cancelled' ? 'Action cancelled.' : result.state === 'unknown' ? 'Action outcome is unknown. Do not retry this action.' : ASSISTANT_FAILURES[result.code] } }));
     } catch {
-      if (binding === capturedBinding) publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'unknown' }));
+      if (current()) publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'unknown' }));
+    } finally {
+      if (pendingDecision === request) pendingDecision = undefined;
     }
   }
   return Object.freeze({
     snapshot: () => state,
-    subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    subscribe(listener: () => void) { if (retired) return () => {}; listeners.add(listener); return () => { listeners.delete(listener); }; },
     abort,
+    retire() {
+      if (retired) return;
+      abort();
+      const decision = pendingDecision;
+      if (decision !== undefined) publish(assistantReducer(state, { type: 'action-state', id: decision.actionId, disposition: 'unknown' }));
+      pendingDecision = undefined; retired = true;
+      decision?.abort.abort(); listeners.clear();
+    },
     bind(next: Binding) {
+      if (retired) return;
       if (next.authority === binding.authority && next.subjectRef === binding.subjectRef && next.commands?.scope === binding.commands?.scope && next.commands?.executor === binding.commands?.executor
         && next.commands?.feedback === binding.commands?.feedback && next.refreshAccount === binding.refreshAccount && next.preferenceChanged === binding.preferenceChanged) return;
       binding = next; abort();
@@ -166,6 +182,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       else publish(assistantReducer(state, { type: 'cancel' }));
     },
     action(action: AssistantAction) {
+      if (retired) return;
       if ((action.type === 'edit' || action.type === 'new-chat') && state.turn.state === 'proposal' && state.turn.proposal.action !== undefined && state.turn.disposition === 'review') {
         void decide('cancel');
         publish(assistantReducer(state, action));
@@ -219,7 +236,7 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   const resource = accountPort.mode === 'live' ? accountPort.getResource?.() : undefined;
   const unverified = resource !== undefined && 'code' in resource && resource.code === 'CHATGPT_USAGE_UNAVAILABLE';
   const accountFailure = resource !== undefined && 'code' in resource ? ERROR_CATALOG[resource.code].text : undefined;
-  return { state, canCompose: accountAvailable || unverified, showTestAssistant: true, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.abort(); controllers.delete(id); }, launcherBottom, onAction: controller.action, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
+  return { state, canCompose: accountAvailable || unverified, showTestAssistant: true, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
     accountHeading: unverified ? "Verify assistant capability" : (account.state === 'connected' ? 'ChatGPT plan usage unavailable' : 'ChatGPT connection unavailable'),
     accountNotice: unverified ? ASSISTANT_FAILURES.ASSISTANT_MODEL_UNVERIFIED : accountFailure ?? (account.state === 'loading' ? 'Loading ChatGPT account…' : account.state === 'signing-in' ? 'Finish ChatGPT sign-in in Settings.' : account.state === 'connected' ? account.planUsage === 'limit-reached' ? ASSISTANT_FAILURES.ASSISTANT_USAGE_LIMIT : ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED : ASSISTANT_FAILURES.ASSISTANT_ACCOUNT_EXPIRED), confirmRefusal: state.turn.state === 'proposal' && state.turn.proposal.action !== undefined && client.assistantDecide !== undefined ? undefined : ASSISTANT_CONFIRM_HOLD,

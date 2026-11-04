@@ -2,7 +2,7 @@
 import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
 import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
-import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantResult, type AssistantActionResult } from '../../../../src/models/dashboard/assistant.js';
 import { AssistantPanel as ShellAssistantPanel } from '../../../../src/dashboard/surfaces/shell/assistant-panel.js';
 import { createAssistantMockProducer as createSetupAssistantProducer, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
 
@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { afterEach, it, vi } from 'vitest';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { createAssistantHistory } from '../../../../src/dashboard/surfaces/assistant/assistant-history-model.js';
 import { useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { ChatGptAccountContext, createPreviewChatGptAccountPort, createServedChatGptAccountPort } from '../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js';
 import { type ComposerDraft, useComposer } from '../../../../src/dashboard/surfaces/shell/composer-model.js';
@@ -249,4 +250,62 @@ it('refuses setup attachments before send callbacks, file readers and registrati
       assert.ok(host.textContent?.includes('text only'));
     } finally { await act(async () => root?.unmount()); root = undefined; host.remove(); account.port.dispose(); }
   }
+});
+
+it.each([
+  { decision: 'confirm', fail: false }, { decision: 'confirm', fail: true },
+  { decision: 'cancel', fail: false }, { decision: 'cancel', fail: true },
+] as const)('retires a deleted retained chat before deferred $decision settles (failure=$fail)', async ({ decision, fail }) => {
+  const rows = new Map<string, string>();
+  const history = createAssistantHistory({ getItem: key => rows.get(key) ?? null, setItem: (key, value) => { rows.set(key, value); } }, crypto.randomUUID());
+  const oldId = history.chats.read()[0].id, replacementId = history.chats.create().id;
+  const held = Promise.withResolvers<AssistantActionResult>();
+  let decisions = 0, requests = 0, signal: AbortSignal | undefined;
+  const action = { chatId: crypto.randomUUID(), actionId: crypto.randomUUID(), revision: 1 };
+  const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'action-proposal', proposal: { ...action,
+    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark current notifications read', targetLabel: 'Current notifications', subject: 'none', effect: 'local-write' } }; },
+    assistantDecide(_input: unknown, abort?: AbortSignal) { decisions++; signal = abort; return held.promise; } };
+  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
+  const account = { ...preview, mode: 'live' as const };
+  let current!: ReturnType<typeof useAssistantController>;
+  function Harness({ id }: { id: string }) { current = useAssistantController(client, 'current-person', undefined, false, id, undefined, { history }); return null; }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  async function render(id: string) { await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness, { id }) }))); }
+  await render(oldId);
+  await act(async () => { current.onAction({ type: 'edit', value: 'mark notifications read' }); current.onAction({ type: 'send' }); });
+  const forgottenAction = current.onAction;
+  await act(async () => current.onAction({ type: decision }));
+  assert.equal(decisions, 1);
+  assert.equal(history.read(oldId)?.turn.state, 'unknown');
+  const retain = vi.spyOn(history, 'retain');
+  await act(async () => {
+    current.forgetSession(oldId);
+    const retired = retain.mock.calls.at(-1)?.[1];
+    assert.equal(retired?.turn.state, 'proposal');
+    if (retired?.turn.state !== 'proposal') throw Error('pending decision must remain represented');
+    assert.equal(retired.turn.disposition, 'unknown');
+    assert.equal(signal?.aborted, true);
+    history.chats.remove(oldId);
+  });
+  await render(replacementId);
+  const replacement = current.state, retained = [...rows.values()];
+  retain.mockClear();
+  await act(async () => {
+    if (fail) held.reject(Error('lost deferred decision response'));
+    else held.resolve({ state: decision === 'confirm' ? 'applied' : 'cancelled', actionId: action.actionId });
+    await held.promise.catch(() => {});
+    await Promise.resolve();
+  });
+  assert.equal(signal?.aborted, true);
+  assert.equal(retain.mock.calls.length, 0);
+  assert.equal(current.state === replacement, true);
+  assert.deepEqual([...rows.values()], retained);
+  assert.throws(() => history.read(oldId), /HUB_CHAT_UNAVAILABLE/u);
+  await act(async () => {
+    for (const type of ['confirm', 'cancel', 'retry', 'new-chat', 'send'] as const) forgottenAction({ type });
+    forgottenAction({ type: 'edit', value: 'do not revive the forgotten controller' });
+  });
+  assert.equal(decisions, 1); assert.equal(requests, 1);
+  assert.equal(retain.mock.calls.length, 0); assert.equal(current.state === replacement, true);
+  retain.mockRestore();
 });
