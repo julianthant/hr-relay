@@ -36,9 +36,16 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const aliases = await queue.locator("span[title]").allTextContents();
       expect(aliases.filter(value => /^OCR\d{8}$/u.test(value))).toHaveLength(5);
 
+      const parent = queue.getByRole("button", { name: "Oath Signature · single-oath.pdf — the run that delegated this one", exact: true });
+      await parent.focus(); await page.keyboard.press("Enter");
+      await expect(rail.getByRole("button", { name: "Oath Signature", exact: true })).toHaveAttribute("aria-current", "page");
+      await expect(logs.getByRole("heading", { name: "single-oath.pdf", exact: true })).toBeVisible();
+      await rail.getByRole("button", { name: "OCR", exact: true }).click();
+
       await attachShellA11y(page, info, queueEvidence);
       for (const doc of OCR_DOCUMENT_FIXTURES) {
-        await queue.getByRole("button", { name: new RegExp(`^${doc.name.replaceAll("./", "\\.")} —`, "u") }).click();
+        await queue.getByRole("button", { name: new RegExp(`^${doc.name.replaceAll("./", "\\.")} —`, "u") }).focus();
+        await page.keyboard.press("Enter");
         await logs.getByRole("button", { name: `Records ${doc.records.length}`, exact: true }).click();
         const editor = logs.getByRole("region", { name: "OCR records", exact: true });
         const body = editor.locator('[aria-label="Record review cards"]');
