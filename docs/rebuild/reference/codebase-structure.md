@@ -185,8 +185,9 @@ and `ocr-page/steps/read-page/step.ts` and enter the generated step-proof invent
 `src/workflows/ocr/steps/source-pages/step.ts` also owns the generic approved-record graph builder: one awaited
 OCR child, authenticated snapshot retrieval, then ordered member delegation. Target, selection
 policy and member mapping belong to each consuming workflow. `src/workflows/emergency-contact/`
-uses it for the PDF operation; `src/workflows/emergency-contact-member/` owns one employee's
-contact plan and transaction preview. Both retain step proofs and schema-owned results.
+uses it for the PDF operation; `src/workflows/emergency-contact-member/` authenticates the approved
+OCR record and native child lineage before contact acquisition, then owns one employee's contact
+plan and transaction. Both retain step proofs and schema-owned results.
 The local `ocr.approved-snapshot` and `ocr.review` capabilities are issued by
 `worker/run-resources.ts`; they have no endpoint or configurable provider.
 
@@ -271,7 +272,9 @@ fixture proves adapter behavior, not live selector validity. Contact read, prepa
 contracts use their task-ID suffix modules under `src/models/systems/ucpath/`, with shared schemas and idempotency in `contact-contract.ts`; their implementations live under
 `src/backend/systems/ucpath/tasks/`, one file per task ID. `contact-verdict.ts` owns the shared protected
 probe fold. Preparation can demote one uniquely bound primary and add the declared primary contact.
-The driver exposes no contact Save capability, and real-mode members refuse before acquisition.
+The production adapter supplies the contact Save port; the shared driver consumes the retained
+prepared plan under mutation-capability checks. [Write safety](write-safety.md) describes its Save
+and persisted-read path.
 `tests/architecture/systems/fixtures/selector-evidence-bindings.json` owns selector-binding inputs.
 `tests/architecture/dashboard/fixtures/pending-wire-bindings.json` owns dashboard wire exceptions.
 
