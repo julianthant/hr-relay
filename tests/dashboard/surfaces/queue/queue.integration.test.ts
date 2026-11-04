@@ -11,7 +11,7 @@ partition,
 queueRowAccessibleName,
 queueRowTitle,
 rowInfoFacts,
-visibleRunIds,
+visibleQueueKeys,
 queueScopeWorkflow
 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { QueuePanel,QueueRow } from "../../../../src/dashboard/surfaces/queue/queue.js";
@@ -30,6 +30,8 @@ import { summaryFixture } from "../../../support/helpers/backend/served-database
 import { id } from "../../../support/helpers/database-foundation/fixtures.js";
 
 import { queueParentFixture } from "../../../support/helpers/dashboard/queue-parent-fixture.js";
+import { queueKeyboardEntries, queueMemberKey, queueMemberSelection } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import type { QueueRecordMember } from "../../../../src/models/dashboard/projection.js";
 
 const rows = FIXTURE_DAY_WIRE.queueSurfaces;
 
@@ -63,6 +65,61 @@ function rowMarkup(surface: QueueSurfaceWire): string {
 }
 
 describe("Queue consumes the served day boundary", () => {
+  it("keeps shared lookup records individually selectable and targets failed pages at their own logs", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const source = rowWhere(row => row.surfaceKind === "operation" && row.memberRunIds.length === 3);
+    assert.equal(source.surfaceKind, "operation");
+    if (source.surfaceKind !== "operation") throw new Error("operation fixture changed shape");
+    const members = source.memberRunIds.map(runId => rowWhere(row => row.runId === runId));
+    const owner = { runId: source.runId, workflowId: "ocr", partitionDay: FIXTURE_DAY, label: "OCR", status: "awaiting-approval", panelKind: "review" };
+    const refs = [1, 2, 3].map(page => ({ runId: source.runId, recordId: `${"a".repeat(64)}#emergency-contact#${page}` }));
+    const surface = QueueSurfaceWireSchema.parse({ ...source, title: "Three source records", recordMembers: {
+      runIds: source.memberRunIds, members: [...refs.map((record, index) => ({ kind: "record", record,
+        title: index === 1 ? "Example, Robin" : "Example, Avery", status: "awaiting-approval", statusLabel: "Needs lookup",
+        childRunIds: [members[index === 1 ? 1 : 0].runId], target: { ...owner, section: "review", record } })),
+      { kind: "page-failure", ownerRunId: source.runId, sourcePage: 9, title: "Page 9", status: "failed", statusLabel: "Failed",
+        childRunIds: [members[2].runId], target: { ...owner, runId: members[2].runId, workflowId: "ocr-page", label: "OCR page", panelKind: "run", status: "failed", section: "logs" } }],
+    } });
+    assert.equal(surface.surfaceKind, "operation");
+    if (surface.surfaceKind !== "operation" || surface.recordMembers === undefined) throw new Error("record fixture missing");
+    const served = [surface, ...members];
+    const keys = visibleQueueKeys(served);
+    assert.equal(new Set(keys).size, 5);
+    assert.ok(members.every(member => !keys.includes(member.runId)));
+    const recordMembers = surface.recordMembers;
+    assert.deepEqual(queueKeyboardEntries(served).filter(entry => entry.kind === "record").map(entry => entry.member),
+      [recordMembers.members[3], ...recordMembers.members.slice(0, 3)]);
+    const host = document.createElement("div"); document.body.append(host);
+    const root = createRoot(host);
+    const selected: QueueRecordMember[] = [], native: string[] = [];
+    try {
+      await act(async () => root.render(createElement(QueuePanel, {
+        surfaces: served, state: { nowIso: FIXTURE_NOW, openWells: new Set<string>(), selectedMember: queueMemberSelection(recordMembers.members[1]) },
+        handlers: { onSelect: runId => native.push(runId), onOpenMember: member => selected.push(member) },
+        workflowLabelOf: () => "Fixture", panelLabel: "Fixture", day: FIXTURE_DAY,
+      })));
+      for (const member of surface.recordMembers.members) {
+        const key = queueMemberKey(queueMemberSelection(member));
+        const line = [...host.querySelectorAll<HTMLTableRowElement>("tr[data-demo-row-id]")].find(line => line.dataset.demoRowId === key);
+        assert.ok(line);
+        for (const target of [line, ...line.cells]) {
+          selected.length = 0;
+          await act(async () => target.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+          assert.deepEqual(selected, [member]);
+        }
+        const name = line.querySelector<HTMLButtonElement>("button[aria-pressed]"); assert.ok(name);
+        assert.equal(name.type, "button"); assert.equal(name.tabIndex, 0);
+        assert.doesNotMatch(name.className, /underline/u);
+        selected.length = 0;
+        await act(async () => name.click());
+        assert.deepEqual(selected, [member]);
+        assert.doesNotMatch(line.textContent ?? "", /Retry/u);
+      }
+      assert.deepEqual(native, []);
+      assert.equal(host.querySelectorAll('button[aria-pressed="true"]').length, 1);
+      if (source.memberPreview.state === "present") assert.ok(!host.textContent?.includes(source.memberPreview.value));
+    } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
+  });
   it("keeps operation members contained once while keyboard traversal reaches the same loaded rows", () => {
     const operation = rowWhere((row) => row.surfaceKind === "operation" && row.memberRunIds.length === 3);
     assert.equal(operation.surfaceKind, "operation");
@@ -76,7 +133,7 @@ describe("Queue consumes the served day boundary", () => {
       new Set((partitioned.membersOf.get(operation.runId) ?? []).map((row) => row.runId)),
       new Set(operation.memberRunIds),
     );
-    assert.deepEqual(new Set(visibleRunIds(selected)), new Set([operation.runId, ...operation.memberRunIds]));
+    assert.deepEqual(new Set(visibleQueueKeys(selected)), new Set([operation.runId, ...operation.memberRunIds]));
 
     const markup = panelMarkup(selected);
     assert.equal((markup.match(new RegExp(`data-demo-row-id="${operation.runId}"`, "gu")) ?? []).length, 1);
@@ -101,7 +158,7 @@ describe("Queue consumes the served day boundary", () => {
     const served = [parent, nested, failed];
     assert.equal(queueScopeWorkflow(failed, served), parent.workflowId);
     assert.equal(queueScopeWorkflow(nested, served), parent.workflowId);
-    assert.deepEqual(visibleRunIds(served), [parent.runId, nested.runId, failed.runId]);
+    assert.deepEqual(visibleQueueKeys(served), [parent.runId, nested.runId, failed.runId]);
     const markup = panelMarkup(served);
     for (const row of served) assert.equal((markup.match(new RegExp(`data-demo-row-id="${row.runId}"`, "gu")) ?? []).length, 1);
     assert.match(markup, /I-9 lookup/u);
@@ -176,7 +233,7 @@ describe("Queue consumes the served day boundary", () => {
       } while (after !== undefined);
       assert.deepEqual(seen, selectedIds);
       const served = f.projection.buildDashboardDayWire("2026-09-09").queueSurfaces;
-      assert.deepEqual(visibleRunIds(served), seen);
+      assert.deepEqual(visibleQueueKeys(served), seen);
       const markup = panelMarkup(served);
       for (const runId of seen) assert.equal(markup.split(`data-demo-row-id="${runId}"`).length - 1, 1);
       assert.deepEqual(queryQueueSummaries(f.db, { workflow: "person-lookup", status: "failed", limit: 1 }).items, []);

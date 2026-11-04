@@ -283,7 +283,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.ok(parent && original);
     assert_m1.ok(!parseWorkflows(FIXTURE_BOOTSTRAP_m1.workflows).some(flow => flow.id === workflowId));
     const child = { ...original, workflowId, panelKind: workflowId === "ocr" ? "review" : "member",
-      parent: queueParentFixture(parent.runId, { workflowId: parent.workflowId, visibility: "linked" }) };
+      parent: queueParentFixture(parent.runId, { workflowId: parent.workflowId, panelKind: parent.panelKind, partitionDay: FIXTURE_DAY_WIRE_m1.day, visibility: "linked" }) };
     const link = { runId: child.runId, partitionDay: targetDay, workflowId, label: "Child review", panelKind: child.panelKind, status: child.status };
     const sourceDay = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE_m1,
       queueSurfaces: [{ ...parent, linkedRuns: [link] }, ...(targetDay === FIXTURE_DAY_WIRE_m1.day ? [child] : [])] });
@@ -295,7 +295,9 @@ afterEach_m1(_afterEachFixture0);
     await mount(`?day=${sourceDay.day}`, {
       dashboardDay: async day => { assert_m1.equal(day, targetDay); return linkedDay; },
       subscribeDay(input) { input.onDay(input.day === sourceDay.day ? sourceDay : linkedDay); input.onState({ state: "live" }); return { close() {} }; },
-      runDetail: async id => { reads.push(id); assert_m1.equal(id, child.runId);
+      runDetail: async id => { reads.push(id);
+        if (id === parent.runId) { const ownerDetail = FIXTURE_RUN_DETAILS[id]; assert_m1.ok(ownerDetail); return ownerDetail; }
+        assert_m1.equal(id, child.runId);
         return { ...detail, panelKind: target.panelKind, header: { ...detail.header, workflowId: target.workflowId } }; },
     }, "sidebar");
     const preference = shellPreferences.snapshot().value.selectedWorkflowId;
@@ -304,6 +306,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.equal(parseRoute_m1(window.location.search).run, child.runId);
     assert_m1.equal(parseRoute_m1(window.location.search).day, targetDay);
     assert_m1.equal(parseRoute_m1(window.location.search).view?.preview, null);
+    assert_m1.ok(reads.includes(parent.runId));
     assert_m1.ok(reads.includes(child.runId));
     assert_m1.ok(document.querySelector(`[data-demo-row-id="${child.runId}"]`));
     const logs = document.querySelector('[aria-label="Selected run logs"]'); assert_m1.ok(logs);

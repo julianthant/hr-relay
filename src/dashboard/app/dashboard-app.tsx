@@ -64,11 +64,11 @@ import { serverLocalDay } from "../surfaces/shell/date-navigation-model.js";
 import { fmtClock } from "../surfaces/shared/status/format.js";
 import { type PanelTab } from "../surfaces/run-detail/log-panel-model.js";
 import { LogSample } from "../surfaces/run-detail/logs/log-sample.js";
-import { queueScopeWorkflow } from "../surfaces/queue/queue-model.js";
+import { queueScopeWorkflow, queueKeyboardEntries, queueMemberKey, queueMemberSelection } from "../surfaces/queue/queue-model.js";
 import type { QueueBatch, QueueSurfaceWire } from "../surfaces/queue/queue-model.js";
 import {
-  attentionRunIds,
-visibleRunIds,
+  attentionQueueKeys,
+visibleQueueKeys,
 type QueueSortKey,
 } from "../surfaces/queue/queue-model.js";
 import {
@@ -78,6 +78,7 @@ PauseAllQuitControls,
 type PendingBulkCommand,
 } from "../surfaces/queue/queue-toolbar.js";
 import { FocusQueueHeader, FocusQueueToolbar } from '../surfaces/queue/queue-focus.js';
+import type { QueueHandlers } from "../surfaces/queue/queue.js";
 import { QueuePanel,type QueueFilterScope } from "../surfaces/queue/queue.js";
 import { RenameRunDialog,type PendingRename } from "../surfaces/run-detail/identity/run-identity.js";
 import { RunStartButton } from "../surfaces/run-start/run-start.js";
@@ -96,7 +97,8 @@ import "../surfaces/shell/permanent-shell.css";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/shared/status/status-model.js";
 import { StorageBanner } from "../surfaces/settings/storage/storage-settings.js";
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
-import { resolveRunNavigation } from "./navigation/run-navigation.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { notificationTargetUnavailable, resolveRunNavigation } from "./navigation/run-navigation.js";
 import { notificationDestinationRefusal, useWorkspaceNotifications } from "../surfaces/notifications/notifications-preview-model.js";
 import type { NotificationDestination } from "../surfaces/notifications/notifications-view-model.js";
 import {
@@ -503,14 +505,23 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
 
   const setActiveWorkflowId = useCallback((id: string): boolean => {
     if (requestActiveWorkflowId(id)) return true;
+    if (dayWire?.queueSurfaces.some(row => row.parent !== null && row.workflowId === id
+      || row.parent?.workflowId === id
+      || row.surfaceKind === "operation" && row.recordMembers?.members.some(member => member.target.workflowId === id))) return true;
     toast({ tone: "danger", title: "Workflow unavailable", description: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text });
     return false;
-  }, [requestActiveWorkflowId, toast]);
+  }, [requestActiveWorkflowId, toast, dayWire]);
 
-  const workflowLabelOf = useCallback(
-    (workflowId: string): string => workflowCatalog.find((w) => w.id === workflowId)?.label ?? workflowId,
-    [workflowCatalog],
-  );
+  const workflowLabels = useMemo(() => {
+    const labels = new Map(workflowCatalog.map(workflow => [workflow.id, workflow.label]));
+    for (const row of dayWire?.queueSurfaces ?? []) {
+      if (row.parent !== null) labels.set(row.parent.workflowId, row.parent.label);
+      for (const link of row.linkedRuns) labels.set(link.workflowId, link.label);
+      if (row.surfaceKind === "operation") for (const member of row.recordMembers?.members ?? []) labels.set(member.target.workflowId, member.target.label);
+    }
+    return labels;
+  }, [workflowCatalog, dayWire]);
+  const workflowLabelOf = useCallback((workflowId: string): string => workflowLabels.get(workflowId) ?? workflowId, [workflowLabels]);
   const scopedStatusCounts = useMemo(
     () => workflowStatusCounts(dayWire?.workflowCounts ?? [], activeWorkflowId),
     [dayWire, activeWorkflowId],
@@ -541,12 +552,69 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     return true;
   }, [activeWorkflowId, setRoute, setActiveWorkflowId]);
 
-  const selectRun = useCallback(
-    (runId: string, partitionDay = day) => {
-      leaveSettings(() => setRoute({ ...routeForCrossDateSearchResult(route, {runId, partitionDay}), section: "logs" }));
-    },
-    [route, setRoute, day, leaveSettings],
-  );
+  const selectRun = useCallback((runId: string, partitionDay = day) => {
+    leaveSettings(() => setRoute(current => {
+      const next = routeForCrossDateSearchResult(current, { runId, partitionDay });
+      return { ...next, section: "logs", view: { ...next.view, queueMember: undefined } };
+    }));
+  }, [setRoute, day, leaveSettings]);
+  const relatedNavigation = useRef(0);
+  const relatedDay = useRef(dayWire);
+  relatedDay.current = dayWire;
+  const openRelatedRun = useCallback<NonNullable<QueueHandlers["onOpenLinked"]>>(target => {
+    const request = ++relatedNavigation.current, scope = commandScope, origin = routeRef.current;
+    const owner = dayWire?.queueSurfaces.find(row => row.parent === target || row.linkedRuns.includes(target));
+    if (owner === undefined) return;
+    const parent = owner.parent === target;
+    const targetKey = canonicalJsonStringify(target);
+    const current = () => {
+      const row = relatedDay.current?.queueSurfaces.find(row => row.runId === owner.runId);
+      return relatedNavigation.current === request && currentCommandScope.current === scope && routeRef.current === origin
+        && relatedDay.current?.day === day && row?.workflowId === owner.workflowId && row.traceId === owner.traceId
+        && row.attempt === owner.attempt && row.rowRevision === owner.rowRevision
+        && (parent ? row.parent !== null && canonicalJsonStringify(row.parent) === targetKey
+          : row.linkedRuns.some(link => canonicalJsonStringify(link) === targetKey));
+    };
+    const refuse = () => ({ state: "refused" as const,message: notificationTargetUnavailable() });
+    const resolve = async (): Promise<Awaited<ReturnType<typeof resolveRunNavigation>>> => {
+      try {
+        const detail = await client.runDetail(owner.runId);
+        if (detail.runId !== owner.runId || detail.header.runId !== owner.runId || detail.header.workflowId !== owner.workflowId
+          || detail.header.traceId !== owner.traceId || detail.header.attempt !== owner.attempt
+          || detail.rowRevision !== owner.rowRevision || detail.panelKind !== owner.panelKind) return refuse();
+        return await resolveRunNavigation(client,{ kind: "run",runId: target.runId,day: target.partitionDay },origin,(id,row) => {
+          if (id !== target.workflowId || row.panelKind !== target.panelKind || row.parent === null && !canSelectWorkflowId(id)) return false;
+          if (!parent) return row.parent?.runId === owner.runId && row.parent.workflowId === owner.workflowId && row.parent.panelKind === owner.panelKind && row.parent.partitionDay === day;
+          if (owner.parent?.runId !== row.runId || owner.parent.workflowId !== row.workflowId || owner.parent.partitionDay !== target.partitionDay) return false;
+          const reciprocal = row.linkedRuns.find(link => link.runId === owner.runId);
+          return reciprocal === undefined || reciprocal.workflowId === owner.workflowId && reciprocal.panelKind === owner.panelKind && reciprocal.partitionDay === day;
+        });
+      } catch { return refuse(); }
+    };
+    const open = (result: Awaited<ReturnType<typeof resolveRunNavigation>>) => {
+      if (!current()) return;
+      if (result.state === "refused") { toast({ tone: "danger",title: "Workflow unavailable",description: result.message });return; }
+      if (canSelectWorkflowId(target.workflowId) && !setActiveWorkflowId(target.workflowId)) return;
+      setRoute({ ...result.route,view: { ...result.route.view,queueMember: undefined } });
+    };
+    void resolve().then(result => {
+      if (!current()) return;
+      if (result.state === "refused") { open(result);return; }
+      leaveSettings(() => {
+        if (!current()) return;
+        if (origin.settings === undefined) open(result);
+        else void resolve().then(open);
+      });
+    });
+  },[client,commandScope,day,dayWire,canSelectWorkflowId,setActiveWorkflowId,leaveSettings,setRoute,toast]);
+  const openQueueMember = useCallback<NonNullable<QueueHandlers["onOpenMember"]>>(member => {
+    const target = member.target;
+    const partitionDay = dayWire?.queueSurfaces.some(row => row.runId === target.runId) ? day : target.partitionDay;
+    leaveSettings(() => setRoute(current => {
+      const next = routeForCrossDateSearchResult(current, { runId: target.runId, partitionDay });
+      return { ...next, section: target.section, view: { ...next.view, queueMember: queueMemberSelection(member) } };
+    }));
+  }, [setRoute, day, dayWire, leaveSettings]);
 
   const executeShell = useCallback(async (request: RetainedCommandRequest, label: string, plan?: BulkVerbPlan, replay = false): Promise<void> => {
     if (!commandLabels.current.has(request.commandId)) commandLabels.current.set(request.commandId, label);
@@ -713,6 +781,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     },
     [runAction],
   );
+  const runLogAction = useCallback((action: ActionDescriptorWire, target: ActionTarget) => runAction(action, target, "run-detail"), [runAction]);
 
   /** Keyboard traversal must follow the same drawn order and attention bands. */
   /** Keep handler identity stable so unchanged callbacks do not defeat queue memoization. */
@@ -733,43 +802,26 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       document.getElementById(RUN_START_DOOR_ID)?.focus({ preventScroll: true });
     });
   }, [onSelectMode, onBulkIds]);
-  const linkedNavigation = useRef(0);
-  const openLinkedRun = useCallback<Parameters<typeof useQueueWiring>[0]["openLinkedRun"]>(link => {
-    const request = ++linkedNavigation.current;
-    const origin = routeRef.current, scope = commandScope;
-    const current = () => linkedNavigation.current === request && routeRef.current === origin && currentCommandScope.current === scope;
-    const resolve = () => resolveRunNavigation(client, { kind: "run", runId: link.runId, day: link.partitionDay }, origin,
-      (id, row) => id === link.workflowId && row.panelKind === link.panelKind && (row.parent !== null || canSelectWorkflowId(id)));
-    const open = (result: Awaited<ReturnType<typeof resolveRunNavigation>>) => {
-      if (!current()) return;
-      if (result.state === "refused") {
-        toast({ tone: "danger", title: "Workflow unavailable", description: formatErrorCatalogFailure(createErrorCatalogFailure("DASHBOARD_WORKFLOW_UNAVAILABLE", {})).text });
-        return;
-      }
-      if (canSelectWorkflowId(link.workflowId) && !setActiveWorkflowId(link.workflowId)) return;
-      setRoute(result.route);
-    };
-    void resolve().then(result => {
-      if (!current()) return;
-      if (result.state === "refused") { open(result); return; }
-      leaveSettings(() => {
-        if (origin.settings === undefined) open(result);
-        else void resolve().then(open);
-      });
-    });
-  }, [client, commandScope, canSelectWorkflowId, setActiveWorkflowId, leaveSettings, setRoute, toast]);
   const { surfaces, outcomes, viewState, queueHandlers, actionsOf } = useQueueWiring({
     allRows: dayWire?.queueSurfaces, attemptHistory: dayWire?.attemptHistory, rows: queueRows, activeWorkflowId, filter, selectedRunId: route.run,
-    openWells, selectMode, bulkIds, nowIso, selectRun, setActiveWorkflowId, openLinkedRun, onWells, onBulkIds,
+    openWells, selectMode, bulkIds, nowIso, selectRun, openRelatedRun, selectedMember: route.view?.queueMember, openMember: openQueueMember, onWells, onBulkIds,
     setBatchGrouping, exitQueueSelection, runQueueAction,
   });
 
+  const keyboardEntries = useMemo(() => new Map(queueKeyboardEntries(surfaces, sort, nowIso).map(entry => [entry.key, entry])), [surfaces, sort, nowIso]);
+  const selectQueueKey = useCallback((key: string) => {
+    const entry = keyboardEntries.get(key);
+    if (entry === undefined) throw new Error("queue-keyboard-target-unavailable");
+    if (entry.kind === "record") openQueueMember(entry.member);
+    else selectRun(entry.runId);
+  }, [keyboardEntries, openQueueMember, selectRun]);
+  const selectedQueueKey = route.view?.queueMember === undefined ? route.run : queueMemberKey(route.view.queueMember);
   const keyboardOrder = useMemo(
-    () => visibleRunIds(surfaces, sort, nowIso),
+    () => visibleQueueKeys(surfaces, sort, nowIso),
     [surfaces, sort, nowIso],
   );
   const keyboardAttention = useMemo(
-    () => attentionRunIds(surfaces, sort, nowIso),
+    () => attentionQueueKeys(surfaces, sort, nowIso),
     [surfaces, sort, nowIso],
   );
   useGlobalKeys({
@@ -779,11 +831,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     panelMode: "sidebar",
     onMinimisePanel: () => {},
     // A preview queue is not the served queue; its rows must not move the hidden served selection.
-    visibleRunIds: railPreview ? [] : keyboardOrder,
+    visibleQueueKeys: railPreview ? [] : keyboardOrder,
     workflowIds: workflowCatalog.map(workflow => workflow.id), onWorkflow: selectWorkflow,
-    attentionRunIds: railPreview ? [] : keyboardAttention,
-    selectedRunId: route.run,
-    onSelectRun: selectRun,
+    attentionQueueKeys: railPreview ? [] : keyboardAttention,
+    selectedQueueKey,
+    onSelectQueueKey: selectQueueKey,
     panelTabs: NO_LOG_TABS,
     onTab,
   });
@@ -792,11 +844,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
   const settingsSections = useMemo(
     () => SettingsSectionPrimitiveSchema.array().parse(boot.settingsSections),
     [boot.settingsSections],
-  );
-  // Join capability rows to bootstrap labels; one workflow must have one name.
-  const workflowLabels = useMemo(
-    () => new Map(workflowCatalog.map((workflow) => [workflow.id, workflow.label])),
-    [workflowCatalog],
   );
   const ready = !hasServedWorkflows || dayResource.state === "loaded" || dayResource.state === "failed";
   // One resolution of "which takeover owns the main region", so the JSX below
@@ -1131,7 +1178,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
               reviewOpen={railReviewId === railRow.id} onReviewOpenChange={open => setRailReviewId(open ? railRow.id : undefined)}
               onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => completeReview(railRow.id, "discard")} onRestore={() => completeReview(railRow.id, "restore")}
               onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRoute(current => ({ ...current, view: { ...current.view, preview: next.workflowId, mockRun: next.id, records: undefined } })); }} /> : !previewFlow && route.run !== undefined && logRow !== undefined && dateSelection.state === "valid" ? (
-              <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} confirm={confirmLogDecision} initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={logRow.parent === null && workflowComposition.logsSources ? workflowSource(logRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
+              <LogSample key={`${route.run}:${route.view?.logFailure?.failureId ?? ""}`} confirm={confirmLogDecision} onAction={runLogAction}
+                reviewOpen={route.section === "review"} reviewFocus={route.view?.queueMember?.kind === "record" ? route.view.queueMember.record : undefined}
+                onReview={() => setRoute(current => ({ ...current, section: "review" }))} onLogs={() => setRoute(current => ({ ...current, section: "logs" }))}
+                initialStepId={route.view?.logFailure?.runId === route.run ? route.view.logFailure.failureId : undefined} nowIso={nowIso} source={logRow.parent === null && workflowComposition.logsSources ? workflowSource(logRow.workflowId, workflowComposition.logsSources) : "served"} selection={{ row: logRow, workflowLabel: workflowLabelOf(logRow.workflowId) }} />
             ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}

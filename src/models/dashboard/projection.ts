@@ -1,4 +1,5 @@
 import { QueueParentSchema } from "./queue-parent.js";
+import { DelegatedRecordRefSchema } from "../workflow/delegated-record.js";
 import { RunPauseSchema } from "../run/record.js";
 import { z } from "zod";
 import { WorkerControlRecordSchema } from "../run/worker-control.js";
@@ -74,6 +75,65 @@ const LinkedRunWireSchema = z.strictObject({
 });
 
 export const QueueParentWireSchema = QueueParentSchema.extend({ ...LinkedRunWireSchema.shape, title: z.string().min(1) });
+
+export const QueueMemberTargetSchema = z.discriminatedUnion("section", [
+  LinkedRunWireSchema.extend({ section: z.literal("logs") }),
+  LinkedRunWireSchema.extend({ section: z.literal("review"), record: DelegatedRecordRefSchema }),
+]);
+const MemberPresentationFields = {
+  title: z.string().min(1), status: QueueStatusSchema,
+  statusLabel: z.enum(["Done", "Running", "Reading", "Looking up", "Verified", "Needs lookup", "Saved", "Saving", "Previewing", "Previewed", "Not approved", "Failed", "Blocked", "Cancelled"]),
+  childRunIds: z.array(RunIdSchema), target: QueueMemberTargetSchema,
+};
+export const QueueRecordMemberSchema = z.strictObject({
+  kind: z.literal("record"), record: DelegatedRecordRefSchema, ...MemberPresentationFields,
+}).superRefine((member, context) => {
+  if (new Set(member.childRunIds).size !== member.childRunIds.length
+    || member.target.section === "review" && (member.target.runId !== member.record.runId
+      || member.target.record.runId !== member.record.runId || member.target.record.recordId !== member.record.recordId)
+    || member.target.section === "logs" && member.target.runId !== member.record.runId && !member.childRunIds.includes(member.target.runId)) {
+    context.addIssue({ code: "custom", message: "record member target must retain its owner, record and child membership" });
+  }
+});
+const QueueReadingMemberSchema = z.strictObject({
+  kind: z.literal("reading"), ownerRunId: RunIdSchema, ...MemberPresentationFields,
+}).superRefine((member, context) => {
+  if (new Set(member.childRunIds).size !== member.childRunIds.length
+    || member.target.section !== "logs" || member.target.runId !== member.ownerRunId) {
+    context.addIssue({ code: "custom", message: "reading member must target its exact source run" });
+  }
+});
+const QueuePageFailureMemberSchema = z.strictObject({
+  kind: z.literal("page-failure"), ownerRunId: RunIdSchema, sourcePage: z.number().int().positive(),
+  ...MemberPresentationFields, status: z.literal("failed"),
+}).superRefine((member, context) => {
+  if (new Set(member.childRunIds).size !== member.childRunIds.length
+    || member.target.section !== "logs" || !member.childRunIds.includes(member.target.runId)) {
+    context.addIssue({ code: "custom", message: "failed page must target its exact child history" });
+  }
+});
+export const QueueMemberSelectionSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: QueueRecordMemberSchema.shape.kind, record: QueueRecordMemberSchema.shape.record }),
+  z.strictObject({ kind: QueueReadingMemberSchema.shape.kind, ownerRunId: QueueReadingMemberSchema.shape.ownerRunId }),
+  z.strictObject({ kind: QueuePageFailureMemberSchema.shape.kind, ownerRunId: QueuePageFailureMemberSchema.shape.ownerRunId,
+    sourcePage: QueuePageFailureMemberSchema.shape.sourcePage }),
+]);
+export type QueueMemberSelection = z.infer<typeof QueueMemberSelectionSchema>;
+export const QueueRecordMembersSchema = z.strictObject({
+  members: z.array(z.discriminatedUnion("kind", [QueueRecordMemberSchema, QueueReadingMemberSchema, QueuePageFailureMemberSchema])),
+  runIds: z.array(RunIdSchema),
+}).superRefine((presentation, context) => {
+  const ids = new Set(presentation.runIds);
+  const keys = presentation.members.map(member => member.kind === "record" ? `${member.record.runId}/${member.record.recordId}`
+    : member.kind === "reading" ? `reading/${member.ownerRunId}` : `page/${member.ownerRunId}/${member.sourcePage}`);
+  if (ids.size !== presentation.runIds.length || new Set(keys).size !== keys.length
+    || presentation.members.some(member => member.childRunIds.some(runId => !ids.has(runId)))) {
+    context.addIssue({ code: "custom", message: "record presentation must retain distinct rows and complete child membership" });
+  }
+});
+export type QueueRecordMembers = z.infer<typeof QueueRecordMembersSchema>;
+export type QueueRecordMember = QueueRecordMembers["members"][number];
+export type QueueMemberTarget = z.infer<typeof QueueMemberTargetSchema>;
 
 /** The run's scheduling class, read from the run envelope (its one home); a deliberate MIRROR kept member-for-member identical by the mirror joint. */
 export const QueuePrioritySchema = z.enum(["interactive", "bulk"]);
@@ -266,6 +326,7 @@ const operation = z.strictObject({
   ...baseFields,
   surfaceKind: z.literal("operation"),
   memberRunIds: z.array(RunIdSchema),
+  recordMembers: QueueRecordMembersSchema.optional(),
   memberRollup: z.strictObject({
     total: z.number().int().nonnegative(),
     terminal: z.number().int().nonnegative(),

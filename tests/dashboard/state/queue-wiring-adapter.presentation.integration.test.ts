@@ -27,8 +27,7 @@ it("keeps attempts within the selected day and selects the exact run", async () 
     wiring = useQueueWiring({ allRows: current, attemptHistory: day.attemptHistory, rows: current.filter(row => row.attempt === 7),
       activeWorkflowId: "person-lookup", filter: ["all"], selectedRunId: uuidOf(87), openWells: new Set(), selectMode: false, bulkIds: new Set(),
       nowIso: "2026-08-03T18:00:00.000Z",
-      selectRun: (runId, partitionDay) => { selected.push([runId, partitionDay]); }, setActiveWorkflowId: () => true,
-      openLinkedRun: () => undefined,
+      selectRun: (runId, partitionDay) => { selected.push([runId, partitionDay]); }, openRelatedRun: target => { selected.push([target.runId,target.partitionDay]); },
       onWells: () => undefined, onBulkIds: () => undefined, setBatchGrouping: async () => undefined,
       exitQueueSelection: () => undefined, runQueueAction: () => undefined });
     return null;

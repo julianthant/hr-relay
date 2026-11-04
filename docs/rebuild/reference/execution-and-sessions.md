@@ -120,6 +120,11 @@ survives snapshot exit, an await or a mutation; scope-path-sensitive replay auth
 Queue reads batch sibling parentage and reuse run, title and receipt joins within that read. Member
 previews slice before joining authority. Calendar population uses indexed parent batches and day
 aggregates rather than materializing every run summary.
+Timeline ingestion folds each native page before publishing its affected rows. Publication reads
+share one synchronous authority snapshot; subscribers run after that snapshot closes. Log entries
+retain their individual ingestion cursors and order within the page.
+Multi-event pages and multiple row patches publish one replacement snapshot so cursor jumps do
+not force a reconnect or discard another row's patch.
 
 Worker composition renews its own lease every `WORKER_HEARTBEAT_INTERVAL_MS = 5_000`.
 Heartbeat age never proves death or transfers a claim. Recovery follows actual child exit or

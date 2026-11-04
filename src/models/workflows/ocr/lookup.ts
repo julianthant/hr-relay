@@ -57,9 +57,10 @@ export function ocrLookupRequests(seed: OcrReviewSeed) {
 }
 
 export function bindOcrLookupOutcomes<Outcome extends { readonly itemId: string; readonly runId: string }>(
-  seed: OcrReviewSeed, outcomes: readonly Outcome[],
+  seed: OcrReviewSeed, outcomes: readonly Outcome[], family?: "person-lookup" | "i9-lookup",
 ) {
-  const requests = ocrLookupRequests(seed);
+  const requests = family === "person-lookup" ? ocrPersonLookupRequests(seed)
+    : family === "i9-lookup" ? ocrSignerLookupRequests(seed) : ocrLookupRequests(seed);
   if (requests.length !== outcomes.length || new Set(outcomes.map(outcome => outcome.runId)).size !== outcomes.length) {
     throw new Error("OCR lookup outcomes must cover every requested identity exactly once.");
   }
