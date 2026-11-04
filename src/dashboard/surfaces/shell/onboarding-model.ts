@@ -257,7 +257,8 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
     }, 1000);
     return () => window.clearInterval(timer);
   }, [client, enabled, onboarding, settle, settleRead]);
-  const awaitingSession = state?.state === "refused" || state?.state === "error" || state?.state === "signed-out" && state.resumable === true;
+  const awaitingLogout = state?.state === "cancelling" || state?.state === "refused" && state.code === "PROFILE_LOGOUT_BLOCKED";
+  const awaitingSession = awaitingLogout || state?.state === "refused" || state?.state === "error" || state?.state === "signed-out" && state.resumable === true;
   useEffect(() => {
     if (!enabled || !awaitingSession) return;
     let reading = false;
@@ -266,11 +267,11 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       reading = true;
       const request = generation.current;
       void client.readProfileSession().then(value => {
-        if (live.current && generation.current === request && value.state === "active") settle(value);
+        if (live.current && generation.current === request && (value.state === "active" || awaitingLogout && value.state !== "cancelling")) settle(value);
       }, () => {}).finally(() => { reading = false; });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [client, enabled, awaitingSession, settle]);
+  }, [client, enabled, awaitingSession, awaitingLogout, settle]);
   const scope = useMemo(() => ({ client, operationId: onboarding?.operationId, profileId: onboarding?.profileId, failure }), [client, onboarding?.operationId, onboarding?.profileId, failure]);
   const currentScope = useRef(scope); currentScope.current = scope;
   const port = useMemo<ServedOnboardingPort>(() => {

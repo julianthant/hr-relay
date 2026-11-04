@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, Check, ChevronDown, CircleAlert, Copy, FileCheck2, 
 import { Button, Disclosure, FloatingSurface, IconButton, Popover, PopoverClose, PopoverTrigger, Textarea, Tooltip } from '../../ds/ui.js';
 import { OverlayLayerPresence } from '../../ds/primitives/primitives-overlay.js';
 import { dsFocus, dsIcon, dsLayer } from '../../ds/theme/tokens.js';
-import { ASSISTANT_STARTERS, assistantCanVerify, assistantConfirmRefusal, type AssistantAction, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
+import { ASSISTANT_STARTERS, ASSISTANT_UNKNOWN_NOTICE, assistantCanVerify, assistantConfirmRefusal, type AssistantAction, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
 import './assistant.css';
 
 export function AssistantPanel({ state, revision, accountAvailable, canCompose = accountAvailable, showTestAssistant = false, onAction, onMockConfirm, defaultOpen = false, confirmRefusal, statusText = 'Mock preview', footnote = 'Scripted preview · Synthetic data · No runs start', onOpenSettings, launcherBottom, accountHeading = 'ChatGPT not connected', accountNotice = 'Review the connection in Settings. This mock cannot sign in.' }: {
@@ -113,7 +113,7 @@ export function AssistantPanel({ state, revision, accountAvailable, canCompose =
               </li>)}</ol>
               {waiting && <div className="assistant-thinking" role="status"><span className="assistant-thinking-dots" aria-hidden><i /><i /><i /></span>Preparing a proposal…</div>}
               {turn.state === 'failed' && <div className="assistant-error"><CircleAlert aria-hidden size={16} /><div role="alert"><strong>Reply unavailable</strong><p>Your request is kept. Try again.</p></div><Button ref={preserveActionFocus} size="sm" variant="ghost" icon={<RotateCcw aria-hidden size={13} />} disabled={!accountAvailable || state.draft !== turn.prompt} onClick={() => dispatchAndFocus('retry')}>Retry reply</Button></div>}
-              {turn.state === 'unknown' && <p className="assistant-cancelled" role="alert">Action outcome is unknown. Check the current inbox before starting a new request. Do not retry this request.</p>}
+              {turn.state === 'unknown' && <p className="assistant-cancelled" role="alert">{ASSISTANT_UNKNOWN_NOTICE}</p>}
               {turn.state === 'cancelled' && <p className="assistant-cancelled" role="status">Reply cancelled. Your request is kept; send it again when ready.</p>}
             </div>
             {awayFromLatest && <button type="button" className={`assistant-latest ${dsFocus}`} onClick={() => { followLatest.current = true; transcript.current?.scrollTo({ top: transcript.current.scrollHeight }); composer.current?.focus({ preventScroll: true }); }}><ArrowDown aria-hidden size={14} />Jump to latest</button>}
