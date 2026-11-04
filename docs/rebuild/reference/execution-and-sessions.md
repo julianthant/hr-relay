@@ -219,6 +219,13 @@ open. A protected-settings change during preparation refuses as stale. These ses
 the whole-authority storage doctor while the active run is writing checkpoints or timeline events.
 Full workflow preflight remains required at start and worker claim; explicit storage doctor retains
 its fail-loud mixed-authority-snapshot check.
+An explicit `PREFLIGHT_OBSERVATION_CHANGED` stops the worker with `stopped: preflight-refused`
+before claim or browser preparation. The report retains that refusal; it does not repeat the check.
+Other detector failures and unproved resource closure retain their failure behavior.
+The doctor preserves every consistency comparison. Available initial and final reads with an
+advanced authority generation throw `StorageDoctorObservationChangedError`; `authority.health`
+maps only that class to the preflight refusal. Fingerprint drift without a generation advance,
+backwards generations and unavailable-source transitions remain ordinary detector failures.
 
 A successful callback resets to neutral entry and proves authentication again. Failure or
 cancellation poison-closes the resource. Failed closure retains poison and refuses reuse;
@@ -737,7 +744,11 @@ membership. Free workers share
 the workflow's unclaimed items, including workers that become free or are added in Sessions later.
 Created workers remain in the pool, idle after their work finishes.
 
-Enqueue can commit before startup. A startup refusal reports the queued run ids and child command.
+Enqueue can commit before startup. Its response remains `applied` or `already-applied` with the
+queued run targets when startup fails. `workerStartup` carries `RUN_QUEUED_WORKER_UNAVAILABLE`,
+the retained child command when available, and a distinct `refused` or `unknown` startup state.
+The native control phase determines whether an admitted effect remains uncertain. The dashboard
+closes the confirmed submission and shows the queued-run warning; it does not invite another Start.
 Exact replay reconciles retained children without repeating failed or uncertain effects or replacing
 a member that later crashed or was removed. A capacity shortfall on replay without retained startup
 evidence reports unknown startup and requires reconciliation.

@@ -122,9 +122,13 @@ describe("automatic worker admission and retained capacity commands", () => {
     assert.equal((await h.kernel.executeWorkerPool({ commandId: runCapacityCommandId(request.commandId, "plan-worker-count", 1),
       requestedAt: request.requestedAt, requestedBy: request.requestedBy, source: request.source,
       family: "worker-browser", type: "plan-worker-count", target: { workflowId: WORKFLOW, expectedVersion: 0 }, payload: { desiredWorkers: 3 } })).state, "applied");
-    const pending = assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup .*spawn/);
+    const pending = launchCommands(h).submit(request);
     await proveLaunchBirth(h);
-    await pending;
+    const landed = await pending;
+    assert.equal(landed.state, "already-applied");
+    if (landed.state !== "already-applied") throw new Error("original enqueue must remain applied");
+    assert.equal(landed.workerStartup?.state, outcome === "refused" ? "refused" : "unknown");
+    assert.match(landed.workerStartup?.detail ?? "", /spawn/u);
     assert.equal(calls, 2);
     const first = runCapacityCommandId(request.commandId, "spawn-worker", 1);
     const second = runCapacityCommandId(request.commandId, "spawn-worker", 2);
@@ -133,7 +137,13 @@ describe("automatic worker admission and retained capacity commands", () => {
     assert.equal(h.database.authority.workerControls.get(second)?.phase.state, outcome);
     assert.equal(h.database.authority.commands.get(third), undefined);
     const controls = h.database.authority.workerControls.list();
-    await assert.rejects(launchCommands(h).submit(request), /Runs queued .*worker startup .*spawn/);
+    const replay = await launchCommands(h).submit(request);
+    assert.equal(replay.state, "already-applied");
+    if (replay.state !== "already-applied") throw new Error("exact enqueue replay required");
+    assert.equal(replay.workerStartup?.state, landed.workerStartup?.state);
+    assert.equal(replay.workerStartup?.commandId, landed.workerStartup?.commandId);
+    assert.equal(replay.workerStartup?.code, landed.workerStartup?.code);
+    assert.equal(replay.workerStartup?.message, landed.workerStartup?.message);
     assert.equal(calls, 2);
     assert.deepEqual(h.database.authority.workerControls.list(), controls);
     assert.equal(h.children.length, 1);

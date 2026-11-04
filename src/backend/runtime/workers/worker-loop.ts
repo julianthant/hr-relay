@@ -9,6 +9,8 @@ import type { WorkerLifecycleBinding, WorkerResetBinding } from "../../../models
 import type { RunRecord } from "../../../models/run/record.js";
 
 import { z } from "zod";
+import { WorkerPreflightRefusalSchema, type WorkerPreflightRefusal } from "../../../models/preflight/preflight-contract.js";
+import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure.js";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
@@ -150,7 +152,7 @@ export interface WorkerLoopDependencies {
   readonly claimNext: (
     input: WorkerClaimRequest,
     sessions: WorkerSessionManager,
-  ) => RunMutationOutcome | Promise<RunMutationOutcome>;
+  ) => RunMutationOutcome | WorkerPreflightRefusal | Promise<RunMutationOutcome | WorkerPreflightRefusal>;
 }
 
 export const WorkerLoopReportSchema = z.strictObject({
@@ -158,8 +160,13 @@ export const WorkerLoopReportSchema = z.strictObject({
   workflowId: z.string().min(1),
   outcomes: z.array(RunExecutionOutcomeSchema),
   /** `stop-directive` = the durable lease directive said stop, between items. */
-  stopped: z.enum(["idle", "stop-signal", "stop-directive"]),
+  stopped: z.enum(["idle", "stop-signal", "stop-directive", "preflight-refused"]),
   closure: z.enum(["proved", "unproved"]),
+  preflightRefusal: WorkerPreflightRefusalSchema.optional(),
+}).superRefine((report, context) => {
+  if ((report.stopped === "preflight-refused") !== (report.preflightRefusal !== undefined)) {
+    context.addIssue({ code: "custom", path: ["preflightRefusal"], message: "a preflight stop requires its exact refusal" });
+  }
 });
 export type WorkerLoopReport = z.infer<typeof WorkerLoopReportSchema>;
 
@@ -329,8 +336,9 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     }
   };
   const outcomes: RunExecutionOutcome[] = [];
-  let closure: WorkerLoopReport["closure"] = "proved";
-  let stopped: "idle" | "stop-signal" | "stop-directive" = "stop-signal";
+  let closure: WorkerLoopReport["closure"];
+  let stopped: WorkerLoopReport["stopped"] = "stop-signal";
+  let preflightRefusal: WorkerPreflightRefusal | undefined;
   try {
     if (deps.initialize !== undefined) {
       const controller = new AbortController();
@@ -385,6 +393,13 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         ...(configFingerprint === undefined ? {} : { configFingerprint }),
       };
       const claimed = await deps.claimNext(claimRequest, sessions);
+      if (claimed.state === "preflight-refused") {
+        preflightRefusal = WorkerPreflightRefusalSchema.parse(claimed);
+        stopped = "preflight-refused";
+        deps.debugEvents?.emit({ category: "worker", phase: "failed", correlationId: claimRequest.commandId,
+          area: "worker-admission", code: preflightRefusal.code, reason: "operation-refused" }, { kind: "worker", workerId });
+        break;
+      }
       if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible") {
         const notBefore = claimed.refusal.notBefore;
         const decision = deps.exitWhenIdle
@@ -504,19 +519,21 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       try { deps.log.warn("confirmed action publication closed with pending events", { pending: publication.pending }); }
       catch { /* Health remains queryable through the publisher; shutdown still owns session closure. */ }
     }
-    await sessions.closeAll("worker-stop").catch((error: unknown) => {
+    closure = await sessions.closeAll("worker-stop").then(() => "proved" as const, (error: unknown) => {
       if (!(error instanceof WorkerSessionClosureUnprovedError)) throw error;
-      closure = "unproved";
+      return "unproved" as const;
     });
     emit({ t: "span.ended", kind: "worker", workerId, spanPath: workerPath,
-      outcome: closure === "proved" ? "done" : "failed",
-      ...(closure === "proved" ? {} : {
+      outcome: closure === "proved" && preflightRefusal === undefined ? "done" : "failed",
+      ...(closure === "proved" && preflightRefusal === undefined ? {} : {
         diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
-        errorSummary: `worker ${workerId} browser session closure is unproved`,
+        errorSummary: closure === "unproved" ? `worker ${workerId} browser session closure is unproved`
+          : ERROR_CATALOG.PREFLIGHT_OBSERVATION_CHANGED.text,
       }),
     });
   }
-  return WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes, stopped, closure });
+  return WorkerLoopReportSchema.parse({ workerId, workflowId, outcomes, stopped, closure,
+    ...(preflightRefusal === undefined ? {} : { preflightRefusal }) });
 }
 
 /* ── the kernel's WorkerRuntimeExecutor seam, Phase-1 shape (ref execution-and-sessions ) ──── */

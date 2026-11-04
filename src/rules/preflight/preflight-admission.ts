@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
 import type { Clock } from "../time/clock.js";
 import { ConfigSnapshotIdSchema, FingerprintSchema } from "../identity/ids.js";
@@ -14,8 +15,19 @@ export const PreflightAdmissionScopeSchema = z.strictObject({
 export type PreflightAdmissionScope = z.infer<typeof PreflightAdmissionScopeSchema>;
 export type PreflightReport = z.infer<typeof PreflightReportWireSchema>;
 export class PreflightAdmissionRefusal extends Error {
-  constructor(readonly reason: "unavailable" | "stale" | "blocked" | "scope-mismatch", message: string, options?: ErrorOptions) {
+  constructor(readonly reason: "unavailable" | "stale" | "blocked" | "scope-mismatch" | "observation-changed", message: string, options?: ErrorOptions) {
     super(message, options); this.name = "PreflightAdmissionRefusal";
+  }
+}
+export class PreflightObservationChangedError extends PreflightAdmissionRefusal {
+  constructor(options?: ErrorOptions) {
+    super("observation-changed", ERROR_CATALOG.PREFLIGHT_OBSERVATION_CHANGED.text, options);
+    this.name = "PreflightObservationChangedError";
+  }
+}
+export class PreflightEvidenceExpiredError extends PreflightAdmissionRefusal {
+  constructor(readonly report: PreflightReport) {
+    super("stale", ERROR_CATALOG.PREFLIGHT_EVIDENCE_EXPIRED.text); this.name = "PreflightEvidenceExpiredError";
   }
 }
 export interface PreflightAdmission {
@@ -44,7 +56,8 @@ export function createPreflightAdmission(input: Readonly<{
     }
     if (entry.observationIdentity !== input.observationIdentity?.(scope)) throw new PreflightAdmissionRefusal("stale", "Protected settings changed; re-check readiness.");
     const age = input.clock.monotonicMs() - entry.completedAt;
-    if (age < 0 || age >= freshnessMs) throw new PreflightAdmissionRefusal("stale", "Preflight evidence expired; re-check readiness.");
+    if (age < 0) throw new PreflightAdmissionRefusal("stale", "Preflight evidence is dated in the future; re-check readiness.");
+    if (age >= freshnessMs) throw new PreflightEvidenceExpiredError(entry.report);
     return PreflightReportWireSchema.parse(entry.report);
   };
   return Object.freeze({

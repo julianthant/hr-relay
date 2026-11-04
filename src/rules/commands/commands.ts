@@ -423,6 +423,12 @@ export const CommandRejectionCodeSchema = z.enum([
   "capability-unavailable",
 ]);
 
+export const RunWorkerStartupFailureSchema = z.strictObject({
+  state: z.enum(["refused", "unknown"]), code: z.literal("RUN_QUEUED_WORKER_UNAVAILABLE"),
+  message: z.string().min(1), detail: z.string().min(1), commandId: CommandIdSchema.optional(),
+});
+export type RunWorkerStartupFailure = z.infer<typeof RunWorkerStartupFailureSchema>;
+
 const CommandLandingResultSchema = z.strictObject({
   state: z.enum(["applied", "already-applied"]),
   commandId: CommandIdSchema,
@@ -433,7 +439,11 @@ const CommandLandingResultSchema = z.strictObject({
   settingsFingerprint: FingerprintSchema.optional(),
   revision: PositiveIntSchema.optional(),
   entries: ProtectedSettingsReadbackSchema.shape.entries.optional(),
+  workerStartup: RunWorkerStartupFailureSchema.optional(),
 }).superRefine((result, context) => {
+  if (result.workerStartup !== undefined && !result.affectedTargets.some(target => target.family === "run")) {
+    context.addIssue({ code: "custom", path: ["workerStartup"], message: "worker startup requires the retained queued run targets" });
+  }
   if ((result.affectedTargets.length === 0) !== (result.noChange !== undefined)) {
     context.addIssue({ code: "custom", path: ["affectedTargets"], message: "only an explicit no-matching-notifications result may have no affected targets" });
   }
