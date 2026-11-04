@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
-import { sameDirectory, numericFileIdentity, privateFileNumber, fileStatus, descriptorStatus, type DirectoryIdentity } from "../file-identity.js";
+import { sameDirectory, numericFileIdentity, privateFileNumber, fileStatus, descriptorStatus, fileModified, fileChanged, type DirectoryIdentity } from "../file-identity.js";
 export { sameDirectory, privateFileNumber, numericFileIdentity, fileIdentityObservation, type DirectoryIdentity } from "../file-identity.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../source-closure.js";
@@ -81,8 +81,6 @@ export function statDirectory(path: string, label: string, exactMode?: typeof CR
   return { device: status.dev, inode: status.ino };
 }
 
-function modified(status: Stats | BigIntStats): number | bigint { return "mtimeNs" in status ? status.mtimeNs : status.mtimeMs; }
-function changed(status: Stats | BigIntStats): number | bigint { return "ctimeNs" in status ? status.ctimeNs : status.ctimeMs; }
 function equalByteCount(bytes: Buffer, size: number | bigint): boolean {
   return typeof size === "bigint" ? BigInt(bytes.byteLength) === size : bytes.byteLength === size;
 }
@@ -168,16 +166,16 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
     const identityChanged = pathStatus.dev !== before.dev || pathStatus.ino !== before.ino
       || live.dev !== before.dev || live.ino !== before.ino;
     const descriptorStable = before.dev === after.dev && before.ino === after.ino && before.size === after.size
-      && before.mode === after.mode && before.uid === after.uid && modified(before) === modified(after)
+      && before.mode === after.mode && before.uid === after.uid && fileModified(before) === fileModified(after)
       && (before.nlink === after.nlink || (after.nlink === 0 || after.nlink === 0n))
-      && (changed(before) === changed(after) || (after.nlink === 0 || after.nlink === 0n));
+      && (fileChanged(before) === fileChanged(after) || (after.nlink === 0 || after.nlink === 0n));
     const liveSafe = live.isFile() && !live.isSymbolicLink() && allowedLinkCounts.includes(privateFileNumber(live.nlink))
       && !privatePathRejects(path, live, rule) && live.size <= maxBytes;
     const liveMetadataStable = !record || (before.mode === live.mode && before.uid === live.uid && before.nlink === live.nlink);
     if (identityChanged && descriptorStable && equalByteCount(bytes, before.size) && liveSafe && liveMetadataStable) {
       throw new PrivateFileReadTransitionError(moved);
     }
-    const nonceContentChanged = before.size !== after.size || modified(before) !== modified(after) || changed(before) !== changed(after);
+    const nonceContentChanged = before.size !== after.size || fileModified(before) !== fileModified(after) || fileChanged(before) !== fileChanged(after);
     if (nonce && nonceContentChanged && !identityChanged && before.dev === after.dev && before.ino === after.ino
       && before.mode === after.mode && before.uid === after.uid && before.nlink === after.nlink
       && liveSafe && liveMetadataStable && after.size <= maxBytes && bytes.byteLength <= maxBytes) {
@@ -185,7 +183,7 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
     }
     if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
       || before.mode !== after.mode || before.uid !== after.uid || before.nlink !== after.nlink
-      || modified(before) !== modified(after) || changed(before) !== changed(after)
+      || fileModified(before) !== fileModified(after) || fileChanged(before) !== fileChanged(after)
       || live.dev !== before.dev || live.ino !== before.ino || !equalByteCount(bytes, before.size)
       || (record && (before.mode !== live.mode || before.uid !== live.uid || before.nlink !== live.nlink))) {
       throw new Error(moved);

@@ -1,4 +1,4 @@
-import { asyncFileStatus, descriptorStatus, fileStatus, asyncDescriptorStatus, privateFileNumber } from "../file-identity.js";
+import { fileModified, fileChanged, asyncFileStatus, descriptorStatus, fileStatus, asyncDescriptorStatus, privateFileNumber } from "../file-identity.js";
 import type { OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { FingerprintSchema } from "../../../rules/identity/ids.js";
@@ -259,8 +259,8 @@ function inspectOwnedStoredFile(path: string, digest: string) {
     }
     const stored = buffer.subarray(0, length);
     const after = descriptorStatus(descriptor), pathStatus = fileStatus(path);
-    if (stored.byteLength !== privateFileNumber(status.size) || after.size !== status.size || after.mtimeMs !== status.mtimeMs
-      || after.ctimeMs !== status.ctimeMs || !pathStatus.isFile() || pathStatus.isSymbolicLink()
+    if (stored.byteLength !== privateFileNumber(status.size) || after.size !== status.size || fileModified(after) !== fileModified(status)
+      || fileChanged(after) !== fileChanged(status) || !pathStatus.isFile() || pathStatus.isSymbolicLink()
       || pathStatus.dev !== status.dev || pathStatus.ino !== status.ino) throw new Error("diagnostic-stage-custody-changed");
     const decoded = decodeStoredArtifact(JSON.parse(stored.toString("utf8")) as unknown, digest);
     return { path, device: status.dev, inode: status.ino, storedDigest: createHash("sha256").update(stored).digest("hex"), ...decoded };

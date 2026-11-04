@@ -1,4 +1,4 @@
-import { fileStatus } from "../file-identity.js";
+import { fileModified, fileChanged, fileStatus } from "../file-identity.js";
 import { windowsObserverPolicyPrelude } from "../windows-observer-policy.js";
 import { posixPrivatePathRejects, privatePathRejects } from "../private-path.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
@@ -84,8 +84,8 @@ function captureProfileDatabaseBinding(path: string) {
     const assertUnchanged = () => {
       snapshot.assertUnchanged();
       const after = fileStatus(path);
-      if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs
-        || before.ctimeMs !== after.ctimeMs || (after.nlink !== 1 && after.nlink !== 1n)) throw new Error("profile-database-identity-changed");
+      if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || fileModified(before) !== fileModified(after)
+        || fileChanged(before) !== fileChanged(after) || (after.nlink !== 1 && after.nlink !== 1n)) throw new Error("profile-database-identity-changed");
     };
     assertUnchanged();
     return Object.freeze({ binding, path: snapshot.path, assertUnchanged, dispose: snapshot.dispose });
@@ -134,8 +134,8 @@ function readProfileDatabaseBindingCopy(path: string):
     const boundVersion = z.union([z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20)]).safeParse(version.user_version);
     const binding = boundVersion.success ? ProfileDatabaseBindingSchema.parse(database.prepare("SELECT installation_id AS installationId,profile_id AS profileId FROM database_states WHERE id=1").get()) : undefined;
     const after = fileStatus(path);
-    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeMs !== after.mtimeMs
-      || before.ctimeMs !== after.ctimeMs || (after.nlink !== 1 && after.nlink !== 1n)) throw new Error("profile-database-identity-changed");
+    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || fileModified(before) !== fileModified(after)
+      || fileChanged(before) !== fileChanged(after) || (after.nlink !== 1 && after.nlink !== 1n)) throw new Error("profile-database-identity-changed");
     if (binding === undefined) {
       if (typeof version.user_version !== "number" || !isSupportedStoppedAuthoritySchemaVersion(version.user_version) || version.user_version >= 7) throw new Error("profile-database-schema-mismatch");
       return { schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)]).parse(version.user_version), state: "unbound" };

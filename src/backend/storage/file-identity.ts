@@ -52,3 +52,6 @@ export async function asyncFileStatus(path: string): Promise<Stats | BigIntStats
 export async function asyncDescriptorStatus(handle: FileHandle): Promise<Stats | BigIntStats> {
   return process.platform === "win32" ? handle.stat({ bigint: true }) : handle.stat();
 }
+
+export function fileModified(status: Stats | BigIntStats): number | bigint { return "mtimeNs" in status ? status.mtimeNs : status.mtimeMs; }
+export function fileChanged(status: Stats | BigIntStats): number | bigint { return "ctimeNs" in status ? status.ctimeNs : status.ctimeMs; }

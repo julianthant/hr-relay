@@ -11,10 +11,10 @@ vi.mock("../../../../src/backend/storage/private-path.js", async load => {
   return { ...original, privatePathRejects: original.posixPrivatePathRejects, fsyncPath() {} };
 });
 
-it("retains exact high Windows claim identities and refuses an adjacent replacement", () => {
+it("retains exact high Windows claim identities and refuses adjacent IDs and sub-millisecond replacements", () => {
   const root = fs.realpathSync(fs.mkdtempSync(join(tmpdir(), "claims-exact-")));
   const lstat = fs.lstatSync, fstat = fs.fstatSync;
-  let inode = 21_110_623_253_370_483n;
+  let inode = 21_110_623_253_370_483n, modifiedDelta = 0n;
   vi.spyOn(process, "platform", "get").mockReturnValue("win32");
   vi.spyOn(fs, "lstatSync").mockImplementation((path, options) => {
     const value = lstat(path, options);
@@ -22,7 +22,7 @@ it("retains exact high Windows claim identities and refuses an adjacent replacem
     return value;
   });
   vi.spyOn(fs, "fstatSync").mockImplementation((fd, options) => {
-    const value = fstat(fd, options); assert.equal(typeof value.ino, "bigint"); value.ino = inode; return value;
+    const value = fstat(fd, options); assert.equal(typeof value.ino, "bigint"); value.ino = inode; assert.ok("mtimeNs" in value); value.mtimeNs += modifiedDelta; return value;
   });
   syncBuiltinESMExports();
   try {
@@ -32,6 +32,9 @@ it("retains exact high Windows claim identities and refuses an adjacent replacem
     assert.equal(retained.witness.inode, "21110623253370483");
     assert.equal(retained.bytes.toString("utf8"), "exact");
     assert.equal(readGeocodeRuntimeFile(root, "fixture.channel.json").text, "exact");
+    modifiedDelta = 100n;
+    assert.throws(() => removeOwnedGeocodeRuntimeFile(root, "fixture.channel.json", custody), /geocode-file-custody-lost/u);
+    modifiedDelta = 0n;
     inode++;
     assert.throws(() => removeOwnedGeocodeRuntimeFile(root, "fixture.channel.json", custody), /geocode-file-custody-lost/u);
     assert.equal(fs.readFileSync(join(root, "geocode-claims", "fixture.channel.json"), "utf8"), "exact");

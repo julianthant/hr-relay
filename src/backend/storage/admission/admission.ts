@@ -1,4 +1,4 @@
-import { fileStatus, descriptorStatus } from "../file-identity.js";
+import { fileModified, fileChanged, fileStatus, descriptorStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { createHash,randomUUID } from "node:crypto";
 import { closeSync,constants,existsSync,lstatSync,openSync,readdirSync,readSync,realpathSync,type Stats,type BigIntStats } from "node:fs";
@@ -285,7 +285,7 @@ export class RuntimeAdmission {
     const assertUnpublishedSource = () => {
       assertHeld();
       const current = fileStatus(path);
-      if (current.size !== physical.size || current.mtimeMs !== physical.mtimeMs || current.ctimeMs !== physical.ctimeMs) throw new Error("profile-stopped-upgrade-source-changed");
+      if (current.size !== physical.size || fileModified(current) !== fileModified(physical) || fileChanged(current) !== fileChanged(physical)) throw new Error("profile-stopped-upgrade-source-changed");
     };
     try {
       const { AuthorityDatabase } = await import("../sqlite/authority-database.js");
@@ -1380,7 +1380,7 @@ export class RuntimeAdmission {
         while ((read = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, read));
         const final = descriptorStatus(descriptor);
         if (final.dev !== opened.dev || final.ino !== opened.ino || final.size !== opened.size
-          || final.mtimeMs !== opened.mtimeMs || hash.digest("hex") !== expectedSha256) {
+          || fileModified(final) !== fileModified(opened) || hash.digest("hex") !== expectedSha256) {
           throw new Error("runtime-admission: inspected copy digest changed");
         }
       } catch (error) { primary = { error }; }

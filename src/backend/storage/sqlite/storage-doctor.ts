@@ -1,4 +1,4 @@
-import { fileStatus, privateFileNumber } from "../file-identity.js";
+import { fileModified, fileChanged, fileStatus, privateFileNumber } from "../file-identity.js";
 import { createHash } from "node:crypto";
 import {
 existsSync,
@@ -459,7 +459,7 @@ function displacedAuthorityProblems(admission: RuntimeAdmission, current: Return
       // SQLite read locks may update the shared-memory cache. The database and
       // WAL carry authority bytes; their identities and timestamps stay fixed.
       if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
-        || (!name.endsWith("-shm") && (before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs))) {
+        || (!name.endsWith("-shm") && (fileModified(before) !== fileModified(after) || fileChanged(before) !== fileChanged(after)))) {
         throw new SafeSpanCorpusError("preserved authority file changed during inspection");
       }
     }

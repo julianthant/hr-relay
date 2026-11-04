@@ -1,4 +1,4 @@
-import { fileStatus, descriptorStatus, privateFileNumber } from "../storage/file-identity.js";
+import { fileModified, fileChanged, fileStatus, descriptorStatus, privateFileNumber } from "../storage/file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../storage/maintenance/custody-availability.js";
 import { captureCanonicalDraftErasure,eraseCanonicalDraftCredentials,initializeCanonicalCredentials } from "../storage/configuration/canonical-credential-store.js";
 import { privatePathRejects } from "../storage/private-path.js";
@@ -876,7 +876,7 @@ export function createProfileSession(input: {
             const matches = (observed: typeof expected) => observed.isFile() && !observed.isSymbolicLink()
               && observed.dev === expected.dev && observed.ino === expected.ino && observed.size === expected.size
               && observed.mode === expected.mode && observed.uid === expected.uid && observed.nlink === expected.nlink
-              && observed.mtimeMs === expected.mtimeMs && observed.ctimeMs === expected.ctimeMs;
+              && fileModified(observed) === fileModified(expected) && fileChanged(observed) === fileChanged(expected);
             if (!noSymlinkAncestry(dirname(path), ancestry) || !matches(descriptorStatus(descriptor))) throw new Error("profile file read refused");
             const bytes = readFileSync(descriptor);
             if (!matches(descriptorStatus(descriptor)) || !matches(fileStatus(path)) || bytes.byteLength !== privateFileNumber(expected.size)

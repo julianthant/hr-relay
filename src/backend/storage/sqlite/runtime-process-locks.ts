@@ -1,4 +1,4 @@
-import { fileStatus, descriptorStatus, fileIdentityObservation, privateFileNumber, sameDirectory } from "../file-identity.js";
+import { fileModified, fileChanged, fileStatus, descriptorStatus, fileIdentityObservation, privateFileNumber, sameDirectory } from "../file-identity.js";
 import { fsyncPath, privatePathRejects } from "../private-path.js";
 import { proveProfileRootsUnused } from "../maintenance/process-closure.js";
 import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../source-closure.js";
@@ -438,7 +438,7 @@ function restoreAdmissionPath(root: string): string {
 
 type SingletonRole = "server" | "live-smoke" | "geocode";
 const GeocodeReleaseSchema = z.strictObject({ generation: PositiveIntSchema, acquisitionId: z.uuid(), releasedAt: IsoInstantSchema });
-export interface GeocodeFileCustody { readonly dev: number | bigint; readonly ino: number | bigint; readonly size: number; readonly mtimeMs: number | bigint }
+export interface GeocodeFileCustody { readonly dev: number | bigint; readonly ino: number | bigint; readonly size: number; readonly modified: number | bigint }
 
 function claimDirectory(root: string, role: SingletonRole, create = false): string {
   if (create) mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -457,9 +457,9 @@ function claimFilePath(root: string, role: SingletonRole, name: string): string 
 function privateClaimFile(path: string, fd: number, role: SingletonRole): GeocodeFileCustody {
   const stat = descriptorStatus(fd);
   if (!stat.isFile() || (stat.nlink !== 1 && stat.nlink !== 1n) || privatePathRejects(path, stat, "private-read-write") || stat.size > 65_536) throw new Error(`${role}-file-unsafe`);
-  return { dev: stat.dev, ino: stat.ino, size: privateFileNumber(stat.size), mtimeMs: stat.mtimeMs };
+  return { dev: stat.dev, ino: stat.ino, size: privateFileNumber(stat.size), modified: fileModified(stat) };
 }
-function custodyEquals(a: GeocodeFileCustody, b: GeocodeFileCustody): boolean { return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.mtimeMs === b.mtimeMs; }
+function custodyEquals(a: GeocodeFileCustody, b: GeocodeFileCustody): boolean { return a.dev === b.dev && a.ino === b.ino && a.size === b.size && a.modified === b.modified; }
 
 /** Descriptor reads never follow custody links. */
 function readClaimRuntimeFile(root: string, role: SingletonRole, name: string): Readonly<{ text: string; custody: GeocodeFileCustody }> {
@@ -762,7 +762,7 @@ export function readProcessCustodyFile(path: string, maxBytes = 1_048_576) {
     bytes = readFileSync(descriptor);
     const after = descriptorStatus(descriptor);
     const live = fileStatus(path);
-    const identity = (stat: typeof before) => [stat.dev, stat.ino, stat.mode, stat.uid, stat.nlink, stat.size, stat.mtimeMs, stat.ctimeMs].map(value => typeof value === "bigint" ? value.toString() : value);
+    const identity = (stat: typeof before) => [stat.dev, stat.ino, stat.mode, stat.uid, stat.nlink, stat.size, fileModified(stat), fileChanged(stat)].map(value => typeof value === "bigint" ? value.toString() : value);
     if (canonicalJsonStringify(identity(before)) !== canonicalJsonStringify(identity(after))
       || canonicalJsonStringify(identity(before)) !== canonicalJsonStringify(identity(live)) || bytes.length !== privateFileNumber(before.size)) throw new Error("worker-process-recovery-source-changed");
   } catch (error) { primary = { error }; }

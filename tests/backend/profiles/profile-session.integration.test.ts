@@ -1,3 +1,4 @@
+import * as fileIdentities from "../../../src/backend/storage/file-identity.js";
 import { forceExactFileMetadata } from "../../support/helpers/exact-file-metadata.js";
 import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { reconcileStoppedLogout } from "../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
@@ -941,4 +942,17 @@ it.skipIf(process.platform !== "linux")("reads a signed-in profile file with exa
     const bytes = f.session.readFile(f.active.token, "notes/note.bin");
     assert.equal(bytes instanceof Uint8Array && Buffer.from(bytes).equals(f.own), true);
   } finally { restore(); }
+});
+
+
+it.skipIf(process.platform !== "linux").each(["mtimeNs", "ctimeNs"] as const)("refuses a profile timestamp change below one millisecond: %s", async field => {
+  const f = await readIsolationFixture(), restore = forceExactFileMetadata(f.directory);
+  const observe = vi.mocked(fileIdentities.descriptorStatus).getMockImplementation(); assert.ok(observe);
+  vi.mocked(fileIdentities.descriptorStatus).mockImplementation(fd => {
+    const info = observe(fd);
+    if ("mtimeNs" in info) info[field] += 100n;
+    return info;
+  });
+  try { assert.throws(() => f.session.readFile(f.active.token, "notes/note.bin"), { message: "profile file read refused" }); }
+  finally { restore(); }
 });
