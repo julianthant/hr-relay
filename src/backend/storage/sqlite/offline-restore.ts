@@ -1,3 +1,4 @@
+import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { resolveConfigWithProvenance } from "../../app/config/resolve.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import { randomUUID } from "node:crypto";
@@ -245,6 +246,7 @@ export class OfflineAuthorityRestoreService {
     const admission = this.#runtimeAdmission.forStoppedMaintenance(operation);
     let primary: { error: unknown } | undefined, report: OfflineRestoreReport | undefined;
     try {
+      assertMaintenanceCustodyAvailable("restore");
       admission.captureProfileRestore(operation);
       const directory = join(admission.stateRoot, "backups", "authority"); admission.assertStateRoot(directory);
       const originalFences = withReadonlyAuthoritySnapshot(this.#authorityPath, readRestoreWriteFences);
@@ -294,6 +296,7 @@ export class OfflineAuthorityRestoreService {
     let report: OfflineRestoreReport | undefined, primary: Error | undefined;
     let stopped: RuntimeAdmission | undefined;
     try {
+      assertMaintenanceCustodyAvailable("restore");
       stopped = this.#runtimeAdmission.forStoppedMaintenance(operation);
       report = await this.#restoreHeld(input, operation, stopped);
     }
@@ -610,7 +613,9 @@ export async function resumeAutomaticAuthorityRestore(input: Readonly<{
   admission: RuntimeAdmission; operationId: string; processLockRoot: string; restoreAdmission: OfflineMaintenanceOperation; browserClosure: ProfileBrowserClosure; clock?: Clock;
 }>): Promise<Readonly<{ state: "settled"; operationId: string; outcome: "replaced" }>> {
   const admission = requireRuntimeAdmission(input.admission), operation = input.restoreAdmission;
-  admission.assertExclusive(); admission.assertOfflineMaintenance(operation); operation.consume();
+  admission.assertExclusive(); admission.assertOfflineMaintenance(operation);
+  assertMaintenanceCustodyAvailable("restore");
+  operation.consume();
   assertOfflineMaintenanceForProcessRoot(operation, input.processLockRoot);
   const binding = admission.readAuthorityRestore(input.operationId);
   assertRestoreRootMembership(admission.stateRoot, binding.operationId);

@@ -1,3 +1,5 @@
+import { requireRuntimeAdmission } from "../admission/admission-identity.js";
+import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { retainAuthoritySourceClosure } from "../source-closure.js";
 import { authoritySourceDatabaseIdentity } from "./database-identity.js";
 import { createReadonlyAuthoritySnapshot, openReadOnlyDatabase, withAuthorityDatabaseReadOnly } from "./readonly-authority-snapshot.js";
@@ -28,6 +30,8 @@ export function inspectAuthorityBackupReadOnly(admission:RuntimeAdmission,path:s
 }
 export function openAuthorityBackupSourceReadOnly(admission:RuntimeAdmission,pathInput:string,busyTimeoutMs=250,expectedSchemaVersion:number=CURRENT_AUTHORITY_SCHEMA_VERSION):AuthorityBackupSourceReadOnly {
  const path=resolve(pathInput);
+ requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
+ assertMaintenanceCustodyAvailable("backup");
  const inspection=inspectAuthorityBackupReadOnly(admission,path,expectedSchemaVersion,busyTimeoutMs);
  admission.assertAuthorityBackupSource(path,inspection.authorityContentFingerprint);
  const snapshot=createReadonlyAuthoritySnapshot(path);
@@ -49,11 +53,12 @@ export function openAuthorityBackupSourceReadOnly(admission:RuntimeAdmission,pat
  }
  let closed=false;
  let closeFailure: { error: unknown } | undefined;
- const assertOpen=()=>{if(closeFailure!==undefined)throw closeFailure.error;admission.assertLive();if(closed)throw new Error("authority-backup-source-closed");snapshot.assertUnchanged();};
+ const assertOwnerOpen=()=>{if(closeFailure!==undefined)throw closeFailure.error;admission.assertLive();if(closed)throw new Error("authority-backup-source-closed");};
+ const assertOpen=()=>{assertOwnerOpen();snapshot.assertUnchanged();};
  return Object.freeze({
  getMeta(){assertOpen();const row=z.strictObject({schema_version:z.number().int().positive(),authority_generation:z.number().int().nonnegative(),updated_at:z.string().datetime(),installation_id:z.uuid().optional(),profile_id:z.uuid().optional()}).parse(database.prepare(expectedSchemaVersion >= 7 ? "SELECT schema_version,authority_generation,updated_at,installation_id,profile_id FROM database_states WHERE id=1" : "SELECT schema_version,authority_generation,updated_at FROM database_states WHERE id=1").get());if(row.schema_version!==expectedSchemaVersion)throw new Error("authority-backup-source-schema-mismatch");return Object.freeze({schemaVersion:row.schema_version,authorityGeneration:row.authority_generation,updatedAt:row.updated_at,installationId:row.installation_id,profileId:row.profile_id});},
  getSourceDatabaseIdentity(){assertOpen();return authoritySourceDatabaseIdentity(admission.authorityBackupExpectedSource());},
- async onlineBackupTo(destinationPath:string){assertOpen();admission.assertAuthorityBackupWrite(destinationPath);admission.assertStateRoot(destinationPath);const pages=await sqliteBackup(database,resolve(destinationPath),{rate:100});snapshot.assertUnchanged();return pages;},
+ async onlineBackupTo(destinationPath:string){assertOwnerOpen();admission.assertAuthorityBackupWrite(destinationPath);admission.assertStateRoot(destinationPath);assertMaintenanceCustodyAvailable("backup");assertOpen();const pages=await sqliteBackup(database,resolve(destinationPath),{rate:100});snapshot.assertUnchanged();return pages;},
  close(){
   if(closeFailure!==undefined)throw closeFailure.error;
   if(closed)return;
