@@ -105,18 +105,23 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
           await dialog.getByRole("spinbutton", { name: "Workers", exact: true }).fill("1");
         }
         await dialog.getByRole("button", { name: "Add workers", exact: true }).click();
-        await expect(page.getByText("Adding workers…", { exact: true })).toBeVisible();
+        const toasts = page.locator('[data-ds-toast-viewport="default"]');
+        await expect(toasts.getByText("Adding workers…", { exact: true })).toBeVisible();
+        await expect(page.getByRole("region", { name: "Session Panel", exact: true })).not.toContainText("Adding workers");
 
         await page.clock.runFor(600);
         const panel = page.getByRole("region", { name: "Session Panel", exact: true });
-        await expect(panel).toContainText(outcome === "normal" ? "Workers added" : outcome === "refused" ? "Worker control was refused" : "Response unavailable");
+        await expect(panel).not.toContainText("Workers added");
+        if (outcome === "normal") await expect(toasts.getByText("Workers added", { exact: true })).toBeVisible();
+        else await expect(panel).toContainText(outcome === "refused" ? "Worker control was refused" : "Response unavailable");
 
         if (outcome === "uncertain") {
           await panel.getByRole("button", { name: "Check outcome", exact: true }).click();
           await expect(panel).toContainText("Checking command…");
 
           await page.clock.runFor(600);
-          await expect(panel).toContainText("Workers added");
+          await expect(toasts.getByText("Workers added", { exact: true })).toBeVisible();
+          await expect(panel).not.toContainText("Workers added");
         }
         await attachShellA11y(page, info, evidence(`command-${outcome}`, theme, width));
       } finally { await server.close(); }
