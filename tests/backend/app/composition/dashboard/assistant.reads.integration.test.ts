@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { afterEach, it } from 'vitest';
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
+import { afterEach, it, vi } from 'vitest';
 import { createAssistantReadAllowlist } from '../../../../../src/backend/app/composition/dashboard/assistant.js';
 import { createProductionAssistantTools } from '../../../../../src/backend/assistant/tools.js';
 import { assistantKnowledgeArtifact, createAssistantContext } from '../../../../../src/backend/assistant/context.js';
@@ -84,4 +86,51 @@ it.each(['version', 'deleted', 'person', 'reference', 'text-only'] as const)('re
   });
   const result = await f.service.respond({ message: 'run status', subjectRef: f.subjectRef }, new AbortController().signal);
   assert.equal(result.state, 'refused'); assert.equal(f.payloads.length, 1);
+});
+
+it.each([4, 150])('bounds populated canonical timeline quotations with long valid labels (%s repeats)', async repeats => {
+  const f = await fixture(), run = f.world.authority.records.get(f.runId); assert.ok(run);
+  f.runDetail.descriptors.resolve = () => ({ version: run.envelope.descriptorVersion, contractFingerprint: run.envelope.contractFingerprint });
+  for (let index = 0; index < 12; index++) {
+    const spanPath = `${run.envelope.traceId}/verify-current-record-evidence#1.${index + 1}`;
+    const base = { workflow: run.envelope.workflow, runId: f.runId, attempt: 1, traceId: run.envelope.traceId,
+      ts: f.world.clock.now().toISOString(), kind: 'task' as const, spanPath };
+    f.world.writer.emit({ ...base, t: 'span.started', parentSpanPath: run.envelope.traceId,
+      name: 'Verify current record evidence and state '.repeat(repeats) + String(index + 1) });
+    f.world.writer.emit({ ...base, t: 'span.ended', outcome: 'done' });
+  }
+  const detail = buildRunDetail(f.runDetail, f.runId);
+  assert.equal(detail.timeline.events.length, 12);
+  const exactEvents = detail.timeline.events.map(({ native, at, label, state, notRun }) => ({ native: native ?? null, at, label, state, notRun }));
+  assert.ok(canonicalJsonStringify({ total: 12, events: exactEvents.slice(-10) }).length > 4000);
+  const result = await f.service.respond({ message: 'run status', subjectRef: f.subjectRef }, new AbortController().signal);
+  assert.equal(result.state, 'answered'); if (result.state !== 'answered') throw Error('valid populated run must answer');
+  const citation = result.citations.find(value => 'kind' in value && value.source === 'timeline'); assert.ok(citation && 'kind' in citation);
+  assert.ok(citation.quote.length <= 4000);
+  const quoted = z.strictObject({ total: z.literal(12), omitted: z.number().int().nonnegative(), events: z.array(z.unknown()) }).parse(JSON.parse(citation.quote));
+  assert.equal(quoted.omitted, 12 - quoted.events.length);
+  assert.ok(quoted.events.length < 10);
+  assert.equal(quoted.events.length > 0, repeats === 4);
+  assert.deepEqual(quoted.events, quoted.events.length === 0 ? [] : exactEvents.slice(-quoted.events.length));
+  assert.match(result.text, new RegExp(`${quoted.events.length} of 12; ${quoted.omitted} omitted`, 'u'));
+  for (const event of exactEvents.slice(0, 12 - quoted.events.length)) assert.equal(result.text.includes(event.label + ':'), false);
+  assert.equal(citation.digest, createHash('sha256').update(canonicalJsonStringify({ runId: f.runId, rowRevision: 1, source: 'timeline', quote: citation.quote })).digest('hex'));
+  const captured = f.reads.selectedRun(f.subjectRef);
+  assert.deepEqual(captured.validateCitation(citation), citation);
+  assert.throws(() => captured.validateCitation({ ...citation, quote: citation.quote.replace('"omitted":', '"forged":') }));
+  let changed = false;
+  const runFold = f.runDetail.projection.runFold.bind(f.runDetail.projection);
+  const fold = vi.spyOn(f.runDetail.projection, 'runFold').mockImplementation(runId => {
+    const row = runFold(runId);
+    return !changed || row === undefined ? row : { ...row, taskSpans: row.taskSpans.map(span => span.spanPath === exactEvents[2].native?.spanPath
+      ? { ...span, name: span.name + ' changed' } : span) };
+  });
+  const changing = f.reads.selectedRun(f.subjectRef);
+  changing.assertCurrent(); changed = true;
+  assert.throws(() => changing.assertCurrent(), /ASSISTANT_READ_STALE/u);
+  fold.mockRestore();
+  f.world.authority.put(RunRecordSchema.parse({ ...run, version: 2 }));
+  assert.throws(() => captured.validateCitation(citation));
+  assert.equal(f.payloads.length, 1);
+  assert.equal(JSON.stringify(f.payloads).includes('Verify current record evidence'), false);
 });

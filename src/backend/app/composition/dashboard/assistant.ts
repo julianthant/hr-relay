@@ -31,26 +31,32 @@ export function createAssistantReadAllowlist(options: Readonly<{ runDetail: RunD
         })();
         if (detail.runId !== runId || detail.rowRevision !== rowRevision) throw new AssistantContextError('ASSISTANT_READ_STALE');
         const events = detail.timeline.events.slice(-10).map(({ native, at, label, state, notRun }) => ({ native: native ?? null, at, label, state, notRun }));
-        const sources = { status: detail.header, gate: detail.gate, outcome: detail.outcome,
-          timeline: { total: detail.timeline.events.length, events } };
+        const timeline = { total: detail.timeline.events.length, omitted: detail.timeline.events.length - events.length, events };
+        const sources = { status: detail.header, gate: detail.gate, outcome: detail.outcome, timeline };
+        const identity = canonicalJsonStringify(sources);
+        while (events.length > 0 && !AssistantLocalEvidenceCitationSchema.shape.quote.safeParse(canonicalJsonStringify(timeline)).success) {
+          events.shift(); timeline.omitted++;
+        }
         const citations = Object.entries(sources).map(([source, value]) => {
           const quote = canonicalJsonStringify(value);
           return AssistantLocalEvidenceCitationSchema.parse({ kind: 'local-run', runId, rowRevision, source, quote,
             digest: createHash('sha256').update(canonicalJsonStringify({ runId, rowRevision, source, quote })).digest('hex') });
         });
         options.assertCurrent();
-        return { detail, citations };
+        return { detail, timeline, citations, identity };
       }
-      const captured = project(), identity = canonicalJsonStringify(captured.citations);
+      const captured = project();
       const assertCurrent = () => {
-        if (canonicalJsonStringify(project().citations) !== identity) throw new AssistantContextError('ASSISTANT_READ_STALE');
+        if (project().identity !== captured.identity) throw new AssistantContextError('ASSISTANT_READ_STALE');
       };
       const { header, gate, outcome } = captured.detail;
-      const events = captured.detail.timeline.events;
+      const { total, omitted, events } = captured.timeline;
       const lines = [`${header.title}: ${header.status}.`, `Workflow: ${header.workflowId}. Attempt: ${header.attempt}.`,
         gate.state === 'open' ? `Waiting for operator review: ${gate.label}.` : gate.state === 'resolved' ? `Operator review: ${gate.resolution} by ${gate.resolvedBy}.` : `Review: ${gate.reason}.`,
         outcome.state === 'terminal' ? `Outcome: ${outcome.result}${outcome.rehearsal === true ? ' (dry-run preview)' : ''}. Completed: ${outcome.completedAt}.` : `Outcome unavailable: ${outcome.reason}.`,
-        events.length === 0 ? 'No timeline events are recorded.' : `Latest recorded steps (${Math.min(10, events.length)} of ${events.length}):\n${events.slice(-10).map(event => `${event.at} · ${event.label}: ${event.state}${event.notRun.state === 'present' ? ` (${event.notRun.reason})` : ''}`).join('\n')}`,
+        total === 0 ? 'No timeline events are recorded.' : events.length === 0
+          ? `No recent timeline events fit the citation limit (0 of ${total}; ${omitted} omitted). Review Logs for the complete timeline.`
+          : `Recent timeline events (${events.length} of ${total}; ${omitted} omitted):\n${events.map(event => `${event.at} · ${event.label}: ${event.state}${event.notRun.state === 'present' ? ` (${event.notRun.reason})` : ''}`).join('\n')}`,
         'These are local recorded facts. They do not authorize an action or prove an external transaction beyond its recorded outcome.'];
       return { text: lines.join('\n\n'), citations: captured.citations, assertCurrent,
         validateCitation(value: AssistantLocalEvidenceCitation) {

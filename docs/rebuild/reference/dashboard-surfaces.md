@@ -641,7 +641,9 @@ The finite run-read allowlist supports `run status` and selected-run explanation
 in `app/composition/dashboard/assistant.ts` uses the existing canonical run-detail dependencies,
 admits the exact selected run revision and checks currentness across inference. Only an opaque
 request reference reaches the model. The final local reply quotes the canonical status, gate,
-outcome and at most ten recent timeline events, with exact run/revision/source/digest citations.
+outcome and the newest exact subset of at most ten timeline events that fits the quotation bound,
+with an explicit omitted-event count and exact run/revision/source/digest citations. Currentness
+still checks all ten recent candidates, including those omitted from the quotation.
 Forged citations, changed evidence and text-only claims refuse. The adapter is available for direct
 injection; the production `compose.ts` call site still awaits its assigned integration phase.
 
