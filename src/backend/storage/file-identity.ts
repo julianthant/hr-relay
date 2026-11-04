@@ -30,9 +30,10 @@ export function numericFileIdentity(identity: DirectoryIdentity): { device: numb
   return { device: privateFileNumber(identity.device), inode: privateFileNumber(identity.inode) };
 }
 
-export function fileIdentityObservation(identity: DirectoryIdentity): { device: number | string; inode: number | string } {
-  return { device: typeof identity.device === "bigint" ? identity.device.toString() : identity.device,
-    inode: typeof identity.inode === "bigint" ? identity.inode.toString() : identity.inode };
+export function fileIdentityObservation(identity: DirectoryIdentity, options?: { preserveSafeNumbers: true }): { device: number | string; inode: number | string } {
+  const observe = (value: number | bigint) => typeof value !== "bigint" ? value
+    : options?.preserveSafeNumbers && Number.isSafeInteger(Number(value)) ? Number(value) : value.toString();
+  return { device: observe(identity.device), inode: observe(identity.inode) };
 }
 
 export function fileStatus(path: string): Stats | BigIntStats;
@@ -55,3 +56,13 @@ export async function asyncDescriptorStatus(handle: FileHandle): Promise<Stats |
 
 export function fileModified(status: Stats | BigIntStats): number | bigint { return "mtimeNs" in status ? status.mtimeNs : status.mtimeMs; }
 export function fileChanged(status: Stats | BigIntStats): number | bigint { return "ctimeNs" in status ? status.ctimeNs : status.ctimeMs; }
+
+export function fileTimestampMilliseconds(status: Stats | BigIntStats): { modified: number; changed: number } {
+  // Match numeric Stats' fractional milliseconds in persisted journals.
+  const milliseconds = (nanoseconds: bigint): number => {
+    const seconds = (nanoseconds < 0n ? nanoseconds - 999_999_999n : nanoseconds) / 1_000_000_000n;
+    return Number(seconds) * 1_000 + Number(nanoseconds - seconds * 1_000_000_000n) / 1_000_000;
+  };
+  return { modified: "mtimeNs" in status ? milliseconds(status.mtimeNs) : status.mtimeMs,
+    changed: "ctimeNs" in status ? milliseconds(status.ctimeNs) : status.ctimeMs };
+}

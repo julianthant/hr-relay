@@ -1,3 +1,5 @@
+import { FileIdentitySchema } from "../../../models/storage/file-identity.js";
+import { fileStatus, descriptorStatus, privateFileNumber, fileModified, fileTimestampMilliseconds } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { assertAccountDeletionRetainedBackups, AccountDeletionRefusedError, captureAccountDeletion, publishAccountDeletion, resumeAccountDeletion } from "../maintenance/account-deletion.js";
 import { createHash,randomBytes,randomUUID } from "node:crypto";
@@ -12,7 +14,7 @@ import { ConfigSchema } from "../../../models/config/schema.js";
 import { LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument } from "../../../models/profiles/profile.js";
 import { CanonicalCredentialConversionPlanSchema,CanonicalCredentialHeadSchema,CanonicalCredentialOperationSchema,CanonicalCredentialPublicationSourceSchema,CanonicalCredentialRestoreSnapshotSchema,CredentialMaintenanceHold,captureCanonicalCredentialStartupLocks,publishStoppedCanonicalCredentials,type CanonicalCredentialConversionPlan } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
-import { sameDirectory, numericFileIdentity, fileIdentityObservation, capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock } from "../configuration/credential-safe-file.js";
+import { sameDirectory, fileIdentityObservation, capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { emailKey,passwordMatches } from "../configuration/synthetic-verifier.js";
 import { createProfileVerifiers,preparedProfileVerifierPepperWitness,verifyPreparedProfileVerifier } from "../configuration/verifier-store.js";
 import { SourceRecordSchema,file as backupFile,hash as backupHash,profileAuthorityFileWitnesses,retainedStorageBackup } from "../maintenance/existing-data-backup-files.js";
@@ -92,7 +94,7 @@ const ProfileContinuitySchema = z.strictObject({ schemaVersion: z.literal(7),
 const RestoreFileBindingSchema = z.strictObject({ byteSize: z.number().int().nonnegative(), sha256: z.string().regex(/^[0-9a-f]{64}$/u) });
 const ProfileAuthorityFilesSchema = z.array(z.strictObject({ suffix: z.enum(["", "-wal", "-shm", "-journal"]),
   file: CanonicalCredentialPublicationSourceSchema.shape.head.optional() }));
-const DraftMembershipSchema = z.array(z.strictObject({ path: z.string(), directory: z.boolean(), device: z.number(), inode: z.number(), size: z.number(),
+const DraftMembershipSchema = z.array(z.strictObject({ path: z.string(), directory: z.boolean(), ...FileIdentitySchema.shape, size: z.number(),
   mode: z.number(), modified: z.number(), changed: z.number() }));
 const ProfilePublicationSchema = z.lazy(() => z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("onboarding-finish"), schemaVersion: z.literal(1), installationId: z.uuid(), prior: ProfileContinuitySchema,
@@ -137,7 +139,7 @@ const MarkerSchema = z.discriminatedUnion("schemaVersion", [
   z.strictObject({ schemaVersion: z.literal(2), ...MarkerCommon, operationId: z.uuid() }),
 ]);
 const DigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
-const ControlUpgradeFileSchema = z.strictObject({ device: z.number().int().nonnegative(), inode: z.number().int().nonnegative(), digest: DigestSchema });
+const ControlUpgradeFileSchema = FileIdentitySchema.extend({ digest: DigestSchema });
 
 const ControlUpgradeCredentialPlansSchema = z.array(z.strictObject({ profileId: z.uuid(), plan: CanonicalCredentialConversionPlanSchema })).max(10_000);
 const ControlUpgradeBackupsSchema = z.array(z.strictObject({ profileId: z.uuid(), directory: z.string().regex(/^[0-9a-f-]{36}\.[0-9a-f-]{36}\.authority$/u),
@@ -145,7 +147,7 @@ const ControlUpgradeBackupsSchema = z.array(z.strictObject({ profileId: z.uuid()
 const RetainedControlUpgradeEntrySchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("file"), name: z.string().regex(/^[0-9a-f-]{36}\.(?:registry|control|marker)\.before\.json$|^[0-9a-f-]{36}\.receipt\.json$/u), file: ControlUpgradeFileSchema }),
   z.strictObject({ kind: z.literal("authority-directory"), name: z.string().regex(/^[0-9a-f-]{36}\.[0-9a-f-]{36}\.authority$/u),
-    device: z.number().int().nonnegative(), inode: z.number().int().nonnegative(),
+    ...FileIdentitySchema.shape,
     files: z.array(z.strictObject({ name: z.string().regex(/^authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite(?:\.manifest\.json)?$/u), file: ControlUpgradeFileSchema })).length(2) }),
 ]);
 const ControlUpgradeCommonSchema = z.strictObject({ schemaVersion: z.literal(3), operationId: z.uuid(), installationId: z.uuid(),
@@ -558,14 +560,14 @@ function equalLocator(left: RuntimeLocator, right: RuntimeLocator): boolean {
     && equalPair(left, right) && canonicalJsonStringify(epochsOf(left)) === canonicalJsonStringify(epochsOf(right));
 }
 function restoreFileBinding(path: string): z.infer<typeof RestoreFileBindingSchema> {
-  const custody = lstatSync(path);
-  if (!custody.isFile() || custody.isSymbolicLink() || custody.nlink !== 1
+  const custody = fileStatus(path);
+  if (!custody.isFile() || custody.isSymbolicLink() || privateFileNumber(custody.nlink) !== 1
     || privatePathRejects(path, custody, "group-write")) fail("unsafe restore data file");
   const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
-    const before = fstatSync(fd), bytes = readFileSync(fd), after = fstatSync(fd), current = lstatSync(path);
-    if (before.dev !== after.dev || before.ino !== after.ino || before.size !== bytes.length
-      || after.size !== before.size || after.mtimeMs !== before.mtimeMs
+    const before = descriptorStatus(fd), bytes = readFileSync(fd), after = descriptorStatus(fd), current = fileStatus(path);
+    if (before.dev !== after.dev || before.ino !== after.ino || privateFileNumber(before.size) !== bytes.length
+      || after.size !== before.size || fileModified(after) !== fileModified(before)
       || current.dev !== before.dev || current.ino !== before.ino) fail("restore file custody changed");
     return RestoreFileBindingSchema.parse({ byteSize: bytes.length,
       sha256: createHash("sha256").update(bytes).digest("hex") });
@@ -593,12 +595,18 @@ function assertCompletedRestoreCustody(locator: RuntimeLocator, record: Complete
     || record.suspect.relativePath !== join("backups", "suspects", basename(path))
     || !basename(path).endsWith(`-${record.operationId}.sqlite`)) fail("completed-restore-profile-binding-mismatch");
   assertNoSymlinkComponents(path);
-  if (canonicalJsonStringify({ ...restoreFileBinding(path), dev: lstatSync(path).dev, ino: lstatSync(path).ino }) !== canonicalJsonStringify(record.suspect.file)) fail("completed-restore-source-changed");
+  const suspect = fileStatus(path);
+  if (!sameDirectory({ device: suspect.dev, inode: suspect.ino }, { device: record.suspect.file.dev, inode: record.suspect.file.ino })
+    || canonicalJsonStringify(restoreFileBinding(path)) !== canonicalJsonStringify({ byteSize: record.suspect.file.byteSize, sha256: record.suspect.file.sha256 })) fail("completed-restore-source-changed");
   for (const suffix of ["-wal", "-shm"] as const) {
     const companion = record.companions.find(row => row.suffix === suffix);
     if (companion === undefined) {
       if (lstatMaybe(`${path}${suffix}`)) fail("completed-restore-companion-inventory-mismatch");
-    } else if (canonicalJsonStringify({ ...restoreFileBinding(`${path}${suffix}`), dev: lstatSync(`${path}${suffix}`).dev, ino: lstatSync(`${path}${suffix}`).ino }) !== canonicalJsonStringify(companion.file)) fail("completed-restore-source-changed");
+    } else {
+      const current = fileStatus(`${path}${suffix}`);
+      if (!sameDirectory({ device: current.dev, inode: current.ino }, { device: companion.file.dev, inode: companion.file.ino })
+        || canonicalJsonStringify(restoreFileBinding(`${path}${suffix}`)) !== canonicalJsonStringify({ byteSize: companion.file.byteSize, sha256: companion.file.sha256 })) fail("completed-restore-source-changed");
+    }
   }
   if (lstatMaybe(`${path}-journal`)) fail("completed-restore-companion-inventory-mismatch");
 }
@@ -973,7 +981,7 @@ function prepareUnpublishedDraftAbort(control: string, locator: RuntimeLocator, 
     if (lstatMaybe(root)) fail("profile-draft-abort-head-changed");
     credentialKeyCustody.assertAbsent({ installationId: locator.installationId, profileId: operation.profileId, keyId: operation.credentials.keyId });
   } else {
-    if (canonicalJsonStringify({ ...numericFileIdentity(headFile.identity), digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
+    if (canonicalJsonStringify({ ...fileIdentityObservation(headFile.identity, { preserveSafeNumbers: true }), digest: createHash("sha256").update(headFile.bytes).digest("hex") }) !== canonicalJsonStringify(capture.head)) fail("profile-draft-abort-head-changed");
     const head = CanonicalCredentialHeadSchema.parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(headFile.bytes)));
     if (head.state !== "erased" || head.installationId !== locator.installationId || head.profileId !== operation.profileId
       || head.key.installationId !== head.installationId || head.key.profileId !== head.profileId || head.key.keyId !== operation.credentials.keyId
@@ -992,7 +1000,7 @@ function prepareUnpublishedDraftAbort(control: string, locator: RuntimeLocator, 
     const remaining = unpublishedDraftAbortMembership(root);
     for (const entry of remaining) {
       const original = capture.membership.find(prior => prior.path === entry.path);
-      if (original === undefined || original.device !== entry.device || original.inode !== entry.inode || original.mode !== entry.mode
+      if (original === undefined || !sameDirectory(original, entry) || original.mode !== entry.mode
         || original.directory !== entry.directory || !entry.directory && (original.size !== entry.size || original.modified !== entry.modified || original.changed !== entry.changed)) fail("profile-draft-abort-membership-changed");
     }
     for (const database of profileAuthorityFileWitnesses(root)) if (database.file !== undefined
@@ -1137,8 +1145,8 @@ function readProfileUpgradeAuthority(control: string, workspace: string, locator
   const directories = [control, join(locator.stateRoot, "machine"), join(locator.stateRoot, "machine", "credential-keys"),
     join(locator.stateRoot, "machine", "credential-operations"), join(locator.stateRoot, "machine", "operations")].map(path => {
       privateDirectory(path);
-      const info = lstatSync(path);
-      return { path, device: info.dev, inode: info.ino, mode: info.mode, owner: info.uid };
+      const info = fileStatus(path);
+      return { path, ...fileIdentityObservation({ device: info.dev, inode: info.ino }, { preserveSafeNumbers: true }), mode: privateFileNumber(info.mode), owner: privateFileNumber(info.uid) };
     });
   return canonicalJsonStringify({ document, observation: before, files, directories });
 }
@@ -1422,9 +1430,9 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         for (const entry of profileOperationInventory(priorLocator.stateRoot)) {
           const operation = readProfileEvidence(join(machine, "operations", `${entry.operationId}.json`), ProfileOperationSchema);
           if (operation.kind !== "logout" || operation.phase === "complete") continue;
-          const source = lstatSync(join(priorLocator.stateRoot, "profiles", operation.profileId, "state.db"));
-          if (!source.isFile() || source.nlink !== 1 || privatePathRejects(join(priorLocator.stateRoot, "profiles", operation.profileId, "state.db"), source, "owner")
-            || source.dev !== operation.source.database.device || source.ino !== operation.source.database.inode) fail("profile-logout-native-source-changed");
+          const source = fileStatus(join(priorLocator.stateRoot, "profiles", operation.profileId, "state.db"));
+          if (!source.isFile() || privateFileNumber(source.nlink) !== 1 || privatePathRejects(join(priorLocator.stateRoot, "profiles", operation.profileId, "state.db"), source, "owner")
+            || !sameDirectory({ device: source.dev, inode: source.ino }, operation.source.database)) fail("profile-logout-native-source-changed");
           lifetime.assertStartupWorkspace(workspace);
           coldLogoutObservations.set(operation.operationId, logoutIdentity(operation));
         }
@@ -1990,9 +1998,9 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (coldLogoutObservations.get(operation.operationId) !== logoutIdentity(operation)) fail("profile-logout-cold-source-unobserved");
       const current = readProfileEvidence(join(locator.stateRoot, "machine", "operations", `${operation.operationId}.json`), LogoutOperationSchema);
       if (logoutIdentity(current) !== logoutIdentity(operation)) fail("profile-logout-cold-source-changed");
-      const path = join(locator.stateRoot, "profiles", operation.profileId, "state.db"), source = lstatSync(path);
-      if (!source.isFile() || source.nlink !== 1 || privatePathRejects(path, source, "owner")
-        || source.dev !== operation.source.database.device || source.ino !== operation.source.database.inode) fail("profile-logout-native-source-changed");
+      const path = join(locator.stateRoot, "profiles", operation.profileId, "state.db"), source = fileStatus(path);
+      if (!source.isFile() || privateFileNumber(source.nlink) !== 1 || privatePathRejects(path, source, "owner")
+        || !sameDirectory({ device: source.dev, inode: source.ino }, operation.source.database)) fail("profile-logout-native-source-changed");
     },
     publishStoppedLogoutSettlement(admission: RuntimeAdmission, expected: z.infer<typeof LogoutOperationSchema>, input: z.infer<typeof LogoutOperationSchema>, restore: OfflineMaintenanceOperation, source: AuthorityDatabase): void {
       mutate(held => {
@@ -2277,13 +2285,13 @@ function controlUpgradeFile(path: string, maxBytes = 1_048_576) {
   assertNoSymlinkComponents(path);
   const file = readPrivateFile(path, { label: "lock", maxBytes });
   if (file === undefined) fail("profile-control-upgrade-evidence-missing");
-  return { ...numericFileIdentity(file.identity), digest: createHash("sha256").update(file.bytes).digest("hex") };
+  return { ...fileIdentityObservation(file.identity, { preserveSafeNumbers: true }), digest: createHash("sha256").update(file.bytes).digest("hex") };
 }
 
 function retainedControlUpgradeEntry(directory: string, name: string, installationId: string): z.infer<typeof RetainedControlUpgradeEntrySchema> {
   const path = join(directory, name);
   assertNoSymlinkComponents(path);
-  const metadata = lstatSync(path);
+  const metadata = fileStatus(path);
   if (metadata.isFile()) {
     const maxBytes = name.endsWith(".receipt.json") && z.uuid().safeParse(name.slice(0, -13)).success
       ? CONTROL_UPGRADE_RECEIPT_MAX_BYTES : 16 * 1024 * 1024;
@@ -2301,7 +2309,7 @@ function retainedControlUpgradeEntry(directory: string, name: string, installati
   const backup = controlUpgradeFile(join(path, fileName), 512 * 1024 * 1024);
   if (manifest.installationId !== installationId || manifest.profileId !== profileId
     || manifest.backupFileName !== fileName || manifest.sha256 !== backup.digest
-    || manifest.byteSize !== lstatSync(join(path, fileName)).size) fail("profile-control-upgrade-retained-backup-changed");
+    || manifest.byteSize !== privateFileNumber(fileStatus(join(path, fileName)).size)) fail("profile-control-upgrade-retained-backup-changed");
   const receiptPath = join(directory, `${operationId}.receipt.json`);
   assertNoSymlinkComponents(receiptPath);
   const file = readPrivateFile(receiptPath, { label: "lock", maxBytes: CONTROL_UPGRADE_RECEIPT_MAX_BYTES });
@@ -2313,7 +2321,7 @@ function retainedControlUpgradeEntry(directory: string, name: string, installati
   if (receipt.operationId !== operationId || receipt.installationId !== installationId || verified === undefined
     || verified.manifestSha256 !== controlUpgradeFile(join(path, manifestName), 64_000).digest
     || canonicalJsonStringify(verified.manifest) !== canonicalJsonStringify(manifest)) fail("profile-control-upgrade-retained-backup-membership");
-  return RetainedControlUpgradeEntrySchema.parse({ kind: "authority-directory", name, device: metadata.dev, inode: metadata.ino,
+  return RetainedControlUpgradeEntrySchema.parse({ kind: "authority-directory", name, ...fileIdentityObservation({ device: metadata.dev, inode: metadata.ino }, { preserveSafeNumbers: true }),
     files: names.map(member => ({ name: member, file: member === fileName ? backup : controlUpgradeFile(join(path, member), 64_000) })) });
 }
 
@@ -2357,8 +2365,8 @@ function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typ
       const head = readProfileEvidence(join(machine, "credential-keys", `${profile.profileId}.json`), CanonicalCredentialHeadSchema);
       if (head.state !== "active" || head.installationId !== locator.installationId || head.profileId !== profile.profileId) fail("profile-control-upgrade-canonical-head-unavailable");
       for (const record of prior.completedRestores.filter(row => row.profile.profileId === profile.profileId)) assertCompletedRestoreCustody(locator, record);
-      const database = lstatSync(path);
-      return { profileId: profile.profileId, head, database: { device: database.dev, inode: database.ino, size: database.size, modified: database.mtimeMs, changed: database.ctimeMs },
+      const database = fileStatus(path);
+      return { profileId: profile.profileId, head, database: { ...fileIdentityObservation({ device: database.dev, inode: database.ino }, { preserveSafeNumbers: true }), size: privateFileNumber(database.size), ...fileTimestampMilliseconds(database) },
         files: [join(machine, "credential-keys", `${profile.profileId}.json`), join(root, "credentials", "protected.json"), join(root, "credentials", "chatgpt-account.json"), join(machine, "duo-credentials", `${profile.profileId}.json`)]
           .map(path => ({ path, file: controlUpgradeFile(path, 25 * 1024 * 1024) })) };
     });
@@ -2399,13 +2407,13 @@ function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typ
     if (row.credentialKey === undefined) fail("profile-control-upgrade-credential-conversion-required");
     const root = join(locator.stateRoot, "profiles", row.profileId), path = join(root, "state.db");
     assertBinding(path, { installationId: locator.installationId, profileId: row.profileId });
-    const metadata = lstatSync(path);
+    const metadata = fileStatus(path);
     const conversion = plans.find(plan => plan.profileId === row.profileId)?.plan.operation;
     const credentialFiles = [join(locator.stateRoot, "machine", "credential-keys", `${row.profileId}.json`),
       join(root, "credentials", "protected.json"), join(root, "credentials", "chatgpt-account.json")].map(path => {
       const file = readPrivateFile(path, { label: "protected.json", maxBytes: 25 * 1024 * 1024 });
       const actual = file === undefined ? { state: "absent" as const } : { state: "present" as const,
-        ...numericFileIdentity(file.identity), digest: createHash("sha256").update(file.bytes).digest("hex") };
+        ...fileIdentityObservation(file.identity, { preserveSafeNumbers: true }), digest: createHash("sha256").update(file.bytes).digest("hex") };
       if (conversion === undefined) return { path, file: actual };
       const head = dirname(path) === join(machine, "credential-keys");
       const planned = head ? conversion.priorHead : conversion.files.find(file => file.kind === (basename(path) === "protected.json" ? "protected" : "chatgpt"))?.prior;
@@ -2414,8 +2422,8 @@ function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typ
       if (canonicalJsonStringify(actual) !== canonicalJsonStringify(planned) && (file === undefined || !file.bytes.equals(published))) fail("profile-control-upgrade-credential-source-changed");
       return { path, file: planned };
     });
-    return { profileId: row.profileId, credentialFiles, database: { device: metadata.dev, inode: metadata.ino,
-      size: metadata.size, modified: metadata.mtimeMs, changed: metadata.ctimeMs } };
+    return { profileId: row.profileId, credentialFiles, database: { ...fileIdentityObservation({ device: metadata.dev, inode: metadata.ino }, { preserveSafeNumbers: true }),
+      size: privateFileNumber(metadata.size), ...fileTimestampMilliseconds(metadata) } };
   });
   return canonicalJsonStringify({ prior, profiles, verifiers: controlUpgradeFile(join(machine, "profile-verifiers.json")), pepper: controlUpgradeFile(join(machine, "profile-pepper")) });
 }
@@ -2434,9 +2442,9 @@ export function inspectFlatOfflineRunMaintenance(workspacePath: string) {
   return { workspace, installationId: locator.installationId, processLockRoot: locks, witnesses,
     roots: [state, artifacts, locks].map(path => {
       assertNoSymlinkComponents(path);
-      const stat = lstatSync(path);
+      const stat = fileStatus(path);
       if (!stat.isDirectory() || stat.isSymbolicLink() || privatePathRejects(path, stat, "group-write")) fail("worker-process-recovery-root-unsafe");
-      return { path, device: stat.dev, inode: stat.ino, mode: stat.mode, owner: stat.uid };
+      return { path, ...fileIdentityObservation({ device: stat.dev, inode: stat.ino }, { preserveSafeNumbers: true }), mode: privateFileNumber(stat.mode), owner: privateFileNumber(stat.uid) };
     }) };
 }
 
@@ -2578,7 +2586,7 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
   const controlEvidence = (prior: z.infer<typeof StoppedProfileContinuitySchema>, document?: z.infer<typeof StoppedProfileRegistryDocumentSchema>,
     plans?: readonly { profileId: string; plan: CanonicalCredentialConversionPlan }[], browsers?: StoppedBrowserRootsDocument) =>
     priorControlUpgradeEvidence(locator, prior, document, plans, browsers, assertBinding);
-  const retainedAncestry = new Map<string, { device: number; inode: number }>();
+  const retainedAncestry = new Map<string, DirectoryIdentity>();
   const retainedProofs = new Map<string, { paths: readonly string[]; witness: string; entry: z.infer<typeof RetainedControlUpgradeEntrySchema> }>();
   const readRetained = (name: string): z.infer<typeof RetainedControlUpgradeEntrySchema> => {
     if (!noSymlinkAncestry(backupDirectory, retainedAncestry)) fail("profile-control-upgrade-retained-changed");

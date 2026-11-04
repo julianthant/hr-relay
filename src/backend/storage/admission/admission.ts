@@ -548,7 +548,7 @@ export class RuntimeAdmission {
     this.#assertMachineRuntime();
     (this.#authority as InstallationLease).deleteProfileAccount(profileId, epoch);
   }
-  abortUnpublishedProfile(operation: SignUpOperation, head?: { device: number; inode: number; digest: string }): boolean {
+  abortUnpublishedProfile(operation: SignUpOperation, head?: Parameters<InstallationLease["abortUnpublishedProfile"]>[1]): boolean {
     this.#assertMachineRuntime();
     return (this.#authority as InstallationLease).abortUnpublishedProfile(operation, head);
   }

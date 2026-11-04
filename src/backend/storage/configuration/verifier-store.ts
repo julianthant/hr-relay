@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import { ProfileVerifierDocumentSchema } from "../../../models/profiles/profile.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
-import { sameDirectory, numericFileIdentity, readPrivateFile, CREDENTIAL_DIRECTORY_MODE, ensureChildDirectory } from "./credential-safe-file.js";
+import { sameDirectory, fileIdentityObservation, readPrivateFile, CREDENTIAL_DIRECTORY_MODE, ensureChildDirectory } from "./credential-safe-file.js";
 import {
   createSyntheticVerifier,
   emailKey,
@@ -18,7 +18,7 @@ import {
 
 type VerifierDocument = z.infer<typeof ProfileVerifierDocumentSchema>;
 export interface PreparedProfileVerifier { readonly profileId: string; }
-const preparedVerifiers = new WeakMap<PreparedProfileVerifier, { root: string; row: VerifierDocument["profiles"][number]; pepper: Buffer; pepperFile: Readonly<{ device: number; inode: number; digest: string }>; assertCurrent(): void }>();
+const preparedVerifiers = new WeakMap<PreparedProfileVerifier, { root: string; row: VerifierDocument["profiles"][number]; pepper: Buffer; pepperFile: Readonly<{ device: number | string; inode: number | string; digest: string }>; assertCurrent(): void }>();
 export function verifyPreparedProfileVerifier(witness: PreparedProfileVerifier, machineRoot: string, profileId: string, expectedEmailKey: string) {
   const issued = preparedVerifiers.get(witness);
   if (issued === undefined || issued.root !== machineRoot || issued.row.profileId !== profileId || issued.row.emailKey !== expectedEmailKey) throw new Error("profile-verifier-publication-unissued");
@@ -105,7 +105,7 @@ export function createProfileVerifiers(machineRoot: string) {
       };
       const witness = Object.freeze({ profileId });
       preparedVerifiers.set(witness, { root: machineRoot, row: Object.freeze(row), pepper: sourcePepper.bytes,
-        pepperFile: { ...numericFileIdentity(sourcePepper.identity), digest: createHash("sha256").update(sourcePepper.bytes).digest("hex") }, assertCurrent });
+        pepperFile: { ...fileIdentityObservation(sourcePepper.identity, { preserveSafeNumbers: true }), digest: createHash("sha256").update(sourcePepper.bytes).digest("hex") }, assertCurrent });
       assertCurrent(); return witness;
     },
     save(profileId: string, email: string, password: string): void {

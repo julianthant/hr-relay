@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
@@ -116,10 +117,14 @@ it("refuses a lock whose publication identity changes without deleting the subst
   assert.equal(fs.readFileSync(path, "utf8"), "lock");
 });
 
-it("refuses an unrepresentable reader identity at the existing authority witness capture boundary", () => {
-  fixture(); fs.writeFileSync(join(root!, "state.db"), "synthetic database bytes", { mode: 0o600 }); windowsObservations();
-  assert.throws(() => profileAuthorityFileWitnesses(root!), error => {
-    assert.equal((error as { reason?: string }).reason, "unrepresentable-numeric-file-metadata"); return true;
-  });
-  assert.equal(fs.readFileSync(join(root!, "state.db"), "utf8"), "synthetic database bytes");
+for (const [inode, expected] of [[17n, 17], [high, "21110623253370482"]] as const) it(`captures an exact authority witness for Windows inode ${inode}`, () => {
+  fixture();
+  const path = join(root!, "state.db"), bytes = Buffer.from("synthetic database bytes");
+  fs.writeFileSync(path, bytes, { mode: 0o600 });
+  windowsObservations(stat => { stat.dev = 4n; stat.ino = inode; });
+  assert.deepEqual(profileAuthorityFileWitnesses(root!), [
+    { suffix: "", file: { device: 4, inode: expected, digest: createHash("sha256").update(bytes).digest("hex") } },
+    { suffix: "-wal" }, { suffix: "-shm" }, { suffix: "-journal" },
+  ]);
+  assert.deepEqual(fs.readFileSync(path), bytes);
 });
