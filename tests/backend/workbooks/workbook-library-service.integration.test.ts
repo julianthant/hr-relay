@@ -328,7 +328,21 @@ it('validates native worksheet dimensions and references before allocating the e
   const single = await importSpreadsheet('Synthetic.xlsx', await declared('E7'));
   expect(single.sheets[0].width).toBe(5); expect(single.sheets[0].rows).toHaveLength(7);
   for (const reference of ['invalid', 'D4:A1', 'A0:C3', 'A1:XFE2']) await expect(importSpreadsheet('Synthetic.xlsx', await declared(reference))).rejects.toThrow('SPREADSHEET_DIMENSIONS_INVALID');
-  await expect(importSpreadsheet('Synthetic.xlsx', await declared('A1:XFD1048576'))).rejects.toThrow('SPREADSHEET_SIZE_UNSUPPORTED');
+  const padded = await importSpreadsheet('Synthetic.xlsx', await declared('A1:XFD1048576'));
+  expect(padded.sheets).toHaveLength(1);
+  expect(padded.sheets[0].width).toBe(3);
+  expect(padded.sheets[0].rows.map(row => row.sourceRow)).toEqual([1, 2, 3]);
+  expect(padded.sheets[0].rows.map(row => row.cells.map(cell => cell.value)))
+    .toEqual([[null, null, null], [null, null, null], [null, null, 'Retained']]);
+  expect(padded.hasFormulas).toBe(false);
+  expect(padded.unsupportedMetadata).toBe(true);
+  const f = fixture(), created = f.service.create(padded), reopened = f.service.read(created.libraryId);
+  expect(reopened.workbook).toEqual({ ...padded, libraryId: created.libraryId });
+  failure(() => f.service.save(created.libraryId, reopened.version, reopened.workbook), 'WORKBOOK_METADATA_UNSUPPORTED');
+  failure(() => f.service.save(created.libraryId, reopened.version, { ...reopened.workbook, unsupportedMetadata: false }), 'WORKBOOK_METADATA_UNSUPPORTED');
+  expect(f.service.read(created.libraryId)).toEqual(reopened);
+  expect(f.service.list()).toEqual([reopened]);
+  expect(f.service.history(created.libraryId)).toEqual([]);
   const wrongNamespace = await rewrite('xl/_rels/workbook.xml.rels', xml => xml.replace('http://schemas.openxmlformats.org/package/2006/relationships', 'https://example.com/wrong'));
   await expect(importSpreadsheet('Synthetic.xlsx', wrongNamespace)).rejects.toThrow('SPREADSHEET_WORKSHEET_REFERENCE_INVALID');
   for (const target of ['https://example.com/sheet.xml', 'https://relay.invalid/xl/worksheets/sheet1.xml', '//relay.invalid/xl/worksheets/sheet1.xml', 'worksheets/%2e%2e%2fsheet.xml', 'worksheets/sheet.xml#fragment']) {

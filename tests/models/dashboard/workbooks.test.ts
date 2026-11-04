@@ -7,6 +7,21 @@ import { sha256Hex } from "../../../src/rules/validation/sha256.js";
 import { RunWorkbookNamedReferenceSchema, RunWorkbookNamedAllRowsReferenceSchema } from "../../../src/models/dashboard/workbooks.js";
 import { SchemaBoundCanonicalValueSchema, deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
 
+it('admits 250,000 false values in a 500,000-position grid and refuses either limit independently', () => {
+  const workbook = { name: 'Synthetic.xlsx', themes: [], hasFormulas: false, sheets: [{ id: 'one', name: 'One', width: 1000, hidden: [], rows:
+    Array.from({ length: 500 }, (_, row) => ({ id: `row-${row}`, cells: Array.from({ length: 1000 }, (_, column) => ({ value: column % 2 === 0 ? false : null })) })) }] };
+  assert.equal(EditableWorkbookSchema.safeParse(workbook).success, true);
+  workbook.sheets[0].rows[0].cells[1].value = false;
+  const populated = EditableWorkbookSchema.safeParse(workbook);
+  assert.equal(populated.success, false);
+  if (!populated.success) assert.match(populated.error.issues[0].message, /250,001 populated cells.*250,000/su);
+  workbook.sheets[0].rows[0].cells[1].value = null;
+  workbook.sheets[0].rows.push({ id: 'extra', cells: Array.from({ length: 1000 }, () => ({ value: null })) });
+  const grid = EditableWorkbookWireSchema.safeParse(workbook);
+  assert.equal(grid.success, false);
+  if (!grid.success) assert.match(grid.error.issues[0].message, /250,000 populated cells.*501,000.*500,000/su);
+});
+
 it("preserves the keyed reference schema hash and reads each active reference by its declared hash", () => {
   assert.equal(deriveSchemaHash(RunWorkbookReferenceSchema, "output"), "bb13aafcb41e28b291bd51f4b9a803f6fabcbd71a6b92cf2a036a3d0c1cc6bac");
   assert.equal(deriveSchemaHash(RunWorkbookAllRowsReferenceSchema, "output"), "a6278c40db9223757b28b00d0e975a3bf6f58e2d4444b527a4d2b04e5680d419");
