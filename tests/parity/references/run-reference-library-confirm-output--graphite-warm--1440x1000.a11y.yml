@@ -1,7 +1,7 @@
 # run-reference-library-confirm-output--graphite-warm--1440x1000
 # adapter: fixture
 # fixture: run-reference-library.spec.ts:named reference planning dark 1440
-# descriptorHash: 9a4a2b559866ccb26bb6e5de514134f90fd3fdac50e24b276b8dbc3cc57e6142
+# descriptorHash: ec50c49d2d8d5e0aa568a7a3b79c8ba2fab7030899e0465145e8d8a9071aee58
 # appVersion: 0.1.0
 # viewport: 1440x1000  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
