@@ -1,3 +1,5 @@
+import type { MutationCapability } from "../../../../../src/models/ui/driver.js";
+import { readFileSync } from "node:fs";
 import { contactEffect, planEmergencyContact } from "../../../../../src/rules/ucpath/emergency-contact.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
@@ -37,4 +39,22 @@ describe("deterministic UCPath contact editor", () => {
     assert.equal((await port.snapshot()).rows.length, 2);
     assert.ok(!("save" in port) && !("commit" in port));
   });
+});
+
+it("rejects caller-created mutation tokens before invoking a Save surface", async () => {
+  const input = UcpathEmergencyContactInputSchema.parse(fixture.input);
+  const before = interpretContactPage(UcpathContactPageSnapshotSchema.parse(fixture.page), input);
+  const port = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse(fixture.page) });
+  let saves = 0;
+  const driver = deterministicContactOperations(port, { async save() { saves++; }, async readPersisted() { return before; } });
+  const plan = planEmergencyContact(before, contactEffect(input));
+  await driver.stageEmergencyContact(input, plan);
+  await assert.rejects(driver.saveEmergencyContact({ ...input, plan }, {} as MutationCapability), /not minted/u);
+  assert.equal(saves, 0);
+});
+
+it("keeps the production contact Save surface pending without resolving or clicking a page action", async () => {
+  const source = readFileSync(new URL("../../../../../src/backend/systems/ucpath/driver/contact-page.ts", import.meta.url), "utf8");
+  assert.match(source, /return createContactOperations\(open\);/u);
+  assert.doesNotMatch(source, /getByRole\([^\n]*Save|\.save\(|save:\s*(?:async|\()/u);
 });

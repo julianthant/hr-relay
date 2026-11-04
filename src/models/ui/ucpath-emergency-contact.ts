@@ -1,12 +1,18 @@
 import { z } from "zod";
+import type { MutationCapability } from "./driver.js";
 import { UcpathContactAddressFieldsSchema } from "../systems/ucpath/emergency-contacts.js";
 import type { UcpathContactSet, UcpathEmergencyContactInput, UcpathContactPlan } from "../systems/ucpath/emergency-contacts.js";
 
 export const UcpathContactDisplayedNameSchema = z.literal("ucpath.emergency-contact.displayed-name").brand<"ObservationId">();
 export const UCPATH_CONTACT_DISPLAYED_NAME = UcpathContactDisplayedNameSchema.parse("ucpath.emergency-contact.displayed-name");
 
+export class UcpathContactSaveError extends Error {
+  constructor(readonly code: "CONTACT_SAVE_UNAVAILABLE" | "saved-effect-mismatch") { super(code); this.name = "UcpathContactSaveError"; }
+}
+
 export interface UcpathEmergencyContactDriver {
   readEmergencyContacts(input: Pick<UcpathEmergencyContactInput, "emplId" | "expectedName">): Promise<UcpathContactSet>;
+  saveEmergencyContact(input: UcpathEmergencyContactInput & { plan: UcpathContactPlan }, capability: MutationCapability): Promise<UcpathContactSet>;
   stageEmergencyContact(input: UcpathEmergencyContactInput, plan: UcpathContactPlan): Promise<UcpathContactSet>;
 }
 

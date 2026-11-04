@@ -1,12 +1,16 @@
+import { recordBrowserAction } from "../../browser-shared/action-notes.js";
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { UcpathContactSaveError } from "../../../../models/ui/ucpath-emergency-contact.js";
+import type { UcpathEmergencyContactDriver } from "../../../../models/ui/ucpath-emergency-contact.js";
 import { sameEffect, contactEffects, sameContactMultiset, contactSetFingerprint,
-  contactEffect, decideContactAddition, contactPlanMatches, assertContactSubject } from "../../../../rules/ucpath/emergency-contact.js";
+  contactEffect, decideContactAddition, contactPlanMatches, assertContactSubject, preparedContactPlanMatches, contactPlanPresent } from "../../../../rules/ucpath/emergency-contact.js";
 import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { normalizePhoneDigitsRule } from "../../../../rules/normalization/contact-rules.js";
 import {
   UcpathContactEffectSchema, UcpathContactRefusedError, UcpathContactRelationshipSchema,
   UcpathContactSetSchema,
-  UcpathContactPlanSchema,
+  UcpathContactPlanSchema, UcpathEmergencyContactInputSchema,
 } from "../../../../models/systems/ucpath/emergency-contacts.js";
 import type {
   UcpathContactDecision, UcpathContactEffect, UcpathContactRefusalCode,
@@ -151,4 +155,50 @@ export async function stageContactPlanWithPort(port: UcpathContactPagePort, inpu
   const addition = decideContactAddition(prepared, plan.effect);
   if (addition.state !== "add" || canonicalJsonStringify(addition.target) !== canonicalJsonStringify(plan.target)) refuse("contact-plan-refused");
   return stageContactAdditionWithPort(port, input, addition);
+}
+
+
+/** Separate from preparation: Save and a new persisted read are one commit surface. */
+export interface UcpathContactSavePort {
+  save(): Promise<void>;
+  readPersisted(): Promise<UcpathContactSet>;
+}
+
+export function createContactOperations(
+  open: (input: Pick<UcpathEmergencyContactInput, "emplId" | "expectedName">) => Promise<UcpathContactPagePort>,
+  savePort?: UcpathContactSavePort,
+): UcpathEmergencyContactDriver {
+  let prepared: { port: UcpathContactPagePort; input: UcpathEmergencyContactInput; plan: UcpathContactPlan } | undefined;
+  return {
+    async readEmergencyContacts(input) {
+      const set = await readContactSetWithPort(await open(input), input);
+      if (set.observation !== "persisted") refuse("contact-plan-refused");
+      return set;
+    },
+    async stageEmergencyContact(input, candidate) {
+      prepared = undefined;
+      const plan = UcpathContactPlanSchema.parse(candidate);
+      const port = await open(input);
+      const staged = await stageContactPlanWithPort(port, input, plan);
+      prepared = { port, input: UcpathEmergencyContactInputSchema.parse({ emplId: input.emplId, expectedName: input.expectedName, contact: input.contact }), plan };
+      return staged;
+    },
+    async saveEmergencyContact(input, capability) {
+      assertMintedMutationCapability(capability);
+      const retained = prepared;
+      prepared = undefined;
+      if (savePort === undefined) throw new UcpathContactSaveError("CONTACT_SAVE_UNAVAILABLE");
+      if (retained === undefined || canonicalJsonStringify(retained.input) !== canonicalJsonStringify(UcpathEmergencyContactInputSchema.parse({ emplId: input.emplId, expectedName: input.expectedName, contact: input.contact }))
+        || canonicalJsonStringify(retained.plan) !== canonicalJsonStringify(input.plan)) refuse("contact-plan-refused");
+      const staged = await readContactSetWithPort(retained.port, input);
+      if (!preparedContactPlanMatches(retained.plan, staged)) refuse("staged-effect-mismatch");
+      await savePort.save();
+      recordBrowserAction("clicked", "ucpath.emergency-contact.save");
+      const persisted = UcpathContactSetSchema.parse(await savePort.readPersisted());
+      if (!contactPlanPresent(retained.plan, persisted)
+        || Date.parse(persisted.observedAt) <= Date.parse(staged.observedAt)
+        || Date.parse(persisted.observedAt) <= Date.parse(retained.plan.before.observedAt)) throw new UcpathContactSaveError("saved-effect-mismatch");
+      return persisted;
+    },
+  };
 }
