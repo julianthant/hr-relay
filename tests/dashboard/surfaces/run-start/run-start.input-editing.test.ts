@@ -24,13 +24,13 @@ it("normalizes Search people, removes a duplicate identity from the textbox and 
   await dialog.type(" 10000001 ; Example,   Person\r\n10000002; example, person ; 10000001\n Other,\tPerson ");
   const box = dialog.typedInput();
   await act(async () => { box.focus(); box.blur(); });
-  assert.equal(box.value, "10000001\nExample, Person\n10000002\nOther, Person");
+  assert.equal(box.value, "10000001;Example, Person;10000002;Other, Person");
   const parsed = document.querySelector('[aria-label="Parsed input"]');
   assert.ok(parsed);
   assert.equal(parsed.querySelectorAll("li").length, 4);
   assert.match(parsed.textContent ?? "", /4 runs/u);
   await dialog.press("Remove Example, Person");
-  assert.equal(box.value, "10000001\n10000002\nOther, Person");
+  assert.equal(box.value, "10000001;10000002;Other, Person");
   assert.equal(document.activeElement, box);
   assert.equal(parsed.querySelectorAll("li").length, 3);
   assert.match(parsed.textContent ?? "", /3 runs/u);
@@ -64,4 +64,43 @@ it("keeps Match identifiers raw in the editor and masked in its preview", async 
   assert.match(dialog.text(), /Example, Person, x, \[masked\]/u);
   assert.equal(document.querySelector('[aria-label="Parsed input"]')?.textContent?.includes("902481357"), false);
   assert.equal(document.querySelector('button[aria-label^="Remove "]'), null);
+});
+
+it.each([";", "|"])("preserves two Match tuples through Search blur before the mode click with %s", async delimiter => {
+  const surface = structuredClone(workflow.inputRun.surface);
+  assert.ok(surface.typedInput);
+  for (const mode of surface.typedInput.modes) {
+    if (mode.parser.kind === "entries") mode.parser.spec.split = { kind: "delimited", delimiters: ["\n", delimiter] };
+    else mode.parser.delimiter = delimiter;
+  }
+  let request: unknown;
+  const dialog = await h.openDialog(h.stubClient({ submitStartPlan: async input => {
+    request = input;
+    return h.planResponse("5a000000-0000-4000-8000-000000000001");
+  } }), { workflows: [{ ...workflow, inputRun: { state: "present", surface } }], panelWorkflowId: descriptor.id });
+  const box = dialog.typedInput();
+  await act(async () => box.focus());
+  await dialog.type(`Example, First, 01/15/2000, x${delimiter} Other, Second, x, 902481357`);
+  const match = document.querySelector<HTMLInputElement>('input[type="radio"][value="match"]');
+  assert.ok(match);
+  const order: string[] = [];
+  box.addEventListener("blur", () => order.push("blur"));
+  match.addEventListener("click", () => order.push("click"));
+  await act(async () => match.focus());
+  assert.deepEqual(order, ["blur"]);
+  await act(async () => match.click());
+  assert.deepEqual(order, ["blur", "click"]);
+  const editedText = box.value;
+  await act(async () => { box.focus(); box.blur(); });
+  assert.equal(box.value, editedText);
+  const parsed = document.querySelector('[aria-label="Parsed input"]');
+  assert.ok(parsed);
+  assert.equal(parsed.textContent?.includes("902481357"), false);
+  assert.match(parsed.textContent ?? "", /\[masked\]/u);
+  await dialog.press("Continue");
+  await dialog.press("Continue");
+  assert.deepEqual(StartPlanRequestSchema.parse(request).submissions, [
+    { mode: "match", lastName: "Example", firstName: "First", dob: "01/15/2000", crmCheck: false, includeCrmDates: false },
+    { mode: "match", lastName: "Other", firstName: "Second", ssn: "902481357", crmCheck: false, includeCrmDates: false },
+  ]);
 });

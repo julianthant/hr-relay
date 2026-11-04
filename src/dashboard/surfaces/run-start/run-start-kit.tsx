@@ -466,7 +466,9 @@ export function TypedInput({
   const mode = declaration === undefined ? undefined : typedInputMode(declaration, values);
   const editableParser = declaration === undefined ? surface.parser : mode?.parser.kind === "entries" ? mode.parser.spec : undefined;
   const separator = editableParser?.split.kind === "delimited"
-    ? editableParser.split.delimiters.includes("\n") ? "\n" : editableParser.split.delimiters[0]
+    ? editableParser.split.delimiters.find(delimiter => declaration?.modes.some(candidate =>
+      candidate.parser.kind === "name-tuple" && candidate.parser.delimiter === delimiter))
+      ?? (editableParser.split.delimiters.includes("\n") ? "\n" : editableParser.split.delimiters[0])
     : "";
   const entryText = (entries: RunInputPreview["entries"]) => entries.map(entry => entry.sourceText).join(separator);
   const field = <Field label={mode?.inputLabel ?? inputRunFieldLabel(surface.parser)} description={mode?.hint ?? inputRunDelimiterHint(surface.parser)} error={presentation === "served" ? preview.problem : undefined}>
