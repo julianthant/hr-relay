@@ -23,11 +23,13 @@ import { buildEmergencyContactMembers } from "../../../../src/workflows/emergenc
 import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
 import { ocrWorkflow } from "../../../../src/workflows/ocr/workflow.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { contactSaveMember } from "../../../support/fixtures/ocr/contact-save-workflow.js";
+import { emergencyContactMemberWorkflow } from "../../../../src/workflows/emergency-contact-member/workflow.js";
 import { createRetainedApprovedRecordReader } from "../../../support/fixtures/ocr/retained-approved-records.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import contactPage from "../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
+
+const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);

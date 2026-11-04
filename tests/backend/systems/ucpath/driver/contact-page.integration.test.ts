@@ -1,8 +1,10 @@
+import { mintMutationCapability } from "../../../../../src/workflow-kit/mutation-capability.js";
+import { FingerprintSchema, PositiveIntSchema } from "../../../../../src/rules/identity/ids.js";
 import { planEmergencyContact, contactEffect } from "../../../../../src/rules/ucpath/emergency-contact.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { chromium } from "playwright";
-import { describe, it } from "vitest";
+import { describe, it, vi } from "vitest";
 import fixture from "../../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 import { createUcpathPersonOrgDriver } from "../../../../../src/backend/systems/ucpath/driver/interpreter.js";
 import { UcpathEmergencyContactInputSchema, UcpathContactRefusedError } from "../../../../../src/models/systems/ucpath/emergency-contacts.js";
@@ -18,7 +20,7 @@ const template = readFileSync(new URL("../../../../support/fixtures/ui/ucpath/em
 
 async function browserFixture(options: {
   foreign?: boolean; changeProtected?: boolean; loseName?: boolean; insert?: boolean;
-  address?: boolean; disabledViewAll?: boolean; totalRows?: number;
+  address?: boolean; disabledViewAll?: boolean; totalRows?: number; saveResponse?: "persist" | "ignore";
 } = {}) {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
@@ -31,9 +33,10 @@ async function browserFixture(options: {
   await page.route("**/*", route => { navigations.push(new URL(route.request().url()).pathname); return route.fulfill({ contentType: "text/html", body }); });
   await page.goto("https://ucphrprdpub.universityofcalifornia.edu/");
   let active = true;
+  const clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
   const driver = createUcpathPersonOrgDriver(() => { if (!active) throw new Error("owner-revoked"); }, page,
-    manualClock(new Date("2026-11-02T12:00:00.000Z")));
-  return { browser, page, driver, navigations, revoke: () => { active = false; } };
+    { ...clock, now: () => { clock.advanceWall(1); return clock.now(); } });
+  return { browser, page, driver, navigations, clock, revoke: () => { active = false; } };
 }
 
 async function events(page: Awaited<ReturnType<typeof browserFixture>>["page"]) {
@@ -170,4 +173,96 @@ describe("production UCPath contact driver on a synthetic browser page", () => {
       assert.deepEqual(await events(h.page), { saves: 0, actions: [] });
     } finally { await h.browser.close(); }
   });
+});
+
+const capability = () => mintMutationCapability(PositiveIntSchema.parse(1), FingerprintSchema.parse("a".repeat(64)));
+
+it("clicks the literal visible Save once and decides success from a new search and complete persisted read without a success message", async () => {
+  const h = await browserFixture({ saveResponse: "persist" });
+  try {
+    const before = await h.driver.readEmergencyContacts(input);
+    const plan = planEmergencyContact(before, contactEffect(input));
+    await h.driver.stageEmergencyContact(input, plan);
+    await h.page.evaluate(() => {
+      const duplicate = document.createElement("input");
+      duplicate.id = "#ICSave"; duplicate.hidden = true;
+      document.body.append(duplicate);
+    });
+    h.clock.advanceWall(1);
+    const saved = await h.driver.saveEmergencyContact({ ...input, plan }, capability());
+    assert.equal(saved.observation, "persisted");
+    assert.deepEqual(saved.rows.filter(row => row.kind === "contact").map(row => row.effect.name), ["Taylor Sample", input.contact.name]);
+    assert.equal((await events(h.page)).saves, 1);
+    assert.equal(h.navigations.length, 4, "initial page, read, prepare, independent reopen");
+    assert.deepEqual(await h.page.evaluate(() => {
+      const state: unknown = Reflect.get(window, "contactFixtureState");
+      if (typeof state !== "object" || state === null) throw new Error("contact-fixture-state-missing");
+      const searches: unknown = Reflect.get(state, "searches");
+      return searches;
+    }), [input.emplId]);
+    assert.ok((await events(h.page)).actions.includes("view-all"), "the persisted read expands the full set again");
+    await assert.rejects(h.driver.saveEmergencyContact({ ...input, plan }, capability()), /contact-plan-refused/u);
+    assert.equal((await events(h.page)).saves, 1);
+  } finally { await h.browser.close(); }
+});
+
+for (const mutation of ["missing", "hidden", "duplicate", "foreign-eid", "foreign-name"] as const) {
+  it(`refuses ${mutation} at Save with zero clicks`, async () => {
+    const h = await browserFixture({ saveResponse: "persist" });
+    try {
+      const before = await h.driver.readEmergencyContacts(input);
+      const plan = planEmergencyContact(before, contactEffect(input));
+      await h.driver.stageEmergencyContact(input, plan);
+      await h.page.evaluate(mode => {
+        const save = document.querySelector('[id="#ICSave"]');
+        if (!(save instanceof HTMLInputElement)) throw new Error("fixture-save-missing");
+        if (mode === "missing") save.remove();
+        if (mode === "hidden") save.hidden = true;
+        if (mode === "duplicate") save.after(save.cloneNode());
+        const identity = document.querySelector(mode === "foreign-eid" ? "#PERSON_NPC_VW_EMPLID" : "#PERSON_NAME_NAME");
+        if (mode.startsWith("foreign")) {
+          if (identity === null) throw new Error("fixture-person-missing");
+          identity.textContent = mode === "foreign-eid" ? "10000002" : "Another Person";
+        }
+      }, mutation);
+      await assert.rejects(h.driver.saveEmergencyContact({ ...input, plan }, capability()), UcpathContactRefusedError);
+      assert.equal((await events(h.page)).saves, 0);
+    } finally { await h.browser.close(); }
+  });
+}
+
+it("rejects unchanged persisted contacts after a click instead of treating the staged DOM as saved", async () => {
+  const h = await browserFixture({ saveResponse: "ignore" });
+  try {
+    const before = await h.driver.readEmergencyContacts(input);
+    const plan = planEmergencyContact(before, contactEffect(input));
+    await h.driver.stageEmergencyContact(input, plan);
+    h.clock.advanceWall(1);
+    await assert.rejects(h.driver.saveEmergencyContact({ ...input, plan }, capability()), /saved-effect-mismatch/u);
+    assert.equal(h.navigations.length, 4);
+    assert.equal((await events(h.page)).saves, 1);
+    await assert.rejects(h.driver.saveEmergencyContact({ ...input, plan }, capability()), /contact-plan-refused/u);
+    assert.equal((await events(h.page)).saves, 1);
+  } finally { await h.browser.close(); }
+});
+
+it("consumes the prepared attempt when Save settlement times out, with one click and no reopen or automatic retry", async () => {
+  const h = await browserFixture({ saveResponse: "persist" });
+  try {
+    const before = await h.driver.readEmergencyContacts(input);
+    const plan = planEmergencyContact(before, contactEffect(input));
+    await h.driver.stageEmergencyContact(input, plan);
+    // Synthetic transport failure; no live Save settlement has been observed.
+    const waitForLoadState = h.page.waitForLoadState.bind(h.page);
+    const settlement = vi.spyOn(h.page, "waitForLoadState").mockImplementation(async (...args) => {
+      if ((await events(h.page)).saves > 0) throw new Error("fixture-network-idle-timeout");
+      return waitForLoadState(...args);
+    });
+    await assert.rejects(h.driver.saveEmergencyContact({ ...input, plan }, capability()), UcpathContactRefusedError);
+    settlement.mockRestore();
+    assert.equal((await events(h.page)).saves, 1);
+    assert.equal(h.navigations.length, 3);
+    await assert.rejects(h.driver.saveEmergencyContact({ ...input, plan }, capability()), /contact-plan-refused/u);
+    assert.equal((await events(h.page)).saves, 1);
+  } finally { await h.browser.close(); }
 });

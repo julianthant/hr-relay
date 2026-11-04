@@ -11,10 +11,13 @@ import { SearchPersonOrgOutputSchema } from "../../../src/models/systems/ucpath/
 import { EmergencyContactMemberInputSchema } from "../../../src/models/workflows/emergency-contact-member/input.js";
 import { EmergencyContactResultSchema } from "../../../src/models/workflows/emergency-contact/result.js";
 import { composeWorkflowModule } from "../../../src/workflow-kit/workflow-definition.js";
-import { contactSaveMember } from "../../support/fixtures/ocr/contact-save-workflow.js";
+import { emergencyContactMemberWorkflow } from "../../../src/workflows/emergency-contact-member/workflow.js";
+import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import fixture from "../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 import { createOcrReviewWorld } from "../../support/helpers/backend/ocr-review-world.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
+
+const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);

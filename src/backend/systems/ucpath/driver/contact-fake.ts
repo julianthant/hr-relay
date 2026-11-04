@@ -105,9 +105,9 @@ export function createDeterministicContactPersistence(initial: UcpathContactPage
           submissions.push(staged);
           persisted = UcpathContactPageSnapshotSchema.parse({ ...staged, observation: "persisted", observedAt: now() });
         },
-        async readPersisted() {
+        async readPersisted(subject) {
           editor = createDeterministicUcpathContactPage({ initial: { ...persisted, observedAt: now() } });
-          return interpretContactPage(await editor.snapshot(), { emplId: EidSchema.parse(persisted.displayedEid), expectedName: persisted.displayedName });
+          return interpretContactPage(await editor.snapshot(), subject);
         },
       };
       return { port, save };

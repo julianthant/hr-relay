@@ -25,17 +25,20 @@ import type { UcpathContactPageSnapshot } from "../../../src/models/ui/ucpath-em
 import { UcpathContactPageSnapshotSchema } from "../../../src/models/ui/ucpath-emergency-contact.js";
 import { deriveSchemaHash, schemaBoundValueSchema } from "../../../src/models/validation/schema-bound-value.js";
 import { EMERGENCY_CONTACT_MEMBER_EXAMPLE } from "../../../src/models/workflows/emergency-contact-member/input.js";
-import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
+import { EidSchema, IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { approvedEmergencyContact,contactEffect,planEmergencyContact } from "../../../src/rules/ucpath/emergency-contact.js";
 import { defineBrowserStore,defineServiceStore,defineTaskStoreRegistry,type RegisteredTaskStore } from "../../../src/workflow-kit/task-registry.js";
 import { emergencyContactMemberStore } from "../../../src/workflows/emergency-contact-member/task-registry.js";
-import { contactSaveMember } from "../../support/fixtures/ocr/contact-save-workflow.js";
+import { emergencyContactMemberWorkflow } from "../../../src/workflows/emergency-contact-member/workflow.js";
+import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { testRunLifecycle } from "../../support/fixtures/run-lifecycle-fixtures.js";
 import fixture from "../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 import { canonicalChildExecution } from "../../support/helpers/backend/canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "../../support/helpers/backend/run-executor-world.js";
 import { seedUnknownContactWrite } from "../../support/helpers/backend/unknown-contact-write.js";
 import { sessionFactoryHarness } from "../../support/helpers/phase1f-executor-harness.js";
+
+const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 
 const world = createRunExecutorTestWorld();
 afterEach(world.cleanup);
@@ -44,8 +47,8 @@ const approved = EMERGENCY_CONTACT_MEMBER_EXAMPLE;
 const contact = approvedEmergencyContact(approved.record);
 const desired = contactEffect(contact);
 
-type FailurePoint = "pending" | "save-before" | "save-after" | "partial" | "primary-conflict" | "unreadable" | "mismatch" | "staged-readback" | "stale-readback" | "verifier" | "prepare" | "identity" | "drift" | "capture-before" | "capture-after" | "read" | "probe" | "capture-prepare" | "staged-page-drift";
-async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]; failure?: FailurePoint; priorWrite?: "attempting" | "parked"; interrupt?: boolean } = {}) {
+type FailurePoint = "pending" | "save-before" | "save-after" | "partial" | "primary-conflict" | "unreadable" | "mismatch" | "staged-readback" | "stale-readback" | "verifier" | "prepare" | "identity" | "drift" | "capture-before" | "capture-after" | "read" | "probe" | "capture-prepare" | "staged-page-drift" | "timeout" | "lost-page" | "unknown-response" | "foreign-eid" | "foreign-name" | "identity-before-click";
+async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]; failure?: FailurePoint; priorWrite?: "attempting" | "parked"; interrupt?: boolean; dryRun?: boolean } = {}) {
   const browser = defineBrowserStore("ucpath", ucpathDriver, ucpathSession, { readContacts: readEmergencyContactsTask,
     stageContact: stageEmergencyContactTask, probeContact: probeEmergencyContactTask, verifyContact: verifyEmergencyContactTask, saveContact: saveEmergencyContactTask });
   const service = defineServiceStore("ocr", { readRecord: readApprovedOcrRecordTask });
@@ -53,6 +56,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
   const tasks = entries.flatMap(store => Object.values(store.tasks));
   const stores = defineTaskStoreRegistry(entries, { scenarioIds: [...new Set(tasks.flatMap(task => task.contract.scenarios))], tasks: tasks.map(task => ({ id: task.contract.id, effect: task.contract.effect })) });
   const page = UcpathContactPageSnapshotSchema.parse({ ...fixture.page, rows: options.rows ?? fixture.page.rows, totalRows: (options.rows ?? fixture.page.rows).length });
+  let wrongPerson = false;
   const ports: UcpathContactPagePort[] = [], captures: UcpathContactPageSnapshot[] = [];
   let reads = 0, providerCalls = 0, ticks = Date.parse(page.observedAt);
   const persistence = createDeterministicContactPersistence(page, () => new Date(++ticks).toISOString());
@@ -61,7 +65,11 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
   const maySettle = new Promise<void>(resolve => { release = resolve; });
   const sessions = sessionFactoryHarness({ ucpath: () => {
     const session = persistence.session();
-    ports.push(session.port);
+    const port: UcpathContactPagePort = { ...session.port, async snapshot() {
+      const observed = await session.port.snapshot();
+      return wrongPerson ? { ...observed, displayedEid: "10000002" } : observed;
+    } };
+    ports.push(port);
     const save = { async save() {
       if (options.failure === "save-before") throw new Error("fixture-save-failed");
       await session.save.save();
@@ -75,15 +83,17 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
         persistence.replacePersisted({ ...saved, rows: saved.rows.map(row => row.rowIndex === 0 ? { ...row,
           ...(options.failure === "primary-conflict" ? { primary: true } : { phone: "2025550101" }) } : row) });
       }
-      if (options.failure === "save-after") throw new Error("fixture-save-response-lost");
-    }, async readPersisted() {
-      const observed = await session.save.readPersisted();
+      if (options.failure === "save-after" || options.failure === "timeout" || options.failure === "lost-page" || options.failure === "unknown-response") throw new Error(`fixture-${options.failure}`);
+    }, async readPersisted(subject: Parameters<typeof session.save.readPersisted>[0]) {
+      const observed = await session.save.readPersisted(subject);
       if (options.failure === "unreadable") throw new Error("fixture-readback-unreadable");
       if (options.failure === "staged-readback") return { ...observed, observation: "staged" as const };
       if (options.failure === "stale-readback") return { ...observed, observedAt: IsoInstantSchema.parse(page.observedAt) };
+      if (options.failure === "foreign-eid") return { ...observed, emplId: EidSchema.parse("10000002") };
+      if (options.failure === "foreign-name") return { ...observed, displayedName: "Another Person" };
       return observed;
     } };
-    const driver = createDeterministicUcpathPersonOrgDriver(undefined, undefined, session.port, options.failure === "pending" ? undefined : save);
+    const driver = createDeterministicUcpathPersonOrgDriver(undefined, undefined, port, options.failure === "pending" ? undefined : save);
     return { ...driver,
       async readEmergencyContacts(input: Parameters<typeof driver.readEmergencyContacts>[0]) {
         reads++;
@@ -107,6 +117,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
     assert.equal(context.screenshot.state, "available");
     const port = ports.at(-1); assert.ok(port);
     const snapshot = await port.snapshot(); captures.push(snapshot);
+    if (options.failure === "identity-before-click" && context.trigger.kind === "task-point" && context.trigger.boundary === "before-submit") wrongPerson = true;
     if (options.failure === "staged-page-drift" && context.trigger.kind === "task-point" && context.trigger.boundary === "before-submit") {
       await port.demotePrimary(1, desired);
     }
@@ -134,7 +145,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
     },
   } }, database, path, id => id === compiled.descriptor.id ? compiled.descriptor : undefined);
   const prior = options.priorWrite === undefined ? undefined : seedUnknownContactWrite(database, { ...contact, plan: planEmergencyContact(interpretContactPage(page, contact), desired) }, clock.now().toISOString(), options.priorWrite === "parked");
-  const run = execution.start(compiled.descriptor, approved, { dryRun: false });
+  const run = execution.start(compiled.descriptor, approved, { dryRun: options.dryRun ?? false });
   const signal = new AbortController();
   let settled = false;
   const running = execution.execute(run, signal.signal).finally(() => { settled = true; });
@@ -154,7 +165,7 @@ async function memberFixture(options: { rows?: UcpathContactPageSnapshot["rows"]
   };
 }
 
-it("commits the declared primary demotion and addition once, then independently verifies and durably settles the persisted whole set", async () => {
+it("emergency-contact/verified-save — commits the declared primary demotion and addition once, then independently verifies and durably settles the persisted whole set", async () => {
   const f = await memberFixture();
   assert.deepEqual(f.failures, []);
   assert.equal(f.persistence.submissions.length, 1);
@@ -175,7 +186,7 @@ it("commits the declared primary demotion and addition once, then independently 
   const date = f.clock.now().toISOString().slice(0, 10);
   assert.equal(createTransactionHistory(f.database.authority).query({ from: date, to: date, runId: f.run.envelope.runId }).rows.length, 1);
 });
-for (const failure of ["staged-page-drift", "pending", "save-before", "save-after", "partial", "primary-conflict", "unreadable", "mismatch", "staged-readback", "stale-readback", "verifier", "capture-after"] as const) it(`parks ${failure} after the fence without a forged output or retry`, async () => {
+for (const failure of ["identity-before-click", "timeout", "lost-page", "unknown-response", "foreign-eid", "foreign-name", "staged-page-drift", "pending", "save-before", "save-after", "partial", "primary-conflict", "unreadable", "mismatch", "staged-readback", "stale-readback", "verifier", "capture-after"] as const) it(`parks ${failure} after the fence without a forged output or retry`, async () => {
   const f = await memberFixture({ failure });
   const intents = f.database.authority.writeIntents.listByRun(f.run.envelope.runId);
   assert.equal(intents.length, 1); assert.equal(intents[0]?.status, "parked");
@@ -189,7 +200,7 @@ for (const failure of ["staged-page-drift", "pending", "save-before", "save-afte
   assert.deepEqual(createTransactionHistory(f.database.authority).query({ from: date, to: date, runId: f.run.envelope.runId }).rows, []);
   assert.equal(f.database.authority.runCheckpoints.latest(f.run.envelope.workflow, f.run.envelope.itemId, "contact-preview"), undefined);
   const submissions = f.persistence.submissions.length;
-  assert.equal(submissions, failure === "staged-page-drift" || failure === "save-before" || failure === "pending" ? 0 : 1);
+  assert.equal(submissions, failure === "identity-before-click" || failure === "staged-page-drift" || failure === "save-before" || failure === "pending" ? 0 : 1);
   const retry = f.execution.start(compiled.descriptor, { ...approved, record: { ...approved.record, recordId: `${"b".repeat(64)}#emergency-contact#2` } }, { dryRun: false });
   await f.execution.execute(retry, world.SIGNAL);
   assert.equal(f.persistence.submissions.length, submissions);
@@ -231,4 +242,12 @@ it("saves an addition with no demotion when the complete original set has no pri
   assert.deepEqual(f.failures, []);
   assert.equal(f.persistence.submissions.length, 1);
   assert.deepEqual(f.persistence.snapshot().rows.map(row => row.primary), [false, true]);
+});
+
+it("prepares the real production workflow in dry run with zero Save clicks and no write intent", async () => {
+  const f = await memberFixture({ dryRun: true });
+  assert.deepEqual(f.failures, []);
+  assert.equal(f.persistence.submissions.length, 0);
+  assert.ok(f.captures.some(snapshot => snapshot.observation === "staged"));
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(f.run.envelope.runId), []);
 });

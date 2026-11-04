@@ -53,7 +53,7 @@ export function emergencyContactIdempotencyKey(input: UcpathContactWriteTarget):
   return `ucpath:emergency-contact|${effectDigest}`;
 }
 export const UcpathContactVerdictSchema = probeVerdictSchema(UcpathContactEffectProofSchema);
-export const writeScenarios = [...scenarios, "emergency-contact/dry-run", "emergency-contact/unknown", "emergency-contact/real-save-unavailable"];
+export const writeScenarios = [...scenarios, "emergency-contact/dry-run", "emergency-contact/unknown", "emergency-contact/verified-save"];
 export const absent = { state: "absent", evidence: { idempotencyKeyDigest: "0".repeat(64), source: UCPATH_CONTACT_DISPLAYED_NAME,
   sourceState: "ucpath.emergency-contact.editor-ready", observedAt: "2026-11-01T12:00:00.000Z", queryDigest: "1".repeat(64), evidenceRef: "observation:00000000-0000-4000-8000-000000000001" } };
 export const proofExample = UcpathContactEffectProofSchema.parse({ kind: "ucpath-emergency-contact", emplId: example.contacts.emplId,
