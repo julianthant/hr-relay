@@ -623,13 +623,16 @@ export function composeProfileRuntime(input: Readonly<{
   const machine = requireRuntimeAdmission(input.admission);
   type Context = ReturnType<typeof composeSelectedProfileStorage>;
   type Preparation = { state: "pending"; completion: Promise<void> } | { state: "ready" } | { state: "failed"; error: unknown };
+  type LogoutDrain = { epoch: number } & ({ state: "pending"; completion: Promise<void> }
+    | { state: "ready"; commandId: string; custody: ReturnType<AuthorityDatabase["readProfileResourceCustody"]> }
+    | { state: "failed"; error: unknown });
   type Supervisor = Pick<DashboardWorkerProcessSupervisor, "memberEvidence" | "drainOwnedChildren">;
   type Supervision = { state: "not-constructed" } | { state: "constructing" } | { state: "bound"; owner: Supervisor };
   type LogoutClosure = { epoch: number; source: ReturnType<AuthorityDatabase["capturePendingLogoutSource"]>;
     custody: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>;
     exits: Map<string, Readonly<{ member: WorkerPoolMember; processId: number; leaseGeneration: number; valid(): boolean }>>;
     operationId?: string; busy?: boolean; stopped?: Awaited<ReturnType<AuthorityDatabase["settlePendingLogout"]>> };
-  type Owned = { commandActivities?: Set<ProfileCommandActivity>; logout?: LogoutClosure; supervision: Supervision; admission: RuntimeAdmission; credentials: CredentialStore; context?: Context; activity?: ReturnType<typeof composeProfileActivity>;
+  type Owned = { commandActivities?: Set<ProfileCommandActivity>; logoutDrain?: LogoutDrain; logout?: LogoutClosure; supervision: Supervision; admission: RuntimeAdmission; credentials: CredentialStore; context?: Context; activity?: ReturnType<typeof composeProfileActivity>;
     inventory?: ReturnType<typeof composeProfileClosureInventory>; preparation?: Preparation; state: "open" | "closing" | "closed" };
   const completedLogouts = new Map<string, Readonly<{ profileId: string; epoch: number }>>();
   const coldLogouts = new Map<string, { operationId: string; completion: Promise<void>; state: "pending" | "ready" | "failed"; busy?: boolean; error?: unknown }>();
@@ -678,15 +681,17 @@ export function composeProfileRuntime(input: Readonly<{
     const entry = resources.get(profileId)?.ordinary;
     if (entry?.activity === undefined || entry.context === undefined || entry.inventory === undefined) throw new Error("profile-resource-custody-unavailable");
     if (entry.preparation !== undefined) return;
-    if (closePurpose === "shutdown" && entry.logout === undefined) entry.activity.requestShutdown(profileId);
-    else entry.activity.requestCancellation(profileId);
+    if (entry.logout === undefined) {
+      if (closePurpose === "shutdown") entry.activity.requestShutdown(profileId);
+      else entry.activity.requestCancellation(profileId);
+    }
     const completion = (async () => {
       await entry.activity!.awaitCancellation();
       if (entry.logout !== undefined) {
         const lifetime = machine.lifetime;
         if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("profile-logout-controller-required");
         await lifetime.awaitOwnedChildrenClosed();
-        await entry.context!.account.close();
+        if (entry.logoutDrain?.state !== "ready") throw new Error("profile-logout-drain-unproved");
         const operation = pendingLogout(profileId, entry);
         const stopped = await entry.context!.database.settlePendingLogout(machine, operation, [...entry.logout.exits.values()], pendingLogoutServices);
         entry.logout.stopped = stopped;
@@ -766,11 +771,17 @@ export function composeProfileRuntime(input: Readonly<{
     sessionChange: profileId => resources.get(profileId)?.ordinary?.context !== undefined && resources.get(profileId)?.ordinary?.state !== "closed"
       ? { state: "refused", code: "PROFILE_TRANSITION_BLOCKED", message: ERROR_CATALOG.PROFILE_TRANSITION_BLOCKED.text } : { state: "closed" },
     prepareLogout: (profileId, admission) => {
-      const entry = initializeOwners(profileId, admission);
-      const source = entry.context!.database.capturePendingLogoutSource();
-      entry.logout = { epoch: machine.readProfileRegistry().sessionGeneration, source, custody: entry.context!.database.readProfileResourceCustody(), exits: new Map() };
-      entry.activity!.requestCancellation(profileId);
-      entry.state = "closing";
+      const entry = resources.get(profileId)?.ordinary, drain = entry?.logoutDrain;
+      if (entry === undefined || entry.admission !== admission || entry.context === undefined || drain?.state !== "ready"
+        || machine.readProfileRegistry().sessionGeneration !== drain.epoch
+        || canonicalJsonStringify(entry.context.database.readProfileResourceCustody()) !== canonicalJsonStringify(drain.custody)) {
+        throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
+      }
+      admission.assertProfileRuntime();
+      const heldAdmission = entry.context.database.authority.runs.admission();
+      if (heldAdmission.state !== "draining" || heldAdmission.commandId !== drain.commandId) throw new ProfileSessionRefusedError("PROFILE_LOGOUT_BLOCKED");
+      const source = entry.context.database.capturePendingLogoutSource();
+      entry.logout = { epoch: drain.epoch, source, custody: drain.custody, exits: new Map() };
       return { source, intentFailed(error: unknown): never {
         const failure = new RuntimeCustodyUncertainError([error]);
         entry.preparation = { state: "failed", error: failure };
@@ -850,6 +861,50 @@ export function composeProfileRuntime(input: Readonly<{
     } catch (error) { throw new RuntimeCustodyUncertainError([error]); }
   };
   return Object.freeze({ session, beginClose,
+    async drainForLogout(token: string): Promise<void> {
+      const available = session.prepareCurrentStorage(token);
+      if (available.state !== "available") throw new ProfileSessionRefusedError(available.code);
+      const selected = captureSelectedProfileStorage(machine);
+      const profileId = selected.profileId, held = resources.get(profileId)?.ordinary;
+      if (held === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
+      if (held.logoutDrain !== undefined) {
+        if (held.logoutDrain.epoch !== selected.epoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+        if (held.logoutDrain.state === "failed") throw held.logoutDrain.error;
+        if (held.logoutDrain.state === "pending") await held.logoutDrain.completion;
+        return;
+      }
+      assertCurrent(token);
+      const entry = initializeOwners(profileId, held.admission), epoch = selected.epoch;
+      entry.state = "closing";
+      const completion = (async () => {
+        const commandId = randomUUID();
+        entry.context!.database.withAuthorityTransaction(repositories => {
+          const runtime = repositories.runtimeConfig.get();
+          if (runtime === undefined) throw new Error("application-runtime-unavailable");
+          repositories.runs.holdAdmission({ commandId, runtimeGeneration: runtime.generation, reason: "logout" });
+        });
+        entry.activity!.requestCancellation(profileId);
+        await entry.activity!.awaitCancellation();
+        const lifetime = machine.lifetime;
+        if (!(lifetime instanceof RuntimeLifetimeLock)) throw new Error("profile-logout-controller-required");
+        await lifetime.awaitOwnedChildrenClosed();
+        await entry.context!.account.close();
+        entry.admission.assertProfileRuntime();
+        const current = machine.readProfileRegistry();
+        if (current.sessionGeneration !== epoch || current.activeProfileId !== profileId) throw new Error("profile-logout-drain-owner-changed");
+        const heldAdmission = entry.context!.database.authority.runs.admission();
+        if (heldAdmission.state !== "draining" || heldAdmission.commandId !== commandId) throw new Error("profile-logout-admission-changed");
+        if (entry.activity!.hasUnquiescedWork(profileId)) throw new Error("profile-logout-work-unsettled");
+        entry.logoutDrain = { state: "ready", epoch, commandId, custody: entry.context!.database.readProfileResourceCustody() };
+      })().catch((error: unknown) => {
+        if (hasUnprovedSourceClosure(error)) { machine.retainSourceClosure(error); entry.admission.retainSourceClosure(error); }
+        const failure = error instanceof RuntimeCustodyUncertainError ? error : new RuntimeCustodyUncertainError([error]);
+        entry.logoutDrain = { state: "failed", epoch, error: failure };
+        throw failure;
+      });
+      entry.logoutDrain = { state: "pending", epoch, completion };
+      await completion;
+    },
     assertMachineOwner(admission: RuntimeAdmission): void { if (admission !== machine) throw new Error("profile-machine-owner-mismatch"); machine.assertLive(); },
     assertCurrent,
     selectedContext(token: string): Context { assertCurrent(token); return contextFor(); },

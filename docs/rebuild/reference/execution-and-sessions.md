@@ -361,6 +361,13 @@ the runtime generation while update or shutdown admission is held. Startup recov
 interrupted read as failed with structured failure evidence; an unfinished submit remains parked
 UNKNOWN and is never automatically retried.
 
+Logout holds new-run admission and drains workers, command activity and account resources before
+publishing the logout operation or revoking the profile epoch. Worker cleanup and lease settlement
+retain their admitted generation throughout that drain. Revocation requires the completed
+controller-owned proof of the exact epoch and native custody snapshot; changed or unproved custody
+and UNKNOWN writes refuse logout. The hold stays bound to its runtime generation, and fresh dashboard
+activation advances that generation before admitting new work.
+
 The application lifecycle query reports `installer-unavailable` without an update host and defers
 updates while run, worker, browser, write, Duo, control or artifact owners remain. The tested idle
 installation primitive holds admission before awaiting an injected host and retains the hold on
