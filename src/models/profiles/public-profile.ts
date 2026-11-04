@@ -7,7 +7,8 @@ export const ProfileLoginRequestSchema = z.strictObject({ email: z.string().min(
 export const ProfileSignUpRequestSchema = ProfileLoginRequestSchema.extend({ firstName: z.string().min(1).max(64), lastName: z.string().min(1).max(64) });
 export type ProfileLoginRequest = z.infer<typeof ProfileLoginRequestSchema>;
 export type ProfileSignUpRequest = z.infer<typeof ProfileSignUpRequestSchema>;
-export const DeleteProfileAccountRequestSchema = z.strictObject({ confirmed: z.literal(true) });
+export const DeleteProfileAccountRequestSchema = z.strictObject({ confirmed: z.literal(true),
+  expectedProfileId: ProfileIdSchema, expectedEpoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) });
 export type DeleteProfileAccountRequest = z.infer<typeof DeleteProfileAccountRequestSchema>;
 export const ProfileOnboardingMethodSchema = z.enum(["key", "touch"]);
 export type ProfileOnboardingMethod = z.infer<typeof ProfileOnboardingMethodSchema>;
