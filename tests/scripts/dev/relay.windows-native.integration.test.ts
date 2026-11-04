@@ -22,16 +22,16 @@ function systemPath(name: string): string {
 describe.skipIf(process.platform !== "win32")("Windows launcher surface", () => {
   it("survives closing the launcher console and finishes a held write in its detached backend", async () => {
     const root = mkdtempSync(join(tmpdir(), "relay-console-"));
-    const parent = spawn(process.execPath, ["--import", testProcessImport(),
+    const parent = spawn(systemPath("conhost.exe"), ["-ForceNoHandoff", "--", process.execPath, "--import", testProcessImport(),
       fileURLToPath(new URL("../../support/processes/relay-launcher-parent.ts", import.meta.url)), root, testProcessImport()],
     { detached: true, windowsHide: false, stdio: "ignore" });
     let backendPid: number | undefined;
     try {
       await vi.waitFor(() => { assert.ok(existsSync(join(root, "ready"))); }, { timeout: scaledMs(5000) });
-      const owner = z.strictObject({ pid: z.number().int().positive(), handle: z.string().regex(/^\d+$/u) })
+      const owner = z.strictObject({ pid: z.number().int().positive(), consolePid: z.number().int().positive(), handle: z.string().regex(/^\d+$/u) })
         .parse(JSON.parse(readFileSync(join(root, "console.json"), "utf8")));
       backendPid = z.strictObject({ pid: z.number().int().positive() }).parse(JSON.parse(readFileSync(join(root, "child.json"), "utf8"))).pid;
-      assert.equal(owner.pid, parent.pid); assert.notEqual(owner.handle, "0");
+      assert.equal(owner.consolePid, parent.pid); assert.notEqual(owner.handle, "0");
       const user = koffi.load(systemPath("user32.dll"));
       assert.notEqual(user.func("int __stdcall PostMessageW(uintptr_t, uint32, uintptr_t, intptr_t)")(BigInt(owner.handle), 0x0010, 0, 0), 0);
       await vi.waitFor(() => { assert.notEqual(parent.exitCode === null && parent.signalCode === null, true); }, { timeout: scaledMs(5000) });

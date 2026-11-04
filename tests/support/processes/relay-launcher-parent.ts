@@ -18,7 +18,10 @@ if (BigInt(consoleWindow) === 0n) {
   consoleWindow = currentConsole();
   if (typeof consoleWindow !== "number" && typeof consoleWindow !== "bigint" || BigInt(consoleWindow) === 0n) throw new Error("console-window-unproved");
 }
-writeFileSync(join(root, "console.json"), JSON.stringify({ pid: process.pid, handle: BigInt(consoleWindow).toString() }));
+const user = koffi.load(join(system, "System32", "user32.dll")), consoleOwner: unknown[] = [0];
+if (user.func("uint32 __stdcall GetWindowThreadProcessId(uintptr_t, _Out_ uint32 *)")(consoleWindow, consoleOwner) === 0
+  || typeof consoleOwner[0] !== "number" || consoleOwner[0] <= 0) throw new Error("console-owner-unproved");
+writeFileSync(join(root, "console.json"), JSON.stringify({ pid: process.pid, consolePid: consoleOwner[0], handle: BigInt(consoleWindow).toString() }));
 process.exitCode = await startRelay({ directory: join(root, "launcher"), prepare: async () => undefined,
   backendArguments: ["--import", loader, fileURLToPath(new URL("./relay-drain-child.ts", import.meta.url)), root, "clean"],
   openWindow: async () => { writeFileSync(join(root, "ready"), "ready"); }, write: () => undefined,
