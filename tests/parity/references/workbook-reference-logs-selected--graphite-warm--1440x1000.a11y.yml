@@ -1,7 +1,7 @@
 # workbook-reference-logs-selected--graphite-warm--1440x1000
 # adapter: fixture
 # fixture: workbook-reference-logs.spec.ts:ordered roster reference Logs dark 1440
-# descriptorHash: bb4e6205beffa33f37bd41e635894074c0bc49937b14d51119ae2e411e89e30f
+# descriptorHash: f2917f3a0f45701f62e11801792c5624e5ff5b516f7f816c2b192d7e48948f64
 # appVersion: 0.1.0
 # viewport: 1440x1000  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -24,17 +24,17 @@
       - listitem:
         - button "Separations": Separations 0 · 0
       - listitem:
-        - button "I-9 Check": I-9 Check 1 · 1
+        - button "I-9 Check": I-9 Check 0 · 0
     - heading "Onboarding" [level=3]
     - list:
       - listitem:
         - button "Onboarding": Onboarding 0 · 1
       - listitem:
+        - button "Emergency Contact": Emergency Contact 0 · 0
+      - listitem:
         - button "Oath Signature": Oath Signature 1 · 1
       - listitem:
         - button "Oath Upload": Oath Upload 1 · 1
-      - listitem:
-        - button "Emergency Contact": Emergency Contact 1 · 1
     - heading "Work Study" [level=3]
     - list:
       - listitem:
@@ -46,9 +46,9 @@
     - heading "Utils" [level=3]
     - list:
       - listitem:
-        - button "OCR": OCR 0 · 5
+        - button "CRM Document Download": CRM Document Download 0 · 0
       - listitem:
-        - button "CRM Doc Download": CRM Doc Download 0 · 1
+        - button "OCR": OCR 0 · 5
       - listitem:
         - button "SharePoint Download": SharePoint Download 0 · 1
     - heading "OnBase" [level=3]
