@@ -1,13 +1,50 @@
-import { displayExtractedDate } from "../../../lib/date-format.js";
-import { useViewState } from "../../../app/navigation/view-route-model.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, ZoomIn, ZoomOut, Maximize } from "lucide-react";
-import { Badge, Button, Card, CardBody, Checkbox, Field, IconButton, Input, Select, Skeleton, Textarea, dsFocus } from "../../../ds/ui.js";
-import { LoadingRegion } from "../../shared/loading/loading.js";
+import type { DelegatedRecordRef } from "../../../../models/workflow/delegated-record.js";
+import { useDashboardClient, useDashboardCommandBinding } from "../../../state/client-context.js";
+import { useRunReview } from "../../../state/review-wiring-adapter.js";
+import { useViewState } from "../../../app/navigation/view-route-model.js";
+import type { LogSelection } from "../logs/log-selection-model.js";
+import { Banner, Badge, Button, Card, CardBody, Checkbox, Field, IconButton, Input, Select, Skeleton, Textarea, dsFocus } from "../../../ds/ui.js";
+import { LogSkeleton, LoadingRegion } from "../../shared/loading/loading.js";
 import { cn } from "../../../lib/utils.js";
-import { addMockReviewRecord, reviewCanApprove, reviewApprovalError, reviewIsReadOnly, reviewName, reviewRecords, seedReviewRecords, editReviewRecord, REVIEW_RELATIONSHIPS, type ReviewField, type ReviewRecord } from "./workflow-review-model.js";
-import { reviewFieldBlocks, reviewFieldGroups, reviewFieldPresentation, type ReviewSourcePage } from "./workflow-review-source-model.js";
-import type { MockRun } from "./workflow-mock-model.js";
+import { displayExtractedDate } from "../../../lib/date-format.js";
+import { ocrReviewCards } from "./review-model.js";
+import { reviewFieldBlocks, reviewFieldGroups, reviewFieldPresentation, REVIEW_RELATIONSHIPS, type ReviewField, type ReviewRecordView, type ReviewSourcePage } from "./review-record-model.js";
+import { addMockReviewRecord, reviewCanApprove, reviewApprovalError, reviewIsReadOnly, reviewName, reviewRecords, seedReviewRecords, editReviewRecord, type ReviewRecord } from "../../workflows/mocks/workflow-review-model.js";
+import type { MockRun } from "../../workflows/mocks/workflow-mock-model.js";
+
+export function RunReview({ selection, focus }: { selection: LogSelection; focus?: DelegatedRecordRef }) {
+  const client = useDashboardClient();
+  const binding = useDashboardCommandBinding();
+  const resource = useRunReview(client, selection, binding);
+  const body = useRef<HTMLDivElement>(null);
+  const focused = useRef<string>(undefined);
+  const cards = useMemo(() => resource.page?.ocr === undefined ? undefined : ocrReviewCards(resource.page, (runId, revision, page) => client.ocrSourcePageUrl(runId, revision, page)), [resource.page, client]);
+  const missing = focus !== undefined && cards !== undefined
+    && (focus.runId !== selection.row.runId || !cards.some(card => card.record.id === focus.recordId));
+  useEffect(() => {
+    if (cards === undefined || missing) return;
+    const id = focus?.recordId ?? cards[0]?.record.id;
+    const key = JSON.stringify([selection.row.runId, id]);
+    if (focused.current === key) return;
+    const frame = requestAnimationFrame(() => {
+      const card = [...body.current?.querySelectorAll<HTMLElement>("[data-review-record-id]") ?? []].find(node => node.dataset.reviewRecordId === id);
+      const heading = card?.querySelector<HTMLElement>("[data-ocr-review-heading]");
+      if (heading !== undefined && heading !== null) { heading.focus({ preventScroll: focus === undefined }); focused.current = key; }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [cards, focus, missing, selection.row.runId]);
+  if (resource.page !== undefined && resource.page.ocr === undefined) return <Banner tone="danger" title="Review unavailable">OCR review authority is unavailable.</Banner>;
+  if (missing) return <Banner tone="danger" title="Record unavailable">The selected record does not belong to this review.</Banner>;
+  if (cards === undefined) return resource.state === "failed" ? <Banner tone="danger" title="Review unavailable">{resource.error}</Banner> : <LogSkeleton />;
+  return <section aria-label="OCR records" className="flex min-h-0 min-w-0 flex-1 flex-col text-ui-primary">
+    {resource.state === "failed" ? <Banner tone="danger" title="Review unavailable">{resource.error}</Banner> : resource.state === "loading" ? <Badge tone="neutral">Refreshing</Badge> : undefined}
+    <div ref={body} aria-label="Record review cards" tabIndex={0} className={cn("min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto p-3", dsFocus)}>
+      {cards.length === 0 ? <div role="status" className="flex h-full items-center justify-center text-body text-ui-muted">No records extracted</div> : cards.map(card => <ReviewRecordCard key={card.record.id} runId={selection.row.runId} subject={selection.row.title} {...card} readOnly />)}
+    </div>
+  </section>;
+}
 
 function ReviewSourcePreview({ recordId, subject, pages, recordPage, onPageChange }: { recordId: string; subject: string; pages: readonly ReviewSourcePage[]; recordPage: number; onPageChange?: (page: number) => void }) {
   const [reviewPages, setReviewPages] = useViewState("reviewPages", {});
@@ -40,12 +77,12 @@ function ReviewSourcePreview({ recordId, subject, pages, recordPage, onPageChang
   </section>;
 }
 
-function ReviewRecordCard({ run, record, original, pages, onChange, onFocus }: {
-  run: MockRun; record: ReviewRecord; original?: ReviewRecord; pages: readonly ReviewSourcePage[];
-  onChange: (record: ReviewRecord) => void; onFocus: () => void;
+function ReviewRecordCard({ runId, subject, record, name, original, pages, readOnly, disposition, approvalError, onChange, onEditField, onFocus }: {
+  runId: string; subject: string; record: ReviewRecordView; name: string; original?: ReviewRecordView; pages: readonly ReviewSourcePage[];
+  readOnly: boolean; disposition?: Readonly<{ label: string; tone: "success" | "neutral" }>;
+  approvalError?: string; onChange?: (record: ReviewRecordView) => void; onEditField?: (key: string, value: string) => void; onFocus?: () => void;
 }) {
-  const readOnly = reviewIsReadOnly(run);
-  const update = (key: string, value: string) => onChange(editReviewRecord(record, key, value));
+  const update = (key: string, value: string) => onEditField?.(key, value);
   const renderField = (item: ReviewField) => {
     const { wide, multiline } = reviewFieldPresentation(item);
     const changed = original?.fields.find(field => field.key === item.key)?.value !== item.value;
@@ -56,16 +93,16 @@ function ReviewRecordCard({ run, record, original, pages, onChange, onFocus }: {
     </Field>;
   };
   return <section aria-label={`Record ${record.id}`} data-review-record-id={record.id} onFocusCapture={onFocus} className="grid min-w-0 grid-cols-[minmax(0,3fr)_minmax(0,2fr)] overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel">
-    <ReviewSourcePreview recordId={`${run.id}:${record.id}`} subject={run.subject} pages={pages} recordPage={record.page} onPageChange={record.manualEntry && !readOnly && record.kind !== "i9" ? page => onChange({ ...record, page }) : undefined} />
+    <ReviewSourcePreview key={JSON.stringify(pages.map(page => page.imageUrl))} recordId={`${runId}:${record.id}`} subject={subject} pages={pages} recordPage={record.page} onPageChange={record.manualEntry && !readOnly && record.kind !== "i9" ? page => onChange?.({ ...record, page }) : undefined} />
     <div data-review-fields className="@container/record min-w-0 space-y-3 bg-ui-table p-3">
       <Card role="group" aria-label="Record selection">
         <CardBody className="space-y-2 p-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Checkbox className="min-w-0 flex-1" label={<><span className="sr-only">Include </span><span data-ocr-review-heading role="heading" aria-level={3} tabIndex={-1} className={cn("inline-block min-w-0 break-words rounded-sm text-body font-medium", dsFocus)}>{reviewName(record)}</span></>} checked={record.selected} disabled={readOnly || record.unknown} onCheckedChange={selected => onChange({ ...record, selected: selected === true })} />
-            {readOnly && <Badge tone={run.approved ? "success" : "neutral"}>{run.discarded ? "Discarded" : record.selected ? "Approved" : "Excluded"}</Badge>}
+            <Checkbox className="min-w-0 flex-1" label={<><span className="sr-only">Include </span><span data-ocr-review-heading role="heading" aria-level={3} tabIndex={-1} className={cn("inline-block min-w-0 break-words rounded-sm text-body font-medium", dsFocus)}>{name}</span></>} checked={record.selected} disabled={readOnly || record.unknown} onCheckedChange={selected => onChange?.({ ...record, selected: selected === true })} />
+            {disposition && <Badge tone={disposition.tone}>{disposition.label}</Badge>}
           </div>
           {record.warnings.length > 0 && <div role="status">{record.warnings.map(warning => <p key={warning} className="m-0 text-caption text-ui-warning">{warning}</p>)}</div>}
-          {!readOnly && record.selected && !reviewCanApprove(record) && <p role="status" className="m-0 text-caption text-ui-warning">{reviewApprovalError(record)}</p>}
+          {!readOnly && record.selected && approvalError !== undefined && <p role="status" className="m-0 text-caption text-ui-warning">{approvalError}</p>}
         </CardBody>
       </Card>
       {reviewFieldGroups(record).map(group => <section key={group.fields[0].key}><h4 className="mb-2 mt-0 text-body font-medium">{group.title}</h4><Card role="group" aria-label={group.title}><CardBody className="p-3"><div className="grid grid-cols-1 gap-2 @min-[16rem]/record:grid-cols-2">{reviewFieldBlocks(group.fields).map(block => block[0].kind === "boolean" ? <div key={block[0].key} className="col-span-full flex flex-wrap items-center gap-x-4 gap-y-2 py-1">{block.map(renderField)}</div> : renderField(block[0]))}</div></CardBody></Card></section>)}
@@ -101,7 +138,7 @@ export function WorkflowMockReview({ run, sourcePages, approvalError, onChange, 
     requestAnimationFrame(() => focusRecord(focusId.current, "[data-ocr-review-heading]", true));
   }} className="flex min-h-0 min-w-0 flex-1 flex-col text-ui-primary">
     <div ref={body} aria-label="Record review cards" tabIndex={0} className={cn("min-h-0 min-w-0 flex-1 space-y-3 overflow-y-auto p-3", dsFocus)}>
-      {records.length === 0 ? <div role="status" className="flex h-full items-center justify-center text-body text-ui-muted">No records extracted</div> : records.map(record => <ReviewRecordCard key={record.id} run={run} record={record} original={originals.find(item => item.id === record.id)} pages={sourcePages?.[record.id] ?? []} onFocus={() => { focusId.current = record.id; }} onChange={updated => onChange(records.map(item => item.id === updated.id ? updated : item))} />)}
+      {records.length === 0 ? <div role="status" className="flex h-full items-center justify-center text-body text-ui-muted">No records extracted</div> : records.map(record => <ReviewRecordCard key={record.id} runId={run.id} subject={run.subject} record={record} name={reviewName(record)} original={originals.find(item => item.id === record.id)} pages={sourcePages?.[record.id] ?? []} readOnly={readOnly} disposition={readOnly ? { tone: run.approved ? "success" : "neutral", label: run.discarded ? "Discarded" : record.selected ? "Approved" : "Excluded" } : undefined} approvalError={reviewApprovalError(record)} onFocus={() => { focusId.current = record.id; }} onEditField={(key, value) => onChange(records.map(item => item.id === record.id ? editReviewRecord(record, key, value) : item))} onChange={updated => onChange(records.map(item => item.id === updated.id ? { ...record, ...updated } : item))} />)}
     </div>
     {(onApprove || onDiscard) && !run.discarded && <footer className="flex shrink-0 flex-wrap items-center gap-3 border-t border-ui-stroke bg-ui-table px-3 py-3">
       {onApprove && <div className="min-w-0 flex-1 text-caption"><span className="text-ui-muted">{count} selected for approval</span>{approvalError && <p role="status" className="m-0 mt-1 text-ui-warning">{approvalError}</p>}</div>}

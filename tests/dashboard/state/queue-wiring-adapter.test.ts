@@ -15,12 +15,11 @@ it("owns Queue state/actions and keeps refused workflow jumps from navigating", 
   const row = FIXTURE_DAY_WIRE.queueSurfaces[0]; assert.ok(row);
   const selected: string[] = [], scopes: string[] = [], wells: ReadonlySet<string>[] = [], bulk: ReadonlySet<string>[] = [];
   let wiring: ReturnType<typeof useQueueWiring> | undefined;
-  const input = {
+  const input: Parameters<typeof useQueueWiring>[0] = {
     allRows: FIXTURE_DAY_WIRE.queueSurfaces, rows: FIXTURE_DAY_WIRE.queueSurfaces, activeWorkflowId: row.workflowId,
     filter: ["all"] as const, selectedRunId: row.runId, openWells: new Set<string>(), selectMode: true, bulkIds: new Set<string>(),
     nowIso: row.updatedAt, selectRun: (id: string) => selected.push(id),
-    setActiveWorkflowId: (id: string) => { scopes.push(id); return false; }, onWells: (next: ReadonlySet<string>) => wells.push(next),
-    openLinkedRun: () => undefined,
+    openRelatedRun: target => { scopes.push(target.workflowId); }, onWells: (next: ReadonlySet<string>) => wells.push(next),
     onBulkIds: (next: ReadonlySet<string>) => bulk.push(next), setBatchGrouping: async () => undefined,
     exitQueueSelection: () => undefined, runQueueAction: () => undefined,
   };
@@ -29,13 +28,13 @@ it("owns Queue state/actions and keeps refused workflow jumps from navigating", 
   try {
     await act(async () => root.render(createElement(Probe)));
     assert.ok(wiring); assert.equal(wiring.viewState.selectedRunId, row.runId);
-    assert.equal(wiring.queueHandlers.onOpenLinked, input.openLinkedRun);
+    assert.equal(wiring.queueHandlers.onOpenLinked, input.openRelatedRun);
     assert.equal(wiring.actionsOf(row), row.actions);
     assert.ok(wiring.surfaces.every(surface => surface.workflowId === row.workflowId));
     wiring.queueHandlers.onToggleWell?.(row.runId); wiring.queueHandlers.onToggleBulk?.(row.runId);
     assert.deepEqual([...wells[0]], [row.runId]); assert.deepEqual([...bulk[0]], [row.runId]);
     wiring.queueHandlers.onOpenParent?.(queueParentFixture(row.runId, { workflowId: row.workflowId }));
-    assert.deepEqual(scopes, [row.workflowId]); assert.deepEqual(selected, []);
+    assert.deepEqual(scopes, [row.workflowId]); assert.deepEqual([...selected], []);
     wiring.queueHandlers.onSelect(row.runId); assert.deepEqual(selected, [row.runId]);
     const first = wiring;
     await act(async () => root.render(createElement(Probe)));
@@ -50,8 +49,7 @@ function mountWiring(overrides: Partial<WiringInput> = {}) {
     allRows: FIXTURE_DAY_WIRE.queueSurfaces, rows: FIXTURE_DAY_WIRE.queueSurfaces.filter(surface => surface.workflowId === row.workflowId), activeWorkflowId: row.workflowId,
     filter: ["all"], selectedRunId: row.runId, openWells: new Set(), selectMode: false, bulkIds: new Set(),
     nowIso: row.updatedAt, selectRun: () => undefined,
-    setActiveWorkflowId: () => true, onWells: () => undefined, onBulkIds: () => undefined,
-    openLinkedRun: link => { if (input.setActiveWorkflowId(link.workflowId)) input.selectRun(link.runId, link.partitionDay); },
+    openRelatedRun: () => undefined, onWells: () => undefined, onBulkIds: () => undefined,
     setBatchGrouping: async () => undefined, exitQueueSelection: () => undefined,
     runQueueAction: () => undefined,
     ...overrides,
@@ -146,14 +144,14 @@ it("keeps parent and linked navigation refusal and exact cross-day identity", as
   assert.ok(linked);
   const selected: unknown[] = [], scopes: string[] = [];
   const mounted = mountWiring({ selectRun: (runId, day) => { selected.push([runId, day]); },
-    setActiveWorkflowId: (id) => { scopes.push(id); return false; } });
+    openRelatedRun: (target) => { scopes.push(target.workflowId); } });
   try {
     const refused = await mounted.draw();
     refused.queueHandlers.onOpenParent?.(parent);
     refused.queueHandlers.onOpenLinked?.(linked);
     assert.deepEqual(scopes, [row.workflowId, linked.workflowId]);
-    assert.deepEqual(selected, []);
-    const accepted = await mounted.draw({ setActiveWorkflowId: () => true });
+    assert.deepEqual([...selected], []);
+    const accepted = await mounted.draw({ openRelatedRun: target => { selected.push([target.runId,target.partitionDay]); } });
     accepted.queueHandlers.onOpenParent?.(parent);
     accepted.queueHandlers.onOpenLinked?.(linked);
     assert.deepEqual(selected, [[row.runId, parent.partitionDay], [linked.runId, linked.partitionDay]]);

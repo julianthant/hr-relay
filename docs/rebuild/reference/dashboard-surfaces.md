@@ -19,7 +19,7 @@ All source paths in this table are relative to `src/dashboard/`.
 | Action panel and date | `surfaces/queue/queue-focus.tsx`, app composition | Selected workflow/day, filters, and shared served clock |
 | Queue | `surfaces/queue/queue.tsx`, `workflows/mocks/workflow-mock-queue.tsx` | Day/preview model or workflow mock runs |
 | Logs | `surfaces/run-detail/log-panel.tsx`, `logs/log-sample.tsx`, `workflows/mocks/workflow-mock-queue.tsx` | Local ordered log and workflow producers |
-| OCR Records | `surfaces/workflows/mocks/workflow-review.tsx` | Run-bound local records and source-page manifest |
+| OCR Records | `surfaces/run-detail/review/review.tsx` | Run-bound local records and source-page manifest |
 | Run and Rerun | `surfaces/run-start/run-launch.tsx`, `workflows/mocks/workflow-mock-run.tsx` | Catalog, planner/client for served launches, mock drafts for previews |
 | Notifications | `surfaces/notifications/notifications-view.tsx`, workspace rail | App preview destinations with rail-local read state |
 | Sessions | `surfaces/sessions/session-panel.tsx`, `sessions-view.tsx` | `sessionsSample` and `createSessionPreviewPort` |
@@ -120,6 +120,26 @@ back-chip route, title and status. Inline children appear under the immediate op
 linked children have their own rows and linked-run chips; hidden-unless-failed children appear only
 as failed member lines. Native operation/member scheduling shapes do not change. A delegating
 single or member can present an operation without changing its stored shape.
+
+An operation can carry record-member presentation separately from native member counts. Each record
+is identified by its review-owner run and stable record ID; child histories can serve several records.
+Covered native children do not draw duplicate lines. OCR uses the existing Name/Status well for
+Reading, Looking up, Verified, Needs lookup and failed-page lines. A parent waiting for OCR approval
+keeps its page-count Reading line while OCR owns the person records and review gate. After OCR
+releases its approved result, the parent exposes its record lines in source order within the existing
+status tiers. The native approved snapshot and member binding determine Saving, Saved, Not approved and failure states; dry-run members
+show Previewing or Previewed, and read-only completions remain Verified. Line clicks and the name button select the exact
+record; keyboard traversal follows the rendered order. Person Lookup members use their served outcome
+words. A line has no Retry control: the failed child's own Logs header uses its served action and
+revision, preserving pending and uncertain command recovery. The canonical OCR Review opens at
+the selected stable record through a lazy read; its source and fields use the existing read-only cards.
+
+Retained approved trees authenticate their recorded review, snapshot, member inputs and checkpoints
+without requiring today's execution fingerprint or a previously omitted optional record-ID association.
+A member whose current descriptor does not match its retained version and fingerprint shows Done
+for an ordinary completion, Running while active, or Previewed when its native terminal result proves
+a preview. These labels do not infer historical read or write effects from today's graph. Current
+execution, retry and snapshot freshness checks remain unchanged.
 
 Top-level Queue, calendar, notifications and Activity populations include roots and linked children.
 Visibility filtering precedes bounded pagination. An unloaded inline or hidden child never becomes a

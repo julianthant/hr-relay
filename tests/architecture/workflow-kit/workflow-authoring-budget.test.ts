@@ -890,7 +890,7 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
   });
 
   it("arm (c): OCR service literal sites stay exact and refuse additions, removal or repurposing", () => {
-    assert.equal(Object.values(RETAINED_OCR_SERVICE_SITES).flat().length, 9);
+    assert.equal(Object.values(RETAINED_OCR_SERVICE_SITES).flat().length, 16);
     const ids = auditedWorkflowSources().map(workflow => workflow.id);
     for (const path of Object.keys(RETAINED_OCR_SERVICE_SITES)) {
       const original = tree.sources.get(path);
@@ -900,6 +900,13 @@ describe("workflow authoring budget prevents unsupported paths and excess artifa
         const sources = new Map(tree.sources);
         sources.set(path, `${original}\nconst injected = (id: string) => id === "${workflowId}";`);
         assert.ok(auditWorkflowAuthoringBudget(repositoryInputs({ ...tree, sources })).some(issue => issue.startsWith(`${path}:`)), `${path}:${workflowId}`);
+      }
+      if (path === "src/backend/runs/queries/ocr-record-members.ts") for (const family of ["person-lookup", "i9-lookup"]) {
+        for (const replacement of ['"unregistered-target"', '(unknownId === "' + family + '" ? unknownId : unknownId)']) {
+          const sources = new Map(tree.sources);
+          sources.set(path,original.replace('"' + family + '"',replacement));
+          assert.ok(auditWorkflowAuthoringBudget(repositoryInputs({ ...tree,sources })).some(issue => issue.startsWith(`${path}:`)), `${path}:${family}`);
+        }
       }
       for (const changed of [original.replaceAll('"ocr"', '"unregistered-ocr"').replaceAll('"ocr-page"', '"unregistered-ocr-page"'),
         original.replace('"ocr"', '(unknownId === "ocr" ? unknownId : unknownId)')]) {

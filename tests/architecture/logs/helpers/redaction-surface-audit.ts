@@ -906,6 +906,17 @@ const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }
 
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
+    ...([
+      ["wire/queue-surface", "recordMembers.members[]."],
+      ["wire/dashboard-day", "queueSurfaces[].recordMembers.members[]."],
+      ["wire/stream-envelope", "payload.queueSurfaces[].recordMembers.members[]."],
+      ["wire/stream-envelope", "payload.replacement.recordMembers.members[]."],
+      ["wire/run-logs-stream", "envelope.payload.queueSurfaces[].recordMembers.members[]."],
+      ["wire/run-logs-stream", "envelope.payload.replacement.recordMembers.members[]."],
+    ] as const).flatMap(([surface, prefix]) => [
+      { surface, path: `${prefix}title`, origin: "captured-hr-value" },
+      { surface, path: `${prefix}target.label`, origin: "repository-authored" },
+    ]),
     { surface: "wire/queue-surface", path: "parent.label", origin: "repository-authored" },
     { surface: "wire/queue-surface", path: "parent.title", origin: "captured-hr-value" },
     { surface: "wire/dashboard-day", path: "queueSurfaces[].parent.label", origin: "repository-authored" },
