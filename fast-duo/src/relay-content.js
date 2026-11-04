@@ -121,9 +121,13 @@
   const checkAcceptance = async () => {
     if (!registration || registration.accepted) return;
     const pattern = registration.method === 'touch' ? /^Added (?:Touch ID|Windows Hello)(?: \([^()]{1,40}\))?$/ : /^Added security key(?: \([^()]{1,40}\))?$/;
-    const success = [...document.querySelectorAll('h1, h2, [role="heading"]')].filter(element =>
-      element.getClientRects().length && pattern.test(element.textContent.trim()) && priorHeadings.get(element) !== element.textContent.trim());
+    const matching = [...document.querySelectorAll('h1, h2, [role="heading"]')].filter(element =>
+      element.getClientRects().length && pattern.test(element.textContent.trim()));
+    const success = matching.filter(element => priorHeadings.get(element) !== element.textContent.trim());
     if (success.length !== 1) return;
+    // Duo may re-render an old heading as a new element; only an extra copy of the text is new.
+    const text = success[0].textContent.trim();
+    if (matching.filter(element => element.textContent.trim() === text).length <= [...priorHeadings.values()].filter(prior => prior === text).length) return;
     registration.accepted = true;
     try {
       const reply = await chrome.runtime.sendMessage({ type: 'RELAY_PORTAL_ACCEPTED', request: {

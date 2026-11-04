@@ -67,12 +67,14 @@ it("reports Duo's success heading for each method added on the same portal page"
   assert.equal(w.replies.some(reply => reply.type === "RELAY_DUO_UNCERTAIN"), false);
 });
 
-it("does not credit an earlier method's heading to the method being added", async () => {
+it("does not credit a re-rendered old heading to a retry of the same method", async () => {
   const w = world();
-  await w.enroll("key-request");
+  await w.enroll("first-key-request");
   await w.show("Added security key");
-  await w.enroll("touch-request");
+  assert.deepEqual(w.accepted, ["first-key-request"]);
+
+  await w.enroll("second-key-request");
   await w.show("Added security key");
-  assert.deepEqual(w.accepted, ["key-request"]);
+  assert.deepEqual(w.accepted, ["first-key-request"]);
   assert.equal(w.replies.some(reply => reply.type === "RELAY_DUO_UNCERTAIN"), false);
 });

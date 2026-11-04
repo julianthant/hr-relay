@@ -20,7 +20,8 @@ import { PARITY_WORKFLOW_COMPOSITION as PARITY_WORKFLOW_COMPOSITION_m1 } from ".
 import assert_m1 from "node:assert/strict";
 import { act as act_m1,createElement as createElement_m1,type ReactNode as ReactNode_m1 } from "react";
 import { createRoot as createRoot_m1,type Root as Root_m1 } from "react-dom/client";
-import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1 } from "vitest";
+import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1,vi as vi_m1 } from "vitest";
+import { PublicProfileStateSchema } from "../../../src/models/profiles/public-profile.js";
 import {
 RUN_START_DOOR_ID as RUN_START_DOOR_ID_m1
 } from "../../../src/dashboard/app/dashboard-app-model.js";
@@ -288,6 +289,22 @@ describe_m1("served signed-out appearance", () => {
       } finally { localStorage.clear(); }
     });
   }
+});
+
+describe_m1("served sign-up Finish", () => {
+  afterEach_m1(_afterEachFixture0);
+
+  it_m1("moves to login when the published sign-up cannot start the dashboard", async () => {
+    const method = { state: "complete" as const, ceremonyObserved: true, portalAccepted: true, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const ready = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
+    let finished = false;
+    const client = { ...appClient(), readProfileSession: async () => finished ? { state: "signed-out" as const, signUpRequired: false } : ready,
+      completeProfileOnboarding: async () => { finished = true; return PublicProfileStateSchema.parse({ state: "error", code: "INTERNAL_FAILURE" }); } };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await act_m1(async () => { [...document.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Go to dashboard")?.click(); });
+    assert_m1.equal(finished, true);
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in to Relay"); }, { timeout: 3000 });
+  });
 });
 
 describe_m1("ds/TakeoverFrame — entering a takeover moves focus into it", () => {

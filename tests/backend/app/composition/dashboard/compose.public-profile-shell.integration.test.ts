@@ -26,7 +26,7 @@ import type { DraftDuoCapability, ProfileOnboardingDuoProvider } from "../../../
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
 
-async function readyPublicSignUp(base: string, touch: "confirmed" | "detected" = "confirmed") {
+async function readyPublicSignUp(base: string, methods: "confirmed" | "detected" = "confirmed") {
   const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}${path}`, { method: "POST",
     headers: { origin: base, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body) });
   const signup = await post("/api/v1/profile/sign-up", { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
@@ -39,8 +39,8 @@ async function readyPublicSignUp(base: string, touch: "confirmed" | "detected" =
     const pending = PublicProfileStateSchema.parse(await started.json());
     assert.equal(pending.state, "onboarding");
     if (pending.state !== "onboarding") throw new Error("fixture actual Duo attempt required");
-    assert.equal(pending.methods[method].state, method === "touch" ? "complete" : "pending");
-    if (method === "touch" && touch === "detected") { assert.equal(pending.step, "ready"); continue; }
+    assert.equal(pending.methods[method].state, methods === "detected" || method === "touch" ? "complete" : "pending");
+    if (methods === "detected") continue;
     const confirmed = await post("/api/v1/profile/onboarding/duo/confirm", {
       operationId: draft.operationId, method, attemptId: pending.methods[method].attemptId, operatorConfirmed: true }, cookie);
     const result = PublicProfileStateSchema.parse(await confirmed.json());
@@ -521,17 +521,27 @@ it("a refused dashboard start after Finish keeps the published profile and leave
   } finally { spy.mockRestore(); await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
 
-it("publishes a sign-up whose Touch ID finished from Duo's success heading without a manual confirmation", async () => {
+it("publishes a sign-up whose methods both finished from Duo's success heading", async () => {
   const f = await fixture();
+  const onboardingDuo: ProfileOnboardingDuoProvider = { ...syntheticOnboardingDuo(), async start(attempt, bind) {
+    const capability = await bind({ contextId: randomBytes(16).toString("hex"), tabId: attempt.method === "key" ? 1 : 2, origin: "https://fixture.duosecurity.com", rpId: "duosecurity.com" });
+    const credentialId = randomBytes(32).toString("base64url"), requestId = randomUUID(), pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    await capability.persistPending({ credentialId, privateKeyPkcs8: pair.privateKey.export({ type: "pkcs8", format: "der" }).toString("base64"),
+      publicKeySpki: pair.publicKey.export({ type: "spki", format: "der" }).toString("base64"),
+      transport: attempt.method === "key" ? "usb" : "internal", isResidentCredential: attempt.method === "touch",
+      ...(attempt.method === "touch" ? { initialSignCount: 1 } : {}), createdAt: new Date().toISOString() });
+    await capability.recordCeremony({ credentialId, requestId, mechanism: attempt.method === "key" ? "fast-duo" : "chromium-platform", softwareInterceptionDisabled: attempt.method === "touch" });
+    await capability.recordPortalAcceptance({ credentialId, requestId, acceptance: "portal-accepted" });
+  } };
   let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
   try {
     runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
-      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
     const { finish } = await readyPublicSignUp(`http://127.0.0.1:${String(runtime.port)}`, "detected");
     assert.equal(PublicProfileStateSchema.parse(await (await finish()).json()).state, "active");
     const completion = f.machine.readProfileRegistry().profiles[0]?.registration.onboardingCompletion;
     assert.ok(completion);
-    assert.equal(completion.key.confirmation, "operator");
+    assert.equal(completion.key.confirmation, "portal-accepted");
     assert.equal(completion.touch.operatorConfirmedAt, undefined);
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
