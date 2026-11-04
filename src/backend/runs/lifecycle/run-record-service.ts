@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ClearRunHistoryRequestSchema, type ClearRunHistoryResult, type RunHistoryStatus } from "../../../models/dashboard/run-history.js";
 import {
 RunExistenceSchema,
 type RunExistence,
@@ -1284,6 +1285,70 @@ export class RunRecordService {
       if (error instanceof RunDeletionRefusedError) return refused({ reason: error.reason });
       throw error;
     }
+  }
+
+  historyStatus(): RunHistoryStatus {
+    return this.dependencies.database.withAuthorityReadSnapshot(() => {
+      const runs = this.dependencies.database.authority.runs.listWorkflows().flatMap(workflow => this.dependencies.database.authority.runs.listByWorkflow(workflow));
+      return { state: "available", finishedRuns: runs.filter(run => run.lifecycle.state === "terminal").length,
+        activeRuns: runs.filter(run => run.lifecycle.state !== "terminal").length };
+    });
+  }
+
+  clearHistory(input: unknown): ClearRunHistoryResult {
+    const request = ClearRunHistoryRequestSchema.parse(input);
+    try {
+      return this.dependencies.database.withAuthorityTransaction((repositories): ClearRunHistoryResult => {
+        const journal = this.inspectJournal(repositories, "clear-history", request, { kind: "none" });
+        if (journal.state === "divergent") return { state: "refused", commandId: request.commandId, reason: "replay-divergent" };
+        if (journal.state === "replay") {
+          return this.replayHistoryDeletion(repositories, journal);
+        }
+        const runs = repositories.runs.listWorkflows().flatMap(workflow => repositories.runs.listByWorkflow(workflow));
+        if (runs.some(run => run.lifecycle.state !== "terminal")) return { state: "refused", commandId: request.commandId, reason: "active-runs" };
+        const leaves: RunRecord[] = [];
+        const visited = new Set<string>();
+        const collect = (run: RunRecord): void => {
+          if (visited.has(run.envelope.runId)) throw new Error("run-history-parent-cycle");
+          visited.add(run.envelope.runId);
+          for (const child of repositories.runs.listChildren(run.envelope.runId)) collect(child);
+          leaves.push(run);
+        };
+        for (const root of runs.filter(run => run.envelope.parent === undefined)) collect(root);
+        if (visited.size !== runs.length) throw new Error("run-history-disconnected-members");
+        const now = this.dependencies.clock.now().toISOString();
+        const cascadeRunIds = leaves.map(run => run.envelope.runId);
+        const deletions = leaves.map(run => ({ runId: run.envelope.runId, commandId: request.commandId, now, cascadeRunIds, origin: "storage" as const }));
+        repositories.lifecycleJournal.insertCommand(journal.command);
+        for (const deletion of deletions) repositories.runs.assertDeletionAllowed(deletion);
+        for (const deletion of deletions) repositories.runs.delete(deletion);
+        this.recordJournal(repositories, journal.command, { kind: "history-deletion", runIds: cascadeRunIds });
+        return { state: "cleared", commandId: request.commandId, deletedRuns: leaves.length };
+      });
+    } catch (error) {
+      if (error instanceof RunDeletionRefusedError) return { state: "refused", commandId: request.commandId, reason: error.reason };
+      throw error;
+    }
+  }
+
+  clearHistoryResult(input: unknown): ClearRunHistoryResult {
+    const request = ClearRunHistoryRequestSchema.parse(input);
+    return this.dependencies.database.withAuthorityReadSnapshot(() => {
+      const repositories = this.dependencies.database.authority;
+      const journal = this.inspectJournal(repositories, "clear-history", request, { kind: "none" });
+      if (journal.state === "new") return { state: "not-recorded", commandId: request.commandId };
+      if (journal.state === "divergent") return { state: "refused", commandId: request.commandId, reason: "replay-divergent" };
+      return this.replayHistoryDeletion(repositories, journal);
+    });
+  }
+
+  private replayHistoryDeletion(repositories: AuthorityRepositories, journal: Extract<LifecycleJournalInspection, { state: "replay" }>): ClearRunHistoryResult {
+    if (journal.result.kind !== "history-deletion") throw new Error("run-history-replay-result-mismatch");
+    for (const id of journal.result.runIds) {
+      if (repositories.deletedRuns.get(id)?.commandId !== journal.command.commandId || repositories.runs.get(id) !== undefined)
+        throw new Error("run-history-replay-tombstone-mismatch");
+    }
+    return { state: "cleared", commandId: journal.command.commandId, deletedRuns: journal.result.runIds.length };
   }
 
   purge(input: unknown): RunPurgeOutcome {

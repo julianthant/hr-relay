@@ -184,11 +184,12 @@ describe_m1("frontend workflow catalog", () => {
     const picker = renderToStaticMarkup_m1(createElement_m1(RunWorkflowPicker_m1, { catalog, value: "", query: "", onQuery: noop, onChange: noop }));
     for (const entry of catalog) {
       expect_m1(rail).toContain(`aria-label="${entry.label}"`);
-      expect_m1(picker).toContain(`aria-label="${entry.label}"`);
+      if (entry.source === "preview" && entry.preview?.runnable === false) expect_m1(picker).not.toContain(`aria-label="${entry.label}"`);
+      else expect_m1(picker).toContain(`aria-label="${entry.label}"`);
     }
     expect_m1(explorerWorkflowOptions_m1(catalog).map(entry => [entry.id, entry.title])).toEqual(catalog.map(entry => [`fixture-${entry.id}`, entry.label]));
-    expect_m1(picker.match(/disabled=""/gu)).toHaveLength(2);
-    expect_m1(picker).toContain("Started by a parent workflow.");
+    expect_m1(picker.match(/disabled=""/gu) ?? []).toHaveLength(0);
+    expect_m1(picker).not.toContain("Started by a parent workflow.");
   });
   it_m1("admits standalone OCR and limits parent-only launches to I-9 Lookup and SharePoint Download", () => {
     expect_m1(catalog.find(entry => entry.id === "ocr")?.launch.state).toBe("preview");

@@ -12,6 +12,7 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { AtomicOutboxRecordSchema } from "../../../src/models/notifications/outbox.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../../src/models/dashboard/storage.js";
+import { ClearRunHistoryRequestSchema, RunHistoryStatusSchema, ClearRunHistoryResultSchema } from "../../../src/models/dashboard/run-history.js";
 import { redactDiagnosticFields, redactValue } from "../../../src/rules/redaction/redaction.js";
 import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../../src/rules/notifications/notification-triggers.js";
 import { FailureRecordSchema } from "../../../src/models/trust/failure.js";
@@ -42,6 +43,7 @@ const WIRE_SCHEMA_MODULES = [
   "../../../src/models/dashboard/primitives.js",
   "../../../src/models/dashboard/projection.js",
   "../../../src/models/dashboard/run-detail.js",
+  "../../../src/models/dashboard/run-history.js",
   "../../../src/models/dashboard/start-plan.js",
   "../../../src/models/dashboard/storage.js",
   "../../../src/models/dashboard/subscription.js",
@@ -74,6 +76,42 @@ describe("redaction surface scan — the declaration audit", () => {
   it("dispositions every free-text and open-JSON leaf of every registered surface", () => {
     const violations = auditSurfaceOrigins(REDACTION_SURFACES, SURFACE_LEAF_ORIGINS);
     assert.deepEqual(violations, [], `redaction surface audit:\n  ${violations.join("\n  ")}`);
+  });
+
+  it("audits the real history request/status/result as closed loopback surfaces", () => {
+    const surfaces = [
+      ["request/clear-run-history", ClearRunHistoryRequestSchema, ["commandId"]],
+      ["wire/run-history-status", RunHistoryStatusSchema, ["activeRuns", "finishedRuns", "state"]],
+      ["wire/clear-run-history-result", ClearRunHistoryResultSchema, ["commandId", "deletedRuns", "reason", "state"]],
+    ] as const;
+    assert.equal(SURFACE_MODULE_DISPOSITIONS.find(entry => entry.module === "src/models/dashboard/run-history.ts")?.state, "audited");
+    for (const [id, schema, paths] of surfaces) {
+      const surface = REDACTION_SURFACES.find(candidate => candidate.id === id); assert.ok(surface);
+      assert.equal(surface.schema, schema); assert.equal(surface.module, "src/models/dashboard/run-history.ts");
+      assert.equal(surface.egress, "operator-loopback");
+      assert.deepEqual(surfaceLeaves(schema), paths.map(path => ({path, kind: "closed"})));
+      assert.deepEqual(decidableLeaves(schema), []);
+      assert.deepEqual(SURFACE_LEAF_ORIGINS.filter(entry => entry.surface === id), []);
+    }
+    assert.deepEqual(ClearRunHistoryRequestSchema.parse({commandId: UUID_1}), {commandId: UUID_1});
+    for (const value of [{state: "unavailable"}, {state: "available", finishedRuns: 0, activeRuns: 3}]) assert.deepEqual(RunHistoryStatusSchema.parse(value), value);
+    for (const value of [{state: "not-recorded", commandId: UUID_1}, {state: "cleared", commandId: UUID_1, deletedRuns: 3},
+      ...["active-runs", "shared-checkpoint", "unresolved-write", "replay-divergent", "unavailable"].map(reason => ({state: "refused", commandId: UUID_1, reason}))]) {
+      assert.deepEqual(ClearRunHistoryResultSchema.parse(value), value);
+    }
+    for (const count of [-1, 0.5, Infinity]) {
+      assert.equal(RunHistoryStatusSchema.safeParse({state: "available", finishedRuns: count, activeRuns: 0}).success, false);
+      assert.equal(RunHistoryStatusSchema.safeParse({state: "available", finishedRuns: 0, activeRuns: count}).success, false);
+      assert.equal(ClearRunHistoryResultSchema.safeParse({state: "cleared", commandId: UUID_1, deletedRuns: count}).success, false);
+    }
+    for (const canary of Object.values(REDACTION_CANARIES)) {
+      assert.equal(ClearRunHistoryRequestSchema.safeParse({commandId: canary}).success, false);
+      assert.equal(ClearRunHistoryRequestSchema.safeParse({commandId: UUID_1, note: canary}).success, false);
+      assert.equal(RunHistoryStatusSchema.safeParse({state: canary}).success, false);
+      assert.equal(ClearRunHistoryResultSchema.safeParse({state: "refused", commandId: UUID_1, reason: canary}).success, false);
+      assert.equal(ClearRunHistoryResultSchema.safeParse({state: "not-recorded", commandId: canary}).success, false);
+      assert.equal(ClearRunHistoryResultSchema.safeParse({state: "cleared", commandId: UUID_1, deletedRuns: 0, note: canary}).success, false);
+    }
   });
 
   for (const id of ["wire/run-logs-stream", "wire/run-detail-section", "wire/stream-envelope", "wire/ocr-command-result"]) {

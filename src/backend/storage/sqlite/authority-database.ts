@@ -1,3 +1,4 @@
+import { artifactReferencesIn, containsDeletionArtifactReference } from "./artifact-references.js";
 import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { deriveEvidenceReceiptId } from "../../../models/trust/evidence-identity.js";
@@ -44,7 +45,7 @@ import { WorkerControlRecordSchema,WorkerControlRefusal,type WorkerResetBinding 
 import { WorkerPoolRecordSchema,workerPoolVersion,type WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import { WorkerSlotRecordSchema,workerPoolMember,type WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import { CanonicalCrashRecoveryRequestSchema,LIVE_WORKER_STATES,RunClaimTokenSchema,WorkerControlBasisSchema,WorkerLeaseRecordSchema,isLiveWorker,type WorkerLeaseRecord } from "../../../models/run/worker.js";
-import { DiagnosticAttachmentSchema,DiagnosticBundleSchema,type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
+import { DiagnosticBundleSchema,type DiagnosticBundle } from "../../../models/trust/diagnostic.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { deriveBulkChildCommand,deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import { AuthorityCommandAuditRecordSchema,AuthorityCommandRecordSchema,BulkParentCommandRecordSchema,BulkRunCommandAcceptanceRecordSchema,CommandAuditRecordSchema,CommandIdentityConflictError,CommandRequestSchema,RunLifecycleCommandAuditRecordSchema,RunLifecycleCommandRecordSchema,StoredAuthorityCommandRecordSchema } from "../../../rules/commands/commands.js";
@@ -72,7 +73,7 @@ import { privatePathRejects } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure,retainUnprovedSourceOwners } from "../source-closure.js";
 import { createAssistantAuthorizationRepository } from "./assistant-authorization.js";
 import { createAssistantModelPreferenceRepository } from "./assistant-model-preference.js";
-import { NativeCommandAuditSchema,commandFromRow,insertNativeCommand,settleNativeCommand } from "./command-record-row.js";
+import { NativeCommandAuditSchema,commandFromRow,insertNativeCommand,settleNativeCommand,settledRunDeletionIds } from "./command-record-row.js";
 import { authoritySourceDatabaseIdentity,type AuthorityBackupExpectedSource } from "./database-identity.js";
 import { deletedRunFromRow } from "./deleted-run-row.js";
 import { extractedArtifactFromRow } from "./extracted-artifact-row.js";
@@ -81,7 +82,7 @@ import { createFailureResolutionRepository } from "./failure-resolution.js";
 import { createGeneratedArtifactRepository,generatedArtifactFromRow } from "./generated-artifacts.js";
 import { createImportedArtifactRepositories,importedArtifactFromRow } from "./imported-artifacts.js";
 import { isNativeOrdinaryTable,nativeOrdinaryRecordFromRow,type NativeOrdinaryTable } from "./native-record-row.js";
-import { containsDeletionArtifactReference,executeNativeRunDeletion,prepareNativeRunDeletion } from "./native-run-deletion.js";
+import { deletionArtifactValues,executeNativeRunDeletion,prepareNativeRunDeletion } from "./native-run-deletion.js";
 import { createNotificationMetadataRepositories,validateNotificationMetadata } from "./notification-publications.js";
 import { createReadonlyAuthoritySnapshot,withAuthorityDatabaseReadOnly,withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
@@ -896,8 +897,7 @@ function authenticatedPublicationDeletion(database: DatabaseSync, runId: string,
     || !receipt.removed.some(entry=>entry.table === "timeline_events" && entry.rows > 0)
     || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
     || z.object({state:z.literal("succeeded"),outcome_json:z.string()}).parse(commandRaw).outcome_json !== canonicalJsonStringify(audit)
-    || !("kind" in audit) || audit.kind !== "run-lifecycle" || audit.request.operation !== "delete"
-    || audit.result.kind !== "deletion" || !audit.result.runIds.includes(RunIdSchema.parse(runId))) throw new Error("confirmed-publication-deletion-settlement-mismatch");
+    || !settledRunDeletionIds(audit)?.includes(runId)) throw new Error("confirmed-publication-deletion-settlement-mismatch");
   return true;
 }
 
@@ -1632,7 +1632,7 @@ function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion:
   return { settingsAuthority, configSnapshots, slots, browsers, controls, verificationProfiles: readWorkerVerificationProfiles(database, slots) };
 }
 
-function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>) {
+function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>, artifactRoot: string) {
   const browserProfiles = browserProfileInventory(database, inspection.schemaVersion);
   const reservations = readWorkerReservationCustody(database, browserProfiles.slots, browserProfiles.controls);
   const leases = database.prepare("SELECT * FROM worker_leases ORDER BY id").all().map(row => WorkerLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("worker_leases", row)));
@@ -1641,13 +1641,13 @@ function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typ
   const duoLeases = database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all().map(row => DuoCeremonyLeaseRecordSchema.parse(nativeOrdinaryRecordFromRow("auth_leases", row)));
   const exclusiveSessionLeases = inspection.schemaVersion >= 14 ? database.prepare("SELECT * FROM exclusive_session_leases ORDER BY id").all().map(exclusiveSessionLeaseFromRow) : [];
   const pendingArtifacts = createGeneratedArtifactRepository({ database, mutate: () => { throw new Error("profile-maintenance-mutation-refused"); } }).outbox.listPending();
-  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, ...browserProfiles, reservations, leases, runs, writeIntents, duoLeases, exclusiveSessionLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database) });
+  return Object.freeze({ authorityGeneration: inspection.authorityGeneration, ...browserProfiles, reservations, leases, runs, writeIntents, duoLeases, exclusiveSessionLeases, pendingArtifacts, upgrades: readAuthorityUpgradeRecords(database), artifactReferences: readManagedArtifactReferencesFromDatabase(database, artifactRoot) });
 }
 
-function flatQueuedRunCancellationInventory(database: DatabaseSync, assertResourcesClosed: (facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) => void) {
+function flatQueuedRunCancellationInventory(database: DatabaseSync, artifactRoot: string, assertResourcesClosed: (facts: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>) => void) {
   const inspection = inspectNativeAuthority(database, 6);
   if (inspection.installationId !== undefined || inspection.profileId !== undefined) throw new Error("queued-run-cancellation-binding-refused");
-  const facts = maintenanceInventory(database, inspection);
+  const facts = maintenanceInventory(database, inspection, artifactRoot);
   const candidates = facts.runs.filter(run => run.lifecycle.state !== "terminal");
   for (const run of candidates) {
     if (run.lifecycle.state !== "queued" || run.claimGeneration !== 0 || runClaim(run) !== undefined
@@ -1920,25 +1920,29 @@ export class CredentialContextRequiredError extends Error {
   }
 }
 
-function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, candidate?: ArtifactRef): readonly ArtifactRef[] {
+function readManagedArtifactReferencesFromDatabase(database: DatabaseSync, artifactRoot: string, candidate?: ArtifactRef): readonly ArtifactRef[] {
       const references = new Map<string, ArtifactRef>();
-      const visit = (value: unknown): void => {
-        if (value === null || typeof value !== "object") return;
-        if (candidate !== undefined && containsDeletionArtifactReference(value, candidate)) references.set(candidate.sha256, candidate);
-        const full = ArtifactRefSchema.safeParse(value);
-        if (full.success) references.set(full.data.sha256, full.data);
-        if (Array.isArray(value)) { for (const member of value) visit(member); return; }
-        const object = value as Record<string, unknown>;
-        if (typeof object.preparationJson === "string") visit(JSON.parse(object.preparationJson));
-        const attachment = DiagnosticAttachmentSchema.safeParse(value);
-        if (attachment.success) {
-          const row = attachment.data;
-          const ref = ArtifactRefSchema.parse({ id: row.artifactId, sha256: row.digest, bytes: row.byteLength, mediaType: row.mediaType });
-          references.set(ref.sha256, ref);
+      const deletions = database.prepare("SELECT * FROM deleted_runs").all().map(deletedRunFromRow);
+      const retainedCandidates = artifactReferencesIn([
+        ...deletions.flatMap(deletion => deletion.files.filter(file => file.disposition === "retain" || deletion.cleanupState === "pending").map(file => file.ref)),
+        ...(candidate === undefined ? [] : [candidate]),
+      ]);
+      for (const deletion of deletions) if (deletion.cleanupState === "pending") {
+        for (const file of deletion.files) if (file.disposition === "remove") {
+          try { fileStatus(join(artifactRoot, `${file.ref.sha256}.artifact`)); }
+          catch (error) {
+            if (error instanceof Error && "code" in error && error.code === "ENOENT") continue;
+            throw error;
+          }
+          references.set(file.ref.sha256, file.ref);
         }
-        for (const member of Object.values(object)) visit(member);
+      }
+      const visit = (value: unknown): void => {
+        for (const ref of retainedCandidates) if (containsDeletionArtifactReference(value, ref)) references.set(ref.sha256, ref);
+        for (const ref of artifactReferencesIn(value)) references.set(ref.sha256, ref);
       };
       for (const table of AUTHORITY_TABLE_REGISTRY.map(entry => entry.name)) {
+        if (table === "deleted_runs") continue;
         const columns = database.prepare(`PRAGMA table_info(${table})`).all()
           .map(raw => z.object({ name: z.string() }).parse(raw).name)
           .filter(name => name.endsWith("_json"));
@@ -2118,7 +2122,17 @@ export class AuthorityDatabase implements Disposable {
     credentials?: CredentialStore,
   ): AuthorityDatabase {
     admission.assertProfileRuntime();
-    return new AuthorityDatabase(admission, input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks, credentials);
+    const options = AuthorityDatabaseOptionsSchema.parse(input);
+    const database = new AuthorityDatabase(admission, options, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks, credentials);
+    if (options.openMode !== "read-write") return database;
+    try {
+      database.resumeRunDeletionFiles();
+      return database;
+    } catch (error) {
+      try { database.close(); }
+      catch (closeError) { throw retainAuthoritySourceClosure([error, closeError], { database, admission }); }
+      throw error;
+    }
   }
 
   static readIncompleteOnboardingInventory(admission: RuntimeAdmission) {
@@ -2131,7 +2145,7 @@ export class AuthorityDatabase implements Disposable {
       if (canonicalJsonStringify(names) !== canonicalJsonStringify(expected)) throw new Error("profile-incomplete-inventory-schema-mismatch");
       const counts = Object.freeze(AUTHORITY_TABLE_REGISTRY.map(table => Object.freeze({ table: table.name,
         count: z.strictObject({ count: z.number().int().safe().nonnegative() }).parse(database.prepare(`SELECT COUNT(*) AS count FROM ${table.name}`).get()).count })));
-      const artifactReferenceCount = readManagedArtifactReferencesFromDatabase(database).length;
+      const artifactReferenceCount = readManagedArtifactReferencesFromDatabase(database, owner.artifactRoot).length;
       const initialWorkbookTypeOnly = hasOnlyInitialWorkbookType(database);
       const pristineTable = (row: typeof counts[number]) => row.table === "database_states" || row.table === "database_upgrades"
         || (row.table === "workbook_types" ? initialWorkbookTypeOnly : row.count === 0);
@@ -2178,7 +2192,7 @@ export class AuthorityDatabase implements Disposable {
       if (inspection.schemaVersion === 6
         ? inspection.installationId !== undefined || inspection.profileId !== undefined
         : inspection.installationId !== binding?.installationId || inspection.profileId !== binding?.profileId) throw new Error("profile-maintenance-binding-mismatch");
-      return maintenanceInventory(database, inspection);
+      return maintenanceInventory(database, inspection, owner.artifactRoot);
     });
   }
 
@@ -2229,7 +2243,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   static async readFlatQueuedRunCancellation(path: string) {
-    return withReadonlyAuthoritySnapshot(path, database => flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed));
+    return withReadonlyAuthoritySnapshot(path, database => flatQueuedRunCancellationInventory(database, join(dirname(path), "artifacts"), assertCredentialCopyResourcesClosed));
   }
 
   // This finite native6 command cannot grant ordinary profile runtime authority.
@@ -2259,7 +2273,7 @@ export class AuthorityDatabase implements Disposable {
     try {
       database.exec("BEGIN IMMEDIATE");
       try {
-        const inventory = flatQueuedRunCancellationInventory(database, assertCredentialCopyResourcesClosed);
+        const inventory = flatQueuedRunCancellationInventory(database, join(dirname(path), "artifacts"), assertCredentialCopyResourcesClosed);
         if (inventory.digest !== expectedDigest) throw new Error("queued-run-cancellation-capture-changed");
         const now = clock.now().toISOString();
         for (const current of inventory.candidates) {
@@ -3052,7 +3066,7 @@ export class AuthorityDatabase implements Disposable {
 
   readManagedArtifactReferences(candidate?: ArtifactRef): readonly ArtifactRef[] {
     this.#assertOpen();
-    return this.#withReadSnapshot(() => readManagedArtifactReferencesFromDatabase(this.#database, candidate));
+    return this.#withReadSnapshot(() => readManagedArtifactReferencesFromDatabase(this.#database, this.#admission.artifactRoot, candidate));
   }
 
   static reclaimStoppedDiagnostics(admission: RuntimeAdmission, path: string, processLockRoot: string, clock: Clock,
@@ -3062,7 +3076,7 @@ export class AuthorityDatabase implements Disposable {
     return withAuthorityDatabaseReadOnly(admission, path, database => {
       const inspection = inspectNormalAuthority(database), binding = admission.profileBinding;
       if (inspection.installationId !== binding.installationId || inspection.profileId !== binding.profileId) throw new Error("profile-maintenance-binding-mismatch");
-      return reclaimDiagnosticStages(admission, ref => readManagedArtifactReferencesFromDatabase(database, ref).some(reference => reference.id === ref.id || reference.sha256 === ref.sha256), operation);
+      return reclaimDiagnosticStages(admission, ref => readManagedArtifactReferencesFromDatabase(database, admission.artifactRoot, ref).some(reference => reference.id === ref.id || reference.sha256 === ref.sha256), operation);
     });
   }
 
@@ -3660,50 +3674,59 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  resumeRunDeletionFiles(): void {
+  resumeRunDeletionFiles(): number {
     if (this.#transactionDepth !== 0) throw new Error("run-deletion-cleanup-requires-committed-receipt");
     this.#admission.assertWritable();
     const pending = this.#database.prepare("SELECT * FROM deleted_runs WHERE cleanup_state='pending' ORDER BY deleted_at,run_id").all()
       .map(row=>deletedRunFromRow(row).receipt);
-    for (const receipt of pending) this.settleRunDeletionFiles({runId:receipt.runId,commandId:receipt.commandId});
+    return this.#settleCommittedRunDeletionFiles(pending.map(receipt => ({runId:receipt.runId,commandId:receipt.commandId})));
   }
 
   settleRunDeletionFiles(input: unknown): "complete" {
-    const request = z.strictObject({runId:RunIdSchema,commandId:CommandIdSchema}).parse(input);
+    const request = z.strictObject({runIds:z.array(RunIdSchema),commandId:CommandIdSchema}).parse(input);
+    this.#settleCommittedRunDeletionFiles(request.runIds.map(runId => ({runId,commandId:request.commandId})));
+    return "complete";
+  }
+
+  #settleCommittedRunDeletionFiles(requests: readonly Readonly<{runId:string;commandId:string}>[]): number {
     if (this.#transactionDepth !== 0) throw new Error("run-deletion-cleanup-requires-committed-receipt");
     this.#admission.assertWritable();
+    if (requests.length === 0) return 0;
     return this.#authorityWrite("deleted_runs",()=>{
-      const raw = this.#database.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(request.runId);
-      if (raw === undefined) throw new Error("run-deletion-cleanup-receipt-missing");
-      const deletion = deletedRunFromRow(raw);
-      if (deletion.receipt.commandId !== request.commandId) throw new Error("run-deletion-cleanup-command-mismatch");
-      const commandRaw = this.#database.prepare("SELECT * FROM commands WHERE id=?").get(request.commandId);
-      if (commandRaw === undefined) throw new Error("run-deletion-cleanup-command-missing");
-      const command = commandFromRow(commandRaw);
-      const auditRows = this.#database.prepare("SELECT * FROM command_audits WHERE command_id=?").all(request.commandId);
-      if (auditRows.length !== 1) throw new Error("run-deletion-cleanup-audit-missing");
-      const audit = NativeCommandAuditSchema.parse(nativeOrdinaryRecordFromRow("command_audits",auditRows[0]));
-      if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
-        || z.object({state:z.literal("succeeded"),outcome_json:z.string()}).parse(commandRaw).outcome_json !== canonicalJsonStringify(audit)
-        || !("kind" in audit) || audit.kind !== "run-lifecycle" || audit.request.operation !== "delete"
-        || audit.result.kind !== "deletion" || !audit.result.runIds.includes(request.runId)) throw new Error("run-deletion-cleanup-settlement-mismatch");
-      if (deletion.cleanupState === "complete") return {result:"complete" as const,changes:0};
-      validateAuthorityRecordSchemas(this.#database);
-      for (const file of deletion.files.filter(file=>file.disposition === "remove")) {
-        for (const table of AuthorityTableNameSchema.options.filter(table=>table !== "deleted_runs")) {
-          for (const row of this.#database.prepare(`SELECT * FROM ${table}`).iterate()) {
-            for (const [column,value] of Object.entries(row)) {
-              if (column.endsWith("_json") && typeof value === "string"
-                && containsDeletionArtifactReference(JSON.parse(value) as unknown,file.ref)) throw new Error("run-deletion-cleanup-file-still-referenced");
+      const deletions = requests.map(request => {
+        const raw = this.#database.prepare("SELECT * FROM deleted_runs WHERE run_id=?").get(request.runId);
+        if (raw === undefined) throw new Error("run-deletion-cleanup-receipt-missing");
+        const deletion = deletedRunFromRow(raw);
+        if (deletion.receipt.commandId !== request.commandId) throw new Error("run-deletion-cleanup-command-mismatch");
+        const commandRaw = this.#database.prepare("SELECT * FROM commands WHERE id=?").get(request.commandId);
+        if (commandRaw === undefined) throw new Error("run-deletion-cleanup-command-missing");
+        const command = commandFromRow(commandRaw);
+        const auditRows = this.#database.prepare("SELECT * FROM command_audits WHERE command_id=?").all(request.commandId);
+        if (auditRows.length !== 1) throw new Error("run-deletion-cleanup-audit-missing");
+        const audit = NativeCommandAuditSchema.parse(nativeOrdinaryRecordFromRow("command_audits",auditRows[0]));
+        if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+          || z.object({state:z.literal("succeeded"),outcome_json:z.string()}).parse(commandRaw).outcome_json !== canonicalJsonStringify(audit)
+          || !settledRunDeletionIds(audit)?.includes(request.runId)) throw new Error("run-deletion-cleanup-settlement-mismatch");
+        return deletion;
+      });
+      const pending = deletions.filter(deletion => deletion.cleanupState === "pending");
+      if (pending.length > 0) validateAuthorityRecordSchemas(this.#database);
+      for (const deletion of pending) {
+        for (const file of deletion.files.filter(file=>file.disposition === "remove")) {
+          for (const table of AuthorityTableNameSchema.options.filter(table=>table !== "deleted_runs")) {
+            for (const row of this.#database.prepare(`SELECT * FROM ${table}`).iterate()) {
+              for (const value of deletionArtifactValues(this.#database, table, row)) {
+                if (containsDeletionArtifactReference(value, file.ref)) throw new Error("run-deletion-cleanup-file-still-referenced");
+              }
             }
           }
+          removeArtifactDeletionFile(this.#admission,file);
+          this.#lifecycleHooks?.afterDeletionFileRemoved?.({runId:deletion.receipt.runId,digest:file.ref.sha256});
         }
-        removeArtifactDeletionFile(this.#admission,file);
-        this.#lifecycleHooks?.afterDeletionFileRemoved?.({runId:request.runId,digest:file.ref.sha256});
+        const changed = this.#database.prepare("UPDATE deleted_runs SET cleanup_state='complete' WHERE run_id=? AND cleanup_state='pending'").run(deletion.receipt.runId);
+        if (sqliteChanges(changed.changes) !== 1) throw new Error("run-deletion-cleanup-cas-lost");
       }
-      const changed = this.#database.prepare("UPDATE deleted_runs SET cleanup_state='complete' WHERE run_id=? AND cleanup_state='pending'").run(request.runId);
-      if (sqliteChanges(changed.changes) !== 1) throw new Error("run-deletion-cleanup-cas-lost");
-      return {result:"complete" as const,changes:1};
+      return {result:deletions.length,changes:pending.length};
     });
   }
 
