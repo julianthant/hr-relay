@@ -4,7 +4,7 @@ import { registeredSpreadsheetWorkbook, type RegisteredSpreadsheet, type Spreads
 import { fieldForSpreadsheetHeader } from './spreadsheet-fields-model.js';
 
 export function mockWorkbookTypes(types: readonly SpreadsheetType[]): WorkbookType[] {
-  return [...types.map(type => WorkbookTypeSchema.parse({ ...type, fields: type.fields.map(field => {
+  return [...types.map(type => type.definition ?? WorkbookTypeSchema.parse({ id: type.id, name: type.name, fields: type.fields.map(field => {
     const resolved = fieldForSpreadsheetHeader(field);
     if (!resolved) throw new Error('SPREADSHEET_FIELD_NOT_FOUND');
     return resolved.id;

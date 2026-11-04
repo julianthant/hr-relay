@@ -18,6 +18,7 @@ import { failureStatus } from "../../../../../src/backend/transports/http/routes
 import { CommandBrowserError, CommandBrowserClosureError } from "../../../../../src/backend/runtime/browser/command-browser.js";
 import { SharePointDownloadError } from "../../../../../src/backend/systems/sharepoint/driver/interpreter.js";
 import { BrowserLoginError } from "../../../../../src/backend/systems/browser-shared/login-contract.js";
+import { WorkbookLibraryError } from "../../../../../src/backend/workbooks/workbook-library-service.js";
 
 
 const RETIRED_MARKERS = [
@@ -30,6 +31,12 @@ const RETIRED_MARKERS = [
 ] as const;
 
 describe("failureStatus", () => {
+  it('returns a known conflict when workbook history protects a type definition', () => {
+    const result = failureStatus(new WorkbookLibraryError('WORKBOOK_TYPE_IN_USE'));
+    assert.equal(result.status, 409);
+    assert.equal(result.body.code, 'WORKBOOK_TYPE_IN_USE');
+    assert.equal(result.body.message, ERROR_CATALOG.WORKBOOK_TYPE_IN_USE.text);
+  });
   it("serves closed catalog failures for SharePoint commands without private cause data", () => {
     const privateDetail = "private file URL, account and authentication response";
     const cases = [

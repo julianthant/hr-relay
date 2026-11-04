@@ -7,6 +7,8 @@ import { manualClock } from '../../../src/rules/time/clock.js';
 import { unexpectedWorkbookSync } from '../../support/helpers/backend/workbook-sync.js';
 import type { WorkbookSyncDownload } from '../../../src/backend/workbooks/workbook-library-service.js';
 import type { z } from 'zod';
+import { encodeEditableWorkbook } from '../../../src/models/dashboard/workbooks.js';
+import { spreadsheetValuesOnly } from '../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
 
 const databases: DatabaseSync[] = [];
 afterEach(() => databases.splice(0).forEach(database => database.close()));
@@ -51,6 +53,51 @@ it('creates from any saved version, renames and uses it, with exact action repla
     .rejects.toMatchObject({ code: 'WORKBOOK_OPERATION_CONFLICT' });
   expect(f.service.read(id).version).toBe(changed.version + 1);
   expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
+});
+
+it('retains edited values as a named version without altering an unsupported original or weakening ordinary saves', async () => {
+  const f = fixture();
+  const original = f.service.create({ ...f.record.workbook, libraryId: undefined, unsupportedMetadata: true, hasFormulas: true,
+    themes: ['synthetic theme'], sheets: f.record.workbook.sheets.map(sheet => ({ ...sheet, rows: sheet.rows.map(row => ({ ...row,
+      cells: row.cells.map(cell => ({ ...cell, numFmt: '@', background: '#ffffff' })) })) })) });
+  const id = original.libraryId, draft = spreadsheetValuesOnly({ ...original.workbook, sheets: original.workbook.sheets.map(sheet => ({ ...sheet, rows: sheet.rows.map(row => row.id === 'person' ? { ...row, cells: [row.cells[0], { value: 'Edited synthetic person' }] } : row) })) });
+  expect(() => f.service.save(id, 1, draft)).toThrow(expect.objectContaining({ code: 'WORKBOOK_METADATA_UNSUPPORTED' }));
+  const action = { operationId: 'values-only', expectedRevision: 1, expectedVersion: 1,
+    change: { kind: 'create-version' as const, name: 'Edited values', from: { kind: 'values' as const, workbook: encodeEditableWorkbook(draft) }, useNow: false } };
+  const result = await f.service.libraryAction(id, action, new AbortController().signal);
+  expect(result.result.selectedVersionId).toBe('original');
+  expect(f.service.libraryVersion(id, 'values-only').workbook).toEqual(encodeEditableWorkbook(draft));
+  expect(f.service.libraryVersion(id, 'original').workbook).toEqual(encodeEditableWorkbook(original.workbook));
+  expect(f.service.read(id)).toEqual(original);
+  expect(f.service.revision(id, 1)).toEqual(original);
+  expect(await f.service.libraryAction(id, action, new AbortController().signal)).toEqual(result);
+  await expect(f.service.libraryAction(id, { ...action, change: { ...action.change, name: 'Other' } }, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_OPERATION_CONFLICT' });
+  await expect(f.service.libraryAction(id, { ...action, operationId: 'stale' }, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_VERSION_CONFLICT' });
+  await expect(f.service.libraryAction(id, { ...action, operationId: 'metadata', expectedRevision: 2,
+    change: { ...action.change, from: { kind: 'values', workbook: encodeEditableWorkbook(original.workbook) } } }, new AbortController().signal)).rejects.toMatchObject({ code: 'WORKBOOK_INVALID' });
+  expect(f.service.libraryVersion(id, 'original').workbook).toEqual(encodeEditableWorkbook(original.workbook));
+  expect(validateWorkbookLibrary(f.database)).toBeGreaterThan(0);
+});
+
+it('edits type labels, membership and required fields while retaining captured reference definitions', () => {
+  const f = fixture();
+  const before = f.repository.putType({ id: 'type', name: 'Roster', fields: ['eid'], keyFieldId: 'eid', defaultWorkbookId: null });
+  const after = f.repository.putType({ ...before, fields: ['eid', 'roster.customField'], fieldLabels: { eid: 'Employee number', 'roster.customField': 'Custom field' }, requiredFields: ['eid'] });
+  expect(after.fields).toEqual(['eid', 'roster.customField']);
+  expect(before.fields).toEqual(['eid']);
+  expect(f.repository.types()).toContainEqual(after);
+  expect(() => f.repository.putType({ ...after, fields: [], keyFieldId: null, fieldLabels: {}, requiredFields: [] })).toThrow();
+});
+
+it('keeps reference type schemas stable and protects structural edits needed for journal replay', async () => {
+  const f = fixture();
+  const type = f.repository.putType({ id: 'roster', name: 'Roster', fields: ['eid', 'fullName'], keyFieldId: 'eid', defaultWorkbookId: null });
+  await f.apply({ kind: 'metadata', metadata: { typeId: type.id, sharePoint: null } });
+  const captured = f.repository.snapshot({ typeId: type.id, libraryId: f.record.libraryId, keys: ['10000001'], fields: ['fullName'] });
+  f.repository.putType({ ...type, fieldLabels: { eid: 'Employee number' }, requiredFields: ['eid'] });
+  expect(f.repository.snapshot({ typeId: type.id, libraryId: f.record.libraryId, keys: ['10000001'], fields: ['fullName'] }).type).toEqual(captured.type);
+  expect(() => f.repository.putType({ ...type, fields: ['eid'] })).toThrow(expect.objectContaining({ code: 'WORKBOOK_TYPE_IN_USE' }));
+  expect(f.service.revision(f.record.libraryId, 2).version).toBe(2);
 });
 
 it('refuses stale catalogue authority and keeps selected versions and active-run references undeletable', async () => {

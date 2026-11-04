@@ -403,6 +403,14 @@ provider prompts and OS notifications have separate egress restrictions. The sou
 `src/rules/redaction/redaction.ts`, the receipt producers under `src/backend/runs/provenance/`,
 and notification producers under `src/backend/runs/notifications/`.
 
+`tests/architecture/logs/redaction-surface-scan.workbook.test.ts` pins the exact 55
+`captured-hr-value` origins for mutable type labels, required-field IDs and values-only workbook
+actions across request, status and durable records. These private values remain in
+`operator-loopback` or `durable-authority` custody without retention exceptions. Each omitted
+origin fails independently, and every leaf refuses process and OS-notification egress. The guard
+also pins the exact five-field type shape and origin membership in retained workbook references
+and start-plan references, keeping mutable editor metadata out of those retained types.
+
 Canary tests first prove the planted value reaches the input, then exercise the real boundary.
 A fake emitter or no-op collector that bypasses validation cannot prove the persistence schema or
 provenance contract. Producer union coverage enumerates every emitted arm, including early-return

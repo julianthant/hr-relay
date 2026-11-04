@@ -4,7 +4,7 @@ import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { DashboardClient } from '../client/index.js';
 import { DashboardClientError } from '../client/errors.js';
 import { useDashboardClient, useDashboardCommandBinding } from './client-context.js';
-import type { SavedWorkbook, WorkbookType } from '../../models/dashboard/workbooks.js';
+import { encodeEditableWorkbook, type SavedWorkbook, type WorkbookType } from '../../models/dashboard/workbooks.js';
 import type { WorkbookLibraryEntry, WorkbookLibraryAction, WorkbookLibraryActionRecord } from '../../models/dashboard/workbook-library.js';
 import { canonicalJsonStringify } from '../../rules/validation/canonical-json.js';
 import { spreadsheetSaveMatches, type SpreadsheetSaveResult } from '../surfaces/spreadsheets/spreadsheet-editor-model.js';
@@ -106,6 +106,10 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
           record = status.record;
         }
         if (record.libraryId !== libraryId || canonicalJsonStringify(record.action) !== canonicalJsonStringify(action)) return { state: 'uncertain', message: 'The library result does not match the retained change.' };
+        if (action.change.kind === 'create-version' && action.change.from.kind === 'values') {
+          const saved = await readWithDeadline(() => client.workbookLibraryVersion(libraryId, action.operationId), 'DASHBOARD_READ_FAILED');
+          if (saved.version.id !== action.operationId || saved.libraryId !== libraryId || canonicalJsonStringify(saved.workbook) !== canonicalJsonStringify(action.change.from.workbook)) return { state: 'uncertain', message: 'The values-only version readback does not match the saved draft.' };
+        }
         const [catalog, types] = await Promise.all([readWithDeadline(() => client.workbookCatalog(), 'DASHBOARD_READ_FAILED'), readWithDeadline(() => client.workbookTypes(), 'DASHBOARD_READ_FAILED')]);
         if (authority !== readAuthority || request !== catalogRequest) return { state: 'uncertain', message: 'Library authority changed. Check the result from the current library.' };
         const current = catalog.find(entry => entry.libraryId === libraryId);
@@ -149,6 +153,16 @@ export function createSpreadsheetWiringAdapter(client: WorkbookLibraryQueries) {
         }
         return adapter.settleLibrary(entry.libraryId);
       }
+    },
+    async saveValuesVersion(id: string, name: string, document: EditableWorkbook): Promise<LibraryChangeResult> {
+      const draft = drafts.get(keyFor(id)), libraryId = draft?.opened?.libraryId;
+      if (!libraryId || draft.intent || draft.saving) return { state: 'refused', message: 'Check the current save result before saving a new version.' };
+      const pending = libraryIntents.get(libraryId);
+      if (pending) return pending.change.kind === 'create-version' && pending.change.from.kind === 'values' && pending.change.name === name
+        ? adapter.settleLibrary(libraryId) : { state: 'refused', message: 'Check the pending library change before saving a new version.' };
+      const entry = snapshot.catalog.find(entry => entry.libraryId === libraryId);
+      if (!entry || entry.version !== draft.opened?.version) return { state: 'refused', message: 'Refresh the library before saving a new version.' };
+      return adapter.changeLibrary(entry, { kind: 'create-version', name, from: { kind: 'values', workbook: encodeEditableWorkbook(document) }, useNow: false });
     },
     list(): Promise<void> {
       if (pendingList !== undefined) return pendingList;

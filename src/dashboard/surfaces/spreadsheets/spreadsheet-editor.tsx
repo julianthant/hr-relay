@@ -1,15 +1,16 @@
 import { useViewState } from "../../app/navigation/view-route-model.js";
 import { useEffect, useDeferredValue, useId, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Columns3, Download, MoreHorizontal, Plus, Undo2, Redo2 } from 'lucide-react';
-import { Spinner, Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, PageBreadcrumbs, PageHeading, SearchInput, Select } from '../../ds/ui.js';
+import { Spinner, Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, Field, PageBreadcrumbs, PageHeading, SearchInput, Select } from '../../ds/ui.js';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../../ds/primitives/dropdown-menu.js';
-import { addSpreadsheetColumn, cellDisplayText, columnName, downloadSpreadsheet, editSpreadsheetCell, sortSpreadsheet, spreadsheetCellProblem, spreadsheetForeground, spreadsheetInsertionAvailability, spreadsheetSaveMatches, type SpreadsheetSaveResult } from './spreadsheet-editor-model.js';
+import { addSpreadsheetColumn, cellDisplayText, columnName, downloadSpreadsheet, editSpreadsheetCell, sortSpreadsheet, spreadsheetCellProblem, spreadsheetForeground, spreadsheetInsertionAvailability, spreadsheetSaveMatches, spreadsheetValuesOnly, type SpreadsheetSaveResult } from './spreadsheet-editor-model.js';
 import { cellText, type EditableSheet, type EditableWorkbook } from '../../../rules/spreadsheets/workbook-io.js';
 import { exportSheetInWorker, exportSpreadsheetInWorker } from "./spreadsheet-import-client.js";
 import { EMPTY_WORKBOOK_HISTORY, recordWorkbookEdit, stepWorkbookHistory, type WorkbookHistory } from './spreadsheet-history-model.js';
+import type { LibraryChangeResult } from '../../state/spreadsheet-wiring-adapter.js';
 import './spreadsheet-editor.css';
 
-export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onExported, onSave, onHistory, exportKeepsDirty = false }: { document: EditableWorkbook; dirty: boolean; exportKeepsDirty?: boolean; onSave?: (draft: EditableWorkbook) => Promise<SpreadsheetSaveResult>; onExported?: () => void; onHistory?: () => void; onMapping?: () => void; onDocument: (next: EditableWorkbook | null, dirty: boolean) => void }) {
+export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onExported, onSave, onSaveValues, onHistory, exportKeepsDirty = false }: { document: EditableWorkbook; dirty: boolean; exportKeepsDirty?: boolean; onSaveValues?: (name: string, draft: EditableWorkbook) => Promise<LibraryChangeResult>; onSave?: (draft: EditableWorkbook) => Promise<SpreadsheetSaveResult>; onExported?: () => void; onHistory?: () => void; onMapping?: () => void; onDocument: (next: EditableWorkbook | null, dirty: boolean) => void }) {
   const [save, setSave] = useState<{ document: EditableWorkbook; result: SpreadsheetSaveResult | { state: 'pending' } }>();
   const saveRequest = useRef<object | undefined>(undefined);
   const latestDocument = useRef(document); latestDocument.current = document;
@@ -38,6 +39,19 @@ export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onEx
   const [columnQuery, setColumnQuery] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [valuesOpen, setValuesOpen] = useState(false);
+  const [versionName, setVersionName] = useState('');
+  const [valuesResult, setValuesResult] = useState<LibraryChangeResult>();
+  const [valuesBusy, setValuesBusy] = useState(false);
+  const valuesTrigger = useRef<HTMLButtonElement>(null);
+  const valuesPending = valuesResult?.state === 'uncertain';
+  const saveValues = async () => {
+    if (!onSaveValues || !versionName.trim() || valuesBusy) return;
+    setValuesBusy(true);
+    try { setValuesResult(await onSaveValues(versionName.trim(), spreadsheetValuesOnly(document))); }
+    catch { setValuesResult({ state: 'uncertain', message: 'The new version is unconfirmed. Check its result before saving again.' }); }
+    finally { setValuesBusy(false); }
+  };
   const [columnOpen, setColumnOpen] = useState(false);
   const [columnTitle, setColumnTitle] = useState('');
   const [closeOpen, setCloseOpen] = useState(false);
@@ -114,6 +128,7 @@ export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onEx
     <PageHeading title={document.name} description={`${document.sheets.length} ${document.sheets.length === 1 ? 'sheet' : 'sheets'} · ${dirty ? 'Edited copy' : 'Saved copy'}`} actionAlignment="title" actions={<>
       {onHistory && <Button variant="secondary" disabled={busy} onClick={onHistory}>Versions</Button>}
       <Button variant="secondary" aria-busy={!!saveRequest.current || undefined} disabled={busy || !!saveRequest.current || !onSave} icon={saveRequest.current ? <span aria-hidden><Spinner /></span> : undefined} onClick={() => void saveDocument()}>Save</Button>
+      {onSaveValues && (document.hasFormulas || document.unsupportedMetadata) && <Button ref={valuesTrigger} variant="secondary" disabled={busy || !!saveRequest.current} onClick={() => { if (valuesResult?.state === 'confirmed' || valuesResult?.state === 'recorded') { setValuesResult(undefined); setVersionName(''); } setValuesOpen(true); }}>Save as new version (values only)</Button>}
       <DropdownMenu><DropdownMenuTrigger asChild><Button variant="secondary" disabled={busy || !sheet} icon={<Download className="size-3.5" />}>Export copy</Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Export spreadsheet" align="end" className="w-52"><DropdownMenuItem onSelect={() => void exportFile('xlsx')}>Excel workbook (.xlsx)</DropdownMenuItem><DropdownMenuItem onSelect={() => void exportFile('csv')}>Current sheet (.csv)</DropdownMenuItem></DropdownMenuContent></DropdownMenu>
       {onMapping && <DropdownMenu><DropdownMenuTrigger asChild><IconButton variant="ghost" label="Workbook actions" disabled={busy} icon={<MoreHorizontal className="size-4" />} /></DropdownMenuTrigger><DropdownMenuContent aria-label="Workbook actions" align="end"><DropdownMenuItem onSelect={onMapping}>Edit column mappings</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
     </>} />
@@ -140,6 +155,12 @@ export function SpreadsheetEditor({ document, dirty, onDocument, onMapping, onEx
         <div className="spreadsheet-toolbar-group" aria-label="Spreadsheet column pages"><span>Columns {currentColumnPage * 20 + 1}–{Math.min((currentColumnPage + 1) * 20, columns.length)} of {columns.length}</span>{columnPages > 1 && <><IconButton variant="ghost" label="Previous spreadsheet columns" disabled={busy || currentColumnPage === 0} icon={<ChevronLeft className="size-3.5" />} onClick={() => setColumnPage(currentColumnPage - 1)} /><IconButton variant="ghost" label="Next spreadsheet columns" disabled={busy || currentColumnPage >= columnPages - 1} icon={<ChevronRight className="size-3.5" />} onClick={() => setColumnPage(currentColumnPage + 1)} /></>}</div>
       </footer>
     </>}
+    <Dialog open={valuesOpen} onOpenChange={open => { if (!valuesBusy) setValuesOpen(open); }}><DialogContent title="Save as new version (values only)" onCloseAutoFocus={event => { event.preventDefault(); valuesTrigger.current?.focus(); }}><DialogBody>
+      <p>This saves your edited cell values as a named version in Spreadsheets. Merged cells, formulas, formatting, colors, rich text and links are dropped. Formula cells keep only their imported results.</p>
+      <p>The original version stays unchanged, in use and available to download.</p>
+      <Field label="Version name"><Input value={versionName} disabled={valuesBusy || valuesPending || valuesResult?.state === 'confirmed' || valuesResult?.state === 'recorded'} onChange={event => { setVersionName(event.target.value); setValuesResult(undefined); }} /></Field>
+      {valuesResult && (valuesResult.state === 'confirmed' ? <p role="status">New values-only version saved. Open Versions to download it. Your open draft is kept.</p> : <Banner tone="warning" title={valuesPending ? 'Version unconfirmed' : 'Version result'}>{valuesResult.message}</Banner>)}
+    </DialogBody><DialogFooter><Button disabled={valuesBusy} onClick={() => setValuesOpen(false)}>{valuesResult?.state === 'confirmed' || valuesResult?.state === 'recorded' ? 'Close' : 'Cancel'}</Button>{valuesResult?.state !== 'confirmed' && valuesResult?.state !== 'recorded' && <Button disabled={valuesBusy || !versionName.trim()} onClick={() => void saveValues()}>{valuesBusy ? 'Saving…' : valuesPending ? 'Check result' : 'Save values-only version'}</Button>}</DialogFooter></DialogContent></Dialog>
     <Dialog open={columnOpen} onOpenChange={setColumnOpen}><DialogContent title="Add column" size="sm"><DialogBody><Input autoFocus aria-label="Column title" placeholder="Column title" value={columnTitle} onChange={event => setColumnTitle(event.target.value)} /></DialogBody><DialogFooter><Button variant="muted" onClick={() => setColumnOpen(false)}>Cancel</Button><Button disabled={!columnTitle.trim() || !insertions.column} onClick={() => { if (!sheet) throw new Error('SPREADSHEET_SHEET_UNAVAILABLE'); applySheet(addSpreadsheetColumn(sheet, columnTitle)); setColumnOpen(false); }}>Add column</Button></DialogFooter></DialogContent></Dialog>
     <Dialog open={closeOpen} onOpenChange={setCloseOpen}><DialogContent title="Close edited spreadsheet?" description="Export a copy to keep your changes before closing." size="sm"><DialogFooter><Button variant="secondary" onClick={() => setCloseOpen(false)}>Keep editing</Button><Button variant="danger" onClick={() => { onDocument(null, false); setCloseOpen(false); }}>Discard copy</Button></DialogFooter></DialogContent></Dialog>
   </section>;

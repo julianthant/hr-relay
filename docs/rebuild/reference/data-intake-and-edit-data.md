@@ -389,7 +389,10 @@ Its 42 rows bind EID and department, with a supplied effective-date constant. Th
 
 `backend/workbooks/` owns the persisted library. Every workbook has a served type; unclassified
 imports use General workbook until the operator assigns a keyed type. Types retain canonical field
-IDs, a key field and an optional default workbook. A run's requested item keys resolve against a
+IDs, a key field and an optional default workbook. Mutable type definitions also retain display
+labels and required-field choices. Captured reference types retain their existing wire shape and
+schema hashes; these editor settings do not change retained run authority. Field membership and
+keys cannot change after workbook journal history uses the type. A run's requested item keys resolve against a
 single immutable wire snapshot of the selected/default workbook, type and live revision. Dates in
 these snapshots are tagged ISO values. Workbook rows do not become run items through this API.
 Key matching retains nonempty strings exactly and compares finite numeric cells by their stable string value. It does not pad numeric keys or coerce booleans, dates, blanks or null. Numeric/string collisions stay ambiguous; snapshots retain original typed cell values.

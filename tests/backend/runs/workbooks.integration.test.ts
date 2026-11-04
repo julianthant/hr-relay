@@ -196,7 +196,7 @@ it("executes the registered workbook task through its real provider using the ca
   const corrupt = RunRecordSchema.parse({ ...run, input: { ...run.input, workbookReferences: run.input.workbookReferences?.map(value => ({ ...value, schemaHash: "f".repeat(64) })) } });
   expect(() => f.runs.write(corrupt, patch)).toThrow();
   const type = f.repository.types().find(value => value.id === patch.typeId); assert.ok(type);
-  expect(() => f.repository.putType({ ...type, keyFieldId: "roster.result" })).toThrow(expect.objectContaining({ code: "WORKBOOK_INVALID" }));
+  expect(() => f.repository.putType({ ...type, keyFieldId: "roster.result" })).toThrow(expect.objectContaining({ code: "WORKBOOK_TYPE_IN_USE" }));
   expect(f.repository.types().find(value => value.id === patch.typeId)).toEqual(type);
   expect(f.runs.write(run, patch)).toEqual(receipt);
   const beforeNext = f.library.read(f.id);
@@ -280,7 +280,7 @@ it("retains a missing-key receipt and requires an explicit choice when that key 
 it("refuses a declared type key change and preserves its captured reference", async () => {
   const f = await fixture(), run = f.running(f.start());
   const type = f.repository.types().find(value => value.id === patch.typeId); assert.ok(type);
-  expect(() => f.repository.putType({ ...type, keyFieldId: "roster.result" })).toThrow(expect.objectContaining({ code: "WORKBOOK_INVALID" }));
+  expect(() => f.repository.putType({ ...type, keyFieldId: "roster.result" })).toThrow(expect.objectContaining({ code: "WORKBOOK_TYPE_IN_USE" }));
   expect(f.repository.types().find(value => value.id === patch.typeId)).toEqual(type);
   expect(f.library.read(f.id).version).toBe(2);
   expect(f.repository.runOperations(run.envelope.runId)).toEqual([]);
