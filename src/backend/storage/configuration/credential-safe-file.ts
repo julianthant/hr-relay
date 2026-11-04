@@ -1,9 +1,10 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
+import { WindowsPrivatePathError } from "../windows-private-path.js";
 import { systemClock } from "../../../rules/time/clock.js";
 import { hasUnprovedSourceClosure, retainUnprovedSourceOwners, retainAuthoritySourceClosure } from "../source-closure.js";
 import { createPrivateDirectory, fsyncPath, privatePathRejects } from "../private-path.js";
-import { closeSync, constants, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, unlinkSync, writeFileSync, readdirSync, type Stats } from "node:fs";
+import { closeSync, constants, fstatSync, fsyncSync, lstatSync, openSync, readFileSync, unlinkSync, writeFileSync, readdirSync, type Stats, type BigIntStats } from "node:fs";
 import { join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
@@ -84,7 +85,42 @@ export function statDirectory(path: string, label: string, exactMode?: typeof CR
 }
 
 export function sameDirectory(left: DirectoryIdentity, right: DirectoryIdentity): boolean {
-  return left.device === right.device && left.inode === right.inode;
+  const exact = (a: number | bigint, b: number | bigint) => typeof a === typeof b ? a === b
+    : typeof a === "number" ? Number.isSafeInteger(a) && BigInt(a) === b
+    : typeof b === "number" && Number.isSafeInteger(b) && a === BigInt(b);
+  return exact(left.device, right.device) && exact(left.inode, right.inode);
+}
+
+export function privateFileNumber(value: number | bigint): number {
+  const numeric = Number(value);
+  if (!Number.isSafeInteger(numeric) || numeric < 0 || (typeof value === "bigint" && BigInt(numeric) !== value)) {
+    throw new WindowsPrivatePathError("unrepresentable-numeric-file-metadata");
+  }
+  return numeric;
+}
+
+export function numericFileIdentity(identity: DirectoryIdentity): { device: number; inode: number } {
+  return { device: privateFileNumber(identity.device), inode: privateFileNumber(identity.inode) };
+}
+
+export function fileIdentityObservation(identity: DirectoryIdentity): { device: number | string; inode: number | string } {
+  return { device: typeof identity.device === "bigint" ? identity.device.toString() : identity.device,
+    inode: typeof identity.inode === "bigint" ? identity.inode.toString() : identity.inode };
+}
+
+function fileStatus(path: string): Stats | BigIntStats;
+function fileStatus(path: string, missing: true): Stats | BigIntStats | undefined;
+function fileStatus(path: string, missing = false): Stats | BigIntStats | undefined {
+  if (missing) return process.platform === "win32" ? lstatSync(path, { bigint: true, throwIfNoEntry: false }) : lstatSync(path, { throwIfNoEntry: false });
+  return process.platform === "win32" ? lstatSync(path, { bigint: true }) : lstatSync(path);
+}
+function descriptorStatus(descriptor: number): Stats | BigIntStats {
+  return process.platform === "win32" ? fstatSync(descriptor, { bigint: true }) : fstatSync(descriptor);
+}
+function modified(status: Stats | BigIntStats): number | bigint { return "mtimeNs" in status ? status.mtimeNs : status.mtimeMs; }
+function changed(status: Stats | BigIntStats): number | bigint { return "ctimeNs" in status ? status.ctimeNs : status.ctimeMs; }
+function equalByteCount(bytes: Buffer, size: number | bigint): boolean {
+  return typeof size === "bigint" ? BigInt(bytes.byteLength) === size : bytes.byteLength === size;
 }
 
 export function removeExactPath(
@@ -95,7 +131,7 @@ export function removeExactPath(
 ): boolean {
   let status;
   try {
-    status = lstatSync(path, { throwIfNoEntry: false });
+    status = fileStatus(path, true);
   } catch (error) {
     throw new Error(changedMessage, { cause: error });
   }
@@ -104,7 +140,7 @@ export function removeExactPath(
     throw new Error(changedMessage);
   }
   if (!status.isFile() || status.isSymbolicLink()
-    || status.dev !== expected.device || status.ino !== expected.inode
+    || !sameDirectory({ device: status.dev, inode: status.ino }, expected)
     || privatePathRejects(path, status, "owner")) {
     throw new Error(changedMessage);
   }
@@ -137,7 +173,7 @@ interface PrivateFileOptions {
   readonly allowedLinkCounts?: readonly number[];
 }
 
-export function readPrivateFile(path: string, options: PrivateFileOptions): { bytes: Buffer; identity: { device: number; inode: number }; stat: Stats } | undefined {
+export function readPrivateFile(path: string, options: PrivateFileOptions): { bytes: Buffer; identity: DirectoryIdentity; stat: Stats | BigIntStats } | undefined {
   const { label, maxBytes, allowedLinkCounts = [1] } = options;
   const ordinary = label === "authority database" || label === "managed data";
   const nonce = label === "nonce lock", lock = label === "lock" || nonce, record = lock || label === "protected.json" || label === "ChatGPT" || label === "Duo credential" || label === "erasure journal" || ordinary;
@@ -145,10 +181,10 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
   const unavailable = lock ? "directory-integrity: credential lock is unavailable" : `credential store ${label} is unavailable`;
   const invalid = lock ? "directory-integrity: credential lock permissions or identity are invalid" : `directory-integrity: ${label} permissions or identity are invalid`;
   let pathStatus;
-  try { pathStatus = lstatSync(path, { throwIfNoEntry: false }); }
+  try { pathStatus = fileStatus(path, true); }
   catch (error) { throw new Error(unavailable, { cause: error }); }
   if (pathStatus === undefined) return undefined;
-  if (!pathStatus.isFile() || pathStatus.isSymbolicLink() || !allowedLinkCounts.includes(pathStatus.nlink)
+  if (!pathStatus.isFile() || pathStatus.isSymbolicLink() || !allowedLinkCounts.includes(privateFileNumber(pathStatus.nlink))
     || privatePathRejects(path, pathStatus, lock || record ? rule : "owner")) {
     throw new Error(lock || record ? invalid : "directory-integrity: protected.json must be one private regular file");
   }
@@ -159,25 +195,25 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
   let result: ReturnType<typeof readPrivateFile>;
   let primary: { error: unknown } | undefined;
   try {
-    const before = fstatSync(descriptor); descriptorIdentity = before;
-    if (!before.isFile() || !allowedLinkCounts.includes(before.nlink) || privatePathRejects(path, before, rule)
+    const before = descriptorStatus(descriptor); descriptorIdentity = before;
+    if (!before.isFile() || !allowedLinkCounts.includes(privateFileNumber(before.nlink)) || privatePathRejects(path, before, rule)
       || (lock && before.size > maxBytes)) throw new Error(invalid);
     if (before.size > maxBytes) throw new Error(`document-too-large: credential store ${label} exceeds its private bound`);
-    const bytes = readFileSync(descriptor), after = fstatSync(descriptor), live = lstatSync(path);
+    const bytes = readFileSync(descriptor), after = descriptorStatus(descriptor), live = fileStatus(path);
     const moved = lock ? "directory-integrity: credential lock moved while it was read" : `directory-integrity: ${label} moved while it was read`;
     const identityChanged = pathStatus.dev !== before.dev || pathStatus.ino !== before.ino
       || live.dev !== before.dev || live.ino !== before.ino;
     const descriptorStable = before.dev === after.dev && before.ino === after.ino && before.size === after.size
-      && before.mode === after.mode && before.uid === after.uid && before.mtimeMs === after.mtimeMs
-      && (before.nlink === after.nlink || after.nlink === 0)
-      && (before.ctimeMs === after.ctimeMs || after.nlink === 0);
-    const liveSafe = live.isFile() && !live.isSymbolicLink() && allowedLinkCounts.includes(live.nlink)
+      && before.mode === after.mode && before.uid === after.uid && modified(before) === modified(after)
+      && (before.nlink === after.nlink || (after.nlink === 0 || after.nlink === 0n))
+      && (changed(before) === changed(after) || (after.nlink === 0 || after.nlink === 0n));
+    const liveSafe = live.isFile() && !live.isSymbolicLink() && allowedLinkCounts.includes(privateFileNumber(live.nlink))
       && !privatePathRejects(path, live, rule) && live.size <= maxBytes;
     const liveMetadataStable = !record || (before.mode === live.mode && before.uid === live.uid && before.nlink === live.nlink);
-    if (identityChanged && descriptorStable && bytes.byteLength === before.size && liveSafe && liveMetadataStable) {
+    if (identityChanged && descriptorStable && equalByteCount(bytes, before.size) && liveSafe && liveMetadataStable) {
       throw new PrivateFileReadTransitionError(moved);
     }
-    const nonceContentChanged = before.size !== after.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs;
+    const nonceContentChanged = before.size !== after.size || modified(before) !== modified(after) || changed(before) !== changed(after);
     if (nonce && nonceContentChanged && !identityChanged && before.dev === after.dev && before.ino === after.ino
       && before.mode === after.mode && before.uid === after.uid && before.nlink === after.nlink
       && liveSafe && liveMetadataStable && after.size <= maxBytes && bytes.byteLength <= maxBytes) {
@@ -185,8 +221,8 @@ export function readPrivateFile(path: string, options: PrivateFileOptions): { by
     }
     if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size
       || before.mode !== after.mode || before.uid !== after.uid || before.nlink !== after.nlink
-      || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs
-      || live.dev !== before.dev || live.ino !== before.ino || bytes.byteLength !== before.size
+      || modified(before) !== modified(after) || changed(before) !== changed(after)
+      || live.dev !== before.dev || live.ino !== before.ino || !equalByteCount(bytes, before.size)
       || (record && (before.mode !== live.mode || before.uid !== live.uid || before.nlink !== live.nlink))) {
       throw new Error(moved);
     }
@@ -211,8 +247,8 @@ export function createPrivateLock(path: string, credentialDirectory: string, byt
     if (errorCode(error) !== "EEXIST") throw new Error("credential store lock could not be created", { cause: error });
   }
   if (descriptor === undefined) return false;
-  let createdStatus: Stats;
-  try { createdStatus = fstatSync(descriptor); }
+  let createdStatus: Stats | BigIntStats;
+  try { createdStatus = descriptorStatus(descriptor); }
   catch (error) {
     try { closeSync(descriptor); }
     catch (cleanup) { throw retainAuthoritySourceClosure([error, cleanup], { descriptor: { descriptor } }); }
@@ -221,7 +257,7 @@ export function createPrivateLock(path: string, credentialDirectory: string, byt
   const createdIdentity = { device: createdStatus.dev, inode: createdStatus.ino };
   let preparationError: Error | undefined;
   try {
-    if (!createdStatus.isFile() || createdStatus.nlink !== 1
+    if (!createdStatus.isFile() || (createdStatus.nlink !== 1 && createdStatus.nlink !== 1n)
       || privatePathRejects(path, createdStatus, "file-0600")) {
       throw new Error("directory-integrity: new credential lock permissions or identity are invalid");
     }
@@ -256,7 +292,7 @@ export function createPrivateLock(path: string, credentialDirectory: string, byt
     if (!verify()) {
       throw new Error("directory-integrity: credential lock differs after creation");
     }
-    const published = lstatSync(path);
+    const published = fileStatus(path);
     if (published.dev !== createdIdentity.device || published.ino !== createdIdentity.inode) {
       throw new Error("directory-integrity: credential lock identity changed after creation");
     }
