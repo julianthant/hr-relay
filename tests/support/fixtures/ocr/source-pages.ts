@@ -1,6 +1,6 @@
 import { ArtifactRefSchema } from "../../../../src/models/artifacts/artifacts.js";
 import { ocrForm, fieldOnPageKind, type OcrFormType, type OcrPageKind } from "../../../../src/models/ocr/form-registry.js";
-import { admitOcrExtraction, type SubmittedExtraction, type SubmittedAnswer } from "../../../../src/models/ocr/extraction.js";
+import { admitOcrExtraction, type SubmittedExtraction, type SubmittedAnswer, type AdmittedExtraction } from "../../../../src/models/ocr/extraction.js";
 import { IsoInstantSchema, ItemIdSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { buildOcrSourceManifest, ocrPageInputs, type OcrPageInput } from "../../../../src/models/workflows/ocr/source-manifest.js";
@@ -37,6 +37,16 @@ export function admittedPage(input: OcrPageInput, name?: string, pageKind?: OcrP
   const admission = admitOcrExtraction(submittedPage(input, name, pageKind));
   if (!admission.admitted) throw new Error(admission.problems.join("; "));
   return admission.extraction;
+}
+
+export function correctOcrField(extraction: AdmittedExtraction, path: string, raw: string) {
+  if (extraction.record === null || !extraction.record.answers.some(answer => answer.path === path)) throw new Error("OCR correction fixture requires its source field");
+  const { record, pageFingerprint: _pageFingerprint, ...metadata } = extraction;
+  const corrected = admitOcrExtraction({ ...metadata, record: { answers: Object.fromEntries(record.answers.map(answer => [answer.path,
+    answer.path === path ? { state: "read", raw, confidence: 1 }
+      : answer.state === "absent" ? { state: "absent", reason: answer.reason } : { state: "read", raw: answer.raw, confidence: answer.confidence }])) } });
+  if (!corrected.admitted || corrected.extraction.record === null) throw new Error("OCR correction fixture must be admitted");
+  return corrected.extraction.record;
 }
 
 export function donePage(input: OcrPageInput, name?: string, pageKind?: OcrPageKind) {
