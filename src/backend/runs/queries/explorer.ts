@@ -659,6 +659,7 @@ function workflowWire(
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
     operationStructure: operationStructureWire(descriptor),
+    ...(definition?.explorerPreview === undefined ? {} : { walkthrough: definition.explorerPreview }),
     definitionPreview: declaration === undefined
       ? { state: "unavailable", reason: "this registered descriptor has no compiled ordered definition" }
       : { state: "compiled", groups: declaration, systemsFirstUse },
