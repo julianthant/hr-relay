@@ -19,7 +19,7 @@ import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { spawn } from "node:child_process";
 import { z } from "zod";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
@@ -288,9 +288,27 @@ describe("profile session", () => {
     if (alex.state !== "active") return;
     const path = join(root, "profiles", alex.profileId, "credentials", "protected.json"), before = readFileSync(path);
     const restarted = createProfileSession({ machineRoot: root });
-    chmodSync(path, 0o000);
-    try { assert.throws(() => restarted.resumeSignedInProfile({ at: "2026-09-06T12:05:00.000Z" })); }
-    finally { chmodSync(path, 0o600); }
+    const machine = machineAdmissions.get(root); assert.ok(machine);
+    const generationBefore = machine.readProfileRegistry().sessionGeneration;
+    const realOpen = fs.openSync, realRead = fs.readFileSync;
+    let descriptor: number | undefined, faultedAfterActivation = false;
+    vi.spyOn(fs, "openSync").mockImplementation((target, flags, mode) => {
+      const opened = realOpen(target, flags, mode);
+      if (target === path) descriptor = opened;
+      return opened;
+    });
+    vi.spyOn(fs, "readFileSync").mockImplementation((target, options) => {
+      if (target === descriptor && !faultedAfterActivation) {
+        faultedAfterActivation = machine.readProfileRegistry().sessionGeneration > generationBefore;
+        throw new Error("injected credential read failure");
+      }
+      return realRead(target, options);
+    });
+    syncBuiltinESMExports();
+    const injected = (error: unknown): boolean => error instanceof Error && (error.message === "injected credential read failure" || injected(error.cause));
+    try { assert.throws(() => restarted.resumeSignedInProfile({ at: "2026-09-06T12:05:00.000Z" }), injected); }
+    finally { vi.restoreAllMocks(); syncBuiltinESMExports(); }
+    assert.equal(faultedAfterActivation, true);
     assert.deepEqual(readFileSync(path), before);
     assert.equal(machineAdmissions.get(root)?.readProfileRegistry().activeProfileId, alex.profileId);
     assert.equal(restarted.resumeSignedInProfile({ at: "2026-09-06T12:06:00.000Z" }).state, "active");
