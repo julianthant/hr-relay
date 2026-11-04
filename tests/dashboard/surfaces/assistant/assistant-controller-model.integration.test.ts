@@ -4,6 +4,8 @@ import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chat
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
 import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantResult, type AssistantActionResult } from '../../../../src/models/dashboard/assistant.js';
 import { AssistantPanel as ShellAssistantPanel } from '../../../../src/dashboard/surfaces/shell/assistant-panel.js';
+import { AssistantPanel as StandaloneAssistantPanel } from '../../../../src/dashboard/surfaces/assistant/assistant-panel.js';
+import { TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { createAssistantMockProducer as createSetupAssistantProducer, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
 
 import assert from 'node:assert/strict';
@@ -11,13 +13,15 @@ import { afterEach, it, vi } from 'vitest';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { createAssistantHistory } from '../../../../src/dashboard/surfaces/assistant/assistant-history-model.js';
+import { ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
+import { MeasurementFreeResizeObserver } from '../../../support/helpers/settings-storage-doctor-fixtures.js';
 import { useAssistantController } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { ChatGptAccountContext, createPreviewChatGptAccountPort, createServedChatGptAccountPort } from '../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js';
 import { type ComposerDraft, useComposer } from '../../../../src/dashboard/surfaces/shell/composer-model.js';
 
 Reflect.set(globalThis, 'IS_REACT_ACT_ENVIRONMENT', true);
 let root: Root | undefined;
-afterEach(async () => { await act(async () => root?.unmount()); document.body.replaceChildren(); });
+afterEach(async () => { await act(async () => root?.unmount()); vi.unstubAllGlobals(); document.body.replaceChildren(); });
 it('isolates retained chats, cancels cross-chat replies and invalidates every chat on account or authority changes', async () => {
   const pending: { signal?: AbortSignal; settle: (value: AssistantResult) => void }[] = [];
   const client = { assistantRespond: (_request: unknown, signal?: AbortSignal) => new Promise<AssistantResult>(settle => pending.push({ signal, settle })) };
@@ -152,16 +156,16 @@ it('clears only the submitted composer version on a valid reply and retains newe
   await act(async () => replies[7].resolve({ state: 'answered', text: 'Late chat', citations: [] })); assert.equal(composer.text, 'Other chat draft');
 });
 
-it('renders the existing served action card with truthful local facts and confirms only its server identity', async () => {
+it.each(['notification', 'workflow'] as const)('renders the existing served %s card with truthful local facts and confirms only its server identity', async kind => {
   const { AssistantPanel } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel.js');
   const { createAssistantMockProducer } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel-model.js');
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   const account = { ...preview, mode: 'live' as const };
   let current!: ReturnType<typeof useAssistantController>, confirmations = 0;
   const identity = { chatId: '00000000-0000-4000-8000-000000000001', actionId: '00000000-0000-4000-8000-000000000002', revision: 1 };
-  const actionLabel = 'Mark a notification read';
-  const client = { async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal: { ...identity,
-    expiresAt: '2099-01-01T00:00:00Z', label: actionLabel, targetLabel: 'Local notification', subject: 'none', effect: 'local-write' } }; },
+  const proposal = kind === 'workflow' ? ASSISTANT_START_PROPOSAL : { ...identity,
+    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', subject: 'none' as const, effect: 'local-write' as const };
+  const client = { async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal }; },
     async assistantDecide(input: { chatId: string; actionId: string; revision: number; decision: 'confirm' | 'cancel' }) {
       assert.deepEqual(input, { ...identity, decision: 'confirm' }); confirmations++;
       return { state: 'applied' as const, actionId: input.actionId };
@@ -174,20 +178,25 @@ it('renders the existing served action card with truthful local facts and confir
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
   await act(async () => { current.onAction({ type: 'edit', value: 'mark notifications read' }); current.onAction({ type: 'send' }); });
-  const card = host.querySelector('[aria-label="Proposed action details"]'); assert.ok(card);
+  const card = host.querySelector(kind === 'workflow' ? '[aria-label="Start Person Lookup"]' : '[aria-label="Proposed action details"]'); assert.ok(card);
   const cardLabel = card.getAttribute('aria-label'); assert.ok(cardLabel !== null);
-  assert.equal(cardLabel, "Proposed action details");
-  assert.ok(card.textContent?.includes(actionLabel));
+  assert.equal(cardLabel, kind === 'workflow' ? 'Start Person Lookup' : 'Proposed action details');
+  assert.ok(card.textContent?.includes(proposal.label));
   assert.ok([...host.querySelectorAll('button')].some(button => button.textContent === 'Test assistant'));
   assert.match(host.textContent ?? '', /Review this proposal. No action has been applied/u);
   assert.doesNotMatch(host.textContent ?? '', /start selected workflow|Model, effort and voice controls are unavailable/u);
-  assert.match(card.textContent ?? '', /SubjectNone/u); assert.match(card.textContent ?? '', /Local notification/u);
+  assert.doesNotMatch(current.footnote, /Workflow execution requires dashboard Run/u);
+  if (kind === 'workflow') {
+    for (const fact of ['EID 10101010', 'Person Lookup', 'Runs1', 'Live read', 'Headed', 'CapturesOn', 'Run results in Logs']) assert.ok(card.textContent?.includes(fact));
+    assert.match(current.footnote, /Workflow starts require a confirmed plan/u);
+  } else { assert.match(card.textContent ?? '', /SubjectNone/u); assert.match(card.textContent ?? '', /Local notification/u); }
   assert.equal(card.textContent?.includes('Dry run'), false); assert.equal(card.textContent?.includes('Alex Rivera'), false);
-  const confirm = [...card.querySelectorAll('button')].find(button => button.textContent === 'Confirm'); assert.ok(confirm); assert.equal(confirm.disabled, false);
+  const confirm = [...card.querySelectorAll('button')].find(button => button.textContent === (kind === 'workflow' ? 'Start run' : 'Confirm')); assert.ok(confirm); assert.equal(confirm.disabled, false);
   assert.equal(confirmations, 0);
   await act(async () => { confirm.click(); confirm.click(); });
-  assert.equal(confirmations, 1); assert.match(host.textContent ?? '', /Action completed/u);
-  assert.equal(confirm.disabled, true);
+  assert.equal(confirmations, 1); assert.match(host.textContent ?? '', kind === 'workflow' ? /Started · 1 run/u : /Action completed/u);
+  if (kind === 'workflow') assert.equal(host.querySelector('[aria-label="Start Person Lookup"]'), null);
+  else assert.equal(confirm.disabled, true);
 });
 
 function setupAccount() {
@@ -308,4 +317,25 @@ it.each([
   assert.equal(decisions, 1); assert.equal(requests, 1);
   assert.equal(retain.mock.calls.length, 0); assert.equal(current.state === replacement, true);
   retain.mockRestore();
+});
+
+it.each(['shell', 'standalone'] as const)('shows run and notification reconciliation guidance after a lost response in the %s panel without replay', async surface => {
+  vi.stubGlobal('ResizeObserver', MeasurementFreeResizeObserver);
+  let current!: ReturnType<typeof useAssistantController>, calls = 0;
+  const client = { async assistantRespond(): Promise<AssistantResult> { calls++; throw Error('lost workflow proposal response'); } };
+  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
+  const account = { ...preview, mode: 'live' as const }, producer = createSetupAssistantProducer();
+  function Harness() {
+    current = useAssistantController(client, 'current', undefined, false);
+    return surface === 'shell' ? createElement(ShellAssistantPanel, { producer, served: current, accountClient: { async chatGptAccount() { return { state: 'signed-out' as const }; } } })
+      : createElement(StandaloneAssistantPanel, { ...current, defaultOpen: true });
+  }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(TooltipProvider, { children: createElement(Harness) }) })));
+  await act(async () => { current.onAction({ type: 'edit', value: 'start selected workflow' }); current.onAction({ type: 'send' }); });
+  assert.equal(current.state.turn.state, 'unknown');
+  const notice = [...document.querySelectorAll('[role="alert"]')].find(node => node.textContent?.includes('Check the current run or notification state'));
+  assert.ok(notice); assert.match(notice.textContent ?? '', /Do not retry this request/u);
+  await act(async () => { current.onAction({ type: 'retry' }); current.onAction({ type: 'send' }); current.onAction({ type: 'confirm' }); });
+  assert.equal(calls, 1);
 });
