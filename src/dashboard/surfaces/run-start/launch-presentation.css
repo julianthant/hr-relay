@@ -48,18 +48,6 @@
 .launch-design .launch-content {
   @apply flex flex-col gap-[14px] px-5 py-5;
 }
-.launch-design .launch-fixed-facts {
-  @apply flex flex-wrap items-start justify-between gap-3 border-t border-ui-stroke pt-3 text-caption text-ui-muted;
-}
-.launch-design .launch-fixed-facts > div {
-  @apply flex items-baseline gap-2;
-}
-.launch-design .launch-fixed-facts p {
-  @apply m-0 text-caption text-ui-secondary;
-}
-.launch-design .launch-fixed-facts p:last-child {
-  @apply sr-only;
-}
 .launch-design .launch-step-row {
   @apply min-h-[58px] px-3 py-[10px];
 }
@@ -139,7 +127,7 @@
 .launch-dialog .launch-content > section { @apply gap-1; }
 .launch-dialog .launch-content > section > h3 { @apply m-0 text-heading font-semibold; }
 .launch-dialog .launch-content textarea { @apply h-[88px] min-h-[88px] bg-ui-field px-[9px] py-[7px] leading-[21px]; }
-.launch-dialog .launch-parsed-input > li { @apply h-8 bg-ui-panel py-0; }
+.launch-dialog .launch-parsed-input > li { @apply min-h-8 bg-ui-panel py-1; }
 .launch-dialog > footer > span:first-child { @apply font-ui; }
 .launch-dialog > footer > span:first-child > span { @apply font-ui; }
 .launch-dialog .launch-content [data-slot="input"] { @apply bg-ui-field; }

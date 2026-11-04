@@ -1,7 +1,6 @@
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { WorkbookRunReferenceSelectionSchema } from "../../../models/dashboard/workbooks.js";
 import type { WorkbookLibraryEntry } from "../../../models/dashboard/workbook-library.js";
-import type { EnqueuePolicy } from "../../../models/workflow/presentation.js";
 import {
   stepOmissionFactsSchema,
   type StepOmissionField,
@@ -184,16 +183,6 @@ export const START_DOOR_ABSENCE = Object.freeze({
   "no-typed-input": "This workflow declares no typed-input surface, so this dialog has no box for it.",
 });
 export type StartDoorAbsenceCode = keyof typeof START_DOOR_ABSENCE;
-
-/** Describe implemented enqueue behavior; an unsupported supersede policy must not claim it replaces running work. */
-export const ENQUEUE_POLICY_MEANING: Readonly<Record<EnqueuePolicy, string>> = Object.freeze({
-  "reject-active": "Refuse overlapping subject runs",
-  "supersede-active": "Replace the active runs shown in the final review",
-  "allow-parallel": "Starts regardless of what is already running for the same subject",
-});
-
-/** Enqueue policy has no per-start override; a selector would offer an ignored choice. */
-export const ENQUEUE_POLICY_REASON = "Fixed by this workflow.";
 
 /** the two queue priorities `StartPlanIngress` accepts */
 export type StartPriority = "interactive" | "bulk";
