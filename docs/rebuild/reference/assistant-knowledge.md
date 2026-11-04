@@ -1,3 +1,4 @@
+assistant: Relay can explain app help and available local run evidence, and propose supported local changes for you to confirm. Try help permissions, help notifications or run status with a selected served run. Account sign-in and protected values stay in Settings. Unsupported requests refuse without taking action.
 permissions: Assistant actions use the current operator grant. Required confirmation never comes from the model. Authentication and protected values stay in the operator interface.
 notifications: Notifications can be marked read, unread, snoozed or unsnoozed through their canonical command owner. Notification text and linked HR records stay local.
 dry-run: A workflow dry run requires the selected subject and a current canonical plan. It stops before the external transaction commit. Workflow actions require the dashboard Run interface.
@@ -54,8 +55,16 @@ setting features.debugScreenshots: The ordinary setting features.debugScreenshot
 setting features.duoWebAuthn: The ordinary setting features.duoWebAuthn is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
 setting providers.geocodeCensus: The ordinary setting providers.geocodeCensus is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
 setting providers.geocodeNominatim: The ordinary setting providers.geocodeNominatim is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
-setting paths.browserProfileRoot: The ordinary setting paths.browserProfileRoot is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
-setting paths.duoCredential: The ordinary setting paths.duoCredential is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
 setting paths.duoExtensionDir: The ordinary setting paths.duoExtensionDir is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
+setting preferences.theme: The ordinary setting preferences.theme is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
+setting preferences.animations: The ordinary setting preferences.animations is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
+setting preferences.workflowPanelMode: The ordinary setting preferences.workflowPanelMode is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
+setting preferences.selectedWorkflowId: The ordinary setting preferences.selectedWorkflowId is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
+setting preferences.shortcuts.numberMode: The ordinary setting preferences.shortcuts.numberMode is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
+setting preferences.shortcuts.bindings.search: The ordinary setting preferences.shortcuts.bindings.search is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
+setting preferences.shortcuts.bindings.start: The ordinary setting preferences.shortcuts.bindings.start is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
+setting preferences.shortcuts.bindings.next: The ordinary setting preferences.shortcuts.bindings.next is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
+setting preferences.shortcuts.bindings.previous: The ordinary setting preferences.shortcuts.bindings.previous is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
+setting preferences.shortcuts.bindings.attention: The ordinary setting preferences.shortcuts.bindings.attention is changed through Settings. Its saved value stays local; use the operator interface to inspect or change it.
 workflow person-lookup: Person Lookup is a served workflow. Use dashboard Run with the selected subject and a current plan. Assistant workflow execution is unavailable until subject binding is implemented.
 workflow separations: Separations is a served workflow. Use dashboard Run with the selected subject and a current plan. Assistant workflow execution is unavailable until subject binding is implemented.

@@ -60,7 +60,7 @@ revision. It is never an inference tool or a model-produced action. Normal comma
 validation, matching readback, refusal and UNKNOWN handling apply; a lost response does not cause an
 automatic retry or invented success.
 
-The explicit verification request uses the normal assistant respond route without `subjectRef`.
+Test assistant and the explicit verification command use the normal assistant respond route without `subjectRef`. Surrounding pasted whitespace is normalized. The button preserves the current draft and reports success or the named failure in the thread.
 The backend recognizes the exact command before inference policy, private input projection, context,
 subjects or tools. Recognized setup commands reject attachments before local file I/O or registration.
 The separate composer `canCompose` input may admit the served unverified account resource, while

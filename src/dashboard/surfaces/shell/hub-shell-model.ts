@@ -7,6 +7,8 @@ export interface HubChatsPort {
   rename(id: string, title: string): void;
   remove(id: string): void;
   create(): HubChat;
+  selectedId?(): string | undefined;
+  select?(id: string): void;
 }
 export function createMockHubChatsPort(preview = true): HubChatsPort {
   let sequence = 0;
@@ -37,11 +39,12 @@ export function chatAge(minutes: number): string {
 export function useHubChats(supplied?: HubChatsPort) {
   const port = useMemo(() => supplied ?? createMockHubChatsPort(), [supplied]);
   const [chats, setChats] = useState(port.read);
-  const [currentId, setCurrentId] = useState<string | undefined>(chats[0]?.id);
-  return { chats, currentId, select: setCurrentId, source: port.source,
+  const [currentId, setCurrentId] = useState<string | undefined>(() => port.selectedId?.() ?? chats[0]?.id);
+  const [error, setError] = useState('');
+  return { chats, currentId, error, select(id: string) { port.select?.(id); setCurrentId(id); }, source: port.source,
     rename(id: string, title: string) { port.rename(id, title); setChats(port.read()); },
     remove(id: string) { port.remove(id); const next = port.read(); setChats(next); if (currentId === id) setCurrentId(next[0]?.id); },
-    create() { const chat = port.create(); setChats(port.read()); setCurrentId(chat.id); },
+    create() { try { const chat = port.create(); setChats(port.read()); setCurrentId(chat.id); setError(''); } catch (cause) { setError(cause instanceof Error ? cause.message : 'Chat could not be created.'); } },
   };
 }
 

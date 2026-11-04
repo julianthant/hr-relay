@@ -98,3 +98,9 @@ html[data-demo-theme=dark] :is(#hub-panel-assistant,.hub-assistant-detail){--foc
 
 .hub-assistant-detail{z-index:70!important;opacity:1!important;scale:1!important;animation:none!important;transition:none!important}
 body>div[data-state]:has(+ .hub-assistant-detail){z-index:69!important;background:#0008!important;opacity:1!important;animation:none!important;transition:none!important}
+#hub-panel-assistant .hub-assistant-setup{display:flex;align-items:center;gap:8px;padding:8px 12px 0;border-top:1px solid var(--ui-stroke)}
+#hub-panel-assistant .hub-assistant-setup>p{flex:1;min-width:0;margin:0;line-height:1.5}
+#hub-panel-assistant .hub-assistant-setup>button{flex:none}
+#hub-panel-assistant .hub-failure-code{display:block;margin-top:6px;color:var(--ui-muted);font-size:10px;overflow-wrap:anywhere}
+#hub-panel-assistant .hub-source-quote{white-space:pre-wrap;overflow-wrap:anywhere}
+#hub-panel-assistant[data-source=served] .hub-message{white-space:pre-line}

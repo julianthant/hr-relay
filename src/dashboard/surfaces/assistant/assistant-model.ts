@@ -1,5 +1,6 @@
 import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND } from '../../../models/dashboard/assistant.js';
 import type { AssistantActionIdentity, AssistantActionProposal } from "../../../models/dashboard/assistant.js";
+import type { AssistantFailureCode } from "../../../models/dashboard/assistant.js";
 export interface AssistantSource {
   readonly id: string;
   readonly title: string;
@@ -13,6 +14,7 @@ export interface AssistantMessage {
   readonly role: 'operator' | 'assistant';
   readonly text: string;
   readonly sources?: readonly AssistantSource[];
+  readonly code?: AssistantFailureCode;
 }
 
 export interface AssistantMockProposal {
@@ -40,15 +42,22 @@ export interface AssistantState {
   readonly messages: readonly AssistantMessage[];
   readonly turn: AssistantTurn;
   readonly sequence: number;
+  readonly restored?: boolean;
+  readonly verification?: { readonly state: 'passed' } | { readonly state: 'failed'; readonly code: AssistantFailureCode };
 }
 
 export type AssistantAction =
   | { readonly type: 'edit'; readonly value: string }
-  | { readonly type: 'send' | 'retry' | 'cancel' | 'confirm' | 'new-chat' }
+  | { readonly type: 'send' | 'verify' | 'retry' | 'cancel' | 'confirm' | 'new-chat' }
   | { readonly type: 'reply'; readonly requestId: number; readonly proposal: AssistantMockProposal; readonly message: AssistantMessage }
   | { readonly type: 'settle'; readonly requestId: number; readonly message: AssistantMessage; readonly proposal?: AssistantMockProposal; readonly disposition?: 'unknown' }
   | { readonly type: 'fail' | 'uncertain'; readonly requestId: number }
   | { readonly type: 'action-state'; readonly id: string; readonly disposition: 'confirming' | 'confirmed' | 'cancelled' | 'stale' | 'unknown'; readonly message?: AssistantMessage };
+
+export function assistantCanVerify(turn: AssistantTurn): boolean {
+  return turn.state !== 'waiting' && turn.state !== 'unknown'
+    && (turn.state !== 'proposal' || turn.disposition !== 'review' && turn.disposition !== 'confirming' && turn.disposition !== 'unknown');
+}
 
 export function assistantReducer(state: AssistantState, action: AssistantAction): AssistantState {
   const turn = state.turn;
@@ -63,6 +72,12 @@ export function assistantReducer(state: AssistantState, action: AssistantAction)
       if (!state.draft.trim() || turn.state === 'waiting' || turn.state === 'unknown') return state;
       const requestId = state.sequence + 1;
       return { ...state, sequence: requestId, messages: [...state.messages, { id: `operator-${requestId}`, role: 'operator', text: state.draft }], turn: { state: 'waiting', requestId, prompt: state.draft } };
+    }
+    case 'verify': {
+      if (!assistantCanVerify(turn)) return state;
+      const requestId = state.sequence + 1;
+      return { ...state, sequence: requestId, messages: [...state.messages, { id: `operator-${requestId}`, role: 'operator', text: 'Test assistant' }],
+        turn: { state: 'waiting', requestId, prompt: ASSISTANT_VERIFY_COMMAND } };
     }
     case 'retry':
       return turn.state === 'failed' && state.draft === turn.prompt
@@ -106,6 +121,7 @@ export function assistantConfirmRefusal(state: AssistantState, revision: string,
 }
 
 export function assistantSetupCommand(text: string): 'verify' | 'model' | undefined {
+  text = text.trim();
   if (text === ASSISTANT_VERIFY_COMMAND) return 'verify';
   if (text === ASSISTANT_MODEL_COMMAND || text.startsWith(ASSISTANT_MODEL_COMMAND + ' ')) return 'model';
   return undefined;
