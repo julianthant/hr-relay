@@ -5,7 +5,7 @@ import {
 HOST_PRIMARY_DISPLAY_ENV,
 type HostPrimaryDisplayObservation
 } from "../../../src/models/config/host-display.js";
-import { hostAwareResolutionEnvironment } from "../../../src/models/config/secrets.js";
+import { hostAwareResolutionEnvironment, workerBootstrapEnvironment } from "../../../src/models/config/secrets.js";
 const DETECTED: HostPrimaryDisplayObservation = { state: "detected", screenWidth: 1512, screenHeight: 982, source: "system_profiler" };
 
 describe("host display default", () => {
@@ -17,4 +17,9 @@ describe("host display default", () => {
     assert.equal(resolved[HOST_PRIMARY_DISPLAY_ENV], "1512x982");
     assert.equal(resolved.UNRELATED, "kept");
   });
+});
+
+it("keeps the host LOCALAPPDATA authority out of worker bootstrap inheritance", () => {
+  assert.deepEqual(workerBootstrapEnvironment({ LOCALAPPDATA: "synthetic-host-path", PATH: "synthetic-path", [HOST_PRIMARY_DISPLAY_ENV]: "none" }),
+    { PATH: "synthetic-path", [HOST_PRIMARY_DISPLAY_ENV]: "none" });
 });
