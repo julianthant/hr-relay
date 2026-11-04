@@ -137,13 +137,16 @@ describe_m1("frontend workflow catalog", () => {
       expect_m1(entries.find(entry => entry.id === "person-lookup")?.source).toBe("preview");
     }
   });
-  it_m1("retains explicit mock fixtures while production selects Person Lookup and Separations served", () => {
+  it_m1("retains explicit mock fixtures while production selects Person Lookup, Separations and OCR served", () => {
     expect_m1(MOCK_WORKFLOW_CATALOG_m1.workflows.map(flow => flow.id).sort()).toEqual(Object.keys(WORKFLOW_SOURCES_m1).sort());
     expect_m1(Object.keys(WORKFLOW_SOURCES_m1).sort()).toEqual(catalog.map(entry => entry.id).sort());
-    expect_m1(Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source === "served").map(([id]) => id)).toEqual(["separations", "person-lookup"]);
+    expect_m1(Object.entries(WORKFLOW_SOURCES_m1).filter(([, source]) => source === "served").map(([id]) => id)).toEqual(["separations", "person-lookup", "ocr"]);
     const product = buildWorkflowCatalog_m1(served, true);
     expect_m1(product.find(entry => entry.id === "separations")).toMatchObject({ source: "served" });
     expect_m1(product.find(entry => entry.id === "person-lookup")).toMatchObject({ source: "served" });
+    expect_m1(product.find(entry => entry.id === "ocr")).toMatchObject({ source: "served", role: { kind: "composition" }, launch: { state: "unavailable" } });
+    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("ocr", false)).toBe("served");
+    expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("ocr", true)).toBe("served");
     expect_m1(explorerRecoveryWorkflow_m1(product)).toBe("separations");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("separations", false)).toBe("served");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("separations", true)).toBe("served");

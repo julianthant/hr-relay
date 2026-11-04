@@ -1,6 +1,6 @@
 import { projectWorkflowStartSteps } from "../../../src/backend/runs/queries/bootstrap.js";
 import {
-WORKFLOW_MODULES,
+READABLE_WORKFLOW_MODULES,
 } from "../../../src/backend/app/registries/workflow-registry.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { CONFIG_FINGERPRINT,CONTRACT_FINGERPRINT,uuidOf,WORKFLOW_ID } from "./fixture-identity.js";
@@ -14,7 +14,7 @@ export const {
   FIXTURE_START_PLAN,
   FIXTURE_SEPARATIONS_START_PLAN
 } = createFixtureStartSetup( {
-  projectFixtureSteps: (module: (typeof WORKFLOW_MODULES)[number]) => projectWorkflowStartSteps(module.descriptor),
+  projectFixtureSteps: (module: (typeof READABLE_WORKFLOW_MODULES)[number]) => projectWorkflowStartSteps(module.descriptor),
   FIXTURE_BOOTSTRAP,
   CONFIG_FINGERPRINT,
   CONTRACT_FINGERPRINT,

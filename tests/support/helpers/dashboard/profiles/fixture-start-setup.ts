@@ -4,7 +4,7 @@ import { FrontendBootstrapWireSchema, type FrontendBootstrapWire } from "../../.
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import { StartPlanWireSchema as StartPlanResponseSchema, type StartPlanWire as StartPlanResponse } from "../../../../../src/models/dashboard/start-plan.js";
 import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
-import { WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
+import { WORKFLOW_MODULES, READABLE_WORKFLOW_MODULES } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import type * as BootstrapTypes from "../../../../../src/backend/runs/queries/bootstrap.js";
 import type * as FixtureBootstrapTypes from "../../../fixtures/dashboard/fixture-bootstrap.js";
 import type * as FixtureIdentityTypes from "../../../fixtures/dashboard/fixture-identity.js";
@@ -12,7 +12,7 @@ import type * as FixtureQueueTypes from "../../../fixtures/dashboard/fixture-que
 
 
 export function createFixtureStartSetup({ projectFixtureSteps, FIXTURE_BOOTSTRAP, CONFIG_FINGERPRINT, CONTRACT_FINGERPRINT, uuidOf, WORKFLOW_ID, FIXTURE_DAY_WIRE }: {
-projectFixtureSteps: (module: (typeof WORKFLOW_MODULES)[number]) => ReturnType<typeof BootstrapTypes.projectWorkflowStartSteps>;
+projectFixtureSteps: (module: (typeof READABLE_WORKFLOW_MODULES)[number]) => ReturnType<typeof BootstrapTypes.projectWorkflowStartSteps>;
 FIXTURE_BOOTSTRAP: typeof FixtureBootstrapTypes.FIXTURE_BOOTSTRAP;
 CONFIG_FINGERPRINT: typeof FixtureIdentityTypes.CONFIG_FINGERPRINT;
 CONTRACT_FINGERPRINT: typeof FixtureIdentityTypes.CONTRACT_FINGERPRINT;
@@ -20,11 +20,12 @@ uuidOf: typeof FixtureIdentityTypes.uuidOf;
 WORKFLOW_ID: typeof FixtureIdentityTypes.WORKFLOW_ID;
 FIXTURE_DAY_WIRE: typeof FixtureQueueTypes.FIXTURE_DAY_WIRE;
 }) {
-  const START_PICKER_MODULES = WORKFLOW_MODULES;
+  const START_PICKER_MODULES = READABLE_WORKFLOW_MODULES.filter(module => WORKFLOW_MODULES.some(publicModule => publicModule === module)
+    || module.descriptor.capabilities?.review === true);
   const mockLookupStart = WorkflowBootstrapPrimitiveSchema.parse(FIXTURE_BOOTSTRAP.workflows[0]).start;
 
   const FIXTURE_START_PICKER_DESCRIPTOR_HASH = descriptorSetHash(
-    START_PICKER_MODULES.map(({ descriptor }) => descriptor.contractFingerprint),
+    WORKFLOW_MODULES.map(({ descriptor }) => descriptor.contractFingerprint),
   );
 
   const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSchema.parse({
