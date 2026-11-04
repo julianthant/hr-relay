@@ -291,7 +291,7 @@ it("keeps an ordinary artifact while another run consumes it, then removes it wi
   const { ref, file } = await f.ordinary(first); await f.ordinary(second, ref);
   const command = request();
   expect(f.lifecycle().delete({ commandId: command.commandId, runId: first.envelope.runId, expectedVersion: first.version }).state).toBe("deleted");
-  f.database.settleRunDeletionFiles({ runId: first.envelope.runId, commandId: command.commandId });
+  f.database.settleRunDeletionFiles({ runIds: [first.envelope.runId], commandId: command.commandId });
   expect(existsSync(file)).toBe(true);
   expect(deletedRunFromRow(f.rows("deleted_runs")[0]).files).toMatchObject([{ ref, disposition: "retain" }]);
   f.reopen(); expect(existsSync(file)).toBe(true);
@@ -370,7 +370,7 @@ it("does not let purged diagnostics on a retained run pin a live ordinary artifa
   expect(existsSync(file)).toBe(true);
   const command = request();
   expect(f.lifecycle().delete({commandId: command.commandId, runId: first.envelope.runId, expectedVersion: first.version}).state).toBe("deleted");
-  expect(f.database.settleRunDeletionFiles({runId: first.envelope.runId, commandId: command.commandId})).toBe("complete");
+  expect(f.database.settleRunDeletionFiles({runIds: [first.envelope.runId], commandId: command.commandId})).toBe("complete");
   expect(existsSync(file)).toBe(false);
   expect(f.database.authority.runs.get(retained.envelope.runId)).toBeDefined();
 });
@@ -483,4 +483,82 @@ it("settles a pending batch in one generation and retains all manifests after a 
   expect(f.database.getMeta().authorityGeneration).toBe(generation + 1);
   expect(f.rows("deleted_runs").map(deletedRunFromRow).every(deletion => deletion.cleanupState === "complete")).toBe(true);
   expect(files.every(file => !existsSync(file.file))).toBe(true);
+});
+
+async function unrelatedPendingHistory(f: Awaited<ReturnType<typeof fixture>>) {
+  const run = f.seed(), artifact = await f.ordinary(run), command = request();
+  expect(f.lifecycle().clearHistory(command)).toMatchObject({state: "cleared", deletedRuns: 1});
+  return {run, artifact, command, manifests: f.rows("deleted_runs")};
+}
+
+it.each(["clear", "check"] as const)("settles multi-receipt %s with one cleanup generation and exact command scope", async entry => {
+  const f = await fixture(), unrelated = await unrelatedPendingHistory(f);
+  const root = f.seed(UUID_3), child = f.seed(UUID_5, root), command = request();
+  const files = [await f.ordinary(root), await f.ordinary(child)];
+  let later;
+  if (entry === "check") {
+    expect(f.lifecycle().clearHistory(command)).toMatchObject({state: "cleared", deletedRuns: 2});
+    later = await f.ordinary(f.seed());
+  }
+  const generation = f.database.getMeta().authorityGeneration, commands = f.rows("commands"), audits = f.rows("command_audits");
+  const result = entry === "clear" ? f.service().clear(command) : f.service().check(command);
+  expect(result).toEqual({state: "cleared", commandId: command.commandId, deletedRuns: 2});
+  expect(f.database.getMeta().authorityGeneration).toBe(generation + (entry === "clear" ? 2 : 1));
+  expect(f.refreshed).toBe(1);
+  if (entry === "check") { expect(f.rows("commands")).toEqual(commands); expect(f.rows("command_audits")).toEqual(audits); }
+  const deleted = f.rows("deleted_runs").map(deletedRunFromRow);
+  expect(deleted.filter(record => record.receipt.commandId === command.commandId)).toHaveLength(2);
+  expect(deleted.filter(record => record.receipt.commandId === command.commandId).every(record => record.cleanupState === "complete")).toBe(true);
+  expect(f.rows("deleted_runs").filter(row => row.command_id === unrelated.command.commandId)).toEqual(unrelated.manifests);
+  expect(existsSync(unrelated.artifact.file)).toBe(true); expect(files.every(file => !existsSync(file.file))).toBe(true);
+  later ??= await f.ordinary(f.seed());
+  const runs = f.rows("runs"), replayGeneration = f.database.getMeta().authorityGeneration;
+  expect(f.service().check(command)).toEqual(result);
+  expect(f.database.getMeta().authorityGeneration).toBe(replayGeneration);
+  expect(f.rows("runs")).toEqual(runs); expect(existsSync(later.file)).toBe(true);
+  expect(f.rows("deleted_runs").filter(row => row.command_id === unrelated.command.commandId)).toEqual(unrelated.manifests);
+  expect(existsSync(unrelated.artifact.file)).toBe(true);
+});
+
+it.each(["clear", "check"] as const)("keeps the whole %s command pending after a later file fault and recovers only that command", async entry => {
+  const f = await fixture(), unrelated = await unrelatedPendingHistory(f);
+  const root = f.seed(UUID_3), child = f.seed(UUID_5, root), command = request();
+  const files = [await f.ordinary(root), await f.ordinary(child), await f.ordinary(child, undefined, "extra")];
+  if (entry === "check") expect(f.lifecycle().clearHistory(command)).toMatchObject({state: "cleared", deletedRuns: 2});
+  const generation = f.database.getMeta().authorityGeneration;
+  f.fileFault(true, 2);
+  expect(() => entry === "clear" ? f.service().clear(command) : f.service().check(command)).toThrow("history-file-fault");
+  expect(f.database.getMeta().authorityGeneration).toBe(generation + (entry === "clear" ? 1 : 0));
+  expect(f.refreshed).toBe(0);
+  const manifests = f.rows("deleted_runs").filter(row => row.command_id === command.commandId).map(deletedRunFromRow);
+  expect(manifests).toHaveLength(2); expect(manifests.every(record => record.cleanupState === "pending")).toBe(true);
+  expect(files.filter(file => existsSync(file.file))).toHaveLength(1);
+  expect(f.rows("deleted_runs").filter(row => row.command_id === unrelated.command.commandId)).toEqual(unrelated.manifests);
+  expect(existsSync(unrelated.artifact.file)).toBe(true);
+  f.fileFault(false);
+  const later = await f.ordinary(f.seed()), runs = f.rows("runs"), commands = f.rows("commands"), audits = f.rows("command_audits");
+  const recoveryGeneration = f.database.getMeta().authorityGeneration;
+  expect(f.service().check(command)).toEqual({state: "cleared", commandId: command.commandId, deletedRuns: 2});
+  expect(f.database.getMeta().authorityGeneration).toBe(recoveryGeneration + 1);
+  const completed = f.rows("deleted_runs").filter(row => row.command_id === command.commandId).map(deletedRunFromRow);
+  expect(completed.every(record => record.cleanupState === "complete")).toBe(true);
+  expect(completed.map(({cleanupState: _state, ...manifest}) => manifest)).toEqual(manifests.map(({cleanupState: _state, ...manifest}) => manifest));
+  expect(files.every(file => !existsSync(file.file))).toBe(true);
+  expect(f.rows("runs")).toEqual(runs); expect(existsSync(later.file)).toBe(true);
+  expect(f.rows("commands")).toEqual(commands); expect(f.rows("command_audits")).toEqual(audits);
+  expect(f.rows("deleted_runs").filter(row => row.command_id === unrelated.command.commandId)).toEqual(unrelated.manifests);
+  expect(existsSync(unrelated.artifact.file)).toBe(true); expect(f.refreshed).toBe(1);
+});
+
+it("keeps empty Clear and Check cleanup as no-ops without settling another command", async () => {
+  const f = await fixture(), unrelated = await unrelatedPendingHistory(f), command = request();
+  const generation = f.database.getMeta().authorityGeneration;
+  const result = {state: "cleared", commandId: command.commandId, deletedRuns: 0};
+  expect(f.service().clear(command)).toEqual(result);
+  expect(f.database.getMeta().authorityGeneration).toBe(generation + 1);
+  const settledGeneration = f.database.getMeta().authorityGeneration;
+  expect(f.service().check(command)).toEqual(result); expect(f.service().clear(command)).toEqual(result);
+  expect(f.database.getMeta().authorityGeneration).toBe(settledGeneration);
+  expect(f.rows("deleted_runs")).toEqual(unrelated.manifests);
+  expect(existsSync(unrelated.artifact.file)).toBe(true); expect(f.refreshed).toBe(3);
 });

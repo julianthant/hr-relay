@@ -99,7 +99,7 @@ for (const binding of ["unbound-source", "source-bound"] as const) {
         const commandId = randomUUID();
         assert.equal(w.service.delete({ commandId, runId: run.envelope.runId, expectedVersion: terminal.version }).state, "deleted");
         assert.equal(w.database.authority.runs.get(run.envelope.runId), undefined);
-        assert.equal(w.database.settleRunDeletionFiles({ runId: run.envelope.runId, commandId }), "complete");
+        assert.equal(w.database.settleRunDeletionFiles({ runIds: [run.envelope.runId], commandId }), "complete");
       }
       assert.deepEqual(readFileSync(sourcePath), before);
       assert.equal(existsSync(join(w.profile.admission.artifactRoot, `${unrelated.attachments[0]?.digest}.artifact`)), false);

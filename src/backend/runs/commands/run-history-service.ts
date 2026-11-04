@@ -11,9 +11,8 @@ export interface RunHistoryService {
 export function createRunHistoryService(input: { database: AuthorityDatabase; lifecycle: RunRecordService; afterClear(): void }): RunHistoryService {
   const settle = (result: ClearRunHistoryResult): ClearRunHistoryResult => {
     if (result.state === "cleared") {
-      for (const receipt of input.database.authority.deletedRuns.list().filter(receipt => receipt.commandId === result.commandId)) {
-        input.database.settleRunDeletionFiles({ runId: receipt.runId, commandId: result.commandId });
-      }
+      const runIds = input.database.authority.deletedRuns.list().filter(receipt => receipt.commandId === result.commandId).map(receipt => receipt.runId);
+      input.database.settleRunDeletionFiles({ runIds, commandId: result.commandId });
       input.afterClear();
     }
     return result;

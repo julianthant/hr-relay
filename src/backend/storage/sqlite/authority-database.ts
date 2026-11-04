@@ -3683,8 +3683,8 @@ export class AuthorityDatabase implements Disposable {
   }
 
   settleRunDeletionFiles(input: unknown): "complete" {
-    const request = z.strictObject({runId:RunIdSchema,commandId:CommandIdSchema}).parse(input);
-    this.#settleCommittedRunDeletionFiles([request]);
+    const request = z.strictObject({runIds:z.array(RunIdSchema),commandId:CommandIdSchema}).parse(input);
+    this.#settleCommittedRunDeletionFiles(request.runIds.map(runId => ({runId,commandId:request.commandId})));
     return "complete";
   }
 
