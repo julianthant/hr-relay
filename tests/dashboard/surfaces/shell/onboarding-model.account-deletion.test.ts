@@ -46,7 +46,8 @@ it("dispatches once from a ready profile and settles only its signed-out acknowl
   let pending!: Promise<void>;
   await act(async () => { pending = h.session().deleteAccount(); await h.session().deleteAccount(); await h.session().logout(); });
   assert.equal(h.session().accountDeletion.state, "deleting");
-  assert.deepEqual(f.deletes(), [{ path: "/api/v1/profile/delete-account", body: { confirmed: true } }]);
+  assert.deepEqual(f.deletes(), [{ path: "/api/v1/profile/delete-account", body: { confirmed: true,
+    expectedProfileId: "00000000-0000-4000-8000-000000000001", expectedEpoch: 1 } }]);
   assert.equal(f.calls.some(call => call.path.endsWith("/logout")), false);
   await act(async () => { response.resolve(Response.json({ state: "signed-out", signUpRequired: true })); await pending; });
   assert.deepEqual(h.session().state, { state: "signed-out", signUpRequired: true });

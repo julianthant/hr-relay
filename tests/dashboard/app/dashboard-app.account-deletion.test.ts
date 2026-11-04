@@ -66,7 +66,8 @@ it("enables the served account control and deletes only after explicit confirmat
   await act(async () => trigger.click());
   const dialog = document.querySelector('[role="dialog"]'); assert.ok(dialog);
   await act(async () => button("Delete account", dialog).click());
-  assert.deepEqual(requests, [{ path: "/api/v1/profile/delete-account", body: { confirmed: true } }]);
+  assert.deepEqual(requests, [{ path: "/api/v1/profile/delete-account", body: { confirmed: true,
+    expectedProfileId: "00000000-0000-4000-8000-000000000001", expectedEpoch: 1 } }]);
   assert.equal(button("Deleting…").disabled, true);
   assert.match(document.querySelector('[aria-label="Account"]')?.textContent ?? "", /erasure is not complete/u);
   await act(async () => response.resolve(Response.json({ state: "signed-out", signUpRequired: true })));

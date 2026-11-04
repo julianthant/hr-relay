@@ -324,7 +324,7 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       const current = () => live.current && generation.current === request && currentSelection.current === selection;
       publish({ state: "deleting" });
       try {
-        const value = await client.deleteProfileAccount({ confirmed: true });
+        const value = await client.deleteProfileAccount({ confirmed: true, expectedProfileId: active.profileId, expectedEpoch: active.epoch });
         if (!current()) return;
         if (value.state === "signed-out") settle(value);
         else if (value.state === "refused" || value.state === "error") publish({ state: "refused", code: value.code });

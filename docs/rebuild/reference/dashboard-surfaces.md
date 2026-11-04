@@ -442,7 +442,9 @@ draft validation, autosave, uncertainty and readback. Explicit parity previews k
 
 General composes ChatGPT account, appearance, ordinary General fields and annual dates, with Delete account last. The assistant permission row and its search destination are absent; Relay always requires explicit confirmation for its actions. Appearance has a Light/Dark toggle and an Animations switch with no row descriptions or person names. Preference feedback retains loading, saving, failure and uncertain states below the rows.
 Delete account uses the active ready profile's session owner and the typed delete client. Its confirmation
-is keyed to the profile and session epoch. Rendering, navigation and Cancel dispatch nothing; confirmation
+is keyed to the profile and session epoch, and the request carries both as expected authority. The server
+atomically compares them with the authenticated selection before logout, detach or erasure, including
+pending deletion's original epoch. Rendering, navigation and Cancel dispatch nothing; confirmation
 dispatches once and disables deletion. Only the delete endpoint's final signed-out acknowledgment exits
 the profile. Refused, nonfinal and lost replies stay visible and locked across Settings navigation,
 without automatic retry or an erasure claim. A missing served profile keeps the control unavailable.
