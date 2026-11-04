@@ -673,8 +673,8 @@ describe("draft document observations around native authority awaits", () => {
         : await w.send("sign", { credentialId: "cHVibGljLWlk", requestId: randomUUID(), origin: BIND.origin, rpId: "duosecurity.com", challenge: "AQID" });
       assert.deepEqual(result, { ok: false });
       await w.provider.cancel(w.attempt);
-      assert.ok(w.calls.includes("unknown"));
-      assert.equal(w.failures.length, 1);
+      assert.equal(w.calls.includes("unknown"), boundary !== "portal-accepted");
+      assert.equal(w.failures.length, boundary === "portal-accepted" ? 0 : 1);
       if (boundary === "sign" || boundary === "sign-return") assert.ok(w.calls.includes("sign"));
     } finally { await w.cleanup(); }
   });

@@ -32,8 +32,8 @@ export const ProfileOnboardingStateSchema = z.strictObject({
   const complete = value.methods.key.state === "complete" && value.methods.touch.state === "complete";
   if ((value.step === "ready") !== complete) context.addIssue({ code: "custom", message: "profile-onboarding-readiness-invalid" });
   for (const [name, method] of Object.entries(value.methods)) {
-    const confirmed = method.operatorConfirmed || name === "key" && method.exactCredentialRequestObserved;
-    if (method.state === "complete" && (!method.ceremonyObserved || name === "touch" && !method.portalAccepted || !confirmed)) {
+    const confirmed = method.operatorConfirmed || method.portalAccepted || name === "key" && method.exactCredentialRequestObserved;
+    if (method.state === "complete" && (!method.ceremonyObserved || !confirmed)) {
       context.addIssue({ code: "custom", message: "profile-onboarding-method-incomplete" });
     }
   }
@@ -51,7 +51,8 @@ export const CancelProfileOnboardingDuoRequestSchema = StartProfileOnboardingDuo
 export type CancelProfileOnboardingDuoRequest = z.infer<typeof CancelProfileOnboardingDuoRequestSchema>;
 
 export const PublicProfileStateSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("signed-out"), signUpRequired: z.boolean().optional() }),
+  z.strictObject({ state: z.literal("signed-out"), signUpRequired: z.boolean().optional(),
+    resumable: z.literal(true).optional() }),
   z.strictObject({ state: z.literal("error"), code: ErrorCodeSchema }),
   z.strictObject({ state: z.literal("active"), profileId: ProfileIdSchema, duoState: ProfileRegistryRowSchema.shape.duoState, epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
   z.strictObject({ state: z.literal("cancelling"), operationId: z.uuid() }),

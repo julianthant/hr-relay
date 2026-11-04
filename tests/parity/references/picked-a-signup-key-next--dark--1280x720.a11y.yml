@@ -17,12 +17,11 @@
       - button "Duo setup"
     - listitem:
       - button "Ready" [disabled]
-  - heading "Security key" [level=1]
-  - paragraph: Add your security key and Touch ID in the setup tabs.
-  - text: Security key Not started Touch ID Completed
-  - region "Next action":
-    - heading "Next, add a security key" [level=2]
-    - paragraph: In the setup browser, follow Fast Duo’s security key instructions. You can add the methods in either order.
+  - heading "Set up Duo" [level=1]
+  - paragraph: Add your security key and Touch ID in the setup browser, in either order.
+  - list "Duo methods":
+    - listitem: Security key Not started
+    - listitem: Touch ID Completed
   - status: "Security key: Not started · Touch ID: Completed"
   - button "Cancel sign-up"
   - button "Show setup browser"

@@ -9,33 +9,30 @@
 - banner:
   - link "Fast Duo Relay sign-in setup":
     - /url: options.html
+  - navigation "Setup tab":
+    - button "Return to Relay"
+    - button "Close tab"
 - main:
   - heading "Duo setup for Relay" [level=1]
   - paragraph: Add and verify Security key and Touch ID.
   - region "Relay sign-in methods":
     - heading "Relay sign-in methods" [level=2]
     - text: 0 of 2 completed
-    - button "Security key Fast Duo in this browser Not started Security key progress Ready to add in Duo." [pressed]:
+    - button "Security key Fast Duo in this browser Not started Security key progress" [pressed]:
       - strong: Security key
       - text: Fast Duo in this browser Not started
       - list "Security key progress":
         - listitem: Started
         - listitem: Added in Duo
         - listitem: Confirmed by Relay
-      - text: Ready to add in Duo.
-    - button "Touch ID Touch ID on this computer Not started Touch ID progress Ready to add in Duo.":
+    - button "Touch ID Touch ID on this computer Not started Touch ID progress":
       - strong: Touch ID
       - text: Touch ID on this computer Not started
       - list "Touch ID progress":
         - listitem: Started
         - listitem: Added in Duo
         - listitem: Confirmed by Relay
-      - text: Ready to add in Duo.
-    - paragraph: Progress stays in sync with Relay.
   - complementary "Set up Security key":
     - heading "Set up Security key" [level=2]
     - paragraph: Relay opens Duo and signs you in. You then add Security key as a new device.
     - button "Set up Security key"
-    - button "Return to Relay"
-    - button "Close setup tab"
-- contentinfo: Fast Duo / 0.3.0 Continue in Relay when both methods are added.

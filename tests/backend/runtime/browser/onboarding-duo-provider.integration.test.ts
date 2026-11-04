@@ -85,7 +85,7 @@ for (const pendingClose of [false, true]) it(pendingClose
     await expect(setup.locator("#editorTitle")).toHaveText("Set up Security key");
     await expect(setup.getByRole("heading", { name: "Relay sign-in methods", exact: true })).toBeVisible();
     await expect(setup.locator(".brand small")).toHaveText("Relay sign-in setup");
-    await expect(setup.locator("footer > span:last-child")).toHaveText("Continue in Relay when both methods are added.");
+    await expect(setup.locator("footer")).toHaveCount(0);
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId); assert.equal(launches, 1);
     assert.equal((await focusCalls()).length, 2);
     await setup.getByRole("button", { name: "Set up Security key", exact: true }).click();
@@ -290,6 +290,11 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
       assert.deepEqual(outcome, { state: "created", attachment: scenario === "platform" ? "platform" : "cross-platform" });
       const state = profile.session.readOnboarding(draft.token, draft.operationId).methods[method];
       assert.equal(state.state, "pending"); assert.equal(state.ceremonyObserved, true); assert.equal(state.operatorConfirmed, false);
+      await page.evaluate(heading => { const element = document.createElement("h2"); element.textContent = heading; document.body.append(element); },
+        scenario === "platform" ? "Added Touch ID (Chrome)" : "Added security key");
+      await expect.poll(() => profile.session.readOnboarding(draft.token, draft.operationId).methods[method].state).toBe("complete");
+      const done = profile.session.readOnboarding(draft.token, draft.operationId).methods[method];
+      assert.equal(done.portalAccepted, true); assert.equal(done.operatorConfirmed, false);
     }
     const debugAdmission = machine.admitProfile(draft.profileId);
     try {
