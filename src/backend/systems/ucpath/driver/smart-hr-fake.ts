@@ -60,7 +60,7 @@ export function refuseUnimplementedSmartHrHalf(half: string): Pick<
 /** The Person Org operations, refused — for a Smart HR fixture to spread in. */
 function refuseUnimplementedPersonOrgHalf(half: string): Pick<
   UcpathStoreDriver,
-  "searchPersonOrg" | "searchPersonMatch" | "readJobSummary" | "readEmergencyContacts" | "stageEmergencyContact"
+  "searchPersonOrg" | "searchPersonMatch" | "readJobSummary" | "readEmergencyContacts" | "stageEmergencyContact" | "saveEmergencyContact"
 > {
   return {
     ...deterministicContactOperations(),
