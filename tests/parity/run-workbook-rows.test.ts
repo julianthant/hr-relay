@@ -45,7 +45,9 @@ async function review(page: Page, fixture: WorkbookRowsFixture, dialog: Locator,
   expect(fixture.commands).toHaveLength(0); expect(fixture.rows).toHaveLength(0); expect(fixture.plans).toHaveLength(0);
   if (capture) await evidence(page, info, 'selected-input');
   await dialog.getByRole('button', { name: 'Continue', exact: true }).click();
-  await expect(dialog.getByRole('switch', { name: 'Dry run Fill and check every step without submitting.', exact: true })).toHaveCount(0);
+  const dryRun = dialog.getByRole('switch', { name: 'Dry run Fill and check every step without submitting.', exact: true });
+  await expect(dryRun).toBeEnabled();
+  await expect(dryRun).not.toBeChecked();
   if (capture) await evidence(page, info, 'selected-options');
   expect(fixture.commands).toHaveLength(0); expect(fixture.rows).toHaveLength(0);
   await dialog.getByRole('button', { name: 'Preview plan', exact: true }).click();
