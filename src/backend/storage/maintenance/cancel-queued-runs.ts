@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
-import { readPrivateFile } from "../configuration/credential-safe-file.js";
+import { fileIdentityObservation, readPrivateFile } from "../configuration/credential-safe-file.js";
 import { proveProfileRootsUnused } from "./process-closure.js";
 import { hasUnprovedSourceClosure, retainAuthoritySourceClosure } from "../source-closure.js";
 import { systemClock, type Clock } from "../../../rules/time/clock.js";
@@ -39,7 +39,7 @@ async function capture(workspace: string, operation: OfflineMaintenanceOperation
       if (suffix === "") throw new Error("queued-run-cancellation-source-missing");
       return { path: filePath, absent: true };
     }
-    return { path: filePath, ...file.identity, digest: createHash("sha256").update(file.bytes).digest("hex") };
+    return { path: filePath, ...fileIdentityObservation(file.identity), digest: createHash("sha256").update(file.bytes).digest("hex") };
   });
   const inventory = await AuthorityDatabase.readFlatQueuedRunCancellation(path);
   const witnesses = [...installation.witnesses, ...files];

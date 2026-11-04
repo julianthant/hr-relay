@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, it } from "vitest";
 import { createWindowsPrivateFixture as fixture, setWindowsFixtureAcl as acl } from "../../support/helpers/windows-private-path-fixture.js";
 import { fsyncPath, privatePathRejects, writePrivateStage } from "../../../src/backend/storage/private-path.js";
-import { noSymlinkAncestry } from "../../../src/backend/storage/configuration/credential-safe-file.js";
+import { createPrivateLock, readPrivateFile, removeExactPath, noSymlinkAncestry } from "../../../src/backend/storage/configuration/credential-safe-file.js";
 
 describe.skipIf(process.platform !== "win32")("shared Windows private-path behavior on NTFS", () => {
   it("flushes an owned directory through the shared durability function", () => {
@@ -33,6 +33,23 @@ describe.skipIf(process.platform !== "win32")("shared Windows private-path behav
       writePrivateStage(stage, Buffer.from("synthetic stage"));
       assert.equal(privatePathRejects(stage, lstatSync(stage, { bigint: true }), "file-0600"), false);
       assert.equal(readFileSync(stage, "utf8"), "synthetic stage");
+    } finally { f.close(); }
+  });
+
+  it("reads private startup metadata with exact filesystem identities and publishes an exact lock", () => {
+    const f = fixture(), path = join(f.root, "profile-registry-version.json"), lock = join(f.root, "lock");
+    try {
+      writeFileSync(path, '{"schemaVersion":1}');
+      const before = lstatSync(path, { bigint: true });
+      const file = readPrivateFile(path, { label: "lock", maxBytes: 4096 });
+      assert.ok(file); assert.equal(file.bytes.toString(), '{"schemaVersion":1}');
+      assert.deepEqual(file.identity, { device: before.dev, inode: before.ino });
+      assert.equal(file.stat.ino, before.ino); assert.ok("mtimeNs" in file.stat); assert.equal(file.stat.mtimeNs, before.mtimeNs);
+      assert.equal(createPrivateLock(lock, f.root, Buffer.from("synthetic nonce"), () => true), true);
+      const locked = readPrivateFile(lock, { label: "nonce lock", maxBytes: 4096 }); assert.ok(locked);
+      assert.equal(removeExactPath(lock, locked.identity, false, "native-lock-changed"), true);
+      assert.equal(lstatSync(lock, { throwIfNoEntry: false }), undefined);
+      assert.equal(readFileSync(path, "utf8"), '{"schemaVersion":1}');
     } finally { f.close(); }
   });
 
