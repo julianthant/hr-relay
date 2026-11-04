@@ -4,6 +4,8 @@ import type { RunDetailQueryDeps } from "./run-detail-types.js";
 import { SectionUnavailableError } from "../commands/refusals.js";
 import { deterministicUuid } from "../lifecycle/support.js";
 import { ocrRecordName } from "../../../models/ocr/review.js";
+import { runClaim } from "../../../models/run/record.js";
+import { GateIdSchema } from "../../../rules/identity/ids.js";
 
 export function buildOcrReviewSection(deps: RunDetailQueryDeps, runId: string): RunDetailSectionResponse {
   const canonical = deps.canonical;
@@ -12,6 +14,17 @@ export function buildOcrReviewSection(deps: RunDetailQueryDeps, runId: string): 
     const review = readOcrReviewAuthority(canonical.database.authority, canonical.reader, runId);
     if (review === undefined) throw new SectionUnavailableError("OCR review has no published source reading");
     const snapshots = readOcrSnapshotsAuthority(canonical.database.authority, review);
+    const { run } = review;
+    const descriptor = canonical.descriptors.resolve(run.envelope.workflow);
+    const current = descriptor?.contractFingerprint === run.envelope.contractFingerprint && descriptor.version === run.envelope.descriptorVersion;
+    const busy = runClaim(run) !== undefined || run.cancelRequested === true || run.lifecycle.state === "parked-write"
+      || run.lifecycle.state === "queued" && run.delegationRefresh !== undefined
+      || run.lifecycle.state === "terminal" && ["cancelled", "discarded", "superseded"].includes(run.lifecycle.outcome)
+      || canonical.database.authority.workerControls.resetForRun(runId) !== undefined;
+    const editing = !current ? { state: "unavailable" as const, reason: "retained-workflow" as const }
+      : snapshots.length > 0 ? { state: "unavailable" as const, reason: "approved" as const }
+      : busy ? { state: "unavailable" as const, reason: "run-busy" as const }
+      : { state: "available" as const, runVersion: run.version };
     return { section: "review", payload: ReviewPageSchema.parse({ runId,
       records: review.revision.records.map(record => {
         const source = review.revision.seed.review.records.find(seed => seed.recordId === record.recordId);
@@ -24,6 +37,8 @@ export function buildOcrReviewSection(deps: RunDetailQueryDeps, runId: string): 
           evidence: [`artifact:${page.image.id}`] };
       }),
       ocr: { revision: review.revision, digest: review.digest,
+        editing, ...(editing.state === "available" && run.lifecycle.state === "parked-gate" && String(run.lifecycle.gateId) === "approve-records"
+          ? { approval: { runId, gateId: GateIdSchema.parse("approve-records"), expectedVersion: run.version } } : {}),
         approvedSnapshots: snapshots, ...(review.invalidatedCorrections.length === 0 ? {} : { invalidatedCorrections: review.invalidatedCorrections }) } }) };
   });
 }

@@ -180,6 +180,10 @@ admitted lookups cannot retry a page until it parks; authenticated delegated rec
 separate continuation authority. Corrections, discard and restore refuse while a replacement awaits
 a rebuilt review, so an accepted edit cannot disappear at publication.
 Corrections, discard and restore append immutable revisions with expected-revision CAS and command replay.
+New mutations refuse with `OCR_REVIEW_REFUSED` once an authenticated approval snapshot exists,
+including delayed edits whose OCR revision still matches after the gate queues the run. The check
+and revision append share the command authority transaction. Exact replay of previously applied
+commands and read-only historical reconciliation remain available after approval.
 The same transaction advances the canonical run version through its lifecycle service so existing
 Queue and selected-detail subscriptions replace their reads. The `review` section serves source
 pages, fields, provenance, issues, current revision and immutable snapshots; `people` remains unavailable.

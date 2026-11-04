@@ -1,4 +1,5 @@
 import type { MockRun } from "./workflow-mock-model.js";
+import type { RecordReviewProps, ReviewSourcePage } from "../../run-detail/review/review-record-model.js";
 import { mockOnbaseDocumentType, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { mockDocumentFixture } from "./workflow-document-model.js";
 
@@ -105,4 +106,21 @@ export function restoreMockReview(runs: readonly MockRun[], id: string): readonl
   const run = runs.find(item => item.id === id);
   if (run?.workflowId !== "ocr" || !run.discarded || run.approved || run.role === "person") throw new Error("MOCK_REVIEW_RESTORE_UNAVAILABLE");
   return runs.map(item => item.id === id || item.id === run.parentId ? { ...item, discarded: false } : item);
+}
+
+export function mockReviewProps({ run, sourcePages, approvalError, onChange, onApprove, onDiscard, onRestore }: {
+  run: MockRun; sourcePages?: Readonly<Record<string, readonly ReviewSourcePage[]>>; approvalError?: string;
+  onChange: (records: readonly ReviewRecord[]) => void; onApprove?: () => void; onDiscard?: () => void; onRestore: () => void;
+}): RecordReviewProps {
+  const records = reviewRecords(run), originals = seedReviewRecords(run), readOnly = reviewIsReadOnly(run);
+  return { runId: run.id, subject: run.subject, readOnly, discarded: run.discarded === true,
+    selectedCount: records.filter(reviewCanApprove).length, approvalError, onApprove, onDiscard, onRestore,
+    cards: records.map(record => ({ record, name: reviewName(record), original: originals.find(item => item.id === record.id),
+      pages: sourcePages?.[record.id] ?? [], approvalError: reviewApprovalError(record),
+      ...(readOnly ? { disposition: { tone: run.approved ? "success" as const : "neutral" as const,
+        label: run.discarded ? "Discarded" : record.selected ? "Approved" : "Excluded" } } : {}) })),
+    onEditField: (recordId, key, value) => onChange(records.map(record => record.id === recordId ? editReviewRecord(record, key, value) : record)),
+    onChange: updated => onChange(records.map(record => record.id === updated.id ? { ...record, ...updated } : record)),
+    onAdd: () => { const next = addMockReviewRecord(records); onChange(next); return next[next.length - 1].id; },
+  };
 }

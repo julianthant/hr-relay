@@ -19,6 +19,8 @@ import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/modu
 import { defineWorkflow, composeWorkflowModule, defineStepEntries } from "../../../../src/workflow-kit/workflow-definition.js";
 import { compileFixtureWorkflow } from "../../../support/fixtures/workflow-definition-fixtures.js";
 import { createOcrReviewWorld } from "../../../support/helpers/backend/ocr-review-world.js";
+import { ocrProofReadDatabase } from "../../../support/helpers/backend/ocr-proof-reads.js";
+import { OcrApprovedSnapshotSchema } from "../../../../src/models/ocr/review.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { WorkflowIdSchema, NodeIdSchema } from "../../../../src/rules/identity/ids.js";
 import type { z } from "zod";
@@ -145,7 +147,7 @@ it("refuses substituted bulk consumer custody, task and dependency authority", a
 
 it("refuses incomplete, foreign, altered and stale native bulk selections", async () => {
   const { f, run, input, invoke, read, refused } = runningBulkFixture();
-  assert.equal((await read()).state, "ready");
+  const accepted = await read(); assert.equal(accepted.state, "ready");
   const generation = f.database.getMeta().authorityGeneration;
   await assert.rejects(invoke({ ...input, outcomes: [] }));
   for (const change of ["missing", "foreign", "altered"] as const) {
@@ -166,26 +168,32 @@ it("refuses incomplete, foreign, altered and stale native bulk selections", asyn
   const selectedIndex = shared.revision.records.findIndex(record => record.recordId === snapshot.selectedRecordIds[0]);
   assert.equal(selectedIndex, shared.revision.records.length - 1);
   const discard = f.command("discard-ocr-record", 2, selectedIndex);
-  const real = createApprovedOcrRecordReader({ database: f.database, reader: f.canonical.lifecycle, run,
-    resolveDescriptor: f.resolve, assertCurrent: () => f.admission.assertProfileRuntime() });
-  const stale = createOcrReviewAdapter({ clock: f.clock, reader: {
-    readSources(query) {
-      return f.database.withAuthorityTransaction(() => {
-        assert.equal(f.canonical.kernel.execute(discard).state, "applied");
-        real.readSources(query);
-        assert.fail("A changed selected record retained approval authority");
-      });
-    },
-  } });
-  const response = await stale.invoke({ capability: "ocr.review",
-    payload: { schemaHash: deriveSchemaHash(ReadApprovedOcrRecords.input, "output"), value: input } },
-  { signal: new AbortController().signal, deadlineMonotonicMs: Infinity, requestId: "stale-selected-record" });
-  assert.equal(response.response.state, "produced");
-  if (response.response.state !== "produced") assert.fail("Stale selection protocol unavailable");
-  assert.deepEqual(ReadApprovedOcrRecords.output.parse(response.response.value.value), { state: "refused", code: "OCR_REVIEW_REFUSED" });
+  const result = f.canonical.kernel.execute(discard);
+  assert.ok(result.state === "rejected" && result.code === "OCR_REVIEW_REFUSED");
   assert.equal(f.database.authority.commands.get(discard.commandId), undefined);
   assert.equal(f.database.authority.commandAudits.findByCommand(discard.commandId), undefined);
   assert.deepEqual(custody(), baseline);
-  assert.equal((await read()).state, "ready");
-  assert.ok(f.database.getMeta().authorityGeneration >= generation);
+  const repositories = f.database.authority, sourceRunId = f.run.envelope.runId;
+  const earlier = repositories.ocrReviews.revision(sourceRunId, 1); assert.ok(earlier);
+  assert.notEqual(earlier.revision, snapshot.revision);
+  const approvedRecord = snapshot.records[0], unselected = shared.revision.records.find(record => !snapshot.selectedRecordIds.includes(record.recordId));
+  assert.ok(approvedRecord && unselected);
+  for (const change of ["stale review", "altered selection"] as const) {
+    const database = ocrProofReadDatabase(f.database, { ...repositories, ocrReviews: { ...repositories.ocrReviews,
+      latest: id => change === "stale review" && id === sourceRunId ? earlier : repositories.ocrReviews.latest(id),
+      snapshots: id => repositories.ocrReviews.snapshots(id).map(value => change === "altered selection" && value.snapshotId === snapshot.snapshotId
+        ? OcrApprovedSnapshotSchema.parse({ ...value, selectedRecordIds: [unselected.recordId], records: [{ ...approvedRecord, recordId: unselected.recordId }] }) : value),
+    } });
+    const invalid = createOcrReviewAdapter({ clock: f.clock, reader: createApprovedOcrRecordReader({ database, reader: f.canonical.lifecycle, run,
+      resolveDescriptor: f.resolve, assertCurrent: () => f.admission.assertProfileRuntime() }) });
+    const response = await invalid.invoke({ capability: "ocr.review",
+      payload: { schemaHash: deriveSchemaHash(ReadApprovedOcrRecords.input, "output"), value: input } },
+    { signal: new AbortController().signal, deadlineMonotonicMs: Infinity, requestId: change });
+    assert.equal(response.response.state, "produced");
+    if (response.response.state !== "produced") assert.fail("Invalid selection protocol unavailable");
+    assert.deepEqual(ReadApprovedOcrRecords.output.parse(response.response.value.value), { state: "refused", code: "OCR_REVIEW_REFUSED" }, change);
+  }
+  assert.deepEqual(custody(), baseline);
+  assert.deepEqual(await read(), accepted);
+  assert.equal(f.database.getMeta().authorityGeneration, generation);
 });

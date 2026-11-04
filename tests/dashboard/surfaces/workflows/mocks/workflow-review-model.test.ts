@@ -2,8 +2,8 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe,expect,it } from "vitest";
 import { approveMockRun,initialMockDraft,mockRunLog,mockRunsForDraft,seedMockRuns } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
-import { addMockReviewRecord,discardMockReview,editReviewRecord,restoreMockReview,reviewApprovalError,reviewCanApprove,reviewIsReadOnly,reviewRecords,reviewValue,updateMockReview } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
-import { WorkflowMockReview } from "../../../../../src/dashboard/surfaces/run-detail/review/review.js";
+import { addMockReviewRecord,discardMockReview,editReviewRecord,mockReviewProps,restoreMockReview,reviewApprovalError,reviewCanApprove,reviewIsReadOnly,reviewRecords,reviewValue,updateMockReview } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
+import { RecordReview } from "../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 
 const preparation = (id: "emergency-contact" | "onbase" | "oath-upload") => mockRunsForDraft(id, { ...initialMockDraft(id), files: [{ name: "fictional.pdf", size: 1024, digest: "fixture" }] }, 1);
 describe("complete workflow presentation mocks", () => {
@@ -64,7 +64,7 @@ describe("complete workflow presentation mocks", () => {
       const source = { ...run, records: undefined, draft: { ...run.draft, formType } };
       const record = reviewRecords(source)[0];
       expect(record.fields.some(field => field.readOnly)).toBe(false);
-      const markup = renderToStaticMarkup(createElement(WorkflowMockReview, { run: source, onChange: () => {}, onApprove: () => {}, onRestore: () => {} }));
+      const markup = renderToStaticMarkup(createElement(RecordReview, mockReviewProps({ run: source, onChange: () => {}, onApprove: () => {}, onRestore: () => {} })));
       for (const field of record.fields) {
         expect(markup).toContain(field.label);
         expect(editReviewRecord(record, field.key, field.kind === "boolean" ? "false" : "changed").fields).toContainEqual(expect.objectContaining({ key: field.key, value: field.kind === "boolean" ? "false" : "changed" }));
@@ -75,7 +75,7 @@ describe("complete workflow presentation mocks", () => {
     }
     const record = reviewRecords(run)[0];
     const extra = { ...record, fields: [...record.fields, { key: "providerExtra", label: "Additional extracted field", value: "", section: "Other" }] };
-    const markup = renderToStaticMarkup(createElement(WorkflowMockReview, { run: { ...run, records: [extra] }, onChange: () => {}, onRestore: () => {} }));
+    const markup = renderToStaticMarkup(createElement(RecordReview, mockReviewProps({ run: { ...run, records: [extra] }, onChange: () => {}, onRestore: () => {} })));
     expect(markup).toContain('name="providerExtra"');
     expect(() => editReviewRecord(record, "missing", "changed")).toThrow("MOCK_REVIEW_FIELD_UNKNOWN");
     const proof = { ...record, fields: [{ key: "proof", label: "System proof", value: "Original", readOnly: true }] };

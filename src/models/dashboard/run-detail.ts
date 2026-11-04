@@ -283,6 +283,7 @@ export const RunDetailWireSchema = z.strictObject({
   outcome: OutcomeWireSchema,
   context: ContextSummaryWireSchema,
   ocrReviewChanges: z.array(OcrReviewChangeSchema).min(1).optional(),
+  ocrRecordCount: z.number().int().nonnegative().optional(),
   childRetry: z.strictObject({
     key: z.literal("retry-child"), label: z.literal("Retry"), kind: z.literal("command"), command: z.literal("retry"),
     expectedVersion: RowRevisionSchema, intent: z.literal("neutral"), icon: z.literal("retry"), placement: z.array(z.literal("banner")).length(1),
@@ -466,10 +467,23 @@ export const ReviewPageSchema = z.strictObject({
   runId: RunIdSchema,
   records: z.array(ReviewRecordWireSchema),
   ocr: z.strictObject({ revision: OcrReviewRevisionSchema, digest: FingerprintSchema,
-    approvedSnapshots: z.array(OcrApprovedSnapshotSchema), invalidatedCorrections: z.array(OcrReviewChangeSchema).min(1).optional() }).optional(),
+    approvedSnapshots: z.array(OcrApprovedSnapshotSchema), invalidatedCorrections: z.array(OcrReviewChangeSchema).min(1).optional(),
+    editing: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("available"), runVersion: RowRevisionSchema }),
+      z.strictObject({ state: z.literal("unavailable"), reason: z.enum(["approved", "run-busy", "retained-workflow"]) }),
+    ]),
+    approval: GateCommandRequestSchema.shape.target.optional(),
+  }).optional(),
 }).superRefine((page, context) => {
   if (page.records.some(({ runId }) => runId !== page.runId)) context.addIssue({ code: "custom", path: ["records"], message: "review record run identities must match page" });
   if (page.ocr !== undefined && page.ocr.revision.sourceRunId !== page.runId) context.addIssue({ code: "custom", message: "OCR review must belong to the requested run" });
+  if (page.ocr?.approval !== undefined && (page.ocr.approval.runId !== page.runId || page.ocr.approval.gateId !== "approve-records"
+    || page.ocr.editing?.state !== "available" || page.ocr.approval.expectedVersion.valueOf() !== page.ocr.editing.runVersion.valueOf())) {
+    context.addIssue({ code: "custom", message: "OCR approval must match the editable run authority" });
+  }
+  if (page.ocr?.editing?.state === "available" && page.ocr.approvedSnapshots.length > 0) {
+    context.addIssue({ code: "custom", message: "Approved OCR records are read-only" });
+  }
   const ids = page.records.map(({ recordId }) => recordId);
   if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", path: ["records"], message: "review record ids must be unique" });
 });

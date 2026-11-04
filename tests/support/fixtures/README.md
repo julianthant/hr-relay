@@ -18,6 +18,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 
 | Module | Concept |
 | --- | --- |
+| `helpers/dashboard/controls/ocr-records-served-preview.tsx` | shared Records editor driven by a typed native fixture API and command executor |
 | `helpers/exclusive-session-leases.ts` | deferred isolated SQLite authority for exclusive browser-session lease tests |
 | `helpers/browser/fake-onbase-page.ts` | synthetic OnBase import/retrieval page with exact filters and saved-PDF evidence |
 | `fixtures/child-execution-build-manifest.ts` | build manifest for the owned child execution process fixture |
