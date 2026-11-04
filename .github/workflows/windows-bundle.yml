@@ -1,0 +1,62 @@
+name: Windows portable bundle
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [staging]
+    paths:
+      - .github/workflows/windows-bundle.yml
+      - scripts/packaging/**
+      - tests/scripts/packaging/**
+      - relay.cmd
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+      - run: npm ci
+      - name: Prepare and independently check runtime assets
+        run: |
+          npm run build:manifest:prepare
+          npm run build:manifest:check
+      - run: npm run web:build
+      - name: Install full offline Chromium
+        shell: pwsh
+        run: |
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:RUNNER_TEMP 'relay-browsers'
+          npx playwright install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build zip and SHA256
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'relay-windows-output'
+          $browsers = Join-Path $env:RUNNER_TEMP 'relay-browsers'
+          node --import tsx scripts/packaging/build-windows-bundle.ts $output $browsers '${{ github.sha }}'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify extracted archive content and identity
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'relay-windows-output'
+          $proof = Join-Path $env:RUNNER_TEMP 'relay-archive-proof'
+          $archives = @(Get-ChildItem $output -Filter '*.zip')
+          if ($archives.Count -ne 1) { throw 'Expected exactly one bundle archive' }
+          $archive = $archives[0]
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $proof
+          node --import tsx scripts/packaging/build-windows-bundle.ts --check (Join-Path $proof 'relay')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relay-win-x64-${{ github.sha }}
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/relay-windows-output/*.zip
+            ${{ runner.temp }}/relay-windows-output/*.sha256
