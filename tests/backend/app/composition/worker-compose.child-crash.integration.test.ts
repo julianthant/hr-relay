@@ -40,8 +40,13 @@ import { boundProfileCredentials, createBoundProfileFixture, unregisterBoundProf
 import { childCrashWriteModules, childCrashWriteRoot } from "../../../support/fixtures/child-execution-write-workflow.js";
 import { createWriteFixtureWorld, WRITE_FIXTURE_EID } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
+import { reconcileExitedWorker } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { terminalEvidenceResult } from "../../../../src/models/run/result.js";
+import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/descriptor-registry.js";
 
 const Message = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("preview-prepare"), workerId: WorkerIdSchema, runId: RunIdSchema,
+    pid: z.number().int().positive(), events: z.array(z.string()) }),
   z.strictObject({ kind: z.literal("checkpoint"), workerId: WorkerIdSchema, runId: RunIdSchema, pid: z.number().int().positive() }),
   z.strictObject({ kind: z.literal("attempting"), workerId: WorkerIdSchema, runId: RunIdSchema,
     writeIntentId: WriteIntentIdSchema, pid: z.number().int().positive(), clicks: z.literal(1) }),
@@ -64,9 +69,10 @@ function commands(database: AuthorityDatabase, descriptors: { resolve(id: string
   return { lifecycle, kernel };
 }
 
-async function prepare(arm: "read" | "write" = "read") {
+async function prepare(arm: "read" | "write" | "preview" = "read") {
   const root = arm === "read" ? childExecutionRoot : childCrashWriteRoot;
   const modules = arm === "read" ? childExecutionModules : childCrashWriteModules(createWriteFixtureWorld()).modules;
+  if (arm === "preview") createWorkflowDescriptorRegistry([root.descriptor], modules.filter(module => module.descriptor !== root.descriptor).map(module => module.descriptor));
   const profile = await createBoundProfileFixture({ sharedMachine: true });
   copyFileSync(join(process.cwd(), "package.json"), join(profile.workspace, "package.json"));
   copyFileSync(join(process.cwd(), "package-lock.json"), join(profile.workspace, "package-lock.json"));
@@ -94,9 +100,9 @@ async function prepare(arm: "read" | "write" = "read") {
       ids: { uuid: randomUUID }, planTtlMs: 600_000, plannedBy: LOCAL_OPERATOR_ACTOR_ID,
       configFingerprint: active.configFingerprint, configSnapshotId: active.configSnapshotId });
     const plan = planner.plan({ workflowId: root.descriptor.id,
-      submissions: [arm === "read" ? { emplId: "10800000", text: "same", mode: "ok" } : { eid: WRITE_FIXTURE_EID }], dryRun: false,
+      submissions: [arm === "read" ? { emplId: "10800000", text: "same", mode: "ok" } : { eid: WRITE_FIXTURE_EID }], dryRun: arm === "preview",
       selectedStepKeys: root.descriptor.timeline.map(step => step.key) });
-    assert.equal(plan.planned.length, 1); assert.equal(plan.refused.length, 0);
+    assert.equal(plan.planned.length, 1, JSON.stringify(plan.refused)); assert.equal(plan.refused.length, 0);
     const rootRunId = singleAppliedRunId(kernel.execute({ commandId: randomUUID(), family: "start", type: "start-run", source: "dashboard",
       requestedBy: LOCAL_OPERATOR_ACTOR_ID, requestedAt: systemClock.now().toISOString(), target: { workflowId: root.descriptor.id,
         startPlanId: plan.startPlanId, expectedVersion: plan.expectedVersion }, payload: plan.fingerprints }));
@@ -112,7 +118,7 @@ async function prepare(arm: "read" | "write" = "read") {
   }
 }
 
-async function launch(workspace: string, mode: "checkpoint" | "resume" | "attempting", lock: RuntimeLifetimeLock) {
+async function launch(workspace: string, mode: "checkpoint" | "resume" | "attempting" | "preview-prepare" | "preview-resume", lock: RuntimeLifetimeLock) {
   const child = spawn(process.execPath, ["--import", testProcessImport(),
     fileURLToPath(new URL("../../../support/processes/child-execution-crash-worker.ts", import.meta.url)), workspace, mode, String(lock.port)],
   { env: credentialKeychainTestEnvironment({}), stdio: ["ignore", "pipe", "pipe", "ipc"] });
@@ -167,6 +173,83 @@ async function killOwned(owned: Awaited<ReturnType<typeof launch>>): Promise<voi
   const [, signal] = z.tuple([z.number().nullable(), z.string().nullable()]).parse(values);
   assert.equal(signal, "SIGKILL");
 }
+
+it("recovers an actual process killed during delegated preview preparation without a write or Saved result", async () => {
+  const f = await prepare("preview"), children: Awaited<ReturnType<typeof launch>>[] = [];
+  let closureProved = false;
+  let primary: { error: unknown } | undefined;
+  try {
+    const child = await launch(f.profile.workspace, "preview-prepare", f.profile.lifetime); children.push(child);
+    const message = await next(child);
+    assert.ok(message.kind === "preview-prepare");
+    assert.equal(message.pid, child.child.pid);
+    assert.equal(message.events.filter(event => event === "prepare").length, 1);
+    assert.equal(message.events.some(event => event.startsWith("commit-click:")), false);
+    const observed = f.open();
+    try {
+      const run = observed.authority.runs.get(message.runId); assert.ok(run?.lifecycle.state === "running");
+      assert.equal(run.envelope.parent?.runId, f.rootRunId);
+      assert.equal(observed.authority.workerLeases.get(message.workerId)?.processId, child.child.pid);
+      assert.equal(child.child.exitCode, null); assert.equal(child.child.signalCode, null);
+      for (const id of [f.rootRunId, message.runId]) {
+        assert.equal(observed.authority.runResults.get(id), undefined);
+        assert.deepEqual(observed.authority.writeIntents.countDryRunEvidenceByRun(id),
+          { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
+      }
+    } finally { observed.close(); }
+    await killOwned(child);
+    const database = f.open();
+    try {
+      const { lifecycle } = commands(database, f.descriptors);
+      const lease = database.authority.workerLeases.get(message.workerId); assert.ok(lease);
+      const reconcile = () => reconcileExitedWorker({ machine: f.profile.machine, admission: f.profile.admission,
+        database, lifecycle, clock: systemClock, lock: f.profile.lifetime,
+        workerId: message.workerId, leaseGeneration: lease.leaseGeneration });
+      reconcile();
+      const run = database.authority.runs.get(message.runId); assert.ok(run);
+      assert.ok(run.lifecycle.state === "terminal" && run.lifecycle.outcome === "failed");
+      assert.equal(database.authority.failures.listByRun(message.runId)[0]?.code, "RUN_INTERRUPTED_BY_CRASH");
+      assert.equal(database.authority.failures.listByRun(message.runId)[0]?.writeState, "not-attempted");
+      const result = database.authority.runResults.get(message.runId); assert.ok(result);
+      assert.equal(terminalEvidenceResult(result)?.kind, "failed-evidence");
+      assert.equal(database.authority.workerLeases.get(message.workerId)?.lifecycle.state, "stopped");
+      const generation = database.getMeta().authorityGeneration;
+      reconcile();
+      assert.equal(database.getMeta().authorityGeneration, generation);
+      assert.deepEqual(database.authority.runResults.get(message.runId), result);
+    } finally { database.close(); }
+    const resumed = await launch(f.profile.workspace, "preview-resume", f.profile.lifetime); children.push(resumed);
+    const terminal = await next(resumed);
+    assert.ok(terminal.kind === "terminal");
+    assert.equal(terminal.done, 0);
+    const exit: unknown = await once(resumed.child, "exit");
+    const [exitCode] = z.tuple([z.number().nullable(), z.string().nullable()]).parse(exit); assert.equal(exitCode, 0);
+    const retained = f.open();
+    try {
+      for (const id of [f.rootRunId, message.runId]) {
+        const run = retained.authority.runs.get(id); assert.ok(run?.lifecycle.state === "terminal");
+        assert.equal(run.lifecycle.outcome, "failed");
+        assert.equal(run.envelope.dryRun, true);
+        assert.equal(retained.authority.failures.listByRun(id)[0]?.writeState, "not-attempted");
+        const result = retained.authority.runResults.get(id); assert.ok(result);
+        assert.equal(terminalEvidenceResult(result)?.kind, "failed-evidence");
+        assert.deepEqual(retained.authority.writeIntents.countDryRunEvidenceByRun(id),
+          { writeIntents: 0, writeAttempts: 0, confirmedOperations: 0 });
+        assert.deepEqual(retained.authority.runCheckpoints.listByItem(run.envelope.workflow, run.envelope.itemId), []);
+        assert.equal(result.operationLineage, undefined);
+      }
+      assert.equal(retained.authority.runs.listChildren(f.rootRunId).length, 1);
+      assert.ok(retained.readProfileResourceCustody().leases.every(lease => lease.lifecycle.state === "stopped"));
+      closureProved = true;
+    } finally { retained.close(); }
+  } catch (error) { primary = { error }; }
+  const failures: unknown[] = primary === undefined ? [] : [primary.error];
+  for (const child of children) { try { await killOwned(child); } catch (error) { failures.push(error); } }
+  if (closureProved && failures.length === 0) {
+    try { await f.profile.close(); } catch (error) { failures.push(error); }
+  } else failures.push(new Error("child-preview-crash-fixture-custody-retained"));
+  if (failures.length > 0) throw new AggregateError(failures, "child-preview-crash-cleanup-unproved");
+});
 
 it("reconciles an actual child OS crash after its committed read checkpoint without repeating it", async () => {
   const f = await prepare(), children: Awaited<ReturnType<typeof launch>>[] = [];
