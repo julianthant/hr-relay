@@ -55,13 +55,16 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
       };
       const counter = text(r.counter).match(/^(?:\d+\s*-\s*)?\d+\s+of\s+(\d+)$/iu);
       if (counter?.[1] === undefined) throw new Error("contact row count is unreadable");
-      const toggles = document.querySelectorAll(r.viewToggle);
+      const toggles = [...document.querySelectorAll(r.viewToggle)].filter(node => /^View\s/iu.test(node.textContent?.trim() ?? ""));
       if (toggles.length > 1) throw new Error("contact view state is ambiguous");
-      const toggle = toggles[0]?.textContent?.trim();
-      if (toggle !== undefined && !/^View (?:All|\d+)$/iu.test(toggle)) throw new Error("contact view state is unreadable");
+      const toggle = toggles[0];
+      const toggleText = toggle?.textContent?.trim();
+      if (toggleText !== undefined && !/^View (?:All|\d+)$/iu.test(toggleText)) throw new Error("contact view state is unreadable");
+      const canExpand = toggle instanceof HTMLAnchorElement && toggle.hasAttribute("href")
+        && toggle.getAttribute("aria-disabled") !== "true" && toggleText?.toLowerCase() === "view all";
       return {
         displayedEid: text(r.displayedEid), displayedName: text(r.displayedName),
-        view: toggle?.toLowerCase() === "view all" ? "paged" as const : "all" as const,
+        view: canExpand ? "paged" as const : "all" as const,
         totalRows: Number(counter[1]),
         rows: [...document.querySelectorAll(r.names)].map((node) => {
           const index = Number(node.id.slice(node.id.lastIndexOf("$") + 1));
@@ -101,10 +104,12 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
       const values = await current(() => Promise.all(recipes.addressFields.map(async ([key, label]) => {
         return [key, (await addressField(label).inputValue()).trim() || null] as const;
       })));
+      const country = await current(() => page.locator(recipes.countryDisplay).innerText());
       await current(() => page.getByRole("button", { name: "Cancel", exact: true }).click());
       await current(() => addressField(recipes.addressFields[0][1]).waitFor({ state: "hidden", timeout: 10_000 }));
-      if (values.every(([, value]) => value === null)) return null;
-      const address = UcpathContactAddressFieldsSchema.safeParse(Object.fromEntries(values));
+      await settle();
+      if (values.every(([, value]) => value === null) && country.trim() === "") return null;
+      const address = UcpathContactAddressFieldsSchema.safeParse({ ...Object.fromEntries(values), country: country.trim() || null });
       if (!address.success) throw new UcpathContactRefusedError("unreadable-contact-row", { cause: address.error });
       return address.data;
     }
@@ -138,7 +143,7 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
         await settle();
       },
       async viewAll() {
-        await current(() => page.locator(recipes.viewToggle).click());
+        await current(() => page.locator(recipes.grid).getByRole("link", { name: "View All", exact: true }).click());
         await settle();
       },
       async addBlankRow() {
@@ -146,7 +151,7 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
         await current(() => page.getByRole("button", { name: /add a new row/iu }).click());
         await settle();
         if ((await core()).view === "paged") {
-          await current(() => page.locator(recipes.viewToggle).click());
+          await current(() => page.locator(recipes.grid).getByRole("link", { name: "View All", exact: true }).click());
           await settle();
         }
       },
@@ -165,6 +170,12 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
         if (effect.address.kind === "explicit") {
           await current(() => rowField("editAddress", index).click());
           await current(() => addressField(recipes.addressFields[0][1]).waitFor({ state: "visible", timeout: 10_000 }));
+          const country = await current(() => page.locator(recipes.countryDisplay).innerText());
+          if ((country.trim() || null) !== effect.address.fields.country) {
+            await current(() => page.getByRole("button", { name: "Cancel", exact: true }).click());
+            await settle();
+            throw new UcpathContactRefusedError("staged-effect-mismatch");
+          }
           for (const [key, label] of recipes.addressFields) {
             const value = effect.address.fields[key];
             await current(() => addressField(label).fill(value ?? ""));
@@ -191,7 +202,7 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
       throw new UcpathContactRefusedError("unexpected-contact-page");
     }
     await current(() => page.goto(new URL(recipes.path, url.origin).href, { waitUntil: "domcontentloaded" }));
-    await current(() => page.getByRole("textbox", { name: "Empl ID", exact: true }).fill(input.emplId));
+    await current(() => page.locator(recipes.searchEid).fill(input.emplId));
     await current(() => page.getByRole("button", { name: "Search", exact: true }).click());
     await current(() => page.locator(recipes.displayedEid).waitFor({ state: "visible", timeout: 10_000 }));
     return port(input);
