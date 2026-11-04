@@ -143,7 +143,7 @@ it("keeps unidentified records without inventing a lookup child or changing nati
     && member.target.section === "review" && member.target.record.recordId === member.record.recordId));
 });
 
-it("serves a linked OCR child's own review and timeline while its parent's record lines retain exact stable focus", async () => {
+it("keeps the parent reading while the linked OCR row owns person records and its review gate", async () => {
   const f = await world.fixture({ record: true, release: true, pageCount: 2, parent });
   const { database, clock } = f;
   const descriptors = { resolve: f.resolve };
@@ -166,7 +166,11 @@ it("serves a linked OCR child's own review and timeline while its parent's recor
   if (parentRow.surfaceKind !== "operation" || childRow.surfaceKind !== "operation") assert.fail("Missing record presentations");
   assert.equal(childRow.parent?.visibility, "linked");
   assert.ok(parentRow.linkedRuns.some(link => link.runId === childRow.runId && link.panelKind === "review"));
-  assert.deepEqual(parentRow.recordMembers, childRow.recordMembers);
+  assert.deepEqual(parentRow.recordMembers?.members.map(member => ({ kind: member.kind, title: member.title,
+    statusLabel: member.statusLabel, runId: member.target.runId })), [
+    { kind: "reading", title: "2 pages", statusLabel: "Reading", runId: childRow.runId },
+  ]);
+  assert.equal(parentRow.recordMembers?.members[0]?.status,"running");
   const refs = childRow.recordMembers?.members.map(member => {
     assert.equal(member.kind, "record");
     if (member.kind !== "record") assert.fail("Expected a person record");

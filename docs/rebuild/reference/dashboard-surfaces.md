@@ -124,8 +124,9 @@ single or member can present an operation without changing its stored shape.
 An operation can carry record-member presentation separately from native member counts. Each record
 is identified by its review-owner run and stable record ID; child histories can serve several records.
 Covered native children do not draw duplicate lines. OCR uses the existing Name/Status well for
-Reading, Looking up, Verified, Needs lookup and failed-page lines. Linked OCR sources expose the
-same records on their immediate parent's row. Line clicks and the name button select the exact
+Reading, Looking up, Verified, Needs lookup and failed-page lines. A parent waiting for OCR approval
+keeps its page-count Reading line while OCR owns the person records and review gate. After OCR
+releases its approved result, the parent exposes its record lines. Line clicks and the name button select the exact
 record; keyboard traversal follows the same order. Person Lookup members use their served outcome
 words. A line has no Retry control: the failed child's own Logs header uses its served action and
 revision, preserving pending and uncertain command recovery. The canonical OCR Review opens at

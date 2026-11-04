@@ -2,7 +2,8 @@ import { DelegatedRecordBindingSchema, type DelegatedRecordBinding } from "../..
 import { delegationChildInputFingerprint } from "../../../models/workflow/delegation.js";
 import { valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { bindOcrLookupOutcomes, ocrLookupRequests } from "../../../models/workflows/ocr/lookup.js";
-import { OcrResultSchema } from "../../../models/workflows/ocr/result.js";
+import { OcrResultSchema, OcrWorkflowResultSchema } from "../../../models/workflows/ocr/result.js";
+import { OcrCanonicalInputSchema } from "../../../models/workflows/ocr/input.js";
 import { OcrReviewSeedSchema, type OcrReviewSeed } from "../../../models/workflows/ocr/review-seed.js";
 import { OcrPageWorkflowInputSchema } from "../../../models/workflows/ocr-page/input.js";
 import { ReadOcrSourcePages } from "../../../models/workflows/ocr/read-source-pages.js";
@@ -30,6 +31,18 @@ function originalCheckpoint(repositories: AuthorityRepositories, group: Authenti
   const source = sources[0];
   if (sources.length !== 1 || source === undefined || !("checkpoint" in source) || source.checkpoint === undefined) throw new OcrReviewRefusedError();
   return source.checkpoint;
+}
+
+function readingMember(repositories: AuthorityRepositories, owner: RunRecord, pages: AuthenticatedGroup,
+  childRunIds: readonly string[], status: QueueRecordMembers["members"][number]["status"], workflowLabel: (workflowId: string) => string) {
+  const prepared = ReadOcrSourcePages.output.parse(originalCheckpoint(repositories,pages,"read-source-pages").output.value);
+  return { kind: "reading" as const, ownerRunId: owner.envelope.runId,
+    title: `${prepared.manifest.pageCount} ${prepared.manifest.pageCount === 1 ? "page" : "pages"}`,
+    status, statusLabel: status === "failed" ? "Failed" : status === "blocked" ? "Blocked" : status === "cancelled" ? "Cancelled" : "Reading",
+    childRunIds, target: { runId: owner.envelope.runId, workflowId: owner.envelope.workflow,
+      partitionDay: LocalDateSchema.parse(localDatePart(new Date(owner.envelope.enqueuedAt))), label: workflowLabel(owner.envelope.workflow),
+      status: deriveRunStatus({ ...owner,delegationWait: repositories.dependencies.waitState(owner.envelope.runId) }),
+      panelKind: panelKindOf(owner.envelope.shape), section: "logs" as const } };
 }
 
 export function readOcrRecordBindings(repositories: AuthorityRepositories, runId: string): Readonly<{ seed: OcrReviewSeed; bindings: readonly DelegatedRecordBinding[] }> | undefined {
@@ -94,13 +107,8 @@ export function readOcrQueueMembers(repositories: AuthorityRepositories, reader:
   });
   if (source === undefined) {
     if (pages === undefined) return undefined;
-    const prepared = ReadOcrSourcePages.output.parse(originalCheckpoint(repositories, pages.group, "read-source-pages").output.value);
-    const status = statusOf(owner);
-    return QueueRecordMembersSchema.parse({ runIds, members: [{ kind: "reading", ownerRunId: owner.envelope.runId,
-      title: `${prepared.manifest.pageCount} ${prepared.manifest.pageCount === 1 ? "page" : "pages"}`,
-      status, statusLabel: status === "failed" ? "Failed" : status === "blocked" ? "Blocked" : status === "cancelled" ? "Cancelled" : "Reading",
-      childRunIds: pages.group.children.filter(member => statusOf(member.child) !== "failed").flatMap(member => member.history),
-      target: { ...link(owner), section: "logs" } }, ...failures] });
+    return QueueRecordMembersSchema.parse({ runIds, members: [readingMember(repositories,owner,pages.group,
+      pages.group.children.filter(member => statusOf(member.child) !== "failed").flatMap(member => member.history),statusOf(owner),workflowLabel), ...failures] });
   }
   const review = readOcrReviewAuthority(repositories, reader, runId);
   const completed = review === undefined ? lookups.flatMap(({ group }) => bindOcrLookupOutcomes(source.seed, group.children.map(member => ({
@@ -160,6 +168,18 @@ export function readQueueRecordMembers(repositories: AuthorityRepositories, read
     .filter(({ manifest }) => manifest.policy.visibility === "linked")
     .flatMap(({ group }) => group.children.filter(member => member.child.envelope.workflow === "ocr")
       .flatMap(member => {
+        const approval = member.terminal?.state === "satisfied" && member.terminal.kind === "ordinary"
+          ? OcrWorkflowResultSchema.parse(member.terminal.result.result.value).approvedSnapshot : null;
+        if (OcrCanonicalInputSchema.parse(member.child.input.parsed.value).approval === "release" && approval === null) {
+          authenticateOcrOperator(repositories,reader,member.child);
+          const groups = repositories.dependencies.groups(member.child.envelope.runId);
+          const pages = groups.filter(({ group }) => group.invocation.nodeId === "read-pages");
+          if (pages.length > 1) throw new OcrReviewRefusedError();
+          if (pages[0] === undefined) return [];
+          const runIds = [...new Set(groups.flatMap(({ group }) => group.children.flatMap(child => child.history)))];
+          const status = deriveRunStatus({ ...run,delegationWait: repositories.dependencies.waitState(run.envelope.runId) });
+          return [QueueRecordMembersSchema.parse({ runIds, members: [readingMember(repositories,member.child,pages[0].group,runIds,status,workflowLabel)] })];
+        }
         const source = readOcrQueueMembers(repositories, reader, member.child.envelope.runId, workflowLabel);
         return source === undefined ? [] : [source];
       }));
