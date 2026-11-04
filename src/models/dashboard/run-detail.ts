@@ -474,6 +474,8 @@ export const ReviewPageSchema = z.strictObject({
   if (new Set(ids).size !== ids.length) context.addIssue({ code: "custom", path: ["records"], message: "review record ids must be unique" });
 });
 
+export type ReviewPage = z.infer<typeof ReviewPageSchema>;
+
 export const OcrCommandResultWireSchema = z.union([
   z.strictObject({ state: z.literal("unavailable") }),
   z.strictObject({ state: z.literal("recorded"), request: z.union([OcrReviewCommandRequestSchema, GateCommandRequestSchema]), result: CommandResultSchema }),

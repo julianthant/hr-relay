@@ -131,7 +131,8 @@ export function buildApprovedOcrRecords<Input extends z.ZodType, MemberInput ext
     options.validate(records);
     return records.map(record =>
       options.memberInput(input, ApprovedOcrRecordInputSchema.parse({ approval: reference.output.approvedSnapshot, record })));
-  }, deriveChildItemId: (_input, context) => context.canonicalItemId });
+  }, sourceRecordIds: ({ outputs }) => outputs["approved-records"].snapshot.records.filter(options.filter).map(record => [record.recordId]),
+  deriveChildItemId: (_input, context) => context.canonicalItemId });
   return { ocr, approved, members, steps: [
     [{ key: "read-document", label: "Read and approve PDF", system: "local" }, [ocr, approved]],
     [{ key: "members", label: options.memberLabel, system: options.memberSystem }, [members]],

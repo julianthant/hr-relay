@@ -11,8 +11,9 @@ import { mockOperationValue as mockOperationValue_m4,mockOperationValue as mockO
 import { mockQueueSurface as mockQueueSurface_m1 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 import { completeMockReviewAction as completeMockReviewAction_m5 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-action-model.js";
 import { discardMockReview as discardMockReview_m4,editReviewRecord as editReviewRecord_m1,editReviewRecord as editReviewRecord_m2,editReviewRecord as editReviewRecord_m4,editReviewRecord as editReviewRecord_m6,reviewCanApprove as reviewCanApprove_m2,reviewRecords as reviewRecords_m1,reviewRecords as reviewRecords_m2,reviewRecords as reviewRecords_m3,reviewRecords as reviewRecords_m4,reviewRecords as reviewRecords_m5,reviewRecords as reviewRecords_m6,reviewValue as reviewValue_m6,seedReviewRecords as seedReviewRecords_m2,seedReviewRecords as seedReviewRecords_m6,updateMockReview as updateMockReview_m1,updateMockReview as updateMockReview_m2,updateMockReview as updateMockReview_m4,updateMockReview as updateMockReview_m6 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
-import { reviewFieldBlocks as reviewFieldBlocks_m6,reviewFieldGroups as reviewFieldGroups_m6,reviewSourcePages as reviewSourcePages_m3,reviewSourcePages as reviewSourcePages_m6 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-source-model.js";
-import { WorkflowMockReview as WorkflowMockReview_m1,WorkflowMockReview as WorkflowMockReview_m6 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review.js";
+import { reviewFieldBlocks as reviewFieldBlocks_m6,reviewFieldGroups as reviewFieldGroups_m6 } from "../../../../../src/dashboard/surfaces/run-detail/review/review-record-model.js";
+import { reviewSourcePages as reviewSourcePages_m3,reviewSourcePages as reviewSourcePages_m6 } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-source-model.js";
+import { WorkflowMockReview as WorkflowMockReview_m1,WorkflowMockReview as WorkflowMockReview_m6 } from "../../../../../src/dashboard/surfaces/run-detail/review/review.js";
 
 
 {

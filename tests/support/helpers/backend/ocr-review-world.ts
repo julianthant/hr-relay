@@ -1,3 +1,6 @@
+import { BUILD_MANIFEST } from "../../../../src/workflow-kit/validation/build-manifest.js";
+import type { BuildManifest } from "../../../../src/models/workflow/build-manifest.js";
+import type { createRetainedApprovedRecordReader } from "../../fixtures/ocr/retained-approved-records.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { runClaim } from "../../../../src/models/run/record.js";
 import { createNoteTimelineWriter } from "../../../../src/backend/storage/events/note-timeline-writer.js";
@@ -31,12 +34,15 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { unexpectedWorkbookSync } from "./workbook-sync.js";
 import { retainedOcrModule, retainedOcrStore, retainedOcrCheckpointPublication } from "../../fixtures/ocr/retained-review-producer.js";
 import { ocrWorkflowStore } from "../../../../src/workflows/ocr/task-registry.js";
+import { ocrForm, type OcrFormType } from "../../../../src/models/ocr/form-registry.js";
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
 import { testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
 import type { SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import type { WorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
 import { ocrPageStore } from "../../../../src/workflows/ocr-page/task-registry.js";
+import { ReadManualOcrReading } from "../../../../src/models/workflows/ocr-page/read-manual-reading.js";
 import { readManualOcrReadingTask } from "../../../../src/workflows/ocr-page/tasks/read-manual-reading.js";
+import { OcrPageWorkflowInputSchema } from "../../../../src/models/workflows/ocr-page/input.js";
 import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/driver/fake.js";
 import { I9LookupError, type I9LookupInput } from "../../../../src/models/systems/i9/read-section2-signer.js";
 import { sessionFactoryHarness } from "../phase1f-executor-harness.js";
@@ -52,12 +58,17 @@ export function createOcrReviewWorld() {
   const world = createRunExecutorTestWorld();
   return {
     cleanup: world.cleanup,
-    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number; retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule;
+    async fixture(options: Readonly<{ actorId?: string; record?: boolean; release?: boolean; pageCount?: number;
+      retainedProducer?: boolean; coordinator?: boolean; dryRun?: boolean; parent?: WorkflowModule; ocr?: WorkflowModule;
+      lookupNames?: readonly string[]; recordPages?: readonly number[]; pauseAtLookup?: boolean; formType?: OcrFormType; sessions?: SessionFactoryHarness;
       failManualPageOnce?: number; stopAfterPageFailure?: boolean;
       signerLookup?: Readonly<{ firstNames: readonly string[]; failOnce?: string }>;
       reviewedPages?: readonly ReviewedPageFacts[]; operatorEvidence?: boolean;
-      sessions?: SessionFactoryHarness; screenshotCapture?: NonNullable<Parameters<typeof world.executorHarness>[0]>["screenshotCapture"];
+      screenshotCapture?: NonNullable<Parameters<typeof world.executorHarness>[0]>["screenshotCapture"];
       member?: WorkflowModule;
+      buildManifest?: BuildManifest;
+      approvedReader?: typeof createRetainedApprovedRecordReader;
+      manualPageFailure?: (sourcePage: number) => boolean;
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       if (options.reviewedPages !== undefined) assert.equal(options.reviewedPages.length, options.pageCount);
@@ -70,7 +81,7 @@ export function createOcrReviewWorld() {
         ]);
         return rendered.value;
       } });
-      const ocrRoot = options.retainedProducer === true ? retainedOcrModule : ocrModule;
+      const ocrRoot = options.retainedProducer === true ? retainedOcrModule : options.ocr ?? ocrModule;
       const coordinator = options.coordinator === true ? workflowModuleOf("emergency-contact") : undefined;
       const member = options.member ?? (options.coordinator === true ? childWorkflowModuleOf("emergency-contact", "emergency-contact-member") : undefined);
       const root = options.parent ?? coordinator ?? ocrRoot;
@@ -88,8 +99,9 @@ export function createOcrReviewWorld() {
           return { i9Status: "not-found" as const, signerName: "" as const };
         },
       }) });
-      const manualReading = options.failManualPageOnce === undefined ? readManualOcrReadingTask : defineTask(readManualOcrReadingTask.contract, {
+      const manualReading = options.failManualPageOnce === undefined && options.manualPageFailure === undefined ? readManualOcrReadingTask : defineTask(readManualOcrReadingTask.contract, {
         sessions: [], async run(args) {
+          if (options.manualPageFailure?.(args.input.page.sourcePage) === true) return args.ctx.fail("INCONSISTENT_INPUTS", "Synthetic manual page reading refused.");
           if (!failedPage && args.input.page.sourcePage === options.failManualPageOnce) {
             failedPage = true;
             return args.ctx.fail("INCONSISTENT_INPUTS", "Synthetic first page-read failure.");
@@ -126,7 +138,7 @@ export function createOcrReviewWorld() {
         sessions: harness.manager, emitter: harness.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: harness.scheduler,
         taskDeadlineMs: 60_000, operator: "local-operator", log: harness.deps.log }) : undefined;
       const notes = options.operatorEvidence === true ? createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }) : undefined;
-      const canonical = canonicalChildExecution({ ...harness.deps, artifacts, ...(writeSequencer === undefined ? {} : { writeSequencer }) }, database, path, resolve,
+      const canonical = canonicalChildExecution({ ...harness.deps, ...(options.buildManifest === undefined ? {} : { buildManifest: options.buildManifest }), artifacts, ...(writeSequencer === undefined ? {} : { writeSequencer }) }, database, path, resolve,
         options.retainedProducer === true ? retainedOcrCheckpointPublication : createOcrCheckpointPublication,
         { workbooks, resources: (reader, run) => { const claim = runClaim(run); assert.ok(claim); const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
           const needsPlanEvidence = notes !== undefined && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction");
@@ -134,7 +146,9 @@ export function createOcrReviewWorld() {
           confirmedActionPublisher: createConfirmedActionPublisher({ workerId: claim.workerId, streamId: randomUUID(), clock, capacity: 256,
             append: event => { const current = database.authority.runs.get(event.action.runId); assert.ok(current); notes.emitConfirmedAction(event, current); } }) }), providers: { configSnapshots: database.authority.configSnapshots,
           idFactory: { next: () => randomUUID() }, adapters: { "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({clock,
-            reader: createApprovedOcrRecordReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime()}),
+            reader: options.approvedReader === undefined
+              ? createApprovedOcrRecordReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime()})
+              : options.approvedReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime(), manifest: options.buildManifest ?? BUILD_MANIFEST}),
           }) } } }; } });
       const sources = createOcrSourceService({ database, reader: canonical.lifecycle, clock, artifacts, artifactReader,
         assertCurrent: () => admission.assertProfileRuntime() });
@@ -144,7 +158,8 @@ export function createOcrReviewWorld() {
       const image = await artifacts.put(pageBytes, { mediaType: "image/png" });
       rendered.value = { pageCount: options.pageCount ?? 1, pages: Array.from({ length: options.pageCount ?? 1 }, (_, index) => ({ sourcePage: index + 1, image })) };
       const manifest = buildOcrSourceManifest(upload.artifact, rendered.value);
-      const formType = options.signerLookup === undefined ? "emergency-contact" : "i9";
+      if (options.lookupNames !== undefined) { assert.equal(options.lookupNames.length, manifest.pageCount); assert.equal(options.record, true); }
+      const formType = options.signerLookup === undefined ? options.formType ?? "emergency-contact" : "i9";
       if (options.signerLookup !== undefined) {
         assert.equal(options.record, true);
         assert.equal(options.signerLookup.firstNames.length, manifest.pages.length);
@@ -152,7 +167,7 @@ export function createOcrReviewWorld() {
       }
       const readings = ocrPageInputs(manifest, READING_ID, formType).map((page, index) => {
         const facts = options.reviewedPages?.[index];
-        const original = options.signerLookup === undefined ? submittedPage(page, facts?.employeeName ?? "Example, Avery", options.record === true ? "emergency-contact" : "blank")
+        const original = options.signerLookup === undefined ? submittedPage(page, facts?.employeeName ?? options.lookupNames?.[index] ?? "Example, Avery", options.record === true && (options.recordPages === undefined || options.recordPages.includes(page.sourcePage)) ? ocrForm(formType).pageKinds[0] : "blank")
           : i9PageSubmission(page, { eid: "10800000", firstName: options.signerLookup.firstNames[index], kind: "i9-section1" });
         const valid = { ...original, source: { kind: "operator" as const, actorId },
           record: original.record === null ? null : { answers: { ...original.record.answers,
@@ -161,8 +176,9 @@ export function createOcrReviewWorld() {
           ...(facts === undefined ? {} : { "contact.name": { state: "read" as const, raw: facts.correctedContactName, confidence: 1 } }) } } };
         return { reading: bindManualOcrPageReading(page, actorId, { ...valid,
           record: valid.record === null ? null : { answers: { ...valid.record.answers,
-            ...(facts === undefined && options.signerLookup === undefined ? { "employee.name": { state: "absent" as const, reason: "blank" as const } } : {}) } } }),
+            ...(facts === undefined && options.lookupNames === undefined && options.signerLookup === undefined ? { "employee.name": { state: "absent" as const, reason: "blank" as const } } : {}) } } }),
           corrected: bindManualOcrPageReading(page, actorId, corrected).extraction.record };
+
       });
       const first = readings[0]; assert.ok(first);
       const { reading, corrected } = first;
@@ -171,12 +187,33 @@ export function createOcrReviewWorld() {
         reading: { kind: "manual", actorId, assertions: readings.map(({ reading }) => ({ sourcePage: reading.input.sourcePage, extraction: reading.extraction })) } });
       const parentRun = canonical.start(root.descriptor, coordinator === undefined ? request : EmergencyContactInputSchema.parse({ document: request.document, readingId: request.readingId, roster: request.roster, reading: request.reading }), { dryRun: options.dryRun ?? false,
           ...(options.retainedProducer === true || !root.descriptor.requiredWorkbookTypeIds.includes("ocr-roster") ? {} : { workbookReferences: [{ entry: 1, typeId: "ocr-roster", libraryId: roster.libraryId }] }) });
-      let result = await canonical.execute(parentRun, new AbortController().signal);
+      const signal = new AbortController().signal;
+      const lookupAdmitted = () => database.authority.dependencies.groups(parentRun.envelope.runId)
+        .some(({ group }) => group.invocation.nodeId === "lookup-identities");
+      const executeToLookup = async () => {
+        assert.equal(options.parent, undefined);
+        const outcomes: Awaited<ReturnType<typeof canonical.execute>>["outcomes"] = [];
+        while (!lookupAdmitted()) {
+          const next = await canonical.step(parentRun, signal);
+          outcomes.push(next.outcome);
+          if (!lookupAdmitted()) {
+            const failure = next.outcome.state === "failed" ? database.authority.failures.get(next.outcome.failureId) : undefined;
+            const expectedPageFailure = next.run.envelope.workflow === "ocr-page" && failure?.nodeId === "manual-reading"
+              && failure.taskId === ReadManualOcrReading.id && failure.code === "INCONSISTENT_INPUTS"
+              && options.manualPageFailure?.(OcrPageWorkflowInputSchema.parse(next.run.input.parsed.value).page.sourcePage) === true;
+            assert.ok(next.outcome.state === "done" || next.outcome.state === "yielded-delegation" || expectedPageFailure,
+              `OCR stopped before native lookup admission: ${JSON.stringify({ state: next.outcome.state, workflow: next.run.envelope.workflow, code: failure?.code, summary: failure?.summary })}`);
+          }
+        }
+        return { run: database.authority.runs.get(parentRun.envelope.runId), outcomes };
+      };
+      let result = options.pauseAtLookup === true ? await executeToLookup() : await canonical.execute(parentRun, signal);
       if ((failedPage || failedSigner) && options.stopAfterPageFailure !== true && result.run?.lifecycle.state === "queued") {
         const continued = await canonical.execute(parentRun, new AbortController().signal);
         result = { ...continued, outcomes: [...result.outcomes, ...continued.outcomes] };
       }
-      const run = root === ocrRoot ? parentRun : database.authority.runs.listChildren(parentRun.envelope.runId).find(child => child.envelope.workflow === "ocr");
+      const run = root === ocrRoot ? parentRun
+        : database.authority.runs.listChildren(parentRun.envelope.runId).find(child => child.envelope.workflow === "ocr");
       assert.ok(run);
       if (actorId === "local-operator") {
         const failures = result.outcomes.filter(outcome => outcome.state === "failed").map(outcome => {
@@ -186,12 +223,19 @@ export function createOcrReviewWorld() {
             frames: [...(failure.debug?.stack ?? "").matchAll(/(?:src|tests)\/[A-Za-z0-9_./-]+\.ts:\d+:\d+/gu)]
               .map(match => match[0]).slice(0, 8) };
         });
-        assert.deepEqual(failures.filter(failure => !((failedPage && failure.nodeId === "manual-reading" && failure.code === "INCONSISTENT_INPUTS")
-          || (failedSigner && failure.nodeId === "lookup-source" && failure.code === "I9_LOOKUP_FAILED"))), [],
-          `OCR fixture execution failed: ${JSON.stringify(failures)}`);
-        assert.equal(failures.length, Number(failedPage) + Number(failedSigner));
+        if (options.manualPageFailure !== undefined) {
+          assert.deepEqual(failures.map(({ nodeId,taskId,code }) => ({ nodeId,taskId,code })),
+            manifest.pages.filter(page => options.manualPageFailure?.(page.sourcePage) === true)
+              .map(() => ({ nodeId: "manual-reading", taskId: ReadManualOcrReading.id, code: "INCONSISTENT_INPUTS" })));
+        } else {
+          assert.deepEqual(failures.filter(failure => !((failedPage && failure.nodeId === "manual-reading" && failure.code === "INCONSISTENT_INPUTS")
+            || (failedSigner && failure.nodeId === "lookup-source" && failure.code === "I9_LOOKUP_FAILED"))), [],
+            `OCR fixture execution failed: ${JSON.stringify(failures)}`);
+          assert.equal(failures.length, Number(failedPage) + Number(failedSigner));
+        }
         const lifecycle = root === ocrRoot ? result.run?.lifecycle : database.authority.runs.get(run.envelope.runId)?.lifecycle;
-        assert.ok(failedPage && options.stopAfterPageFailure === true ? lifecycle?.state === "queued"
+        assert.ok(options.pauseAtLookup === true ? lookupAdmitted() && (lifecycle?.state === "queued" || lifecycle?.state === "parked-gate")
+          : failedPage && options.stopAfterPageFailure === true ? lifecycle?.state === "queued"
           : (options.release === true || coordinator !== undefined) ? lifecycle?.state === "parked-gate"
           : lifecycle?.state === "terminal" && lifecycle.outcome === "done",
         `OCR fixture stopped before review: ${JSON.stringify(result.outcomes.map(outcome => ({ state: outcome.state })))}`);

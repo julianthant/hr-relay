@@ -7,6 +7,8 @@ import { afterEach,beforeEach,describe,it,vi } from 'vitest';
 import { LogSample } from '../../../../../src/dashboard/surfaces/run-detail/logs/log-sample.js';
 import { initialMockDraft,type MockRun } from '../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js';
 import { mockQueueSurface } from '../../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js';
+import { QueueSurfaceWireSchema } from "../../../../../src/models/dashboard/projection.js";
+import { queueParentFixture } from "../../../../support/helpers/dashboard/queue-parent-fixture.js";
 import { DryRunPreviewWireSchema } from '../../../../../src/models/dashboard/run-detail.js';
 
 const { useRunWiring, projectRunLogs } = vi.hoisted(() => ({ useRunWiring: vi.fn(), projectRunLogs: vi.fn() }));
@@ -53,7 +55,7 @@ describe('compact run headers', () => {
   it.each([true, false])('renders the served child retry in the log header with current availability (%s)', available => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
-    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Failed lookup' }, childRetry: { label: 'Retry' } },
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Failed lookup' }, availableSections: ['logs'], childRetry: { label: 'Retry' } },
       logs: {}, unavailableEvidence: [] }, ...(available ? { onChildRetry: vi.fn() } : {}) });
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
     const markup = renderToStaticMarkup(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } }));
@@ -64,29 +66,35 @@ describe('compact run headers', () => {
 
   it.each([true, false])('clicks the served child Retry only when it is enabled (%s)', available => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
-    const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
+    const row = QueueSurfaceWireSchema.parse({ ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'),
+      parent: queueParentFixture('00000000-0000-4000-8000-000000000901'),
+      actions: [{ key: 'retry', label: 'Retry', kind: 'command', command: 'retry', expectedVersion: 1,
+        intent: 'neutral', icon: 'retry', placement: ['banner'] }] });
+    const onAction = vi.fn();
     const effects: string[] = [];
-    const snapshot = { detail: { header: { title: 'Failed lookup' }, childRetry: { label: 'Retry' } }, logs: {}, unavailableEvidence: [] };
+    const snapshot = { detail: { header: { title: 'Failed lookup' }, availableSections: ['logs'], childRetry: { label: 'Retry' } }, logs: {}, unavailableEvidence: [] };
     useRunWiring.mockReturnValue({ state: 'loaded', snapshot, ...(available ? { onChildRetry: () => effects.push('retry') } : {}) });
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
     try {
-      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } })));
+      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' }, onAction })));
       const button = host.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert.ok(button);
+      assert.equal(host.querySelectorAll('button[aria-label="Retry"]').length, 1);
       act(() => button.click());
       assert.deepEqual(effects, available ? ['retry'] : []);
       useRunWiring.mockReturnValue({ state: 'loaded', snapshot, onChildRetry: () => effects.push('updated') });
-      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' } })));
+      act(() => root.render(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'Person lookup' }, onAction })));
       const refreshed = host.querySelector<HTMLButtonElement>('button[aria-label="Retry"]'); assert.ok(refreshed);
       act(() => refreshed.click());
       assert.deepEqual(effects, available ? ['retry', 'updated'] : ['updated']);
+      assert.equal(onAction.mock.calls.length, 0);
     } finally { act(() => root.unmount()); host.remove(); }
   });
 
   it('shows the source page and revision when earlier review changes no longer apply', () => {
     const run: MockRun = { id: 'header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = mockQueueSurface(run, '2026-08-03T16:10:00.000Z');
-    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'OCR' }, ocrReviewChanges: [{ sourcePage: 2, revision: 4 }] },
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'OCR' }, availableSections: ['logs'], ocrReviewChanges: [{ sourcePage: 2, revision: 4 }] },
       logs: {}, unavailableEvidence: [] } });
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
     const markup = renderToStaticMarkup(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'OCR' } }));
@@ -107,7 +115,7 @@ describe('compact run headers', () => {
     const dryRunPreview = previewState === 'none' ? undefined : DryRunPreviewWireSchema.parse(previewState === 'available'
       ? { state: 'available', coverage: 'full', stages: [{ id: 'submit', label: 'Submit', state: 'exercised', detail: 'Submit was not clicked.', submitNotClicked: true }] }
       : previewState === 'unavailable' ? { state: 'unavailable', reason: 'preview-not-completed' } : { state: 'pending' });
-    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Retained run' } },
+    useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Retained run' }, availableSections: ['logs'] },
       logs: { ...(dryRunPreview === undefined ? {} : { dryRunPreview }) }, unavailableEvidence: [] }, onUcpathDecision: vi.fn() });
     projectRunLogs.mockReturnValue({ steps: [{ id: 'parked-submit', time: '13:02:03', title: 'Write parked',
       entries: [{ kind: 'note', id: 'parked-note', time: '13:02:03', message: 'Uncertain' }] },

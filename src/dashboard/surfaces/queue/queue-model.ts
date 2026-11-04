@@ -3,10 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { isQueueMember, isQueueTopLevel } from "../../../models/dashboard/queue-parent.js";
 import type { z } from "zod";
-import type { QueueSurfaceWireSchema } from "../../../models/dashboard/projection.js";
+import type { QueueSurfaceWireSchema, QueueRecordMember, QueueMemberSelection } from "../../../models/dashboard/projection.js";
 import {
   dsStatusOf,
   statusAccessibleName,
+  statusText,
   type ProposedStatus,
 } from "../shared/status/status-model.js";
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
@@ -318,6 +319,54 @@ export function orderMembers(members: readonly QueueSurfaceWire[]): QueueSurface
     .map(({ surface }) => surface);
 }
 
+export function queueMemberSelection(member: QueueRecordMember): QueueMemberSelection {
+  if (member.kind === "record") return { kind: member.kind, record: member.record };
+  if (member.kind === "reading") return { kind: member.kind, ownerRunId: member.ownerRunId };
+  return { kind: member.kind, ownerRunId: member.ownerRunId, sourcePage: member.sourcePage };
+}
+
+export function queueMemberKey(selection: QueueMemberSelection): string {
+  if (selection.kind === "record") return JSON.stringify([selection.kind, selection.record.runId, selection.record.recordId]);
+  if (selection.kind === "reading") return JSON.stringify([selection.kind, selection.ownerRunId]);
+  return JSON.stringify([selection.kind, selection.ownerRunId, selection.sourcePage]);
+}
+
+export type QueueMemberLine = Readonly<{ kind: "run"; key: string; item: QueueItemGroup }>
+  | Readonly<{ kind: "record"; key: string; member: QueueRecordMember }>;
+
+export function queueMemberLines(surface: OperationSurfaceWire, members: readonly QueueSurfaceWire[]): readonly QueueMemberLine[] {
+  const covered = new Set(surface.recordMembers?.runIds ?? []);
+  const runs: QueueMemberLine[] = groupQueueAttempts(members.filter(member => !covered.has(member.runId)))
+    .map(item => ({ kind: "run", key: item.key, item }));
+  const records: QueueMemberLine[] = (surface.recordMembers?.members ?? [])
+    .map(member => ({ kind: "record", key: queueMemberKey(queueMemberSelection(member)), member }));
+  const status = (line: QueueMemberLine) => line.kind === "run" ? line.item.representative.status : line.member.status;
+  return [...runs, ...records].sort((a, b) => MEMBER_TIER[dsStatusOf(status(a))] - MEMBER_TIER[dsStatusOf(status(b))]);
+}
+
+export function queueMemberPresentation(line: QueueMemberLine, selectedRunId?: string) {
+  if (line.kind === "record") return { key: line.key, title: line.member.title, status: line.member.status,
+    statusLabel: line.member.statusLabel, statusAccessibleLabel: line.member.statusLabel, paused: false, buttonTitle: line.member.title,
+    accessibleName: `${line.member.title} ${line.member.statusLabel.toLowerCase()}`, native: undefined };
+  const item = line.item;
+  const surface = item.attempts.find(attempt => attempt.runId === selectedRunId) ?? item.representative;
+  const pause = queuePauseLabel(surface), status = dsStatusOf(surface.status), title = queueRowTitle(surface);
+  return { key: String(surface.runId), title, status: surface.status, paused: pause === "Paused",
+    statusLabel: pause ?? surface.outcome?.label ?? statusText(status), statusAccessibleLabel: pause ?? surface.outcome?.label ?? statusAccessibleName(status), buttonTitle: surface.subtitle.state === "present" ? surface.subtitle.value : surface.subtitle.reason,
+    accessibleName: `${title} ${surface.subtitle.state === "present" ? surface.subtitle.value : (pause ?? statusAccessibleName(status)).toLowerCase()}`,
+    native: { surface, item } };
+}
+
+export function queueMemberRollup(surface: OperationSurfaceWire, members: readonly QueueSurfaceWire[]) {
+  if (surface.recordMembers === undefined) return surface.memberRollup;
+  const statuses = queueMemberLines(surface, members).map(line => line.kind === "run" ? line.item.representative.status : line.member.status);
+  return { total: statuses.length, terminal: statuses.filter(status => ["done", "failed", "cancelled", "partial"].includes(status)).length,
+    failed: statuses.filter(status => status === "failed").length };
+}
+
+export type QueueKeyboardEntry = Readonly<{ key: string; status: QueueSurfaceWire["status"] } & (
+  { kind: "run"; runId: string } | { kind: "record"; member: QueueRecordMember })>;
+
 /* ── the panel ───────────────────────────────────────────────────────────── */
 
 /** Inline and hidden children remain within their parent even when that parent is unloaded. */
@@ -360,21 +409,19 @@ export function queueScopeWorkflow(selected: QueueSurfaceWire, surfaces: readonl
 }
 
 /** Keyboard traversal follows drawn rows, including expanded members. */
-export function visibleRunIds(
-  surfaces: readonly QueueSurfaceWire[],
-  sort: QueueSortKey = "attention",
-  nowIso: string = new Date(0).toISOString(),
-): string[] {
+export function queueKeyboardEntries(
+  surfaces: readonly QueueSurfaceWire[], sort: QueueSortKey = "attention", nowIso: string = new Date(0).toISOString(),
+): readonly QueueKeyboardEntry[] {
   const { top, membersOf } = partition(surfaces);
   const { displayTop, itemByRunId } = queueItemLayout(top);
-  const ids: string[] = [];
+  const entries: QueueKeyboardEntry[] = [];
   const append = (surface: QueueSurfaceWire, item: QueueItemGroup): void => {
-    ids.push(...item.attempts.toReversed().map(attempt => String(attempt.runId)));
-    const groups = groupQueueAttempts(membersOf.get(surface.runId) ?? []);
-    for (const member of orderMembers(groups.map(group => group.representative))) {
-      const memberItem = groups.find(group => group.representative.runId === member.runId);
-      if (memberItem === undefined) throw new Error(`queue keyboard order lost member item ${String(member.itemId)}`);
-      append(member, memberItem);
+    entries.push(...item.attempts.toReversed().map(attempt => ({ kind: "run" as const, key: String(attempt.runId),
+      runId: String(attempt.runId), status: item.representative.status })));
+    if (surface.surfaceKind !== "operation") return;
+    for (const line of queueMemberLines(surface, membersOf.get(surface.runId) ?? [])) {
+      if (line.kind === "run") append(line.item.representative, line.item);
+      else entries.push({ kind: "record", key: line.key, member: line.member, status: line.member.status });
     }
   };
   for (const group of queueDisplayGroups(displayTop, sort, nowIso)) for (const surface of group.rows) {
@@ -382,22 +429,16 @@ export function visibleRunIds(
     if (item === undefined) throw new Error(`queue keyboard order lost item ${String(surface.itemId)}`);
     append(surface, item);
   }
-  return ids;
+  return entries;
+}
+
+export function visibleQueueKeys(surfaces: readonly QueueSurfaceWire[], sort: QueueSortKey = "attention", nowIso: string = new Date(0).toISOString()): readonly string[] {
+  return queueKeyboardEntries(surfaces, sort, nowIso).map(entry => entry.key);
 }
 
 /** Attention shortcuts use the same visible order and bands as the queue. */
-export function attentionRunIds(
-  surfaces: readonly QueueSurfaceWire[],
-  sort: QueueSortKey = "attention",
-  nowIso: string = new Date(0).toISOString(),
-): string[] {
-  const attention = new Set<string>(
-    groupQueueAttempts(surfaces)
-      .map((group) => group.representative)
-      .filter((surface) => bandOf(dsStatusOf(surface.status)) === "attention")
-      .map((surface) => String(surface.runId)),
-  );
-  return visibleRunIds(surfaces, sort, nowIso).filter((runId) => attention.has(runId));
+export function attentionQueueKeys(surfaces: readonly QueueSurfaceWire[], sort: QueueSortKey = "attention", nowIso: string = new Date(0).toISOString()): readonly string[] {
+  return queueKeyboardEntries(surfaces, sort, nowIso).filter(entry => bandOf(dsStatusOf(entry.status)) === "attention").map(entry => entry.key);
 }
 
 export interface QueueBatch {

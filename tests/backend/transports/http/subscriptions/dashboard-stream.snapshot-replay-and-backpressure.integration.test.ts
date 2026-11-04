@@ -1,4 +1,4 @@
-import { afterAll, afterEach, describe, it } from "vitest";
+import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import { randomUUID } from "node:crypto";
 
@@ -11,7 +11,8 @@ import { personLookupDescriptor } from "../../../../support/helpers/registered-w
 import assert from "node:assert/strict";
 import { BackfillGapObservationSchema } from "../../../../../src/backend/runs/notifications/backfill-gap.js";
 import { createDashboardStreamHub,type DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
-import { applyDashboardDayPatch } from "../../../../../src/dashboard/client/index.js";
+import { applyDashboardDayPatch, createDashboardClient } from "../../../../../src/dashboard/client/index.js";
+import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import type { DashboardDayWire } from "../../../../../src/models/dashboard/projection.js";
 import type { DashboardStreamEnvelope } from "../../../../../src/models/dashboard/subscription.js";
@@ -113,6 +114,46 @@ function applyEnvelope(day: DashboardDayWire | undefined, envelope: DashboardStr
 }
 
 describe("dashboard stream hub", () => {
+  it("delivers a buffered multi-run timeline page to the real client without a reconnect or dropped row", async () => {
+    const { w, hub } = await harness();
+    queuedEventOf(w, { seed: 1 }); queuedEventOf(w, { seed: 2 });
+    claimEventOf(w, 1); claimEventOf(w, 2);
+    const connection = await hub.connect({ day: DAY });
+    const days: DashboardDayWire[] = [];
+    let output: ReadableStreamDefaultController<Uint8Array> | undefined;
+    let fetches = 0, reconnects = 0;
+    const send = (envelopes: readonly DashboardStreamEnvelope[]) => {
+      assert.ok(output);
+      for (const envelope of envelopes) output.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(envelope)}\n\n`));
+    };
+    const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => {
+      fetches++;
+      return new Response(new ReadableStream<Uint8Array>({ start(controller) { output = controller; send(connection.initial); } }),
+        { headers: { "content-type": "text/event-stream" } });
+    } });
+    const subscription = client.subscribeDay({ day: DAY, onDay: day => days.push(day), onState: () => {},
+      schedule: () => { reconnects++; return () => {}; } });
+    try {
+      await vi.waitFor(() => assert.equal(days.length, 1));
+      const before = days[0];
+      const buffered = { ...w, writer: createTimelineEmitter({ repository: w.timeline, clock: w.clock, pid: 777 }) };
+      taskEventsOf(buffered, 1, "searching", "done"); taskEventsOf(buffered, 2, "searching", "done");
+      w.projection.ingestFromTimeline();
+      const live = await drain(connection);
+      assert.deepEqual(live.map(envelope => envelope.type), ["snapshot"]);
+      send(live);
+      await vi.waitFor(() => assert.equal(days.length, 2));
+      const current = days.at(-1); assert.ok(current);
+      assert.deepEqual(current, JSON.parse(JSON.stringify(w.projection.buildDashboardDayWire(DAY))));
+      assert.equal(Number(current.snapshotCursor.slice(3)), Number(before.snapshotCursor.slice(3)) + 4);
+      for (const seed of [1, 2]) {
+        assert.equal(w.projection.runFold(uuidOf(seed))?.taskSpans.at(-1)?.outcome, "done");
+        assert.notDeepEqual(current.queueSurfaces.find(row => row.runId === uuidOf(seed))?.pipeline,
+          before.queueSurfaces.find(row => row.runId === uuidOf(seed))?.pipeline);
+      }
+      assert.equal(reconnects, 0); assert.equal(fetches, 1);
+    } finally { subscription.close(); connection.close(); }
+  });
   it("opens with hello -> snapshot -> health and stamps the projection identity", async () => {
     const { w, hub } = await harness();
     queuedEventOf(w, { seed: 1 });
