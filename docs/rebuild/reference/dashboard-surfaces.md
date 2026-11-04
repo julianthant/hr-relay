@@ -19,7 +19,7 @@ All source paths in this table are relative to `src/dashboard/`.
 | Action panel and date | `surfaces/queue/queue-focus.tsx`, app composition | Selected workflow/day, filters, and shared served clock |
 | Queue | `surfaces/queue/queue.tsx`, `workflows/mocks/workflow-mock-queue.tsx` | Day/preview model or workflow mock runs |
 | Logs | `surfaces/run-detail/log-panel.tsx`, `logs/log-sample.tsx`, `workflows/mocks/workflow-mock-queue.tsx` | Local ordered log and workflow producers |
-| OCR Records | `surfaces/workflows/mocks/workflow-review.tsx` | Run-bound local records and source-page manifest |
+| OCR Records | `surfaces/run-detail/review/review.tsx` | Run-bound local records and source-page manifest |
 | Run and Rerun | `surfaces/run-start/run-launch.tsx`, `workflows/mocks/workflow-mock-run.tsx` | Catalog, planner/client for served launches, mock drafts for previews |
 | Notifications | `surfaces/notifications/notifications-view.tsx`, workspace rail | App preview destinations with rail-local read state |
 | Sessions | `surfaces/sessions/session-panel.tsx`, `sessions-view.tsx` | `sessionsSample` and `createSessionPreviewPort` |

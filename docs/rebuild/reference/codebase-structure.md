@@ -170,7 +170,7 @@ tuple imports definitions directly, keeping those backend imports out of the das
 `src/backend/runs/queries/ocr-review.ts` projects the existing review section, served through the existing typed client.
 `src/models/workflow/delegated-record.ts` owns stable review-owner/record references and their child histories.
 `src/backend/runs/queries/ocr-record-members.ts` binds OCR records to authenticated original delegation scope and projects Queue lines.
-`src/dashboard/surfaces/run-detail/review/` owns the shared record cards and canonical OCR review presentation;
+`src/dashboard/surfaces/run-detail/review/review.tsx` owns the shared record cards, served OCR review and mock review adapter;
 `state/review-wiring-adapter.ts` owns its lazy exact-run reads. Workflow mocks supply their own data and editing rules to the same cards.
 
 The child-only `src/workflows/ocr/` and `src/workflows/ocr-page/` folders use the same layout.

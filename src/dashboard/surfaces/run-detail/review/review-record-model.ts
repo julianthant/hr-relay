@@ -1,6 +1,8 @@
+import type { OcrFormType } from "../../../../models/ocr/form-registry.js";
+
 export type ReviewField = Readonly<{ key: string; label: string; value: string; kind?: "date" | "boolean" | "relationship"; section?: string; readOnly?: boolean }>;
 export type ReviewRecordView = Readonly<{
-  id: string; page: number; kind: "oath" | "contact" | "verify" | "i9" | "separation";
+  id: string; page: number; kind: OcrFormType | "contact" | "verify" | "separation";
   fields: readonly ReviewField[]; selected: boolean; unknown?: boolean;
   warnings: readonly string[];
   i9Section?: 1 | 2; manualEntry?: boolean; sourcePageCount?: number;

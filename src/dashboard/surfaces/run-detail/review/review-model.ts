@@ -25,7 +25,7 @@ export function ocrReviewCards(page: ReviewPage, sourcePageUrl: (runId: string, 
     });
     const approved = review.approvedSnapshots.some(snapshot => snapshot.revision === revision.revision && snapshot.selectedRecordIds.includes(record.recordId));
     const model: ReviewRecordView = { id: record.recordId, page: source.sourcePage,
-      kind: form.formType === "emergency-contact" ? "contact" : form.formType,
+      kind: form.formType,
       selected: !record.discarded, fields,
       warnings: record.fields.blockingPaths.map(path => `${fields.find(field => field.key === path)?.label ?? path} needs review`) };
     const pages: readonly ReviewSourcePage[] = [{ page: source.sourcePage, imageUrl: sourcePageUrl(page.runId, revision.revision, source.sourcePage) }];
