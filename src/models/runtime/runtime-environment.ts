@@ -4,7 +4,7 @@ import { HOST_PRIMARY_DISPLAY_ENV } from "../config/host-display.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS, DEVELOPMENT_DEBUG_MIRROR_ENV } from "../config/secrets.js";
 
-const EnvironmentKeySchema = z.union([z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.literal("SystemRoot")]);
+const EnvironmentKeySchema = z.union([z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.enum(["SystemRoot", "ProgramFiles", "ProgramFiles(x86)"])]);
 const PROCESS_MECHANICS_ENVIRONMENT_OWNER = "src/models/config/secrets.ts";
 const EnvironmentFamilyPrefixSchema = z.string().regex(/^[A-Z][A-Z0-9_]*$/);
 const SourcePathSchema = z.string().regex(/^[a-z0-9_.-]+(?:\/[a-z0-9_.-]+)*\.(?:[cm]?[jt]sx?)$/);
@@ -13,7 +13,7 @@ export const RuntimeEnvironmentExactSpecSchema = z.discriminatedUnion("dispositi
     key: EnvironmentKeySchema,
     classification: z.enum(["secret", "direct-identifier", "non-secret-config"]),
     disposition: z.literal("active"),
-    channel: z.enum(["config", "config-default", "secret", "config-and-secret", "provider-model", "process-ownership", "development-diagnostics", "process-mechanics", "host-storage"]),
+    channel: z.enum(["config", "config-default", "secret", "config-and-secret", "provider-model", "process-ownership", "development-diagnostics", "process-mechanics", "host-storage", "host-programs"]),
     owner: z.string().regex(/^src\/[a-z0-9/_-]+\.ts$/),
     documented: z.boolean(),
   }),
@@ -185,6 +185,8 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
 } as const;
 
 export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecSchema.array().parse([
+  ...["ProgramFiles", "ProgramFiles(x86)"].map(key => ({ key, classification: "non-secret-config", disposition: "active",
+    channel: "host-programs", owner: PROCESS_MECHANICS_ENVIRONMENT_OWNER, documented: true })),
   {
     key: "LOCALAPPDATA",
     classification: "direct-identifier",
@@ -257,6 +259,8 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
 export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilySpecSchema.array().parse([]));
 
 export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([
+  { key: "ProgramFiles", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
+  { key: "ProgramFiles(x86)", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
   { key: "LOCALAPPDATA", paths: ["src/models/config/secrets.ts"] },
   { key: DEVELOPMENT_DEBUG_MIRROR_ENV, paths: ["src/models/config/secrets.ts"] },
   { key: "SystemRoot", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
@@ -364,7 +368,9 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
   for (const spec of registry.exact) {
     if (spec.disposition !== "active") continue;
     if (spec.channel === "process-mechanics" && spec.key === "SystemRoot") continue;
-    const expectedOwner = spec.channel === "host-storage" && spec.key === "LOCALAPPDATA" && spec.classification === "direct-identifier"
+    const expectedOwner = spec.channel === "host-programs" && ["ProgramFiles", "ProgramFiles(x86)"].includes(spec.key) && spec.classification === "non-secret-config"
+      ? PROCESS_MECHANICS_ENVIRONMENT_OWNER
+      : spec.channel === "host-storage" && spec.key === "LOCALAPPDATA" && spec.classification === "direct-identifier"
       ? "src/models/config/secrets.ts"
       : spec.channel === "process-ownership"
       ? "src/models/dashboard/dashboard-frontend-owner.ts"

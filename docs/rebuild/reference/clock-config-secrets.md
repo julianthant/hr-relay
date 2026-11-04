@@ -397,6 +397,11 @@ only this key and canonical owner; exact reader ownership names the same path. T
 picker consumes the accessor and validates the returned root before launching PowerShell. The worker's
 closed mechanics pass-through remains separately audited.
 
+`windowsProgramFilesRoots()` alone reads `ProgramFiles` and `ProgramFiles(x86)` for the Windows
+launcher. The `host-programs` channel permits only those non-secret keys and their canonical owner
+in `secrets.ts`. The launcher validates provided roots before locating Edge; neither key is copied
+into worker bootstrap inheritance.
+
 `config/test-data.json` owns public subject declarations and safe fixtures.
 Ignored `config/test-data.local.json` owns private canary values and private document paths.
 `src/models/config/test-data.ts`, `src/backend/app/registries/test-data.ts`, and
