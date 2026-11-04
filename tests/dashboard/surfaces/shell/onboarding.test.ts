@@ -358,3 +358,16 @@ it("opening the setup browser spins the button and leaves the instruction in pla
     assert.equal(show()?.querySelector("svg"), null);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
+
+it("asks the profile still signed in on this computer to log in and offers no sign-up", async () => {
+  const host = document.createElement("div"); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(Onboarding, { step: "login", onStep() {}, onDashboard() {}, signedInAs: { firstName: "Alex", lastName: "Rivera" } })));
+    assert.equal(host.querySelector("h1")?.textContent, "Log in as Alex Rivera");
+    assert.equal([...host.querySelectorAll("a")].some(link => link.textContent === "Sign up"), false);
+    await act(async () => root.render(createElement(Onboarding, { step: "login", onStep() {}, onDashboard() {} })));
+    assert.equal(host.querySelector("h1")?.textContent, "Log in to Relay");
+    assert.equal([...host.querySelectorAll("a")].some(link => link.textContent === "Sign up"), true);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});

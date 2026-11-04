@@ -510,7 +510,7 @@ it("a refused dashboard start after Finish keeps the published profile and leave
     assert.ok(f.machine.readProfileRegistry().profiles[0]?.registration.onboardingCompletion);
     const state = await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } });
     assert.equal(state.status, 200);
-    assert.deepEqual(PublicProfileStateSchema.parse(await state.json()), { state: "signed-out", signUpRequired: false });
+    assert.deepEqual(PublicProfileStateSchema.parse(await state.json()), { state: "signed-out", signUpRequired: false, signedInAs: { firstName: "Fixture", lastName: "Operator" } });
     refuse = false;
     const login = await post("/api/v1/profile/sign-in", { email: "fixture@ucsd.edu", password: "disposable-fixture-password" });
     assert.equal(PublicProfileStateSchema.parse(await login.json()).state, "active");

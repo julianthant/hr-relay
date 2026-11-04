@@ -1232,8 +1232,12 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     if (selection === undefined && onboardingSelection !== undefined && cookieOf(c.req.raw, onboardingCookieName) === onboardingSelection.sessionId) {
       return c.json(profileRuntime.session.readOnboarding(onboardingSelection.token, onboardingSelection.operationId));
     }
-    if (selection === undefined) return c.json(PublicProfileStateSchema.parse(pending !== undefined && cookieOf(c.req.raw) === pending.sessionId
-      ? { state: "cancelling", operationId: pending.operationId } : { state: "signed-out", signUpRequired: machine.readProfileRegistry().profiles.length === 0 }));
+    if (selection === undefined && pending !== undefined && cookieOf(c.req.raw) === pending.sessionId) return c.json(PublicProfileStateSchema.parse({ state: "cancelling", operationId: pending.operationId }));
+    if (selection === undefined) {
+      const registry = machine.readProfileRegistry(), held = registry.profiles.find(row => row.profileId === registry.activeProfileId);
+      return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: registry.profiles.length === 0,
+        ...held && { signedInAs: { firstName: held.firstName, lastName: held.lastName } } }));
+    }
     const active = current(c.req.raw);
     return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: active.profileId, epoch: active.epoch,
       duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.duoState }));

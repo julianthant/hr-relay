@@ -294,6 +294,13 @@ describe_m1("served signed-out appearance", () => {
 describe_m1("served sign-up Finish", () => {
   afterEach_m1(_afterEachFixture0);
 
+  it_m1("opens login instead of sign-up while another profile is still signed in", async () => {
+    window.history.replaceState(null, "", "/?onboarding=signup");
+    const client = { ...appClient(), readProfileSession: async () => ({ state: "signed-out" as const, signUpRequired: false, signedInAs: { firstName: "Alex", lastName: "Rivera" } }) };
+    await mountSurface(client, createElement_m1(DashboardApp_m1, { profileSource: "served", workflowComposition: PARITY_WORKFLOW_COMPOSITION_m1 }));
+    await vi_m1.waitFor(() => { assert_m1.equal(document.querySelector("h1")?.textContent, "Log in as Alex Rivera"); }, { timeout: 3000 });
+  });
+
   it_m1("moves to login when the published sign-up cannot start the dashboard", async () => {
     const method = { state: "complete" as const, ceremonyObserved: true, portalAccepted: true, operatorConfirmed: false, exactCredentialRequestObserved: false };
     const ready = { state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001", profileId: "00000000-0000-4000-8000-000000000002", step: "ready" as const, methods: { key: method, touch: method } };
