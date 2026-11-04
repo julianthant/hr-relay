@@ -9,7 +9,7 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { authorizeWorkflowDelegationRefresh,assertWorkflowDelegationRefreshAuthorization,descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { currentDelegationManifests,readDelegationEvidence,readDelegationScopeEvidence } from "../../../../src/backend/storage/sqlite/delegation-authority.js";
 import { childSettledReviewModules,childSettledObservationModules,childRevisedMembershipModules,childRevisedExpiringModules } from "../../../support/fixtures/child-execution-workflows.js";
-import { Plan1Input,plan1ExpiringFailureStores,plan1ControlledFailureStores,plan1TransientFailureStores } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { Plan1Input,Plan1Output,plan1ExpiringFailureStores,plan1ControlledFailureStores,plan1TransientFailureStores } from "../../../support/fixtures/plan1-operation-workflows.js";
 import { createDelegationExecutionWorld } from "../../../support/helpers/backend/delegation-execution-world.js";
 
 const world = createDelegationExecutionWorld(childSettledReviewModules);
@@ -171,6 +171,10 @@ for (const scenario of ["blank","group","replace","empty"] as const) it(`authent
   } else {
     assert.notEqual(revised.children[0]?.run.envelope.runId,previous.run.envelope.runId);
     assert.equal(revised.manifest.children[0]?.reuse,undefined);
+    const replacement = revised.children[0]; assert.ok(replacement);
+    assert.equal(Plan1Output.parse(replacement.result.result.value).providerState,"lookup");
+    assert.ok(replacement.result.dependencies.some(dependency => dependency.state === "resolved"));
+    assert.ok(replacement.result.dependencies.every(dependency => dependency.state !== "resolved" || dependency.checkpoint.runId === replacement.run.envelope.runId));
     if (scenario === "group") assert.deepEqual(revised.children[0]?.run.input,previous.run.input);
     else assert.equal(Plan1Input.parse(revised.children[0]?.run.input.parsed.value).emplId,"10800002");
   }
@@ -199,6 +203,20 @@ it("admits a new read when unchanged lookup input and records have expired obser
   assert.notEqual(revised.children[0]?.run.envelope.runId,previous.run.envelope.runId);
   assert.deepEqual(revised.children[0]?.run.input,previous.run.input);
   assert.equal(revised.manifest.children[0]?.reuse,undefined);
+  const replacement = revised.children[0]; assert.ok(replacement);
+  const own = f.database.authority.runCheckpoints.listByItem(replacement.run.envelope.workflow,replacement.run.envelope.itemId)
+    .filter(checkpoint => checkpoint.runId === replacement.run.envelope.runId);
+  assert.ok(own.length > 0,"a new read must execute its own tasks");
+  const observations = replacement.result.dependencies.flatMap(dependency => {
+    if (dependency.state !== "resolved") return [];
+    assert.equal(dependency.checkpoint.runId,replacement.run.envelope.runId);
+    const reference = dependency.checkpoint;
+    const checkpoint = f.database.authority.runCheckpoints.get(reference.workflowId,reference.itemId,dependency.nodeId,reference.attempt,reference.claimGeneration);
+    assert.ok(checkpoint);
+    return checkpoint.provenance.map(fact => f.clock.nowMs() - Date.parse(fact.source === "derived" ? fact.originalObservedAt : fact.observedAt));
+  });
+  assert.ok(observations.length > 0 && observations.every(age => age >= 0 && age <= 1000));
+  assert.equal(Plan1Output.parse(replacement.result.result.value).providerState,"lookup");
   assert.equal(f.database.authority.runs.listChildren(parent.envelope.runId).filter(child => child.envelope.parent?.edgeId === "lookups").length,3);
   assert.deepEqual(f.database.authority.delegationManifests.get(original.manifest.manifestId),original.manifest);
 });

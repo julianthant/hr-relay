@@ -13,7 +13,7 @@ export const RuntimeEnvironmentExactSpecSchema = z.discriminatedUnion("dispositi
     key: EnvironmentKeySchema,
     classification: z.enum(["secret", "direct-identifier", "non-secret-config"]),
     disposition: z.literal("active"),
-    channel: z.enum(["config", "config-default", "secret", "config-and-secret", "provider-model", "process-ownership", "development-diagnostics", "process-mechanics"]),
+    channel: z.enum(["config", "config-default", "secret", "config-and-secret", "provider-model", "process-ownership", "development-diagnostics", "process-mechanics", "host-storage"]),
     owner: z.string().regex(/^src\/[a-z0-9/_-]+\.ts$/),
     documented: z.boolean(),
   }),
@@ -186,6 +186,14 @@ const TEST_ONLY_ENVIRONMENT_OWNERS = {
 
 export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecSchema.array().parse([
   {
+    key: "LOCALAPPDATA",
+    classification: "direct-identifier",
+    disposition: "active",
+    channel: "host-storage",
+    owner: "src/models/config/secrets.ts",
+    documented: true,
+  },
+  {
     key: DEVELOPMENT_DEBUG_MIRROR_ENV,
     classification: "non-secret-config",
     disposition: "active",
@@ -249,6 +257,7 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
 export const RUNTIME_ENVIRONMENT_FAMILIES = deepFreeze(RuntimeEnvironmentFamilySpecSchema.array().parse([]));
 
 export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReaderOwnerSchema.array().parse([
+  { key: "LOCALAPPDATA", paths: ["src/models/config/secrets.ts"] },
   { key: DEVELOPMENT_DEBUG_MIRROR_ENV, paths: ["src/models/config/secrets.ts"] },
   { key: "SystemRoot", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
   { key: "NODE_OPTIONS", paths: ["playwright.parity.config.ts"] },
@@ -355,7 +364,9 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
   for (const spec of registry.exact) {
     if (spec.disposition !== "active") continue;
     if (spec.channel === "process-mechanics" && spec.key === "SystemRoot") continue;
-    const expectedOwner = spec.channel === "process-ownership"
+    const expectedOwner = spec.channel === "host-storage" && spec.key === "LOCALAPPDATA" && spec.classification === "direct-identifier"
+      ? "src/models/config/secrets.ts"
+      : spec.channel === "process-ownership"
       ? "src/models/dashboard/dashboard-frontend-owner.ts"
       : spec.channel === "config-default"
         ? "src/models/config/host-display.ts"

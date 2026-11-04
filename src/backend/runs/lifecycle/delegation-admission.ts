@@ -295,6 +295,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
             configSnapshotId: parent.envelope.configSnapshotId, configFingerprint: parent.envelope.configFingerprint, resolvedInstance,
             ...(Object.keys(inherited).length === 0 ? {} : { requestedInstance: inherited }),
             priority: parent.envelope.priority, shape: "operation-member", dryRun: parent.envelope.dryRun,
+            ...(revision === undefined ? {} : { recovery: "restart-from-start" as const }),
             ...(parent.envelope.browserMode === undefined ? {} : { browserMode: parent.envelope.browserMode }),
             ...(parent.envelope.captureBrowserScreenshots === undefined ? {} : { captureBrowserScreenshots: parent.envelope.captureBrowserScreenshots }),
             parent: { runId: parent.envelope.runId, edgeId: plan.edgeId, tracePrefix: parent.envelope.traceId },

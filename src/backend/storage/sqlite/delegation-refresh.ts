@@ -12,7 +12,7 @@ import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { assertWorkflowDelegationRefreshAuthorization } from "../../../workflow-kit/workflow.js";
 
 type RefreshEvidenceRepositories = Readonly<{
-  lifecycleJournal: Pick<AuthorityRepositories["lifecycleJournal"], "getCommand" | "findAuditByCommand">;
+  lifecycleJournal: Pick<AuthorityRepositories["lifecycleJournal"], "getCommand" | "findAuditByCommand" | "listDelegationRefreshes">;
   delegationManifests: Pick<AuthorityRepositories["delegationManifests"], "get">;
   runResults: Pick<AuthorityRepositories["runResults"], "getSettlement">;
 }>;
@@ -72,16 +72,29 @@ export function authenticateDelegationRefresh(repositories: RefreshEvidenceRepos
     const request = z.object({ runId: z.string(), lifecycle: z.object({ state: z.literal("parked-gate"), gateId: z.string() }) }).parse(parked.request);
     if (request.runId !== run.envelope.runId || request.lifecycle.gateId !== previous.gateId) throw new Error("delegation-refresh-previous-gate-mismatch");
   }
-  for (const commandId of refresh.retryCommandIds) retryCommand(repositories, commandId, run);
-  for (const retryCommandId of refresh.retryCommandIds.slice(1)) {
-    const extension = refreshCommand(repositories, lifecycleCommandId("delegation-refresh-extend", { rootCommandId: refresh.commandId, retryCommandId }));
-    if (extension.request.phase !== "extend" || extension.request.rootCommandId !== refresh.commandId
-      || extension.request.retryCommandId !== retryCommandId || extension.request.runId !== run.envelope.runId || extension.version > run.version) throw new Error("delegation-refresh-extension-mismatch");
+  const commands = repositories.lifecycleJournal.listDelegationRefreshes(run.envelope.runId)
+    .map(command => refreshCommand(repositories,command.commandId)).filter(command => command.version <= run.version);
+  const extensions = commands.filter(command => command.request.phase === "extend" && command.request.rootCommandId === refresh.commandId)
+    .sort((left,right) => left.version-right.version);
+  const accepted = [root.request.retryCommandId];
+  let previousVersion = root.version;
+  for (const extension of extensions) {
+    const request = extension.request;
+    if (request.phase !== "extend" || request.expectedVersion < previousVersion || request.runId !== run.envelope.runId
+      || request.definitionFingerprint !== root.request.definitionFingerprint || request.claimGeneration !== root.request.claimGeneration
+      || request.commandId !== lifecycleCommandId("delegation-refresh-extend", { rootCommandId: refresh.commandId, retryCommandId: request.retryCommandId })) throw new Error("delegation-refresh-extension-mismatch");
+    accepted.push(request.retryCommandId);
+    previousVersion = extension.version;
   }
+  if (canonicalJsonStringify(accepted) !== canonicalJsonStringify(refresh.retryCommandIds)) throw new Error("delegation-refresh-cohort-mismatch");
+  for (const commandId of accepted) retryCommand(repositories, commandId, run);
+  const settlements = commands.filter(command => command.request.phase === "settle" && command.request.rootCommandId === refresh.commandId);
+  if (settlements.length !== (refresh.phase === "settled" ? 1 : 0)) throw new Error("delegation-refresh-cohort-settlement-mismatch");
   if (refresh.phase === "settled") {
     const settled = refreshCommand(repositories, lifecycleCommandId("delegation-refresh-settle", { rootCommandId: refresh.commandId, retryCommandIds: refresh.retryCommandIds }));
     if (settled.request.phase !== "settle" || settled.request.rootCommandId !== refresh.commandId || settled.request.runId !== run.envelope.runId
-      || canonicalJsonStringify(settled.request.retryCommandIds) !== canonicalJsonStringify(refresh.retryCommandIds) || settled.version > run.version) throw new Error("delegation-refresh-settlement-mismatch");
+      || canonicalJsonStringify(settled.request.retryCommandIds) !== canonicalJsonStringify(refresh.retryCommandIds)
+      || settled.version > run.version || settled.version <= previousVersion) throw new Error("delegation-refresh-settlement-mismatch");
     if (canonicalJsonStringify(settled.request.children.map(child => child.retryCommandId)) !== canonicalJsonStringify(refresh.retryCommandIds)) throw new Error("delegation-refresh-cohort-mismatch");
     for (const child of settled.request.children) {
       const retry = retryCommand(repositories, child.retryCommandId, run);

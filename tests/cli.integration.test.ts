@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { describe,it } from "vitest";
+import { describe,it,vi } from "vitest";
 import { writeDashboardBuildIdentity } from "../src/backend/app/composition/dashboard/build-identity.js";
 import { applicationDataWorkspace,rebuildRuntimeIsolation } from "../src/backend/app/config/runtime-isolation.js";
 import { RuntimeLifetimeLock, RuntimeAlreadyRunningError } from "../src/backend/storage/admission/lifetime-lock.js";
@@ -84,11 +84,11 @@ function createScratchRepoRoot(backendPort: number = rebuildRuntimeIsolation.bac
   const isolationSource = readFileSync(isolationPath, "utf8");
   assert.ok(isolationSource.includes(`backendPort: ${String(rebuildRuntimeIsolation.backendPort)}`));
   assert.ok(isolationSource.includes(`lockPort: ${String(rebuildRuntimeIsolation.lockPort)}`));
-  assert.ok(isolationSource.includes("homeDirectory = userInfo().homedir"));
+  assert.ok(isolationSource.includes("homeDirectory: userInfo().homedir"));
   writeFileSync(isolationPath, isolationSource
     .replace(`backendPort: ${String(rebuildRuntimeIsolation.backendPort)}`, `backendPort: ${String(backendPort)}`)
     .replace(`lockPort: ${String(rebuildRuntimeIsolation.lockPort)}`, `lockPort: ${String(lockPort)}`)
-    .replace("homeDirectory = userInfo().homedir", `homeDirectory = ${JSON.stringify(join(root, "app-data-home"))}`));
+    .replace("homeDirectory: userInfo().homedir", `homeDirectory: ${JSON.stringify(join(root, "app-data-home"))}`));
   const isolationSchemaPath = join(root, "src", "models", "config", "define-runtime-isolation.ts");
   const isolationSchemaSource = readFileSync(isolationSchemaPath, "utf8");
   assert.ok(isolationSchemaSource.includes(`backendPort: z.literal(${String(rebuildRuntimeIsolation.backendPort)})`));
@@ -202,7 +202,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
     requirePrivateEnvironmentFile(scratchRoot);
     const checkoutBefore = checkoutStateFingerprint();
     try {
-
+      vi.stubEnv("LOCALAPPDATA", join(scratchRoot, "local-appdata"));
       const child = spawn(
         process.execPath,
         ["--import", testProcessImport(), join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
@@ -272,7 +272,9 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
       }
 
-      const appWorkspace = applicationDataWorkspace(join(scratchRoot, "app-data-home"));
+      const appWorkspace = applicationDataWorkspace(process.platform === "win32"
+        ? { platform: "win32", localAppData: join(scratchRoot, "local-appdata") }
+        : { platform: process.platform, homeDirectory: join(scratchRoot, "app-data-home") });
       assert.ok(statSync(join(appWorkspace, rebuildRuntimeIsolation.stateRoot, "machine", "profiles.json")).size > 0,
         "the child initializes its profile registry under its private app-data home");
       assert.ok(statSync(join(appWorkspace, ".tracker", "control", "installation.json")).size > 0);
@@ -286,7 +288,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
         "the smoke must leave this checkout's authority database and server lock byte-for-byte untouched",
       );
     } finally {
-      removeScratchRepoRoot(scratchRoot);
+      vi.unstubAllEnvs(); removeScratchRepoRoot(scratchRoot);
     }
   }, BOOT_TIMEOUT_MS + SHUTDOWN_TIMEOUT_MS + 30_000);
 
@@ -299,6 +301,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
     rmSync(join(scratchRoot, "dist", "dashboard", "dashboard-build-identity.json"));
     const lockPath = join(scratchRoot, rebuildRuntimeIsolation.processLockRoot, "server-claims");
     try {
+      vi.stubEnv("LOCALAPPDATA", join(scratchRoot, "local-appdata"));
       const child = spawn(
         process.execPath,
         ["--import", testProcessImport(), join(scratchRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
@@ -312,7 +315,7 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
       assert.equal(existsSync(lockPath), false, "bundle identity is checked before process-lock admission");
       assert.equal(readFileSync(join(stateRoot, "retained-evidence"), "utf8"), "evidence");
     } finally {
-      removeScratchRepoRoot(scratchRoot);
+      vi.unstubAllEnvs(); removeScratchRepoRoot(scratchRoot);
     }
   }, BOOT_TIMEOUT_MS + 30_000);
 });
