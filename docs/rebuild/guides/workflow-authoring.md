@@ -122,7 +122,7 @@ workflows. Remove a pending entry when its implementation exists. Pending record
 
 Use the current `WorkflowDefinitionSpec` in `src/workflow-kit/workflow-definition.ts`. It combines
 `WorkflowDescriptorSpec` presentation fields with `input`, `role`, optional `intake`, optional
-`operationDisplay`, and `steps`. Do not supply compiler-owned `flow`, `timeline` or
+`operationDisplay`, optional read-only `explorerPreview`, and `steps`. Explorer walkthroughs use existing components, reference registered nodes, and must cover the registered graph. Their choices and fictional examples confer no execution authority. Do not supply compiler-owned `flow`, `timeline` or
 `contractFingerprint`.
 
 - Apply defaults in the ingress `input` schema. Use `defineCanonicalInput` from
