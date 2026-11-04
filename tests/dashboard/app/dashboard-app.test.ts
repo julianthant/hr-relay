@@ -374,7 +374,7 @@ describe_m1("served sign-up Finish", () => {
     ["cancelling", { state: "cancelling" as const, operationId: "00000000-0000-4000-8000-000000000003" }, true],
     ["refused as blocked", { state: "refused" as const, code: "PROFILE_LOGOUT_BLOCKED" as const }, true],
     ["an ordinary refusal", { state: "refused" as const, code: "PROFILE_SIGN_IN_REFUSED" as const }, false],
-  ])("a login submitted during a logout answers %s and %s", async (_name, answer, clears) => {
+  ])("a login submitted during a logout answers %s", async (_name, answer, clears) => {
     window.history.replaceState(null, "", "/");
     let finished = false, reads = 0, signIns = 0;
     const client = { ...appClient(), readProfileSession: async () => { reads++; return finished || !clears ? { state: "signed-out" as const, signUpRequired: false } : answer; },
