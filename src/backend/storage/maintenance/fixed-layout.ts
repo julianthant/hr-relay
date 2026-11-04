@@ -14,7 +14,7 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { offlineMaintenanceWorkspace,type OfflineMaintenanceOperation } from "../admission/lifetime-lock.js";
-import { noSymlinkAncestry,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
+import { sameDirectory, privateFileNumber, noSymlinkAncestry,readPrivateFile,unpublishedDraftAbortMembership,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
 import { createPrivateDirectory,fsyncPath,privatePathRejects,replacePrivateFile,writePrivateStage } from "../private-path.js";
 import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../source-closure.js";
 import { assertCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
@@ -62,8 +62,8 @@ export function fixedLayoutEntries(root: string): readonly FixedLayoutEntry[] {
     const identity = { path: entry.path.split("\\").join("/"), device: entry.device, inode: entry.inode, mode: entry.mode };
     if (entry.directory) return FixedLayoutEntrySchema.parse({ ...identity, kind: "directory" });
     const observed = file(join(root, entry.path), "managed data");
-    if (observed.identity.device !== entry.device || observed.identity.inode !== entry.inode
-      || observed.stat.mode !== entry.mode || observed.bytes.length !== entry.size) throw new Error("fixed-layout-source-changed");
+    if (!sameDirectory(observed.identity, entry)
+      || privateFileNumber(observed.stat.mode) !== entry.mode || observed.bytes.length !== entry.size) throw new Error("fixed-layout-source-changed");
     return FixedLayoutEntrySchema.parse({ ...identity, kind: "file", size: observed.bytes.length, digest: hash(observed.bytes) });
   }).sort((left, right) => left.path < right.path ? -1 : left.path === right.path ? 0 : 1);
   if (!noSymlinkAncestry(root, ancestry)) throw new Error("fixed-layout-source-changed");
