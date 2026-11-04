@@ -5,11 +5,12 @@
 .settings-nav-search [data-slot="search-field-group"] { height:34px;min-height:34px;border:1px solid var(--ui-stroke-control);border-radius:8px;background:var(--ui-field); }
 .settings-nav-search [data-slot="search-field-search-icon"] { display:none; }
 .settings-nav-search input { padding:6px 10px;font-size:12px; }
-.settings-nav-group { gap:0;margin-bottom:18px; }
+.settings-nav-group { gap:var(--ds-space-hair);margin-bottom:18px; }
 .settings-nav-group > span { font-size:11px;font-weight:500;color:var(--ui-muted);padding:0 10px;margin:0 0 4px;line-height:16.5px; }
-.settings-nav-group a { height:auto;min-height:32px;gap:9px;padding:7px 10px;font-size:13px;line-height:19.5px;border-radius:10px;color:var(--ui-secondary); }
-.settings-nav-group a svg { width:15px;height:15px; }
-.settings-nav-group a:is(:hover,[aria-current="page"]) { background:var(--ui-hover);color:var(--ui-primary); }
+.settings-nav-group a { height:32px;min-height:32px;gap:8px;padding:0 8px;font-size:var(--ds-text-ui);line-height:19.5px;border-radius:10px;color:var(--ui-primary); }
+.settings-nav-group a svg { width:14px;height:14px; }
+.settings-nav-group a:hover { background:var(--ds-surface-3); }
+.settings-nav-group a[aria-current="page"] { background:var(--ds-surface-selected); }
 .dashboard-shell .settings-content { padding:32px 28px 70px; }
 .settings-content > .settings-tab-body { width:min(828px,100%);margin:0 auto; }
 .settings-takeover .settings-compact-page { gap:0;font-size:13px;line-height:1.5; }
@@ -19,6 +20,7 @@
 .settings-compact-page .ds-page-heading-title { font-size:27px;line-height:33px;font-weight:650;letter-spacing:-.02em; }
 .settings-compact-page .ds-page-heading-description { font-size:12.6px;line-height:19px;max-width:none; }
 .settings-compact-page > .ds-body-section { margin-bottom:28px; }
+.settings-compact-page > .settings-compact-form + .ds-body-section { margin-top:28px; }
 .settings-compact-page > .ds-form-group { margin-bottom:28px; }
 .settings-tab-body .ds-body-section-heading { font-size:16px;line-height:22px;font-weight:600;margin:0 0 10px; }
 .settings-tab-body .ds-form-group { padding:0;border-radius:13px;background:var(--ui-panel); }
