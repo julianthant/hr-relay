@@ -12,7 +12,7 @@ import { parseWorkflows } from "../../../../src/dashboard/surfaces/shell/shell-m
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
 
-it.each([{workflowId:h.WORKFLOW_ID,version:3},{workflowId:"separations",version:9}])("shows $workflowId declared v$version in Options and Confirm while admitting the independent plan revision", async ({workflowId,version}) => {
+it.each([{workflowId:h.WORKFLOW_ID,version:3},{workflowId:"separations",version:9}])("shows $workflowId declared v$version in Confirm without an Options footer while admitting the independent plan revision", async ({workflowId,version}) => {
   const declared = parseWorkflows(FIXTURE_START_PICKER_BOOTSTRAP.workflows).find(workflow => workflow.id === workflowId);
   assert.ok(declared?.start.inputRun);
   const workflow = { ...h.WORKFLOWS[0], workflowId, label: declared.label, categoryId: declared.categoryId, role: declared.role, version, steps: declared.start.steps, inputRun: { state: "present" as const, surface: declared.start.inputRun } };
@@ -25,7 +25,8 @@ it.each([{workflowId:h.WORKFLOW_ID,version:3},{workflowId:"separations",version:
   }), { workflows: [workflow], panelWorkflowId: workflow.workflowId });
   await dialog.type(workflowId === "separations" ? "4502" : h.TYPED);
   await dialog.press("Continue");
-  assert.ok(dialog.text().includes(`Workflow versionv${version}`));
+  assert.doesNotMatch(dialog.text(), /Active policy|Workflow version/u);
+  assert.equal(document.querySelector(".launch-fixed-facts"), null);
   await dialog.press("Continue");
   const fact = [...document.querySelectorAll("dt")].find(node => node.textContent === "Workflow");
   assert.equal(fact?.nextElementSibling?.textContent, `${workflow.label} · v${version}`);

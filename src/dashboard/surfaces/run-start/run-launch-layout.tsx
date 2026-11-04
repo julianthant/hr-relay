@@ -2,11 +2,11 @@ import type { PlannedRunOutput } from "../../../models/dashboard/run-outputs.js"
 import type { ReactNode } from "react";
 import { BodySection, DsBodyScope, Field, FormGroup, SegmentedChoice } from "../../ds/ui.js";
 
-export function RunOptionsLayout({ flags, children, priority, onPriorityChange, browserMode, onBrowserModeChange, fixedFacts, references, workflowLabel = "Workflow" }: {
+export function RunOptionsLayout({ flags, children, priority, onPriorityChange, browserMode, onBrowserModeChange, references, workflowLabel = "Workflow" }: {
   flags: ReactNode; children?: ReactNode; priority: "interactive" | "bulk";
   onPriorityChange: (value: "interactive" | "bulk") => void;
   browserMode: "headed" | "headless"; onBrowserModeChange: (value: "headed" | "headless") => void;
-  fixedFacts?: ReactNode; references?: ReactNode; workflowLabel?: string;
+  references?: ReactNode; workflowLabel?: string;
 }) {
   return <DsBodyScope role="region" aria-label="Options" className="launch-options flex flex-col" style={{ background: "transparent" }}>
     <BodySection title="Run"><FormGroup label="Run options">
@@ -18,7 +18,6 @@ export function RunOptionsLayout({ flags, children, priority, onPriorityChange, 
     </FormGroup></BodySection>
     {references && <BodySection title="Reference data"><FormGroup label="Reference data">{references}</FormGroup></BodySection>}
     {children && <BodySection title={workflowLabel}><FormGroup label="Workflow options">{children}</FormGroup></BodySection>}
-    {fixedFacts && <div className="launch-fixed-facts">{fixedFacts}</div>}
   </DsBodyScope>;
 }
 
