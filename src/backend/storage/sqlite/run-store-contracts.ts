@@ -69,7 +69,7 @@ export class ApplicationAdmissionRefusedError extends Error {
 }
 
 export const ApplicationAdmissionRequestSchema = z.strictObject({ commandId: CommandIdSchema,
-  runtimeGeneration: PositiveIntSchema, reason: z.enum(["update", "shutdown"]) });
+  runtimeGeneration: PositiveIntSchema, reason: z.enum(["update", "shutdown", "logout"]) });
 
 export const CanonicalPauseRequestSchema = z.strictObject({ commandId: CommandIdSchema, runId: RunIdSchema,
   expectedVersion: PositiveIntSchema });
