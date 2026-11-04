@@ -28,6 +28,7 @@ async function fixture(withForeign = false) {
       const foreign = await finishProfileOnboarding(runtime.session, runtime.session.signUp({ email: "foreign@ucsd.edu", password: "foreign-fixture-password",
         firstName: "Other", lastName: "Fixture", createdAt: "2026-10-22T11:59:00.000Z" }));
       assert.equal(foreign.state, "active"); if (foreign.state !== "active") throw new Error("actual foreign fixture signup required");
+      await runtime.drainForLogout(foreign.token);
       const pending = runtime.session.logOut(foreign.token, { at: fields.at });
       assert.equal(pending.state, "cancelling"); if (pending.state !== "cancelling" || pending.operationId === undefined) throw new Error("foreign logout intent required");
       await runtime.awaitClosurePreparation(foreign.profileId);
