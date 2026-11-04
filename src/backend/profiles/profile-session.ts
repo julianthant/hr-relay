@@ -33,6 +33,7 @@ import { createProfileVerifiers } from "../storage/configuration/verifier-store.
 import { type CredentialInventory } from "./credential-inventory.js";
 import type { ProfileOnboardingDuoProvider } from "./onboarding-duo.js";
 import { createProfileOnboarding } from "./profile-onboarding.js";
+import { appendDuoDiagnostic } from "../logs/duo-diagnostics.js";
 import { createDebugEventWriter } from "../logs/debug-events.js";
 import { createProfileRegistry,ProfileRegistryAuthorityError,withProfileLock } from "./registry.js";
 
@@ -494,10 +495,12 @@ export function createProfileSession(input: {
   const onboarding = createProfileOnboarding({
     onEvent: (operation, event) => {
       const clock = input.clock ?? systemClock;
+      appendDuoDiagnostic(machineRoot, clock.now(), event);
       AuthorityDatabase.withProfileOnboardingTimeline(admittedProfile(operation.profileId), clock, repository => {
         const build = z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(new URL("../../../package.json", import.meta.url), "utf8"))).version;
         createDebugEventWriter({ repository, clock, build }).emit({ category: "duo",
           phase: event.stage === "refused" || event.stage === "aborted" ? "failed" : event.stage === "timed-out" ? "expired" : event.stage === "replied" ? "settled" : "started",
+          ...(event.code === undefined ? {} : { code: event.code }), ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }),
           correlationId: event.requestId ?? operation.operationId, area: "profile-onboarding", reason: event.detail ? `${event.stage}-${event.detail}` : event.stage },
         { kind: "transport", connectionId: operation.operationId });
       });
