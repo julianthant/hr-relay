@@ -77,6 +77,7 @@ describe("child-only OCR document graph", () => {
     assert.equal(signer.length, formType === "i9" ? 1 : 0);
     const signerNode = nodes.find(node => node.id === "lookup-signers");
     assert.ok(signerNode?.kind === "child-run");
+    assert.deepEqual(signerNode.dependsOn, ["build-review"]);
     const input = OcrInputSchema.parse({ ...requestFixture().request, formType });
     assert.deepEqual(lookup.bind({ input, outputs: { "build-review": review } }), person.map(request => request.input));
     assert.deepEqual(lookup.sourceRecordIds?.({ input, outputs: { "build-review": review } }), person.map(request => request.recordIds));
@@ -106,6 +107,10 @@ describe("child-only OCR document graph", () => {
     assert.deepEqual(descriptor.timeline.map(step => step.key), ["source-pages", "page-readings", "review-records", "identity-lookups", "signer-lookups", "approval"]);
     assert.equal(children.policy.visibility, "hidden-unless-failed");
     assert.equal(lookup.policy.visibility, "inline");
+    assert.equal(reviewNode.replay, "always-rerun");
+    assert.equal(completed.replay, "always-rerun");
+    assert.equal(children.policy.afterChildRetry, "resume-parent");
+    assert.equal(lookup.policy.afterChildRetry, "resume-parent");
     assert.ok(workflowExplorerDeclaration(ocrWorkflow));
     for (const id of ["ocr", "ocr-page"]) {
       assert.throws(() => workflowModuleOf(id));

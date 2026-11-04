@@ -210,7 +210,7 @@ export function createRetainedDashboardMockFixtures() {
     "[\"ocr\",[\"StringLiteral:\",\"ArrayLiteralExpression:\",\"ArrayLiteralExpression:\",\"AsExpression:\",\"VariableDeclaration:DEFERRED_FEATURES\",\"VariableDeclarationList:\",\"FirstStatement:\"],\"[\\\"ocr\\\",\\\"OCRreviewsurfaceslandin2h\\\"]\"]"
   ],
   "src/backend/runs/queries/run-detail.ts": [
-    "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"BinaryExpression:\",\"CallExpression:\",\"PropertyAssignment:availableSections\",\"ObjectLiteralExpression:\",\"CallExpression:\",\"ReturnStatement:\",\"Block:\",\"FunctionDeclaration:buildRunDetail\"],\"authority.envelope.workflow===\\\"ocr\\\"\"]"
+    "[\"ocr\",[\"StringLiteral:\",\"BinaryExpression:\",\"BinaryExpression:\",\"ConditionalExpression:\",\"VariableDeclaration:review\",\"VariableDeclarationList:\",\"FirstStatement:\",\"Block:\",\"FunctionDeclaration:buildRunDetail\"],\"authority.envelope.workflow===\\\"ocr\\\"\"]"
   ]
 };
 

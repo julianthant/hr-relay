@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { composeCommandRequest, verifyShellCommandEffect, type CommandAction } from "../../../../src/dashboard/app/commands/command-dispatch.js";
-import { IdentityGateDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
+import { IdentityGateDetailWireSchema,RunDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
 import { CommandRequestSchema, CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { IdentityApprovalResultSchema } from "../../../../src/rules/separations/identity-approval.js";
@@ -19,6 +19,7 @@ import { queueRowActions, type QueueRowActionFacts } from "../../../../src/backe
 import { ActionCommandKeySchema, ActionDescriptorWireSchema, type ActionDescriptorWire } from "../../../../src/models/dashboard/actions.js";
 import { QueueStatusSchema } from "../../../../src/models/dashboard/projection.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
+import { createDashboardModelFixtures } from "../../../support/helpers/dashboard-model-fixtures.js";
 
 {
 const NOW = "2026-08-14T17:00:00.000Z";
@@ -41,6 +42,63 @@ function commandAction(input: Record<string, unknown>): CommandAction {
 }
 
 const CONTEXT = { actorId: "local-operator", source: "run-detail" } as const;
+
+it("composes only the exact served child retry at its current revision", () => {
+  const action = RunDetailWireSchema.shape.childRetry.unwrap().parse({ key: "retry-child", label: "Retry", kind: "command", command: "retry",
+    expectedVersion: 3, intent: "neutral", icon: "retry", placement: ["banner"] });
+  assert.ok(action.kind === "command");
+  const target = { runId: runId(1), expectedVersion: 3 };
+  const composed = composeCommandRequest(action, target, { ...CONTEXT, childRetry: action });
+  assert.ok(composed.state === "ready");
+  const request = CommandRequestSchema.parse(composed.request);
+  assert.equal(request.type, "retry"); assert.equal(request.family, "run");
+  assert.deepEqual(request.target, target);
+  assert.equal(composeCommandRequest(action, target, CONTEXT).state, "refused");
+  assert.equal(composeCommandRequest(action, { ...target, expectedVersion: 4 }, { ...CONTEXT, childRetry: action }).state, "refused");
+  assert.equal(composeCommandRequest(action, target, { ...CONTEXT, source: "queue", childRetry: action }).state, "refused");
+  assert.equal(composeCommandRequest({ ...action, key: "other" }, target, { ...CONTEXT, childRetry: action }).state, "refused");
+});
+
+it("verifies child retry through the exact replacement and immutable source, including hidden page children", async () => {
+  const f = createDashboardModelFixtures();
+  const source = RunDetailWireSchema.parse({ ...f.DETAIL, header: { ...f.DETAIL.header, parentRunId: runId(8), status: "failed" } });
+  const next = RunDetailWireSchema.parse({ ...source, runId: runId(9), rowRevision: 1,
+    header: { ...source.header, runId: runId(9), retryOf: source.runId, attempt: source.header.attempt + 1, status: "running" } });
+  let observed = next;
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async input => {
+    const path = new URL(String(input)).pathname;
+    assert.match(path, /\/runs\//u);
+    return Response.json(path.endsWith(source.runId) ? source : observed);
+  } });
+  const command = CommandRequestSchema.parse({ commandId: runId(7), requestedAt: NOW, requestedBy: CONTEXT.actorId, source: CONTEXT.source,
+    family: "run", type: "retry", target: { runId: source.runId, expectedVersion: source.rowRevision } });
+  const reply = CommandResultSchema.parse({ state: "applied", commandId: command.commandId,
+    affectedTargets: [{ family: "run", runId: source.runId }, { family: "run", runId: next.runId }] });
+  assert.ok(reply.state === "applied");
+  assert.equal((await verifyShellCommandEffect(client, f.DAY.day, command, reply)).state, "matched");
+  const parent = RunDetailWireSchema.parse({ ...f.DETAIL, runId: runId(8), rowRevision: 8,
+    header: { ...f.DETAIL.header, runId: runId(8), status: "running" } });
+  const parentClient = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async input => {
+    const path = new URL(String(input)).pathname;
+    const foreign = RunDetailWireSchema.parse({ ...f.DETAIL, runId: runId(6), header: { ...f.DETAIL.header, runId: runId(6) } });
+    return Response.json(path.endsWith(parent.runId) ? parent : path.endsWith(source.runId) ? source : path.endsWith(observed.runId) ? observed : foreign);
+  } });
+  const refreshReply = CommandResultSchema.parse({ ...reply, affectedTargets: [...reply.affectedTargets, { family: "run", runId: parent.runId }] });
+  assert.equal((await verifyShellCommandEffect(parentClient, f.DAY.day, command, refreshReply)).state, "matched");
+  for (const targets of [
+    [...reply.affectedTargets, { family: "run", runId: runId(6) }],
+    [...reply.affectedTargets, { family: "run", runId: next.runId }],
+    [{ family: "run", runId: parent.runId }, { family: "run", runId: next.runId }],
+  ]) {
+    const malformed = CommandResultSchema.parse({ ...reply, affectedTargets: targets });
+    assert.equal((await verifyShellCommandEffect(parentClient, f.DAY.day, command, malformed)).state, "mismatch");
+  }
+  for (const header of [{ ...next.header, retryOf: runId(6) }, { ...next.header, parentRunId: runId(6) },
+    { ...next.header, attempt: source.header.attempt }, { ...next.header, workflowId: "other-workflow" }]) {
+    observed = RunDetailWireSchema.parse({ ...next, header });
+    assert.equal((await verifyShellCommandEffect(client, f.DAY.day, command, reply)).state, "mismatch");
+  }
+});
 
 describe("composeCommandRequest — the run family", () => {
   for (const verb of ["retry", "recover-run", "pause", "resume", "cancel", "bump"] as const) {
