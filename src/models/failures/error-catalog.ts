@@ -544,6 +544,8 @@ export const ERROR_CATALOG = Object.freeze({
     "Log out waits until this profile's active work can stop.",
     EmptyParametersSchema,
   ),
+  ONBOARDING_DUO_DIAGNOSTIC_LOG_UNAVAILABLE: catalogEntry("Duo diagnostic logging is unavailable.", EmptyParametersSchema),
+  PROFILE_CONNECTION_FAILED: catalogEntry("Could not connect to Relay. Check that Relay is running, then try again.", EmptyParametersSchema),
   PROFILE_AUTHORITY_UNAVAILABLE: catalogEntry("Current profile authority is unavailable.", EmptyParametersSchema),
   PROFILE_AUTHORITY_CHANGED: catalogEntry("Profile authority changed. Capture it again before continuing.", EmptyParametersSchema),
   PROFILE_SESSION_STALE: catalogEntry(

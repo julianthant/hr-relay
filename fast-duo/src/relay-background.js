@@ -2,6 +2,39 @@ import { createService } from './service.js';
 import { isDuoOrigin, normalizeUsername } from './accounts.js';
 import { base64ToBytes, bytesToBase64url } from './crypto.js';
 
+const refusalDetails = {
+  ONBOARDING_DUO_WORKER_UNAVAILABLE: 'worker-unavailable',
+  ONBOARDING_DUO_ALREADY_STARTED: 'already-started',
+  ONBOARDING_DUO_BROKER_BUSY: 'broker-busy',
+  ONBOARDING_DUO_BUSY: 'busy',
+  ONBOARDING_DUO_ENROLL_REFUSED: 'enroll-refused',
+  ONBOARDING_DUO_EVENT_UNRECORDED: 'event-unrecorded',
+  ONBOARDING_DUO_KEY_REQUIRED: 'key-required',
+  ONBOARDING_DUO_NATIVE_FAILED: 'native-failed',
+  ONBOARDING_DUO_NATIVE_ORIGIN: 'native-origin',
+  ONBOARDING_DUO_NATIVE_REQUIRED: 'native-required',
+  ONBOARDING_DUO_NATIVE_UNAVAILABLE: 'native-unavailable',
+  ONBOARDING_DUO_NATIVE_UNRECORDED: 'native-unrecorded',
+  ONBOARDING_DUO_PORTAL_UNRECORDED: 'portal-unrecorded',
+  ONBOARDING_DUO_REFUSED: 'refused',
+  ONBOARDING_DUO_REQUEST: 'request',
+  ONBOARDING_DUO_REVOKED: 'revoked',
+  ONBOARDING_DUO_SCOPE: 'scope',
+  ONBOARDING_DUO_SCOPE_ACCOUNT: 'account',
+  ONBOARDING_DUO_SCOPE_DOCUMENT: 'document',
+  ONBOARDING_DUO_SCOPE_REQUEST: 'request',
+  ONBOARDING_DUO_SCOPE_SENDER: 'sender',
+  ONBOARDING_DUO_SCOPE_USERNAME: 'username',
+  ONBOARDING_DUO_SESSION_UNAVAILABLE: 'session-unavailable',
+};
+
+export function relayFailureEvent(error, durationMs) {
+  const code = Object.hasOwn(refusalDetails, error?.message) ? error.message : "ONBOARDING_DUO_UNKNOWN";
+  const exceptionType = typeof error?.name === "string" && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.name) ? error.name : undefined;
+  return { stage: "refused", detail: refusalDetails[code] ?? "backend", code, durationMs,
+    ...(code === "ONBOARDING_DUO_UNKNOWN" && exceptionType ? { exceptionType } : {}) };
+}
+
 const canonicalJson = value => JSON.stringify(value, (_key, item) => item && typeof item === 'object' && !Array.isArray(item)
   ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
 function requireDuoSender(api, sender) {
@@ -290,6 +323,7 @@ if (typeof chrome !== 'undefined') {
     async stop() { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); const arm = relay; await arm.stop(); relay = undefined; },
   });
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    const started = performance.now();
     const work = async () => {
       if (sender.url?.startsWith(chrome.runtime.getURL(''))) return browserReceive(message, sender);
       if (message?.type === 'RELAY_DUO_EVENT') {
@@ -331,11 +365,9 @@ if (typeof chrome !== 'undefined') {
       return relay.receive(message, sender);
     };
     work().then(result => sendResponse({ success: true, result }), async error => {
-      const details = { ONBOARDING_DUO_SCOPE_SENDER: 'sender', ONBOARDING_DUO_SCOPE_REQUEST: 'request',
-        ONBOARDING_DUO_SCOPE_DOCUMENT: 'document', ONBOARDING_DUO_SCOPE_ACCOUNT: 'account', ONBOARDING_DUO_SCOPE_USERNAME: 'username' };
       if (browserInstalled && !browserStopped && sender.id === chrome.runtime.id && isDuoOrigin(sender.url)
         && (message.request?.rpId === 'duosecurity.com' || message.type === 'RELAY_DUO_EVENT')) {
-        try { await browserCall({ kind: 'event', event: { stage: 'refused', detail: Object.hasOwn(details, error.message) ? details[error.message] : 'backend' } }); }
+        try { await browserCall({ kind: 'event', event: relayFailureEvent(error, Math.max(0, performance.now() - started)) }); }
         catch { sendResponse({ success: false, error: 'ONBOARDING_DUO_EVENT_UNRECORDED' }); return; }
       }
       sendResponse({ success: false, error: 'ONBOARDING_DUO_REFUSED' });
