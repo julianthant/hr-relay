@@ -795,6 +795,10 @@ that settles after the closure deadline cannot remove the profile or permit repl
 A pending broker poll that rejects after its context begins closing settles with that closure;
 it is not a separate worker failure. Closing status alone never proves closure: the context event,
 tracked pages, settled callbacks, native exclusion and profile cleanup are still required.
+An unproved setup-browser closure holds sign-up with `BROWSER_CLOSURE_UNPROVED`; reads and commands
+retain that refusal without reacquiring the held file locks. The dashboard preserves the draft and
+asks the operator to close and reopen Relay. Startup removes the unfinished sign-up only after
+proving the old process and its exact browser root unused.
 Show and Open focus the selected page and its owned Chromium window, restore a minimized
 window and activate its exact process through AppKit or Windows foreground APIs. Return to Relay
 uses the original app/window captured before launch; the extension cannot supply a native target.

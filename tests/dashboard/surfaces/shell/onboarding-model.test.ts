@@ -393,6 +393,38 @@ for (const recovery of ["same", "foreign-operation", "foreign-profile", "signed-
   } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); }
 });
 
+for (const source of ["action", "poll"] as const) it(`holds the onboarding draft after an unproved browser closure from ${source} until reopen`, async () => {
+  vi.useFakeTimers();
+  const draft = onboardingDraft(), paths: string[] = [];
+  const refused = { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" };
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async url => {
+    const path = new URL(url).pathname; paths.push(path);
+    return Response.json(paths.length === 1 ? draft : refused);
+  } });
+  const host = document.createElement("div"), root = createRoot(host);
+  let session!: ReturnType<typeof usePublicProfileSession>;
+  function Probe() { session = usePublicProfileSession(client, true); return null; }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    const previousShow = session.port.showBrowser.bind(session.port);
+    await act(async () => {
+      if (source === "action") await session.port.showBrowser();
+      else await vi.advanceTimersByTimeAsync(1000);
+    });
+    assert.deepEqual(session.state, draft);
+    assert.equal(session.browserClosureUnproved, true);
+    assert.equal(session.port.unavailable, true);
+    assert.equal(session.port.browserClosureUnproved, true);
+    await assert.rejects(previousShow(), /ONBOARDING_SCOPE_REPLACED/);
+    for (const action of [() => session.port.showBrowser(), () => session.port.openPortal(), () => session.port.complete(), () => session.port.cancel(),
+      () => session.port.start("key"), () => session.port.cancelDuo("key", "00000000-0000-4000-8000-000000000003")]) {
+      await assert.rejects(action(), /ONBOARDING_SCOPE_REPLACED/);
+    }
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    assert.equal(paths.length, 2, "held sign-up must not poll or retry");
+  } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); }
+});
+
 it("maps each Duo method state to its approved label, note and track without inventing completion", () => {
   assert.deepEqual(duoMethodLabels, { idle: "Not started", pending: "Pending", complete: "Completed", unknown: "Not confirmed", unavailable: "Unavailable" });
   for (const method of ["key", "touch"] as const) {

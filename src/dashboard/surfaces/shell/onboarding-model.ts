@@ -7,6 +7,7 @@ export type OnboardingStep = "login" | "signup" | "duo" | "ready";
 export type OnboardingDetails = { firstName: string; lastName: string; email: string; password: string };
 export type OnboardingErrors = Partial<Record<keyof OnboardingDetails, string>>;
 export type DuoMethods = { key: boolean; touch: boolean };
+export const duoBrowserClosureHoldMessage = "Relay could not confirm the Duo setup browser closed. Sign-up is on hold. Close and reopen Relay to continue.";
 export interface MockOnboardingPort {
   readonly source: "mock";
   validate(this: void, step: "login" | "signup", details: OnboardingDetails): OnboardingErrors;
@@ -22,6 +23,7 @@ export interface ServedOnboardingPort {
   readonly source: "served";
   readonly onboarding?: ProfileOnboardingState;
   readonly unavailable?: boolean;
+  readonly browserClosureUnproved?: boolean;
   readonly authorityScope?: object;
   complete(): Promise<PublicProfileState>;
   cancel(): Promise<PublicProfileState>;
@@ -213,9 +215,11 @@ type ProfileAccountDeletion = { state: "idle" } | { state: "deleting" } | { stat
   | { state: "refused"; code: Extract<PublicProfileState, { state: "refused" | "error" }>["code"] };
 
 export function usePublicProfileSession(client: DashboardClient, enabled: boolean) {
-  const [settlement, setSettlement] = useState<{ client: DashboardClient; state?: PublicProfileState; failure: boolean }>();
+  const [settlement, setSettlement] = useState<{ client: DashboardClient; state?: PublicProfileState; failure: boolean;
+    failureCode?: Extract<PublicProfileState, { state: "refused" | "error" }>["code"] }>();
   const state = enabled && settlement?.client === client ? settlement.state : undefined;
   const failure = enabled && settlement?.client === client && settlement.failure;
+  const browserClosureUnproved = enabled && settlement?.client === client && settlement.failureCode === "BROWSER_CLOSURE_UNPROVED";
   const generation = useRef(0);
   const live = useRef(false);
   const busy = useRef(false);
@@ -228,7 +232,8 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
   const settle = useCallback((value: PublicProfileState) => {
     setSettlement(current => {
       const retained = current?.client === client && current.state?.state === PROFILE_ONBOARDING_STATE && (value.state === "refused" || value.state === "error");
-      return { client, state: retained ? current.state : value, failure: retained };
+      return { client, state: retained ? current.state : value, failure: retained,
+        failureCode: value.state === "refused" || value.state === "error" ? value.code : undefined };
     });
   }, [client]);
   useEffect(() => {
@@ -262,13 +267,14 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
   const settleRead = useCallback((value: PublicProfileState, expected: ProfileOnboardingState) => {
     if (value.state !== PROFILE_ONBOARDING_STATE || value.operationId !== expected.operationId || value.profileId !== expected.profileId) {
       if (value.state === "signed-out" || value.state === "refused" && value.code === "PROFILE_SESSION_STALE") settle({ state: "signed-out" });
+      else if (value.state === "refused" || value.state === "error") settle(value);
       else setSettlement(current => current?.client === client ? { ...current, failure: true } : current);
       return;
     }
     settle(value);
   }, [client, settle]);
   useEffect(() => {
-    if (!enabled || !onboarding) return;
+    if (!enabled || !onboarding || browserClosureUnproved) return;
     let reading = false;
     const timer = window.setInterval(() => {
       if (busy.current || reading) return;
@@ -282,11 +288,11 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       }, () => { if (live.current && generation.current === request) setSettlement(current => current?.client === client ? { ...current, failure: true } : current); }).finally(() => { reading = false; });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [client, enabled, onboarding, settle, settleRead]);
+  }, [client, enabled, onboarding, settle, settleRead, browserClosureUnproved]);
   const awaitingLogout = state?.state === "cancelling" || state?.state === "refused" && state.code === "PROFILE_LOGOUT_BLOCKED";
   const awaitingSession = awaitingLogout || state?.state === "refused" || state?.state === "error" || state?.state === "signed-out" && state.resumable === true;
   useEffect(() => {
-    if (!enabled || !awaitingSession) return;
+    if (!enabled || !awaitingSession || browserClosureUnproved) return;
     let reading = false;
     const timer = window.setInterval(() => {
       if (busy.current || reading) return;
@@ -297,12 +303,12 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       }, () => {}).finally(() => { reading = false; });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [client, enabled, awaitingSession, awaitingLogout, settle]);
-  const scope = useMemo(() => ({ client, operationId: onboarding?.operationId, profileId: onboarding?.profileId, failure }), [client, onboarding?.operationId, onboarding?.profileId, failure]);
+  }, [client, enabled, awaitingSession, awaitingLogout, settle, browserClosureUnproved]);
+  const scope = useMemo(() => ({ client, operationId: onboarding?.operationId, profileId: onboarding?.profileId, failure, browserClosureUnproved }), [client, onboarding?.operationId, onboarding?.profileId, failure, browserClosureUnproved]);
   const currentScope = useRef(scope); currentScope.current = scope;
   const port = useMemo<ServedOnboardingPort>(() => {
     const run = async (action: (port: ServedOnboardingPort) => Promise<PublicProfileState>, recover: "view" | undefined = undefined) => {
-      if (!live.current || currentScope.current !== scope || failure && onboarding !== undefined && recover !== "view") throw new Error("ONBOARDING_SCOPE_REPLACED");
+      if (!live.current || currentScope.current !== scope || browserClosureUnproved || failure && onboarding !== undefined && recover !== "view") throw new Error("ONBOARDING_SCOPE_REPLACED");
       const request = ++generation.current;
       busy.current = true;
       try {
@@ -322,7 +328,7 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
         return result;
       } finally { if (generation.current === request) busy.current = false; }
     };
-    return { source: "served", validate: validateOnboarding, onboarding, unavailable: Boolean(failure), authorityScope: scope,
+    return { source: "served", validate: validateOnboarding, onboarding, unavailable: Boolean(failure || browserClosureUnproved), browserClosureUnproved, authorityScope: scope,
       submit: (step, details) => run(port => port.submit(step, details)),
       resume: () => run(port => port.resume()),
       complete: () => run(port => port.complete()), cancel: () => run(port => port.cancel()),
@@ -330,8 +336,8 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
       showBrowser: () => run(port => port.showBrowser(), "view"), openPortal: () => run(port => port.openPortal()),
       start: method => run(port => port.start(method)), confirmDuo: scope => run(port => port.confirmDuo(scope)),
     };
-  }, [client, onboarding, scope, settle, settleRead, failure]);
-  return { state, failure, port, accountDeletion,
+  }, [client, onboarding, scope, settle, settleRead, failure, browserClosureUnproved]);
+  return { state, failure, browserClosureUnproved, port, accountDeletion,
     deleteAccount: async (): Promise<void> => {
       if (!live.current || currentSelection.current !== selection || active?.duoState !== "ready" || busy.current || deletionRef.current?.selection === selection) return;
       const request = ++generation.current; busy.current = true;

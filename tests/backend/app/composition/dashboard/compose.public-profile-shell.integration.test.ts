@@ -2,6 +2,7 @@ import { assertRuntimeLifetimeHeld, runtimeLifetimeLock } from "../../../../supp
 import { request as httpRequest } from "node:http";
 import { randomBytes, createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
+import { ProfileOnboardingDuoProviderError } from "../../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import { DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
 import { RunLogsStreamHub } from "../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import assert from "node:assert/strict";
@@ -66,6 +67,37 @@ async function fixture(lifetime?: Parameters<typeof acquireEntrypointAdmission>[
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   return { root, lifetime: controller, machine };
 }
+
+it("keeps an unproved onboarding browser closure explicitly refused without retrying or erasing the draft", async () => {
+  const f = await fixture();
+  const primary = new AuthoritySourceClosureUnprovedError([new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime")]);
+  let shows = 0;
+  const runtime = await composeDashboardApplication({ admission: f.machine, lifetimeLock: f.lifetime, isolation: rebuildRuntimeIsolation,
+    backendPortOverride: 0, frontendPortOverride: 0, env: {}, onboardingDuo: { ...syntheticOnboardingDuo(),
+      async showBrowser() { shows++; throw primary; } } });
+  const base = `http://127.0.0.1:${runtime.port}`;
+  const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}${path}`, { method: "POST", headers: {
+    origin: base, "content-type": "application/json", ...(cookie === undefined ? {} : { cookie }) }, body: JSON.stringify(body) });
+  try {
+    const signup = await post("/api/v1/profile/sign-up", { firstName: "Held", lastName: "Fixture", email: "held-fixture@ucsd.edu", password: "disposable-held-fixture" });
+    const draft = PublicProfileStateSchema.parse(await signup.json());
+    if (draft.state !== "onboarding") throw new Error("held fixture draft required");
+    const cookie = signup.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+    const operationPath = join(f.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`), before = readFileSync(operationPath);
+    for (const action of ["duo/browser", "duo/browser", "duo/portal", "duo/start", "complete", "cancel"]) {
+      const response = await post(`/api/v1/profile/onboarding/${action}`, { operationId: draft.operationId, ...(action === "duo/start" ? { method: "key" } : {}) }, cookie);
+      const body: unknown = await response.json();
+      assert.equal(response.status, 409, action);
+      assert.deepEqual(body, { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
+    }
+    assert.equal(shows, 1);
+    assert.deepEqual(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json(), { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
+    assert.deepEqual(readFileSync(operationPath), before);
+    assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId)), true);
+    const foreign = await post("/api/v1/profile/onboarding/duo/browser", { operationId: draft.operationId }, "relay-profile-onboarding=foreign");
+    assert.deepEqual(await foreign.json(), { state: "refused", code: "PROFILE_SESSION_STALE" });
+  } finally { await assert.rejects(runtime.stop(), storageCompose.RuntimeCustodyUncertainError); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
+});
 
 for (const closeFails of [false, true]) it(`preserves startup recovery failure and ${closeFails ? "unproved" : "proved"} profile closure under the held controller`, async () => {
   const controllerLock=await runtimeLifetimeLock();
