@@ -227,7 +227,7 @@ export function createProfileSession(input: {
     admission.lifetime.assertRuntimeAvailable();
     const selected = registry.read().activeProfileId;
     if (selected !== null && selected !== profileId) throw new Error("profile-session-not-current");
-    const epoch = registry.advanceSession(profileId);
+    const epoch = registry.advanceSession(profileId, "profile-activated");
     sessions.clear();
     releaseOrdinary(profileId);
     const currentAdmission = admittedProfile(profileId);
@@ -455,7 +455,7 @@ export function createProfileSession(input: {
       const record = storeFor(row.profileId).read();
       if (!credentialsMatch(record.entries)) {
         sessions.clear();
-        registry.advanceSession(selection.activeProfileId);
+        registry.advanceSession(selection.activeProfileId, "profile-sign-in-refused");
         releaseOrdinary(row.profileId);
         return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
       }
@@ -464,7 +464,7 @@ export function createProfileSession(input: {
       return active;
     } catch (error) {
       sessions.clear();
-      try { registry.advanceSession(selection.activeProfileId); if (!hasUnprovedSourceClosure(error)) releaseOrdinary(row.profileId); }
+      try { registry.advanceSession(selection.activeProfileId, "profile-sign-in-refused"); if (!hasUnprovedSourceClosure(error)) releaseOrdinary(row.profileId); }
       catch (cleanup) { throw new AggregateError([error, cleanup], "profile sign-in and selection closure failed", { cause: cleanup }); }
       throw error;
     }
@@ -478,7 +478,7 @@ export function createProfileSession(input: {
     const revoked = selection.sessionGeneration === operation.sessionGeneration + 1 && selection.activeProfileId === null
       && (row?.lifecycle === "cancelling" || row?.lifecycle === "ready" && (operation.settlement === undefined || operation.settlement.phase === "done"));
     if (!before && !revoked) return refusal("PROFILE_TRANSITION_BLOCKED", operation.operationId);
-    if (before) registry.advanceSession(null);
+    if (before) registry.advanceSession(null, "profile-logout-continuation");
     if (row?.lifecycle !== "cancelling" && operation.settlement?.phase !== "done") registry.update(profileId, { lifecycle: "cancelling" });
     input.prepareLogoutContinuation?.(operation);
     const closure = quiescence(profileId);
@@ -790,7 +790,7 @@ export function createProfileSession(input: {
           try { writeOperation(operation); }
           catch (error) { prepared.intentFailed(error); }
         }
-        registry.advanceSession(null);
+        registry.advanceSession(null, "profile-logout-requested");
         for (const [held, value] of sessions) {
           if (value.profileId === session.profileId) sessions.delete(held);
         }

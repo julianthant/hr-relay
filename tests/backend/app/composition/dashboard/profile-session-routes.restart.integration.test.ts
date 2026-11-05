@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, readFileSync, renameSync, rmdirSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { it } from "vitest";
@@ -11,11 +11,26 @@ import { manualClock } from "../../../../../src/rules/time/clock.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createProfileSession } from "../../../../../src/backend/profiles/profile-session.js";
+import { createProfileRegistry } from "../../../../../src/backend/profiles/registry.js";
+import { initializeRegisteredPersonStores } from "../../../../../src/backend/app/composition/storage-compose.js";
+import { ProfileSessionLogUnavailableError, readLocalDebugLog } from "../../../../../src/backend/storage/events/local-debug-log.js";
+import { ProfileSelectionChangeSchema } from "../../../../../src/models/profiles/profile.js";
 import { createCredentialStore } from "../../../../../src/backend/storage/configuration/credential-store.js";
 import { AuthoritySourceClosureUnprovedError } from "../../../../../src/backend/storage/source-closure.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, type ProtectedSettingsApplyInput } from "../../../../../src/models/config/protected-settings.js";
 
 const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-11-04T12:00:00.000Z" };
+
+it("refuses a selection change before registry publication when its local transition log is unavailable", async () => {
+  const f = await createBoundProfileFixture(), path = join(f.machine.stateRoot, "logs", "boot.jsonl"), held = `${path}.held`;
+  const registryPath = join(f.machine.stateRoot, "machine", "profiles.json"), before = readFileSync(registryPath);
+  renameSync(path, held); mkdirSync(path);
+  try {
+    assert.throws(() => createProfileRegistry(f.machine).advanceSession(null), ProfileSessionLogUnavailableError);
+    assert.deepEqual(readFileSync(registryPath), before);
+    assert.equal(f.machine.readProfileRegistry().activeProfileId, f.admission.profileBinding.profileId);
+  } finally { rmdirSync(path); renameSync(held, path); await f.close(); }
+});
 
 for (const mode of ["signin", "resume"] as const) for (const fault of ["username", "password", "missing", "read", "closure"] as const) {
   it(`keeps the selected profile after ${mode} fails at ${fault}, without admitting refused custody`, async () => {
@@ -88,8 +103,58 @@ it("keeps the saved session through wrong passwords, unknown usernames and loss 
   } finally { restarted.close(); lost.close(); await f.close(); }
 });
 
+it("traces the no-password restart sequence across two checkouts without clearing selection", async () => {
+  const f = await createBoundProfileFixture({ sharedMachine: true }), clock = manualClock(new Date(fields.at));
+  const profileId = f.admission.profileBinding.profileId, registry = createProfileRegistry(f.machine);
+  while (registry.read().sessionGeneration < 8) registry.advanceSession(profileId);
+  const otherCheckout = join(f.workspace, "other-checkout"); mkdirSync(otherCheckout);
+  for (const checkout of [f.workspace, otherCheckout]) {
+    for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(checkout, name));
+  }
+  let machine = f.machine, app: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  let origin = "", cookie: string | undefined;
+  const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async (url, init) => {
+    const response = await fetch(`${origin}${new URL(url).pathname}`, { ...init,
+      headers: { ...init?.headers, origin, ...(cookie === undefined ? {} : { cookie }) } });
+    const next = response.headers.get("set-cookie"); if (next !== null) cookie = next.split(";", 1)[0];
+    return response;
+  } });
+  const trace = (step: string) => {
+    const selected = machine.readProfileRegistry();
+    process.stdout.write(`SESSION_TRACE ${JSON.stringify({ step, generation: selected.sessionGeneration, activeProfileId: selected.activeProfileId })}\n`);
+    assert.equal(selected.activeProfileId, profileId, step);
+  };
+  try {
+    trace("initial signed-in generation 8");
+    machine.release();
+    for (const [index, repoRoot] of [f.workspace, otherCheckout, f.workspace].entries()) {
+      await initializeRegisteredPersonStores(f.workspace, f.lifetime, { primaryDisplay: null }, clock);
+      machine = acquireEntrypointAdmission(f.workspace, "shared", f.lifetime);
+      trace(`startup preparation ${index + 1}`);
+      app = await composeDashboardApplication({ admission: machine, lifetimeLock: f.lifetime, repoRoot, isolation: rebuildRuntimeIsolation,
+        backendPortOverride: 0, frontendPortOverride: 0, clock, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners,
+        workerProcess: { spawn() { throw new Error("restart trace must not spawn a worker"); } } });
+      origin = `http://127.0.0.1:${app.port}`;
+      trace(`start ${index + 1}`);
+      cookie = undefined;
+      assert.deepEqual(await client.readProfileSession(), { state: "signed-out", signUpRequired: false, resumable: true });
+      trace(`new browser without cookie ${index + 1}`);
+      assert.equal((await client.resumeProfile()).state, "active");
+      await client.bootstrap();
+      trace(`resumed without password ${index + 1}`);
+      cookie = undefined;
+      trace(`browser closed ${index + 1}`);
+      await app.stop(); app = undefined;
+      machine = acquireEntrypointAdmission(f.workspace, "shared", f.lifetime);
+      trace(`clean Ctrl+C stop ${index + 1}`);
+      machine.release();
+    }
+  } finally { await app?.stop(); await f.close(); }
+});
+
 it.each(["logout", "delete-account"] as const)("only explicit %s ends a session across browser replacement and real restarts", async ending => {
-  const f = await createBoundProfileFixture({ sharedMachine: true }), clock = manualClock(new Date("2026-11-04T12:00:00Z"));
+  const mode = ending === "delete-account" ? "exclusive" : "shared";
+  const f = await createBoundProfileFixture(mode === "shared" ? { sharedMachine: true } : {}), clock = manualClock(new Date("2026-11-04T12:00:00Z"));
   const otherCheckout = join(f.workspace, "other-checkout"); mkdirSync(otherCheckout);
   for (const checkout of [f.workspace, otherCheckout]) {
     for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(checkout, name));
@@ -121,7 +186,7 @@ it.each(["logout", "delete-account"] as const)("only explicit %s ends a session 
     assert.deepEqual(await client.resumeProfile(), first);
     await client.bootstrap();
     await app?.stop(); app = undefined;
-    machine = acquireEntrypointAdmission(f.workspace, "shared", f.lifetime);
+    machine = acquireEntrypointAdmission(f.workspace, mode, f.lifetime);
     repoRoot = otherCheckout;
     app = await start();
     cookie = undefined;
@@ -141,7 +206,7 @@ it.each(["logout", "delete-account"] as const)("only explicit %s ends a session 
     ]) assert.deepEqual((await client.submitStartPlan({ ...input, browserMode: "headless", captureBrowserScreenshots: false })).refused, []);
     assert.equal(spawns, 0);
     await app?.stop(); app = undefined;
-    machine = acquireEntrypointAdmission(f.workspace, "shared", f.lifetime);
+    machine = acquireEntrypointAdmission(f.workspace, mode, f.lifetime);
     repoRoot = f.workspace;
     app = await start(); cookie = undefined;
     assert.deepEqual(await client.readProfileSession(), { state: "signed-out", signUpRequired: false, resumable: true });
@@ -159,9 +224,20 @@ it.each(["logout", "delete-account"] as const)("only explicit %s ends a session 
     const foreign = await fetch(`${origin}/api/v1/profile/resume`, { method: "POST", headers: { origin: "https://foreign.invalid", "content-type": "application/json" }, body: "{}" });
     assert.equal(foreign.status, 403); assert.equal(foreign.headers.get("set-cookie"), null);
     assert.equal(machine.readProfileRegistry().activeProfileId, final.profileId);
-    assert.equal((await (ending === "logout" ? client.logOutProfile()
-      : client.deleteProfileAccount({ confirmed: true, expectedProfileId: final.profileId, expectedEpoch: final.epoch }))).state, "signed-out");
+    const ended = await (ending === "logout" ? client.logOutProfile()
+      : client.deleteProfileAccount({ confirmed: true, expectedProfileId: final.profileId, expectedEpoch: final.epoch }));
+    assert.equal(ended.state, "signed-out", JSON.stringify(ended));
     assert.equal(machine.readProfileRegistry().activeProfileId, null);
+    const local = readLocalDebugLog(machine.stateRoot); assert.equal(local.state, "present");
+    if (local.state !== "present") throw new Error("logout transition evidence required");
+    const changes = local.records.flatMap(record => {
+      if (record.payload.kind !== "debug" || record.payload.event.code !== "PROFILE_SELECTION_CHANGED") return [];
+      assert.ok(record.payload.event.message);
+      return [{ phase: record.payload.event.phase, ...ProfileSelectionChangeSchema.parse(JSON.parse(record.payload.event.message)) }];
+    });
+    assert.deepEqual(changes, ["started", "settled"].map(phase => ({ phase, reason: "profile-logout-requested",
+      caller: "src/backend/profiles/profile-session.ts:logOut", oldGeneration: final.epoch, newGeneration: final.epoch + 1 })));
+    assert.equal(JSON.stringify(changes).includes(final.profileId), false);
     assert.deepEqual(await Promise.all(browsers.map(async browserCookie =>
       (await fetch(`${origin}/api/v1/bootstrap`, { headers: { cookie: browserCookie } })).status)), [401, 401]);
     assert.equal((await client.readProfileSession()).state, "signed-out");

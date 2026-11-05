@@ -3,7 +3,8 @@ import { existsSync,mkdirSync,mkdtempSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe,it } from "vitest";
-import { appendEmergencyFault,importEmergencyFaults,withEmergencyTimelineWriter } from "../../../src/backend/logs/emergency-faults.js";
+import { appendEmergencyFault, withEmergencyTimelineWriter } from "../../../src/backend/logs/emergency-faults.js";
+import { importLocalDebugLog } from "../../../src/backend/storage/events/local-debug-log.js";
 import { debugTimelineFixture as fixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
@@ -15,10 +16,10 @@ describe("bounded native debug events", () => {
       appendEmergencyFault({ stateRoot: root, build: "test", code: "DATABASE_UNAVAILABLE", error: new Error("token=CANARY"), now: AT,
         area: "worker-startup", reason: "database-unavailable" });
       const get = repository.get.bind(repository); repository.get = () => undefined;
-      assert.throws(() => importEmergencyFaults(root, repository), /verification-failed/u);
+      assert.throws(() => importLocalDebugLog(root, repository), /verification-failed/u);
       assert.equal(existsSync(join(root, "logs/boot.jsonl")), true);
       repository.get = get;
-      assert.equal(importEmergencyFaults(root, repository), 1); assert.equal(records.length, 1);
+      assert.equal(importLocalDebugLog(root, repository), 1); assert.equal(records.length, 1);
       assert.equal(existsSync(join(root, "logs/boot.jsonl")), false);
       assert.equal(JSON.stringify(records).includes("CANARY"), false);
     } finally { rmSync(root, { recursive: true, force: true }); }
@@ -32,7 +33,7 @@ describe("bounded native debug events", () => {
       const writer = withEmergencyTimelineWriter(repository, { stateRoot: root, clock: manualClock(AT), build: "test" });
       assert.throws(() => writer.append({}), error => error === unavailable);
       assert.equal(existsSync(join(root, "logs/boot.jsonl")), true);
-      const stored = fixture(); assert.equal(importEmergencyFaults(root, stored.repository), 1);
+      const stored = fixture(); assert.equal(importLocalDebugLog(root, stored.repository), 1);
       assert.equal(JSON.stringify(stored.records).includes("CANARY"), false);
       assert.equal(stored.records[0].payload.kind === "debug" ? stored.records[0].payload.event.area : undefined, "timeline-writer");
       assert.equal(stored.records[0].payload.kind === "debug" ? stored.records[0].payload.event.reason : undefined, "database-unavailable");
@@ -47,9 +48,9 @@ describe("bounded native debug events", () => {
     try {
       mkdirSync(join(root, "logs")); writeFileSync(join(root, "logs/boot.jsonl"), "x".repeat(5 * 1024 * 1024 + 1));
       const { repository, records } = fixture();
-      assert.throws(() => importEmergencyFaults(root, repository), /cap-exceeded/u);
+      assert.throws(() => importLocalDebugLog(root, repository), /cap-exceeded/u);
       writeFileSync(join(root, "logs/boot.jsonl"), '{"old":true}\n');
-      assert.throws(() => importEmergencyFaults(root, repository), /boot-log-invalid/u); assert.equal(records.length, 0);
+      assert.throws(() => importLocalDebugLog(root, repository), /boot-log-invalid/u); assert.equal(records.length, 0);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });

@@ -1,3 +1,4 @@
+import { appendProfileSelectionChange } from "../events/local-debug-log.js";
 import { FileIdentitySchema } from "../../../models/storage/file-identity.js";
 import { fileStatus, descriptorStatus, privateFileNumber, fileModified, fileTimestampMilliseconds } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
@@ -11,7 +12,7 @@ readdirSync,realpathSync,renameSync,rmSync,rmdirSync,unlinkSync,writeFileSync
 import { basename,dirname,isAbsolute,join,relative,resolve } from "node:path";
 import { z } from "zod";
 import { ConfigSchema } from "../../../models/config/schema.js";
-import { LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument } from "../../../models/profiles/profile.js";
+import { LogoutOperationSchema,ProfileDatabaseBindingSchema,ProfileOnboardingCompletionSchema,ProfileRegistryDocumentSchema,ProfileRegistryRowSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,advanceProfileRegistryDocument,assertFinishedProfileOnboarding,deriveProfileNames,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason } from "../../../models/profiles/profile.js";
 import { CanonicalCredentialConversionPlanSchema,CanonicalCredentialHeadSchema,CanonicalCredentialOperationSchema,CanonicalCredentialPublicationSourceSchema,CanonicalCredentialRestoreSnapshotSchema,CredentialMaintenanceHold,captureCanonicalCredentialStartupLocks,publishStoppedCanonicalCredentials,type CanonicalCredentialConversionPlan } from "../configuration/canonical-credential-store.js";
 import { credentialKeyCustody } from "../configuration/credential-key-custody.js";
 import { sameDirectory, fileIdentityObservation, capturePriorPrivateFileLock,noSymlinkAncestry,outermostOperationProof,readPrivateFile,unpublishedDraftAbortMembership,withOperationProof,withPrivateFileLock,type PrivateFileLock,type DirectoryIdentity } from "../configuration/credential-safe-file.js";
@@ -225,7 +226,7 @@ export type InstallationLease = Readonly<{ retainSourceClosure(error: unknown): 
     settleLogout(conversion: StartupLogoutConversion): void;
   }>;
   publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, profile: RuntimeAdmission, proof?: StartupRegistrationProof): void;
-  publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument): void;
+  publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument, reason?: ProfileSelectionChangeReason): void;
   beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "credentials">): z.infer<typeof SignUpOperationSchema>;
   publishProfileOperation(operation: ProfileOperation | string): void;
   completeStoppedLogout(admission: RuntimeAdmission, operation: z.infer<typeof LogoutOperationSchema>, restore: OfflineMaintenanceOperation, source: AuthorityDatabase): void;
@@ -473,6 +474,16 @@ function atomicJson(path: string, value: unknown, parentKind: "control" | "data"
     throw cleanupFailure.error;
   }
   if (primary !== undefined) throw primary.error;
+}
+function prepareRegistryWrite(locator: RuntimeLocator, before: ProfileRegistryDocument, document: ProfileRegistryDocument,
+  reason: ProfileSelectionChangeReason): () => void {
+  const changed = before.activeProfileId !== document.activeProfileId;
+  const change = { stateRoot: locator.stateRoot, reason, oldGeneration: before.sessionGeneration, newGeneration: document.sessionGeneration };
+  if (changed) appendProfileSelectionChange({ ...change, now: systemClock.now(), phase: "started" });
+  return () => {
+    atomicJson(join(locator.stateRoot, "machine", "profiles.json"), document);
+    if (changed) appendProfileSelectionChange({ ...change, now: systemClock.now(), phase: "settled" });
+  };
 }
 function preflightRoot(path: string): void {
   assertNoSymlinkComponents(path);
@@ -915,7 +926,7 @@ function prepareProfileOnboardingFinish(control: string, locator: RuntimeLocator
     && (!after || canonicalJsonStringify(continuity) !== canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, document)))) fail("profile-onboarding-finish-control-changed");
   return () => {
     revalidate(); if (verifierBefore) atomicJson(verifierPath, verifiers);
-    revalidate(); if (before) atomicJson(registryPath, document);
+    revalidate(); if (before) prepareRegistryWrite(locator, priorDocument, document, "profile-registry-published")();
     revalidate(); atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, registryPath, document));
     revalidate(); unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
   };
@@ -958,7 +969,7 @@ function prepareIncompleteProfileDraft(control: string, locator: RuntimeLocator,
     const revalidate = () => { prepareIncompleteProfileDraft(control, locator, intent); };
     revalidate(); if (!operationPresent) atomicJson(operationPath, operation);
     revalidate(); if (verifierPrior) atomicJson(verifierPath, verifiers);
-    revalidate(); if (isPrior) atomicJson(registryPath, document);
+    revalidate(); if (isPrior) prepareRegistryWrite(locator, currentDocument, document, "profile-incomplete-reclassified")();
     revalidate(); atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, registryPath, document));
     revalidate(); unlinkSync(join(control, "profile-publication.json")); fsyncPath(control);
   };
@@ -1581,7 +1592,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   }
 
   function publishRegistry(expected: ProfileRegistryDocument | undefined, document: ProfileRegistryDocument | undefined,
-    registration?: { operation: z.infer<typeof SignUpOperationSchema>; profile: RuntimeAdmission; lease: InstallationLease; proof?: StartupRegistrationProof }): void {
+    registration?: { operation: z.infer<typeof SignUpOperationSchema>; profile: RuntimeAdmission; lease: InstallationLease; proof?: StartupRegistrationProof },
+    reason: ProfileSelectionChangeReason = "profile-registry-published"): void {
     mutate(held => {
       const current = () => { assertHeld(); lifetime.assertRuntimeAvailable(); held.assertHeld(); };
       current();
@@ -1649,9 +1661,10 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (expected !== undefined && canonicalJsonStringify(before) !== canonicalJsonStringify(expected)
         || next.installationId !== before.installationId || next.revision !== before.revision + 1 || next.sessionGeneration < before.sessionGeneration) fail("profile-registry-publication-conflict");
       const prior = readStrict(join(control, "profile-registry.json"), ProfileContinuitySchema);
+      const publish = prepareRegistryWrite(locator, before, next, reason);
       current(); atomicJson(intentPath, { kind: "profile", schemaVersion: 1, installationId: locator.installationId, prior, document: next });
       const path = join(locator.stateRoot, "machine", "profiles.json");
-      current(); atomicJson(path, next);
+      current(); publish();
       current(); atomicJson(join(control, "profile-registry.json"), profileRegistryWitness(locator.installationId, path, next));
       current(); unlinkSync(intentPath); fsyncPath(control);
     });
@@ -2069,7 +2082,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (read(publication) !== original) fail("profile-pending-logout-authority-changed");
       } });
     },
-    publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument) { publishRegistry(expected, document); },
+    publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument, reason?: ProfileSelectionChangeReason) { publishRegistry(expected, document, undefined, reason); },
     publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, profile: RuntimeAdmission, proof?: StartupRegistrationProof) { publishRegistry(undefined, undefined, { operation, profile, lease: this, proof }); },
     beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "credentials">) {
       const profileId = randomUUID(), operationId = randomUUID();
@@ -2207,7 +2220,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         const nextContinuity = profileRegistryWitness(locator.installationId, registryPath, invalidation.document);
         if (canonicalJsonStringify(continuity) !== canonicalJsonStringify(invalidation.continuity)
           && canonicalJsonStringify(continuity) !== canonicalJsonStringify(nextContinuity)) fail("profile-restore-invalidation-control-changed");
-        if (canonicalJsonStringify(currentDocument) !== canonicalJsonStringify(invalidation.document)) atomicJson(registryPath, invalidation.document);
+        if (canonicalJsonStringify(currentDocument) !== canonicalJsonStringify(invalidation.document)) prepareRegistryWrite(locator, currentDocument, invalidation.document, "profile-authority-restored")();
         atomicJson(continuityPath, nextContinuity);
         sameRestoreFile(parsed.authorityPath, parsed.staged);
         assertRestoreSuspect(parsed);

@@ -8,7 +8,7 @@ import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } fro
 import { inventoryFileIdentity, enumerateProfileCredentialMembership, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
 import { assertRetainedProfileBrowserRoot, assertCredentialCopyResourcesClosed, assertShutdownResourcesClosed, retainedBrowserProfiles } from "../../storage/maintenance/profile-custody.js";
 import { migrationTableNames } from "../../storage/sqlite/migrations.js";
-import { readEmergencyFaults } from "../../logs/emergency-faults.js";
+import { readLocalDebugLog } from "../../storage/events/local-debug-log.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { createHash } from "node:crypto";
@@ -120,7 +120,7 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
         if (backup === undefined && suspect === undefined && basename(path) !== "Login Data" && !before.unsupported.includes(path)) {
           try {
             const bootLog = path === join(root, "logs", "boot.jsonl");
-            if (bootLog && readEmergencyFaults(root).state !== "present") throw new Error("profile-inventory-log-unavailable");
+            if (bootLog && readLocalDebugLog(root).state !== "present") throw new Error("profile-inventory-log-unavailable");
             const bytes = withProfileCredentialCopy(path, inventoryFileIdentity(path), (descriptor, info) => {
               const limit = bootLog ? 5 * 1024 * 1024
                 : dirname(path) === join(root, "credentials") ? Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 : 16 * 1024 * 1024;
