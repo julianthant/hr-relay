@@ -33,7 +33,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
-    "reason": "Failed UNKNOWN retention or failure-report callbacks retain both causes and leave attempt/browser closure unproved. Captured software-key browser termination retains UNKNOWN through the capability, without a permanent custody failure; context or broker termination revokes the owner and settles the attempt; physical profile deletion waits for owner cleanup and keeps all private-path and native closure checks. Worker stop failure remains uncertain until pump/report settlement and enclosing browser closure are proved; replacement or relaunch remains refused after unproved cleanup. Emulation, focus and virtual-key custody failures enter the same scoped UNKNOWN retention and closure path; no native failure triggers a second ceremony.",
+    "reason": "Failed UNKNOWN retention or failure callbacks retain both causes and keep closure unproved. The browser pump sends a negative acknowledgment on request failure, revokes before retaining its original failure, and aggregates diagnostic-report failures without retrying a failed sink. Setup and slow-warning failures keep their original causes and attempt existing physical closure. Captured software keys stay UNKNOWN; diagnostic failure alone does not make proved physical closure uncertain. Profile removal and replacement still require settled callbacks, exact owner/private paths and native closure proofs; native failures never trigger a second ceremony.",
     "statements": [
       {
         "kind": "try",
@@ -42,7 +42,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
       },
       {
         "kind": "promise",
-        "sha256": "afbb00e9d00f1d566b131ac713c18461ce9c6fddde0dafbef369d05c104950a3",
+        "sha256": "483b26cef1e77a8e523688d4251c1a7361894e87ed6a6a0f453739ad3e4a3d43",
         "occurrences": 1
       }
     ]

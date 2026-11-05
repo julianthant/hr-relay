@@ -1,3 +1,4 @@
+import { DashboardClientError } from "../../client/errors.js";
 import { PROFILE_ONBOARDING_STATE } from "../../../models/profiles/public-profile.js";
 import type { PublicProfileState } from "../../../models/profiles/public-profile.js";
 import { operatorFailureSentence } from "../../../models/failures/error-catalog.js";
@@ -150,8 +151,8 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
               setForms(current => current[formStep] === details ? { ...current, [formStep]: { ...current[formStep], password: "" } } : current);
               setDetailsDone(true);
               if (result.duoState === "ready") onDashboard(); else onStep("duo");
-            } catch {
-              if (request === submitted.current) setLoginError(operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE"));
+            } catch (error) {
+              if (request === submitted.current) setLoginError(operatorFailureSentence(error instanceof DashboardClientError && error.kind === "network" ? "PROFILE_CONNECTION_FAILED" : "PROFILE_AUTHORITY_UNAVAILABLE"));
             } finally { if (request === submitted.current) setSubmitting(false); }
             return;
           }

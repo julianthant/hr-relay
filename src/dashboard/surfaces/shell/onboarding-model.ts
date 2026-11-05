@@ -241,6 +241,23 @@ export function usePublicProfileSession(client: DashboardClient, enabled: boolea
     }, () => { if (live.current && generation.current === request) setSettlement({ client, failure: true }); });
     return () => { live.current = false; lifetime.current++; };
   }, [client, enabled, settle]);
+  useEffect(() => {
+    if (!enabled) return;
+    let current = true;
+    let reading: number | undefined;
+    const unsubscribe = client.subscribeProfileSessionStale(() => {
+      if (!current || !live.current || busy.current || reading === generation.current || currentSelection.current.profileId === undefined) return;
+      const request = ++generation.current;
+      reading = request;
+      setSettlement({ client, failure: false });
+      void client.readProfileSession().then(value => {
+        if (current && live.current && generation.current === request) settle(value);
+      }, () => {
+        if (current && live.current && generation.current === request) setSettlement({ client, failure: true });
+      }).finally(() => { if (reading === request) reading = undefined; });
+    });
+    return () => { current = false; unsubscribe(); };
+  }, [client, enabled, settle]);
   const onboarding = state?.state === PROFILE_ONBOARDING_STATE ? state : undefined;
   const settleRead = useCallback((value: PublicProfileState, expected: ProfileOnboardingState) => {
     if (value.state !== PROFILE_ONBOARDING_STATE || value.operationId !== expected.operationId || value.profileId !== expected.profileId) {

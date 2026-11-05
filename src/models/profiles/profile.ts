@@ -111,10 +111,45 @@ export const ProfileOnboardingDuoFailureSchema = z.strictObject({
 });
 export type ProfileOnboardingDuoFailure = z.infer<typeof ProfileOnboardingDuoFailureSchema>;
 
+export const DuoDiagnosticExceptionTypeSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/u);
+export const DuoDiagnosticCodeSchema = z.enum([
+  "ONBOARDING_DUO_ALREADY_STARTED",
+  "ONBOARDING_DUO_BROKER_BUSY",
+  "ONBOARDING_DUO_BUSY",
+  "ONBOARDING_DUO_ENROLL_REFUSED",
+  "ONBOARDING_DUO_EVENT_UNRECORDED",
+  "ONBOARDING_DUO_KEY_REQUIRED",
+  "ONBOARDING_DUO_NATIVE_FAILED",
+  "ONBOARDING_DUO_NATIVE_ORIGIN",
+  "ONBOARDING_DUO_NATIVE_REQUIRED",
+  "ONBOARDING_DUO_NATIVE_UNAVAILABLE",
+  "ONBOARDING_DUO_NATIVE_UNRECORDED",
+  "ONBOARDING_DUO_PORTAL_UNRECORDED",
+  "ONBOARDING_DUO_REFUSED",
+  "ONBOARDING_DUO_REQUEST",
+  "ONBOARDING_DUO_REVOKED",
+  "ONBOARDING_DUO_SCOPE",
+  "ONBOARDING_DUO_SCOPE_ACCOUNT",
+  "ONBOARDING_DUO_SCOPE_DOCUMENT",
+  "ONBOARDING_DUO_SCOPE_REQUEST",
+  "ONBOARDING_DUO_SCOPE_SENDER",
+  "ONBOARDING_DUO_SCOPE_USERNAME",
+  "ONBOARDING_DUO_SESSION_UNAVAILABLE",
+  "ONBOARDING_DUO_WORKER_UNAVAILABLE",
+  "ONBOARDING_DUO_UNKNOWN",
+  "ONBOARDING_DUO_PROVIDER_FAILED",
+  "ONBOARDING_DUO_SLOW_OPERATION",
+]);
+export const DuoDiagnosticOperationSchema = z.enum(["browser-setup", "attempt-setup", "browser-request", "broker-request"]);
+
 export const ProfileOnboardingDuoEventSchema = z.strictObject({
-  stage: z.enum(["intercepted", "forwarded", "backend-received", "replied", "refused", "timed-out", "aborted", "platform-native", "platform-virtual"]),
+  stage: z.enum(["intercepted", "forwarded", "backend-received", "replied", "refused", "timed-out", "aborted", "platform-native", "platform-virtual", "slow-operation"]),
   requestId: z.uuid().optional(),
-  detail: z.enum(["sender", "request", "document", "account", "username", "backend", "native-scope", "native-origin", "native-unavailable", "native-security", "native-not-allowed", "native-other"]).optional(),
+  detail: z.enum(["sender", "request", "document", "account", "username", "backend", "native-scope", "native-origin", "native-unavailable", "native-security", "native-not-allowed", "native-other", "already-started", "broker-busy", "busy", "enroll-refused", "event-unrecorded", "key-required", "native-failed", "native-required", "refused", "revoked", "scope", "session-unavailable", "native-unrecorded", "portal-unrecorded", "browser-root", "browser-lifetime", "counter", "worker", "provider", "aborted", "timed-out", "request-refused", "worker-unavailable"]).optional(),
+  code: DuoDiagnosticCodeSchema.optional(),
+  exceptionType: DuoDiagnosticExceptionTypeSchema.optional(),
+  operation: DuoDiagnosticOperationSchema.optional(),
+  durationMs: z.number().finite().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
 });
 export type ProfileOnboardingDuoEvent = z.infer<typeof ProfileOnboardingDuoEventSchema>;
 
