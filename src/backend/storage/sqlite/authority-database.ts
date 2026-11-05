@@ -3384,8 +3384,15 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  workerHasSpawnRequest(workerId: string): boolean {
-    return this.#withReadSnapshot(() => this.#workerSpawnRequests().some(request => request.payload.workerId === workerId));
+  #runAllocationParent(slot: z.infer<typeof WorkerSlotRecordSchema>) {
+    return this.#database.prepare("SELECT * FROM commands WHERE family='start'").all().map(commandFromRow)
+      .find(command => "family" in command && command.family === "start" && command.target.workflowId === slot.workflow
+        && lifecycleCommandId("run-start-plan-worker-count", [command.commandId, slot.poolIndex]) === slot.reservationCommandId);
+  }
+
+  workerRequiresNonBirthProof(slot: z.infer<typeof WorkerSlotRecordSchema>): boolean {
+    return this.#withReadSnapshot(() => this.#runAllocationParent(slot) !== undefined
+      || this.#workerSpawnRequests().some(request => request.payload.workerId === slot.workerId));
   }
 
   recordWorkerNonBirthRefusal(commandId: string): void {
@@ -3399,10 +3406,7 @@ export class AuthorityDatabase implements Disposable {
     const proof = owner.supervisor.nonBirthProof(workerPoolMember(origin.slot));
     if (proof === undefined || plan?.request.type !== "plan-worker-count" || plan.phase.state !== "succeeded" || plan.auditedAt === undefined
       || audit?.result.state !== "rejected" || this.authority.commandAudits.findByCommand(plan.commandId)?.result.state !== "applied") return;
-    const parent = this.#database.prepare("SELECT * FROM commands WHERE family='start'").all().map(commandFromRow)
-      .find(command => "family" in command && command.family === "start" && command.target.workflowId === origin.slot.workflow
-        && lifecycleCommandId("run-start-plan-worker-count", [command.commandId, origin.slot.poolIndex]) === plan.commandId);
-    if (parent === undefined) return;
+    if (this.#runAllocationParent(origin.slot) === undefined) return;
     const binding = authenticateWorkerNonBirthProof(proof, owner.supervisor, this);
     if (binding.commandId !== commandId || canonicalJsonStringify(binding.member) !== canonicalJsonStringify(workerPoolMember(origin.slot))) throw new Error("worker-non-birth-binding-mismatch");
     const spawns = this.readProfileResourceCustody().controls.filter(control => control.request.type === "spawn-worker" && control.request.payload.workerId === origin.slot.workerId);

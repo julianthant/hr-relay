@@ -57,8 +57,8 @@ export async function refusedStart(f: Awaited<ReturnType<typeof neverBornFixture
   const result = CommandResultSchema.parse(await started.json()); assert.equal(result.state, "applied");
   if (result.state !== "applied") throw new Error("fixture enqueue required");
   assert.equal(result.workerStartup?.state, startup);
-  const slot = f.context.database.authority.workerSlots.list("person-lookup")[0]; assert.ok(slot);
   const spawn = f.context.database.authority.workerControls.get(result.workerStartup?.commandId ?? ""); assert.ok(spawn?.request.type === "spawn-worker");
+  const slot = f.context.database.authority.workerSlots.get(spawn.request.payload.workerId); assert.ok(slot);
   return { command, result, slot, spawn };
 }
 

@@ -16,9 +16,24 @@ import { lifecycleCommandId } from "../../../../../src/rules/commands/lifecycle-
 import { CommandRequestSchema, CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { assertStoppedProfileResourcesClosed } from "../../../../../src/backend/storage/maintenance/profile-custody.js";
 import { RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
+import * as supervisors from "../../../../../src/backend/runtime/workers/worker-supervisor.js";
+import { advanceProfileRegistryDocument } from "../../../../../src/models/profiles/profile.js";
+import { runCapacityCommandId } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
 import * as proofs from "../../../../../src/backend/storage/sqlite/worker-control.js";
 
 vi.mock("../../../../../src/backend/storage/sqlite/worker-control.js", { spy: true });
+vi.mock("../../../../../src/backend/runtime/workers/worker-supervisor.js", { spy: true });
+const replayCounters = vi.hoisted((): { preflight: number; preparation?: () => Promise<never> | undefined } => ({ preflight: 0 }));
+vi.mock("../../../../../src/backend/app/preflight/runtime-admission.js", async importOriginal => {
+  const original = await importOriginal<typeof import("../../../../../src/backend/app/preflight/runtime-admission.js")>();
+  return { ...original, composeRuntimePreflight: (...args: Parameters<typeof original.composeRuntimePreflight>) => {
+    const runtime = original.composeRuntimePreflight(...args);
+    return { ...runtime, admission: { ...runtime.admission, prepare: (...input: Parameters<typeof runtime.admission.prepare>) => {
+      replayCounters.preflight += 1;
+      return replayCounters.preparation?.() ?? runtime.admission.prepare(...input);
+    } } };
+  } };
+});
 
 function onlyHttpDiagnostics(before: ReturnType<typeof nativeWorkerBytes>, after: ReturnType<typeof nativeWorkerBytes>, expected: number) {
   const ids = new Set(before.timeline.map(row => row.id));
@@ -50,6 +65,25 @@ async function positiveControl() {
   finally { await f.close(); }
 }
 
+async function replayOriginals(f: Awaited<ReturnType<typeof neverBornFixture>>, started: Awaited<ReturnType<typeof refusedStart>>, completed?: unknown) {
+  const db = f.context.database, before = nativeWorkerBytes(f.profile.path);
+  const counts = () => [replayCounters.preflight, f.spawns(), vi.mocked(proofs.mintWorkerNonBirthProof).mock.calls.length,
+    vi.mocked(proofs.consumeWorkerNonBirthProof).mock.calls.length];
+  const original = counts();
+  const seal = vi.spyOn(db, "recordWorkerNonBirthRefusal").mockImplementation(() => { throw new Error("replay must not seal proof"); });
+  try {
+    for (const request of [started.command, started.spawn.request, ...(completed === undefined ? [] : [completed])]) {
+      const response = await f.post("commands", request);
+      assert.equal(response.status, request === started.spawn.request ? 422 : 200, "replay must not invoke proof or preflight effects");
+      const result = CommandResultSchema.parse(await response.json());
+      assert.ok(result.state === "already-applied" || result.state === "rejected");
+    }
+    onlyHttpDiagnostics(before, nativeWorkerBytes(f.profile.path), 2);
+    assert.deepEqual(counts(), original, "replay must not prepare, spawn, mint or consume");
+    assert.equal(seal.mock.calls.length, 0);
+  } finally { seal.mockRestore(); }
+}
+
 it("retires only the exact fresh allocation, preserves native refusal bytes, and replays all completed identities read-only", async () => {
   const f = await neverBornFixture(true);
   try {
@@ -57,6 +91,7 @@ it("retires only the exact fresh allocation, preserves native refusal bytes, and
     let before = nativeWorkerBytes(f.profile.path); const command = settlement(started);
     assert.equal(db.hasWorkerNonBirth(started.slot), true);
     assert.deepEqual(nativeWorkerBytes(f.profile.path), before);
+    await replayOriginals(f, started);
     hold(f); before = nativeWorkerBytes(f.profile.path); db.settleNeverSpawnedWorkers();
     const after = nativeWorkerBytes(f.profile.path), slot = db.authority.workerSlots.get(started.slot.workerId); assert.ok(slot);
     assert.equal(slot.retirementCommandId, command.commandId); assert.equal(slot.membershipRevision, started.slot.membershipRevision + 1);
@@ -69,17 +104,10 @@ it("retires only the exact fresh allocation, preserves native refusal bytes, and
     assert.deepEqual(after.commands.filter(row => row.id !== command.commandId), before.commands);
     assert.deepEqual(after.controls.filter(row => row.command_id !== command.commandId), before.controls);
     assert.deepEqual(after.audits.filter(row => row.command_id !== command.commandId), before.audits);
-    const mintCount = vi.mocked(proofs.mintWorkerNonBirthProof).mock.calls.length;
-    for (let i = 0; i < 2; i += 1) {
-      for (const request of [started.command, started.spawn.request, control.request]) {
-        const response = await f.post("commands", request);
-        const result = CommandResultSchema.parse(await response.json());
-        assert.ok(result.state === "already-applied" || result.state === "rejected");
-      }
-      db.settleNeverSpawnedWorkers();
-    }
-    onlyHttpDiagnostics(after, nativeWorkerBytes(f.profile.path), 4); assert.equal(f.spawns(), 0);
-    assert.equal(vi.mocked(proofs.mintWorkerNonBirthProof).mock.calls.length, mintCount);
+    await replayOriginals(f, started, control.request);
+    const settled = nativeWorkerBytes(f.profile.path);
+    db.settleNeverSpawnedWorkers(); db.settleNeverSpawnedWorkers();
+    assert.deepEqual(nativeWorkerBytes(f.profile.path), settled);
   } finally { await f.close(); }
 });
 
@@ -182,7 +210,10 @@ it("rolls back a successful nested retirement with its outer transaction without
     assert.deepEqual(nativeWorkerBytes(f.profile.path), before);
     assert.equal(db.hasWorkerNonBirth(started.slot), true);
     assert.equal(vi.mocked(proofs.consumeWorkerNonBirthProof).mock.calls.length, consumed);
+    await replayOriginals(f, started);
+    const replayed = nativeWorkerBytes(f.profile.path);
     assert.throws(() => db.withAuthorityTransaction(repositories => repositories.commands.assertIdentity(settlement(started))), /missing-settlement-replay-refused/);
+    assert.deepEqual(nativeWorkerBytes(f.profile.path), replayed);
   } finally { await assert.rejects(f.close(), RuntimeCustodyUncertainError); }
 });
 
@@ -198,6 +229,10 @@ it("rolls back every retirement row on a fault immediately before COMMIT", async
     assert.deepEqual(nativeWorkerBytes(f.profile.path), before);
     assert.equal(db.hasWorkerNonBirth(started.slot), true);
     assert.equal(vi.mocked(proofs.consumeWorkerNonBirthProof).mock.calls.length, consumed);
+    await replayOriginals(f, started);
+    const replayed = nativeWorkerBytes(f.profile.path);
+    assert.throws(() => db.withAuthorityTransaction(repositories => repositories.commands.assertIdentity(settlement(started))), /missing-settlement-replay-refused/);
+    assert.deepEqual(nativeWorkerBytes(f.profile.path), replayed);
   } finally { await assert.rejects(f.close(), RuntimeCustodyUncertainError); }
 });
 
@@ -246,7 +281,7 @@ it("keeps the complete retirement after a post-COMMIT fault before consumption a
   } finally { await assert.rejects(f.close(), RuntimeCustodyUncertainError); }
 });
 
-for (const arm of ["pool", "resource", "forged-proof"] as const) it(`refuses ${arm} drift while preserving the refused start`, async () => {
+for (const arm of ["pool", "resource", "allocation", "spawn-control", "forged-proof"] as const) it(`refuses ${arm} drift while preserving the refused start`, async () => {
   await positiveControl();
   const f = await neverBornFixture(true);
   try {
@@ -259,6 +294,12 @@ for (const arm of ["pool", "resource", "forged-proof"] as const) it(`refuses ${a
       const { mkdirSync } = await import("node:fs");
       const { join } = await import("node:path");
       mkdirSync(join(f.profile.stateRoot, "browsers", `w${String(started.slot.ordinal)}`), { recursive: true, mode: 0o700 });
+    } else if (arm === "allocation" || arm === "spawn-control") {
+      const raw = new DatabaseSync(f.profile.path);
+      try {
+        if (arm === "allocation") raw.prepare("UPDATE worker_slots SET phase='waiting', payload_json=json_set(payload_json,'$.phase','waiting') WHERE id=?").run(started.slot.workerId);
+        else raw.prepare("UPDATE worker_controls SET payload_json=json_set(payload_json,'$.phase.message','changed refusal') WHERE command_id=?").run(started.spawn.commandId);
+      } finally { raw.close(); }
     } else {
       const minted = vi.mocked(proofs.mintWorkerNonBirthProof), call = minted.mock.lastCall, result = minted.mock.results.at(-1);
       assert.ok(call); assert.ok(result?.type === "return");
@@ -282,20 +323,151 @@ for (const arm of ["pool", "resource", "forged-proof"] as const) it(`refuses ${a
   }
 });
 
-it("loses positive proof across an actual controller crash and refuses the unfinished reservation in a new process", async () => {
+it("preserves ordinary Plan-only allocation and retirement without claiming a Run reservation", async () => {
+  const f = await neverBornFixture();
+  try {
+    const request = { commandId: randomUUID(), family: "worker-browser", type: "plan-worker-count", requestedAt: f.clock.now().toISOString(),
+      requestedBy: "local-operator", source: "queue-surface", target: { workflowId: "person-lookup", expectedVersion: 0 }, payload: { desiredWorkers: 1 } };
+    assert.equal(CommandResultSchema.parse(await (await f.post("commands", request)).json()).state, "applied");
+    const slot = f.context.database.authority.workerSlots.list("person-lookup")[0]; assert.ok(slot);
+    assert.equal(f.context.database.workerRequiresNonBirthProof(slot), false);
+    assert.equal(CommandResultSchema.parse(await (await f.post("commands", { ...request, commandId: randomUUID(),
+      target: { ...request.target, expectedVersion: 1 }, payload: { desiredWorkers: 0 } })).json()).state, "applied");
+    assert.notEqual(f.context.database.authority.workerSlots.get(slot.workerId)?.retiredAt, null);
+    assert.equal(f.context.database.authority.workerPools.get("person-lookup")?.desiredWorkers, 0);
+    assert.equal(f.spawns(), 0);
+  } finally { await f.close(); }
+});
+
+async function refusedWithPeers(f: Awaited<ReturnType<typeof neverBornFixture>>, desiredWorkers = 2) {
+  const first = await refusedStart(f, false, "refused"), db = f.context.database;
+  const plan = CommandRequestSchema.parse({ ...first.spawn.request,
+    commandId: runCapacityCommandId(first.command.commandId, "plan-worker-count", 2), type: "plan-worker-count",
+    target: { workflowId: first.slot.workflow, expectedVersion: 1 }, payload: { desiredWorkers } });
+  assert.equal(CommandResultSchema.parse(await (await f.post("commands", plan)).json()).state, "applied");
+  const slot = db.authority.workerSlots.list(first.slot.workflow).find(member => member.poolIndex === 2); assert.ok(slot);
+  f.armDoctorRace();
+  const request = { ...first.spawn.request, commandId: runCapacityCommandId(first.command.commandId, "spawn-worker", 2),
+    target: { workflowId: slot.workflow, expectedVersion: 2 }, payload: { workerId: slot.workerId } };
+  assert.equal(CommandResultSchema.parse(await (await f.post("commands", request)).json()).state, "rejected");
+  assert.equal(db.hasWorkerNonBirth(slot), true);
+  return { first, slot };
+}
+
+it("retires the exact fresh final member while retaining byte-identical peer identities and ordinals", async () => {
+  await positiveControl();
+  const f = await neverBornFixture(true, true);
+  try {
+    const { first, slot } = await refusedWithPeers(f), db = f.context.database;
+    hold(f); const before = nativeWorkerBytes(f.profile.path);
+    db.settleNeverSpawnedWorkers();
+    const after = nativeWorkerBytes(f.profile.path), retired = db.authority.workerSlots.get(slot.workerId); assert.ok(retired?.retirementCommandId);
+    const control = db.authority.workerControls.get(retired.retirementCommandId); assert.ok(control?.phase.state === "succeeded");
+    assert.deepEqual(control.roster?.selected, [first.slot]); assert.deepEqual(control.roster?.excess, [slot]);
+    assert.deepEqual(after.slots.filter(row => row.id !== slot.workerId), before.slots.filter(row => row.id !== slot.workerId));
+    assert.deepEqual(db.authority.workerSlots.get(first.slot.workerId), first.slot);
+    assert.equal(db.authority.workerPools.get(slot.workflow)?.desiredWorkers, 1);
+    assert.equal(db.authority.workerPools.get(slot.workflow)?.version, 3);
+    for (const key of ["commands", "controls", "audits"] as const) {
+      for (const row of before[key]) assert.ok(after[key].some(value => JSON.stringify(value) === JSON.stringify(row)), `original ${key} byte image changed`);
+    }
+  } finally { await assert.rejects(f.close(), RuntimeCustodyUncertainError); }
+});
+
+for (const arm of ["peer-changed", "non-final"] as const) it(`refuses settlement with ${arm} peer membership`, async () => {
+  await positiveControl();
+  const f = await neverBornFixture(true, true);
+  try {
+    const { first, slot } = await refusedWithPeers(f, arm === "non-final" ? 3 : 2), db = f.context.database;
+    if (arm === "peer-changed") {
+      const raw = new DatabaseSync(f.profile.path);
+      try {
+        raw.prepare("UPDATE worker_slots SET phase='waiting', payload_json=json_set(payload_json,'$.phase','waiting') WHERE id=?").run(first.slot.workerId);
+      } finally { raw.close(); }
+      assert.throws(() => db.hasWorkerNonBirth(slot), /custody-changed/);
+    }
+    hold(f); const before = nativeWorkerBytes(f.profile.path);
+    assert.throws(() => db.settleNeverSpawnedWorkers(), arm === "non-final" ? /exact-excess-required/ : /custody-changed/);
+    assert.deepEqual(nativeWorkerBytes(f.profile.path), before);
+  } finally { await assert.rejects(f.close(), RuntimeCustodyUncertainError); }
+});
+
+for (const arm of ["stale-epoch", "supervisor-closed"] as const) it(`invalidates sealed authority when ${arm}`, async () => {
+  await positiveControl();
+  const f = await neverBornFixture(true);
+  try {
+    const started = await refusedStart(f), db = f.context.database;
+    assert.equal(db.hasWorkerNonBirth(started.slot), true); hold(f);
+    if (arm === "stale-epoch") {
+      const registry = f.profile.machine.readProfileRegistry();
+      f.profile.machine.publishProfileRegistry(registry, advanceProfileRegistryDocument(registry, { sessionGeneration: registry.sessionGeneration + 1 }));
+    } else {
+      const result = vi.mocked(supervisors.createDashboardWorkerProcessSupervisor).mock.results.at(-1); assert.ok(result?.type === "return");
+      result.value.close();
+    }
+    const before = nativeWorkerBytes(f.profile.path);
+    assert.throws(() => db.hasWorkerNonBirth(started.slot));
+    assert.throws(() => db.settleNeverSpawnedWorkers());
+    assert.deepEqual(nativeWorkerBytes(f.profile.path), before);
+  } finally { await assert.rejects(f.close()); }
+});
+
+it("keeps refusal audit failure unsealed and preserves the original allocation and refused Spawn", async () => {
+  await positiveControl();
+  const f = await neverBornFixture(true), db = f.context.database;
+  const record = db.recordWorkerNonBirthRefusal.bind(db);
+  const fault = vi.spyOn(db, "recordWorkerNonBirthRefusal").mockImplementation(commandId => {
+    if (db.authority.workerControls.get(commandId)?.request.type === "spawn-worker") throw new Error("refusal-audit-rollback");
+    record(commandId);
+  });
+  try {
+    const started = await refusedStart(f);
+    assert.equal(started.spawn.phase.state, "refused"); assert.equal(started.spawn.auditedAt, undefined);
+    assert.equal(db.authority.commandAudits.findByCommand(started.spawn.commandId), undefined);
+    assert.equal(db.hasWorkerNonBirth(started.slot), false); hold(f);
+    const before = nativeWorkerBytes(f.profile.path); db.settleNeverSpawnedWorkers();
+    assert.deepEqual(nativeWorkerBytes(f.profile.path), before);
+  } finally { fault.mockRestore(); await assert.rejects(f.close(), RuntimeCustodyUncertainError); }
+});
+
+it("creates no native settlement during pending preparation or after a generic pre-spawn error", async () => {
+  await positiveControl();
+  let entered!: () => void, release!: () => void;
+  const preparing = new Promise<void>(resolve => { entered = resolve; }), pending = new Promise<void>(resolve => { release = resolve; });
+  const f = await neverBornFixture(true), db = f.context.database;
+  replayCounters.preparation = () => db.authority.workerControls.pending("worker-pool:person-lookup").some(control => control.request.type === "spawn-worker")
+    ? (async () => { entered(); await pending; throw new Error("generic-preparation-error"); })() : undefined;
+  let start: Promise<Awaited<ReturnType<typeof refusedStart>>> | undefined;
+  try {
+    const minted = vi.mocked(proofs.mintWorkerNonBirthProof).mock.calls.length;
+    start = refusedStart(f, true, "unknown"); await preparing;
+    const slot = db.authority.workerSlots.list("person-lookup")[0]; assert.ok(slot);
+    assert.equal(db.hasWorkerNonBirth(slot), false);
+    const before = nativeWorkerBytes(f.profile.path); db.settleNeverSpawnedWorkers();
+    assert.deepEqual(nativeWorkerBytes(f.profile.path), before);
+    release(); const started = await start;
+    assert.equal(started.spawn.phase.state, "uncertain"); assert.equal(f.spawns(), 0);
+    assert.equal(vi.mocked(proofs.mintWorkerNonBirthProof).mock.calls.length, minted);
+    assert.equal(db.hasWorkerNonBirth(slot), false); hold(f);
+    const failed = nativeWorkerBytes(f.profile.path); db.settleNeverSpawnedWorkers();
+    assert.deepEqual(nativeWorkerBytes(f.profile.path), failed);
+  } finally { release(); delete replayCounters.preparation; if (start !== undefined) await start; await assert.rejects(f.close(), RuntimeCustodyUncertainError); }
+});
+
+for (const interruption of ["refusal", "allocation"] as const) it(`preserves uncertainty after actual controller crash at ${interruption} and rejects missing settlement replay`, async () => {
   await positiveControl();
   const message = z.object({ workspace: z.string(), profileId: z.string(), path: z.string(), keychain: z.array(z.tuple([z.string(), z.string()])) });
   const launch = (args: string[], env: NodeJS.ProcessEnv) => spawn(process.execPath,
     ["--import", testProcessImport(), fileURLToPath(new URL("../../../../support/processes/never-born-worker-controller.ts", import.meta.url)), ...args],
     { env, stdio: ["ignore", "ignore", "pipe", "ipc"] });
-  const child = launch([], credentialKeychainTestEnvironment(process.env));
+  const child = launch([interruption], credentialKeychainTestEnvironment(process.env));
   let workspace: string | undefined;
   try {
     const values: unknown = await Promise.race([once(child, "message"), once(child, "exit").then(() => { throw new Error("original controller exited before refusal proof"); })]);
     const info = message.parse(z.array(z.unknown()).parse(values)[0]); workspace = info.workspace;
-    const closed = once(child, "close"); assert.equal(child.kill("SIGKILL"), true); await closed;
+    const closed = once(child, "close"); if (interruption === "refusal") assert.equal(child.kill("SIGKILL"), true); await closed;
     FakeKeyringEntry.import(info.keychain);
-    const successor = launch([info.workspace, info.profileId, info.path], credentialKeychainTestEnvironment(process.env));
+    const successor = launch([interruption, info.workspace, info.profileId, info.path], credentialKeychainTestEnvironment(process.env));
     const output: string[] = []; successor.stderr?.on("data", chunk => output.push(String(chunk)));
     const successorClosed = once(successor, "close");
     try {
