@@ -106,6 +106,22 @@ for (const operation of ["ocr", "assistant"] as const) {
   });
 }
 
+it("accepts documented function argument done fields without name and preserves finalized reasoning", async () => {
+  const f = await chatGptFixture();
+  try {
+    await f.connected();
+    const output = [{ type: "reasoning", id: "rs_synthetic", summary: [], encrypted_content: "opaque-synthetic" },
+      { type: "function_call", id: "fn_synthetic", namespace: "synthetic", name: "answer", call_id: "call_synthetic", arguments: '{"text":"Synthetic","citations":[]}', status: "completed" }];
+    const input = completedResponseStream(output).trim().split("\n\n").map(frame => JSON.parse(frame.slice(6)) as StreamEvent);
+    const done = event(input, "response.function_call_arguments.done");
+    assert.equal(Object.hasOwn(done, "name"), false);
+    Object.assign(done, { sequence_number: input.indexOf(done) });
+    f.setSse(wire(input));
+    assert.deepEqual((await f.service.inferAssistant(assistant)).output, output);
+    assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 1);
+  } finally { await f.cleanup(); }
+});
+
 it.each(["missing", "identity", "name", "arguments", "duplicate"] as const)("refuses %s function argument completion while preserving reasoning and function validation", async problem => {
   const f = await chatGptFixture();
   try {

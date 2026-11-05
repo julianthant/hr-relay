@@ -17,7 +17,7 @@ export function completedResponseStream(output: readonly unknown[], model = "gpt
     }
     if (type === "function_call" && "arguments" in value) events.push(
       { type: "response.function_call_arguments.delta", output_index, item_id, delta: value.arguments },
-      { type: "response.function_call_arguments.done", output_index, item_id, name: "name" in value ? value.name : undefined, arguments: value.arguments });
+      { type: "response.function_call_arguments.done", output_index, item_id, arguments: value.arguments });
     events.push({ type: "response.output_item.done", output_index, item });
   }
   events.push({ type: "response.completed", response: { id: responseId, model, status: "completed", output: [] } });

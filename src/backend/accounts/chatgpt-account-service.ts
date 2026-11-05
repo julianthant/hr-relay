@@ -853,7 +853,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         const doneItems = new Map<number, z.infer<typeof itemSchema>>();
         const addedParts = new Map<string, string>();
         const doneText = new Map<string, { item_id: string; output_index: number; content_index: number; text: string }>();
-        const doneArguments = new Map<number, { item_id: string; name: string; arguments: string }>();
+        const doneArguments = new Map<number, { item_id: string; name?: string; arguments: string }>();
         const doneParts = new Map<string, { output_index: number; content_index: number; part: unknown }>();
         let responseIdentity: { id: string; model: string } | undefined;
         const assertMember = (index: number, id: string, type?: string): void => {
@@ -954,7 +954,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                 }
                 if (event.type === "response.function_call_arguments.done") {
                   diagnostic.path = "stream-done";
-                  const done = z.object({ output_index: indexSchema, item_id: idSchema, name: z.string().min(1).max(64), arguments: z.string().max(32_000) }).parse(value);
+                  const done = z.object({ output_index: indexSchema, item_id: idSchema, name: z.string().min(1).max(64).optional(), arguments: z.string().max(32_000) }).parse(value);
                   assertMember(done.output_index, done.item_id, "function_call");
                   if (doneArguments.has(done.output_index)) throw fault("CHATGPT_OCR_INCOMPLETE");
                   doneArguments.set(done.output_index, done);
@@ -998,7 +998,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                     }
                     if (item.type === "function_call") {
                       const done = doneArguments.get(index);
-                      if (done?.item_id !== item.id || done.name !== item.name || done.arguments !== item.arguments) throw fault("CHATGPT_OCR_INCOMPLETE");
+                      if (done?.item_id !== item.id || done.name !== undefined && done.name !== item.name || done.arguments !== item.arguments) throw fault("CHATGPT_OCR_INCOMPLETE");
                     }
                   }
                   for (const done of doneParts.values()) {
