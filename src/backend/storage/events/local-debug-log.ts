@@ -1,5 +1,5 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, lstatSync, unlinkSync, openSync, closeSync, fstatSync, readSync, constants } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
@@ -55,7 +55,7 @@ export function appendProfileSelectionChange(input: { stateRoot: string; now: Da
   try {
     const change = ProfileSelectionChangeSchema.parse({ reason: input.reason, caller: PROFILE_SELECTION_CHANGE_CALLERS[input.reason],
       oldGeneration: input.oldGeneration, newGeneration: input.newGeneration });
-    const build = z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(new URL("../../../../package.json", import.meta.url), "utf8"))).version;
+    const build = z.object({ version: z.string().min(1) }).parse(JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../../package.json"), "utf8"))).version;
     appendLocalDebug({ stateRoot: input.stateRoot, now: input.now, build,
       event: { category: "session", phase: input.phase, code: "PROFILE_SELECTION_CHANGED", area: "profile-selection",
         reason: change.reason, message: canonicalJsonStringify(change), pinned: true } });

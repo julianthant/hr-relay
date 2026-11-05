@@ -51,7 +51,7 @@ export function createRunResourcesFactory(input:Readonly<{
  assertProfileOwner:(workerId:WorkerId)=>void;
  assertBrowserRoot:(root:string)=>void;
  createSessionFactory?:(profileAuthority:BrowserProfileAuthority)=>WorkerBrowserSessionFactory;
- onDebug?:(category:"session"|"duo",workerId:WorkerId,event:Pick<DebugEvent,"phase"|"correlationId">&Partial<Pick<DebugEvent,"code"|"durationMs"|"pinned">>)=>void;
+ onDebug?:(category:"session"|"duo",workerId:WorkerId,event:Pick<DebugEvent,"phase"|"correlationId">&Partial<Pick<DebugEvent,"code"|"durationMs"|"pinned"|"message"|"stack"|"reason">>)=>void;
 }>) {
  if(input.sessionFactory!==undefined&&input.createSessionFactory!==undefined)throw new Error("browser-session-factory-owner-conflict");
  const profiles=createBrowserProfileAuthority(input);

@@ -1,12 +1,30 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import fs, { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { it } from "vitest";
-import { appendProfileSelectionChange, importLocalDebugLog, readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
+import { join, resolve } from "node:path";
+import { it, vi } from "vitest";
+import { appendProfileSelectionChange, importLocalDebugLog, ProfileSessionLogUnavailableError, readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { ProfileSelectionChangeSchema } from "../../../../src/models/profiles/profile.js";
 import { debugTimelineFixture as fixture } from "../../../support/helpers/backend/debug-timeline-fixture.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
+
+it("refuses to log a selection transition when the installed package version cannot be read", () => {
+  const root = mkdtempSync(join(tmpdir(), "relay-profile-log-version-"));
+  const packagePath = resolve(import.meta.dirname, "../../../../package.json"), read = fs.readFileSync;
+  const unavailable = new Error("synthetic package version read unavailable");
+  const spy = vi.spyOn(fs, "readFileSync").mockImplementation((path, options) => {
+    if (path === packagePath) throw unavailable;
+    return read(path, options);
+  });
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => appendProfileSelectionChange({ stateRoot: root, now: AT, phase: "started",
+      reason: "profile-activated", oldGeneration: 0, newGeneration: 1 }),
+    error => error instanceof ProfileSessionLogUnavailableError && error.cause === unavailable);
+    assert.equal(existsSync(join(root, "logs", "boot.jsonl")), false);
+  } finally { spy.mockRestore(); syncBuiltinESMExports(); rmSync(root, { recursive: true, force: true }); }
+});
 
 it("keeps closed, value-free profile transition evidence when the local spool transfers into SQLite", () => {
   const root = mkdtempSync(join(tmpdir(), "relay-profile-log-"));

@@ -506,3 +506,30 @@ it("distinguishes unopened browser requirements from observed unavailable health
     }
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });
+
+it("shows Opening during login, In use during a callback, and Closed after a CRM read closes", () => {
+  const day = dayWith(); const card = day.workerCards[0];
+  for (const [health, state, expected] of [["starting", "waiting", "starting"], ["unknown", "running", "active"]] as const) {
+    const view = sessionsFromDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card, state,
+      browserRequirements: { state: "present", systems: ["crm", "ucpath"] },
+      browsers: [{ sessionId: uuidOf(9290), system: "ucpath", openedAt: now,
+        observation: { state: "present", health, observedAt: now, browserMode: "headed", configFingerprint: "a".repeat(64) } }] }] }), catalog, now);
+    assert.ok(view.state === "ready");
+    assert.deepEqual(view.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", "unopened"], ["UCPATH", expected]]);
+  }
+  const closed = sessionsFromDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card,
+    browserRequirements: { state: "present", systems: ["crm", "ucpath"] }, browsers: [], closedBrowserSystems: ["crm"] }] }), catalog, now);
+  assert.ok(closed.state === "ready");
+  assert.deepEqual(closed.workers[0].browsers.map(browser => [browser.label, browser.state]), [["CRM", "closed"], ["UCPATH", "unopened"]]);
+});
+
+it("distinguishes an intentionally stopped worker after restart from a crashed worker", () => {
+  const day = dayWith(); const card = day.workerCards[0];
+  for (const stopReason of ["operator", "shutdown", "crashed"] as const) {
+    const view = sessionsFromDay(DashboardDayWireSchema.parse({ ...day, workerCards: [{ ...card,
+      state: "failed", endedAt: now, stopReason, browsers: [] }] }), catalog, now);
+    assert.ok(view.state === "ready");
+    assert.equal(view.workers[0].state, stopReason === "crashed" ? "failed" : "stopped");
+    assert.equal(view.workers[0].problem, WORKER_STOP_REASON_LABEL[stopReason]);
+  }
+});

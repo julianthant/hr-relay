@@ -102,7 +102,7 @@ async function makeCase(testCase: Case) {
             const people = query.kind === "by-eid" && testCase.recovered ? [candidate] : testCase.candidates ?? [candidate];
             if (people.length === 0) return { kind: "not-found", marker: "No matching values were found" };
             if (query.kind === "by-eid" && people.length === 1) return { kind: "detail", detail: personDetail(people[0]) };
-            return { kind: "grid", rows: people.map((person, rowIndex) => ({ emplId: person.emplId, emplRecord: "0", hrStatus: person.hrStatus, businessUnit: "SDCMP", jobCode: "004921", jobCodeDescription: person.jobTitle, lastName: "Example", name: "Person", rowIndex })) };
+            return { kind: "grid", rows: people.map((person, rowIndex) => ({ emplId: person.emplId, emplRecord: "0", hrStatus: person.hrStatus, businessUnit: "SDCMP", jobCode: "004921", jobCodeDescription: person.jobTitle, lastName: "Example", name: person.name, rowIndex })) };
           },
           async drill(rowIndex) {
             const person = (testCase.candidates ?? [candidate])[rowIndex];
@@ -110,7 +110,7 @@ async function makeCase(testCase: Case) {
             recordBrowserAction("clicked", "ucpath.person-org.open-record", person.emplId);
             return personDetail(person);
           },
-          async returnToResults() { recordBrowserAction("clicked", "ucpath.person-org.return-results"); return (testCase.candidates ?? [candidate]).map((person, rowIndex) => ({ emplId: person.emplId, emplRecord: "0", hrStatus: person.hrStatus, businessUnit: "SDCMP", jobCode: "004921", jobCodeDescription: person.jobTitle, lastName: "Example", name: "Person", rowIndex })); },
+          async returnToResults() { recordBrowserAction("clicked", "ucpath.person-org.return-results"); return (testCase.candidates ?? [candidate]).map((person, rowIndex) => ({ emplId: person.emplId, emplRecord: "0", hrStatus: person.hrStatus, businessUnit: "SDCMP", jobCode: "004921", jobCodeDescription: person.jobTitle, lastName: "Example", name: person.name, rowIndex })); },
         }, request);
       },
       async searchPersonMatch(criteria: z.output<typeof import("../../../src/models/systems/ucpath/search-person-match.js").SearchPersonMatch.input>) {

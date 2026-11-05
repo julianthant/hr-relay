@@ -1,4 +1,4 @@
-import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
+import { WorkerControlRecordSchema, WorkerBrowserObservationSchema } from "../../../../src/models/run/worker-control.js";
 import { workerPoolMember } from "../../../../src/models/run/worker-slot.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
@@ -23,6 +23,18 @@ function card(input: Partial<Parameters<typeof workerCardOf>[0]> = {}) {
 }
 
 describe("the exact current worker authority card", () => {
+  it("serves login in progress and retains proven closure without minting an open session", () => {
+    const observation = WorkerBrowserObservationSchema.parse({ workerId: member.workerId, leaseGeneration: leaseOf().leaseGeneration,
+      sessionId: "00000000-0000-4000-8000-000000009991", system: "crm", configFingerprint: "a".repeat(64),
+      signInFingerprint: "b".repeat(64), browserMode: "headless", acceptDownloads: false, exclusive: false,
+      health: "starting", observedAt: STARTED, openedAt: STARTED, profileRevision: 1 });
+    const opening = card({ observations: [observation] });
+    assert.equal(opening.browsers[0]?.observation?.state, "present");
+    if (opening.browsers[0]?.observation?.state === "present") assert.equal(opening.browsers[0].observation.health, "starting");
+    const closed = card({ observations: [{ ...observation, health: "closed" }] });
+    assert.deepEqual(closed.browsers, []);
+    assert.deepEqual(closed.closedBrowserSystems, ["crm"]);
+  });
   it("refuses a lease missing required launch-time browser systems", () => {
     assert.throws(() => leaseOf({ browserSystems: undefined }));
   });

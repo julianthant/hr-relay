@@ -2,6 +2,7 @@ import { CrmDiscoveredRecordSchema, CrmRecordIdentityDriftError, type CrmDiscove
 import type { Locator, Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { z } from "zod";
+import { matchesExactPersonName } from "../../../../rules/matching/name-match.js";
 import {
   CrmReadOnboardingDates, PersonLookupCrmDatesCheckError,
 } from "../../../../models/systems/crm/read-onboarding-dates.js";
@@ -566,10 +567,14 @@ export function createCrmOnboardingDriver(assertCurrent: () => void, page: Page)
         assertCurrent();
         recordBrowserAction("read", "crm.onboarding.record-count", String(rows.length));
         const plausible = query === input.eid ? rows : plausibleNameRows(rows, input.name === undefined ? "" : input.name);
-        for (const row of plausible) {
+        const candidates = input.eid !== undefined ? plausible
+          : plausible.filter(row => input.name !== undefined && matchesExactPersonName(row.fullName, input.name));
+        for (const row of candidates) {
           assertCurrent();
           const record = await openAndReadCrmRecord(assertCurrent, page, row);
-          if (input.eid === undefined || record.observedEid === input.eid) discovered.set(record.recordId, record);
+          if (input.eid === undefined
+            ? input.name !== undefined && matchesExactPersonName(`${record.lastName}, ${record.firstName}`, input.name)
+            : record.observedEid === input.eid) discovered.set(record.recordId, record);
         }
         assertCurrent();
         const restoredRows = await searchCrmOnboardingRows(assertCurrent, page, query);
