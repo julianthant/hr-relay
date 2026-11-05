@@ -21,7 +21,7 @@ test(`workflow batches: Lookup follows served grouping without a toggle, ${theme
       const requests: string[] = [];
       const dayWire = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE,
         queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map((row) => ids.has(row.runId) ? { ...row,
-          session: { state: "present", sessionId: uuidOf(700), presentation: { groupInQueue: grouped, version: 4, startedAt: chosen[0].startedAt } },
+          session: { state: "present", itemScope: "session", sessionId: uuidOf(700), presentation: { layout: grouped ? "batch" : "items", groupInQueue: grouped, version: 4, startedAt: chosen[0].startedAt } },
         } : row),
       });
       const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, dayWire });
@@ -62,8 +62,8 @@ for (const theme of ["light", "dark"] as const) for (const width of [1024, 1440]
     const prior = roots.find(row => row.status === "cancelled");
     if (done === undefined || failed === undefined || running === undefined || prior === undefined) throw new Error("Lookup batch fixtures missing");
     const batchId = uuidOf(710);
-    const session = { state: "present", sessionId: batchId, origin: { kind: "start-plan", startPlanId: uuidOf(711), actorId: "local-operator" },
-      presentation: { groupInQueue: true, version: 3, startedAt: done.startedAt } };
+    const session = { state: "present", itemScope: "session", sessionId: batchId, origin: { kind: "start-plan", startPlanId: uuidOf(711), actorId: "local-operator" },
+      presentation: { layout: "batch", groupInQueue: true, version: 3, startedAt: done.startedAt } };
     const ids = new Set([done.runId, failed.runId, running.runId, prior.runId]);
     const dayWire = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE,
       queueSurfaces: FIXTURE_DAY_WIRE.queueSurfaces.map(row => {

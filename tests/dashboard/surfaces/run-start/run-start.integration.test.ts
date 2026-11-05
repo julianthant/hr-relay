@@ -62,7 +62,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const client = { ...h.client, dashboardDay: async (day: string) => {
       const snapshot = await h.client.dashboardDay(day);
       return { ...snapshot, queueSurfaces: snapshot.queueSurfaces.map(row => ({ ...row,
-        session: row.session.state === "present" ? { state: "present" as const, sessionId: row.session.sessionId } : row.session })) };
+        session: row.session.state === "present" ? { state: "present" as const, itemScope: "session" as const, sessionId: row.session.sessionId } : row.session })) };
     } };
     await mount(h, source, client); await press("Continue"); await press("Confirm"); await press("Continue");
     await act(async () => checkbox("Dry run").click()); await press("Continue"); await press("Start dry run");

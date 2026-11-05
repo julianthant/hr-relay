@@ -10,10 +10,12 @@ import { queueParentFixture } from "../../../support/helpers/dashboard/queue-par
 
 const f = createDashboardModelFixtures();
 const row = QueueSurfaceWireSchema.parse({ ...f.QUEUE, workflowId: "person-lookup", parent: null, status: "failed", rowRevision: 3,
-  session: { state: "present", sessionId: f.RUN_2, origin: { kind: "start-plan", startPlanId: f.RUN_2, actorId: "local-operator" },
-    presentation: { groupInQueue: true, version: 1, startedAt: f.QUEUE.startedAt } },
+  session: { state: "present", itemScope: "session", sessionId: f.RUN_2, origin: { kind: "start-plan", startPlanId: f.RUN_2, actorId: "local-operator" },
+    presentation: { layout: "batch", groupInQueue: true, version: 1, startedAt: f.QUEUE.startedAt } },
   actions: [{ key: "retry-batch-member", kind: "command", command: "retry", label: "Retry", expectedVersion: 3, icon: "retry", intent: "neutral", placement: ["banner"] }] });
 const context = { actorId: "local-operator", source: "run-detail", batchMemberRetry: row } as const;
+const ordinarySession = { ...row.session, itemScope: "workflow",
+  presentation: { layout: "items", groupInQueue: true, version: 1, startedAt: row.startedAt } };
 
 it("composes only the exact served failed Lookup batch root and leaves child Retry separate", () => {
   const action = batchMemberRetryAction(row); assert.ok(action);
@@ -25,9 +27,9 @@ it("composes only the exact served failed Lookup batch root and leaves child Ret
   assert.equal(composeCommandRequest(action, { ...target, expectedVersion: 4 }, context).state, "refused");
   assert.equal(composeCommandRequest({ ...action, key: "retry-child" }, target, context).state, "refused");
   for (const changed of [
-    { workflowId: "separations" }, { status: "done" }, { parent: queueParentFixture(f.RUN_2) },
+    { workflowId: "separations", session: ordinarySession }, { status: "done" }, { parent: queueParentFixture(f.RUN_2), session: ordinarySession },
     { actions: [] }, { session: { state: "absent", reason: "standalone" } },
-    { session: { ...row.session, presentation: { groupInQueue: false, version: 1, startedAt: row.startedAt } } },
+    { session: { ...row.session, presentation: { layout: "items", groupInQueue: false, version: 1, startedAt: row.startedAt } } },
   ]) assert.equal(composeCommandRequest(action, target, { ...context, batchMemberRetry: QueueSurfaceWireSchema.parse({ ...row, ...changed }) }).state, "refused");
 });
 

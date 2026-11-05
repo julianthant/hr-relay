@@ -1073,13 +1073,15 @@ export class RunQueueProjection {
   }
 
 
-  #session(authority: RunRecord): QueueSurfaceWire["session"] {
+  #session(authority: RunRecord, operation: boolean): QueueSurfaceWire["session"] {
     if (authority.sessionId === undefined) return { state: "absent", reason: "no session grouping was recorded for this run or its retry source" };
     const batch = this.#deps.authority.getRunBatch(authority.sessionId);
     if (batch === undefined || batch.workflow !== authority.envelope.workflow) throw new Error(`workflow batch ${authority.sessionId} is missing or belongs to another workflow`);
-    return { state: "present", sessionId: batch.sessionId,
+    const sessionScoped = authority.envelope.workflow === "person-lookup" && authority.envelope.parent === undefined;
+    return { state: "present", sessionId: batch.sessionId, itemScope: sessionScoped ? "session" : "workflow",
       origin: batch.origin,
-      presentation: { groupInQueue: batch.groupInQueue, version: PositiveIntSchema.parse(batch.version), startedAt: batch.startedAt } };
+      presentation: { layout: sessionScoped && !operation && batch.groupInQueue ? "batch" : "items",
+        groupInQueue: batch.groupInQueue, version: PositiveIntSchema.parse(batch.version), startedAt: batch.startedAt } };
   }
 
 
@@ -1237,6 +1239,7 @@ export class RunQueueProjection {
     const recordMembers = this.#deps.authority.recordMembers?.(authority, children);
 
     const members = children.filter(member => isQueueMember({ parent: this.#parentFact(context, member), status: this.#status(member) }));
+    const operation = shape === "operation" || members.length > 0 || recordMembers !== undefined;
     const memberChildIds = members.map((member) => member.envelope.runId);
     const failedTerminalMembers = members.filter((member) => member.lifecycle.state === "terminal" && member.lifecycle.outcome === "failed");
     const terminalMembers = members.filter((member) => member.lifecycle.state === "terminal");
@@ -1272,7 +1275,7 @@ export class RunQueueProjection {
 
       priority: authority.envelope.priority,
       runNumber: this.#runNumber(authority),
-      session: this.#session(authority),
+      session: this.#session(authority, operation),
       linkedRuns: this.#linkedRuns(children, context),
       startedAt: queued.enqueuedAt,
       updatedAt: authority.updatedAt,
@@ -1323,7 +1326,7 @@ export class RunQueueProjection {
       }),
       rowRevision: authority.version,
     };
-    if (shape === "operation" || members.length > 0 || recordMembers !== undefined) {
+    if (operation) {
       return {
         warningVerdict,
         surface: QueueSurfaceWireSchema.parse({

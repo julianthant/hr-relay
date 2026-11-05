@@ -118,7 +118,7 @@ describe("Intake effect readback through the typed transport", () => {
     const rows = terminal.manifest.validRows.map((row, index) => ({ ...template,
       runId: `11111111-1111-4111-8111-${String(index + 1).padStart(12, "0")}`,
       itemId: row.itemId, workflowId: before.workflow, dryRun: true, actorId: ACTOR, descriptorHash: terminal.manifest.workflowContractFingerprint,
-      session: { state: "present" as const, sessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      session: { state: "present" as const, itemScope: before.workflow === "person-lookup" ? "session" as const : "workflow" as const, sessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         origin: { kind: "intake-manifest" as const, intakeManifestId: terminal.manifest.manifestId, actorId: ACTOR } },
     }));
     const reply = applied(sent, rows.map(row => row.runId));
@@ -304,7 +304,7 @@ describe("mounted Intake shares retained executor attempts", () => {
     const rows = terminal.manifest.validRows.map((row, index) => ({ ...template,
       runId: `22222222-2222-4222-8222-${String(index + 1).padStart(12, "0")}`, itemId: row.itemId,
       workflowId: before.workflow, dryRun: true, actorId: ACTOR, descriptorHash: terminal.manifest.workflowContractFingerprint,
-      session: { state: "present" as const, sessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      session: { state: "present" as const, itemScope: before.workflow === "person-lookup" ? "session" as const : "workflow" as const, sessionId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
         origin: { kind: "intake-manifest" as const, intakeManifestId: terminal.manifest.manifestId, actorId: ACTOR } },
     }));
     const originalDay = serverLocalDay({ now: FIXTURE_BOOTSTRAP.serverClock.now, zone: FIXTURE_BOOTSTRAP.serverClock.zone });

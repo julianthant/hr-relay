@@ -45,8 +45,9 @@ describe_m0("Queue consumes the served day boundary", () => {
     const base = rowWhere((row) => row.status === "queued" && row.surfaceKind === "single");
     const session = {
       state: "present" as const,
+      itemScope: "session" as const,
       sessionId: uuidOf_m0(9700),
-      presentation: { groupInQueue: true, version: 2, startedAt: base.startedAt },
+      presentation: { layout: "batch", groupInQueue: true, version: 2, startedAt: base.startedAt },
     };
     const first = QueueSurfaceWireSchema_m0.parse({ ...base, runId: uuidOf_m0(9701), itemId: uuidOf_m0(9711), attempt: 1, session });
     const previous = QueueSurfaceWireSchema_m0.parse({ ...base, runId: uuidOf_m0(9702), itemId: uuidOf_m0(9712), attempt: 1, session });
@@ -99,7 +100,7 @@ if (base === undefined) throw new Error("batch fixture requires a queued single 
 function row(n: number, grouped = true, item = n, attempt = 1): QueueSurfaceWire_m1 {
   return QueueSurfaceWireSchema_m1.parse({ ...base, workflowId: "separations", runId: uuidOf_m1(900 + n), itemId: uuidOf_m1(800 + item), attempt,
     title: ["Alice", "Ben", "Cara", "Ben retry"][n - 1] ?? "Ben retry again",
-    session: { state: "present", sessionId: uuidOf_m1(700), presentation: { groupInQueue: grouped, version: 1, startedAt: base?.startedAt } },
+    session: { state: "present", itemScope: "workflow", sessionId: uuidOf_m1(700), presentation: { layout: "items", groupInQueue: grouped, version: 1, startedAt: base?.startedAt } },
   });
 }
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -201,7 +202,7 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.deepEqual(visibleQueueKeys_m1([first, standalone, second]), [standalone.runId, first.runId, second.runId]);
   });
   it_m1("keeps unavailable historical grouping separate and refuses conflicting batch facts", () => {
-    const old = QueueSurfaceWireSchema_m1.parse({ ...row(1), session: { state: "present", sessionId: uuidOf_m1(700) } });
+    const old = QueueSurfaceWireSchema_m1.parse({ ...row(1), session: { state: "present", itemScope: "workflow", sessionId: uuidOf_m1(700) } });
     assert_m1.equal(queueBatches_m1([old]).length, 0);
     assert_m1.throws(() => queueBatches_m1([row(1), row(2, false)]), /disagree/u);
     assert_m1.throws(() => queueBatches_m1([row(1), row(2, true, 1)]), /duplicate item attempt/u);
@@ -209,7 +210,12 @@ afterEach_m1(_afterEachFixture0);
 });
 
 function lookupRow(n: number, overrides: Record<string, unknown> = {}): QueueSurfaceWire_m1 {
-  return QueueSurfaceWireSchema_m1.parse({ ...row(n), workflowId: "person-lookup", ...overrides });
+  const source = QueueSurfaceWireSchema_m1.parse({ ...row(n), workflowId: "person-lookup", ...overrides });
+  return QueueSurfaceWireSchema_m1.parse({ ...source, session: source.session.state === "absent" ? source.session : {
+    ...source.session, itemScope: "session", ...(source.session.presentation === undefined ? {} : {
+      presentation: { ...source.session.presentation, layout: source.session.presentation.groupInQueue ? "batch" : "items" },
+    }),
+  } });
 }
 
 describe_m1("nondelegated Lookup batch presentation", () => {
@@ -227,8 +233,8 @@ describe_m1("nondelegated Lookup batch presentation", () => {
     assert_m1.equal(batch.startedAt, alice.session.state === "present" ? alice.session.presentation?.startedAt : undefined);
     assert_m1.deepEqual(queueMemberLines(batch, []).map(line => line.kind === "run" ? line.item.representative.runId : undefined), [failed.runId, ben.runId, alice.runId]);
     const retry = lookupRow(4, { itemId: ben.itemId, attempt: 2, startedAt: "2026-08-03T16:00:00.000Z" });
-    const other = lookupRow(5, { itemId: alice.itemId, session: { state: "present", sessionId: uuidOf_m1(701),
-      presentation: { groupInQueue: true, version: 1, startedAt: "2026-08-03T18:30:00.000Z" } } });
+    const other = lookupRow(5, { itemId: alice.itemId, session: { state: "present", itemScope: "session", sessionId: uuidOf_m1(701),
+      presentation: { layout: "batch", groupInQueue: true, version: 1, startedAt: "2026-08-03T18:30:00.000Z" } } });
     const refreshed = queueItemLayout([retry, alice, ben, failed, other]).displayTop;
     assert_m1.equal(refreshed.length, 2);
     const updated = refreshed[0]; assert_m1.ok("kind" in updated);
@@ -357,7 +363,7 @@ describe_m1("nondelegated Lookup batch presentation", () => {
   });
 
   it_m1("keeps a single-person start flat and expands a large group by its stable session key", async () => {
-    const single = lookupRow(1, { session: { state: "present", sessionId: uuidOf_m1(702), presentation: { groupInQueue: false, version: 1, startedAt: base.startedAt } } });
+    const single = lookupRow(1, { session: { state: "present", itemScope: "session", sessionId: uuidOf_m1(702), presentation: { layout: "items", groupInQueue: false, version: 1, startedAt: base.startedAt } } });
     assert_m1.equal(queueItemLayout([single]).displayTop[0], single);
     const rows = Array.from({ length: 7 }, (_, index) => lookupRow(index + 1));
     const toggled: string[] = [];

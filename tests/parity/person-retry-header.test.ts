@@ -20,8 +20,8 @@ for (const theme of ["light", "dark"] as const) for (const width of [1024, 1440]
     const source = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent === null && row.status === "failed");
     const sibling = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent === null && row.status === "done");
     if (source === undefined || sibling === undefined) throw new Error("person retry fixture missing");
-    const session = { state: "present", sessionId: uuidOf(950), origin: { kind: "start-plan", startPlanId: uuidOf(951), actorId: "local-operator" },
-      presentation: { groupInQueue: true, version: 1, startedAt: source.startedAt } };
+    const session = { state: "present", itemScope: "session", sessionId: uuidOf(950), origin: { kind: "start-plan", startPlanId: uuidOf(951), actorId: "local-operator" },
+      presentation: { layout: "batch", groupInQueue: true, version: 1, startedAt: source.startedAt } };
     const day = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, queueSurfaces: [source, sibling].map(row => ({ ...row, workflowId: "person-lookup", session,
       ...(row === source ? { actions: [{ kind: "command", command: "retry", key: "retry-batch-member", label: "Retry", icon: "retry", intent: "neutral", placement: ["banner"], expectedVersion: row.rowRevision }] } : {}) })) });
     const selected = day.queueSurfaces[0], f = createDashboardModelFixtures();
