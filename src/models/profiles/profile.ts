@@ -143,7 +143,8 @@ export const DuoDiagnosticCodeSchema = z.enum([
   "ONBOARDING_DUO_PROVIDER_FAILED",
   "ONBOARDING_DUO_SLOW_OPERATION",
 ]);
-export const DuoDiagnosticOperationSchema = z.enum(["browser-setup", "attempt-setup", "browser-request", "broker-request", "portal-open", "browser-focus", "browser-return"]);
+export const DuoDiagnosticOperationSchema = z.enum(["browser-setup", "attempt-setup", "browser-request", "broker-request", "portal-open", "browser-focus", "browser-return",
+  "close-attempt", "close-launch", "close-worker", "close-pages", "close-context", "close-callbacks", "close-pump", "close-native-proof"]);
 
 export const ProfileOnboardingDuoEventSchema = z.strictObject({
   stage: z.enum(["intercepted", "forwarded", "backend-received", "replied", "refused", "timed-out", "aborted", "platform-native", "platform-virtual", "slow-operation"]),

@@ -772,6 +772,8 @@ startup, reporting, UNKNOWN retention and callbacks settle within its closure de
 same owned browser's complete context, page, process and callback closure plus profile deletion
 can then supersede that stop failure. Other failures refuse replacement; reopening never retries
 or confirms an enrollment.
+Failed browser cleanup records its bounded phase in the private Duo diagnostic log. A native probe
+that settles after the closure deadline cannot remove the profile or permit replacement.
 Show and Open focus the selected page and its owned Chromium window, restore a minimized
 window and activate its exact process through AppKit or Windows foreground APIs. Return to Relay
 uses the original app/window captured before launch; the extension cannot supply a native target.

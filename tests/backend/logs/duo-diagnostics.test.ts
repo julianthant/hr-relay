@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
 import { appendDuoDiagnostic, DuoDiagnosticLogError } from "../../../src/backend/logs/duo-diagnostics.js";
-import { DuoPortalDiagnosticCodeSchema } from "../../../src/models/profiles/profile.js";
+import { DuoDiagnosticOperationSchema, DuoPortalDiagnosticCodeSchema } from "../../../src/models/profiles/profile.js";
 
 it("records closed portal causes and refuses arbitrary messages and stacks", () => {
   const root = mkdtempSync(join(tmpdir(), "relay duo portal log "));
@@ -38,6 +38,19 @@ it("writes only closed diagnostic fields and omits correlation identifiers", () 
     }
     assert.deepEqual(JSON.parse(content), { at: now.toISOString(), stage: "refused", detail: "scope", code: "ONBOARDING_DUO_SCOPE", durationMs: 12 });
     assert.doesNotMatch(content, /sensitive-value|00000000|person@example/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+it("serializes the closed browser cleanup phases", () => {
+  const root = mkdtempSync(join(tmpdir(), "relay duo closure log "));
+  try {
+    const operations = DuoDiagnosticOperationSchema.options.filter(operation => operation.startsWith("close-"));
+    for (const operation of operations) appendDuoDiagnostic(root, new Date("2026-11-05T00:00:00Z"), {
+      stage: "refused", code: "ONBOARDING_DUO_PROVIDER_FAILED", detail: "browser-lifetime", operation,
+    });
+    const records = readFileSync(join(root, "logs", "duo.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line) as { operation: string });
+    assert.deepEqual(records.map(record => record.operation), operations);
+    assert.equal(DuoDiagnosticOperationSchema.safeParse("close-person@example.edu").success, false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 

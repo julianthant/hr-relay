@@ -42,6 +42,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let browserSetupFailure: Error | undefined, browserSetupDurationMs = 0;
   let portalFailure = new Error("synthetic navigation failure");
   let portalLanding: string | undefined;
+  let nativeProbeHold: Promise<void> | undefined, releaseNativeProbe: (() => void) | undefined, nativeProbeEntered: (() => void) | undefined;
   let installFailure: Error | undefined, installDurationMs = 0;
   let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
   let launchCount = 0, nativeProbes = 0, nativeBusy = false, revokeDuringProbe = false, mutateOwnerDuringProbe = false;
@@ -115,6 +116,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
       assert.equal(Object.hasOwn(input, "nativePlatform"), false);
       if(input.nativeOnly===true){
         nativeProbes++;
+        nativeProbeEntered?.(); await nativeProbeHold;
         if(nativeBusy)throw new Error("Failed to create a ProcessSingleton for your profile directory.");
         if(revokeDuringProbe)current=false;
         if(mutateOwnerDuringProbe)Reflect.set(owner,"accountId",randomUUID());
@@ -179,6 +181,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     refuseBrowserSetup(error: Error, durationMs: number) { browserSetupFailure = error; browserSetupDurationMs = durationMs; },
     refusePortal(error: Error) { portalFailure = error; },
     landPortal(url: string) { portalLanding = url; },
+    blockNativeProbe() { nativeProbeHold = new Promise(resolve => { releaseNativeProbe = resolve; }); return new Promise<void>(resolve => { nativeProbeEntered = resolve; }); },
+    releaseNativeProbe() { releaseNativeProbe?.(); },
     refuseCapture(error: Error) { captureFailure = error; },
     refuseFocus(error: Error) { focusFailure = error; },
     refuseReturn(error: Error) { returnFailure = error; },
@@ -329,6 +333,23 @@ describe("draft Duo provider", () => {
       w.releasePump(); await new Promise<void>(resolve => setImmediate(resolve));
       await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1);
     } finally { w.releasePump(); await w.closeBrowser(); await w.cleanup(); }
+  });
+  it("reports the close stage and preserves the profile when a native probe settles after the deadline", async () => {
+    const w = world();
+    try {
+      await w.provider.showBrowser(w.owner);
+      const entered = w.blockNativeProbe();
+      const closing = w.provider.closeBrowser(w.owner);
+      await entered;
+      assert.deepEqual(await closing, { state: "uncertain" });
+      assert.ok(w.events.some(event => event.operation === "close-native-proof" && event.detail === "browser-lifetime"));
+      assert.ok(existsSync(w.profile()));
+      w.releaseNativeProbe();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      assert.ok(existsSync(w.profile()), "a late proof must not delete the profile after uncertain custody was retained");
+      await assert.rejects(w.provider.showBrowser(w.owner));
+      assert.equal(w.launches(), 1);
+    } finally { w.releaseNativeProbe(); await w.closeBrowser(); await w.cleanup(); }
   });
   it("a late dispatch retention failure cannot be superseded by physical closure", async () => {
     const w = world();
