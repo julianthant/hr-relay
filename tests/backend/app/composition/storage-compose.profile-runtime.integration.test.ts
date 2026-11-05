@@ -251,16 +251,22 @@ it("requires the same actual profile credential owner for canonical offline rest
     assert.throws(() => create(), /profile-restore-credential-owner-required/u);
     const foreign = await createBoundProfileFixture();
     try { assert.throws(() => create(boundProfileCredentials(foreign.admission))); } finally { await foreign.close(); }
+    const before = f.machine.readProfileRegistry(), recordBefore = credentials.read();
+    const credentialPath = join(f.stateRoot, "credentials", "protected.json"), bytesBefore = credentialSnapshot(credentialPath);
     const restored = await create(credentials).restoreNewest(f.admission.acquireOfflineMaintenance());
     assert.equal(restored.state, "restored");
+    assert.equal(f.machine.readProfileRegistry().activeProfileId, before.activeProfileId);
+    assert.equal(f.machine.readProfileRegistry().activeProfileId, profileId);
+    assert.equal(f.machine.readProfileRegistry().sessionGeneration, before.sessionGeneration + 1);
     assert.throws(() => credentials.read());
-    const signedOut = f.machine.admitProfile(profileId);
-    assert.throws(() => signedOut.assertCredentialRead(), /profile-session-not-current/u); signedOut.release();
-    const fresh = f.renewAfterRestore().admission;
+    const fresh = f.machine.admitProfile(profileId);
     try {
+      assert.doesNotThrow(() => fresh.assertCredentialRead());
       const store = createCredentialStore({ admission: fresh, stateRoot: fresh.stateRoot,
         });
+      assert.deepEqual(store.read(), recordBefore);
       assert.equal(store.read().entries.ucpathPassword?.value, "disposable-fixture-password");
+      assert.deepEqual(credentialSnapshot(credentialPath), bytesBefore);
     } finally { fresh.release(); }
   } finally { await context.account.close(); context.database.close(); await f.close(); }
 });

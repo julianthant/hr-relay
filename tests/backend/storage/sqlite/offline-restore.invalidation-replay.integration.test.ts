@@ -63,7 +63,7 @@ for (const boundary of ["before", "after"] as const) for (const mutation of ["re
       const next = pending.invalidation.document;
       const document = mutation === "revision" ? { ...next, revision: next.revision + 1 }
         : mutation === "epoch" ? { ...next, sessionGeneration: next.sessionGeneration + 1 }
-        : mutation === "selection" ? { ...next, activeProfileId: before.activeProfileId }
+        : mutation === "selection" ? { ...next, activeProfileId: null }
         : { ...next, profiles: next.profiles.map(row => ({ ...row, firstName: "Tampered" })) };
       writeFileSync(journalPath, JSON.stringify({ ...pending, invalidation: { ...pending.invalidation, document } }));
       f.machine.release(); operation = f.lifetime.beginOfflineMaintenance(f.workspace);
@@ -80,7 +80,7 @@ for (const boundary of ["before", "after"] as const) for (const mutation of ["re
         processLockRoot, restoreAdmission: operation })).state, "settled");
       assert.equal(replacements, 1); assert.equal(existsSync(journalPath), false);
       const settled = ProfileRegistryDocumentSchema.parse(JSON.parse(readFileSync(registryPath, "utf8")));
-      assert.equal(settled.revision, before.revision + 1); assert.equal(settled.sessionGeneration, before.sessionGeneration + 1); assert.equal(settled.activeProfileId, null);
+      assert.equal(settled.revision, before.revision + 1); assert.equal(settled.sessionGeneration, before.sessionGeneration + 1); assert.equal(settled.activeProfileId, before.activeProfileId);
     } finally {
       vi.restoreAllMocks(); syncBuiltinESMExports(); operation?.release(); recovery?.admission.release(); await f.close();
     }
