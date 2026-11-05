@@ -1,9 +1,11 @@
 import { tsImport } from 'tsx/esm/api';
 const { createDuoAssertion } = await tsImport('../../src/backend/storage/configuration/duo-signing.ts', import.meta.url);
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const { ProfileOnboardingDuoEventSchema } = await tsImport('../../src/models/profiles/profile.ts', import.meta.url);
 import { test } from 'node:test';
 import { createPrivateKey, createPublicKey } from 'node:crypto';
-import { createRelayWorker } from '../src/relay-background.js';
+import { createRelayWorker, relayFailureEvent } from '../src/relay-background.js';
 
 const ORIGIN = 'https://test.duosecurity.com';
 const ACCOUNT = '00000000-0000-4000-8000-000000000001';
@@ -638,4 +640,49 @@ test('failed exact acceptance never reaches backend signing or confirms the loca
   w.worker.reply(failure.id, { ok: false }); await rejected;
   assert.equal(w.state().autopilotV1.credentials[0].status, 'pending');
   await w.worker.stop();
+});
+
+ test('diagnostics preserve all worker symbols and bound unknown exception names without free text', () => {
+  assert.deepEqual(relayFailureEvent(new Error('ONBOARDING_DUO_SCOPE'), 42), { stage: 'refused', detail: 'scope', code: 'ONBOARDING_DUO_SCOPE', durationMs: 42 });
+  for (const code of ['ONBOARDING_DUO_REVOKED', 'ONBOARDING_DUO_BROKER_BUSY', 'ONBOARDING_DUO_NATIVE_REQUIRED', 'ONBOARDING_DUO_ENROLL_REFUSED']) {
+    assert.equal(relayFailureEvent(new Error(code), 1).code, code);
+  }
+  const failure = new TypeError('secret-password', { cause: new Error('private-key-material') });
+  assert.deepEqual(relayFailureEvent(failure, 5), { stage: 'refused', detail: 'backend', code: 'ONBOARDING_DUO_UNKNOWN', durationMs: 5, exceptionType: 'TypeError' });
+  for (const name of ['person@example.edu', 'X'.repeat(65), 'line\nbreak']) {
+    failure.name = name;
+    assert.equal(relayFailureEvent(failure, 0).exceptionType, undefined);
+  }
+});
+
+test('the browser listener records exact scope failures and safe unknown errors', async t => {
+  const w = world(); let receive;
+  w.api.runtime.getURL = path => 'chrome-extension://owned-extension/' + path;
+  w.api.runtime.onMessage = { addListener: listener => { receive = listener; } };
+  globalThis.chrome = w.api;
+  t.after(() => { delete globalThis.chrome; delete globalThis.relayOnboarding; });
+  await import('../src/relay-background.js?diagnostic-listener-test');
+  const owner = globalThis.relayOnboarding;
+  await owner.browserInstall();
+  for (const error of [new Error('ONBOARDING_DUO_SCOPE'), new TypeError('secret-password', { cause: new Error('private-key') })]) {
+    w.api.tabs.get = async () => { throw error; };
+    const response = new Promise(resolve => receive({ type: 'RELAY_CAPABILITIES', request: { origin: ORIGIN, rpId: 'duosecurity.com' } }, SENDER, resolve));
+    const request = await owner.browserNext();
+    assert.equal(request.event.code, error.message === 'ONBOARDING_DUO_SCOPE' ? 'ONBOARDING_DUO_SCOPE' : 'ONBOARDING_DUO_UNKNOWN');
+    assert.ok(request.event.durationMs >= 0);
+    assert.doesNotMatch(JSON.stringify(request.event), /secret-password|private-key/);
+    owner.browserReply(request.id, { ok: true, value: { observed: true } });
+    assert.deepEqual(await response, { success: false, error: 'ONBOARDING_DUO_REFUSED' });
+  }
+  await owner.browserStop();
+});
+
+test('every known worker failure has a distinct canonical diagnostic label', () => {
+  const source = readFileSync(new URL('../src/relay-background.js', import.meta.url), 'utf8');
+  for (const [, code] of source.matchAll(/new Error\('(ONBOARDING_DUO_[A-Z_]+)'/g)) {
+    const event = relayFailureEvent(new Error(code), 0);
+    assert.equal(event.code, code);
+    assert.notEqual(event.detail, 'backend');
+    assert.equal(ProfileOnboardingDuoEventSchema.safeParse(event).success, true);
+  }
 });

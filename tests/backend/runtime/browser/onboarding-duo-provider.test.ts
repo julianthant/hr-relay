@@ -29,6 +29,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     attemptId: randomUUID(), method, expiresAt: "2026-10-01T00:10:00.000Z" };
   const requests: unknown[] = [];
   const browserRequests: unknown[] = [];
+  const events: import("../../../../src/models/profiles/profile.js").ProfileOnboardingDuoEvent[] = [];
   let waiter: ((value: unknown) => void) | undefined;
   let browserWaiter: ((value: unknown) => void) | undefined;
   const rejectPolls = new Map<string, (error: Error) => void>();
@@ -38,6 +39,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   const replies = new Map<string, (value: unknown) => void>();
   let windowFocusCount = 0, osFocusCount = 0, capturedRelay = 0, returnedRelay = 0, failInstall = false;
   let captureFailure: Error | undefined;
+  let browserSetupFailure: Error | undefined, browserSetupDurationMs = 0;
+  let installFailure: Error | undefined, installDurationMs = 0;
   let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
   let launchCount = 0, nativeProbes = 0, nativeBusy = false, revokeDuringProbe = false, mutateOwnerDuringProbe = false;
   let profile = "";
@@ -56,9 +59,9 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     url: () => "chrome-extension://owned-extension/src/relay-background.js",
     async evaluate(_callback: unknown, input: { method: string; args: unknown[] }) {
       workerCalls.push(input.method);
-      if (input.method === "install") { startupEntered?.(); await startupHold; if (failInstall) throw new Error("synthetic arm initialization failed"); return; }
+      if (input.method === "install") { clock.advanceMonotonic(installDurationMs); if (installFailure) throw installFailure; startupEntered?.(); await startupHold; if (failInstall) throw new Error("synthetic arm initialization failed"); return; }
+      if (input.method === "browserInstall") { clock.advanceMonotonic(browserSetupDurationMs); if (browserSetupFailure) throw browserSetupFailure; return; }
       if (input.method === "browserFocus") { windowFocusCount++; return; }
-      if (input.method === "browserInstall") return;
       if (input.method === "browserNext") {
         if (browserRequests.length) return browserRequests.shift();
         return new Promise((resolve, reject) => { browserWaiter = resolve; rejectPolls.set(input.method, reject); });
@@ -127,7 +130,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     } },
   });
   const owner: DraftDuoBrowserOwner = { ...attempt, assertCurrent() { if (!current) throw new Error("synthetic revoked"); },
-    reportEvent() {},
+    reportEvent(event) { events.push(event); },
     async acquireCredentials() { throw new Error("unexpected credential acquisition"); },
     readState() { throw new Error("unexpected UI state"); }, async start() { throw new Error("unexpected UI start"); },
     async cancel() { throw new Error("unexpected UI cancel"); }, confirm() { throw new Error("unexpected UI confirmation"); } };
@@ -161,6 +164,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   }
   return { seedRoot(other = owner) { return browserRoots.beginSignupLaunch({ profileId: other.profileId, profileRoot: browserRoot, credentialFingerprint: null,
       owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
+    events,
     sendBrowser(kind: string) {
       const id = randomUUID(), request = { id, kind };
       const response = new Promise(resolve => replies.set(id, resolve));
@@ -168,6 +172,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
       else browserRequests.push(request);
       return response;
     },
+    refuseInstall(error: Error, durationMs: number) { installFailure = error; installDurationMs = durationMs; },
+    refuseBrowserSetup(error: Error, durationMs: number) { browserSetupFailure = error; browserSetupDurationMs = durationMs; },
     refuseCapture(error: Error) { captureFailure = error; },
     rejectPoll(method: "next" | "browserNext", error: Error) { const reject = rejectPolls.get(method); assert.ok(reject); reject(error); },
     loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, windowFocuses: () => windowFocusCount, osFocuses: () => osFocusCount, relayCaptures: () => capturedRelay, relayReturns: () => returnedRelay, failInstall: () => { failInstall = true; }, launches: () => launchCount, profile: () => profile,
@@ -692,4 +698,100 @@ describe("draft document observations around native authority awaits", () => {
       const failure = w.failures[0]; assert.ok(failure instanceof ProfileOnboardingDuoProviderError); assert.equal(failure.kind, "refused");
     } finally { await w.cleanup(); }
   });
+});
+
+it("reports backend failures with exception type and measures processing without idle poll warnings", async () => {
+  const w = world();
+  try {
+    await w.provider.showBrowser(w.owner);
+    w.clock.advanceMonotonic(5000);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(w.events.some(event => event.stage === "slow-operation"), false);
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const state = ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
+      step: "duo", methods: { key: idle, touch: idle } });
+    w.owner.readState = () => { w.clock.advanceMonotonic(1500); return state; };
+    await w.sendBrowser("state");
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.ok(w.events.some(event => event.stage === "slow-operation" && event.operation === "browser-request" && event.durationMs === 1500));
+    w.owner.readState = () => { throw new TypeError("secret-password", { cause: new Error("private-key") }); };
+    await w.sendBrowser("state");
+    assert.ok(w.events.some(event => event.code === "ONBOARDING_DUO_PROVIDER_FAILED" && event.exceptionType === "TypeError"));
+    assert.doesNotMatch(JSON.stringify(w.events), /secret-password|private-key/);
+  } finally { await w.cleanup(); }
+});
+
+function containsFailure(error: unknown, expected: Error): boolean {
+  return error === expected || error instanceof AggregateError && error.errors.some((item: unknown) => containsFailure(item, expected))
+    || error instanceof Error && containsFailure(error.cause, expected);
+}
+
+for (const failedReport of ["failure", "slow"] as const) it(`preserves setup and ${failedReport} diagnostic failures while proving browser closure`, async () => {
+  const w = world(), original = new Error("synthetic setup failure"), logging = new Error("synthetic log unavailable");
+  w.refuseBrowserSetup(original, 1500);
+  let reports = 0;
+  w.owner.reportEvent = event => { reports++; if (failedReport === "failure" || event.stage === "slow-operation") throw logging; };
+  try {
+    await assert.rejects(w.provider.showBrowser(w.owner), error => containsFailure(error, original) && containsFailure(error, logging));
+    assert.equal(reports, failedReport === "failure" ? 1 : 2);
+    assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "closed" });
+    assert.equal(w.pages(), 0);
+  } finally { await w.cleanup(); }
+});
+
+it("replies to a failed idle STATE command, revokes the pump, and preserves diagnostics without retrying the sink", async () => {
+  const w = world(), original = new TypeError("synthetic read failure"), logging = new Error("synthetic log unavailable");
+  let reports = 0;
+  try {
+    await w.provider.showBrowser(w.owner);
+    w.owner.readState = () => { throw original; };
+    w.owner.reportEvent = () => { reports++; throw logging; };
+    assert.deepEqual(await w.sendBrowser("state"), { ok: false });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(reports, 1);
+    await assert.rejects(w.provider.showBrowser(w.owner), error => containsFailure(error, original) && containsFailure(error, logging));
+    assert.equal(w.launches(), 1);
+    assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "closed" });
+    assert.equal(w.pages(), 0);
+  } finally { await w.cleanup(); }
+});
+
+it("retains a captured key when backend diagnostics fail without inventing failed physical closure", async () => {
+  const w = world();
+  try {
+    await w.provider.start(w.attempt, w.bind, w.reportFailure);
+    await w.send("bind", BIND);
+    await w.send("persist", { credentialId: "cHVibGljLWlk", privateKeyPkcs8: "synthetic", publicKeySpki: "synthetic",
+      transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
+    let reports = 0;
+    w.owner.reportEvent = () => { reports++; throw new Error("synthetic log unavailable"); };
+    assert.deepEqual(await w.send("scope-lost", { requestId: randomUUID() }), { ok: false });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.ok(w.calls.includes("unknown"));
+    assert.ok(w.failures[0] instanceof ProfileOnboardingDuoProviderError && w.failures[0].kind === "unknown");
+    assert.equal(reports, 1);
+    assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "closed" });
+  } finally { await w.cleanup(); }
+});
+
+it("preserves a known worker-unavailable code in backend setup diagnostics", async () => {
+  const w = world(); w.refuseBrowserSetup(new Error("ONBOARDING_DUO_WORKER_UNAVAILABLE"), 0);
+  try {
+    await assert.rejects(w.provider.showBrowser(w.owner));
+    assert.ok(w.events.some(event => event.code === "ONBOARDING_DUO_WORKER_UNAVAILABLE"));
+  } finally { await w.cleanup(); }
+});
+
+it("preserves the failed attempt install when its slow diagnostic also fails", async () => {
+  const w = world(), original = new Error("synthetic install failure"), logging = new Error("synthetic log unavailable");
+  let reports = 0;
+  try {
+    await w.provider.showBrowser(w.owner);
+    w.refuseInstall(original, 1500);
+    w.owner.reportEvent = () => { reports++; throw logging; };
+    await assert.rejects(w.provider.start(w.attempt, w.bind, w.reportFailure), error => containsFailure(error, original) && containsFailure(error, logging));
+    assert.equal(reports, 1);
+    assert.ok(containsFailure(w.failures[0], original) && containsFailure(w.failures[0], logging));
+    assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "closed" });
+  } finally { await w.cleanup(); }
 });
