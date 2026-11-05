@@ -78,9 +78,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const ledger = createTransactionHistory(database.authority);
   const runHistory = createRunHistoryService({ database, lifecycle, afterClear: () => { assertCurrent(); projection.rebuildFromTimeline(); } });
   const confirmedHistoryCommand = (request: ClearRunHistoryRequest) => {
+    if (request.target.profileId !== admission.profileBinding.profileId || request.target.epoch !== context.profileEpoch) {
+      throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    }
     assertCurrent();
-    if (profile.runtime.selectedContext(profile.token) !== context || request.target.profileId !== admission.profileBinding.profileId
-      || request.target.epoch !== context.profileEpoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    if (profile.runtime.selectedContext(profile.token) !== context) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
     context.assertCurrent();
     return { commandId: request.commandId };
   };

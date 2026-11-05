@@ -63,6 +63,9 @@ for (const theme of PARITY_THEMES) for (const state of ["ready", "active"] as co
     try {
       await page.setViewportSize({ width: 1440, height: 900 });
       await installTheme(page, theme);
+      await page.route("**/api/v1/profile/state", route => route.fulfill({ json: {
+        state: "active", profileId: "00000000-0000-4000-8000-000000000001", epoch: 1, duoState: "ready",
+      } }));
       await page.goto(`${server.baseUrl}/?fixture=run-history&settings=storage`);
       const clear = page.getByRole("button", { name: "Clear run history", exact: true });
       if (state === "ready") {
