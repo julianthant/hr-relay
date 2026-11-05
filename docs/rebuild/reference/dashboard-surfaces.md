@@ -542,6 +542,9 @@ acknowledged sign-out action; unknown unavailable state never implies stored cre
 live in Preflight, outside the account panel. Sign-out requires acknowledgment. Usage links to
 `https://chatgpt.com/settings/usage`. OAuth, consent, eligibility, usage limits, and secure token
 persistence require the backend account adapter. A displayed preview identity never proves plan access.
+Returning focus or visibility to Relay re-reads the original pending sign-in attempt, replacing its
+previous completion read. Only that attempt's typed result settles sign-in; cancellation, expiry and
+profile disposal abort its read and remove its listeners.
 
 ### Editable fields, Credentials, and Paths
 

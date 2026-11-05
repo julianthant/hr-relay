@@ -121,12 +121,70 @@ it("keeps the declared expiry when completion hangs beyond its deadline without 
     await f.port.refresh();
     let settled = false;
     const signing = f.port.signIn({ usePlan: true }).then(() => { settled = true; });
-    await vi.advanceTimersByTimeAsync(300_000); assert.equal(settled, false); assert.equal(f.calls.includes("close"), true);
+    await vi.advanceTimersByTimeAsync(300_000); assert.equal(settled, true); assert.equal(f.calls.includes("close"), true);
     assert.deepEqual(f.port.getSnapshot(), { state: "sign-in-expired" });
     await vi.advanceTimersByTimeAsync(10_000); await signing;
     assert.deepEqual(f.port.getResource(), { state: "refused", code: "CHATGPT_AUTH_EXPIRED" }); assert.equal(f.calls.filter(call => call === "start").length, 1);
     assert.equal(f.calls.filter(call => call === "read").length, 1); assert.equal(f.calls.filter(call => call === "close").length, 1);
   } finally { f.port.dispose(); vi.useRealTimers(); }
+});
+
+it.each(["focus", "visibilitychange"] as const)("rechecks the original sign-in on %s through the real client without reloading or redispatching", async event => {
+  const first = Promise.withResolvers<Response>(), requested = Promise.withResolvers<void>();
+  const visible = vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  let completionSignal: AbortSignal | null | undefined;
+  let completions = 0, starts = 0, reads = 0;
+  const client = createDashboardClient({ baseUrl: "http://127.0.0.1", fetchImpl: async (url, init) => {
+    if (url.endsWith(`/sign-in/${attemptId}`)) {
+      completions++;
+      if (completions === 1) { completionSignal = init?.signal; requested.resolve(); return first.promise; }
+      return Response.json({ state: "completed", attemptId, account });
+    }
+    if (url.endsWith("/sign-in")) { starts++; return Response.json(started); }
+    reads++; return Response.json({ state: "signed-out" });
+  } });
+  const port = createServedChatGptAccountPort(client, { nowMs: () => Date.parse("2026-10-12T12:00:00.000Z"), open: () => ({ navigate() {}, close() {} }) });
+  try {
+    await port.refresh();
+    const signing = port.signIn({ usePlan: true });
+    await requested.promise;
+    assert.equal(port.getSnapshot().state, "signing-in");
+    (event === "focus" ? window : document).dispatchEvent(new Event(event));
+    await signing;
+    assert.equal(completionSignal?.aborted, true);
+    assert.deepEqual(port.getSnapshot(), account);
+    assert.equal(port.getResource().state, "loaded");
+    assert.equal(starts, 1); assert.equal(reads, 1); assert.equal(completions, 2);
+    first.resolve(Response.json({ state: "completed", attemptId, account: { state: "signed-out" } }));
+    await Promise.resolve();
+    window.dispatchEvent(new Event("focus")); document.dispatchEvent(new Event("visibilitychange"));
+    assert.deepEqual(port.getSnapshot(), account); assert.equal(completions, 2);
+  } finally { first.resolve(Response.json({ state: "completed", attemptId, account })); port.dispose(); visible.mockRestore(); }
+});
+
+it("rechecks a lost completion on return and preserves the original attempt's closure refusal", async () => {
+  let completions = 0, reads = 0;
+  const uncertain = Promise.withResolvers<void>();
+  const f = setup({
+    chatGptAccount: async () => ++reads === 1 ? { state: "signed-out" } : { state: "signing-in", attemptId, expiresAt: started.expiresAt, authorizationUrl: started.authorizationUrl, account: { state: "signed-out" } },
+    completeChatGptSignIn: async id => {
+      assert.equal(id, attemptId);
+      if (++completions === 1) throw new Error("Synthetic lost completion");
+      return { state: "refused", attemptId, code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED", message: ERROR_CATALOG.CHATGPT_RESOURCE_CLOSURE_UNPROVED.text };
+    },
+  });
+  try {
+    await f.port.refresh();
+    const unsubscribe = f.port.subscribe(() => { if (f.port.getResource().state === "uncertain") uncertain.resolve(); });
+    const signing = f.port.signIn({ usePlan: true });
+    await uncertain.promise;
+    assert.equal(f.port.getSnapshot().state, "unavailable");
+    window.dispatchEvent(new Event("focus"));
+    await signing; unsubscribe();
+    const resource = f.port.getResource(); assert.equal(resource.state, "refused");
+    assert.ok("code" in resource); assert.equal(resource.code, "CHATGPT_RESOURCE_CLOSURE_UNPROVED");
+    assert.equal(completions, 2); assert.equal(reads, 2); assert.equal(f.calls.filter(call => call === "start").length, 1);
+  } finally { f.port.dispose(); }
 });
 
 it("shows the original pending attempt and cancels it without accepting a late completion", async () => {
