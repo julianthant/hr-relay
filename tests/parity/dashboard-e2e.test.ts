@@ -57,13 +57,13 @@ for (const theme of PARITY_THEMES) for (const state of ["ready", "active"] as co
   test(`run history confirms finished deletion and refuses active runs ${state} ${theme.attribute}`, {
     annotation: [{ type: "required-a11y-evidence", description: evidence }],
   }, async ({ page }, info) => {
-    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, runHistory: state });
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, runHistory: state, profile: { bootstrap: FIXTURE_START_PICKER_BOOTSTRAP, day: FIXTURE_START_PICKER_DAY_WIRE, descriptorHash: FIXTURE_START_PICKER_DESCRIPTOR_HASH } });
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
     try {
       await page.setViewportSize({ width: 1440, height: 900 });
       await installTheme(page, theme);
-      await page.goto(`${server.baseUrl}/?settings=storage`);
+      await page.goto(`${server.baseUrl}/?fixture=run-history&settings=storage`);
       const clear = page.getByRole("button", { name: "Clear run history", exact: true });
       if (state === "ready") {
         await expect(clear).toBeEnabled(); await clear.click();
@@ -79,7 +79,7 @@ for (const theme of PARITY_THEMES) for (const state of ["ready", "active"] as co
         await expect(clear).toBeDisabled();
         await expect(page.getByText("Finish or cancel all active runs before clearing run history.", { exact: true })).toBeVisible();
         const commandId = randomUUID();
-        const result = await page.request.post(`${server.baseUrl}/api/v1/storage/run-history/clear`, { data: { commandId } });
+        const result = await page.request.post(`${server.baseUrl}/api/v1/storage/run-history/clear`, { data: { commandId, target: { profileId: "00000000-0000-4000-8000-000000000001", epoch: 1 } } });
         expect(await result.json()).toEqual({ state: "refused", commandId, reason: "active-runs" });
         expect(await (await page.request.get(`${server.baseUrl}/api/v1/storage/run-history`)).json()).toEqual({ state: "available", finishedRuns: 3, activeRuns: 1 });
       }

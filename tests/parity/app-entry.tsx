@@ -35,5 +35,5 @@ const theme: unknown = Reflect.get(window, "relayParityTheme");
 const preferences = createPersonPreferences("preview", { ...NEUTRAL_PERSON_PREFERENCES, theme: theme === "light" ? "light" : "dark", animations: Reflect.get(window, "relayParityMotion") !== false });
 const accountPort = createServedChatGptAccountPort(client, { open: () => ({ navigate: () => undefined, close: () => undefined }) });
 createRoot(container).render(<PersonPreferencesContext.Provider value={preferences}>{ControlPreview ? <Suspense fallback={<p role="status">Loading control preview…</p>}><ControlPreview /></Suspense> : <StrictMode><DashboardClientProvider client={client}>
-  <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} profileSource={fixture === "picked-onboarding" || personAppearance ? "served" : "mock"} previewPreferences={personAppearance ? undefined : preferences} /></ChatGptAccountContext.Provider>
+  <ChatGptAccountContext.Provider value={accountPort}><DashboardApp workflowComposition={composition} profileSource={fixture === "picked-onboarding" || fixture === "run-history" || personAppearance ? "served" : "mock"} previewPreferences={personAppearance ? undefined : preferences} /></ChatGptAccountContext.Provider>
 </DashboardClientProvider></StrictMode>}</PersonPreferencesContext.Provider>);

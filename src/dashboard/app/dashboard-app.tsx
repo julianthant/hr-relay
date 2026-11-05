@@ -150,6 +150,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const inheritedOcr = useContext(PreflightOcrContext);
   const profileId = session?.state === "active" ? session.profileId : undefined;
   const profileEpoch = session?.state === "active" ? session.epoch : undefined;
+  const profileTarget = useMemo(() => profileId === undefined || profileEpoch === undefined ? undefined : { profileId, epoch: profileEpoch }, [profileId, profileEpoch]);
   const accountScope = useMemo(() => ({ profileClient, profileSource, profileId, profileEpoch }), [profileClient, profileSource, profileId, profileEpoch]);
   const [accountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort>; ocr: ReturnType<typeof createServedPreflightOcrPort> }>();
   const account = accountOwner?.scope === accountScope ? accountOwner.port : undefined;
@@ -229,6 +230,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       ) : (
         <ViewNavigationProvider route={route} setRoute={setRoute}><DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}><LoadedApp
           preferences={preferences}
+          profileTarget={profileTarget}
           boot={boot}
           onProfileLogout={profileSource === "served" ? publicProfile.logout : undefined}
           deleteAccount={profileSource === "served" && session?.state === "active" && session.duoState === "ready"
@@ -315,6 +317,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
 
 
 interface LoadedAppProps {
+  profileTarget?: DashboardAuthority["profileTarget"];
   preferences: PersonPreferencesOwner;
   onProfileLogout?: () => Promise<void>;
   deleteAccount?: ReactNode;
@@ -344,6 +347,7 @@ interface LoadedAppProps {
 
 
 function LoadedApp({
+  profileTarget,
   preferences,
   onProfileLogout,
   deleteAccount,
@@ -370,7 +374,7 @@ function LoadedApp({
   /** THE clock. The server's instant is the authority; the browser contributes
  * only the monotonic time since that instant arrived, and every live elapsed */
   const client = useDashboardClient();
-  const authorityEpoch = useMemo(() => Object.freeze({ client, bootstrap: boot }), [client, boot]);
+  const authorityEpoch = useMemo(() => Object.freeze({ client, bootstrap: boot, profileTarget }), [client, boot, profileTarget]);
   const lifecycle = useApplicationLifecycle(client, authorityEpoch);
   const application = lifecycle.resource.state === "loaded" ? lifecycle.resource.value : undefined;
   const [quitRequested, setQuitRequested] = useState(false);
@@ -412,8 +416,8 @@ function LoadedApp({
   const activeWorkflowId = (selectedRow === undefined ? undefined : queueScopeWorkflow(selectedRow, dayWire?.queueSurfaces ?? NO_QUEUE_ROWS)) ?? route.view?.workflow ?? chosenWorkflowId;
   const queueWorkflowAvailable = workflows.some(workflow => workflow.id === activeWorkflowId)
     || queueRows.some(row => row.workflowId === activeWorkflowId && row.parent !== null);
-  const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, catalog: workflowCatalog, nowIso, today, day, dayState,
-    selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, workflowCatalog, nowIso, today, day, dayState, route, activeWorkflowId]);
+  const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, profileTarget, catalog: workflowCatalog, nowIso, today, day, dayState,
+    selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, profileTarget, workflowCatalog, nowIso, today, day, dayState, route, activeWorkflowId]);
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID, authorityEpoch);
   const [requestedPreview, setRailPreview] = useViewState("preview", null);
   const routeWorkflowId = requestedPreview ?? activeWorkflowId;

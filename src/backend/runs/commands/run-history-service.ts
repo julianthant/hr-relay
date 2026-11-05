@@ -1,11 +1,11 @@
-import type { ClearRunHistoryRequest, ClearRunHistoryResult, RunHistoryStatus } from "../../../models/dashboard/run-history.js";
+import type { RunHistoryCommand, ClearRunHistoryResult, RunHistoryStatus } from "../../../models/dashboard/run-history.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 
 export interface RunHistoryService {
   status(): RunHistoryStatus;
-  clear(request: ClearRunHistoryRequest): ClearRunHistoryResult;
-  check(request: ClearRunHistoryRequest): ClearRunHistoryResult;
+  clear(request: RunHistoryCommand): ClearRunHistoryResult;
+  check(request: RunHistoryCommand): ClearRunHistoryResult;
 }
 
 export function createRunHistoryService(input: { database: AuthorityDatabase; lifecycle: RunRecordService; afterClear(): void }): RunHistoryService {

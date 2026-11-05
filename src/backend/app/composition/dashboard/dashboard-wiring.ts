@@ -3,12 +3,14 @@ import { join } from "node:path";
 import { z } from "zod";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
 import { AssistantModelPreferenceSchema } from "../../../../models/config/assistant-model-preference.js";
+import type { ClearRunHistoryRequest } from "../../../../models/dashboard/run-history.js";
 import { admitOcrExtraction } from "../../../../models/ocr/extraction.js";
 import { buildExtractionInstruction } from "../../../../models/ocr/instruction.js";
 import { isLiveWorker } from "../../../../models/run/worker.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { ChatGptAccountError } from "../../../accounts/chatgpt-account-service.js";
+import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
 import { assistantKnowledgeArtifact,loadProductionAssistantContext } from "../../../assistant/context.js";
 import { createAssistantService } from "../../../assistant/service.js";
@@ -74,6 +76,14 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const resources = prepareDashboardRuntime(input, startupCleanups, custody, environment, staticBundle);
   const { requiredClosure, requireProducerClosure, dashboardPreflightRunners, env, clock, timeZone, ids, machineAdmission, profile, assertCurrent, selected, stateRoot, appVersion, context, database, admission, chatGptAccount, selectedModelProfileId, selectedModelEpoch, assertSelectedModelContext, captureSelectedModel, resolved, protectedSettingsAuthority, protectedSecrets, settingsBoundary, configSnapshotId, backupDirectory, backupServiceState, readBackupSummary, loggingRepository, debugEvents, descriptors, setHash, runtimePreflight, lifecycle, backfillGapNotifier, notificationInbox, notificationObserver, preflightAuthority } = resources;
   const ledger = createTransactionHistory(database.authority);
+  const runHistory = createRunHistoryService({ database, lifecycle, afterClear: () => { assertCurrent(); projection.rebuildFromTimeline(); } });
+  const confirmedHistoryCommand = (request: ClearRunHistoryRequest) => {
+    assertCurrent();
+    if (profile.runtime.selectedContext(profile.token) !== context || request.target.profileId !== admission.profileBinding.profileId
+      || request.target.epoch !== context.profileEpoch) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
+    context.assertCurrent();
+    return { commandId: request.commandId };
+  };
 
   const { activity, activityPopulation } = composeActivity({ database, clock, descriptors, ledger, timeZone });
   const summaries: ServedSummaryQueries = { ...composeQueueSummaries(database), activity: (from, to) => activity.read(from, to) };
@@ -338,7 +348,8 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
     ...settingsBoundary.routes,
     ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
-    runHistory: createRunHistoryService({ database, lifecycle, afterClear: () => { assertCurrent(); projection.rebuildFromTimeline(); } }),
+    runHistory: { status: runHistory.status, clear: request => runHistory.clear(confirmedHistoryCommand(request)),
+      check: request => runHistory.check(confirmedHistoryCommand(request)) },
     ...explorerBoundary,
     activity,
     activityPopulation,
