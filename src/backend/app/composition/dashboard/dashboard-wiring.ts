@@ -28,6 +28,7 @@ import type { ServedSummaryQueries } from "../../../runs/projections/run-queue-p
 import { createIntakeCommandResultQuery } from "../../../runs/queries/intake-command-result.js";
 import { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
 import { createRunWorkbookService } from "../../../runs/workbooks.js";
+import { createRunHistoryService } from "../../../runs/commands/run-history-service.js";
 import { createCommandBrowserManager } from "../../../runtime/browser/command-browser.js";
 import { createPreflightReportService } from "../../../runtime/preflight/report-service.js";
 import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/timeout-deadline-scheduler.js";
@@ -337,6 +338,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
     ...settingsBoundary.routes,
     ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
+    runHistory: createRunHistoryService({ database, lifecycle, afterClear: () => { assertCurrent(); projection.rebuildFromTimeline(); } }),
     ...explorerBoundary,
     activity,
     activityPopulation,
