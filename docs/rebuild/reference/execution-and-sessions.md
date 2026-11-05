@@ -545,6 +545,18 @@ requires stopped process custody, a non-live lease, closed browser observations,
 and exclusive profile deletion through `composeWorkerProcessControl`. Only then does authority
 retire the slot and update the declaration. A failed closure cannot become a smaller completed pool.
 
+A fresh additive Run allocation refused before the spawner is entered has no child CLOSE to observe.
+Its original supervisor records that positive control-flow proof privately, bound to the allocating
+controller and exact refused command. Every spawner invocation irreversibly invalidates non-birth
+proof before the call. During admitted drainage, a private capability-gated transaction may retire
+only that exact final allocation using the existing Plan shapes, with an unchanged selected peer
+roster and pool basis. Request, control, application, audit, slot and pool changes commit together;
+consumption waits for the outermost COMMIT. The original refused Spawn and audit remain unchanged.
+Replay never recreates proof or admits a missing settlement Plan, including its derived command
+identity. Crash before COMMIT stays uncertain; completed retirement is historical settlement.
+An absent child, lease, file or elapsed deadline never authorizes this path. Born children still
+require actual CLOSE, and independent browser, write, database and backup closure requirements remain.
+
 Internal pool retirement and lifetime shutdown request the durable stop directive, wait `WORKER_GRACEFUL_STOP_TIMEOUT_MS = 120_000`, sends
 SIGTERM, waits `WORKER_SIGTERM_TIMEOUT_MS = 30_000`, then sends SIGKILL. Observed escalation stages
 are a timestamped prefix of that policy. An initial acknowledgement records only the graceful

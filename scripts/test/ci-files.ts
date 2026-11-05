@@ -17,6 +17,7 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/sqlite/profile-local-databases.windows-native.integration.test.ts",
   "tests/backend/storage/maintenance/account-deletion.integration.test.ts",
   "tests/backend/app/composition/storage-compose.clean-shutdown.integration.test.ts",
+  "tests/backend/app/composition/dashboard/compose.never-born-worker.integration.test.ts",
   "tests/backend/app/composition/storage-compose.startup-repair.integration.test.ts",
   "tests/backend/app/composition/worker/artifact-output.integration.test.ts",
   "tests/backend/app/composition/dashboard/compose.startup-upgrade.integration.test.ts",

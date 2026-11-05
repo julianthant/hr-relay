@@ -15,6 +15,7 @@ function isUnitTest(path: string): boolean {
 }
 const ARCHITECTURE_HELPERS_ROOT = /^tests\/architecture\/(?:support|[^/]+)\/helpers\//u;
 const SHARED_RESOURCE_HARNESSES = new Set([
+  "tests/support/helpers/backend/never-born-worker-world.ts",
   "tests/support/helpers/predecessor-profile-credentials.ts",
   "tests/support/helpers/exclusive-session-leases.ts",
   "tests/support/helpers/backend/storage-restore-world.ts",
@@ -66,6 +67,7 @@ function importsOf(path: string) {
 }
 
 const DEFERRED_CAPABILITIES = [
+  { importer: "tests/support/helpers/backend/never-born-worker-world.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/predecessor-profile-credentials.ts", module: "src/backend/storage/configuration/credential-store.js", symbol: "authenticateDocument" },
   { importer: "tests/support/helpers/exclusive-session-leases.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/support/helpers/backend/storage-restore-world.ts", module: "node:sqlite", symbol: "DatabaseSync" },
@@ -92,6 +94,7 @@ const DEFERRED_CAPABILITIES = [
 const RETENTION_CASES_MODULES = ["tests/support/processes/startup-upgrade-retention-cases.js", "tests/support/processes/browser-root-retention.js"];
 const RETENTION_CASES_OWNER = "tests/support/processes/credential-source-retention-worker.ts";
 const PROCESS_ENTRYPOINTS = [
+  { file: "never-born-worker-controller.ts", consumers: ["tests/backend/app/composition/dashboard/compose.never-born-worker.integration.test.ts"] },
   { file: "relay-launcher-parent.ts", consumers: ["tests/scripts/dev/relay.windows-native.integration.test.ts"] },
   { file: "relay-drain-child.ts", consumers: ["tests/scripts/dev/relay.integration.test.ts"] },
   { file: "debug-event-child.ts", consumers: ["tests/backend/logs/debug-events.integration.test.ts"] },

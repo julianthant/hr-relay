@@ -1,3 +1,4 @@
+import { applyWorkerPoolPlan, WorkerPoolPlanVersionConflict } from "../../storage/sqlite/worker-slots.js";
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { notificationMatchesCollection,type NotificationCollectionOperation,type NotificationRecord } from "../../../models/notifications/notifications.js";
@@ -269,6 +270,7 @@ export interface WorkerPoolRuntimeSeam {
 
 
 export interface WorkerPoolRuntimeAdoption {
+  recordControlAudit?(commandId: string): void;
   readonly pool: WorkerPoolRuntimeSeam;
 }
 
@@ -329,10 +331,6 @@ export interface CommandKernel {
 
 // Throwing a typed non-applied result rolls back partial effects while retaining its command outcome.
 
-
-function workerPoolTarget(workflowId: string): TargetReference {
-  return { family: "worker-pool", workflowId };
-}
 
 function workerTarget(workerId: string): TargetReference {
   return { family: "worker-browser", workerId };
@@ -2099,46 +2097,12 @@ function applyWorkerPoolCommand(
         || canonicalJsonStringify(acknowledgement.result.target) !== canonicalJsonStringify(request.target)) throw new Error("parked-check-result-identity-mismatch");
       return applied(request, [workerTarget(request.target.workerId), runTarget(request.target.runId)], []);
     case "plan-worker-count": {
-      if (acknowledgement.kind !== "plan") {
-        throw new Error("plan-worker-count settled without a plan acknowledgement; the pool seam is inconsistent");
+      try { return applyWorkerPoolPlan(repositories, request, now, basisVersion, acknowledgement); }
+      catch (error) {
+        if (error instanceof WorkerPoolPlanVersionConflict) conflict(request, error.currentVersion,
+          "The worker effect ALREADY executed before the pool changed; retain this command identity and do not repeat it");
+        throw error;
       }
-      const control = repositories.workerControls.get(request.commandId);
-      if (control === undefined) throw new Error("worker-roster-admission-missing");
-      const roster = control.roster;
-      if (roster === undefined || roster.beforeVersion !== basisVersion
-        || canonicalJsonStringify(acknowledgement.workerIds) !== canonicalJsonStringify(roster.selected.map(slot => slot.workerId))
-        || acknowledgement.retirements.length !== roster.excess.length) throw new Error("worker-roster-settlement-mismatch");
-      for (const original of [...roster.selected, ...roster.excess]) {
-        const current = repositories.workerSlots.get(original.workerId);
-        if (canonicalJsonStringify(current) !== canonicalJsonStringify(original)) throw new Error("worker-roster-reservation-changed");
-      }
-      const currentPool = repositories.workerPools.get(request.target.workflowId);
-      if (currentPool === undefined) throw new Error("worker-pool-missing-before-settlement");
-      if (currentPool.version !== roster.admittedVersion) conflict(request, currentPool.version,
-        "The worker effect ALREADY executed before the pool changed; retain this command identity and do not repeat it");
-      for (const slot of roster.excess) {
-        const proof = acknowledgement.retirements.find(value => value.workerId === slot.workerId);
-        if (proof === undefined || proof.membershipRevision !== slot.membershipRevision
-          || Date.parse(proof.checkedAt) < Date.parse(control.admittedAt)
-          || repositories.workerControls.browsers(slot.workerId).some(browser => browser.health !== "closed")) throw new Error("worker-retirement-not-proved");
-        repositories.workerSlots.retire({ workerId: slot.workerId, commandId: request.commandId,
-          expectedRevision: slot.membershipRevision, now: proof.checkedAt });
-      }
-      if (roster.admittedVersion === roster.beforeVersion) {
-        const planned = repositories.workerPools.plan({ workflow: request.target.workflowId,
-          expectedVersion: roster.beforeVersion, desiredWorkers: request.payload.desiredWorkers,
-          requestedBy: request.requestedBy, now });
-        if (planned.state !== "applied" || planned.pool.version !== roster.afterVersion) throw new Error("worker-pool-version-conflict");
-      } else if (currentPool.desiredWorkers !== request.payload.desiredWorkers) throw new Error("worker-pool-declaration-mismatch");
-      requireWorkerPoolRoster(repositories, request.target.workflowId);
-      return applied(
-        request,
-        [
-          workerPoolTarget(request.target.workflowId),
-          ...acknowledgement.workerIds.map((workerId) => workerTarget(workerId)),
-        ],
-        [{ target: workerPoolTarget(request.target.workflowId), before: basisVersion, after: basisVersion + 1 }],
-      );
     }
     case "spawn-worker":
       // The child's own birth lease IS the authority fact, written by the
@@ -2376,6 +2340,7 @@ async function executeWorkerPoolCommand(
     repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request, result: application.result,
       completedAt: dependencies.clock.now().toISOString(), versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds });
     repositories.workerControls.audit(request.commandId, dependencies.clock.now().toISOString());
+    dependencies.workerRuntime.recordControlAudit?.(request.commandId);
     return application.result;
   });
 }
