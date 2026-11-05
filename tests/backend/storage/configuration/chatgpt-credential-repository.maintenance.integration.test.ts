@@ -73,7 +73,10 @@ it("SQLite backup, stopped upgrade and restore leave the current token authority
     const detachedArtifacts = join(detachedRoot, "artifacts"); mkdirSync(detachedArtifacts, { mode: 0o700 });
     const detached = RuntimeAdmission.syntheticRoots(detachedRoot, detachedArtifacts);
     try {
-      await withOfflineMaintenance(previous, operation => assert.rejects(restoreNewestPersonBackup(detached, operation, clock), /installation-required/u));
+      await withOfflineMaintenance(previous, operation => assert.rejects(restoreNewestPersonBackup(detached, operation, clock), {
+        message: "runtime-admission: exclusive installation authority required",
+      }));
+      assert.deepEqual(readdirSync(detachedRoot), ["artifacts"]);
     } finally { detached.release(); rmSync(detachedRoot, { recursive: true, force: true }); }
     assert.equal(readFileSync(profile.path).equals(damagedBytes), true);
     assert.equal(readFileSync(credentialPath).equals(currentBytes), true);

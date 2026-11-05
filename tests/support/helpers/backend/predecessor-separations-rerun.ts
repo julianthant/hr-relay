@@ -39,6 +39,11 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
     const queued = { ...raw, input: { ...raw.input, parsed: { ...raw.input.parsed,
       protectedBindings: [{ kind: "protected-store", inputPath: "timekeeperName", name: "timekeeperName", valueId }] } } };
     const { run, claim } = compositionClaimRunning(h.database, h.clock, queued, FINALIZE_NODE);
+    const { createTimelineEmitter } = await import("../../../../src/backend/storage/events/timeline-emitter.js");
+    const { runQueuedSpanEvent } = await import("../../../../src/backend/runs/commands/run-queued-span.js");
+    const { LOCAL_OPERATOR_ACTOR_ID } = await import("../../../../src/rules/identity/ids.js");
+    createTimelineEmitter({ repository: h.database.authority.timelineEvents, clock: h.clock }).emit(runQueuedSpanEvent({ run,
+      actorId: LOCAL_OPERATOR_ACTOR_ID, title: descriptor.label }));
     const context = compositionContext(run, claim, FINALIZE_NODE), nodes = descriptorRuntimeNodes(descriptor), outputs: Record<string, JsonValue> = {};
     for (const id of context.node.dependsOn) {
       const node = nodes.find(node => node.id === id); assert.ok(node?.kind === "task");
@@ -61,11 +66,14 @@ export async function predecessorSeparationsRerun(options: Readonly<{ predecesso
     const terminal = requireLifecycleApplied(testRunLifecycle(h.database, h.clock).terminalize({ commandId: randomUUID(), kind: "failure", terminal: { authorization, failure } }, descriptor));
     const checkpoints = h.database.authority.runCheckpoints.listByItem(descriptor.id, run.envelope.itemId), writes = h.database.authority.writeIntents.listByRun(run.envelope.runId);
     const result = h.database.authority.runResults.get(run.envelope.runId); assert.ok(result);
+    const { createReceiptService } = await import("../../../../src/backend/runs/trust/receipt-service.js");
+    const { testRunService } = await import("../../fixtures/run-lifecycle-fixtures.js");
+    const receipt = createReceiptService({ database: h.database, runReader: testRunService(h.database, h.clock), descriptors: [descriptor] }).ensureReceipt(run.envelope.runId);
     const { captureProfileCredentialFixture, installPredecessorProfileCredentials } = await import("../predecessor-profile-credentials.js");
     const credential = captureProfileCredentialFixture(h.profile.admission), paths = { workspace: h.profile.workspace, stateRoot: h.profile.stateRoot,
       profileId: h.profile.admission.profileBinding.profileId, path: h.path };
     if (!options.keepOpen) await h.closeController(); if (!options.keepOpen && options.predecessorCredentials !== false) installPredecessorProfileCredentials(credential, COMPOSITION_TIMEKEEPER, valueId);
-    return { ...paths, database: h.database, clock: h.clock, run: terminal, result, checkpoints, writes, valueId, cleanup: h.dispose };
+    return { ...paths, database: h.database, clock: h.clock, run: terminal, result, checkpoints, writes, receipt, valueId, cleanup: h.dispose };
   } catch (error) { await h.dispose(); throw error; }
   finally { vi.doUnmock("../../../../src/models/validation/schema-bound-value.js"); vi.resetModules(); }
 }
