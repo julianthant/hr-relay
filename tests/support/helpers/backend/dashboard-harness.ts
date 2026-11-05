@@ -233,6 +233,7 @@ export async function makeWorld(input?: Readonly<{
   busyTimeoutMs?: number;
 
   descriptors?: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
+  queueCapabilities?: (workflowId: string) => Readonly<{ sessionItemScope?: boolean; groupedBatchLayout?: boolean }> | undefined;
 }>): Promise<DashboardWorld> {
   const held: { fixture?: BoundProfileStorageFixture; database?: AuthorityDatabase; raws: Set<DatabaseSync>; primary?: { error: unknown }; failure?: Error } = { raws: new Set() };
   retainedDashboardWorldOwners.add(held);
@@ -319,6 +320,7 @@ export async function makeWorld(input?: Readonly<{
 
     ledger: createTransactionHistory(database.authority),
     authority,
+    ...(input?.queueCapabilities === undefined ? {} : { queueCapabilities: input.queueCapabilities }),
     descriptors: input?.descriptors ?? { resolve: () => undefined },
     ...(input?.collectRebuilds === true
       ? { scheduleRebuild: (rebuild: () => void): void => { scheduledRebuilds.push(rebuild); } }

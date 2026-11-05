@@ -323,3 +323,5 @@ Task contract modules follow each task ID suffix: Emergency Contact uses `models
 `src/backend/storage/sqlite/delegation-authority.ts` owns current and retained membership selection, revision/reuse custody and scoped authentication proofs. `src/rules/commands/lifecycle-command-id.ts` owns deterministic initial and revised invocation identities shared by factories and native admission.
 
 `app/composition/dashboard/assistant.ts` owns `createAssistantReadAllowlist` over the canonical run-detail query. `dashboard-wiring.ts` injects it into the production assistant tools with the selected profile's run-detail dependencies and currentness check. `models/dashboard/assistant.ts` owns exact local-run evidence citations alongside knowledge citations. `dashboard/surfaces/assistant/assistant-history-model.ts` owns person-scoped tab history, draft retention and restoration without action or verification authority.
+
+`src/backend/runs/queries/run-retry.ts` owns read-only Lookup batch-root Retry eligibility. The Queue composition supplies it through the projection authority port. Native commands retain mutation authority.

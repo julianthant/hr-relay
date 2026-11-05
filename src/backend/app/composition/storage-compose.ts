@@ -51,7 +51,7 @@ import { resumeAutomaticAuthorityRestore } from "../../storage/sqlite/offline-re
 import { type StorageDoctorReport } from "../../storage/sqlite/recovery-contracts.js";
 import { createTransactionHistory } from "../../storage/sqlite/transaction-history.js";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
-import { DESCRIPTORS,READABLE_WORKFLOW_MODULES,descriptorSetHash,SERVER_REGISTRY } from "../registries/workflow-registry.js";
+import { DESCRIPTORS,READABLE_WORKFLOW_MODULES,descriptorSetHash,SERVER_REGISTRY,workflowQueueCapabilities } from "../registries/workflow-registry.js";
 
 import { lstatSync } from "node:fs";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
@@ -1257,6 +1257,7 @@ function rebuildStagedProjections(
         appVersion,
         descriptorSetHash: setHash,
         ledger: createTransactionHistory(staged.authority),
+        queueCapabilities: workflowQueueCapabilities,
         authority: {
           queueParents: envelopes => staged.authority.dependencies.parents(envelopes),
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),

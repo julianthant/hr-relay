@@ -17,6 +17,7 @@ interface Registration {
   readonly exposure: "public" | "child-only" | "unregistered";
   readonly order: number;
   readonly proofs: readonly { readonly definition: DefinitionReference; readonly order: number }[];
+  readonly queueCapabilities: boolean;
 }
 
 function objectFields(node: ts.Node | undefined, keys: readonly string[], context: string): ReadonlyMap<string, ts.Expression> {
@@ -71,7 +72,12 @@ function readRegistration(repoRoot: string, folder: string): Registration {
     || imports.get("deepFreeze")?.source !== "../../rules/validation/immutability.js" || declaration.arguments.length !== 1) {
     throw new Error(`${path} must export const registration = deepFreeze({ ... } as const)`);
   }
-  const fields = objectFields(declaration.arguments[0], ["definition", "exposure", "store", "proofs"], path);
+  let registrationObject = declaration.arguments[0];
+  while (registrationObject !== undefined && ts.isAsExpression(registrationObject)) registrationObject = registrationObject.expression;
+  if (registrationObject === undefined || !ts.isObjectLiteralExpression(registrationObject)) throw new Error(`${path} registration must be an object literal`);
+  const registrationFields = new Map(registrationObject.properties.filter(ts.isPropertyAssignment)
+    .map(property => [property.name.getText(source).replace(/^['"]|['"]$/gu, ""), property.initializer]));
+  const fields = objectFields(registrationObject, ["definition", "exposure", "store", "proofs", ...(registrationFields.has("queueCapabilities") ? ["queueCapabilities"] : [])], path);
   const imported = (node: ts.Expression | undefined, expected: RegExp) => {
     const binding = node !== undefined && ts.isIdentifier(node) ? imports.get(node.text) : undefined;
     if (binding === undefined || !expected.test(binding.source) || !existsSync(join(path, "..", binding.source.replace(/\.js$/u, ".ts")))) {
@@ -135,7 +141,8 @@ function readRegistration(repoRoot: string, folder: string): Registration {
   if (JSON.stringify(proofs.map(proof => proof.definition.source).sort()) !== JSON.stringify(sources)) {
     throw new Error(`${path}: proofs must list every steps/<step>/step.ts exactly once`);
   }
-  return { folder, alias: `${definition.moduleName}Registration`, definition, exposure, order, proofs };
+  return { folder, alias: `${definition.moduleName}Registration`, definition, exposure, order, proofs,
+    queueCapabilities: fields.has("queueCapabilities") };
 }
 
 function unique(values: readonly (string | number)[], context: string): void {
@@ -178,6 +185,8 @@ export function workflowRegistrySources(repoRoot: string): ReadonlyMap<string, s
       ...active.map(registration => module(registration.definition.moduleName, `${registration.alias}.definition`)), "",
       tuple("WORKFLOW_MODULES", publicEntries.map(registration => registration.definition.moduleName)),
       tuple("CHILD_ONLY_WORKFLOW_MODULES", children.map(registration => registration.definition.moduleName)),
+      tuple("WORKFLOW_QUEUE_CAPABILITIES", active.filter(registration => registration.queueCapabilities)
+        .map(registration => `[String(${registration.alias}.definition.id), ${registration.alias}.queueCapabilities] as const`)),
     ].join("\n")],
     ["src/backend/app/registries/generated-step-proof-modules.ts", header + [...(proofs.length === 0 ? [] : [compiler, stores]),
       ...active.filter(registration => registration.proofs.length > 0).map(importOf), "",
