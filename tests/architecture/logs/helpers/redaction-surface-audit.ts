@@ -1880,7 +1880,6 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/bootstrap", path: "preflight[].label", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "preflight[].remediation", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "settingsSections[].label", origin: "repository-authored" },
-  { surface: "wire/bootstrap", path: "storage.automaticRepair.message", origin: "repository-authored" },
   { surface: "wire/bootstrap", path: "systemInstances[].test.reason", origin: "repository-authored" },
 
   { surface: "wire/bootstrap", path: "workflows[].availability.reason", origin: "repository-authored" },

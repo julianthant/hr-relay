@@ -3,13 +3,6 @@ import { ProtectedSettingsPresenceEntriesSchema } from "../config/protected-sett
 import { z } from "zod";
 import { CommandIdSchema, IsoInstantSchema, RunIdSchema, TraceIdSchema, WorkflowIdSchema } from "../../rules/identity/ids.js";
 
-export const AutomaticRepairNoticeWireSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("none") }),
-  z.strictObject({ state: z.literal("restored"), backupTime: IsoInstantSchema, restoredAt: IsoInstantSchema }),
-  z.strictObject({ state: z.literal("unavailable"), message: z.string().min(1) }),
-]);
-export type AutomaticRepairNoticeWire = z.infer<typeof AutomaticRepairNoticeWireSchema>;
-
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const StorageDiagnosticMessageSchema = z.string().min(1);
 

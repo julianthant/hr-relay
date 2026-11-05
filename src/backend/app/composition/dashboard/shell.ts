@@ -14,7 +14,7 @@ import { composeGeneratedExports } from "./generated-exports.js";
 
 /** Shell bootstrap, search, export and subscription use the same production authority. */
 export function composeShell(input: Pick<BootstrapQueryDeps,
-  "appVersion" | "actorLabel" | "clock" | "timeZone" | "descriptorSetHash" | "preflightReport" | "backupSummary" | "automaticRepair">
+  "appVersion" | "actorLabel" | "clock" | "timeZone" | "descriptorSetHash" | "preflightReport" | "backupSummary">
   & Pick<OperatorXlsxExportServiceDependencies, "ids" | "artifacts">
   & DashboardStreamHubDeps
   & { activity: import("../../../runs/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"]; runLogsHub: RunLogsStreamHub }
@@ -37,7 +37,7 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
     bootstrap: { appVersion: input.appVersion, actorLabel: input.actorLabel, clock, timeZone: input.timeZone, modules: catalogModules,
       descriptorSetHash: input.descriptorSetHash, settingsSchemaHash: SETTINGS_SCHEMA_HASH,
       preflightReport: input.preflightReport, projection, authorityMeta: () => database.getMeta(),
-      automaticRepair: input.automaticRepair, backupSummary: input.backupSummary },
+      backupSummary: input.backupSummary },
     search,
     searchMetadataExports: {export: request=>exportSearchMetadata({search,sourceIdentity:database.getSourceDatabaseIdentity()},request)},
     calendar: createCalendarQuery(database, clock),

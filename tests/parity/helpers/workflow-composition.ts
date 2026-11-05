@@ -1,5 +1,6 @@
 import { WORKFLOW_SOURCES, workflowSource, type WorkflowComposition, type WorkflowSourcePolicy } from "../../../src/dashboard/app/workflow-sources.js";
 import type { RunStartWorkflow } from "../../../src/dashboard/surfaces/run-start/run-start.js";
+import { seedMockRuns } from "../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
 
 /** Explicit served inputs for backend capability tests, with the other mock scenes retained. */
 export function servedFixtureSources(workflows: readonly RunStartWorkflow[]): WorkflowSourcePolicy {
@@ -9,7 +10,7 @@ export function servedFixtureSources(workflows: readonly RunStartWorkflow[]): Wo
 export function PARITY_WORKFLOW_COMPOSITION(workflows: readonly RunStartWorkflow[]): WorkflowComposition {
   const sources = servedFixtureSources(workflows);
   const previewSources = Object.freeze({ ...sources, ...servedFixtureSources([]) });
-  return Object.freeze({ sources, assistant: "mock" as const, inbox: "mock" as const, search: "mock" as const, explorerSources: previewSources, logsSources: previewSources, sessions: "mock" as const, activity: "mock" as const, spreadsheets: "mock" as const, dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }),
+  return Object.freeze({ sources, initialMockRuns: seedMockRuns, assistant: "mock" as const, inbox: "mock" as const, search: "mock" as const, explorerSources: previewSources, logsSources: previewSources, sessions: "mock" as const, activity: "mock" as const, spreadsheets: "mock" as const, dataSources: Object.freeze({ ...sources, "person-lookup": "served" as const }),
     sourceForRoute: (id: string, requestedPreview: boolean) => requestedPreview && id in WORKFLOW_SOURCES ? "mock" : workflowSource(id, sources),
   });
 }
