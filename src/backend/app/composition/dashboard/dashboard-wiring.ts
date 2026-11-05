@@ -348,7 +348,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     workbooks: { library: workbookLibrary, intake: createWorkbookIntakeBridge(workbookLibrary, intake) },
     ...settingsBoundary.routes,
     ...composeStorage({ credentials: context.credentials, admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
-    runHistory: { status: runHistory.status, clear: request => runHistory.clear(confirmedHistoryCommand(request)),
+    runHistory: { status: () => runHistory.status(), clear: request => runHistory.clear(confirmedHistoryCommand(request)),
       check: request => runHistory.check(confirmedHistoryCommand(request)) },
     ...explorerBoundary,
     activity,
