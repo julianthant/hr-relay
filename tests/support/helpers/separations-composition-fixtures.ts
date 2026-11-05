@@ -312,6 +312,9 @@ export function compositionQueuedRun(
 }
 
 export interface CompositionHarness {
+  readonly profile: Awaited<ReturnType<typeof openBoundDatabaseFixture>>["profile"];
+  readonly path: string;
+  readonly closeController: () => Promise<void>;
   readonly ucpath: UcpathSmartHrFakeWorld;
   readonly kuali: KualiFakeWorld;
   readonly database: AuthorityDatabase;
@@ -391,14 +394,20 @@ export async function compositionHarness(options: Readonly<{
     log: recordingLogger().log,
     resolveImplFingerprint: () => COMPOSITION_IMPL_FINGERPRINT,
   });
+  let closed = false;
+  const closeController = async () => {
+    if (closed) return;
+    await manager.closeAll("worker-stop");
+    releaseSeededWriteOwners(database, clock.now().toISOString());
+    database.close(); await opened.profile.closeController(); closed = true;
+  };
   return {
+    profile: opened.profile, path: opened.path, closeController,
     ucpath, kuali, database, clock, emitter, ids, sequencer,
     bound: <Result>(work: () => Promise<Result>): Promise<Result> =>
       withBoundRunConfigFingerprint(manager, COMPOSITION_CONFIG_FINGERPRINT, work, "headless", { runId: COMPOSITION_RUN_ID, descriptorFingerprint: separationsDescriptor.contractFingerprint }),
     dispose: async (): Promise<void> => {
-      await manager.closeAll("worker-stop");
-      releaseSeededWriteOwners(database, clock.now().toISOString());
-      await opened.close();
+      await closeController(); await opened.close();
     },
   };
 }

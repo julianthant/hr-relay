@@ -1,4 +1,6 @@
-import { validateRerunSourcePlan, RerunRefusedError } from "./rerun.js";
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
+import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
+import { validateRerunSourcePlan, RerunRefusedError, rerunEvidenceReader, validateRerunWriteProof, validateRerunTransactionEvidence } from "./rerun.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RunExistenceSchema, type RunExistence } from "../../../models/config/authority.js";
@@ -6,8 +8,7 @@ import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../.
 import { RerunValuesRequestSchema, RerunValuesResponseSchema,
   type RerunValuesRefusalCode, type RerunValuesResponse, type RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
-import { FingerprintSchema, BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
-import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../../rules/write-safety/write-safety.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import { projectTransactionOutcome } from "../../../models/workflow/graph.js";
@@ -21,7 +22,7 @@ import { workbookInputBinding } from "../workbooks.js";
 
 export interface RerunValuesDependencies {
   readonly reader: { read(runId: string): RunExistence };
-  readonly database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot">;
+  readonly database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot"> & Partial<Pick<AuthorityDatabase, "evidenceSchemaHash">>;
   readonly descriptors: { resolve(workflow: string): AnyWorkflowDescriptor | undefined };
   /** Source-owned task observations only; never the fold's run lifecycle. */
   readonly executions?: (runId: string) => readonly Readonly<{
@@ -46,13 +47,13 @@ function atPath(value: JsonValue, path: string): JsonValue | undefined {
   return current;
 }
 
-function validateCheckpoint(checkpoint: RunCheckpointRecord, node: RuntimeFlowNode): void {
+function validateCheckpoint(checkpoint: RunCheckpointRecord, node: RuntimeFlowNode, schemaReader?: EvidenceSchemaReader): void {
   const schema = node.kind === "task" ? node.uses.output : node.kind === "transaction" ? TransactionOutcomeSchema : undefined;
-  if (schema === undefined || checkpoint.output.schemaHash !== deriveSchemaHash(schema, "output")
+  if (schema === undefined || (schemaReader?.({ kind: "task-output", id: checkpointRecordKey(checkpoint) }, checkpoint, checkpoint.output.schemaHash, deriveSchemaHash(schema, "output")) ?? checkpoint.output.schemaHash) !== deriveSchemaHash(schema, "output")
     || !schema.safeParse(checkpoint.output.value).success) refuse("source-invalid");
   if (node.kind === "transaction") {
     // This authenticates both nested schemas, not merely the JSON wrapper.
-    try { projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Rerun source"); }
+    try { projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Rerun source", { checkpoint, schemaReader }); }
     catch { refuse("source-invalid"); }
   }
 }
@@ -67,6 +68,7 @@ function containsProtected(value: JsonValue, privateValues: readonly string[]): 
 export function readRerunValues(deps: RerunValuesDependencies, input: unknown): RerunValuesResponse {
   const request = RerunValuesRequestSchema.parse(input);
   try {
+    const schemaReader = rerunEvidenceReader(deps.database.evidenceSchemaHash?.bind(deps.database));
     return deps.database.withAuthorityReadSnapshot(() => {
       const existence = RunExistenceSchema.parse(deps.reader.read(request.runId));
       if (existence.state === "deleted") refuse("target-deleted");
@@ -80,7 +82,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         || descriptor.contractFingerprint !== run.envelope.contractFingerprint;
       const { lifecycle } = run;
       if (lifecycle.state !== "terminal" || !["done", "failed", "interrupted"].includes(lifecycle.outcome)) refuse("source-ineligible");
-      if (!older && (run.input.parsed.schemaHash !== deriveSchemaHash(descriptor.canonicalInput, "output")
+      if (!older && ((schemaReader?.({ kind: "run-input", id: run.envelope.runId }, run.input, run.input.parsed.schemaHash, deriveSchemaHash(descriptor.canonicalInput, "output")) ?? run.input.parsed.schemaHash) !== deriveSchemaHash(descriptor.canonicalInput, "output")
         || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success)) refuse("source-invalid");
       const repositories = deps.database.authority;
       try { validateRerunSourcePlan(repositories, run); }
@@ -105,7 +107,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
           if (older && !TransactionOutcomeSchema.safeParse(checkpoint.output.value).success) continue;
           refuse("source-invalid");
         }
-        if (!older || node.kind === "transaction") validateCheckpoint(checkpoint, node);
+        if (!older || node.kind === "transaction") validateCheckpoint(checkpoint, node, schemaReader);
         const previous = checkpoints.get(checkpoint.nodeId);
         if (previous === undefined || checkpoint.attempt > previous.attempt
           || (checkpoint.attempt === previous.attempt && checkpoint.claimGeneration !== undefined
@@ -114,12 +116,12 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       const gates = repositories.gateResults.listByRun(request.runId).filter(gate => {
         if (gate.runId !== request.runId) refuse("source-invalid");
         const node = nodeById.get(gate.gateId);
-        return !older || (node?.kind === "gate" && gate.result.schemaHash === deriveSchemaHash(node.result, "output")
+        return !older || (node?.kind === "gate" && (schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate, gate.result.schemaHash, deriveSchemaHash(node.result, "output")) ?? gate.result.schemaHash) === deriveSchemaHash(node.result, "output")
           && node.result.safeParse(gate.result.value).success);
       });
       for (const gate of gates) {
         const node = nodeById.get(gate.gateId);
-        if (gate.runId !== request.runId || node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output")
+        if (gate.runId !== request.runId || node?.kind !== "gate" || (schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate, gate.result.schemaHash, deriveSchemaHash(node.result, "output")) ?? gate.result.schemaHash) !== deriveSchemaHash(node.result, "output")
           || !node.result.safeParse(gate.result.value).success) refuse("source-invalid");
       }
       const failures = repositories.failures.listByRun(request.runId);
@@ -165,9 +167,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
         if (node?.kind !== "transaction" || intent.taskId !== node.commit.uses.id) refuse("source-invalid");
         const step = descriptor.timeline.find((category) => category.nodes.some(({ id }) => id === node.id));
         if (step === undefined) refuse("source-invalid");
-        const proof = intent.completionProof;
-        const proofSchema = node.commit.uses.writeSafety.completion.proofSchema;
-        if (proof === undefined || proof.schemaHash !== deriveSchemaHash(proofSchema, "output") || !proofSchema.safeParse(proof.value).success) refuse("source-invalid");
+        const proof = validateRerunWriteProof(node.commit.uses, intent, schemaReader);
         if (containsProtected(valueFreeProtectedData(proof, bindings), privateValues)) refuse("source-invalid");
         transactions.push({ stepKey: step.key, nodeId: node.id, taskId: intent.taskId, writeIntentId: intent.writeIntentId,
           evidenceDigest: FingerprintSchema.parse(repeatEvidenceDigest(intent, bindings)), disposition: intent.status });
@@ -179,43 +179,12 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       for (const node of nodes) {
         const checkpoint = checkpoints.get(node.id);
         if (node.kind !== "transaction" || checkpoint === undefined || checkpoint.assertion !== undefined) continue;
-        const outcome = TransactionOutcomeSchema.parse(checkpoint.output.value);
-        if (outcome.disposition === "committed") {
-          const matching = intents.some((intent) => intent.status === "committed" && intent.taskId === node.commit.uses.id
-            && intent.bindingProof.afterPrepareSpanPath === `${run.envelope.traceId}/${node.id}/prepare`
-            && canonicalJsonStringify(intent.completionProof) === canonicalJsonStringify(outcome.proof));
-          if (!matching) refuse("source-invalid");
-          continue;
-        }
-        const outputs: Record<string, JsonValue> = {};
-        for (const dependency of node.dependsOn) {
-          const stored = checkpoints.get(dependency);
-          if (stored !== undefined) {
-            const dependencyNode = nodeById.get(dependency);
-            outputs[dependency] = dependencyNode?.kind === "transaction"
-              ? JsonValueSchema.parse(projectTransactionOutcome(dependencyNode.commit.uses, stored.output.value, "Rerun dependency"))
-              : stored.output.value;
-          }
-          else {
-            const gate = gates.find(({ gateId }) => String(gateId) === String(dependency));
-            if (gate === undefined) refuse("source-invalid");
-            outputs[dependency] = gate.result.value;
-          }
-        }
-        const commitInput = node.commit.uses.input.parse(node.commit.bind({ input: run.input.parsed.value, outputs }));
-        const key = IdempotencyKeySchema.parse(Reflect.apply(node.commit.uses.writeSafety.idempotency.key, undefined, [commitInput]));
-        const system = BrowserSystemIdSchema.parse(node.commit.uses.id.split("/")[0]);
-        const linked = repositories.writeIntents.listByBusinessKey(system, deriveIdempotencyKeyDigest(system, key))
-          .filter((intent) => intent.taskId === node.commit.uses.id && intent.workflowId === descriptor.id
-            && intent.itemId === run.envelope.itemId && (intent.status === "committed" || intent.status === "observed-present")
-            && canonicalJsonStringify(intent.status === "committed" ? intent.completionProof : intent.observedProof)
-              === canonicalJsonStringify(outcome.proof));
-        if (linked.length === 0) refuse("source-invalid");
+        const linked = validateRerunTransactionEvidence({ repositories, descriptor, run, node, checkpoint, checkpoints, gates, schemaReader });
         const step = descriptor.timeline.find((category) => category.nodes.some(({ id }) => id === node.id));
         if (step === undefined) refuse("source-invalid");
         for (const intent of linked) {
           if (intent.status !== "committed" && intent.status !== "observed-present") refuse("source-invalid");
-          const proof = intent.status === "committed" ? intent.completionProof : intent.observedProof;
+          const proof = validateRerunWriteProof(node.commit.uses, intent, schemaReader);
           if (containsProtected(valueFreeProtectedData(proof, bindings), privateValues)) refuse("source-invalid");
           if (!transactions.some((entry) => entry.nodeId === node.id && entry.writeIntentId === intent.writeIntentId)) {
             transactions.push({ stepKey: step.key, nodeId: node.id, taskId: intent.taskId, writeIntentId: intent.writeIntentId,
@@ -307,6 +276,7 @@ export function readRerunValues(deps: RerunValuesDependencies, input: unknown): 
       } });
     });
   } catch (error) {
+    if (error instanceof RerunRefusedError) return { state: "refused", code: "source-invalid" };
     if (error instanceof SourceRefused) return { state: "refused", code: error.code };
     if (error instanceof z.ZodError || error instanceof SyntaxError) return { state: "refused", code: "source-invalid" };
     throw error;

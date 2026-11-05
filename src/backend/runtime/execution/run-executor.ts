@@ -547,8 +547,7 @@ export async function executeClaimedRun(
     const problems: string[] = [];
     let canonicalInput: JsonValue | undefined;
     try {
-      canonicalInput = JsonValueSchema.parse(parseCanonicalInputSnapshot(descriptor.canonicalInput, { ...initial.input.parsed, schemaHash: deps.authority.evidenceSchemaHash?.(
-        { kind: "run-input", id: runId }, initial.input, initial.input.parsed.schemaHash, deriveSchemaHash(descriptor.canonicalInput, "output")) ?? initial.input.parsed.schemaHash }));
+      canonicalInput = JsonValueSchema.parse(parseCanonicalInputSnapshot(descriptor.canonicalInput, initial.input.parsed, { owner: { kind: "run-input", id: runId }, source: initial.input, schemaReader: deps.authority.evidenceSchemaHash?.bind(deps.authority) }));
     } catch (error) {
       problems.push(error instanceof Error ? error.message : "canonical input snapshot failed to parse");
     }
@@ -708,7 +707,7 @@ export async function executeClaimedRun(
         if (checkpoint !== undefined) {
           const dependencyNode = nodes.find(node => node.id === dependency);
           values[String(dependency)] = dependencyNode?.kind === "transaction"
-            ? JsonValueSchema.parse(projectTransactionOutcome(dependencyNode.commit.uses, checkpoint.output.value, "Continuation source scope")) : checkpoint.output.value;
+            ? JsonValueSchema.parse(projectTransactionOutcome(dependencyNode.commit.uses, checkpoint.output.value, "Continuation source scope", { checkpoint, schemaReader: deps.authority.evidenceSchemaHash?.bind(deps.authority) })) : checkpoint.output.value;
         }
         else if (gate !== undefined) values[String(dependency)] = gate.result.value;
         else {
@@ -833,6 +832,7 @@ export async function executeClaimedRun(
           stored,
           checkpointExpectation(node),
           node.uses.output,
+          deps.authority.evidenceSchemaHash?.bind(deps.authority),
         );
         // `stored` is the repository's strict parse already; a found load has a row.
         const storedRecord = load.found ? requireStoredCheckpoint(stored, String(node.id)) : undefined;
@@ -924,7 +924,7 @@ export async function executeClaimedRun(
         }
         const stored = readContinuationGate(deps.authority.authority, envelope, String(node.id));
         if (stored !== undefined) {
-          if ((stored.runId !== runId && !envelope.continuation?.gates.some(row => row.runId === stored.runId && row.nodeId === node.id)) || String(stored.nodeId) !== String(node.id) || stored.result.schemaHash !== deriveSchemaHash(node.result, "output")) throw new Error(`gate "${node.id}" stored result binding changed`);
+          if ((stored.runId !== runId && !envelope.continuation?.gates.some(row => row.runId === stored.runId && row.nodeId === node.id)) || String(stored.nodeId) !== String(node.id) || (deps.authority.evidenceSchemaHash?.({ kind: "gate-result", id: canonicalJsonStringify([stored.runId, stored.gateId]) }, stored, stored.result.schemaHash, deriveSchemaHash(node.result, "output")) ?? stored.result.schemaHash) !== deriveSchemaHash(node.result, "output")) throw new Error(`gate "${node.id}" stored result binding changed`);
           if (stored.runId !== runId) {
             const source = continuationSources.find(row => row.envelope.runId === stored.runId);
             if (source === undefined || canonicalJsonStringify(source.input.parsed) !== canonicalJsonStringify(initial.input.parsed)) {
@@ -1122,6 +1122,7 @@ export async function executeClaimedRun(
       for (const dependency of node.dependsOn) if (skippedReasons.get(String(dependency)) === "condition-false") gatherCondition(String(dependency));
       const collector = createTaskProvenanceCollector({
         descriptor,
+        schemaReader: deps.authority.evidenceSchemaHash?.bind(deps.authority),
         ...(continuationAuthority === undefined ? {} : { continuation: continuationAuthority }),
         canonicalInput,
         execution: {
@@ -1662,7 +1663,7 @@ export async function executeClaimedRun(
         }
         terminalGateDependencyRecord(node.id, stored);
         const expectedHash = deriveSchemaHash(node.result, "output");
-        if (stored.result.schemaHash !== expectedHash) {
+        if ((deps.authority.evidenceSchemaHash?.({ kind: "gate-result", id: canonicalJsonStringify([stored.runId, stored.gateId]) }, stored, stored.result.schemaHash, expectedHash) ?? stored.result.schemaHash) !== expectedHash) {
           throw new Error(
             `gate "${node.id}" stored result is bound to schema ${stored.result.schemaHash}, `
             + `and this descriptor's gate schema is ${expectedHash}`,
@@ -2279,7 +2280,7 @@ export async function executeClaimedRun(
       if (support.state === "supported") {
         const steps = RunPreviewStepSchema.array().parse(nodes.map(node => dryRunSteps.get(String(node.id))));
         return settleSuccess(getRun(), buildRunPreviewResult(descriptor, getRun(), steps,
-          dependencyEvidenceFor(workflowPreviewDependencyIds(descriptor, steps), "dry-run preview"), clock));
+          dependencyEvidenceFor(workflowPreviewDependencyIds(descriptor, steps), "dry-run preview"), clock, deps.authority.evidenceSchemaHash?.bind(deps.authority)));
       }
       if (envelope.parent === undefined || support.reason !== "no-transaction-node") throw new Error("dry-run preview has no supported preparation boundary");
     }
@@ -2290,6 +2291,7 @@ export async function executeClaimedRun(
       current,
       [...dependencyEvidenceFor(terminal.dependsOn, "terminal"), ...[...childResultEvidence.values()].filter(entry => !terminal.dependsOn.includes(entry.nodeId))],
       clock,
+      deps.authority.evidenceSchemaHash?.bind(deps.authority),
     ));
   };
 

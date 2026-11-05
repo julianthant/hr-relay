@@ -19,14 +19,56 @@ it("persists predecessor input, completed Kuali proof, linked result and receipt
     const { canonicalJsonStringify } = await import("../../../../src/rules/validation/canonical-json.js");
     const admissions = collectEvidenceSchemaAdmissions({ descriptors: [descriptor, separationsDescriptor], runs: [f.run, f.separationsRun], writes: f.writes.map(write => write.intent),
       checkpoints: f.checkpoints, results: [f.result], gates: f.gates });
+    const schemaReader: import("../../../../src/models/storage/evidence-schema-admission.js").EvidenceSchemaReader = (owner, source, oldHash, currentHash) => {
+      if (oldHash === currentHash) return oldHash;
+      const proof = admissions.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner));
+      assert.ok(proof); assert.equal(proof.sourceDigest, evidenceSchemaSourceDigest(owner, source));
+      assert.equal(proof.sourceSchemaHash, oldHash); assert.equal(proof.currentSchemaHash, currentHash); return currentHash;
+    };
     const receipt = buildRunEvidenceReceipt({ descriptor, run: f.run, result: f.result, checkpoints: f.checkpoints, writes: f.writes, gateResults: f.gates,
-      schemaReader(owner, source, oldHash, currentHash) {
-        if (oldHash === currentHash) return oldHash;
-        const proof = admissions.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner));
-        assert.ok(proof); assert.equal(proof.sourceDigest, evidenceSchemaSourceDigest(owner, source));
-        assert.equal(proof.sourceSchemaHash, oldHash); assert.equal(proof.currentSchemaHash, currentHash); return currentHash;
-      } });
+      schemaReader });
     assert.deepEqual(receipt, f.receipt);
+    const { descriptorRuntimeNodes, workflowTerminalResultExecution } = await import("../../../../src/workflow-kit/workflow.js");
+    const { loadCheckpoint, CheckpointExpectationSchema } = await import("../../../../src/models/workflow/checkpoint.js");
+    const { manualClock } = await import("../../../../src/rules/time/clock.js");
+    const task = descriptorRuntimeNodes(descriptor).find(node => node.kind === "task" && f.checkpoints.some(checkpoint => checkpoint.nodeId === node.id && checkpoint.output.schemaHash !== deriveSchemaHash(node.uses.output, "output")));
+    assert.ok(task?.kind === "task");
+    const checkpoint = f.checkpoints.find(checkpoint => checkpoint.nodeId === task.id); assert.ok(checkpoint);
+    const expectation = CheckpointExpectationSchema.parse({ descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
+      implFingerprint: checkpoint.implFingerprint, outputSchemaHash: deriveSchemaHash(task.uses.output, "output") });
+    const strictLoad = loadCheckpoint(checkpoint, expectation, task.uses.output);
+    assert.equal(strictLoad.found, false);
+    if (!strictLoad.found) assert.equal(strictLoad.reason, "output-schema-mismatch");
+    assert.equal(loadCheckpoint(checkpoint, expectation, task.uses.output, schemaReader).found, true);
+    assert.equal(loadCheckpoint(checkpoint, { ...expectation, implFingerprint: "d".repeat(64) as typeof expectation.implFingerprint }, task.uses.output, schemaReader).found, false);
+    assert.equal(loadCheckpoint(checkpoint, { ...expectation, contractFingerprint: "d".repeat(64) as typeof expectation.contractFingerprint }, task.uses.output, schemaReader).found, false);
+    const { parseCanonicalInputSnapshot } = await import("../../../../src/models/workflow/canonical-input.js");
+    assert.deepEqual(parseCanonicalInputSnapshot(descriptor.canonicalInput, f.run.input.parsed,
+      { owner: { kind: "run-input", id: f.run.envelope.runId }, source: f.run.input, schemaReader }), f.run.input.parsed.value);
+    assert.throws(() => parseCanonicalInputSnapshot(descriptor.canonicalInput, { ...f.run.input.parsed, value: {} },
+      { owner: { kind: "run-input", id: f.run.envelope.runId }, source: f.run.input, schemaReader }), /canonical-input-source-changed/u);
+    const terminal = workflowTerminalResultExecution(descriptor);
+    const evidence = f.result.dependencies.map(dependency => {
+      if (dependency.state === "resolved") {
+        const checkpoint = f.checkpoints.find(checkpoint => checkpoint.nodeId === dependency.nodeId); assert.ok(checkpoint);
+        return { state: "resolved", nodeId: dependency.nodeId, checkpoint };
+      }
+      if (dependency.state === "gate-resolved") {
+        const gate = f.gates.find(gate => String(gate.gateId) === String(dependency.nodeId)); assert.ok(gate);
+        return { state: "gate-resolved", nodeId: dependency.nodeId, gate };
+      }
+      return dependency;
+    });
+    const running = { ...f.run, lifecycle: { state: "running" } }, clock = manualClock(new Date(f.result.createdAt));
+    assert.throws(() => terminal.build(running, evidence, clock), /canonical input schema/u);
+    const rebuilt = terminal.build(running, evidence, clock, schemaReader);
+    assert.deepEqual(rebuilt.record.result.value, f.result.result.value);
+    assert.deepEqual(rebuilt.record.result.protectedBindings, f.result.result.protectedBindings);
+    assert.equal(rebuilt.record.resultSchemaHash, terminal.schemaHash);
+    assert.deepEqual(rebuilt.record.dependencies, f.result.dependencies);
+    assert.equal(rebuilt.record.dependencyDigest, f.result.dependencyDigest);
+    assert.throws(() => terminal.build({ ...running, envelope: { ...running.envelope, descriptorVersion: running.envelope.descriptorVersion + 1 } }, evidence, clock, schemaReader), /not bound/u);
+
     assert.equal(f.separationsRun.input.parsed.schemaHash, "66dc2f33bf56808164be764f921a1e5a2a95afd5e0a7b760fdba687ee81575dc");
     assert.ok(admissions.some(entry => entry.owner.kind === "run-input" && entry.owner.id === f.separationsRun.envelope.runId));
   } finally { await f.cleanup(); }

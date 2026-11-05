@@ -81,7 +81,7 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
         const target = dependencies.resolveTarget(node.target.id);
         if (target.id !== node.target.id || deriveSchemaHash(target.input, "input") !== deriveSchemaHash(node.target.input, "input")
           || workflowTerminalResultExecution(target).schemaHash !== deriveSchemaHash(node.target.result, "output")) throw new Error("delegation-target-contract-mismatch");
-        const plan = planCanonicalDelegation(context, target);
+        const plan = planCanonicalDelegation(context, target, authority.evidenceSchemaHash?.bind(authority));
         return { context, target, plan };
       });
       const admitted = admission.admitAndRelease(batch, planned.map(({ plan }) => plan));
@@ -112,7 +112,7 @@ export function createDurableChildRunExecutor(dependencies: Readonly<{
             assertChildBinding(parent, child, context, target);
             if (child.envelope.descriptorVersion !== target.version || child.envelope.contractFingerprint !== target.contractFingerprint
               || child.input.ingressSchemaHash !== manifest.inputSchemaHash
-              || canonicalJsonStringify(parseCanonicalInputSnapshot(target.canonicalInput, child.input.parsed))
+              || canonicalJsonStringify(parseCanonicalInputSnapshot(target.canonicalInput, child.input.parsed, { owner: { kind: "run-input", id: child.envelope.runId }, source: child.input, schemaReader: authority.evidenceSchemaHash?.bind(authority) }))
                 !== canonicalJsonStringify(plan.children[index]?.input)) throw new Error("delegation-child-input-mismatch");
             if (dependency.parentRunId !== parent.envelope.runId || dependency.childRunId !== entry.childRunId
               || dependency.childItemId !== entry.childItemId || child.envelope.itemId !== entry.childItemId

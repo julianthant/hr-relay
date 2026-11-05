@@ -1,3 +1,5 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
+import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
 import { assertCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import { prepareDelegationRetry } from "../../storage/sqlite/delegation-authority.js";
@@ -42,27 +44,27 @@ export function assertRunRecoveryCommandScope(repositories: AuthorityRepositorie
   return source;
 }
 
-export function planRunRecovery(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord, sourceCommandId?: string) {
+export function planRunRecovery(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord, sourceCommandId?: string, schemaReader?: EvidenceSchemaReader) {
   assertRunRecoveryCommandScope(repositories, sourceCommandId);
-  return planCheckpointContinuation(repositories, descriptor, run, "recover");
+  return planCheckpointContinuation(repositories, descriptor, run, "recover", schemaReader);
 }
 
 export function planDelegatedRetry(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord, sourceCommandId: string | undefined,
-  continuationOwner?: NonNullable<Parameters<typeof prepareDelegationRetry>[2]["continuationOwner"]>) {
+  continuationOwner?: NonNullable<Parameters<typeof prepareDelegationRetry>[2]["continuationOwner"]>, schemaReader?: EvidenceSchemaReader) {
   if (sourceCommandId === undefined) throw new RunContinuationRefusedError("delegation-retry-source-unavailable");
   if (continuationOwner !== undefined) {
     prepareDelegationRetry(repositories, run, { sourceCommandId, continuationOwner,
       commandId: lifecycleCommandId("continuation-child-retry", { ownerRunId: continuationOwner.runId, previousRunId: run.envelope.runId }) });
-    return planCheckpointContinuation(repositories, descriptor, run, "recover");
+    return planCheckpointContinuation(repositories, descriptor, run, "recover", schemaReader);
   }
   const source = repositories.commands.get(sourceCommandId);
   if (run.envelope.parent === undefined || source?.family !== "run" || source.type !== "retry"
     || source.target.runId !== run.envelope.runId || source.target.expectedVersion !== run.version) throw new RunContinuationRefusedError("delegation-retry-source-unavailable");
   assertCanonicalRunCommandScope(repositories, source);
-  return planCheckpointContinuation(repositories, descriptor, run, "delegated-retry");
+  return planCheckpointContinuation(repositories, descriptor, run, "delegated-retry", schemaReader);
 }
 
-function planCheckpointContinuation(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord, intent: "recover" | "delegated-retry") {
+function planCheckpointContinuation(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, run: RunRecord, intent: "recover" | "delegated-retry", schemaReader?: EvidenceSchemaReader) {
   const current = repositories.runs.get(run.envelope.runId);
   if (current === undefined || repositories.deletedRuns.get(run.envelope.runId) !== undefined
     || canonicalJsonStringify(current) !== canonicalJsonStringify(run))
@@ -72,7 +74,7 @@ function planCheckpointContinuation(repositories: AuthorityRepositories, descrip
   if (run.envelope.workflow !== descriptor.id || run.envelope.descriptorVersion !== descriptor.version
     || run.envelope.contractFingerprint !== descriptor.contractFingerprint)
     throw new RerunRefusedError("schema-mismatch", "Checkpoint recovery requires the original workflow contract.");
-  if (run.input.parsed.schemaHash !== deriveSchemaHash(descriptor.canonicalInput, "output")
+  if ((schemaReader?.({ kind: "run-input", id: run.envelope.runId }, run.input, run.input.parsed.schemaHash, deriveSchemaHash(descriptor.canonicalInput, "output")) ?? run.input.parsed.schemaHash) !== deriveSchemaHash(descriptor.canonicalInput, "output")
     || !descriptor.canonicalInput.safeParse(run.input.parsed.value).success)
     throw new RerunRefusedError("schema-mismatch", "Checkpoint recovery source input is incompatible.");
   const origin = run.sessionId === undefined || run.envelope.parent !== undefined ? undefined
@@ -91,7 +93,7 @@ function planCheckpointContinuation(repositories: AuthorityRepositories, descrip
   const active = repositories.runtimeConfig.get();
   if (active === undefined || active.configFingerprint !== run.envelope.configFingerprint)
     throw new RerunRefusedError("schema-mismatch", "Checkpoint recovery requires the original runtime fingerprint.");
-  validateCompletedTransactionContinuations(repositories, descriptor, run);
+  validateCompletedTransactionContinuations(repositories, descriptor, run, run.input.parsed.value, schemaReader);
   return RunRecoveryPlanSchema.parse({ kind: "checkpoint-recovery",
     source: { runId: run.envelope.runId, expectedVersion: run.version, attempt: run.envelope.attempt,
       inputDigest: continuationEvidenceDigest(run.input) },
@@ -101,7 +103,7 @@ function planCheckpointContinuation(repositories: AuthorityRepositories, descrip
 }
 
 export function validateCompletedTransactionContinuations(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor,
-  run: RunRecord, input: JsonValue = run.input.parsed.value): ReadonlySet<string> {
+  run: RunRecord, input: JsonValue = run.input.parsed.value, schemaReader?: EvidenceSchemaReader): ReadonlySet<string> {
   const continuation = captureRunContinuation(repositories, run);
   const sources = new Map([run, ...validateRunContinuation(repositories, run.envelope)].map(source => [source.envelope.runId, source]));
   const ownedIntents = [...sources.values()].flatMap(source => repositories.writeIntents.listByRun(source.envelope.runId));
@@ -119,21 +121,21 @@ export function validateCompletedTransactionContinuations(repositories: Authorit
       const node = nodes.find(candidate => candidate.id === dependency);
       if (checkpoint !== undefined) {
         const schema = node?.kind === "task" ? node.uses.output : node?.kind === "transaction" ? TransactionOutcomeSchema : undefined;
-        if (schema === undefined || checkpoint.output.schemaHash !== deriveSchemaHash(schema, "output") || !schema.safeParse(checkpoint.output.value).success) {
+        if (schema === undefined || (schemaReader?.({ kind: "task-output", id: checkpointRecordKey(checkpoint) }, checkpoint, checkpoint.output.schemaHash, deriveSchemaHash(schema, "output")) ?? checkpoint.output.schemaHash) !== deriveSchemaHash(schema, "output") || !schema.safeParse(checkpoint.output.value).success) {
           throw new RerunRefusedError("schema-mismatch", "Saved transaction dependency is incompatible.");
         }
-        outputs[dependency] = node?.kind === "transaction" ? JsonValueSchema.parse(projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Transaction continuation")) : checkpoint.output.value;
+        outputs[dependency] = node?.kind === "transaction" ? JsonValueSchema.parse(projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Transaction continuation", { checkpoint, schemaReader })) : checkpoint.output.value;
       } else {
         if (node?.kind === "child-run") {
           const child = AuthenticatedRunContinuation.authenticate(repositories, source.envelope).dependency(dependency, String(node.edgeId), historical);
           if (child === undefined) throw new RerunRefusedError("invalid-value", "Saved transaction child dependency is unavailable.");
-          outputs[dependency] = JsonValueSchema.parse(delegationEvidenceOutput(child, node.target.result));
+          outputs[dependency] = JsonValueSchema.parse(delegationEvidenceOutput(child, node.target.result, schemaReader));
           continue;
         }
         const gate = readContinuationGate(repositories, source.envelope, dependency);
         if (gate === undefined && (node?.kind === "task" || node?.kind === "gate" && node.resolvedBy === "operator") && node.when !== undefined
           && !evaluateNodeCondition(node.when, scopeFor(source, node.dependsOn, value, historical))) continue;
-        if (gate === undefined || node?.kind !== "gate" || gate.result.schemaHash !== deriveSchemaHash(node.result, "output") || !node.result.safeParse(gate.result.value).success) {
+        if (gate === undefined || node?.kind !== "gate" || (schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate, gate.result.schemaHash, deriveSchemaHash(node.result, "output")) ?? gate.result.schemaHash) !== deriveSchemaHash(node.result, "output") || !node.result.safeParse(gate.result.value).success) {
           throw new RerunRefusedError("invalid-value", "Saved transaction dependency is unavailable.");
         }
         outputs[dependency] = gate.result.value;
@@ -165,11 +167,11 @@ export function validateCompletedTransactionContinuations(repositories: Authorit
       throw new RerunRefusedError("invalid-value", "Completed transaction checkpoint cannot be authenticated.");
     }
     if (checkpoint.descriptorVersion !== descriptor.version || checkpoint.contractFingerprint !== descriptor.contractFingerprint
-      || checkpoint.output.schemaHash !== deriveSchemaHash(TransactionOutcomeSchema, "output")) throw new RerunRefusedError("schema-mismatch", "Completed transaction contract changed.");
+      || (schemaReader?.({ kind: "task-output", id: checkpointRecordKey(checkpoint) }, checkpoint, checkpoint.output.schemaHash, deriveSchemaHash(TransactionOutcomeSchema, "output")) ?? checkpoint.output.schemaHash) !== deriveSchemaHash(TransactionOutcomeSchema, "output")) throw new RerunRefusedError("schema-mismatch", "Completed transaction contract changed.");
     const parsed = TransactionOutcomeSchema.safeParse(checkpoint.output.value);
     if (!parsed.success) throw new RerunRefusedError("schema-mismatch", "Completed transaction outcome is invalid.");
     const outcome = parsed.data;
-    try { projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Transaction continuation"); }
+    try { projectTransactionOutcome(node.commit.uses, checkpoint.output.value, "Transaction continuation", { checkpoint, schemaReader }); }
     catch { throw new RerunRefusedError("schema-mismatch", "Completed transaction proof or output schema changed."); }
     const prior = scopeFor(original, node.dependsOn, original.input.parsed.value, true), current = scopeFor(run, node.dependsOn, input);
     const mappings = (scope: typeof current) => ({ prepare: node.prepare.uses.input.parse(node.prepare.bind(scope)), commit: node.commit.uses.input.parse(node.commit.bind(scope)) });
@@ -187,6 +189,9 @@ export function validateCompletedTransactionContinuations(repositories: Authorit
     if (durable?.taskId !== node.commit.uses.id || proof === undefined || canonicalJsonStringify(proof) !== canonicalJsonStringify(outcome.proof)) {
       throw new RerunRefusedError("invalid-value", "Completed transaction lacks its exact natural-key settlement proof.");
     }
+    const expectedProof = deriveSchemaHash(node.commit.uses.writeSafety.completion.proofSchema, "output");
+    if ((schemaReader?.({ kind: "write-proof", id: durable.writeIntentId, generation: durable.generation }, durable, proof.schemaHash, expectedProof) ?? proof.schemaHash) !== expectedProof
+      || !node.commit.uses.writeSafety.completion.proofSchema.safeParse(proof.value).success) throw new RerunRefusedError("schema-mismatch", "Completed transaction permanent proof is invalid.");
     completed.add(String(node.id));
   }
   return completed;

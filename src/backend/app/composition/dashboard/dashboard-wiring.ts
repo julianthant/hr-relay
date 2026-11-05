@@ -154,7 +154,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     workflowSources,
     failureResolution: composeFailureResolution(database.authority).commands,
     lifecycle,
-    authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },
+    authority: { evidenceSchemaHash: database.evidenceSchemaHash.bind(database), withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },
     clock,
     ids,
 

@@ -1078,7 +1078,7 @@ export class RunRecordService {
         return refused({ reason: "schema-mismatch", digest: run.envelope.contractFingerprint });
       }
       if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
-      const continuation = delegation === undefined ? undefined : planDelegatedRetry(repositories, descriptor, run, delegation.source.commandId).continuation;
+      const continuation = delegation === undefined ? undefined : planDelegatedRetry(repositories, descriptor, run, delegation.source.commandId, undefined, this.dependencies.database.evidenceSchemaHash?.bind(this.dependencies.database)).continuation;
       if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,
       }).some((entry) => entry.lifecycle.state !== "terminal")) return refused({ reason: "policy-refused" });
@@ -1170,8 +1170,8 @@ export class RunRecordService {
       }
       if (!this.runtimeMatches(request.runtimeConfig)) return refused({ reason: "runtime-stale" });
       if (request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint) return refused({ reason: "runtime-stale" });
-      const plan = request.continuationOwner === undefined ? planRunRecovery(repositories, descriptor, run, request.sourceCommandId)
-        : planDelegatedRetry(repositories, descriptor, run, request.sourceCommandId, request.continuationOwner);
+      const plan = request.continuationOwner === undefined ? planRunRecovery(repositories, descriptor, run, request.sourceCommandId, this.dependencies.database.evidenceSchemaHash?.bind(this.dependencies.database))
+        : planDelegatedRetry(repositories, descriptor, run, request.sourceCommandId, request.continuationOwner, this.dependencies.database.evidenceSchemaHash?.bind(this.dependencies.database));
       assertOcrRecoverySnapshotCurrent(repositories, this, run);
       const continuation = plan.continuation;
       if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
