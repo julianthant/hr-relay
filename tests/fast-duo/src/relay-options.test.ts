@@ -133,7 +133,12 @@ it("a refused action leaves setup usable and an unconfirmed method can start ove
   }
 });
 
-it("offers manual sign-in and a retry after a portal failure", async () => {
+for (const [portalFailure, expected] of [
+  ["sign-in", "Relay could not sign in to Duo. Select the Duo tab in this Chromium window and sign in by hand, or try Show Duo again."],
+  ["untrusted", "Relay could not trust this Duo page. Do not enter your password. Close the Duo tab, then try Show Duo again."],
+  [undefined, "Relay could not finish that action. Try again, or return to Relay."],
+  ["unrecognized", "Relay could not finish that action. Try again, or return to Relay."],
+] as const) it(`uses only the closed portal recovery advice for ${portalFailure ?? "missing"} proof`, async () => {
   const { mountRelayOptions } = await import(pathToFileURL(resolve("fast-duo/src/relay-options.js")).href) as { mountRelayOptions(this: void, profile: unknown): Promise<void> };
   vi.useFakeTimers();
   document.body.innerHTML = readFileSync("fast-duo/src/options.html", "utf8");
@@ -141,7 +146,7 @@ it("offers manual sign-in and a retry after a portal failure", async () => {
     methods: { key: { state: "pending", attemptId: "synthetic-attempt" }, touch: { state: "idle" } } };
   let openings = 0;
   vi.stubGlobal("chrome", { runtime: { sendMessage: async ({ type }: { type: string }) => {
-    if (type === "RELAY_OPEN_PORTAL") { openings++; return { success: false }; }
+    if (type === "RELAY_OPEN_PORTAL") { openings++; return { success: false, portalFailure }; }
     return { success: true, result: { relaySetup: true, profile } };
   } } });
   try {
@@ -149,8 +154,9 @@ it("offers manual sign-in and a retry after a portal failure", async () => {
     const button = document.querySelector<HTMLButtonElement>("#primaryAction")!;
     assert.equal(button.textContent, "Show Duo");
     button.click(); await vi.advanceTimersByTimeAsync(0);
-    assert.match(document.getElementById("message")!.textContent ?? "", /Select the Duo tab in this Chromium window and sign in by hand/);
+    assert.equal(document.getElementById("message")!.textContent, expected);
     await vi.advanceTimersByTimeAsync(1000);
+    assert.equal(document.getElementById("message")!.textContent, expected);
     assert.equal(button.disabled, false);
     button.click(); await vi.advanceTimersByTimeAsync(0);
     assert.equal(openings, 2);

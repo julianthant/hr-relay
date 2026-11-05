@@ -88,6 +88,13 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
     owner.browserReply(request.id, { ok: true, value: { state: 'onboarding' } });
     assert.deepEqual(await response, { success: true, result: { relaySetup: true, profile: { state: 'onboarding' } } });
   }
+  for (const portalFailure of ['untrusted', 'sign-in', 'synthetic-private-message']) {
+    const response = send({ type: 'RELAY_OPEN_PORTAL' }, sender);
+    const request = await owner.browserNext(); assert.equal(request.kind, 'portal');
+    owner.browserReply(request.id, { ok: false, portalFailure });
+    assert.deepEqual(await response, { success: false, error: 'ONBOARDING_DUO_REFUSED',
+      ...(['untrusted', 'sign-in'].includes(portalFailure) ? { portalFailure } : {}) });
+  }
   for (const source of [
     { ...sender, id: 'another-extension' }, { ...sender, frameId: 1 },
     { ...sender, url: ORIGIN + '/setup', origin: ORIGIN },

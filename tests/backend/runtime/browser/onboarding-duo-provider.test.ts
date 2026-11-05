@@ -45,7 +45,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let portalSubmitFailure: Error | undefined;
   let nativeProbeHold: Promise<void> | undefined, releaseNativeProbe: (() => void) | undefined, nativeProbeEntered: (() => void) | undefined;
   let installFailure: Error | undefined, installDurationMs = 0;
-  let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
+  let closed = false, closing = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
   let launchCount = 0, nativeProbes = 0, nativeBusy = false, revokeDuringProbe = false, mutateOwnerDuringProbe = false;
   let profile = "";
   const listeners: (() => void)[] = [];
@@ -102,7 +102,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
       close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
   }
   let pages = [makePage()];
-  const context = { serviceWorkers: () => [worker], pages: () => pages.filter(page => !page.isClosed()), on: (_event: string, callback: () => void) => { listeners.push(callback); },
+  const context = { serviceWorkers: () => [worker], pages: () => pages.filter(page => !page.isClosed()), isClosed: () => closing || closed, on: (_event: string, callback: () => void) => { listeners.push(callback); },
     newCDPSession: async () => ({ async send(name: string, input?: { credentialId: string }) {
       if (["WebAuthn.enable", "WebAuthn.setResponseOverrideBits", "WebAuthn.setUserVerified", "WebAuthn.setAutomaticPresenceSimulation"].includes(name)) return {};
       if (name === "WebAuthn.addVirtualAuthenticator") return { authenticatorId: "synthetic-platform" };
@@ -127,10 +127,10 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
         if(nativeBusy)throw new Error("Failed to create a ProcessSingleton for your profile directory.");
         if(revokeDuringProbe)current=false;
         if(mutateOwnerDuringProbe)Reflect.set(owner,"accountId",randomUUID());
-        closed=false;pages=[makePage()];listeners.length=0;
+        closed=false;closing=false;pages=[makePage()];listeners.length=0;
         return context;
       }
-      launchCount++; closed = false; pages = [makePage(), ...(method === "touch" ? [makePage("https://test.duosecurity.com")] : [])]; listeners.length = 0; profile = input.profileDirectory;
+      launchCount++; closed = false; closing = false; pages = [makePage(), ...(method === "touch" ? [makePage("https://test.duosecurity.com")] : [])]; listeners.length = 0; profile = input.profileDirectory;
       assert.equal(existsSync(join(input.extensionDirectory, "unlisted.txt")), false);
       assert.equal(readFileSync(join(input.extensionDirectory, "LICENSE"), "utf8"), "synthetic license fixture");
       assert.equal(readFileSync(join(input.extensionDirectory, "THIRD_PARTY_NOTICES.md"), "utf8"), "synthetic notices fixture");
@@ -194,6 +194,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     refuseCapture(error: Error) { captureFailure = error; },
     refuseFocus(error: Error) { focusFailure = error; },
     refuseReturn(error: Error) { returnFailure = error; },
+    beginContextClose() { closing = true; },
     rejectPoll(method: "next" | "browserNext", error: Error) { const reject = rejectPolls.get(method); assert.ok(reject); reject(error); },
     loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, windowFocuses: () => windowFocusCount, osFocuses: () => osFocusCount, relayCaptures: () => capturedRelay, relayReturns: () => returnedRelay, failInstall: () => { failInstall = true; }, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
@@ -232,6 +233,30 @@ describe("draft Duo provider", () => {
       assert.deepEqual(w.calls, []);
     } finally { await w.cleanup(); }
   });
+  for (const poll of ["idle", "next", "browserNext"] as const) for (const proof of ["proved", "missing-event"] as const) {
+    it(`settles ${poll} rejection during requested closure only after ${proof} physical closure`, async () => {
+      const w = world();
+      try {
+        if (poll === "idle") await w.provider.showBrowser(w.owner);
+        else await w.provider.start(w.attempt, w.bind, w.reportFailure);
+        w.beginContextClose();
+        w.rejectPoll(poll === "idle" ? "browserNext" : poll, new Error("synthetic closing poll"));
+        await new Promise<void>(resolve => setImmediate(resolve));
+        assert.equal(w.failures.length, 0, "a pending close is not a separate worker failure");
+        if (proof === "missing-event") w.withholdCloseEvent();
+        await w.closeBrowser();
+        assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
+        if (poll !== "idle" && proof === "proved") {
+          assert.equal(w.failures.length, 1);
+          assert.ok(w.failures[0] instanceof ProfileOnboardingDuoProviderError);
+          assert.equal(w.failures[0].kind, "unavailable");
+        } else assert.deepEqual(w.failures, []);
+        if (proof === "proved") { await w.provider.showBrowser(w.owner); assert.equal(w.launches(), 2); }
+        else { await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1); }
+        assert.deepEqual(w.calls, []);
+      } finally { await w.closeBrowser(); await w.cleanup(); }
+    });
+  }
   for (const method of ["next", "browserNext"] as const) for (const proof of ["proved", "missing-event"] as const) {
     it(`retains a captured key after ${method} rejects before ${proof} physical closure`, async () => {
       const w = world();
@@ -563,6 +588,31 @@ describe("draft Duo provider", () => {
       const event = w.events.find(event => event.operation === "portal-open");
       assert.equal(event?.code, code);
       assert.doesNotMatch(JSON.stringify(w.events), /synthetic secret|person@example|synthetic-password|stack|message/);
+    } finally { await w.cleanup(); }
+  });
+
+  for (const url of ["https://foreign.invalid/", "http://duo.ucsd.edu/", "https://duo.ucsd.edu:444/", "https://wrong@duo.ucsd.edu/", "https://a5.ucsd.edu/idp/"]) {
+    it(`refuses manual sign-in advice for the untrusted portal URL ${url}`, async () => {
+      const w = world();
+      let acquisitions = 0;
+      w.owner.acquireCredentials = async () => { acquisitions++; throw new Error("must not acquire credentials on an untrusted page"); };
+      w.landPortal(url);
+      try {
+        await w.provider.showBrowser(w.owner);
+        assert.deepEqual(await w.sendBrowser("portal"), { ok: false, portalFailure: "untrusted" });
+        assert.equal(acquisitions, 0); assert.deepEqual(w.calls, []);
+      } finally { await w.cleanup(); }
+    });
+  }
+  for (const code of ["TimeoutError", "synthetic refusal"] as const) it(`offers manual sign-in only for a trusted-page submission timeout (${code})`, async () => {
+    const w = world(), error = new Error("synthetic refusal"); error.name = code;
+    let acquisitions = 0;
+    w.owner.acquireCredentials = async () => { acquisitions++; return { userId: "synthetic-user", password: "synthetic-password" }; };
+    w.landPortal("https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO"); w.refuseSubmit(error);
+    try {
+      await w.provider.showBrowser(w.owner);
+      assert.deepEqual(await w.sendBrowser("portal"), { ok: false, ...(code === "TimeoutError" ? { portalFailure: "sign-in" } : {}) });
+      assert.equal(acquisitions, 1);
     } finally { await w.cleanup(); }
   });
 

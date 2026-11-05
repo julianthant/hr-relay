@@ -306,7 +306,7 @@ if (typeof chrome !== 'undefined') {
       if (!reply) throw new Error('ONBOARDING_DUO_REQUEST');
       replies.delete(id);
       if (result.ok) reply.resolve(result.value);
-      else reply.reject(new Error('ONBOARDING_DUO_REFUSED'));
+      else reply.reject(new Error('ONBOARDING_DUO_REFUSED', { cause: ['untrusted', 'sign-in'].includes(result.portalFailure) ? result.portalFailure : undefined }));
     },
     async browserStop() {
       browserStopped = true;
@@ -370,7 +370,9 @@ if (typeof chrome !== 'undefined') {
         try { await browserCall({ kind: 'event', event: relayFailureEvent(error, Math.max(0, performance.now() - started)) }); }
         catch { sendResponse({ success: false, error: 'ONBOARDING_DUO_EVENT_UNRECORDED' }); return; }
       }
-      sendResponse({ success: false, error: 'ONBOARDING_DUO_REFUSED' });
+      sendResponse({ success: false, error: 'ONBOARDING_DUO_REFUSED',
+        ...(message.type === 'RELAY_OPEN_PORTAL' && sender.url === chrome.runtime.getURL('src/options.html')
+          && ['untrusted', 'sign-in'].includes(error?.cause) ? { portalFailure: error.cause } : {}) });
     });
     return true;
   });

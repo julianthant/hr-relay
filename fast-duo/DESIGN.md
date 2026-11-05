@@ -7,6 +7,9 @@ instruction and one primary action for the selected method. Return to Relay
 activates the originating app window; Close tab closes only this tab. Both sit in
 the top bar. Cancel setup appears only while a method is pending.
 The backend is the authority for every state and action.
+Portal failure advice uses only the backend's closed recovery hint. Known sign-in timeouts on a
+trusted page may offer manual sign-in; an untrusted page says not to enter a password and to close
+that tab. Missing or unrecognized hints offer no manual sign-in advice.
 
 `src/relay-options.js` preserves selection, keyboard focus, pending actions and
 explicit unavailable or unknown states. Unknown attempts tell the operator to

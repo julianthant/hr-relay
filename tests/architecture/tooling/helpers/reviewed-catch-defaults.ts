@@ -33,7 +33,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runtime/browser/onboarding-duo-provider.ts",
-    "reason": "Failed UNKNOWN retention or failure callbacks retain both causes and keep closure unproved. The browser pump sends a negative acknowledgment on request failure, revokes before retaining its original failure, and aggregates diagnostic-report failures without retrying a failed sink. A macOS return-to-Relay focus refusal logs its closed diagnostic and preserves the Duo state. Setup and slow-warning failures keep their original causes and attempt existing physical closure. Captured software keys stay UNKNOWN; diagnostic failure alone does not make proved physical closure uncertain. Profile removal and replacement still require settled callbacks, exact owner/private paths and native closure proofs; native failures never trigger a second ceremony.",
+    "reason": "Failed UNKNOWN retention or failure callbacks retain both causes and keep closure unproved. The browser pump sends a negative acknowledgment on request failure, revokes before retaining its original failure, and aggregates diagnostic-report failures without retrying a failed sink. A pending broker poll rejection after the context begins closing settles with that closure; closing status never substitutes for its event or native proof. A macOS return-to-Relay focus refusal logs its closed diagnostic and preserves the Duo state. Setup and slow-warning failures keep their original causes and attempt existing physical closure. Captured software keys stay UNKNOWN; diagnostic failure alone does not make proved physical closure uncertain. Profile removal and replacement still require settled callbacks, exact owner/private paths and native closure proofs; native failures never trigger a second ceremony.",
     "statements": [
       {
         "kind": "try",
@@ -42,7 +42,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
       },
       {
         "kind": "promise",
-        "sha256": "b115e758fd86ab9b4d2c44c3d9accf6b2651f73e1c6bc5b92f310bb6f68998b1",
+        "sha256": "b92dfe9f2f05305819b503bfd022bf45a575688c6e3ce00a8c104c7be147e6a3",
         "occurrences": 1
       }
     ]

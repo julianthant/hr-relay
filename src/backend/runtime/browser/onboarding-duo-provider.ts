@@ -58,6 +58,13 @@ const BrokerRequestSchema = z.discriminatedUnion("kind", [
 ]);
 type BrokerRequest = z.infer<typeof BrokerRequestSchema>;
 
+function trustedPortalUrl(value: string): boolean {
+  const url = URL.parse(value);
+  return url !== null && url.protocol === "https:" && !url.port && !url.username && !url.password
+    && (url.hostname === "a5.ucsd.edu" && url.pathname.startsWith("/tritON/")
+      || url.hostname === "duo.ucsd.edu" || url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com"));
+}
+
 export interface OnboardingDuoProviderOptions {
   readonly browserRoots: BrowserRoots;
   readonly browserRoot: string;
@@ -385,10 +392,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     const page = session.portal;
     if (!page || page.isClosed()) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     const url = new URL(page.url());
-    if (url.protocol !== "https:" || url.port || url.username || url.password
-      || !(url.hostname === "a5.ucsd.edu" && url.pathname.startsWith("/tritON/")
-        || url.hostname === "duo.ucsd.edu"
-        || url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com"))) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+    if (!trustedPortalUrl(url.href)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     await focusPage(session, page);
     if (page.url() !== url.href) throw new ProfileOnboardingDuoProviderError("refused", "scope");
   }
@@ -552,10 +556,17 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
             await workerCall(worker, "browserReply", [request.id, { ok: true, value: owner.readState() }]);
           } catch (error) {
             operationFailure = error;
+            let portalFailure: "untrusted" | "sign-in" | undefined;
+            const page = session.portal;
+            if (request.kind === "portal" && page && !page.isClosed()) {
+              const original = error instanceof ProfileOnboardingDuoProviderError ? error.cause : error;
+              if (!trustedPortalUrl(page.url())) portalFailure = "untrusted";
+              else if (original instanceof Error && ["UCSD_DUO_NAVIGATION_TIMEOUT", "UCSD_SSO_REDIRECT_TIMEOUT", "UCSD_SSO_FORM_TIMEOUT", "UCSD_SSO_SUBMIT_TIMEOUT"].includes(original.message)) portalFailure = "sign-in";
+            }
             try {
               if (!(error instanceof DuoDiagnosticReportError)) reportDuoEvent(owner, failureEvent(error, "browser-request", Math.max(0, options.clock.monotonicMs() - started)));
             } catch (reportError) { operationFailure = new DuoDiagnosticReportError(reportError, error); }
-            finally { await workerCall(worker, "browserReply", [request.id, { ok: false }]); }
+            finally { await workerCall(worker, "browserReply", [request.id, { ok: false, ...(portalFailure === undefined ? {} : { portalFailure }) }]); }
             if (operationFailure instanceof DuoDiagnosticReportError) throw operationFailure;
           } finally {
             if (!(operationFailure instanceof DuoDiagnosticReportError)) {
@@ -564,7 +575,8 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           }
         }
       })().catch(async error => {
-        if (session.revoked) return;
+        if (session.revoked || error instanceof ProfileOnboardingDuoProviderError
+          && error.reason === "browser-lifetime" && context.isClosed()) return;
         session.revoked = true;
         session.pumpFailure = error;
         try {
@@ -678,7 +690,8 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           if (error instanceof DuoDiagnosticReportError && session.failure) {
             session.failure = new ProfileOnboardingDuoProviderError(session.failure.kind, session.failure.reason, new AggregateError([session.failure, error]));
           }
-          if (session.revoked) return;
+          if (session.revoked || error instanceof ProfileOnboardingDuoProviderError
+            && error.reason === "browser-lifetime" && session.context?.isClosed()) return;
           await reportFailure(session, error);
           queueMicrotask(() => { void close(session); });
         });

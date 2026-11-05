@@ -121,13 +121,15 @@ for (const pendingClose of [false, true]) it(pendingClose
     await assert.rejects(profile.session.openOnboardingPortal(draft.token, draft.operationId));
     assert.equal(submissions, 1); assert.equal(acquisitions, 1); assert.equal(context.pages().length, 2);
     await setup.getByRole("button", { name: "Set up Touch ID", exact: true }).click();
-    await expect(setup.locator("#message")).toContainText("Relay could not finish that action");
+    const portalFailure = "Relay could not trust this Duo page. Do not enter your password. Close the Duo tab, then try Show Duo again.";
+    await expect(setup.locator("#message")).toHaveText(portalFailure);
+    assert.equal(submissions, 1); assert.equal(acquisitions, 1);
     await setup.evaluate(() => new Promise<void>(resolve => {
       const list = document.getElementById("accountList"); if (!list) throw new Error("fixture method list missing");
       const observer = new MutationObserver(() => { observer.disconnect(); resolve(); });
       observer.observe(list, { childList: true });
     }));
-    await expect(setup.locator("#message")).toContainText("Relay could not finish that action");
+    await expect(setup.locator("#message")).toHaveText(portalFailure);
     await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
     await expect(setup.getByRole("button", { name: "Set up Touch ID", exact: true })).toBeEnabled();
     const methodsBeforeReopen = read().methods;

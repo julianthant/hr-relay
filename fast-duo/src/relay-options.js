@@ -70,7 +70,7 @@ export async function mountRelayOptions(initial) {
     $('returnRelay').hidden = current.action === 'Return to Relay';
     $('returnRelay').disabled = busy;
     $('message').hidden = !unavailable || unavailable === 'state';
-    $('message').textContent = unavailable === 'return' ? 'Could not bring Relay forward. Select its window to review setup.' : unavailable === 'portal' ? 'Relay could not sign in to Duo. Select the Duo tab in this Chromium window and sign in by hand, or try Show Duo again.' : 'Relay could not finish that action. Try again, or return to Relay.';
+    $('message').textContent = unavailable === 'return' ? 'Could not bring Relay forward. Select its window to review setup.' : unavailable === 'untrusted' ? 'Relay could not trust this Duo page. Do not enter your password. Close the Duo tab, then try Show Duo again.' : unavailable === 'portal' ? 'Relay could not sign in to Duo. Select the Duo tab in this Chromium window and sign in by hand, or try Show Duo again.' : 'Relay could not finish that action. Try again, or return to Relay.';
     $('message').setAttribute('role', 'alert');
   }
   const duoOption = { key: 'Security key', touch: 'Touch ID or Windows Hello' };
@@ -95,10 +95,12 @@ export async function mountRelayOptions(initial) {
     if (stateRead) polling = true;
     else { busy = true; actionGeneration++; }
     const generation = actionGeneration;
+    let portalFailure;
     const focusedMethod = document.activeElement?.closest('.relay-method-card')?.dataset.method;
     if (!stateRead) render();
     try {
       const response = await chrome.runtime.sendMessage({ type, ...(method === undefined ? {} : { method }), ...(attemptId === undefined ? {} : { attemptId }) });
+      if (type === 'RELAY_OPEN_PORTAL' && !response?.success) portalFailure = response?.portalFailure;
       if (stateRead && generation !== actionGeneration) return;
       if (!response?.success || response.result?.relaySetup !== true) throw new Error('Relay setup refused');
       const next = response.result.profile;
@@ -106,7 +108,7 @@ export async function mountRelayOptions(initial) {
       profile = next; if (type !== 'STATE' || unavailable === 'state') unavailable = false;
     } catch {
       if (type === 'RELAY_RETURN') unavailable = 'return';
-      else if ((!stateRead || generation === actionGeneration) && (type !== 'STATE' || !unavailable)) unavailable = type === 'STATE' ? 'state' : type === 'RELAY_OPEN_PORTAL' ? 'portal' : 'action';
+      else if ((!stateRead || generation === actionGeneration) && (type !== 'STATE' || !unavailable)) unavailable = type === 'STATE' ? 'state' : portalFailure === 'untrusted' ? 'untrusted' : portalFailure === 'sign-in' ? 'portal' : 'action';
     }
     finally { if (stateRead) polling = false; else busy = false; render(); if (focusedMethod && document.activeElement === document.body) $('accountList').querySelector(`[data-method="${focusedMethod}"]`).focus({ preventScroll: true }); }
   }
