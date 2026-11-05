@@ -13,6 +13,12 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  PROFILE_BROWSER_CLEANUP_UNPROVED: catalogEntry("Browser profile cleanup could not be verified.", EmptyParametersSchema),
+  PROFILE_BROWSER_MEMBERSHIP_MISMATCH: catalogEntry("Retained browser profiles do not match the browser registry.", EmptyParametersSchema),
+  PROFILE_BROWSER_LAUNCH_UNCLOSED: catalogEntry("Browser launch closure could not be verified.", EmptyParametersSchema),
+  PROFILE_BROWSER_NATIVE_CUSTODY_RETAINED: catalogEntry("A browser custody operation is still unresolved.", EmptyParametersSchema),
+  PROFILE_BROWSER_SESSION_AHEAD: catalogEntry("The browser session is ahead of the current profile session.", EmptyParametersSchema),
+  PROFILE_BROWSER_DIRECTORY_UNBOUND: catalogEntry("A registered browser profile has no matching custody record.", EmptyParametersSchema),
   APPLICATION_DATA_WORKSPACE_REFUSED: catalogEntry("Relay could not verify the Windows application data location. Restore a valid LOCALAPPDATA host setting before restarting Relay. Existing files have been preserved.", EmptyParametersSchema),
   WINDOWS_PRIVATE_PATH_REFUSED: catalogEntry("Windows storage permissions, identity or durability could not be verified. Preserve the files and resolve the storage failure before restarting Relay.", EmptyParametersSchema),
   CRM_DOCUMENT_SOURCE_UNAVAILABLE: catalogEntry("CRM document records could not be verified. Review the requested people and their latest onboarding records.", EmptyParametersSchema),
@@ -89,7 +95,7 @@ export const ERROR_CATALOG = Object.freeze({
   DUO_CREDENTIAL_UNCERTAIN: catalogEntry("The Duo credential change could not be confirmed. Preserve this profile before continuing.", EmptyParametersSchema),
   DUO_CREDENTIAL_UNAVAILABLE: catalogEntry("Duo credentials could not be read or saved safely.", EmptyParametersSchema),
   CREDENTIAL_CONVERSION_COUNTER_UNPROVED: catalogEntry("The retained Duo credential has no proved durable signing-counter floor. Keep this profile stopped and preserve its credential sources.", EmptyParametersSchema),
-  CREDENTIAL_CONVERSION_REQUIRED: catalogEntry("This profile needs stopped credential conversion before it can open.", EmptyParametersSchema),
+  CREDENTIAL_CONVERSION_REQUIRED: catalogEntry("Restart Relay to finish this profile's credential conversion, then log in. Saved data is preserved.", EmptyParametersSchema),
   CREDENTIAL_CONVERSION_UNSUPPORTED: catalogEntry("Credential conversion cannot prove this source format. Keep the profile stopped and preserve the original installation.", EmptyParametersSchema),
   CREDENTIAL_OPERATION_PENDING: catalogEntry("A credential operation is incomplete. Keep this profile stopped and recover that exact operation before continuing.", EmptyParametersSchema),
   CREDENTIAL_ABANDONED_SIGNUP_HELD: catalogEntry("An unfinished sign-up left a saved sign-in record Relay cannot prove is unused. Quit Relay, keep its data folder unchanged and do not delete any key; then restore your latest Relay backup or ask your Relay maintainer to recover this sign-up.", EmptyParametersSchema),
@@ -544,9 +550,12 @@ export const ERROR_CATALOG = Object.freeze({
     "Log out waits until this profile's active work can stop.",
     EmptyParametersSchema,
   ),
+  PROFILE_LOGOUT_INCOMPLETE: catalogEntry("A previous log out did not finish. Log in to that profile to continue it before creating a profile.", EmptyParametersSchema),
+  PROFILE_STARTUP_CONVERSION_REFUSED: catalogEntry("Relay could not finish this profile's startup conversion. Saved data is preserved. Review the local evidence, then restart Relay before logging in.", EmptyParametersSchema),
   ONBOARDING_DUO_DIAGNOSTIC_LOG_UNAVAILABLE: catalogEntry("Duo diagnostic logging is unavailable.", EmptyParametersSchema),
   PROFILE_CONNECTION_FAILED: catalogEntry("Could not connect to Relay. Check that Relay is running, then try again.", EmptyParametersSchema),
   PROFILE_AUTHORITY_UNAVAILABLE: catalogEntry("Current profile authority is unavailable.", EmptyParametersSchema),
+  PROFILE_SESSION_LOG_UNAVAILABLE: catalogEntry("Relay could not record session transition evidence. The transition could not finish.", EmptyParametersSchema),
   PROFILE_AUTHORITY_CHANGED: catalogEntry("Profile authority changed. Capture it again before continuing.", EmptyParametersSchema),
   PROFILE_SESSION_STALE: catalogEntry(
     "This sign-in is no longer active. Sign in again.",

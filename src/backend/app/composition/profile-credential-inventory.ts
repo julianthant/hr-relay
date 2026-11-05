@@ -8,7 +8,7 @@ import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } fro
 import { inventoryFileIdentity, enumerateProfileCredentialMembership, probeRetainedBrowsersClosed } from "../../storage/maintenance/profile-inventory.js";
 import { assertRetainedProfileBrowserRoot, assertCredentialCopyResourcesClosed, assertShutdownResourcesClosed, retainedBrowserProfiles } from "../../storage/maintenance/profile-custody.js";
 import { migrationTableNames } from "../../storage/sqlite/migrations.js";
-import { readEmergencyFaults } from "../../logs/emergency-faults.js";
+import { readLocalDebugLog } from "../../storage/events/local-debug-log.js";
 import { initialSettingsFileRecord } from "../../../models/config/settings.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { createHash } from "node:crypto";
@@ -120,7 +120,7 @@ function assessProfileCredentialCopies(admission: RuntimeAdmission, before: Retu
         if (backup === undefined && suspect === undefined && basename(path) !== "Login Data" && !before.unsupported.includes(path)) {
           try {
             const bootLog = path === join(root, "logs", "boot.jsonl");
-            if (bootLog && readEmergencyFaults(root).state !== "present") throw new Error("profile-inventory-log-unavailable");
+            if (bootLog && readLocalDebugLog(root).state !== "present") throw new Error("profile-inventory-log-unavailable");
             const bytes = withProfileCredentialCopy(path, inventoryFileIdentity(path), (descriptor, info) => {
               const limit = bootLog ? 5 * 1024 * 1024
                 : dirname(path) === join(root, "credentials") ? Math.ceil(16 * 1024 * 1024 / 3) * 4 + 4096 : 16 * 1024 * 1024;
@@ -195,13 +195,18 @@ export function composeProfileClosureInventory(input: Readonly<{ admission: Runt
       const retained = retainedBrowserProfiles(admission.stateRoot, custody, config.paths.browserProfileRoot, profileBrowserClosure, { machineRoot: binding.machineRoot, profileId: admission.profileBinding.profileId, roots: document.roots })
         .filter(row => {
           if (lstatSync(row.profileDirectory, { throwIfNoEntry: false }) !== undefined) return true;
-          if (!row.cleanupCompleted) throw new Error("profile-closure-browser-custody-unproved");
+          if (!row.cleanupCompleted) throw new ProfileBrowserClosureUnprovedError("PROFILE_BROWSER_CLEANUP_UNPROVED");
           return document.roots.some(registered => registered.owner.kind === 'command' && registered.profileId === binding.profileId
             && registered.launch.state === 'closed' && registered.native === undefined && join(binding.machineRoot, registered.directory) === row.profileDirectory);
         });
       const rows = document.roots.filter(row => row.profileId === binding.profileId);
-      if (rows.length !== retained.length || rows.some(row => row.launch.state !== "closed" || row.native !== undefined
-        || row.sessionGeneration > binding.sessionGeneration || !retained.some(profile => profile.profileDirectory === join(binding.machineRoot, row.directory)))) throw new Error("profile-closure-browser-custody-unproved");
+      if (rows.length !== retained.length) throw new ProfileBrowserClosureUnprovedError("PROFILE_BROWSER_MEMBERSHIP_MISMATCH");
+      for (const row of rows) {
+        if (row.launch.state !== "closed") throw new ProfileBrowserClosureUnprovedError("PROFILE_BROWSER_LAUNCH_UNCLOSED");
+        if (row.native !== undefined) throw new ProfileBrowserClosureUnprovedError("PROFILE_BROWSER_NATIVE_CUSTODY_RETAINED");
+        if (row.sessionGeneration > binding.sessionGeneration) throw new ProfileBrowserClosureUnprovedError("PROFILE_BROWSER_SESSION_AHEAD");
+        if (!retained.some(profile => profile.profileDirectory === join(binding.machineRoot, row.directory))) throw new ProfileBrowserClosureUnprovedError("PROFILE_BROWSER_DIRECTORY_UNBOUND");
+      }
       admission.assertProfileRuntime();
     } else await probeRetainedBrowsersClosed({ browserClosure: profileBrowserClosure, admission, custody, config,
       clock: input.clock, signal: new AbortController().signal });
@@ -224,6 +229,14 @@ export function composeProfileClosureInventory(input: Readonly<{ admission: Runt
       admission.assertPendingLogoutSettlementDatabase(join(admission.stateRoot, "state.db"));
     },
   });
+}
+
+class ProfileBrowserClosureUnprovedError extends Error {
+  constructor(readonly code: "PROFILE_BROWSER_CLEANUP_UNPROVED" | "PROFILE_BROWSER_MEMBERSHIP_MISMATCH" | "PROFILE_BROWSER_LAUNCH_UNCLOSED"
+    | "PROFILE_BROWSER_NATIVE_CUSTODY_RETAINED" | "PROFILE_BROWSER_SESSION_AHEAD" | "PROFILE_BROWSER_DIRECTORY_UNBOUND") {
+    super("profile-closure-browser-custody-unproved");
+    this.name = "ProfileBrowserClosureUnprovedError";
+  }
 }
 
 export function composeStoppedControlCredentialInventory(input: Readonly<{ claim: StoppedControlProfileInventory; hostFacts: HostConfigFacts; clock: Clock }>) {

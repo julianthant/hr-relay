@@ -227,7 +227,7 @@ export function createProfileSession(input: {
     admission.lifetime.assertRuntimeAvailable();
     const selected = registry.read().activeProfileId;
     if (selected !== null && selected !== profileId) throw new Error("profile-session-not-current");
-    const epoch = registry.advanceSession(profileId);
+    const epoch = registry.advanceSession(profileId, "profile-activated");
     sessions.clear();
     releaseOrdinary(profileId);
     const currentAdmission = admittedProfile(profileId);
@@ -369,8 +369,8 @@ export function createProfileSession(input: {
   }, names: ReturnType<typeof deriveProfileNames>): OnboardingProfileSession | ProfileRefusal {
     admission.assertWritable();
     const selection = registry.read();
+    if (selection.profiles.some(row => row.lifecycle === "cancelling") || readOperations().some(entry => entry.kind === "logout" && entry.phase !== "complete")) return refusal("PROFILE_LOGOUT_INCOMPLETE");
     if (selection.activeProfileId !== null) return refusal("PROFILE_SIGN_UP_OTHER_SIGNED_IN");
-    if (readOperations().some(entry => entry.kind === "logout" && entry.phase !== "complete")) return refusal("PROFILE_TRANSITION_BLOCKED");
     const emailKey = verifiers.emailKeyFor(fields.email);
     if (readOperations().some(entry => entry.kind === "sign-up")) return refusal("PROFILE_TRANSITION_BLOCKED");
     const identified = verifiers.identify(fields.email);
@@ -432,8 +432,7 @@ export function createProfileSession(input: {
   }
 
   function admitSignedIn(row: ProfileRegistryRow, at: ReturnType<typeof IsoInstantSchema.parse>,
-    credentialsMatch: (entries: ReturnType<ReturnType<typeof storeFor>["read"]>["entries"]) => boolean,
-    endSelectionOnFailure = true): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
+    credentialsMatch: (entries: ReturnType<ReturnType<typeof storeFor>["read"]>["entries"]) => boolean): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
     const finishing = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === row.profileId && entry.onboarding !== undefined);
     if (finishing.length > 1) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
     for (const operation of finishing) {
@@ -451,12 +450,12 @@ export function createProfileSession(input: {
     if (readOperations().some((entry) => entry.kind === "logout" && entry.profileId !== row.profileId && entry.phase !== "complete")) {
       return refusal("PROFILE_TRANSITION_BLOCKED");
     }
-    const active = activate(row.profileId);
     try {
+      const active = activate(row.profileId);
       const record = storeFor(row.profileId).read();
       if (!credentialsMatch(record.entries)) {
         sessions.clear();
-        if (endSelectionOnFailure) registry.advanceSession(null);
+        registry.advanceSession(selection.activeProfileId, "profile-sign-in-refused");
         releaseOrdinary(row.profileId);
         return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
       }
@@ -465,7 +464,7 @@ export function createProfileSession(input: {
       return active;
     } catch (error) {
       sessions.clear();
-      try { if (endSelectionOnFailure) registry.advanceSession(null); if (!hasUnprovedSourceClosure(error)) releaseOrdinary(row.profileId); }
+      try { registry.advanceSession(selection.activeProfileId, "profile-sign-in-refused"); if (!hasUnprovedSourceClosure(error)) releaseOrdinary(row.profileId); }
       catch (cleanup) { throw new AggregateError([error, cleanup], "profile sign-in and selection closure failed", { cause: cleanup }); }
       throw error;
     }
@@ -479,7 +478,7 @@ export function createProfileSession(input: {
     const revoked = selection.sessionGeneration === operation.sessionGeneration + 1 && selection.activeProfileId === null
       && (row?.lifecycle === "cancelling" || row?.lifecycle === "ready" && (operation.settlement === undefined || operation.settlement.phase === "done"));
     if (!before && !revoked) return refusal("PROFILE_TRANSITION_BLOCKED", operation.operationId);
-    if (before) registry.advanceSession(null);
+    if (before) registry.advanceSession(null, "profile-logout-continuation");
     if (row?.lifecycle !== "cancelling" && operation.settlement?.phase !== "done") registry.update(profileId, { lifecycle: "cancelling" });
     input.prepareLogoutContinuation?.(operation);
     const closure = quiescence(profileId);
@@ -757,7 +756,7 @@ export function createProfileSession(input: {
           if (email === undefined || password === undefined) return false;
           const identified = verifiers.identify(email);
           return identified !== "unknown" && identified.profileId === row.profileId && verifiers.passwordMatches(row.profileId, password);
-        }, false);
+        });
       });
     },
     changePassword(): ProfileRefusal {
@@ -791,7 +790,7 @@ export function createProfileSession(input: {
           try { writeOperation(operation); }
           catch (error) { prepared.intentFailed(error); }
         }
-        registry.advanceSession(null);
+        registry.advanceSession(null, "profile-logout-requested");
         for (const [held, value] of sessions) {
           if (value.profileId === session.profileId) sessions.delete(held);
         }

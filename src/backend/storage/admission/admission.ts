@@ -11,7 +11,7 @@ import { DuoCredentialRecordSchema } from "../../../models/config/duo-credential
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../models/config/protected-settings.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { assertFinishedProfileOnboarding,LogoutOperationSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,type LogoutOperation,type ProfileDatabaseBinding,type ProfileOperation,type ProfileRegistryDocument,type SignUpOperation } from "../../../models/profiles/profile.js";
+import { assertFinishedProfileOnboarding,LogoutOperationSchema,ProfileVerifierDocumentSchema,SignUpOperationSchema,type LogoutOperation,type ProfileDatabaseBinding,type ProfileOperation,type ProfileRegistryDocument,type ProfileSelectionChangeReason,type SignUpOperation } from "../../../models/profiles/profile.js";
 import { systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
@@ -642,9 +642,9 @@ export class RuntimeAdmission {
     this.assertOfflineMaintenance(operation);
     return operation;
   }
-  publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument): void {
+  publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument, reason?: ProfileSelectionChangeReason): void {
     this.#assertMachineRuntime();
-    (this.#authority as InstallationLease).publishProfileRegistry(expected, document);
+    (this.#authority as InstallationLease).publishProfileRegistry(expected, document, reason);
   }
   publishProfileRegistration(profile: RuntimeAdmission, operation: SignUpOperation, proof?: StartupRegistrationProof): void {
     this.#assertMachineRuntime();

@@ -13,7 +13,8 @@ import { afterEach,describe,it } from "vitest";
 import { composeExplainRuntime,explainRunFrom,parseDiagnosticArgs } from "../../../../src/backend/app/composition/explain-compose.js";
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createDebugEventWriter } from "../../../../src/backend/logs/debug-events.js";
-import { appendEmergencyFault,readEmergencyFaults } from "../../../../src/backend/logs/emergency-faults.js";
+import { appendEmergencyFault } from "../../../../src/backend/logs/emergency-faults.js";
+import { readLocalDebugLog } from "../../../../src/backend/storage/events/local-debug-log.js";
 import { renderExplainRun } from "../../../../src/backend/runs/explain/explain-run.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import type { TimelineAppend } from "../../../../src/models/events/timeline.js";
@@ -107,10 +108,10 @@ describe("explain run", () => {
     assert.match(output, /DATABASE_UNAVAILABLE/u); assert.equal(output.includes("SECRET"), false);
     assert.match(output, /"level": "error"/u);
     assert.deepEqual(readFileSync(path), before); assert.equal(readdirSync(root).includes("state.db"), false);
-    writeFileSync(path, "{", { mode: 0o600 }); assert.throws(() => readEmergencyFaults(root), /boot-log-incomplete/u);
-    writeFileSync(path, "{\n", { mode: 0o600 }); assert.throws(() => readEmergencyFaults(root), /boot-log-invalid/u);
-    writeFileSync(path, Buffer.alloc(5 * 1024 * 1024 + 1)); assert.throws(() => readEmergencyFaults(root), /boot-log-cap-exceeded/u);
-    rmSync(path); symlinkSync(join(root, "missing"), path); assert.throws(() => readEmergencyFaults(root), /boot-log-path-unsafe/u);
+    writeFileSync(path, "{", { mode: 0o600 }); assert.throws(() => readLocalDebugLog(root), /boot-log-incomplete/u);
+    writeFileSync(path, "{\n", { mode: 0o600 }); assert.throws(() => readLocalDebugLog(root), /boot-log-invalid/u);
+    writeFileSync(path, Buffer.alloc(5 * 1024 * 1024 + 1)); assert.throws(() => readLocalDebugLog(root), /boot-log-cap-exceeded/u);
+    rmSync(path); symlinkSync(join(root, "missing"), path); assert.throws(() => readLocalDebugLog(root), /boot-log-path-unsafe/u);
   });
   it("resolves either identity form to the same explanation", async () => {
     const database = await seeded();

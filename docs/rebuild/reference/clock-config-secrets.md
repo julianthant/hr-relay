@@ -339,6 +339,13 @@ owners. Even a ready registry prefix is excluded from startup conversion while i
 is pending. Only after native settlement, ready publication and disposal of the stopped logout owner
 does the controller acquire a new backed settings-conversion admission. UNKNOWN writes keep the
 operation pending and the original credentials unchanged.
+Startup attempts boot-observed logout settlement before that conversion, using the same native
+process, browser, source and SQL proofs. Busy settlement remains pending. Live shared dashboard
+continuation performs no credential conversion; a current-format profile can sign in immediately
+after settlement. A schema-4 credential reader instead requests a restart for stopped conversion.
+An ordinary conversion failure refuses only its profile for the current runtime lifetime and retains
+its cause for local diagnostics. Successful stopped conversion clears that refusal; uncertain source
+closure still stops startup and retains its owners.
 Ordinary readers accept only the current schema. Stopped conversion and flat-source inspection own
 the previous grammar; retained value-free receipts keep the catalog used by their original write.
 
@@ -641,7 +648,7 @@ the bytes again before publication. Changed content, identity, permissions or an
 
 Startup owns automatic same-person repair before ordinary admission, providers or HTTP. It selects the newest verified supported backup that preserves current write fences, attempts, evidence, deletion tombstones and generated-file publication records. It refuses when current critical evidence or immutable identity cannot be inspected, or when a backup would weaken it; it never unions databases. Current runtime roots must match the admitted person.
 
-The one external control `journal.json` restore record (schema 3) binds source/stage/quarantine/manifest bytes, current canonical credential head, retained files and browser membership. Replacement advances the session epoch once and clears selection. Startup resumes only its exact interrupted prefix, verifies the original manifest and preserved evidence again, and publishes a read-only repair notice with the backup time. Unknown prefixes remain held. No restore command or picker exists. Settled schema-6 control converts once under stopped exclusive custody to logical control 7 and marker 8; old physical completed-restore entries are checked during that conversion and removed from current control.
+The one external control `journal.json` restore record (schema 3) binds source/stage/quarantine/manifest bytes, current canonical credential head, retained files and browser membership. Replacement advances the session epoch once, revokes old runtime authority and preserves the authenticated profile selection. Startup resumes only its exact interrupted prefix, verifies the original manifest and preserved evidence again, and publishes a read-only repair notice with the backup time. Unknown prefixes remain held. No restore command or picker exists. Settled schema-6 control converts once under stopped exclusive custody to logical control 7 and marker 8; old physical completed-restore entries are checked during that conversion and removed from current control.
 
 ## Settings and readiness readback
 
@@ -720,7 +727,15 @@ Fresh machine initialization creates the fixed private process-lock directory be
 
 Worker bootstrap acquires genuine machine admission, captures selection and takes exact profile-database process custody before issuing a child or opening SQLite. Protected access, worker effects and browser actions repeat current-owner checks. Unproved closure propagates retained `RUNTIME_CUSTODY_UNCERTAIN`; actual child CLOSE, not only exit or a closed browser context, controls native release.
 
+Only explicit Log out or Delete account ends a completed profile session. Failed sign-in or resume preserves the prior selection while refusing access with its failure code. Restart, crash, tab closure and cookie loss retain that selection. A new local browser resumes through the existing loopback, origin and mutation guards; an already mounted runtime is revalidated and reused. Logout revokes access for every browser.
+
+Registry publication spools each selection change through the existing local timeline log with a closed reason code, fixed caller path and old/new generations. It records the attempt before the registry write and settlement after it, without profile IDs or credential values. An unavailable log refuses the transition; a failed publication retains its existing recovery evidence.
+
 Logout retains all three canonical records and native key. The controller first blocks operator access and holds new-run admission for the active runtime generation, then cancels and awaits command and worker drainage, actual owned-child CLOSE and account closure under the current profile capability. UNKNOWN writes remain held and prevent logout. A process-local drain proof binds the original profile epoch and exact native custody snapshot; synchronous logout refuses a missing, pending or changed proof. Only then does the native database owner capture the logout source and the session publish its revoking operation and advance the epoch. A failed drain retains custody and leaves the epoch unchanged. The exact metadata prefixes normalize selection clear and cancelling state; stale epochs, another person or substituted source refuse. The controller then owns one stopped settlement operation. Its prepared→commit-intent→done evidence captures requests/time/IDs once and brackets one native SQL transaction with exact before/after images. Recovery reuses existing canonical receipts and preserves UNKNOWN fences; any third image holds. Native writer close precedes ready-row publication and operation removal. Stopped inspection copies come only from the fixed-source snapshot factory; generic copy delegation is refused. A subsequent dashboard activation issues a new runtime generation, so the previous generation's admission hold does not become an orphaned hold on fresh sign-in. No credentials are erased or restored by logout.
+
+Dashboard HTTP and SSE producers, timers and notification observation drain before logout revokes
+the profile epoch. Final subscription diagnostics finish under that original authority. Reconnecting
+subscriptions receive `PROFILE_SESSION_STALE` during the transition and after logout.
 
 Cold continuation requires an immutable pending-operation/source observation captured during genuine one-shot native startup. The observation is retained by the root lifetime across maintenance leases and its verified fixed-layout transfer.
 A second composition on the same live controller cannot manufacture that fact. After new-controller closure proofs, readonly source snapshots and the same stopped settlement protocol handle exact metadata/SQL prefixes. Old ordinary handles remain revoked; stopped access grants no general epoch bypass or credential effects.
@@ -739,6 +754,9 @@ Source snapshot removal, isolated binding/login-copy database close, authenticat
 
 The signed-out profile state reports `signUpRequired` for an empty installation. Sign-up creates a
 private draft and publishes the person only after both Duo methods and Finish are proved.
+It also reports `logoutIncomplete` while a registered profile is cancelling or a logout operation is
+unfinished. Log in continues that logout; sign-up names this next step. An existing installation opens
+Log in from a sign-up URL unless the operator chooses Sign up from the login page.
 
 The confirmed `POST /api/v1/profile/delete-account` command requires the confirmation's
 `expectedProfileId` and `expectedEpoch`. The server compares both against the cookie-authenticated

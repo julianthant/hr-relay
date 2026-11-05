@@ -415,6 +415,9 @@ uncertain requests do not automatically resubmit. The current refresh port is a 
 Browser requirements describe stable declared slots independently of observed open sessions.
 An unopened requirement has no session ID, age, or health. Cards label it “Not opened” (“Opening”
 while the worker starts), reserving “Unavailable” for observed sessions without verified health.
+An observed login in progress also shows “Opening”; a leased callback shows “In use”. A proved
+closed session shows “Closed” in its required slot without becoming an open browser or refresh target.
+An operator or shutdown stop shows “Stopped” after restart; a recorded crash remains “Failed”.
 Do not derive an empty requirement set from an empty open-session list. Actual worker-service wiring replaces both producer and port.
 
 ## Assistant

@@ -20,6 +20,7 @@ type PublicProfileState
 } from "../../../../models/profiles/public-profile.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 import { appendEmergencyFault } from "../../../logs/emergency-faults.js";
+import { valueFreeErrorCauses } from "../../../logs/debug-events.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { type ActiveProfileSession } from "../../../profiles/profile-session.js";
 import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
@@ -124,9 +125,17 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   };
   const publicFailure = (error: Error) => {
     const custodyUnproved = retainPublicFailureCustody(error, retainedCustodyFailures);
+    const mapped = failureStatus(error);
+    const causes = mapped.status === 500 || error.cause !== undefined || mapped.body.code === "CREDENTIAL_CONVERSION_REQUIRED" ? valueFreeErrorCauses(error) : [];
+    for (const cause of causes) {
+      const diagnostic = new Error(cause.name);
+      diagnostic.name = cause.name;
+      diagnostic.stack = cause.stack;
+      appendEmergencyFault({ stateRoot: machine.stateRoot, build: appVersion, code: cause.code, error: diagnostic,
+        area: "profile-request", reason: "profile-request-cause", now: clock.now() });
+    }
     if (error instanceof ProfileSessionRefusedError) return { status: 409 as const,
       body: PublicProfileStateSchema.parse({ state: "refused", code: error.code }) };
-    const mapped = failureStatus(error);
     return { status: mapped.status, body: PublicProfileStateSchema.parse({ state: "error",
       code: custodyUnproved ? "RUNTIME_CUSTODY_UNCERTAIN" : mapped.body.code }) };
   };
@@ -143,7 +152,12 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     if (selection === undefined) {
       const registry = machine.readProfileRegistry();
       return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: registry.profiles.length === 0,
-        ...registry.activeProfileId !== null && { resumable: true } }));
+        ...registry.activeProfileId !== null && { resumable: true },
+        ...(registry.profiles.some(row => row.lifecycle === "cancelling") || profileRuntime.session.logoutOperations().some(operation => operation.phase !== "complete")) && { logoutIncomplete: true } }));
+    }
+    if (!transitioning && cookieOf(c.req.raw) !== selection.sessionId) {
+      profileRuntime.assertCurrent(selection.token);
+      return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: false, resumable: true }));
     }
     const active = current(c.req.raw);
     return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: active.profileId, epoch: active.epoch,
@@ -180,7 +194,14 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
   };
   const activate = async (request: Request, mode: "signup" | "signin" | "resume"): Promise<PublicProfileState> => {
-    if (transitioning || selection !== undefined || pending !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+    if (transitioning || pending !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+    if (selection !== undefined) {
+      if (mode !== "resume") throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+      const { token, profileId, epoch } = selection;
+      profileRuntime.assertCurrent(token);
+      return PublicProfileStateSchema.parse({ state: "active", profileId, epoch,
+        duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.duoState });
+    }
     transitioning = true;
     try {
       const result = await (async () => {
