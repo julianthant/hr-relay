@@ -48,7 +48,7 @@ function sessionDay(): DashboardDayWire_m0 {
     ...FIXTURE_DAY_WIRE_m0,
     queueSurfaces: FIXTURE_DAY_WIRE_m0.queueSurfaces.map((row) => {
       if (String(row.runId) === uuidOf_m0(2) || String(row.runId) === uuidOf_m0(3)) {
-        return { ...row, session: { state: "present", sessionId: SESSION_ID } };
+        return { ...row, session: { state: "present", itemScope: row.workflowId === "person-lookup" && row.parent === null ? "session" : "workflow", sessionId: SESSION_ID } };
       }
       if (String(row.runId) === uuidOf_m0(4)) {
         return { ...row, session: { state: "absent", reason: "This fixture has no run session." } };

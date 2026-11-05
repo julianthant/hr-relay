@@ -1,12 +1,41 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { applyDashboardDayPatch } from "../../../../src/dashboard/client/queries/day-state.js";
-import { queueBatches } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import { lookupBatchId, queueBatches, queueItemKey } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { RunSessionRecordSchema } from "../../../../src/models/run/session.js";
 import { instantOffsetOf,makeWorld,DAY as PROJECTION_DAY,queuedEventOf,runRecordOf,uuidOf as runUuidOf,taskEventsOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
 
 describe("session origin projection", () => {
+  it.each([
+    { name: "grouped Lookup root", workflow: "person-lookup", grouped: true, shape: "single", itemScope: "session", layout: "batch" },
+    { name: "ungrouped Lookup root", workflow: "person-lookup", grouped: false, shape: "single", itemScope: "session", layout: "items" },
+    { name: "other workflow", workflow: "separations", grouped: true, shape: "single", itemScope: "workflow", layout: "items" },
+    { name: "Lookup child", workflow: "person-lookup", grouped: true, shape: "operation-member", itemScope: "workflow", layout: "items", parentSeed: 9 },
+    { name: "native operation", workflow: "person-lookup", grouped: true, shape: "operation", itemScope: "session", layout: "items" },
+    { name: "presented operation", workflow: "person-lookup", grouped: true, shape: "single", itemScope: "session", layout: "items", child: true },
+  ] as const)("serves item identity and layout for $name", async (input) => {
+    const w = await makeWorld();
+    try {
+      const batch = RunSessionRecordSchema.parse({ sessionId: runUuidOf(70), workflow: input.workflow,
+        origin: { kind: "start-plan", startPlanId: runUuidOf(71), actorId: "local-operator" },
+        startedAt: instantOffsetOf(0), createdAt: instantOffsetOf(0), groupInQueue: input.grouped, version: 1 });
+      w.authority.batches.set(batch.sessionId, batch);
+      if ("parentSeed" in input && input.parentSeed !== undefined) queuedEventOf(w, { seed: input.parentSeed });
+      queuedEventOf(w, { seed: 1, workflow: input.workflow, shape: input.shape, sessionId: batch.sessionId,
+        ...("parentSeed" in input ? { parentSeed: input.parentSeed } : {}) });
+      if ("child" in input) queuedEventOf(w, { seed: 2, shape: "operation-member", parentSeed: 1 });
+
+      const row = w.projection.queueSurface(runUuidOf(1));
+      assert.ok(row?.session.state === "present");
+      assert.equal(row.session.itemScope, input.itemScope);
+      assert.equal(row.session.presentation?.layout, input.layout);
+      assert.equal(row.session.presentation?.groupInQueue, input.grouped);
+      assert.equal(lookupBatchId(row), input.layout === "batch" ? batch.sessionId : undefined);
+      assert.equal(queueItemKey(row), JSON.stringify([input.workflow, row.itemId, input.itemScope === "session" ? batch.sessionId : null]));
+    } finally { await w.dispose(); }
+  });
+
   it.each([
     { kind: "start-plan", startPlanId: runUuidOf(71), actorId: "local-operator" },
     { kind: "intake-manifest", intakeManifestId: runUuidOf(72), actorId: "local-operator" },
@@ -22,8 +51,9 @@ describe("session origin projection", () => {
       assert.deepEqual(row?.session, {
         state: "present",
         sessionId: batch.sessionId,
+        itemScope: "session",
         origin,
-        presentation: { groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) },
+        presentation: { layout: "batch", groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) },
       });
     } finally { await w.dispose(); }
   });

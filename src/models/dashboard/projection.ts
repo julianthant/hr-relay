@@ -140,8 +140,9 @@ export const QueuePrioritySchema = z.enum(["interactive", "bulk"]);
 
 const QueueSessionWireSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("present"), sessionId: RunSessionIdSchema,
+    itemScope: z.enum(["workflow", "session"]),
     // Absent only in frozen pre-batch queue snapshots.
-    presentation: z.strictObject({ groupInQueue: z.boolean(), version: PositiveIntSchema, startedAt: IsoInstantSchema }).optional(),
+    presentation: z.strictObject({ layout: z.enum(["items", "batch"]), groupInQueue: z.boolean(), version: PositiveIntSchema, startedAt: IsoInstantSchema }).optional(),
     origin: RunSessionOriginSchema.optional(),
   }),
   z.strictObject({ state: z.literal("absent"), reason: z.string().min(1) }),

@@ -71,14 +71,13 @@ export interface QueueItemGroup {
 }
 
 export function queueItemKey(surface: QueueSurfaceWire): string {
-  const sessionId = surface.workflowId === "person-lookup" && surface.parent === null && surface.session.state === "present" ? surface.session.sessionId : undefined;
+  const sessionId = surface.session.state === "present" && surface.session.itemScope === "session" ? surface.session.sessionId : undefined;
   return JSON.stringify([surface.workflowId, surface.itemId, sessionId]);
 }
 
-/** Only native Lookup roots opt into the session presentation. */
+/** The served layout identifies presentation batches. */
 export function lookupBatchId(surface: QueueSurfaceWire): string | undefined {
-  return surface.workflowId === "person-lookup" && surface.parent === null && surface.surfaceKind !== "operation"
-    && surface.session.state === "present" && surface.session.presentation?.groupInQueue === true
+  return surface.session.state === "present" && surface.session.presentation?.layout === "batch"
     ? surface.session.sessionId : undefined;
 }
 
@@ -470,6 +469,7 @@ export interface QueueBatch extends QueueSortRow {
   readonly id: string;
   readonly version: number;
   readonly groupInQueue: boolean;
+  readonly layout: "items" | "batch";
   readonly workflowId: QueueSurfaceWire["workflowId"];
   readonly origin: Extract<QueueSurfaceWire["session"], { state: "present" }>["origin"];
   readonly representative: QueueSurfaceWire;
@@ -496,7 +496,7 @@ export function queueBatches(rows: readonly QueueSurfaceWire[]): readonly QueueB
     for (const row of rows) {
       const session = row.session;
       if (session.state !== "present" || session.presentation === undefined) throw new Error("batch member lacks item identity");
-      if (row.workflowId !== first.workflowId || session.presentation.version !== presentation.version || session.presentation.groupInQueue !== presentation.groupInQueue || session.presentation.startedAt !== presentation.startedAt
+      if (row.workflowId !== first.workflowId || session.presentation.version !== presentation.version || session.presentation.layout !== presentation.layout || session.presentation.groupInQueue !== presentation.groupInQueue || session.presentation.startedAt !== presentation.startedAt
         || JSON.stringify(session.origin) !== JSON.stringify(first.session.origin)) throw new Error("batch members disagree about their presentation");
       const attempt = JSON.stringify([row.itemId, row.attempt]);
       if (attempts.has(attempt)) throw new Error("batch has duplicate item attempt");
@@ -525,12 +525,12 @@ export function queueBatches(rows: readonly QueueSurfaceWire[]): readonly QueueB
   });
 }
 
-/** Group only opted-in Lookup starts; every other workflow keeps its item layout. */
+/** Consume the served batch layout without choosing workflow eligibility. */
 export function queueItemLayout(top: readonly QueueSurfaceWire[]) {
   const itemGroups = groupQueueAttempts(top);
   const itemByRunId = new Map(itemGroups.flatMap(group =>
     group.attempts.map(attempt => [String(attempt.runId), group] as const)));
-  const batches = queueBatches(top).filter(batch => batch.workflowId === "person-lookup" && batch.groupInQueue);
+  const batches = queueBatches(top).filter(batch => batch.layout === "batch");
   const batchByRunId = new Map(batches.flatMap(batch => [...batch.members, ...batch.history].map(row => [row.runId, batch] as const)));
   const seen = new Set<string>();
   const displayTop: (QueueSurfaceWire | QueueBatch)[] = [];

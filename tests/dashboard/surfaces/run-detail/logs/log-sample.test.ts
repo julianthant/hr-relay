@@ -95,8 +95,8 @@ describe('compact run headers', () => {
   it.each([true, false])('renders one root batch Retry in its own header and uses its separate callback (%s)', available => {
     const run: MockRun = { id: 'batch-header-fixture', workflowId: 'person-lookup', title: 'Jordan', subject: 'Jordan', draft: initialMockDraft('person-lookup'), approved: true, seeded: true };
     const row = QueueSurfaceWireSchema.parse({ ...mockQueueSurface(run, '2026-08-03T16:10:00.000Z'), status: 'failed', parent: null,
-      session: { state: 'present', sessionId: '00000000-0000-4000-8000-000000000902', origin: { kind: 'start-plan', startPlanId: '00000000-0000-4000-8000-000000000903', actorId: 'local-operator' },
-        presentation: { groupInQueue: true, version: 1, startedAt: '2026-08-03T16:10:00.000Z' } },
+      session: { state: 'present', itemScope: 'session', sessionId: '00000000-0000-4000-8000-000000000902', origin: { kind: 'start-plan', startPlanId: '00000000-0000-4000-8000-000000000903', actorId: 'local-operator' },
+        presentation: { layout: 'batch', groupInQueue: true, version: 1, startedAt: '2026-08-03T16:10:00.000Z' } },
       actions: [{ key: 'retry-batch-member', label: 'Retry', kind: 'command', command: 'retry', expectedVersion: 1, intent: 'neutral', icon: 'retry', placement: ['banner'] }] });
     const onAction = vi.fn(), onBatchMemberRetry = vi.fn();
     useRunWiring.mockReturnValue({ state: 'loaded', snapshot: { detail: { header: { title: 'Failed batch person' }, availableSections: ['logs'] },

@@ -40,8 +40,8 @@ for (const outcome of ["applied", "lost", "refused", "mismatch"] as const) it(`r
   const base = selectionAt(3);
   const selected: LogSelection = { ...base, row: QueueSurfaceWireSchema.parse({ ...base.row, workflowId: "person-lookup", parent: null,
     status: "failed", endedAt: { state: "present", value: AT },
-    session: { state: "present", sessionId: RunIdSchema.parse(NOTE), origin: { kind: "start-plan", startPlanId: RunIdSchema.parse(NOTE), actorId: ActorIdSchema.parse("local-operator") },
-      presentation: { groupInQueue: true, version: RowRevisionSchema.parse(1), startedAt: AT } },
+    session: { state: "present", itemScope: "session", sessionId: RunIdSchema.parse(NOTE), origin: { kind: "start-plan", startPlanId: RunIdSchema.parse(NOTE), actorId: ActorIdSchema.parse("local-operator") },
+      presentation: { layout: "batch", groupInQueue: true, version: RowRevisionSchema.parse(1), startedAt: AT } },
     actions: [{ key: "retry-batch-member", kind: "command", command: "retry", label: "Retry", icon: "retry", intent: "neutral", expectedVersion: 3, placement: ["banner"] }] }) };
   const source = detailAt(selected, 3);
   const replacementId = RunIdSchema.parse("00000000-0000-4000-8000-000000000004");

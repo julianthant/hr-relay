@@ -203,7 +203,7 @@ it("keeps cross-workflow inline children within the caller's admitted parent sco
 it("retains canonical Lookup cohorts across caller/status filters and selects exact current member bulk targets", async () => {
   const base = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent === null && row.surfaceKind === "single"); assert.ok(base);
   const batchId = uuidOf(7100);
-  const session = { state: "present", sessionId: batchId, presentation: { groupInQueue: true, version: 3, startedAt: base.startedAt } };
+  const session = { state: "present", itemScope: "session", sessionId: batchId, presentation: { layout: "batch", groupInQueue: true, version: 3, startedAt: base.startedAt } };
   const make = (n: number, item = n, attempt = 1) => QueueSurfaceWireSchema.parse({ ...base, surfaceKind: "single", workflowId: "person-lookup",
     parent: null, session, runId: uuidOf(7100 + n), itemId: uuidOf(7200 + item), attempt, rowRevision: 10 + n,
     status: n === 2 ? "failed" : "queued", actions: [{ kind: "command", key: "cancel", command: "cancel", label: "Cancel",
