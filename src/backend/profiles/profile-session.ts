@@ -129,7 +129,7 @@ export function createProfileSession(input: {
   const onboardingSessions = new Map<string, { readonly operationId: string; readonly epoch: number }>();
   let onboardingBrowserHold: ProfileSessionRefusedError | undefined;
   function retainOnboardingBrowserFailure(error: unknown): never {
-    if (!hasUnprovedSourceClosure(error)) throw error;
+    if (!hasUnprovedSourceClosure(error) && !(error instanceof ProfileSessionRefusedError && error.code === "BROWSER_CLOSURE_UNPROVED")) throw error;
     onboardingBrowserHold = new ProfileSessionRefusedError("BROWSER_CLOSURE_UNPROVED", {
       cause: onboardingBrowserHold === undefined ? error : new AggregateError([onboardingBrowserHold, error]),
     });

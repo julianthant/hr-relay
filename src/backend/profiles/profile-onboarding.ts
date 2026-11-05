@@ -271,7 +271,9 @@ export function createProfileOnboarding(input: {
       }
       const browser = browsers.get(operationId);
       if (browser !== undefined) {
-        if (provider === undefined || (await provider.closeBrowser(browser)).state !== "closed") return unavailable();
+        if (provider === undefined) return unavailable();
+        const closure = await provider.closeBrowser(browser);
+        if (closure.state === "uncertain") throw new ProfileSessionRefusedError("BROWSER_CLOSURE_UNPROVED", { cause: closure.cause });
         browsers.delete(operationId);
       }
     },

@@ -92,8 +92,14 @@ async function workerCall(worker: Worker, method: "install" | "next" | "reply" |
   }
 }
 
-
 export function createProfileOnboardingDuoProvider(options: OnboardingDuoProviderOptions): ProfileOnboardingDuoProvider {
+  const workersClosedBeforeContext = new WeakSet<Worker>();
+  function closingPollFailure(error: unknown, context: BrowserContext | undefined, worker: Worker | undefined): boolean {
+    // Playwright's bundled target-close subtype inherits Error.name.
+    return error instanceof ProfileOnboardingDuoProviderError && error.reason === "browser-lifetime"
+      && error.cause instanceof Error && /^TargetClosedError\d*$/u.test(error.cause.constructor.name)
+      && worker !== undefined && !workersClosedBeforeContext.has(worker) && context?.isClosed() === true;
+  }
   function failureEvent(error: unknown, operation?: ProfileOnboardingDuoEvent["operation"], durationMs?: number): ProfileOnboardingDuoEvent {
     const exceptionType = DuoDiagnosticExceptionTypeSchema.safeParse(error instanceof Error ? error.name : undefined);
     const portalCode = DuoPortalDiagnosticCodeSchema.safeParse(error instanceof Error ? error.message : undefined);
@@ -115,6 +121,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     attempt: DraftDuoAttempt; profileDirectory: string; context?: BrowserContext; launching?: Promise<BrowserContext>; worker?: Worker;
     capability?: DraftDuoCapability; platform?: DuoPlatformAuthenticator; credentialId?: string; requestId?: string; keyRequested?: boolean; accepted: boolean; revoked: boolean;
     startup?: Promise<void>; pump?: Promise<void>;
+    pollFailures: Set<ProfileOnboardingDuoProviderError>;
     reportFailure: (error: Error) => Promise<void>; reporting?: Promise<void>; failure?: ProfileOnboardingDuoProviderError; retentionFailed?: boolean; stopFailureAfterSettlement?: ProfileOnboardingDuoProviderError; expiry?: ReturnType<typeof setTimeout>; close?: Promise<Readonly<{ state: "closed" | "uncertain" }>>;
     enrollmentRequestId?: string;
   };
@@ -256,6 +263,13 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     return session.reporting;
   }
 
+  function retainPollFailure(session: ProviderSession, error: ProfileOnboardingDuoProviderError): void {
+    session.pollFailures.add(error);
+    if (session.failure !== error) session.failure = new ProfileOnboardingDuoProviderError(
+      session.failure?.kind ?? "unknown", session.failure?.reason ?? "browser-lifetime",
+      session.failure === undefined ? error : new AggregateError([session.failure, ...session.pollFailures]));
+  }
+
   async function close(session: ProviderSession): Promise<Readonly<{ state: "closed" | "uncertain" }>> {
     if (session.close) return session.close;
     session.revoked = true; clearTimeout(session.expiry);
@@ -286,8 +300,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         })(), new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { expired = true; reject(new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime")); }, options.closeProofMs); })]);
         return { state: "closed" as const };
       } catch (error) {
-        session.failure = new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime", stopFailure === undefined || stopFailure === error
-          ? error : new AggregateError([stopFailure, error], "onboarding attempt closure unproved"));
+        const causes = [...new Set([session.failure, ...session.pollFailures, stopFailure, error].filter(value => value !== undefined))];
+        session.failure = new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime", causes.length === 1
+          ? causes[0] : new AggregateError(causes, "onboarding attempt closure unproved"));
         return { state: "uncertain" as const };
       } finally { clearTimeout(timer); }
     })();
@@ -502,6 +517,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().startsWith("chrome-extension://") && worker.url().endsWith("/src/relay-background.js"), timeout: options.closeProofMs });
       browserCurrent(session);
       const worker = session.worker;
+      worker.on("close", () => { if (!context.isClosed()) workersClosedBeforeContext.add(worker); });
       await workerCall(worker, "browserInstall"); browserCurrent(session);
       session.pump = (async () => {
         while (!session.revoked) {
@@ -575,12 +591,13 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           }
         }
       })().catch(async error => {
-        if (session.revoked || error instanceof ProfileOnboardingDuoProviderError
-          && error.reason === "browser-lifetime" && context.isClosed()) return;
+        const pollFailure = error instanceof ProfileOnboardingDuoProviderError && error.reason === "browser-lifetime";
+        if (closingPollFailure(error, context, worker) || session.revoked && !pollFailure) return;
         session.revoked = true;
         session.pumpFailure = error;
         try {
-          if (active) { await reportFailure(active, error); await close(active); }
+          const attempt = active;
+          if (attempt) { await reportFailure(attempt, error); if (pollFailure) retainPollFailure(attempt, error); await close(attempt); }
           else if (!(error instanceof DuoDiagnosticReportError)) reportDuoEvent(owner, failureEvent(error));
         } catch (reportError) { session.pumpFailure = new AggregateError([error, reportError]); }
       });
@@ -618,7 +635,8 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     async closeBrowser(owner: DraftDuoBrowserOwner) {
       if (!browser) return { state: "closed" as const };
       if (!sameOwner(browser.owner, owner)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-      return closeBrowser(browser);
+      const session = browser, closure = await closeBrowser(session);
+      return closure.state === "closed" ? { state: "closed" as const } : { state: "uncertain" as const, cause: session.closureFailure };
     },
     async start(attempt: DraftDuoAttempt, bindObservedContext: (context: DraftDuoObservedContext) => Promise<DraftDuoCapability>, onFailure: (error: Error) => Promise<void>): Promise<void> {
       if (active) {
@@ -631,7 +649,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       browserCurrent(browser);
       const session: ProviderSession = { attempt, profileDirectory: browser.profileDirectory,
         context: browser.context, worker: browser.worker,
-        reportFailure: onFailure, accepted: false, revoked: false };
+        reportFailure: onFailure, pollFailures: new Set(), accepted: false, revoked: false };
       active = session;
       session.startup = (async () => {
         if (!session.worker) throw new ProfileOnboardingDuoProviderError("unavailable", "worker");
@@ -690,9 +708,10 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           if (error instanceof DuoDiagnosticReportError && session.failure) {
             session.failure = new ProfileOnboardingDuoProviderError(session.failure.kind, session.failure.reason, new AggregateError([session.failure, error]));
           }
-          if (session.revoked || error instanceof ProfileOnboardingDuoProviderError
-            && error.reason === "browser-lifetime" && session.context?.isClosed()) return;
+          const pollFailure = error instanceof ProfileOnboardingDuoProviderError && error.reason === "browser-lifetime";
+          if (closingPollFailure(error, session.context, session.worker) || session.revoked && !pollFailure) return;
           await reportFailure(session, error);
+          if (pollFailure) retainPollFailure(session, error);
           queueMicrotask(() => { void close(session); });
         });
         session.expiry = setTimeout(() => {

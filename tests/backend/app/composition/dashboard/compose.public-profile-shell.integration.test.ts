@@ -52,7 +52,7 @@ async function readyPublicSignUp(base: string, methods: "confirmed" | "detected"
     assert.equal(result.methods[method].state, "complete");
     assert.equal(result.step, method === "touch" ? "ready" : "duo");
   }
-  return { post, cookie, finish: () => post("/api/v1/profile/onboarding/complete", { operationId: draft.operationId }, cookie) };
+  return { post, cookie, draft, finish: () => post("/api/v1/profile/onboarding/complete", { operationId: draft.operationId }, cookie) };
 }
 
 async function finishPublicSignUp(base: string): Promise<Response> {
@@ -97,6 +97,54 @@ it("keeps an unproved onboarding browser closure explicitly refused without retr
     const foreign = await post("/api/v1/profile/onboarding/duo/browser", { operationId: draft.operationId }, "relay-profile-onboarding=foreign");
     assert.deepEqual(await foreign.json(), { state: "refused", code: "PROFILE_SESSION_STALE" });
   } finally { await assert.rejects(runtime.stop(), storageCompose.RuntimeCustodyUncertainError); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
+});
+
+for (const action of ["cancel", "complete"] as const) for (const withCause of [false, true]) it(`holds the first ${action} browser closure failure with cause=${withCause} without retry or erasure`, async () => {
+  const f = await fixture();
+  const primary = new AuthoritySourceClosureUnprovedError([new Error("synthetic native browser closure unproved")]);
+  let closes = 0, shows = 0;
+  const runtime = await composeDashboardApplication({ admission: f.machine, lifetimeLock: f.lifetime, isolation: rebuildRuntimeIsolation,
+    backendPortOverride: 0, frontendPortOverride: 0, env: {}, onboardingDuo: { ...syntheticOnboardingDuo(),
+      async showBrowser() { shows++; },
+      async closeBrowser() { closes++; return { state: "uncertain", ...(withCause ? { cause: primary } : {}) }; } } });
+  const base = `http://127.0.0.1:${runtime.port}`;
+  try {
+    const { post, cookie, draft } = await readyPublicSignUp(base);
+    const shown = await post("/api/v1/profile/onboarding/duo/browser", { operationId: draft.operationId }, cookie);
+    assert.equal(shown.status, 200); assert.equal(closes, 0);
+    const initialShows = shows;
+    const operationPath = join(f.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
+    const credentialPath = join(f.machine.stateRoot, "machine", "duo-credentials", `${draft.profileId}.json`), credential = readFileSync(credentialPath);
+    const response = await post(`/api/v1/profile/onboarding/${action}`, { operationId: draft.operationId }, cookie);
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
+    const heldOperation = readFileSync(operationPath);
+    for (const next of ["cancel", "complete", "duo/browser", "duo/portal", "duo/start"]) {
+      const refused = await post(`/api/v1/profile/onboarding/${next}`, { operationId: draft.operationId, ...(next === "duo/start" ? { method: "key" } : {}) }, cookie);
+      assert.equal(refused.status, 409, next);
+      assert.deepEqual(await refused.json(), { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
+    }
+    assert.deepEqual(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json(), { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
+    assert.equal(closes, 1); assert.equal(shows, initialShows);
+    assert.deepEqual(readFileSync(operationPath), heldOperation); assert.deepEqual(readFileSync(credentialPath), credential);
+    assert.equal(existsSync(join(f.machine.stateRoot, "profiles", draft.profileId)), true);
+    assert.deepEqual(f.machine.readProfileRegistry().profiles, []);
+  } finally {
+    await assert.rejects(runtime.stop(), error => {
+      assert.ok(error instanceof storageCompose.RuntimeCustodyUncertainError);
+      if (withCause) {
+        const pending: unknown[] = [error], seen = new Set<unknown>();
+        while (pending.length) {
+          const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
+          if (value instanceof AggregateError) { const nested: readonly unknown[] = value.errors; pending.push(...nested); }
+          if (value instanceof Error) pending.push(value.cause);
+        }
+        assert.ok(seen.has(primary), "shutdown must retain the original browser closure cause");
+      }
+      return true;
+    });
+    f.machine.release(); rmSync(f.root, { recursive: true, force: true });
+  }
 });
 
 for (const closeFails of [false, true]) it(`preserves startup recovery failure and ${closeFails ? "unproved" : "proved"} profile closure under the held controller`, async () => {

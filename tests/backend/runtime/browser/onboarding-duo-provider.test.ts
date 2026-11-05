@@ -10,7 +10,7 @@ import { describe, it } from "vitest";
 import type { BrowserContext, Worker } from "playwright";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
-import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext } from "../../../../src/backend/profiles/onboarding-duo.js";
+import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
 import { ProfileOnboardingStateSchema } from "../../../../src/models/profiles/public-profile.js";
 
 function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "darwin") {
@@ -55,11 +55,13 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let driftAfter: string | undefined;
   function called(name: string): void { calls.push(name); if (name === driftAfter) documentCurrent = false; }
   const failures: Error[] = [];
+  const workerCloseListeners: (() => void)[] = [];
   const reportFailure = async (error: Error): Promise<void> => { failures.push(error); };
   let current = true;
   let sameOriginChildFrame = false;
   let observed: DraftDuoObservedContext | undefined;
   const worker = {
+    on(_event: "close", callback: () => void) { workerCloseListeners.push(callback); },
     url: () => "chrome-extension://owned-extension/src/relay-background.js",
     async evaluate(_callback: unknown, input: { method: string; args: unknown[] }) {
       workerCalls.push(input.method);
@@ -195,6 +197,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     refuseFocus(error: Error) { focusFailure = error; },
     refuseReturn(error: Error) { returnFailure = error; },
     beginContextClose() { closing = true; },
+    closeWorker() { for (const listener of workerCloseListeners) listener(); },
     rejectPoll(method: "next" | "browserNext", error: Error) { const reject = rejectPolls.get(method); assert.ok(reject); reject(error); },
     loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, windowFocuses: () => windowFocusCount, osFocuses: () => osFocusCount, relayCaptures: () => capturedRelay, relayReturns: () => returnedRelay, failInstall: () => { failInstall = true; }, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
@@ -209,6 +212,15 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     } };
 }
 const BIND = { documentId: "A0000000000040008000000000000007", tabId: 7, origin: "https://test.duosecurity.com", rpId: "duosecurity.com" };
+class TargetClosedError extends Error {}
+
+function assertUncertainBrowserClosure(closure: Awaited<ReturnType<ProfileOnboardingDuoProvider["closeBrowser"]>>) {
+  assert.equal(closure.state, "uncertain");
+  if (closure.state !== "uncertain") throw new Error("uncertain browser closure required");
+  assert.ok(closure.cause instanceof Error);
+  assert.deepEqual(Object.keys(closure).toSorted(), ["cause", "state"]);
+  return closure.cause;
+}
 
 describe("draft Duo provider", () => {
   it("classifies a failed Relay target observation before browser launch or profile creation", async () => {
@@ -233,6 +245,48 @@ describe("draft Duo provider", () => {
       assert.deepEqual(w.calls, []);
     } finally { await w.cleanup(); }
   });
+  for (const poll of ["idle", "next", "browserNext"] as const) for (const kind of ["operation", "worker-closed"] as const) it(`retains a genuine ${poll} ${kind} failure rejected before closing but caught after closing begins`, async () => {
+    const w = world(), original = kind === "operation" ? new Error("synthetic genuine pre-close worker failure") : new TargetClosedError("synthetic worker closed before its context");
+    try {
+      if (poll === "idle") await w.provider.showBrowser(w.owner);
+      else await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      if (kind === "worker-closed") w.closeWorker();
+      w.rejectPoll(poll === "idle" ? "browserNext" : poll, original);
+      w.beginContextClose();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      if (poll === "idle") {
+        await w.closeBrowser();
+        await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError
+          && error.reason === "worker" && error.cause instanceof ProfileOnboardingDuoProviderError && error.cause.cause === original);
+        assert.equal(w.launches(), 1);
+      } else {
+        assert.equal(w.failures.length, 1);
+        const retained = w.failures[0]; assert.ok(retained instanceof ProfileOnboardingDuoProviderError);
+        assert.equal(retained.reason, "browser-lifetime"); assert.equal(retained.cause, original);
+      }
+      assert.deepEqual(w.calls, []);
+    } finally { await w.closeBrowser(); await w.cleanup(); }
+  });
+  for (const poll of ["next", "browserNext"] as const) it(`retains ${poll} rejection and a prior callback failure when the close event overtakes its catch`, async () => {
+    const w = world(), original = new Error("synthetic pre-close rejection"), callback = new Error("synthetic closure callback failure");
+    try {
+      await w.provider.start(w.attempt, w.bind, async error => { await w.reportFailure(error); throw callback; });
+      w.rejectPoll(poll, original);
+      await w.closeBrowser();
+      await new Promise<void>(resolve => setImmediate(resolve));
+      await assert.rejects(w.provider.cancel(w.attempt), error => {
+        const pending: unknown[] = [error], seen = new Set<unknown>();
+        while (pending.length) {
+          const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
+          if (value instanceof AggregateError) { const nested: readonly unknown[] = value.errors; pending.push(...nested); }
+          if (value instanceof Error) pending.push(value.cause);
+        }
+        assert.ok(seen.has(original)); assert.ok(seen.has(callback)); return true;
+      });
+      assertUncertainBrowserClosure(await w.provider.closeBrowser(w.owner));
+      await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1);
+    } finally { await w.closeBrowser(); await w.cleanup(); }
+  });
   for (const poll of ["idle", "next", "browserNext"] as const) for (const proof of ["proved", "missing-event"] as const) {
     it(`settles ${poll} rejection during requested closure only after ${proof} physical closure`, async () => {
       const w = world();
@@ -240,12 +294,13 @@ describe("draft Duo provider", () => {
         if (poll === "idle") await w.provider.showBrowser(w.owner);
         else await w.provider.start(w.attempt, w.bind, w.reportFailure);
         w.beginContextClose();
-        w.rejectPoll(poll === "idle" ? "browserNext" : poll, new Error("synthetic closing poll"));
+        w.rejectPoll(poll === "idle" ? "browserNext" : poll, new TargetClosedError("synthetic closing poll"));
         await new Promise<void>(resolve => setImmediate(resolve));
         assert.equal(w.failures.length, 0, "a pending close is not a separate worker failure");
         if (proof === "missing-event") w.withholdCloseEvent();
         await w.closeBrowser();
-        assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
+        const closure = await w.provider.closeBrowser(w.owner);
+        if (proof === "proved") assert.deepEqual(closure, { state: "closed" }); else assertUncertainBrowserClosure(closure);
         if (poll !== "idle" && proof === "proved") {
           assert.equal(w.failures.length, 1);
           assert.ok(w.failures[0] instanceof ProfileOnboardingDuoProviderError);
@@ -275,7 +330,8 @@ describe("draft Duo provider", () => {
         await retained;
         if (proof === "missing-event") w.withholdCloseEvent();
         await w.closeBrowser();
-        assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
+        const closure = await w.provider.closeBrowser(w.owner);
+        if (proof === "proved") assert.deepEqual(closure, { state: "closed" }); else assertUncertainBrowserClosure(closure);
         assert.deepEqual(w.failures, []);
         assert.ok(w.calls.includes("unknown")); assert.ok(!w.calls.includes("portal-accepted"));
         if (proof === "proved") { await w.provider.showBrowser(w.owner); assert.equal(w.launches(), 2); }
@@ -327,7 +383,8 @@ describe("draft Duo provider", () => {
         transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() });
       await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId: randomUUID() });
       w.loseActiveStopAck(); if (proof === "missing-event") w.withholdCloseEvent();
-      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
+      const closure = await w.provider.closeBrowser(w.owner);
+        if (proof === "proved") assert.deepEqual(closure, { state: "closed" }); else assertUncertainBrowserClosure(closure);
       assert.ok(w.calls.includes("unknown")); assert.ok(!w.calls.includes("portal-accepted"));
       if (proof === "proved") { await w.provider.showBrowser(w.owner); assert.equal(w.launches(), 2); }
       else { await assert.rejects(w.provider.showBrowser(w.owner), error => {
@@ -350,7 +407,7 @@ describe("draft Duo provider", () => {
       let settled = false;
       const closing = w.provider.closeBrowser(w.owner).then(result => { settled = true; return result; });
       await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(settled, false);
-      assert.deepEqual(await closing, { state: "uncertain" });
+      assertUncertainBrowserClosure(await closing);
       await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1);
     } finally { w.releaseStartup(); await starting; await w.closeBrowser(); await w.cleanup(); }
   });
@@ -362,7 +419,7 @@ describe("draft Duo provider", () => {
       let settled = false;
       const closing = w.provider.closeBrowser(w.owner).then(result => { settled = true; return result; });
       await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(settled, false);
-      assert.deepEqual(await closing, { state: "uncertain" });
+      assertUncertainBrowserClosure(await closing);
       w.releasePump(); await new Promise<void>(resolve => setImmediate(resolve));
       await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1);
     } finally { w.releasePump(); await w.closeBrowser(); await w.cleanup(); }
@@ -374,7 +431,7 @@ describe("draft Duo provider", () => {
       const entered = w.blockNativeProbe();
       const closing = w.provider.closeBrowser(w.owner);
       await entered;
-      assert.deepEqual(await closing, { state: "uncertain" });
+      assertUncertainBrowserClosure(await closing);
       assert.ok(w.events.some(event => event.operation === "close-native-proof" && event.detail === "browser-lifetime"));
       assert.ok(existsSync(w.profile()));
       w.releaseNativeProbe();
@@ -403,7 +460,7 @@ describe("draft Duo provider", () => {
       const closing = w.provider.closeBrowser(w.owner).then(result => { settled = true; return result; });
       await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(settled, false); release();
       assert.deepEqual(await ceremony, { ok: false });
-      assert.deepEqual(await closing, { state: "uncertain" }); assert.equal(unknowns, 2);
+      assertUncertainBrowserClosure(await closing); assert.equal(unknowns, 2);
       await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1);
     } finally { release(); await w.closeBrowser(); await w.cleanup(); }
   });
@@ -423,7 +480,8 @@ describe("draft Duo provider", () => {
     try {
       await w.provider.showBrowser(w.owner); w.loseBrowserStopAck();
       if (proof === "unproved") w.withholdCloseEvent();
-      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: proof === "proved" ? "closed" : "uncertain" });
+      const closure = await w.provider.closeBrowser(w.owner);
+        if (proof === "proved") assert.deepEqual(closure, { state: "closed" }); else assertUncertainBrowserClosure(closure);
       if (proof === "proved") { await w.provider.showBrowser(w.owner); assert.equal(w.launches(), 2); }
       else { await assert.rejects(w.provider.showBrowser(w.owner)); assert.equal(w.launches(), 1); }
     } finally { await w.closeBrowser(); await w.cleanup(); }
@@ -622,7 +680,7 @@ describe("draft Duo provider", () => {
       await w.provider.start(w.attempt, w.bind, w.reportFailure); w.blockStop();
       await assert.rejects(w.provider.cancel(w.attempt), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
       await assert.rejects(w.provider.start({ ...w.attempt, attemptId: randomUUID() }, w.bind, w.reportFailure));
-      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "uncertain" });
+      assertUncertainBrowserClosure(await w.provider.closeBrowser(w.owner));
       await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
       assert.equal(w.launches(), 1);
     } finally { w.releaseStop(); await w.closeBrowser(); await w.cleanup(); }
@@ -653,7 +711,7 @@ describe("draft Duo provider", () => {
       assert.deepEqual(w.failures, []);
       await assert.rejects(w.provider.start({ ...w.attempt, attemptId: randomUUID() }, w.bind, w.reportFailure),
         error => error instanceof ProfileOnboardingDuoProviderError && error.reason === "busy");
-      assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "uncertain" });
+      assertUncertainBrowserClosure(await w.provider.closeBrowser(w.owner));
       await assert.rejects(w.provider.showBrowser(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.kind === "unknown");
       assert.equal(w.launches(), 1);
       assert.ok(existsSync(w.profile()));

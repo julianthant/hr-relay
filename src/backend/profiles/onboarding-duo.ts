@@ -73,7 +73,7 @@ export interface DraftDuoCapability {
 export interface ProfileOnboardingDuoProvider {
   showBrowser(owner: DraftDuoBrowserOwner): Promise<void>;
   openPortal(owner: DraftDuoBrowserOwner): Promise<void>;
-  closeBrowser(owner: DraftDuoBrowserOwner): Promise<Readonly<{ state: "closed" | "uncertain" }>>;
+  closeBrowser(owner: DraftDuoBrowserOwner): Promise<Readonly<{ state: "closed" } | { state: "uncertain"; cause?: unknown }>>;
   start(attempt: DraftDuoAttempt,
     bindObservedContext: (context: DraftDuoObservedContext) => Promise<DraftDuoCapability>,
     reportFailure: (error: Error) => Promise<void>): Promise<void>;
