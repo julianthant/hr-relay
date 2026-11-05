@@ -483,28 +483,36 @@ for (const [phase, move] of [["prepared", false], ["commit-intent", false], ["do
       assert.equal(readProfileDatabaseBinding(f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       assert.deepEqual(LogoutOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))), operation);
       convert.mockRestore();
-      let workspace = f.workspace, stateRoot = f.stateRoot, path = f.path;
-      if (target !== undefined) {
-        await prepareApplicationDataWorkspace(f.workspace, target, lifetime, hostFacts);
-        workspace = target; stateRoot = join(target, ".tracker", "data", "profiles", profileId); path = join(stateRoot, "state.db");
-        operationPath = join(target, ".tracker", "data", "machine", "operations", `${pending.operationId}.json`);
-        assert.equal(readFixedLayoutIntent(target)?.phase, "complete");
-      }
-      await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts);
+      await upgradeRegisteredPersonStores(f.workspace, lifetime, hostFacts);
       const next = LogoutOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
       const { settlement: previousSettlement, ...previousIdentity } = operation, { settlement, ...identity } = next;
       assert.deepEqual(identity, previousIdentity); assert.ok(previousSettlement && settlement);
-      const current = withReadonlyAuthoritySnapshot(path, database => inspectOpenDatabase(database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint);
+      const current = withReadonlyAuthoritySnapshot(f.path, database => inspectOpenDatabase(database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint);
       assert.deepEqual(settlement.requests, previousSettlement.requests); assert.deepEqual(settlement.workers, previousSettlement.workers);
       assert.equal(settlement.phase, phase === "done" ? "done" : "prepared");
       assert.equal(phase === "done" ? settlement.after : settlement.before, current);
+      assert.equal(readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json")).length, 1);
+      let workspace = f.workspace, stateRoot = f.stateRoot;
+      if (target !== undefined) {
+        await prepareApplicationDataWorkspace(f.workspace, target, lifetime, hostFacts);
+        workspace = target; stateRoot = join(target, ".tracker", "data", "profiles", profileId);
+        operationPath = join(target, ".tracker", "data", "machine", "operations", `${pending.operationId}.json`);
+        const layout = readFixedLayoutIntent(target);
+        assert.ok(layout?.phase === "complete");
+        const plan = layout.profiles.find(plan => plan.profileId === profileId); assert.ok(plan);
+        assert.equal(plan.logout, undefined);
+        assert.equal(existsSync(operationPath), false);
+      }
       assert.equal(readdirSync(join(stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json")).length, move ? 2 : 1);
       machine = acquireSharedRuntimeAdmission(workspace, lifetime);
-      assert.equal(machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "cancelling");
-      runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts });
-      assert.equal(runtime.session.resumeLogout(pending.operationId).state, "cancelling");
-      await runtime.awaitClosurePreparation(profileId);
-      assert.equal(runtime.session.resumeLogout(pending.operationId).state, "signed-out");
+      if (move) assert.equal(machine.readProfileRegistry().activeProfileId, null);
+      else {
+        assert.equal(machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "cancelling");
+        runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts });
+        assert.equal(runtime.session.resumeLogout(pending.operationId).state, "cancelling");
+        await runtime.awaitClosurePreparation(profileId);
+        assert.equal(runtime.session.resumeLogout(pending.operationId).state, "signed-out");
+      }
       assert.equal(existsSync(operationPath), false);
       assert.equal(machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "ready");
     } finally { convert.mockRestore(); await runtime?.close(); source?.close(); sourceAdmission?.release(); session.close(); machine?.release(); await f.close(); await lifetime.close(); if (target !== undefined) rmSync(target, { recursive: true, force: true }); }
