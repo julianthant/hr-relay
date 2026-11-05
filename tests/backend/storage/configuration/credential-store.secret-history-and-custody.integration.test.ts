@@ -252,10 +252,10 @@ it("imports retired historical identities without reviving values or allowing fu
     assert.equal(authenticateDocument(document).record.entries.ucpathUserId, undefined);
     owner.replaceRecord("protected", frame.revision, document);
     assert.equal(f.store.read().revision, 4); assert.equal(f.store.read().entries.ucpathUserId, undefined);
-    assert.equal(f.store.ownsCommandId(COMMAND_1), true); assert.equal(f.store.ownsCommandId(tombstoneOnlyCommand), false);
+    assert.equal(f.store.ownsCommandId(COMMAND_1), true); assert.equal(f.store.ownsCommandId(tombstoneOnlyCommand), true);
     assert.equal(f.store.acceptedAt(COMMAND_1), undefined); assert.equal(f.store.acceptedAt(tombstoneOnlyCommand), undefined);
     const bytes = readFileSync(f.path);
-    for (const reused of [request({ commandId: COMMAND_1, writeId: randomUUID(), expectedRevision: 4 }), request({ commandId: randomUUID(), writeId: retiredWrite, expectedRevision: 4 })]) {
+    for (const reused of [request({ commandId: tombstoneOnlyCommand, writeId: randomUUID(), expectedRevision: 4 }), request({ commandId: COMMAND_1, writeId: randomUUID(), expectedRevision: 4 }), request({ commandId: randomUUID(), writeId: retiredWrite, expectedRevision: 4 })]) {
       const result = f.store.apply(reused); assert.equal(result.state, "rejected"); if (result.state === "rejected") assert.equal(result.code, "command-divergent");
       assert.equal(f.store.verifyReplay(reused).state, "rejected");
     }
