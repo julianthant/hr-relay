@@ -606,7 +606,7 @@ it("close and reopen recovers an unproved Duo browser hold only after the owning
   const root = realpathSync(mkdtempSync(join(tmpdir(), "closure-hold-reopen-")));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
   const initialLifetime = await runtimeLifetimeLock(), port = initialLifetime.port; await initialLifetime.close();
-  const child = fork(join(process.cwd(), "tests/support/processes/onboarding-closure-hold-worker.ts"), [root, String(port)], {
+  const child = fork(fileURLToPath(new URL("../../support/processes/onboarding-closure-hold-worker.ts", import.meta.url)), [root, String(port)], {
     env: credentialKeychainTestEnvironment(process.env), execArgv: ["--import", testProcessImport()], stdio: ["ignore", "ignore", "pipe", "ipc"] });
   const closed = once(child, "close");
   let stderr = ""; child.stderr?.on("data", (bytes: Buffer) => { stderr += bytes.toString(); });
