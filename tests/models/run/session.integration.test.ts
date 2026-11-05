@@ -167,7 +167,7 @@ afterEach(_afterEachFixture0);
     assert.equal(w.changes.filter((change) => change.kind === "snapshot").length, before + 1);
     for (const row of w.projection.buildDashboardDayWire(DAY).queueSurfaces) {
       assert.equal(row.session.state, "present");
-      if (row.session.state === "present") assert.deepEqual(row.session.presentation, { groupInQueue: false, version: 2, startedAt: batch.startedAt });
+      if (row.session.state === "present") assert.deepEqual(row.session.presentation, { layout: "items", groupInQueue: false, version: 2, startedAt: batch.startedAt });
     }
     w.projection.reconcileWorkerAuthority();
     assert.equal(w.changes.filter((change) => change.kind === "snapshot").length, before + 1);
