@@ -18,7 +18,7 @@ import {
 } from "../../../workflow-kit/validation/workflow-module-audit.js";
 import { taskStoreRegistry } from "./task-registry.js";
 import { createWorkflowDescriptorRegistry } from "../../../workflows/descriptor-registry.js";
-import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES } from "./generated-workflow-modules.js";
+import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_QUEUE_CAPABILITIES } from "./generated-workflow-modules.js";
 export * from "./generated-workflow-modules.js";
 export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
   publicEntries: readonly PublicModule[],
@@ -57,6 +57,14 @@ export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
 const registry = createWorkflowRegistry(WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES);
 /** Resolve a public workflow, or refuse with its registered alternatives. */
 export const workflowModuleOf = registry.moduleOf;
+
+export function workflowQueueCapabilities(workflowId: string): Readonly<{
+  sessionItemScope?: boolean;
+  groupedBatchLayout?: boolean;
+  retryBatchMembers?: boolean;
+}> | undefined {
+  return WORKFLOW_QUEUE_CAPABILITIES.find(([id]) => id === workflowId)?.[1];
+}
 
 export const childWorkflowModuleOf = registry.childModuleOf;
 

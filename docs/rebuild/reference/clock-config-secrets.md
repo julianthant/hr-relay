@@ -340,7 +340,9 @@ runtime lifetime. Finish publication rechecks that opaque proof, its original re
 Duo evidence and verifier custody; it consumes the operation before conversion adds a receipt.
 Early storage initialization settles only explicit Finish operations. Other pending drafts and their
 owned browser roots remain for ordinary onboarding recovery, which retains its missing-root and
-owned-cleanup refusals. Startup defers profile activation until conversion completes. Ordinary
+owned-cleanup refusals. Stopped repair of a READY peer may coexist with another profile's pending
+sign-up; it retains registration, session-generation and maintenance-operation checks, and grants
+no ordinary runtime access. Startup defers profile activation until conversion completes. Ordinary
 publication and credential reads remain current-format only.
 
 Pending logout retains its captured credential source through crash reconciliation and native
@@ -756,6 +758,13 @@ revision and canonical retirement command. Remove-worker retirement requires
 `retiredAt == auditedAt == completedAt` and `admittedAt <= proof.checkedAt <= completedAt`;
 plan-excess retirement requires `retiredAt == proof.checkedAt`. Pending or UNKNOWN commands and
 verification or recovery holds continue to block closure.
+A fresh additive Run allocation may retire without a lease only when its original controller retains
+positive proof that the refused Spawn unwound before entering the spawner. The private capability
+binds the exact allocation, admission, supervisor and audited refusal; a missing process or record
+cannot issue it. Explicit drainage settles only that unchanged final member through an atomic
+ordinary Plan retirement, retaining the refused Spawn and audit. Capability consumption follows the
+outermost COMMIT. A crash before retirement loses that authority; completed retirement remains
+read-only history. Spawn attempts and unknown outcomes retain uncertainty.
 
 Automatic profile restore requires the exact workspace-bound `OfflineMaintenanceOperation` issued by the genuine root lifetime. Startup recovery issues that operation before admission and passes the same object into the exclusive installation lease. The automatic path consumes it once and retains it through validation, source IO and owned closure. Copies, foreign roots and expired operations refuse before effects. Older runtime lock artifacts produce `RUNTIME_OLD_BUILD_ARTIFACTS` without interpretation or deletion. Current credentials, native keys, counter floors and machine evidence stay outside the SQLite payload. Whole-machine rollback without an independent retained witness refuses before staging. Replay accepts only the captured prior or exact one-epoch successor registry/control pair and reuses that successor without advancing twice.
 

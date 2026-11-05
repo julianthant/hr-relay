@@ -1,3 +1,5 @@
+import { CommandResultSchema, type CommandRequest } from "../../../rules/commands/commands.js";
+import type { WorkerEffectAcknowledgement } from "../../../models/run/worker-control.js";
 import { ProfileDatabaseBindingSchema } from "../../../models/profiles/profile.js";
 import type { WorkerControlRecord } from "../../../models/run/worker-control.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
@@ -18,6 +20,7 @@ import { CommandIdSchema, IsoInstantSchema, WorkerIdSchema, WorkflowIdSchema } f
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
 interface WorkerSlotPorts {
+  allocated?: (slot: WorkerSlotRecord) => void;
   admission: RuntimeAdmission;
   clock?: Clock;
   database: DatabaseSync;
@@ -217,7 +220,7 @@ export function readWorkerReservationCustody(database: DatabaseSync, slots: read
   }));
 }
 
-export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts) {
+export function createWorkerSlotRepository({ database, mutate, allocated }: WorkerSlotPorts) {
   const get = (workerId: string) => { const row = database.prepare("SELECT * FROM worker_slots WHERE id=?").get(WorkerIdSchema.parse(workerId)); return row === undefined ? undefined : workerSlotFromRow(row); };
   const list = (workflow?: string) => (workflow === undefined ? database.prepare("SELECT * FROM worker_slots ORDER BY ordinal").all()
     : database.prepare("SELECT * FROM worker_slots WHERE workflow=? ORDER BY ordinal").all(WorkflowIdSchema.parse(workflow))).map(workerSlotFromRow);
@@ -255,6 +258,7 @@ export function createWorkerSlotRepository({ database, mutate }: WorkerSlotPorts
           reservationCommandId: request.commandId, createdAt: request.now, updatedAt: request.now });
         database.prepare("INSERT INTO worker_slots(id,workflow,ordinal,membership_revision,phase,retired_at,retirement_command_id,reservation_command_id,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,NULL,NULL,?,?,?,?)")
           .run(record.workerId,record.workflow,record.ordinal,record.membershipRevision,record.phase,record.reservationCommandId,canonicalJsonStringify(record),record.createdAt,record.updatedAt);
+        allocated?.(record);
         return { result: record, changes: 1 };
       });
     },
@@ -470,4 +474,48 @@ export function retireWorkerVerification(
   repositories.lifecycleJournal.insertAudit({ kind: "run-lifecycle", auditId, request: command,
     result: { kind: "worker", slot, beforePoolVersion: request.expectedPoolVersion, afterPoolVersion: planned.pool.version }, completedAt: request.now });
   return slot;
+}
+
+export class WorkerPoolPlanVersionConflict extends Error {
+  constructor(readonly currentVersion: number) { super("worker-pool-version-conflict"); }
+}
+
+export function applyWorkerPoolPlan(repositories: import("./authority-database.js").AuthorityRepositories,
+  request: Extract<CommandRequest, { type: "plan-worker-count" }>, now: string, basisVersion: number,
+  acknowledgement: WorkerEffectAcknowledgement) {
+  if (acknowledgement.kind !== "plan") {
+    throw new Error("plan-worker-count settled without a plan acknowledgement; the pool seam is inconsistent");
+  }
+  const control = repositories.workerControls.get(request.commandId);
+  if (control === undefined) throw new Error("worker-roster-admission-missing");
+  const roster = control.roster;
+  if (roster === undefined || roster.beforeVersion !== basisVersion
+    || canonicalJsonStringify(acknowledgement.workerIds) !== canonicalJsonStringify(roster.selected.map(slot => slot.workerId))
+    || acknowledgement.retirements.length !== roster.excess.length) throw new Error("worker-roster-settlement-mismatch");
+  for (const original of [...roster.selected, ...roster.excess]) {
+    const current = repositories.workerSlots.get(original.workerId);
+    if (canonicalJsonStringify(current) !== canonicalJsonStringify(original)) throw new Error("worker-roster-reservation-changed");
+  }
+  const currentPool = repositories.workerPools.get(request.target.workflowId);
+  if (currentPool === undefined) throw new Error("worker-pool-missing-before-settlement");
+  if (currentPool.version !== roster.admittedVersion) throw new WorkerPoolPlanVersionConflict(currentPool.version);
+  for (const slot of roster.excess) {
+    const proof = acknowledgement.retirements.find(value => value.workerId === slot.workerId);
+    if (proof === undefined || proof.membershipRevision !== slot.membershipRevision
+      || Date.parse(proof.checkedAt) < Date.parse(control.admittedAt)
+      || repositories.workerControls.browsers(slot.workerId).some(browser => browser.health !== "closed")) throw new Error("worker-retirement-not-proved");
+    repositories.workerSlots.retire({ workerId: slot.workerId, commandId: request.commandId,
+      expectedRevision: slot.membershipRevision, now: proof.checkedAt });
+  }
+  if (roster.admittedVersion === roster.beforeVersion) {
+    const planned = repositories.workerPools.plan({ workflow: request.target.workflowId,
+      expectedVersion: roster.beforeVersion, desiredWorkers: request.payload.desiredWorkers,
+      requestedBy: request.requestedBy, now });
+    if (planned.state !== "applied" || planned.pool.version !== roster.afterVersion) throw new Error("worker-pool-version-conflict");
+  } else if (currentPool.desiredWorkers !== request.payload.desiredWorkers) throw new Error("worker-pool-declaration-mismatch");
+  requireWorkerPoolRoster(repositories, request.target.workflowId);
+  const target = { family: "worker-pool" as const, workflowId: request.target.workflowId };
+  return { result: CommandResultSchema.parse({ state: "applied", commandId: request.commandId,
+    affectedTargets: [target, ...acknowledgement.workerIds.map(workerId => ({ family: "worker-browser", workerId }))] }),
+    versionChanges: [{ target, before: basisVersion, after: basisVersion + 1 }], affectedDependencyIds: [] };
 }

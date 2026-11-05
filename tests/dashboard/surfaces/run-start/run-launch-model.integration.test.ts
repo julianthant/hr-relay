@@ -52,8 +52,8 @@ describe("Start enqueue verification through the actual command and day transpor
     assert.throws(() => w.launch.prepareFinal({ ...plan, plannedBy: "another-operator" }), planIdentityError);
   });
   for (const [name, change] of [
-    ["missing session origin", (row: QueueSurfaceWire) => ({ ...row, session: { state: "present", sessionId: row.session.state === "present" ? row.session.sessionId : OTHER_RUN } })],
-    ["another start plan", (row: QueueSurfaceWire) => ({ ...row, session: { state: "present", sessionId: OTHER_RUN, origin: { kind: "start-plan", startPlanId: OTHER_PLAN, actorId: "local-operator" } } })],
+    ["missing session origin", (row: QueueSurfaceWire) => ({ ...row, session: { state: "present", itemScope: "session", sessionId: row.session.state === "present" ? row.session.sessionId : OTHER_RUN } })],
+    ["another start plan", (row: QueueSurfaceWire) => ({ ...row, session: { state: "present", itemScope: "session", sessionId: OTHER_RUN, origin: { kind: "start-plan", startPlanId: OTHER_PLAN, actorId: "local-operator" } } })],
     ["another actor", (row: QueueSurfaceWire) => ({ ...row, actorId: "other-operator" })],
     ["another config", (row: QueueSurfaceWire) => ({ ...row, configFingerprint: "f".repeat(64) })],
     ["another descriptor", (row: QueueSurfaceWire) => ({ ...row, descriptorHash: "f".repeat(64) })],
