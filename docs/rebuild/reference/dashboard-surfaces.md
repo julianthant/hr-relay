@@ -121,6 +121,27 @@ linked children have their own rows and linked-run chips; hidden-unless-failed c
 as failed member lines. Native operation/member scheduling shapes do not change. A delegating
 single or member can present an operation without changing its stored shape.
 
+A nondelegated Person Lookup start with served `groupInQueue` appears as one presentation batch.
+Its session ID, revision, origin and enqueue time identify the group; it has no native parent run,
+trace, run number or representative command. The existing Name/Status well shows one logical person
+per start, attention first with source order retained within tiers. Each person uses its latest attempt
+and served outcome, including successful Inactive and Not found results. Its attempt selector keeps
+prior attempts reachable at their exact Logs and timeline. Different starts stay separate even when
+they contain the same person. Single starts and other workflows keep their ordinary item rows.
+
+Lookup status filters admit a batch when one of its attempts matches and retain its canonical
+selected-day cohort. The well labels its population as people on this day: the wire does not claim
+complete cross-day session membership. Group status and end time derive from current member facts;
+a missing terminal end stays duration unknown. Selection and well expansion use stable session keys.
+Selection-mode inputs expand locally to current member run IDs for typed bulk planning; the mounted
+Focus toolbar adds no selection toggle. The batch footer keeps stable session identity and timing.
+Its single footer also uses `FooterActions` for the explicitly selected person's exact attempt and
+served revision. An accessible person/attempt name and tooltip identify the action scope. With no
+person selected it exposes no run action; it never chooses a representative or claims a batch mutation. Cancel,
+Pause/Resume, Rerun/Recover and Delete retain their existing confirmation and command paths when
+served. There is no grouping toggle. Queue bands and the finished digest count drawn
+rows; status-filter controls, calendar and Analytics retain their run-based populations.
+
 An operation can carry record-member presentation separately from native member counts. Each record
 is identified by its review-owner run and stable record ID; child histories can serve several records.
 Covered native children do not draw duplicate lines. OCR uses the existing Name/Status well for

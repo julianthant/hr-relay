@@ -21,8 +21,8 @@ import assert_m1 from "node:assert/strict";
 import { act as act_m1,createElement as createElement_m1 } from "react";
 import { createRoot as createRoot_m1,type Root as Root_m1 } from "react-dom/client";
 import { afterEach as afterEach_m1,describe as describe_m1,it as it_m1 } from "vitest";
-import { queueBatches as queueBatches_m1,visibleQueueKeys as visibleQueueKeys_m1 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
-import { QueuePanel as QueuePanel_m1,type QueueHandlers as QueueHandlers_m1 } from "../../../../src/dashboard/surfaces/queue/queue.js";
+import { filterQueueSurfaces, queueItemLayout, queueMemberLines, attentionQueueKeys, queueBatches as queueBatches_m1,visibleQueueKeys as visibleQueueKeys_m1 } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
+import { QueuePanel as QueuePanel_m1,type QueueViewState, type QueueHandlers as QueueHandlers_m1 } from "../../../../src/dashboard/surfaces/queue/queue.js";
 import { QueueSurfaceWireSchema as QueueSurfaceWireSchema_m1,type QueueSurfaceWire as QueueSurfaceWire_m1 } from "../../../../src/models/dashboard/projection.js";
 import { FIXTURE_DAY as FIXTURE_DAY_m1,FIXTURE_NOW as FIXTURE_NOW_m1,uuidOf as uuidOf_m1 } from "../../../support/fixtures/dashboard/fixture-identity.js";
 import { FIXTURE_DAY_WIRE as FIXTURE_DAY_WIRE_m1 } from "../../../support/fixtures/dashboard/fixture-queue.js";
@@ -97,7 +97,7 @@ describe_m0("Queue consumes the served day boundary", () => {
 const base = FIXTURE_DAY_WIRE_m1.queueSurfaces.find((row) => row.surfaceKind === "single" && row.status === "queued");
 if (base === undefined) throw new Error("batch fixture requires a queued single run");
 function row(n: number, grouped = true, item = n, attempt = 1): QueueSurfaceWire_m1 {
-  return QueueSurfaceWireSchema_m1.parse({ ...base, runId: uuidOf_m1(900 + n), itemId: uuidOf_m1(800 + item), attempt,
+  return QueueSurfaceWireSchema_m1.parse({ ...base, workflowId: "separations", runId: uuidOf_m1(900 + n), itemId: uuidOf_m1(800 + item), attempt,
     title: ["Alice", "Ben", "Cara", "Ben retry"][n - 1] ?? "Ben retry again",
     session: { state: "present", sessionId: uuidOf_m1(700), presentation: { groupInQueue: grouped, version: 1, startedAt: base?.startedAt } },
   });
@@ -105,11 +105,12 @@ function row(n: number, grouped = true, item = n, attempt = 1): QueueSurfaceWire
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root_m1 | undefined;
 const _afterEachFixture0 = async () => { if (root !== undefined) await act_m1(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); };
-async function render(rows: readonly QueueSurfaceWire_m1[], handlers: QueueHandlers_m1 = { onSelect: () => undefined }, selectedRunId?: string): Promise<void> {
+async function render(rows: readonly QueueSurfaceWire_m1[], handlers: QueueHandlers_m1 = { onSelect: () => undefined }, selectedRunId?: string, view: Partial<QueueViewState> = {}): Promise<void> {
   if (root === undefined) { const host = document.createElement("div"); document.body.append(host); root = createRoot_m1(host); }
   await act_m1(async () => root?.render(createElement_m1(QueuePanel_m1, { surfaces: rows, handlers,
-    state: { nowIso: FIXTURE_NOW_m1, openWells: new Set<string>(), ...(selectedRunId === undefined ? {} : { selectedRunId }) },
-    workflowLabelOf: () => "Separations", panelLabel: "Separations", day: FIXTURE_DAY_m1,
+    state: { nowIso: FIXTURE_NOW_m1, openWells: new Set<string>(), ...(selectedRunId === undefined ? {} : { selectedRunId }), ...view },
+    actionsOf: surface => surface.actions,
+    workflowLabelOf: id => id === "person-lookup" ? "Person Lookup" : "Separations", panelLabel: rows[0]?.workflowId === "person-lookup" ? "Person Lookup" : "Separations", day: FIXTURE_DAY_m1,
   })));
 }
 
@@ -206,4 +207,165 @@ afterEach_m1(_afterEachFixture0);
     assert_m1.throws(() => queueBatches_m1([row(1), row(2, true, 1)]), /duplicate item attempt/u);
   });
 });
+
+function lookupRow(n: number, overrides: Record<string, unknown> = {}): QueueSurfaceWire_m1 {
+  return QueueSurfaceWireSchema_m1.parse({ ...row(n), workflowId: "person-lookup", ...overrides });
+}
+
+describe_m1("nondelegated Lookup batch presentation", () => {
+  afterEach_m1(_afterEachFixture0);
+
+  it_m1("uses session identity and aggregate timing as members change, preserving independent overlapping starts", () => {
+    const alice = lookupRow(1, { status: "done", outcome: { label: "Active", tone: "success" }, endedAt: { state: "present", value: "2026-08-03T17:14:30.000Z" } });
+    const ben = lookupRow(2, { status: "running" });
+    const failed = lookupRow(3, { status: "failed" });
+    const initial = queueItemLayout([alice, ben, failed]).displayTop;
+    assert_m1.equal(initial.length, 1);
+    const batch = initial[0]; assert_m1.ok("kind" in batch);
+    assert_m1.equal(batch.id, uuidOf_m1(700));
+    assert_m1.equal(batch.status, "running");
+    assert_m1.equal(batch.startedAt, alice.session.state === "present" ? alice.session.presentation?.startedAt : undefined);
+    assert_m1.deepEqual(queueMemberLines(batch, []).map(line => line.kind === "run" ? line.item.representative.runId : undefined), [failed.runId, ben.runId, alice.runId]);
+    const retry = lookupRow(4, { itemId: ben.itemId, attempt: 2, startedAt: "2026-08-03T16:00:00.000Z" });
+    const other = lookupRow(5, { itemId: alice.itemId, session: { state: "present", sessionId: uuidOf_m1(701),
+      presentation: { groupInQueue: true, version: 1, startedAt: "2026-08-03T18:30:00.000Z" } } });
+    const refreshed = queueItemLayout([retry, alice, ben, failed, other]).displayTop;
+    assert_m1.equal(refreshed.length, 2);
+    const updated = refreshed[0]; assert_m1.ok("kind" in updated);
+    assert_m1.equal(updated.key, batch.key);
+    assert_m1.equal(updated.startedAt, batch.startedAt);
+    assert_m1.equal(updated.members.length, 3);
+    assert_m1.deepEqual(updated.history.map(row => row.runId), [ben.runId]);
+    assert_m1.equal(updated.items.find(item => item.representative.itemId === ben.itemId)?.representative.runId, retry.runId);
+    assert_m1.deepEqual(new Set(visibleQueueKeys_m1([retry, alice, ben, failed, other])), new Set([retry.runId, alice.runId, ben.runId, failed.runId, other.runId]));
+    const waiting = lookupRow(2, { status: "blocked" });
+    assert_m1.deepEqual(attentionQueueKeys([alice, waiting]), [alice.runId, waiting.runId].filter(id => id === waiting.runId));
+  });
+
+  it_m1("keeps the complete loaded day cohort through filters and counts negative outcomes as successful", async () => {
+    const rows = ["Active", "Inactive", "Not found"].map((label, index) => lookupRow(index + 1, { status: "done",
+      outcome: { label, tone: index === 0 ? "success" : "neutral" }, endedAt: { state: "present", value: `2026-08-03T17:1${index}:00.000Z` } }));
+    const batch = queueBatches_m1(rows)[0]; assert_m1.ok(batch);
+    assert_m1.equal(batch.status, "done");
+    assert_m1.deepEqual(batch.endedAt, rows[2].endedAt);
+    await render(rows);
+    const group = document.querySelector(`[data-queue-batch-id="${batch.id}"]`); assert_m1.ok(group);
+    assert_m1.equal(group.querySelector('[data-queue-member-count]')?.textContent?.trim(), "3/3");
+    assert_m1.equal(group.querySelectorAll('tr[data-demo-row-id]').length, 3);
+    assert_m1.match(group.textContent ?? "", /3 people on this day/u);
+    const footer = group.querySelector('[data-queue-row-footer]'); assert_m1.ok(footer);
+    for (const row of rows) assert_m1.ok(!footer.textContent?.includes(row.traceId));
+    assert_m1.equal(footer.querySelectorAll('button').length, 0);
+    for (const label of ["Active", "Inactive", "Not found"]) assert_m1.ok(group.textContent?.includes(label));
+    const failed = lookupRow(2, { status: "failed" });
+    assert_m1.deepEqual(filterQueueSurfaces([rows[0], failed, rows[2]], "failed"), [rows[0], failed, rows[2]]);
+    await render([lookupRow(1, { status: "done" }), rows[1], rows[2]]);
+    assert_m1.match(document.querySelector('[data-queue-row-footer]')?.textContent ?? "", /duration unknown/u);
+  });
+
+  it_m1("selects actual member runs from the full line or name, keeps old attempts reachable, and preserves the group across refresh", async () => {
+    const rows = [lookupRow(1), lookupRow(2), lookupRow(3)];
+    const selected: string[] = [];
+    const handlers: QueueHandlers_m1 = { onSelect: id => { selected.push(id); } };
+    await render(rows, handlers);
+    const group = document.querySelector('[data-queue-batch-id]'); assert_m1.ok(group);
+    await act_m1(async () => (group as HTMLElement).click());
+    assert_m1.deepEqual(selected, []);
+    for (const row of rows) {
+      const line = document.querySelector<HTMLTableRowElement>(`tr[data-demo-row-id="${row.runId}"]`); assert_m1.ok(line);
+      for (const target of [line, ...line.cells, line.querySelector('button')]) {
+        assert_m1.ok(target); selected.length = 0;
+        await act_m1(async () => target.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+        assert_m1.deepEqual(selected, [row.runId]);
+      }
+      assert_m1.ok(!line.querySelector('button')?.className.includes("underline"));
+      assert_m1.equal(line.querySelectorAll('button[aria-label*="Retry"]').length, 0);
+    }
+    await render(rows, handlers, rows[1].runId);
+    assert_m1.equal(document.querySelector(`tr[data-demo-row-id="${rows[1].runId}"] button`)?.getAttribute("aria-pressed"), "true");
+    const retry = lookupRow(4, { itemId: rows[1].itemId, attempt: 2, startedAt: "2026-08-03T18:00:00.000Z" });
+    await render([...rows, retry], handlers, rows[1].runId);
+    assert_m1.equal(document.querySelector('[data-queue-batch-id]'), group);
+    assert_m1.equal(group.querySelectorAll('tr[data-demo-row-id]').length, 3);
+    const trigger = group.querySelector<HTMLButtonElement>('button[aria-label="Attempts for Ben"]'); assert_m1.ok(trigger);
+    await act_m1(async () => trigger.click());
+    const prior = document.querySelector<HTMLDivElement>('[role="menuitemradio"][aria-checked="true"]'); assert_m1.ok(prior);
+    await act_m1(async () => prior.focus());
+    const third = lookupRow(5, { itemId: rows[1].itemId, attempt: 3, startedAt: "2026-08-03T18:05:00.000Z" });
+    await render([third, ...rows, retry], handlers, rows[1].runId);
+    assert_m1.equal(document.activeElement, prior);
+    assert_m1.equal(trigger.getAttribute("aria-expanded"), "true");
+    const latest = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find(item => item.textContent?.includes("#3")); assert_m1.ok(latest);
+    selected.length = 0;
+    await act_m1(async () => latest.click());
+    assert_m1.deepEqual(selected, [third.runId]);
+  });
+
+  it_m1("retains every served footer action for the explicitly selected person and exact historical attempt", async () => {
+    const actions = [
+      { kind: "command", key: "cancel", command: "cancel", label: "Cancel run", expectedVersion: 11, intent: "destructive", placement: ["footer"], icon: "cancel" },
+      { kind: "command", key: "pause", command: "pause", label: "Pause after this step", expectedVersion: 12, intent: "neutral", placement: ["footer"], icon: "pause" },
+      { kind: "navigation", key: "rerun", navigate: { kind: "rerun", expectedVersion: 13 }, label: "Rerun", intent: "primary", placement: ["footer"], icon: "retry" },
+      { kind: "command", key: "delete", command: "delete", label: "Delete run", expectedVersion: 14, intent: "destructive", placement: ["footer"], icon: "delete" },
+      { kind: "command", key: "resume", command: "resume", label: "Resume", expectedVersion: 15, intent: "neutral", placement: ["footer"], icon: "resume" },
+    ];
+    const rows = actions.map((action, index) => lookupRow(index + 1, { rowRevision: 11 + index, actions: [action] }));
+    const sent: unknown[] = [], selected: string[] = [];
+    const handlers: QueueHandlers_m1 = { onSelect: id => { selected.push(id); }, onAction: (action, target) => { sent.push([action, target]); } };
+    await render(rows, handlers);
+    assert_m1.match(document.querySelector('[data-queue-member-actions]')?.textContent ?? "", /Select a person for run actions/u);
+    assert_m1.equal(document.querySelector('[data-queue-member-actions] button'), null);
+    const identity = document.querySelector('[data-queue-row-footer] > div')?.textContent;
+    for (const row of rows) {
+      await render(rows, handlers, row.runId);
+      const footer = document.querySelector('[data-queue-member-actions]'); assert_m1.ok(footer);
+      assert_m1.equal(footer.getAttribute("aria-label"), `Actions for ${row.title}, attempt ${row.attempt}`);
+      assert_m1.match(footer.getAttribute("title") ?? "", new RegExp(row.runId, "u"));
+      const button = footer.querySelector<HTMLButtonElement>("button"); assert_m1.ok(button);
+      await act_m1(async () => button.click());
+      assert_m1.deepEqual(sent.at(-1), [row.actions[0], { runId: row.runId, expectedVersion: row.rowRevision }]);
+      assert_m1.equal(document.querySelector('[data-queue-row-footer] > div')?.textContent, identity);
+      assert_m1.equal(document.querySelectorAll('[data-queue-batch-id] > [data-queue-row-footer]').length, 1);
+      assert_m1.ok(footer.closest('[data-queue-row-footer]'));
+    }
+    assert_m1.deepEqual(selected, []);
+    const retry = lookupRow(6, { itemId: rows[0].itemId, attempt: 2, rowRevision: 16, actions: [] });
+    await render([...rows, retry], handlers, rows[0].runId);
+    const previous = document.querySelector<HTMLButtonElement>('[data-queue-member-actions] button'); assert_m1.ok(previous);
+    await act_m1(async () => previous.click());
+    assert_m1.deepEqual(sent.at(-1), [rows[0].actions[0], { runId: rows[0].runId, expectedVersion: rows[0].rowRevision }]);
+    await render([...rows, retry], handlers, retry.runId);
+    assert_m1.equal(document.querySelector('[data-queue-member-actions] button'), null);
+    await render(rows.map(row => ({ ...row, actions: [] })), handlers, rows[1].runId);
+    assert_m1.equal(document.querySelector('[data-queue-member-actions] button'), null);
+  });
+
+  it_m1("keeps batch and individual selection local with partial-selection state", async () => {
+    const rows = [lookupRow(1), lookupRow(2), lookupRow(3)];
+    const toggled: string[] = [], opened: string[] = [];
+    const handlers: QueueHandlers_m1 = { onSelect: id => { opened.push(id); }, onToggleBulk: id => { toggled.push(id); } };
+    await render(rows, handlers, undefined, { selectMode: true, bulkIds: new Set([rows[0].runId]) });
+    const groupSelection = document.querySelector<HTMLElement>('[role="checkbox"]'); assert_m1.ok(groupSelection);
+    assert_m1.equal(groupSelection.getAttribute("data-state"), "indeterminate");
+    const memberSelection = document.querySelector<HTMLElement>(`tr[data-demo-row-id="${rows[1].runId}"] [role="checkbox"]`); assert_m1.ok(memberSelection);
+    await act_m1(async () => memberSelection.click());
+    await act_m1(async () => groupSelection.click());
+    assert_m1.deepEqual(toggled, [rows[1].runId, `batch:${uuidOf_m1(700)}`]);
+    assert_m1.deepEqual(opened, []);
+    await render(rows, handlers, undefined, { selectMode: true, bulkIds: new Set(rows.map(row => row.runId)) });
+    assert_m1.equal(groupSelection.getAttribute("data-state"), "checked");
+  });
+
+  it_m1("keeps a single-person start flat and expands a large group by its stable session key", async () => {
+    const single = lookupRow(1, { session: { state: "present", sessionId: uuidOf_m1(702), presentation: { groupInQueue: false, version: 1, startedAt: base.startedAt } } });
+    assert_m1.equal(queueItemLayout([single]).displayTop[0], single);
+    const rows = Array.from({ length: 7 }, (_, index) => lookupRow(index + 1));
+    const toggled: string[] = [];
+    await render(rows, { onSelect: () => undefined, onToggleWell: key => { toggled.push(key); } });
+    const expand = [...document.querySelectorAll('button')].find(button => button.textContent === "Expand"); assert_m1.ok(expand);
+    await act_m1(async () => expand.click());
+    assert_m1.deepEqual(toggled, [`batch:${uuidOf_m1(700)}`]);
+  });
+});
+
 }
