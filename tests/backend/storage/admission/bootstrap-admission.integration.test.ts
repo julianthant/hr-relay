@@ -163,7 +163,7 @@ try {
   const resumed = admission.admitProfile(message.profileId);
   resumed.assertReadable();
   createProfileRegistry(admission).advanceSession(message.profileId);
-  assert.throws(() => resumed.assertReadable(), /profile-session-not-current/u); resumed.release();
+  assert.throws(() => resumed.assertReadable(), /profile-storage-claim-generation-changed/u); resumed.release();
   const childAdmission = admission.admitProfile(message.profileId);
   try { const db = AuthorityDatabase.open(childAdmission, { path: join(childAdmission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "native-crash-reopen" });
     try { assert.equal(db.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { db.close(); }
