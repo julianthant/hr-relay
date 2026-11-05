@@ -8,6 +8,8 @@ import { useQueueWiring } from "../../../src/dashboard/state/queue-wiring-adapte
 import { FIXTURE_DAY_WIRE } from "../../support/fixtures/dashboard/fixture-queue.js";
 import type { ActionDescriptorWire } from "../../../src/models/dashboard/actions.js";
 import { QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
+import { planBulkVerb } from "../../../src/dashboard/app/commands/bulk-dispatch.js";
+import { uuidOf } from "../../support/fixtures/dashboard/fixture-identity.js";
 import { RowRevisionSchema } from "../../../src/models/dashboard/primitives.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -194,5 +196,43 @@ it("keeps cross-workflow inline children within the caller's admitted parent sco
     assert.deepEqual(wiring.surfaces, [parent, child]);
     const absentParent = await mounted.draw({ rows: [] });
     assert.deepEqual(absentParent.surfaces, []);
+  } finally { await mounted.close(); }
+});
+
+
+it("retains canonical Lookup cohorts across caller/status filters and selects exact current member bulk targets", async () => {
+  const base = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.parent === null && row.surfaceKind === "single"); assert.ok(base);
+  const batchId = uuidOf(7100);
+  const session = { state: "present", itemScope: "session", sessionId: batchId, presentation: { layout: "batch", groupInQueue: true, version: 3, startedAt: base.startedAt } };
+  const make = (n: number, item = n, attempt = 1) => QueueSurfaceWireSchema.parse({ ...base, surfaceKind: "single", workflowId: "person-lookup",
+    parent: null, session, runId: uuidOf(7100 + n), itemId: uuidOf(7200 + item), attempt, rowRevision: 10 + n,
+    status: n === 2 ? "failed" : "queued", actions: [{ kind: "command", key: "cancel", command: "cancel", label: "Cancel",
+      intent: "neutral", placement: ["footer"], expectedVersion: 10 + n }] });
+  const rows = [make(1), make(2), make(3), make(4, 2, 2)];
+  const otherStart = QueueSurfaceWireSchema.parse({ ...make(5, 1), session: { ...session, sessionId: uuidOf(7199) } });
+  const selected: ReadonlySet<string>[] = [];
+  const sent: unknown[] = [];
+  const mounted = mountWiring({ allRows: [...rows, otherStart], rows: [rows[1]], activeWorkflowId: "person-lookup", filter: ["failed"],
+    onBulkIds: ids => { selected.push(ids); }, runQueueAction: (action, target) => { sent.push([action, target]); } });
+  try {
+    const first = await mounted.draw();
+    assert.deepEqual(first.surfaces.map(row => row.runId), rows.map(row => row.runId));
+    assert.ok(first.surfaces.every(row => row !== otherStart));
+    first.queueHandlers.onToggleBulk?.(`batch:${batchId}`);
+    assert.deepEqual([...selected[0]], [rows[0].runId, rows[3].runId, rows[2].runId]);
+    assert.ok(!selected[0].has(batchId));
+    assert.ok(!selected[0].has(rows[1].runId));
+    assert.deepEqual(sent, []);
+    const candidates = rows.filter(row => selected[0].has(row.runId));
+    const plan = planBulkVerb(candidates.map(row => ({ runId: row.runId, title: row.title, actions: row.actions })), "cancel", [...selected[0]]);
+    assert.deepEqual(plan.eligible.map(target => [target.runId, target.expectedVersion]), candidates.map(row => [row.runId, row.rowRevision]));
+    assert.deepEqual(plan.unavailable, []);
+    const refreshed = await mounted.draw({ filter: ["all"], rows: [rows[0]], bulkIds: selected[0], selectedRunId: rows[1].runId });
+    assert.deepEqual(new Set(refreshed.surfaces.map(row => row.runId)), new Set(rows.map(row => row.runId)));
+    assert.equal(refreshed.viewState.selectedRunId, rows[1].runId);
+    refreshed.queueHandlers.onToggleBulk?.(`batch:${batchId}`);
+    assert.deepEqual([...selected[1]], []);
+    const unrelated = await mounted.draw({ rows: [otherStart] });
+    assert.deepEqual(unrelated.surfaces, [otherStart]);
   } finally { await mounted.close(); }
 });

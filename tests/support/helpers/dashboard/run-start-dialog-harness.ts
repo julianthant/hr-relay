@@ -144,7 +144,7 @@ export function createRunStartDialogHarness() {
         const rows = plan.planned.map((_, index) => QueueSurfaceWireSchema.parse({ ...base,
           runId: uuidOf(600 + index), workflowId: command.target.workflowId, actorId: command.requestedBy,
           descriptorHash: plan.fingerprints.descriptorFingerprint, configFingerprint: plan.fingerprints.configFingerprint,
-          dryRun: plan.dryRun, session: { state: "present", sessionId: uuidOf(900),
+          dryRun: plan.dryRun, session: { state: "present", itemScope: command.target.workflowId === "person-lookup" ? "session" : "workflow", sessionId: uuidOf(900),
             origin: { kind: "start-plan", startPlanId: plan.startPlanId, actorId: command.requestedBy } }, actions: [],
         }));
         readback = DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, queueSurfaces: rows });

@@ -143,6 +143,7 @@ export interface RunQueueProjectionDeps {
   };
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
+    batchMemberRetryAvailable?(run: RunRecord): boolean;
     queueParents(envelopes: readonly RunRecord["envelope"][]): ReadonlyMap<string, QueueParent | null>;
     delegationWait?(runId: string): DelegationWaitState | null;
     reviewAvailable?(runId: string): boolean;
@@ -179,6 +180,10 @@ export interface RunQueueProjectionDeps {
       nodeId: string,
     ): RunCheckpointRecord | undefined;
   };
+  readonly queueCapabilities?: (workflowId: string) => Readonly<{
+    sessionItemScope?: boolean;
+    groupedBatchLayout?: boolean;
+  }> | undefined;
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
 
   readonly scheduleRebuild?: (rebuild: () => void) => void;
@@ -1072,13 +1077,16 @@ export class RunQueueProjection {
   }
 
 
-  #session(authority: RunRecord): QueueSurfaceWire["session"] {
+  #session(authority: RunRecord, operation: boolean): QueueSurfaceWire["session"] {
     if (authority.sessionId === undefined) return { state: "absent", reason: "no session grouping was recorded for this run or its retry source" };
     const batch = this.#deps.authority.getRunBatch(authority.sessionId);
     if (batch === undefined || batch.workflow !== authority.envelope.workflow) throw new Error(`workflow batch ${authority.sessionId} is missing or belongs to another workflow`);
-    return { state: "present", sessionId: batch.sessionId,
+    const capabilities = this.#deps.queueCapabilities?.(authority.envelope.workflow);
+    const sessionScoped = capabilities?.sessionItemScope === true && authority.envelope.parent === undefined;
+    return { state: "present", sessionId: batch.sessionId, itemScope: sessionScoped ? "session" : "workflow",
       origin: batch.origin,
-      presentation: { groupInQueue: batch.groupInQueue, version: PositiveIntSchema.parse(batch.version), startedAt: batch.startedAt } };
+      presentation: { layout: sessionScoped && capabilities?.groupedBatchLayout === true && !operation && batch.groupInQueue ? "batch" : "items",
+        groupInQueue: batch.groupInQueue, version: PositiveIntSchema.parse(batch.version), startedAt: batch.startedAt } };
   }
 
 
@@ -1236,6 +1244,7 @@ export class RunQueueProjection {
     const recordMembers = this.#deps.authority.recordMembers?.(authority, children);
 
     const members = children.filter(member => isQueueMember({ parent: this.#parentFact(context, member), status: this.#status(member) }));
+    const operation = shape === "operation" || members.length > 0 || recordMembers !== undefined;
     const memberChildIds = members.map((member) => member.envelope.runId);
     const failedTerminalMembers = members.filter((member) => member.lifecycle.state === "terminal" && member.lifecycle.outcome === "failed");
     const terminalMembers = members.filter((member) => member.lifecycle.state === "terminal");
@@ -1271,7 +1280,7 @@ export class RunQueueProjection {
 
       priority: authority.envelope.priority,
       runNumber: this.#runNumber(authority),
-      session: this.#session(authority),
+      session: this.#session(authority, operation),
       linkedRuns: this.#linkedRuns(children, context),
       startedAt: queued.enqueuedAt,
       updatedAt: authority.updatedAt,
@@ -1318,10 +1327,11 @@ export class RunQueueProjection {
         named: authority.displayName !== undefined,
 
         hasReviewPanel: descriptor?.capabilities?.review ?? false,
+        batchMemberRetryAvailable: this.#deps.authority.batchMemberRetryAvailable?.(authority) === true,
       }),
       rowRevision: authority.version,
     };
-    if (shape === "operation" || members.length > 0 || recordMembers !== undefined) {
+    if (operation) {
       return {
         warningVerdict,
         surface: QueueSurfaceWireSchema.parse({

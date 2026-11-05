@@ -25,13 +25,25 @@ describe("dashboard wire primitives", () => {
       { kind: "intake-manifest", intakeManifestId: RUN_1, actorId: "local-operator" },
     ] as const;
     for (const origin of origins) {
-      const session = { state: "present", sessionId, origin } as const;
+      const session = { state: "present", itemScope: "session", sessionId, origin } as const;
       assert.deepEqual(QueueSurfaceWireSchema.parse({ ...QUEUE, session }).session, session);
     }
     assert.deepEqual(
-      QueueSurfaceWireSchema.parse({ ...QUEUE, session: { state: "present", sessionId } }).session,
-      { state: "present", sessionId },
+      QueueSurfaceWireSchema.parse({ ...QUEUE, session: { state: "present", itemScope: "session", sessionId } }).session,
+      { state: "present", itemScope: "session", sessionId },
     );
+  });
+
+  it("requires explicit item scope and layout facts without guessing missing or invalid values", () => {
+    for (const itemScope of ["workflow", "session"]) for (const layout of ["items", "batch"]) {
+      const session = { state: "present", sessionId: RUN_2, itemScope,
+        presentation: { layout, groupInQueue: true, version: 1, startedAt: QUEUE.startedAt } };
+      assert.deepEqual(QueueSurfaceWireSchema.parse({ ...QUEUE, session }).session, session);
+      for (const invalid of [undefined, null, "unknown"]) {
+        assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, session: { ...session, itemScope: invalid } }).success, false);
+        assert.equal(QueueSurfaceWireSchema.safeParse({ ...QUEUE, session: { ...session, presentation: { ...session.presentation, layout: invalid } } }).success, false);
+      }
+    }
   });
 
   it("binds every served action to the row's own revision, once per key", () => {
