@@ -339,6 +339,13 @@ owners. Even a ready registry prefix is excluded from startup conversion while i
 is pending. Only after native settlement, ready publication and disposal of the stopped logout owner
 does the controller acquire a new backed settings-conversion admission. UNKNOWN writes keep the
 operation pending and the original credentials unchanged.
+Startup attempts boot-observed logout settlement before that conversion, using the same native
+process, browser, source and SQL proofs. Busy settlement remains pending. Live shared dashboard
+continuation performs no credential conversion; a current-format profile can sign in immediately
+after settlement. A schema-4 credential reader instead requests a restart for stopped conversion.
+An ordinary conversion failure refuses only its profile for the current runtime lifetime and retains
+its cause for local diagnostics. Successful stopped conversion clears that refusal; uncertain source
+closure still stops startup and retains its owners.
 Ordinary readers accept only the current schema. Stopped conversion and flat-source inspection own
 the previous grammar; retained value-free receipts keep the catalog used by their original write.
 
@@ -739,6 +746,9 @@ Source snapshot removal, isolated binding/login-copy database close, authenticat
 
 The signed-out profile state reports `signUpRequired` for an empty installation. Sign-up creates a
 private draft and publishes the person only after both Duo methods and Finish are proved.
+It also reports `logoutIncomplete` while a registered profile is cancelling or a logout operation is
+unfinished. Log in continues that logout; sign-up names this next step. An existing installation opens
+Log in from a sign-up URL unless the operator chooses Sign up from the login page.
 
 The confirmed `POST /api/v1/profile/delete-account` command requires the confirmation's
 `expectedProfileId` and `expectedEpoch`. The server compares both against the cookie-authenticated

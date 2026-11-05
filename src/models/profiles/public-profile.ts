@@ -53,7 +53,7 @@ export type CancelProfileOnboardingDuoRequest = z.infer<typeof CancelProfileOnbo
 
 export const PublicProfileStateSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("signed-out"), signUpRequired: z.boolean().optional(),
-    resumable: z.literal(true).optional() }),
+    resumable: z.literal(true).optional(), logoutIncomplete: z.literal(true).optional() }),
   z.strictObject({ state: z.literal("error"), code: ErrorCodeSchema }),
   z.strictObject({ state: z.literal("active"), profileId: ProfileIdSchema, duoState: ProfileRegistryRowSchema.shape.duoState, epoch: z.number().int().positive().max(Number.MAX_SAFE_INTEGER) }),
   z.strictObject({ state: z.literal("cancelling"), operationId: z.uuid() }),

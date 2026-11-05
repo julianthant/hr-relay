@@ -133,6 +133,35 @@ it("serves public profile state without minting a selected profile, actor or aut
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
 
+it("records unknown profile failure name, code and source frames without message values and stops cleanly", async () => {
+  const f = await fixture();
+  const actual = await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js");
+  const sensitive = "disposable-private-value fixture@example.edu";
+  const error = Object.assign(new TypeError(sensitive), { code: "SYNTHETIC_PROFILE_FAILURE" });
+  error.stack = `TypeError: ${sensitive}\n    at login (/repo/src/backend/profiles/profile-session.ts:454:3)\n    at ${sensitive}\n    at private (/private/${sensitive}:1:2)`;
+  error.cause = error;
+  const spy = vi.spyOn(storageCompose, "composeProfileRuntime").mockImplementation(input => {
+    const current = actual.composeProfileRuntime(input);
+    return { ...current, session: { ...current.session, signIn() { throw error; } } };
+  });
+  let app: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  try {
+    app = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation,
+      repoRoot: f.root, backendPortOverride: 0, frontendPortOverride: 0, env: {} });
+    const base = `http://127.0.0.1:${app.port}`;
+    const response = await fetch(`${base}/api/v1/profile/sign-in`, { method: "POST", headers: { origin: base, "content-type": "application/json" },
+      body: JSON.stringify({ email: "fixture@ucsd.edu", password: "disposable-fixture-password" }) });
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { state: "error", code: "INTERNAL_FAILURE" });
+    const log = readFileSync(join(f.machine.stateRoot, "logs", "boot.jsonl"), "utf8");
+    assert.ok(log.includes("TypeError")); assert.ok(log.includes("SYNTHETIC_PROFILE_FAILURE"));
+    assert.ok(log.includes("src/backend/profiles/profile-session.ts:454:3"));
+    assert.equal(log.includes(sensitive), false);
+    assert.equal(log.includes("disposable-fixture-password"), false);
+    await app.stop(); app = undefined;
+  } finally { spy.mockRestore(); await app?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
+});
+
 it("uses a real verifier and selected session cookie, rejects foreign browser captures and performs canonical logout", async () => {
   const temporary = mkdtempSync(join(realpathSync(tmpdir()), "public-profile-temp-alias-"));
   const priorEnvironment = { TMPDIR: process.env.TMPDIR, TMP: process.env.TMP, TEMP: process.env.TEMP };

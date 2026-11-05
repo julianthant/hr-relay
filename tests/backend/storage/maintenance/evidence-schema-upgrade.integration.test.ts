@@ -4,8 +4,24 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { predecessorKualiEvidence } from "../../../support/helpers/backend/predecessor-kuali-evidence.js";
+import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 
 const tables = ["runs", "run_results", "run_checkpoints", "write_intents", "write_attempts", "gate_results", "run_delegations", "commands", "command_audits", "run_receipts", "timeline_events", "delegation_invocations", "delegation_dependencies", "run_failures"] as const;
+async function assertConversionRefused(workspace: string, lifetime: RuntimeLifetimeLock) {
+  const { acquireEntrypointAdmission } = await import("../../../../src/backend/storage/admission/bootstrap-admission.js");
+  const { composeProfileRuntime } = await import("../../../../src/backend/app/composition/storage-compose.js");
+  const { systemClock } = await import("../../../../src/rules/time/clock.js");
+  const machine = acquireEntrypointAdmission(workspace, "shared", lifetime);
+  const runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts: { primaryDisplay: null } });
+  try {
+    const custodyUnavailable = (error: unknown): boolean => error instanceof Error
+      && (("code" in error && error.code === "STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE")
+        || custodyUnavailable(error.cause) || error instanceof AggregateError && error.errors.some(custodyUnavailable));
+    assert.throws(() => runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: systemClock.now().toISOString() }),
+      (error: unknown) => error instanceof Error && "code" in error && error.code === "PROFILE_STARTUP_CONVERSION_REFUSED"
+        && (process.platform !== "win32" || custodyUnavailable(error.cause)));
+  } finally { await runtime.close("shutdown"); machine.release(); }
+}
 function frozenRows(path: string) {
   const database = new DatabaseSync(path, { readOnly: true });
   try { return Object.fromEntries(tables.map(table => [table, database.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])); }
@@ -36,10 +52,7 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
   try {
     const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null });
     if (process.platform === "win32") {
-      await assert.rejects(startup(), function custodyUnavailable(error: unknown): boolean {
-        return error instanceof Error && (("code" in error && error.code === "STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE")
-          || custodyUnavailable(error.cause) || error instanceof AggregateError && error.errors.some(custodyUnavailable));
-      });
+      await startup(); await assertConversionRefused(f.workspace, lifetime);
       assert.deepEqual(frozenRows(f.path), before); assert.deepEqual(readFileSync(protectedPath), oldCredentials);
       assert.equal(conversions(f.path).length, 0); return;
     }
@@ -49,7 +62,7 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
         convert(...args); throw new Error("synthetic-interruption-after-closed-evidence-conversion");
       });
       restoreFault = () => fault.mockRestore();
-      await assert.rejects(startup()); restoreFault(); restoreFault = undefined;
+      await startup(); await assertConversionRefused(f.workspace, lifetime); restoreFault(); restoreFault = undefined;
       assert.equal(conversions(f.path).length, 1);
       assert.deepEqual(readFileSync(protectedPath), oldCredentials); assert.deepEqual(frozenRows(f.path), before);
     }
@@ -126,10 +139,7 @@ it("opens certified predecessor Separations Rerun after backed startup and deriv
   try {
     const startup = () => initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null });
     if (process.platform === "win32") {
-      await assert.rejects(startup(), function unavailable(error: unknown): boolean {
-        return error instanceof Error && (("code" in error && error.code === "STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE")
-          || unavailable(error.cause) || error instanceof AggregateError && error.errors.some(unavailable));
-      });
+      await startup(); await assertConversionRefused(f.workspace, lifetime);
       assert.deepEqual(frozenRows(f.path), before); assert.equal(conversions(f.path).length, 0); return;
     }
     await startup(); assert.equal(conversions(f.path).length, 1); assert.deepEqual(frozenRows(f.path), before);
