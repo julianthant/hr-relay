@@ -254,9 +254,16 @@ Relay requests. A diagnostic write failure is visible and never clears resource-
 The transport observation captures status, media-type classification and body presence before
 response wrapping, plus native/injected source, redirect state and expected/other/missing target
 classification. The delivered response separately retains body presence and media type. No URL is retained.
+Stream diagnostics retain the first 256 allowlisted event names in order and mark truncation.
+Completed-event shape records at most 128 paths and value types, to depth eight; array indices become
+`[]` and unknown keys become `*`. Up to 16 validation issue paths and closed issue codes identify
+terminal-schema failures. Shape fields never retain values or string lengths, and unknown event names
+become `unknown`. The existing writer persists and mirrors this metadata.
 Successful inference accepts `text/event-stream` or an absent Content-Type only after bounded SSE
 decoding, a valid `response.completed`, and operation-specific output validation. Explicit other
 media types, malformed bytes, incomplete streams and inconsistent output remain refused.
+The completed event supplies terminal success when its optional response status is absent; an explicit
+status must be `completed`. IDs, model, output and error/incomplete consistency remain validated.
 
 ### Paths and validation
 

@@ -25,6 +25,19 @@ const { proof: _proof, ...ledgerFields } = LedgerEntryPayloadSchema.shape;
 const ConfirmedOperationFactsSchema = z.strictObject(ledgerFields);
 
 const ChatGptContentTypeSchema = z.enum(["text/event-stream", "application/json", "text/plain", "text/html", "missing", "other"]);
+export const ChatGptStreamEventTypeSchema = z.enum(["unknown", "error", "response.created", "response.in_progress", "response.queued",
+  "response.completed", "response.failed", "response.incomplete", "response.output_item.added", "response.output_item.done",
+  "response.content_part.added", "response.content_part.done", "response.output_text.delta", "response.output_text.done",
+  "response.refusal.delta", "response.refusal.done", "response.function_call_arguments.delta", "response.function_call_arguments.done",
+  "response.reasoning_summary_part.added", "response.reasoning_summary_part.done", "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done",
+  "response.reasoning_text.delta", "response.reasoning_text.done", "response.custom_tool_call_input.delta", "response.custom_tool_call_input.done"]);
+export const ChatGptShapeKeySchema = z.enum(["*", "[]", "type", "sequence_number", "response", "id", "object", "status", "model", "output",
+  "error", "code", "message", "incomplete_details", "reason", "created_at", "completed_at", "content", "role", "text", "annotations", "logprobs",
+  "summary", "encrypted_content", "call_id", "name", "namespace", "arguments", "caller", "usage", "input_tokens", "output_tokens", "total_tokens",
+  "input_tokens_details", "output_tokens_details", "reasoning_tokens", "cached_tokens", "cache_write_tokens", "instructions", "metadata", "tools",
+  "tool_choice", "parallel_tool_calls", "previous_response_id", "store", "temperature", "top_p", "truncation", "reasoning", "effort", "format",
+  "verbosity", "max_output_tokens", "max_tool_calls", "user", "service_tier", "background", "conversation", "access_programs", "cyber"]);
+const ChatGptShapePathSchema = z.array(ChatGptShapeKeySchema).max(8);
 export const ChatGptInferenceDiagnosticSchema = z.strictObject({
   operation: z.enum(["ocr", "assistant"]),
   path: z.enum(["transport", "http-error-body", "http-error", "content-type", "stream-read", "stream-decode", "stream-json", "stream-schema",
@@ -33,6 +46,12 @@ export const ChatGptInferenceDiagnosticSchema = z.strictObject({
   hasBody: z.boolean().optional(),
   transport: z.strictObject({ source: z.enum(["native", "injected"]), status: z.number().int().min(100).max(599),
     contentType: ChatGptContentTypeSchema, hasBody: z.boolean(), redirected: z.boolean(), target: z.enum(["expected", "other", "missing"]) }).optional(),
+  events: z.strictObject({ types: z.array(ChatGptStreamEventTypeSchema).max(256), truncated: z.boolean() }).optional(),
+  terminalShape: z.strictObject({ fields: z.array(z.strictObject({ path: ChatGptShapePathSchema,
+    type: z.enum(["object", "array", "null", "string", "number", "boolean"]) })).max(128), truncated: z.boolean() }).optional(),
+  terminalIssues: z.strictObject({ issues: z.array(z.strictObject({ path: ChatGptShapePathSchema,
+    code: z.enum(["invalid_type", "too_big", "too_small", "invalid_format", "invalid_value", "custom", "invalid_union", "invalid_key", "invalid_element", "not_multiple_of", "unrecognized_keys"]) })).max(16),
+    truncated: z.boolean() }).optional(),
   providerCode: z.enum(["none", "unknown", "subscription_sharing_user_not_eligible", "subscription_sharing_usage_limit_exceeded",
     "subscription_sharing_usage_unavailable", "subscription_sharing_unsupported_capability", "subscription_sharing_route_not_supported",
     "subscription_sharing_invalid_user", "subscription_sharing_user_unavailable", "chatpass_v2_scope_not_authorized", "chatpass_v2_invalid_authorization_context",

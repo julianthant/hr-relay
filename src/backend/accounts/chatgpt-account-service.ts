@@ -12,8 +12,7 @@ import { requireRuntimeAdmission } from "../storage/admission/admission-identity
 import { createChatGptCredentialRepository, ChatGptCredentialError, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions, type ChatGptCredentialTransaction } from "../storage/configuration/chatgpt-credential-repository.js";
 import { hasUnprovedSourceClosure } from "../storage/source-closure.js";
 import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/error-catalog.js";
-import { ChatGptInferenceDiagnosticSchema, type ChatGptInferenceDiagnostic } from "../../models/events/timeline.js";
-import type { createDebugEventWriter } from "../logs/debug-events.js";
+import { ChatGptInferenceDiagnosticSchema, ChatGptStreamEventTypeSchema, ChatGptShapeKeySchema, type ChatGptInferenceDiagnostic, type DebugEventSchema } from "../../models/events/timeline.js";
 
 const AUTH = "https://auth.openai.com", RESOURCE = "https://api.openai.com/v1";
 const PLAN_SCOPES = ["offline_access", "resource.invoke", "chatgpt.tokens.use.direct"];
@@ -109,11 +108,33 @@ function inferenceContentType(headers: Headers): ChatGptInferenceDiagnostic["con
   const parsed = ChatGptInferenceDiagnosticSchema.shape.contentType.exclude(["missing", "other"]).safeParse(contentType);
   return contentType === undefined ? "missing" : parsed.success ? parsed.data : "other";
 }
+function inferenceShapeKey(key: PropertyKey): z.infer<typeof ChatGptShapeKeySchema> {
+  if (typeof key === "number") return "[]";
+  const parsed = ChatGptShapeKeySchema.safeParse(key);
+  return parsed.success ? parsed.data : "*";
+}
+function inferenceTerminalShape(value: unknown): NonNullable<ChatGptInferenceDiagnostic["terminalShape"]> {
+  const shape: NonNullable<ChatGptInferenceDiagnostic["terminalShape"]> = { fields: [], truncated: false };
+  const visit = (value: unknown, path: z.infer<typeof ChatGptShapeKeySchema>[]): void => {
+    if (shape.fields.length === 128 || path.length > 8) { shape.truncated = true; return; }
+    const type = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+    if (type !== "object" && type !== "array" && type !== "null" && type !== "string" && type !== "number" && type !== "boolean") return;
+    shape.fields.push({ path, type });
+    if (value === null || typeof value !== "object") return;
+    for (const key in value) {
+      if (!Object.hasOwn(value, key)) continue;
+      visit((value as Record<string, unknown>)[key], [...path, Array.isArray(value) ? "[]" : inferenceShapeKey(key)]);
+      if (shape.truncated) break;
+    }
+  };
+  visit(value, []);
+  return shape;
+}
 
 export function createChatGptAccountService(options: ChatGptAccountServiceOptions) {
   const credentialRepository = createChatGptCredentialRepository({ admission: options.admission, stateRoot: options.stateRoot, ...options.credentialHooks });
   const transport = options.fetch ?? fetch, clock = options.clock;
-  let debugEvents: Pick<ReturnType<typeof createDebugEventWriter>, "emit"> | undefined;
+  let debugEvents: { emit(event: Omit<z.input<typeof DebugEventSchema>, "build" | "pid">): void } | undefined;
   function setDebugEvents(writer: NonNullable<typeof debugEvents>): void { debugEvents = writer; }
   const requests = new Set<AbortController>();
   const accesses = new Set<Promise<ChatGptCredentialRecord>>();
@@ -263,6 +284,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   }
   function readAccount(): ChatGptAccountState {
     active();
+    if (signOutLifetime !== undefined) return { state: "unavailable", code: "CHATGPT_AUTH_BUSY", message: ERROR_CATALOG.CHATGPT_AUTH_BUSY.text };
     try {
       const record = repository.read();
       if (record?.session != null && rejectedSessionToken !== undefined && privateEqual(record.session.accessToken, rejectedSessionToken)) return { state: "expired" };
@@ -841,6 +863,11 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
               if (data !== "" && data !== "[DONE]") {
                 diagnostic.path = "stream-json";
                 const value: unknown = JSON.parse(data);
+                const events = diagnostic.events ??= { types: [], truncated: false };
+                const eventType = ChatGptStreamEventTypeSchema.safeParse(typeof value === "object" && value !== null && "type" in value ? value.type : undefined);
+                if (events.types.length < 256) events.types.push(eventType.success ? eventType.data : "unknown");
+                else events.truncated = true;
+                if (eventType.success && eventType.data === "response.completed") diagnostic.terminalShape = inferenceTerminalShape(value);
                 diagnostic.path = "stream-schema";
                 const event = z.object({ type: z.string(), delta: z.string().optional(), output_index: z.number().optional(), content_index: z.number().optional(),
                   code: z.string().nullish(), error: z.object({ code: z.string().nullish() }).nullish(),
@@ -870,9 +897,15 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                 }
                 if (event.type === "response.completed") {
                   diagnostic.path = "terminal-schema";
-                  const terminal = z.object({ id: z.string().min(1).max(256), model: ChatGptOcrRequestSchema.shape.model,
-                    status: z.literal("completed"), error: z.null().optional(), incomplete_details: z.null().optional(), output: z.array(z.unknown()).min(1).max(32),
-                  }).parse(event.response);
+                  const parsedTerminal = z.object({ id: z.string().min(1).max(256), model: ChatGptOcrRequestSchema.shape.model,
+                    status: z.literal("completed").optional(), error: z.null().optional(), incomplete_details: z.null().optional(), output: z.array(z.unknown()).min(1).max(32),
+                  }).safeParse(event.response);
+                  if (!parsedTerminal.success) {
+                    diagnostic.terminalIssues = { issues: parsedTerminal.error.issues.slice(0, 16).map(issue => ({ path: [inferenceShapeKey("response"), ...issue.path.map(inferenceShapeKey)].slice(0, 8), code: issue.code })),
+                      truncated: parsedTerminal.error.issues.length > 16 || parsedTerminal.error.issues.some(issue => issue.path.length > 7) };
+                    throw fault("CHATGPT_OCR_INCOMPLETE");
+                  }
+                  const terminal = parsedTerminal.data;
                   if (assistant !== undefined && terminal.output.some(item => typeof item === "object" && item !== null && "content" in item
                     && Array.isArray(item.content) && item.content.some((part: unknown) => typeof part === "object" && part !== null && "type" in part && part.type === "refusal"))) {
                     diagnostic.path = "stream-refusal"; throw fault("CHATGPT_ASSISTANT_REFUSED");

@@ -545,6 +545,10 @@ persistence require the backend account adapter. A displayed preview identity ne
 Returning focus or visibility to Relay re-reads the original pending sign-in attempt, replacing its
 previous completion read. Only that attempt's typed result settles sign-in; cancellation, expiry and
 profile disposal abort its read and remove its listeners.
+Lost completion delivery retains those listeners and the original deadline even if account readback
+already shows connected. Successful completion replay reads the current account, and the browser
+revalidates it after delivery before publishing account state. Sign-out in progress is unavailable;
+an original typed closure refusal remains refused regardless of the current account.
 
 ### Editable fields, Credentials, and Paths
 

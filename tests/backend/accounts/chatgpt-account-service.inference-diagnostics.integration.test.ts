@@ -163,7 +163,7 @@ it("preserves native headers and accepts validated headerless streams through th
   const server = createServer((request, response) => {
     requests++; request.resume();
     response.writeHead(200, omitContentType ? {} : { "Content-Type": "text/event-stream; charset=utf-8" });
-    const stream = completedOcrStream("Synthetic streamed form");
+    const stream = omitContentType ? completedOcrStream("Synthetic streamed form").replace('"status":"completed",', "") : completedOcrStream("Synthetic streamed form");
     response.write(stream.slice(0, 31)); response.end(stream.slice(31));
   });
   server.listen(0, "127.0.0.1"); await once(server, "listening");
@@ -199,6 +199,57 @@ it("preserves native headers and accepts validated headerless streams through th
 });
 
 for (const operation of ["ocr", "assistant"] as const) {
+  it.each([
+    ["id", null, "null"], ["model", null, "null"], ["model", "PRIVATE MODEL CANARY", "string"],
+    ["status", "failed", "string"], ["status", null, "null"], ["output", null, "null"], ["output", [], "array"],
+  ] as const)(`${operation} retains value-free terminal shape and event order when %s is invalid`, async (key, invalid, type) => {
+    const f = await fixture();
+    try {
+      await f.connected();
+      const terminal = { id: "PRIVATE_ID_CANARY", model: image.model, status: "completed", output: [{ type: "message", role: "assistant", status: "completed",
+        content: [{ type: "output_text", text: "PRIVATE_TEXT_CANARY" }] }], metadata: { PRIVATE_KEY_CANARY: "PRIVATE_VALUE_CANARY" }, [key]: invalid };
+      const events = [{ type: "response.created", response: {} }, { type: "PRIVATE_EVENT_CANARY" },
+        { type: "response.output_text.delta", delta: "PRIVATE_TEXT_CANARY", output_index: 0, content_index: 0 },
+        { type: "response.completed", sequence_number: 4, response: terminal }];
+      f.setResponse(() => new Response(new TextEncoder().encode(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(""))));
+      await assert.rejects(operation === "ocr" ? f.service.extractText(image) : f.service.inferAssistant(assistant), { code: "CHATGPT_OCR_INCOMPLETE" });
+      assert.equal(f.records.length, 1);
+      const payload = f.records[0].payload; assert.equal(payload.kind, "debug");
+      if (payload.kind !== "debug") throw new Error("inference diagnostic required");
+      const diagnostic = payload.event.chatGptInference; assert.ok(diagnostic);
+      assert.equal(diagnostic.path, "terminal-schema");
+      assert.deepEqual(diagnostic.events, { types: ["response.created", "unknown", "response.output_text.delta", "response.completed"], truncated: false });
+      assert.ok(diagnostic.terminalShape?.fields.some(field => field.path.join(".") === `response.${key}` && field.type === type));
+      assert.ok(diagnostic.terminalShape?.fields.some(field => field.path.join(".") === "response.metadata.*" && field.type === "string"));
+      assert.equal(diagnostic.terminalShape?.truncated, false);
+      assert.ok(diagnostic.terminalIssues?.issues.some(issue => issue.path.join(".") === `response.${key}`));
+      const mirror = JSON.parse(f.mirrors[0]) as { chatGptInference: unknown };
+      assert.deepEqual(mirror.chatGptInference, diagnostic);
+      assert.equal(JSON.stringify([f.records, f.mirrors]).includes("CANARY"), false);
+    } finally { await f.cleanup(); }
+  });
+
+  it(`bounds ${operation} event and terminal shape diagnostics without retaining values or array indices`, async () => {
+    const f = await fixture();
+    try {
+      await f.connected();
+      const terminal = { type: "response.completed", response: { id: null, model: image.model, status: "completed", output: [],
+        metadata: Array.from({ length: 200 }, () => ({ PRIVATE_KEY_CANARY: "PRIVATE_VALUE_CANARY" })) } };
+      const prefix = Array.from({ length: 300 }, () => 'data: {"type":"PRIVATE_EVENT_CANARY"}\n\n').join("");
+      f.setResponse(() => sse(`${prefix}data: ${JSON.stringify(terminal)}\n\n`));
+      await assert.rejects(operation === "ocr" ? f.service.extractText(image) : f.service.inferAssistant(assistant), { code: "CHATGPT_OCR_INCOMPLETE" });
+      const payload = f.records[0].payload; assert.equal(payload.kind, "debug");
+      if (payload.kind !== "debug") throw new Error("inference diagnostic required");
+      const diagnostic = payload.event.chatGptInference; assert.ok(diagnostic);
+      assert.equal(diagnostic.events?.types.length, 256); assert.equal(diagnostic.events?.truncated, true);
+      assert.ok(diagnostic.terminalShape);
+      assert.equal(diagnostic.terminalShape?.fields.length, 128); assert.equal(diagnostic.terminalShape?.truncated, true);
+      assert.ok(diagnostic.terminalShape.fields.some(field => field.path.includes("[]")));
+      assert.equal(JSON.stringify([f.records, f.mirrors]).includes("CANARY"), false);
+      assert.ok(Buffer.byteLength(JSON.stringify(payload.event)) < 64 * 1024);
+    } finally { await f.cleanup(); }
+  });
+
   it.each([
     ["empty body", ""],
     ["HTML", "<!doctype html><title>PRIVATE_RESPONSE_CANARY</title>\n\n"],

@@ -16,6 +16,13 @@ describe("bounded native debug events", () => {
     for (const field of ["operation", "path", "contentType", "providerCode", "headers"])
       assert.throws(() => writer.emit({ ...event, chatGptInference: { ...chatGptInference, [field]: "PRIVATE_CANARY" } }));
     assert.equal(records.length, 0);
+    for (const metadata of [
+      { events: { types: ["PRIVATE_EVENT_CANARY"], truncated: false } },
+      { terminalShape: { fields: [{ path: ["response", "PRIVATE_KEY_CANARY"], type: "string" }], truncated: false } },
+      { terminalShape: { fields: [{ path: ["response", "id"], type: "PRIVATE_VALUE_CANARY" }], truncated: false } },
+      { terminalIssues: { issues: [{ path: ["response", "id"], code: "PRIVATE_VALUE_CANARY" }], truncated: false } },
+    ]) assert.throws(() => writer.emit({ ...event, chatGptInference: { ...chatGptInference, ...metadata } }));
+    assert.equal(records.length, 0);
     writer.emit({ ...event, chatGptInference });
     assert.equal(records.length, 1);
   });

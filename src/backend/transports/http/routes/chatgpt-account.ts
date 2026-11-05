@@ -87,7 +87,7 @@ export function registerChatGptAccountRoutes(app: DashboardApp, deps: ChatGptAcc
     try {
       const current = attempt(id), completion = await waitForCompletion(current.completion, c.req.raw.signal);
       if (current.loggingFailure !== undefined) return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
-      return c.json(completion);
+      return c.json(ChatGptSignInCompletionSchema.parse(completion.state === "completed" ? { ...completion, account: service().readAccount() } : completion));
     }
     catch (error) {
       return c.json(failure(error), 400);
