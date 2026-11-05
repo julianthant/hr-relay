@@ -395,6 +395,7 @@ export const ERROR_CATALOG = Object.freeze({
     "Dashboard error report was not recorded",
     EmptyParametersSchema,
   ),
+  DASHBOARD_PAGE_FAILED: catalogEntry("Relay could not display this page. Open the dashboard to continue.", EmptyParametersSchema),
   DASHBOARD_READ_FAILED: catalogEntry(
     "The dashboard could not load this from the local service. Try again.",
     EmptyParametersSchema,
