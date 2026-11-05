@@ -5,7 +5,7 @@ import configuredSources from "../../../../../config/dashboard-workflow-sources.
 import { z } from "zod";
 import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
@@ -15,7 +15,7 @@ import { composeDashboardRuntime } from "../../../../../src/backend/app/composit
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { assistantKnowledgeArtifact, ASSISTANT_KNOWLEDGE_PATH } from "../../../../../src/backend/assistant/context.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { ASSISTANT_VERIFY_COMMAND,  AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionResultSchema } from "../../../../../src/models/dashboard/assistant.js";
+import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND,  AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionResultSchema } from "../../../../../src/models/dashboard/assistant.js";
 import { NotificationRecordSchema } from "../../../../../src/models/notifications/notifications.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
@@ -27,6 +27,13 @@ import { createDashboardClient } from "../../../../../src/dashboard/client/index
 import { workerPoolMember, type WorkerPoolMember } from "../../../../../src/models/run/worker-slot.js";
 import { bindWorkerProcessAdmission } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { runCapacityCommandId } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
+import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
+import { RunRecordSchema } from "../../../../../src/models/run/record.js";
+import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
+import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../../src/rules/identity/ids.js";
+import { deriveTraceId } from "../../../../../src/rules/identity/identifiers.js";
+import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
 
 const AssistantTransportRequestSchema = AssistantInferenceRequestSchema.safeExtend({
   store: z.literal(false), stream: z.literal(true), parallel_tool_calls: z.literal(false),
@@ -123,6 +130,123 @@ async function withServedAssistant(body: (fixture: ServedAssistantFixture) => Pr
     [...(primary === undefined ? [] : [primary.error]), ...owner.failures],
     'Composed assistant fixture failed', { cause: primary === undefined ? owner.failures[0] : primary.error });
 }
+
+function seedAssistantReadRun({ context, clock }: Pick<ServedAssistantFixture, 'context' | 'clock'>) {
+  const active = context.database.authority.runtimeConfig.get(); assert.ok(active);
+  const candidate = RunRecordSchema.parse(personLookupQueuedRun({ runId: randomUUID(), itemId: randomUUID() }));
+  const now = clock.now().toISOString(), title = 'Private selected run evidence';
+  const run = RunRecordSchema.parse({ ...candidate, createdAt: now, updatedAt: now, envelope: { ...candidate.envelope,
+    traceId: deriveTraceId('pl', candidate.envelope.runId, clock), enqueuedAt: now,
+    configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } });
+  const descriptor = DESCRIPTORS.find(value => value.id === run.envelope.workflow), node = descriptor?.timeline?.[0]?.nodes[0]; assert.ok(node);
+  context.database.withAuthorityTransaction(repositories => {
+    assert.equal(repositories.runs.enqueue(run).state, 'inserted');
+    const writer = createTimelineEmitter({ repository: repositories.timelineEvents, clock });
+    writer.emit(runQueuedSpanEvent({ run, actorId: LOCAL_OPERATOR_ACTOR_ID, title }));
+    for (let index = 0; index < 12; index++) {
+      const base = { workflow: run.envelope.workflow, runId: run.envelope.runId, attempt: run.envelope.attempt,
+        traceId: run.envelope.traceId, ts: now, kind: 'task' as const, spanPath: `${run.envelope.traceId}/${node.id}#1.${index + 1}` };
+      writer.emit({ ...base, t: 'span.started', parentSpanPath: run.envelope.traceId, name: 'Private recorded task evidence '.repeat(4) + String(index + 1) });
+      writer.emit({ ...base, t: 'span.ended', outcome: 'done' });
+    }
+  });
+  return { run, title, subjectRef: `run_${run.envelope.runId}_${run.version}` };
+}
+
+it('serves canonical selected-run reads through authenticated composition without private provider input or command effects', async () => {
+  await withServedAssistant(async fixture => {
+    const { context, transport, origin, originalFetch } = fixture, { run, title, subjectRef } = seedAssistantReadRun(fixture);
+    const client = createDashboardClient({ baseUrl: origin });
+    await vi.waitFor(async () => assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12));
+    const detail = await client.runDetail(run.envelope.runId);
+    assert.equal(detail.timeline.events.length, 12);
+    const unverifiedCalls = transport.calls.length;
+    assert.deepEqual(await client.assistantRespond({ message: 'run status', subjectRef }), { state: 'refused', code: 'ASSISTANT_MODEL_UNVERIFIED', message: ASSISTANT_FAILURES.ASSISTANT_MODEL_UNVERIFIED });
+    assert.equal(transport.calls.length, unverifiedCalls);
+    publicCapabilityResponses(transport);
+    assert.equal((await client.assistantRespond({ message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
+    let turns = 0, forged = false;
+    transport.setResponse(init => {
+      assert.equal(typeof init.body, 'string'); if (typeof init.body !== 'string') throw Error('synthetic request body required');
+      const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), outbound = JSON.stringify(request);
+      for (const value of [run.envelope.runId, run.envelope.traceId, subjectRef, title, '10873698', 'Private recorded task evidence']) assert.equal(outbound.includes(value), false);
+      assert.deepEqual(request.tools.map(namespace => [namespace.name, namespace.tools.map(tool => tool.name)]), [['relay', ['explain_selected_run']]]);
+      const user = request.input.find(item => 'role' in item && item.role === 'user'); assert.ok(user && 'content' in user && typeof user.content === 'string');
+      const projected = z.strictObject({ intent: z.literal('selected-run-explanation'), reference: z.string().regex(/^ref_[a-f0-9]{32}$/u) }).parse(JSON.parse(user.content));
+      turns++;
+      return new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_run_read', model: request.model, status: 'completed', output: [{ type: 'function_call', namespace: 'relay', name: 'explain_selected_run', call_id: 'read_run', arguments: JSON.stringify({ reference: forged ? 'ref_' + 'f'.repeat(32) : projected.reference }), status: 'completed' }] } })}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    const durable = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), database => ({
+      chats: database.prepare('SELECT * FROM assistant_chats ORDER BY id').all(), actions: database.prepare('SELECT * FROM assistant_actions ORDER BY id').all(),
+      commands: database.prepare('SELECT * FROM commands ORDER BY id').all(), audits: database.prepare('SELECT * FROM command_audits ORDER BY id').all(),
+    }));
+    const before = durable(), controls = context.database.authority.workerControls.list();
+    assert.equal(context.database.authority.assistantAuthorization.grant(), undefined);
+    const answered = await client.assistantRespond({ message: 'explain this run', subjectRef });
+    assert.equal(answered.state, 'answered'); if (answered.state !== 'answered') throw Error('composed canonical answer required');
+    assert.ok(answered.text.includes(`${detail.header.title}: ${detail.header.status}.`)); assert.equal(turns, 1);
+    assert.equal(answered.citations.length, 4);
+    const sources = new Set<string>();
+    for (const citation of answered.citations) {
+      assert.ok('kind' in citation);
+      assert.equal(citation.runId, run.envelope.runId); assert.equal(citation.rowRevision, detail.rowRevision); assert.ok(citation.quote.length <= 4000);
+      assert.equal(citation.digest, createHash('sha256').update(canonicalJsonStringify({ runId: citation.runId, rowRevision: citation.rowRevision, source: citation.source, quote: citation.quote })).digest('hex'));
+      sources.add(citation.source);
+      if (citation.source === 'timeline') {
+        const quoted = z.strictObject({ total: z.literal(12), omitted: z.number().int().nonnegative(), events: z.array(z.unknown()) }).parse(JSON.parse(citation.quote));
+        assert.ok(quoted.events.length > 0 && quoted.events.length < 10); assert.equal(quoted.omitted, 12 - quoted.events.length);
+        assert.deepEqual(quoted.events, detail.timeline.events.slice(-quoted.events.length).map(({ native, at, label, state, notRun }) => ({ native: native ?? null, at, label, state, notRun })));
+        assert.ok(answered.text.includes(`${quoted.events.length} of 12; ${quoted.omitted} omitted`));
+      } else assert.equal(citation.quote, canonicalJsonStringify(citation.source === 'status' ? detail.header : detail[citation.source]));
+    }
+    assert.deepEqual([...sources].sort(), ['gate', 'outcome', 'status', 'timeline']);
+    for (const reference of [`run_${run.envelope.runId}_${run.version + 1}`, `run_${randomUUID()}_1`]) {
+      const refused = await client.assistantRespond({ message: 'run status', subjectRef: reference });
+      assert.equal(refused.state, 'refused'); if (refused.state === 'refused') assert.equal(refused.code, reference.includes(run.envelope.runId) ? 'ASSISTANT_READ_STALE' : 'ASSISTANT_READ_UNAVAILABLE');
+    }
+    assert.equal(turns, 1);
+    const foreign = await originalFetch(`${origin}/api/v1/assistant/respond`, { method: 'POST', headers: { Origin: 'https://foreign.invalid', 'Content-Type': 'application/json' }, body: JSON.stringify({ message: 'run status', subjectRef }) });
+    assert.equal(foreign.status, 403); assert.equal(turns, 1);
+    forged = true;
+    const refused = await client.assistantRespond({ message: 'run status', subjectRef });
+    assert.equal(refused.state, 'refused'); if (refused.state === 'refused') assert.equal(refused.code, 'ASSISTANT_PROPOSAL_REFUSED');
+    assert.equal(turns, 2);
+    assert.deepEqual(durable(), before); assert.deepEqual(context.database.authority.workerControls.list(), controls);
+    assert.deepEqual(context.database.authority.runs.get(run.envelope.runId), run);
+    assert.equal(context.database.authority.assistantAuthorization.grant(), undefined);
+  });
+});
+
+it('refuses a selected-run revision changed during authenticated composed inference', async () => {
+  await withServedAssistant(async fixture => {
+    const { context, transport, origin, clock } = fixture, { run, subjectRef } = seedAssistantReadRun(fixture), client = createDashboardClient({ baseUrl: origin });
+    await vi.waitFor(async () => assert.equal((await client.runDetail(run.envelope.runId)).timeline.events.length, 12));
+    publicCapabilityResponses(transport);
+    assert.equal((await client.assistantRespond({ message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
+    const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    let turns = 0;
+    transport.setResponse(init => {
+      assert.equal(typeof init.body, 'string'); if (typeof init.body !== 'string') throw Error('synthetic request body required');
+      const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
+      const user = request.input.find(item => 'role' in item && item.role === 'user'); assert.ok(user && 'content' in user && typeof user.content === 'string');
+      const projected = z.strictObject({ intent: z.literal('selected-run-explanation'), reference: z.string() }).parse(JSON.parse(user.content));
+      turns++; entered.resolve();
+      return new Response(new ReadableStream({ async start(controller) {
+        await release.promise;
+        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_held_read', model: request.model, status: 'completed', output: [{ type: 'function_call', namespace: 'relay', name: 'explain_selected_run', call_id: 'read_run', arguments: JSON.stringify({ reference: projected.reference }), status: 'completed' }] } })}\n\n`)); controller.close();
+      } }), { headers: { 'Content-Type': 'text/event-stream' } });
+    });
+    const reading = client.assistantRespond({ message: 'run status', subjectRef });
+    await Promise.race([entered.promise, reading.then(() => { throw Error('read settled before entering inference'); })]);
+    const cancelled = await client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: 'local-operator', source: 'queue-row', family: 'run', type: 'cancel', target: { runId: run.envelope.runId, expectedVersion: run.version } }).finally(() => release.resolve());
+    const result = await reading;
+    assert.equal(cancelled.state, 'applied');
+    assert.equal(result.state, 'refused'); if (result.state === 'refused') assert.equal(result.code, 'ASSISTANT_READ_STALE');
+    assert.equal(turns, 1);
+    assert.ok(context.database.authority.runs.get(run.envelope.runId)?.version !== run.version);
+    assert.equal(context.database.authority.assistantAuthorization.grant(), undefined);
+  });
+});
 
 it.each([
   { mode: undefined, staleAccount: false }, { mode: "every-action", staleAccount: false },
