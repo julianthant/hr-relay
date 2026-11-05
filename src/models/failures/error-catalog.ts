@@ -108,8 +108,8 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_RESPONSE_INCOMPLETE: catalogEntry("ChatGPT returned an incomplete assistant response. Test again; if it repeats, review the model and connection.", EmptyParametersSchema),
   ASSISTANT_RESPONSE_FAILED: catalogEntry("ChatGPT could not complete the assistant response. Review the connection and test again.", EmptyParametersSchema),
   ASSISTANT_MODEL_UNVERIFIED: catalogEntry("Test assistant to verify the selected model before chatting.", EmptyParametersSchema),
-  ASSISTANT_USAGE_LIMIT: catalogEntry("The ChatGPT plan usage limit was reached.", EmptyParametersSchema),
-  ASSISTANT_PLAN_DISABLED: catalogEntry("Enable ChatGPT plan usage before using the assistant.", EmptyParametersSchema),
+  ASSISTANT_USAGE_LIMIT: catalogEntry("This request reached a ChatGPT usage limit. Review this app's limit in ChatGPT Settings → Usage before trying again.", EmptyParametersSchema),
+  ASSISTANT_PLAN_DISABLED: catalogEntry("ChatGPT plan use is not enabled or permitted for this connection. Review app permissions and plan eligibility in ChatGPT.", EmptyParametersSchema),
   ASSISTANT_ACCOUNT_EXPIRED: catalogEntry("Reconnect the ChatGPT account before using the assistant.", EmptyParametersSchema),
   ASSISTANT_UNAVAILABLE: catalogEntry("The assistant is unavailable. Check the ChatGPT connection.", EmptyParametersSchema),
   ASSISTANT_VERIFICATION_FAILED: catalogEntry("Assistant verification failed. Review the selected person, model and ChatGPT connection, then test again.", EmptyParametersSchema),
@@ -625,15 +625,31 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   CHATGPT_PLAN_DISABLED: catalogEntry(
-    "ChatGPT plan use is not enabled for this connection.",
+    "ChatGPT plan use is not enabled or permitted for this connection. Review app permissions and plan eligibility in ChatGPT.",
     EmptyParametersSchema,
   ),
   CHATGPT_USAGE_LIMIT: catalogEntry(
-    "The ChatGPT plan usage limit has been reached.",
+    "This request reached a ChatGPT usage limit. Review this app's limit in ChatGPT Settings → Usage before trying again.",
     EmptyParametersSchema,
   ),
   CHATGPT_USAGE_UNAVAILABLE: catalogEntry(
-    "ChatGPT plan usage is unavailable.",
+    "ChatGPT plan usage could not be checked. Keep the connection and try again later.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_MODEL_UNAVAILABLE: catalogEntry(
+    "The requested model is unavailable for this ChatGPT connection. Review the available models before trying again.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_REQUEST_REJECTED: catalogEntry(
+    "ChatGPT rejected the request Relay sent. Relay's integration needs correction; review the local diagnostics before retrying.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_RATE_LIMITED: catalogEntry(
+    "ChatGPT is limiting request frequency. Keep the connection and wait before trying again.",
+    EmptyParametersSchema,
+  ),
+  CHATGPT_DIAGNOSTICS_UNAVAILABLE: catalogEntry(
+    "The ChatGPT request failed and Relay could not save its local diagnostics.",
     EmptyParametersSchema,
   ),
   CHATGPT_OCR_INVALID: catalogEntry(

@@ -244,6 +244,14 @@ uncertainty stays private and retained: later policy capture is absent/unverifie
 verification or selection refuses the named sticky uncertainty before more I/O. No private resource
 owner or credential enters the dashboard response.
 
+The shared Responses transport records failures through the existing local debug-event writer,
+bound by dashboard or worker composition. `chatGptInference` retains only closed operation, failure
+path, media-type classification and allowlisted provider-code values; unknown codes become `unknown`.
+The HTTP status is retained when received. Headers, prompts, response text, tokens and account
+identifiers are excluded. Development stderr mirrors the same metadata. HTTP `error.code` and
+`detail.code`, and streamed error codes, distinguish usage limits, unavailable models and rejected
+Relay requests. A diagnostic write failure is visible and never clears resource-closure uncertainty.
+
 ### Paths and validation
 
 `runtime-paths.ts` resolves defaults against the process working directory and memoizes the default

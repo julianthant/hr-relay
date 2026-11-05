@@ -8,6 +8,17 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { debugEventLevel } from "../../../src/models/events/timeline.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
 describe("bounded native debug events", () => {
+  it("accepts only closed ChatGPT inference metadata before persistence", () => {
+    const { records, repository } = fixture();
+    const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
+    const chatGptInference = { operation: "ocr", path: "http-error", contentType: "application/json", providerCode: "model_not_found" };
+    const event = { category: "http", phase: "failed", correlationId: "inference" };
+    for (const field of ["operation", "path", "contentType", "providerCode", "headers"])
+      assert.throws(() => writer.emit({ ...event, chatGptInference: { ...chatGptInference, [field]: "PRIVATE_CANARY" } }));
+    assert.equal(records.length, 0);
+    writer.emit({ ...event, chatGptInference });
+    assert.equal(records.length, 1);
+  });
   it("mirrors HTTP method, registered route template and status without client routes or payloads", () => {
     const { repository } = fixture(); const lines: string[] = [];
     const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test", development: true,

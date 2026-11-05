@@ -320,7 +320,7 @@ for (const [status, body, code] of [
   [503, { error: { code: "subscription_sharing_usage_unavailable" } }, "CHATGPT_USAGE_UNAVAILABLE"],
   [403, { error: { code: "subscription_sharing_user_not_eligible" } }, "CHATGPT_PLAN_DISABLED"],
   [403, { error: { code: "chatpass_v2_scope_not_authorized" } }, "CHATGPT_PLAN_DISABLED"],
-  [400, { error: { code: "subscription_sharing_unsupported_capability" } }, "CHATGPT_OCR_INVALID"],
+  [400, { error: { code: "subscription_sharing_unsupported_capability" } }, "CHATGPT_REQUEST_REJECTED"],
   [401, { detail: "synthetic-sensitive" }, "CHATGPT_ACCOUNT_EXPIRED"],
   [403, { detail: "synthetic-sensitive" }, "CHATGPT_PLAN_DISABLED"],
   [503, { detail: "synthetic-sensitive" }, "CHATGPT_USAGE_UNAVAILABLE"],

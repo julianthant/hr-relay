@@ -88,11 +88,17 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
     const response = await invoke(); assert.deepEqual(await response.json(), { state: "completed", model: CHATGPT_OCR_MODEL });
     assert.equal(transport.calls.filter(call => call.url.endsWith("/responses")).length, 1); unchanged(1);
     transport.setResponse(() => Response.json({ error: { code: "subscription_sharing_unsupported_capability" } }, { status: 400 }));
-    const failed = await invoke(); assert.equal((await failed.json() as { code: string }).code, "CHATGPT_OCR_INVALID"); unchanged(2);
+    const failed = await invoke(); assert.equal((await failed.json() as { code: string }).code, "CHATGPT_REQUEST_REJECTED"); unchanged(3);
+    const inferenceFaults = context.database.authority.timelineEvents.page({ limit: 500 }).filter(record => record.payload.kind === "debug" && record.payload.event.area === "chatgpt-inference");
+    assert.equal(inferenceFaults.length, 1);
+    const payload = inferenceFaults[0].payload; assert.equal(payload.kind, "debug");
+    if (payload.kind !== "debug") throw new Error("inference diagnostic required");
+    assert.equal(payload.event.status, 400);
+    assert.deepEqual(payload.event.chatGptInference, { operation: "ocr", path: "http-error", contentType: "application/json", providerCode: "subscription_sharing_unsupported_capability" });
     const cancellation = new AbortController();
     transport.setResponse(() => { cancellation.abort(); return new Response(completedOcrStream("synthetic"), { headers: { "content-type": "text/event-stream" } }); });
-    const cancelled = await invoke("{}", cancellation.signal); assert.equal((await cancelled.json() as { code: string }).code, "CHATGPT_OCR_CANCELLED"); unchanged(3);
-    assert.equal(context.database.getMeta().authorityGeneration, Number(generation) + 3);
+    const cancelled = await invoke("{}", cancellation.signal); assert.equal((await cancelled.json() as { code: string }).code, "CHATGPT_OCR_CANCELLED"); unchanged(5);
+    assert.equal(context.database.getMeta().authorityGeneration, Number(generation) + 5);
     assert.equal(factory.mock.calls[0]?.[0].admission, context.admission);
     assert.equal(factory.mock.calls[0]?.[0].stateRoot, profile.stateRoot);
   } finally { if (dashboard !== undefined) await dashboard.stop(); else await runtime.close(); factory.mockRestore(); await transport.cleanup(); await profile.close(); }

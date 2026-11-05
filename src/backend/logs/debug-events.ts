@@ -11,10 +11,10 @@ export function mirrorDebugEvent(record: Pick<TimelineAppend, "recordedAt" | "sc
   options: { development?: boolean; writeStderr?: (line: string) => void } = {}): void {
   if (process.versions.electron !== undefined || process.argv.includes("--prod")
     || !(options.development ?? (developmentDebugMirrorEnabled() || process.execArgv.includes("--conditions=development")))) return;
-  const { category, phase, code, area, reason, correlationId } = record.event;
+  const { category, phase, code, area, reason, correlationId, chatGptInference } = record.event;
   const http = category === "http" ? { method: record.event.method, route: record.event.route, status: record.event.status } : {};
   (options.writeStderr ?? (line => { process.stderr.write(line); }))(JSON.stringify({ time: record.recordedAt,
-    level: debugEventLevel(record.event), category, phase, code, area, reason, correlationId, ...http, scope: record.scope, workflow: record.workflow }) + "\n");
+    level: debugEventLevel(record.event), category, phase, code, area, reason, correlationId, chatGptInference, ...http, scope: record.scope, workflow: record.workflow }) + "\n");
 }
 
 export function createDebugEventWriter(deps: { repository: TimelineRepository; clock: Clock; build: string;

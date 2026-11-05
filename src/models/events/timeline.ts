@@ -24,6 +24,19 @@ export const TimelineCheckpointReferenceSchema = z.strictObject({
 const { proof: _proof, ...ledgerFields } = LedgerEntryPayloadSchema.shape;
 const ConfirmedOperationFactsSchema = z.strictObject(ledgerFields);
 
+export const ChatGptInferenceDiagnosticSchema = z.strictObject({
+  operation: z.enum(["ocr", "assistant"]),
+  path: z.enum(["transport", "http-error-body", "http-error", "content-type", "stream-read", "stream-decode", "stream-json", "stream-schema",
+    "stream-error", "stream-refusal", "response-failed", "response-incomplete", "stream-delta", "terminal-schema", "output-schema", "stream-incomplete", "usage-persistence", "resource-closure"]),
+  contentType: z.enum(["text/event-stream", "application/json", "text/plain", "text/html", "missing", "other"]),
+  providerCode: z.enum(["none", "unknown", "subscription_sharing_user_not_eligible", "subscription_sharing_usage_limit_exceeded",
+    "subscription_sharing_usage_unavailable", "subscription_sharing_unsupported_capability", "subscription_sharing_route_not_supported",
+    "subscription_sharing_invalid_user", "subscription_sharing_user_unavailable", "chatpass_v2_scope_not_authorized", "chatpass_v2_invalid_authorization_context",
+    "model_not_found", "invalid_request_error", "unsupported_value", "unsupported_parameter", "missing_required_parameter", "invalid_value", "invalid_type",
+    "rate_limit_exceeded", "insufficient_quota", "server_error"]),
+});
+export type ChatGptInferenceDiagnostic = z.infer<typeof ChatGptInferenceDiagnosticSchema>;
+
 export const DebugEventSchema = z.strictObject({
   category: z.enum(["session", "duo", "worker", "http", "sse", "client", "boot"]),
   phase: z.enum(["started", "settled", "failed", "reset", "acquired", "renewed", "released", "expired"]),
@@ -36,6 +49,7 @@ export const DebugEventSchema = z.strictObject({
   method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]).optional(),
   route: z.string().max(512).optional(),
   status: z.number().int().min(100).max(599).optional(),
+  chatGptInference: ChatGptInferenceDiagnosticSchema.optional(),
   durationMs: z.number().nonnegative().optional(),
   cursor: z.string().max(256).optional(),
   pending: z.number().int().nonnegative().optional(),
