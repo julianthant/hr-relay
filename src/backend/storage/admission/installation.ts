@@ -2190,7 +2190,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         if (pending.invalidation === undefined) {
           const document = readMachineRegistry(control, locator, false);
           if (canonicalJsonStringify(continuity) !== canonicalJsonStringify(parsed.profile.continuity)) fail("profile-restore-control-changed");
-          const next = advanceProfileRegistryDocument(document, { activeProfileId: null, sessionGeneration: document.sessionGeneration + 1 });
+          const next = advanceProfileRegistryDocument(document, { sessionGeneration: document.sessionGeneration + 1 });
           pending = AuthorityRestoreJournalSchema.parse({ ...pending, invalidation: { priorDocument: document, document: next, continuity } });
           atomicJson(join(control, "journal.json"), pending);
         }
@@ -2200,7 +2200,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           || canonicalJsonStringify(invalidation.continuity) !== canonicalJsonStringify(parsed.profile.continuity)
           || canonicalJsonStringify(profileRegistryWitness(locator.installationId, registryPath, invalidation.priorDocument)) !== canonicalJsonStringify(invalidation.continuity)
           || canonicalJsonStringify(invalidation.document) !== canonicalJsonStringify(advanceProfileRegistryDocument(invalidation.priorDocument,
-            { activeProfileId: null, sessionGeneration: invalidation.priorDocument.sessionGeneration + 1 }))) fail("profile-restore-invalidation-uncertain");
+            { sessionGeneration: invalidation.priorDocument.sessionGeneration + 1 }))) fail("profile-restore-invalidation-uncertain");
         const currentDocument = readStrict(registryPath, ProfileRegistryDocumentSchema);
         if (canonicalJsonStringify(currentDocument) !== canonicalJsonStringify(invalidation.document)
           && canonicalJsonStringify(currentDocument) !== canonicalJsonStringify(invalidation.priorDocument)) fail("profile-restore-invalidation-uncertain");

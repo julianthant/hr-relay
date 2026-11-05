@@ -432,8 +432,7 @@ export function createProfileSession(input: {
   }
 
   function admitSignedIn(row: ProfileRegistryRow, at: ReturnType<typeof IsoInstantSchema.parse>,
-    credentialsMatch: (entries: ReturnType<ReturnType<typeof storeFor>["read"]>["entries"]) => boolean,
-    endSelectionOnFailure = true): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
+    credentialsMatch: (entries: ReturnType<ReturnType<typeof storeFor>["read"]>["entries"]) => boolean): ActiveProfileSession | ProfileRefusal | ProfileCancelling {
     const finishing = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.profileId === row.profileId && entry.onboarding !== undefined);
     if (finishing.length > 1) return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
     for (const operation of finishing) {
@@ -451,12 +450,12 @@ export function createProfileSession(input: {
     if (readOperations().some((entry) => entry.kind === "logout" && entry.profileId !== row.profileId && entry.phase !== "complete")) {
       return refusal("PROFILE_TRANSITION_BLOCKED");
     }
-    const active = activate(row.profileId);
     try {
+      const active = activate(row.profileId);
       const record = storeFor(row.profileId).read();
       if (!credentialsMatch(record.entries)) {
         sessions.clear();
-        if (endSelectionOnFailure) registry.advanceSession(null);
+        registry.advanceSession(selection.activeProfileId);
         releaseOrdinary(row.profileId);
         return refusal("PROFILE_AUTHORITY_UNAVAILABLE");
       }
@@ -465,7 +464,7 @@ export function createProfileSession(input: {
       return active;
     } catch (error) {
       sessions.clear();
-      try { if (endSelectionOnFailure) registry.advanceSession(null); if (!hasUnprovedSourceClosure(error)) releaseOrdinary(row.profileId); }
+      try { registry.advanceSession(selection.activeProfileId); if (!hasUnprovedSourceClosure(error)) releaseOrdinary(row.profileId); }
       catch (cleanup) { throw new AggregateError([error, cleanup], "profile sign-in and selection closure failed", { cause: cleanup }); }
       throw error;
     }
@@ -757,7 +756,7 @@ export function createProfileSession(input: {
           if (email === undefined || password === undefined) return false;
           const identified = verifiers.identify(email);
           return identified !== "unknown" && identified.profileId === row.profileId && verifiers.passwordMatches(row.profileId, password);
-        }, false);
+        });
       });
     },
     changePassword(): ProfileRefusal {
