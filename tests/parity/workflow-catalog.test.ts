@@ -25,13 +25,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) test(
     await page.getByRole("button", { name: "Start a run", exact: true }).click();
     const run = page.getByRole("dialog", { name: "Start a run", exact: true });
     const picker = run.getByRole("navigation", { name: "Workflow", exact: true });
-    expect(await picker.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")))).toEqual(labels);
-    await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeEnabled();
+    const parentOnly = ["SharePoint Download", "I-9 Lookup"];
+    expect(await picker.getByRole("button").evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")))).toEqual(labels.filter(label => !parentOnly.includes(label!)));
+    await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeDisabled();
+    await expect(picker.getByRole("button", { name: "OCR", exact: true })).toHaveAttribute("aria-description", /no standalone launch input/u);
     await expect(picker.getByRole("button", { name: "Onboarding", exact: true })).toBeEnabled();
     await expect(picker.getByRole("button", { name: "Onboarding", exact: true })).not.toHaveAttribute("aria-description", /declares no typed-input surface/u);
-    for (const label of ["SharePoint Download", "I-9 Lookup"]) {
+    for (const label of parentOnly) {
       const choice = picker.getByRole("button", { name: label, exact: true });
-      await expect(choice).toBeDisabled(); await expect(choice).toHaveAttribute("aria-description", "Started by a parent workflow.");
+      await expect(choice).toHaveCount(0);
     }
 
     await attachShellA11y(page, info, `catalog-run-${theme.attribute}-${width}.a11y.yml`);

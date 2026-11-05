@@ -28,7 +28,7 @@ describe("shared run catalog", () => {
     const absent: RunStartWorkflow = { ...served[0], inputRun: { state: "absent", reason: "Delegation only" } };
     const entries = buildWorkflowCatalog([absent], true, servedFixtureSources([absent]));
     expect(entries.filter(entry => entry.id === absent.workflowId)).toHaveLength(1);
-    expect(entries.find(entry => entry.id === absent.workflowId)?.launch).toEqual({ state: "unavailable", label: "Unavailable", reason: "Delegation only" });
+    expect(entries.find(entry => entry.id === absent.workflowId)?.launch).toEqual({ state: "unavailable", label: "No direct start", reason: "This served workflow has no standalone launch input. Delegation only" });
     expect(runPickerGroups(entries, "").flatMap(group => group.entries).map(node => node.entry.id)).toContain(absent.workflowId);
     expect(buildWorkflowCatalog(served, false, servedFixtureSources(served)).map(entry => entry.id).sort()).toEqual(served.map(entry => entry.workflowId).sort());
   });
