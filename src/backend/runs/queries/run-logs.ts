@@ -379,6 +379,7 @@ function operatorActionOf(note: RunAtRestNote, authority: RunRecord | undefined,
     ? occurrence.value.consumed.value : undefined;
   return { kind, label: kind === "screenshot" ? "Screenshot" : field?.label ?? declared?.label ?? registered?.label ?? "Action label unavailable",
     ...(kind !== "click" || invocation?.contractRole !== "commit" ? {} : { submit: true }),
+    ...(kind === "screenshot" || field !== undefined || declared !== undefined ? {} : { registryLabel: true as const }),
     ...(action.physicalSessionId === undefined ? {} : { sessionId: action.physicalSessionId }),
     ...(["string", "number", "boolean"].includes(typeof retained) ? { value: String(retained) } : {}),
     ...(registered === undefined ? {} : { system: registered.system }),

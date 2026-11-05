@@ -6,6 +6,7 @@ import { NativeRunEventWireSchema, NotePageSchema, RunDetailWireSchema, RunDetai
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../src/models/workflow/operation-display-snapshot.js";
 import { plan1Leaf } from "../../support/fixtures/plan1-operation-workflows.js";
 import { browserActionMessage } from "../../../src/models/events/types.js";
+import { PERSON_LOOKUP_LOG_SCENARIOS, personLookupLogSnapshot } from "../../support/fixtures/person-lookup-log-snapshots.js";
 
 const RUN = "00000000-0000-4000-8000-000000000080", TRACE = "pl-100000-0080", AT = "2026-08-03T17:00:00.000Z";
 const id = (number: number) => `10000000-0000-4000-8000-${String(number).padStart(12, "0")}`;
@@ -247,4 +248,24 @@ it("renders capture failure from structured boundary facts and preserves indepen
       assert.equal(earlier.captureFailure, "post-submit-unknown");
     }
   }
+});
+
+describe("Person Lookup Logs show operator wording only", () => {
+  it.each(PERSON_LOOKUP_LOG_SCENARIOS)("%s hides internal controls, diagnostics and state notes", scenario => {
+    const { steps } = projectRunLogs(personLookupLogSnapshot(scenario), client);
+    const text = logPlainText(steps);
+    assert.doesNotMatch(text, /drill-in|View All toggle|Search button|EID input|Value not retained|Run note|Identity cross-check/u);
+    assert.doesNotMatch(text, /Pending|In progress|Completed|completed\.|Write state|Resolution unavailable|annotation/u);
+    assert.deepEqual([...new Set(steps.flatMap(step => step.system ?? []))].filter(system => !["UCPath", "CRM"].includes(system)), []);
+    for (const step of steps) for (const entry of step.entries) for (const shot of entry.kind === "decision" ? entry.decision.screenshots ?? [] : []) assert.equal(shot.system, step.system);
+  });
+  it("states the write outcome of a failed step in operator words", () => {
+    const decision = projectRunLogs(personLookupLogSnapshot("failed"), client).steps.flatMap(step => step.entries).find(entry => entry.kind === "decision" && entry.decision.state === "failed");
+    assert.ok(decision?.kind === "decision");
+    assert.equal(decision.decision.footer, "No changes were made.");
+  });
+  it("keeps a skipped step's reason and drops stage states the timeline already shows", () => {
+    const text = logPlainText(projectRunLogs(personLookupLogSnapshot("crm-off"), client).steps);
+    assert.equal(text.match(/Skipped · Not needed for this run/gu)?.length, 2);
+  });
 });
