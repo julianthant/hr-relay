@@ -92,7 +92,7 @@ export function personLookupLogSnapshot(scenario: PersonLookupLogScenario): RunL
     members: nodes.map(nodeId => ({ nodeId, categoryKey: key, label, state: timelineStateOf(states[index]) })) }));
   const eventOrder = (index: number) => {
     const own = rows.filter(row => CATEGORIES[index][3].includes(row.native.nodeId as never)).map(row => row.native.order);
-    return own.length > 0 ? Math.min(...own) - 50 + index : Math.max(0, ...rows.filter(row => CATEGORIES.slice(0, index).some(category => category[3].includes(row.native.nodeId as never))).map(row => row.native.order)) + 5;
+    return own.length > 0 ? Math.min(...own) - 50 + index : Math.max(0, ...rows.filter(row => CATEGORIES.slice(0, index).some(category => category[3].includes(row.native.nodeId as never))).map(row => row.native.order)) + 50 + index;
   };
   const eventNative = (key: string, index: number) => NativeRunEventWireSchema.parse({ eventId: id(500 + index), order: eventOrder(index), runId: RUN, attempt: 1, traceId: TRACE, nodeId: key, spanPath: `${TRACE}/${key}#1` });
   const events = CATEGORIES.map(([key, label], index) => ({ native: eventNative(key, index), categoryKey: key, noteId: id(600 + index), sequence: index, at: clock(Math.floor(eventOrder(index) / 100)),

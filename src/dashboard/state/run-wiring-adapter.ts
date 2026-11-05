@@ -11,7 +11,7 @@ import { childRetrySourceMatches, composeCommandRequest, verifyShellCommandEffec
 import { CommandRequestSchema, type CommandRequest } from "../../rules/commands/commands.js";
 import { decisionAnswerValid, type LogDecisionAction, type LogDecisionAnswer } from "../surfaces/run-detail/logs/log-decision-model.js";
 import { identityCeremonyFor } from "../surfaces/run-detail/identity/identity-ceremony.js";
-import { createErrorCatalogFailure, formatErrorCatalogFailure, resolveErrorCatalogFailure } from "../../models/failures/error-catalog.js";
+import { createErrorCatalogFailure, formatErrorCatalogFailure, operatorFailureSentence } from "../../models/failures/error-catalog.js";
 import { DeclaredActionIdentitySchema } from "../../models/workflow/operation-action-identity.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
@@ -436,8 +436,7 @@ export function projectRunLogs(snapshot: RunLogSnapshot, client: Pick<DashboardC
           message, actions: parkedWriteLogActions(write) } }] });
     } else if (section.section === "failure" && section.payload.state === "available") {
       const failure = section.payload.value;
-      const resolution = resolveErrorCatalogFailure(failure, "http-response");
-      const message = resolution.state === "resolved" ? resolution.text : resolution.catalogFault.text;
+      const message = operatorFailureSentence(failure.code);
       order.set(failure.failureId, requireNative(failure.native).order); node.set(failure.failureId, requireNative(failure.native).nodeId);
       steps.push({ id: failure.failureId, time: fmtActionClock(failure.occurredAt), title: failure.display?.title ?? failure.code,
         entries: [{ kind: "decision", id: failure.failureId, time: fmtActionClock(failure.occurredAt), decision: { title: failure.display?.title ?? failure.code,
