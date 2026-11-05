@@ -436,7 +436,8 @@ export class RuntimeCustodyUncertainError extends AggregateError {
   }
 }
 
-function profileResourceCustodyBusy(before: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>): boolean {
+function profileResourceCustodyBusy(before: ReturnType<AuthorityDatabase["readProfileResourceCustody"]>,
+  nonBirth?: (slot: typeof before.slots[number]) => boolean): boolean {
   for (const browser of before.browsers) if (!before.slots.some(slot => slot.workerId === browser.workerId)) throw new Error("profile-browser-membership-unavailable");
   let busy = false;
   for (const slot of before.slots) {
@@ -444,7 +445,7 @@ function profileResourceCustodyBusy(before: ReturnType<AuthorityDatabase["readPr
     if (reservation === undefined || reservation.reservationCommandId !== slot.reservationCommandId) throw new Error("profile-worker-reservation-authority-unavailable");
     if (reservation.state === "pending") busy = true;
     const lease = before.leases.find(value => value.workerId === slot.workerId);
-    if (lease === undefined && slot.retiredAt === null) {
+    if (lease === undefined && slot.retiredAt === null && !nonBirth?.(slot)) {
       const plan = before.controls.find(control => control.commandId === slot.reservationCommandId);
       if (reservation.state !== "settled" || plan?.request.type !== "plan-worker-count" || plan.phase.state !== "succeeded" || plan.auditedAt === undefined
         || !plan.roster?.selected.some(member => member.workerId === slot.workerId)
@@ -479,7 +480,7 @@ export function composeProfileActivity(input: Readonly<{
     input.admission.assertLive();
     const before = input.database.readProfileResourceCustody();
     let busy = profileResourceCustodyBusy(shutdown ? { ...before, runs: before.runs.filter(run => run.pause?.state !== "paused" && run.lifecycle.state !== "parked-write"),
-      writeIntents: before.writeIntents.filter(intent => intent.status === "attempting" && !("runId" in intent && before.runs.some(run => run.envelope.runId === intent.runId && run.lifecycle.state === "parked-write"))) } : before);
+      writeIntents: before.writeIntents.filter(intent => intent.status === "attempting" && !("runId" in intent && before.runs.some(run => run.envelope.runId === intent.runId && run.lifecycle.state === "parked-write"))) } : before, slot => input.database.hasWorkerNonBirth(slot));
     for (const slot of before.slots) {
       const lease = before.leases.find(value => value.workerId === slot.workerId);
       if (slot.retiredAt !== null) continue;
