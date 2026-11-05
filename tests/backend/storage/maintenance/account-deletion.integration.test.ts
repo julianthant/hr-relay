@@ -3,6 +3,7 @@ import { WRITE_INTENT_ATTEMPTING } from "../../../support/fixtures/phase1c-contr
 import { composeDashboardApplication } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
+import { TimelineAppendSchema } from "../../../../src/models/events/timeline.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import nativeFs, { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -17,6 +18,8 @@ import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runt
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { AccountDeletionSchema } from "../../../../src/backend/storage/maintenance/account-deletion.js";
 import { fixedLayoutEntries } from "../../../../src/backend/storage/maintenance/fixed-layout.js";
+import { fileStatus } from "../../../../src/backend/storage/file-identity.js";
+import { privatePathRejects } from "../../../../src/backend/storage/private-path.js";
 import { ProfileVerifierDocumentSchema } from "../../../../src/models/profiles/profile.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
@@ -163,10 +166,13 @@ for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses s
   if (replacement === "other-profile") assert.notEqual(next.profileId, old.profileId);
   else { assert.equal(next.profileId, old.profileId); assert.notEqual(next.epoch, old.epoch); }
   assert.deepEqual(PublicProfileStateSchema.parse(await (await tabA.read()).json()), next);
+  const logs = join(f.machine.stateRoot, "logs");
+  mkdirSync(logs, { recursive: true, mode: 0o700 });
   const snapshot = () => ({ registry: f.machine.readProfileRegistry(),
     files: fixedLayoutEntries(f.machine.stateRoot).filter(entry => !entry.path.endsWith("state.db-shm") && entry.path !== "logs/boot.jsonl"),
     keyringDigest: createHash("sha256").update(JSON.stringify(FakeKeyringEntry.snapshot())).digest("hex") });
   const before = snapshot(); assert.equal(existsSync(f.retained), true); assert.equal(existsSync(f.otherRetained), true);
+  const control = join(f.workspace, ".tracker", "control"), controlBefore = fixedLayoutEntries(control);
 
   const response = await tabA.post("delete-account", confirmation);
 
@@ -174,6 +180,14 @@ for (const replacement of ["other-profile", "new-epoch"] as const) it(`refuses s
   assert.deepEqual(PublicProfileStateSchema.parse(await response.json()), { state: "refused", code: "PROFILE_SESSION_STALE" });
   assert.equal(response.headers.get("set-cookie"), null);
   assert.deepEqual(snapshot(), before, "stale confirmation changed profile, backup, credential or journal authority");
+  assert.deepEqual(fixedLayoutEntries(control), controlBefore, "stale confirmation changed installation control or journals");
+  const bootLog = join(logs, "boot.jsonl");
+  assert.equal(privatePathRejects(logs, fileStatus(logs), "directory-0700"), false);
+  assert.equal(privatePathRejects(bootLog, fileStatus(bootLog), "file-0600"), false);
+  const fault = TimelineAppendSchema.parse(JSON.parse(readFileSync(bootLog, "utf8")));
+  assert.ok(fault.payload.kind === "debug");
+  assert.deepEqual([fault.payload.event.code, fault.payload.event.area, fault.payload.event.reason],
+    ["PROFILE_SESSION_STALE", "profile-request", "operation-refused"]);
   assert.deepEqual(PublicProfileStateSchema.parse(await (await tabB.read()).json()), next);
   assert.equal(existsSync(f.retained), true);
   assert.equal(existsSync(f.otherRetained), true);
