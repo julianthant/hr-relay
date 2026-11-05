@@ -28,12 +28,15 @@ export function useRunHistory(onCleared?: () => void) {
     throw error;
   }), [client, status]);
   const day = binding?.authority.dayState.day;
+  const target = binding?.authority.profileTarget;
   useEffect(() => { void reload(); }, [reload, day]);
-  const clear = useCallback(async () => {
+  const prepare = useCallback(() => target === undefined ? undefined : ClearRunHistoryRequestSchema.parse({ commandId: crypto.randomUUID(), target }), [target]);
+  const clear = useCallback(async (confirmed?: ClearRunHistoryRequest) => {
     const previous = action.snapshot().value;
     if (previous?.state === "pending") return;
     const checking = previous?.state === "unknown";
-    const request = previous?.state === "unknown" ? previous.request : ClearRunHistoryRequestSchema.parse({ commandId: crypto.randomUUID() });
+    const request = previous?.state === "unknown" ? previous.request : confirmed;
+    if (request === undefined) { action.accept({ state: "failed" }); return; }
     action.accept({ state: "pending", checking, request });
     try {
       const result = await (checking ? client.checkClearRunHistoryResult(request) : client.clearRunHistory(request));
@@ -61,8 +64,8 @@ export function useRunHistory(onCleared?: () => void) {
       : operation.result.state === "cleared"
       ? `${operation.result.deletedRuns} finished runs cleared.` : RUN_HISTORY_REFUSALS[operation.result.reason]
     : undefined;
-  return { clear, pending, checking, unknown, message,
-    disabled: pending || (!unknown && (available === undefined || available.activeRuns > 0 || available.finishedRuns === 0)),
+  return { prepare, clear, pending, checking, unknown, message,
+    disabled: target === undefined || pending || (!unknown && (available === undefined || available.activeRuns > 0 || available.finishedRuns === 0)),
     description: read.state === "failed" ? ERROR_CATALOG.STORAGE_AUTHORITY_READ_FAILED.text
       : available === undefined ? "Run history is unavailable. Refresh Storage to check again."
       : available.activeRuns > 0 ? RUN_HISTORY_REFUSALS["active-runs"]

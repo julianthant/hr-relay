@@ -1,5 +1,6 @@
 import { expect, type Page } from '@playwright/test';
 import { test } from './helpers/fixtures.js';
+import { ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT } from '../../src/models/dashboard/assistant.js';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PARITY_DIST_DIR } from './helpers/bundle.js';
@@ -7,7 +8,7 @@ import { startFixtureServer } from '../support/helpers/dashboard/fixture-bff.js'
 import { attachShellA11y } from './helpers/shell-proof.js';
 import { harness, disposeHttpRouteHarness } from '../support/helpers/backend/http-route-harness.js';
 
-const evidence = resolve('.work/HUB-WIRE-1-R2');
+const evidence = resolve('tests/parity/.output/hub-integration');
 const menuLabels = ['Add files', 'Ask before every action', 'Model: GPT-6.1 Sol', 'Thinking effort: Medium', 'Voice input'];
 async function rectangles(page: Page) {
   return Promise.all(['.hub-composer', '#hub-panel-assistant textarea', '#hub-panel-assistant .hub-transcript'].map(selector => page.locator(selector).boundingBox()));
@@ -277,11 +278,15 @@ test('HUB served product uses typed answers and refusals without sample executio
       } } });
     });
     await page.goto(`${server.baseUrl}/?fixture=hub-served`);
+    const launcher = page.getByRole('button', { name: 'Assistant', exact: true });
+    await expect(launcher).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('#hub-shell-assistant')).toBeHidden();
+    await launcher.click();
     const panel = page.locator('#hub-panel-assistant'), field = panel.getByRole('textbox', { name: 'Message Relay', exact: true });
     await expect(panel).toHaveAttribute('data-source', 'served'); await expect(page.getByRole('button', { name: 'Assistant', exact: true })).toHaveCount(1);
     await expect(field).toBeEnabled(); await field.fill('Explain this workflow'); await field.press('Enter');
     await expect(panel).toContainText('Verified explanation'); await expect(field).toHaveValue(''); await panel.getByRole('button', { name: 'Source: docs/example.md:1-2' }).click(); await expect(panel).toContainText('Verified source quote');
-    for (const label of menuLabels.slice(1)) await expect(panel.getByRole('button', { name: label, exact: true })).toBeDisabled();
+    for (const label of ['Ask before every action', `Model: ${ASSISTANT_DEFAULT_MODEL}`, `Thinking effort: ${ASSISTANT_DEFAULT_EFFORT}`, 'Voice input']) await expect(panel.getByRole('button', { name: label, exact: true })).toBeDisabled();
     await field.fill('Run separations'); await field.press('Enter');
     await expect(panel).toContainText('The current planner refused this proposal. Review it in Run.'); await expect(field).toHaveValue('');
     mkdirSync(evidence, { recursive: true });

@@ -210,6 +210,26 @@ export function seedMockRuns(): readonly MockRun[] {
   });
   return runs.map(run => ["i9-lookup", "sharepoint-download"].includes(run.workflowId) ? { ...run, parentId: "mock:onbase:sample:ocr", parentWorkflowId: "ocr" } : run);
 }
+
+export function mockRunSubset(runs: readonly MockRun[], include: (run: MockRun) => boolean): readonly MockRun[] {
+  const all = new Map(runs.map(run => [run.id, run]));
+  const selected = runs.filter(include), ids = new Set(selected.map(run => run.id));
+  return selected.map(run => {
+    let parentId = run.parentId;
+    const visited = new Set([run.id]);
+    while (parentId !== undefined && !ids.has(parentId)) {
+      if (visited.has(parentId)) throw new Error("MOCK_QUEUE_PARENT_CYCLE");
+      visited.add(parentId);
+      const parent = all.get(parentId);
+      if (parent === undefined) throw new Error("MOCK_QUEUE_PARENT_UNAVAILABLE");
+      parentId = parent.parentId;
+    }
+    const parent = parentId === undefined ? undefined : all.get(parentId);
+    if (parentId === run.parentId && (run.ocrRunId === undefined || ids.has(run.ocrRunId))) return run;
+    return { ...run, parentId, parentWorkflowId: parent?.workflowId,
+      ocrRunId: run.ocrRunId !== undefined && ids.has(run.ocrRunId) ? run.ocrRunId : undefined };
+  });
+}
 export function mockRetrySource(runs: readonly MockRun[], id: string): MockRun {
   let source = runs.find(run => run.id === id);
   const visited = new Set<string>();

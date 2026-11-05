@@ -334,6 +334,7 @@ export const NoteWireSchema = z.strictObject({
     value: z.string().optional(),
     label: z.string().min(1),
     submit: z.boolean().optional(),
+    registryLabel: z.literal(true).optional(),
     sessionId: BrowserSessionIdSchema.optional(),
     system: BrowserSystemIdSchema.optional(),
     state: z.enum(["started", "completed", "failed", "not-run", "confirmed"]).optional(),

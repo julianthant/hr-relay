@@ -750,10 +750,13 @@ Reflect.set(globalThis, 'ResizeObserver', class { observe() {} unobserve() {} di
 let root: Root_m2 | undefined;
 const disposers: (() => void | Promise<void>)[] = [];
 const _afterEachFixture0 = async () => {
-  await act_m2(async () => root?.unmount()); root = undefined;
-  for (const dispose of disposers.splice(0)) await dispose();
+  await act_m2(async () => {
+    root?.unmount(); root = undefined;
+    for (const dispose of disposers.splice(0)) await dispose();
+  });
   document.body.replaceChildren(); localStorage.clear(); window.history.replaceState(null, '', '/');
 };
+afterEach_m2(_afterEachFixture0);
 async function settle() { await act_m2(async () => { await new Promise(resolve => setTimeout(resolve, 20)); }); }
 
 function servedSessionMocks(workflows: Parameters<typeof PARITY_WORKFLOW_COMPOSITION_m2>[0]) {
@@ -903,7 +906,6 @@ function withTitle(title: string, cursor: string, revision: number): DashboardDa
 }
 
 describe_m2('real mounted dashboard through the typed mock transport', () => {
-afterEach_m2(_afterEachFixture0);
 
   for (const save of [
     { section: "performance", field: "Task", value: "240", title: "Settings save unconfirmed", inline: "Settings write unconfirmed" },

@@ -1,5 +1,5 @@
 import { CanonicalCrashRecoveryRequestSchema } from "../../../models/run/worker.js";
-import { ClearRunHistoryRequestSchema } from "../../../models/dashboard/run-history.js";
+import { RunHistoryCommandSchema } from "../../../models/dashboard/run-history.js";
 import { z } from "zod";
 import { DelegationAdmissionRequestSchema, DelegationInvocationRequestSchema, DelegationSettlementRequestSchema, DelegationRefreshRequestSchema, DelegationRetryRequestSchema } from "./delegation-contracts.js";
 import { PublicRerunPlanSchema, SourceBoundRunSchema } from "../../../models/run/rerun.js";
@@ -24,7 +24,7 @@ const schemas = {
   terminalize:z.union([CanonicalFailureTerminalizeRequestSchema,CanonicalSuccessTerminalizeRequestSchema,CanonicalCancellationTerminalizeRequestSchema]),
   recover:CanonicalRecoverRunRequestSchema,requeue:CanonicalRequeueRequestSchema,retry:CanonicalRetrySourceRequestSchema,restart:CanonicalRetrySourceRequestSchema,
   delete:CanonicalDeleteRequestSchema,purge:CanonicalPurgeRequestSchema,
-  "clear-history": ClearRunHistoryRequestSchema,
+  "clear-history": RunHistoryCommandSchema,
 };
 export function validateNativeLifecycleRequest(input: unknown): void {
   const command = RunLifecycleCommandRecordSchema.parse(input);

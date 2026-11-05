@@ -33,6 +33,10 @@ All source paths in this table are relative to `src/dashboard/`.
 
 ## Startup and persistent shell
 
+Page render failures show Page unavailable with Open dashboard recovery. The page boundary keeps
+workflow navigation and Sessions mounted; an outer boundary also catches shell construction failures.
+Navigation clears the failed page state, and recovery replaces the failing URL.
+
 The outer app root applies theme and the 1024×720 CSS-pixel minimum canvas above Tooltip and Toast
 providers. Before bootstrap, `DashboardSkeleton` preserves the requested page's geometry. A failed
 bootstrap shows The dashboard could not start and the client's error. Invalid view parameters
@@ -59,7 +63,7 @@ It keeps stable ID, label, category, start capability, availability, and source 
 Preview capability does not establish executable registration. An unknown workflow source throws
 rather than picking a default.
 
-`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup and Separations are `served` and the other configured values
+`app/workflow-sources.ts` parses `config/dashboard-workflow-sources.json`; Person Lookup, Separations and OCR are `served` and the other configured values
 are `mock`. `WorkflowComposition.sourceForRoute` selects the producer for a route. Workflow
 selection determines Queue heading, visible rows, launcher target, and Logs context. Exact run
 selection may identify its own workflow. Counts come from the producer corresponding to the
@@ -169,7 +173,7 @@ when a later producer introduces paging.
 
 When a live timeline is supplied and the workflow version or contract fingerprint differs from the retained run, older runs use its current step names. Every node recorded by that run's spans, checkpoints, gates, actions and same-run action lineage must map to exactly one keyed live category; missing or ambiguous mappings refuse as `LOGS_IDENTITY_REFUSED`. Notification display applies the same rule and retains its unavailable state on incompatibility. Matching version and fingerprint skip this structural evidence check; notification subject projection still reads its declared checkpoint. Run detail skips timeline reads when the fold has no task spans or gates, except that an older run with a live timeline reads it once for structural compatibility. Missing live category keys still refuse for every run. Frozen action evidence and every write, gate-resolution, resume, rerun and checkpoint-replay fingerprint check remain exact.
 
-Served Logs combines action notes, declared operator observations, fences and decisions in native ingestion order. Contiguous actions nest under their registered timeline group and system; helper completions do not create their own headings. Unknown field paths remain in Run data instead of becoming operator labels. Browser action labels come from exact frozen declarations or the UI registry. Values appear only through declared fields and existing frozen classification; legacy unbound gesture values remain explicitly unavailable. Captures join exact bundle, artifact, node, attempt and physical session metadata while their labels stay operator text. Within each displayed step, identical declared field labels and values render once at their first observation time; different values stay separate. Run data retains all source observations, and repeated-field captures remain visible.
+Served Logs combines action notes, declared operator observations, fences and decisions in native ingestion order. Contiguous actions nest under their registered timeline group and system; helper completions do not create their own headings. Unknown field paths remain in Run data instead of becoming operator labels. Browser action labels come from exact frozen declarations; gestures labelled only by the UI registry stay in Run data and are not shown. Values appear only through declared fields and existing frozen classification; legacy unbound gesture values remain explicitly unavailable. Captures join exact bundle, artifact, node, attempt and physical session metadata while their labels stay operator text. Within each displayed step, identical declared field labels and values render once at their first observation time; different values stay separate. Run data retains all source observations, and repeated-field captures remain visible.
 
 Selecting a run opens Logs beside Queue. No selection shows No run open; a run missing from the
 loaded day shows Run unavailable. Explicit workflow previews mount `WorkflowMockLog`. The
@@ -377,6 +381,9 @@ Do not derive an empty requirement set from an empty open-session list. Actual w
 
 ## Assistant
 
+The served assistant starts closed and opens through its launcher. Explicit mock specimens retain
+their open panel for presentation checks.
+
 The HUB shell is the single mounted assistant. Product chats retain C1 controller state per chat and
 send through the typed assistant client. Account, selected-profile and authority changes invalidate
 pending replies and proposals; switching chats cancels a pending reply while preserving each draft and
@@ -529,8 +536,13 @@ Uncertain outcomes stay locked across account refresh and Settings navigation fo
 profile lifetime. Neither page load, scope refresh, sign-in nor Run preflight dispatches OCR.
 The result is a diagnostic only and never contributes to readiness reports or admission.
 
-Storage displays health and doctor reports through its typed client. Authority availability differs
-from backup age. Storage updates show their status without an update-history disclosure. Storage excludes run-history presentation. Recovery actions require their exact
+Storage displays health, doctor reports and run-history counts through its typed client. Clear run
+history removes finished runs, logs, screenshots and disposable evidence through the existing
+deletion service; active runs and unresolved writes refuse the operation. The confirmation captures
+the displayed profile ID and session epoch; Clear and result lookup retain that target. Production
+admits both fields against the current selected authority before lifecycle or cleanup effects. Settings, credentials,
+spreadsheets and retained write evidence stay protected. Authority availability differs
+from backup age. Storage updates show their status without an update-history disclosure. Recovery actions require their exact
 served admission. Startup completes automatic repair before ordinary runtime admission; Settings rendering performs no repair or backup. A read-only notice identifies restored person data and its backup time.
 
 ### Keyboard

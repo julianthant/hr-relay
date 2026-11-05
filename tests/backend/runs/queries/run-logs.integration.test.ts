@@ -319,9 +319,9 @@ it("serves registered operator labels for the normal legacy Person Lookup action
   const rows = section.payload.rows?.filter(row => row.kind === "note") ?? [];
   assert.equal(rows.length, 3);
   assert.deepEqual(rows.map(row => Reflect.get(row.note, "operatorAction")), [
-    { kind: "fill", label: "Person Org EID input", system: "ucpath" },
-    { kind: "click", label: "Person Org Search button", system: "ucpath" },
-    { kind: "read", label: "Person Org displayed name", system: "ucpath" },
+    { kind: "fill", label: "Person Org EID input", registryLabel: true, system: "ucpath" },
+    { kind: "click", label: "Person Org Search button", registryLabel: true, system: "ucpath" },
+    { kind: "read", label: "Person Org displayed name", registryLabel: true, system: "ucpath" },
   ]);
   assert.deepEqual(rows.map(row => row.note.message), [
     "Fill: Person Org EID input", "Click: Person Org Search button", "Read: Person Org displayed name",
