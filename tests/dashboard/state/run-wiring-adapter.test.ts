@@ -399,7 +399,7 @@ describe("served Logs wiring", () => {
     const snapshot = await readRunLogs(client, selection(), new AbortController().signal);
     const decision = projectRunLogs(snapshot, client).steps.find(step => step.id === source.failureId)?.entries[0];
     assert.equal(decision?.kind, "decision");
-    if (decision?.kind === "decision") { assert.equal(decision.decision.state, "unconfirmed"); assert.equal(decision.decision.actions, undefined); assert.equal(decision.decision.caution, "Write state: unknown"); }
+    if (decision?.kind === "decision") { assert.equal(decision.decision.state, "unconfirmed"); assert.equal(decision.decision.actions, undefined); assert.equal(decision.decision.caution, "The result is unknown. Check the system before continuing."); }
     const foreign = clientFor(path => path.endsWith("/logs") ? { section: "logs", payload: page() } : path.endsWith("/failure") ? original : servedDetail);
     await assert.rejects(() => readRunLogs(foreign, selection(), new AbortController().signal), /IDENTITY_MISMATCH/);
   });
