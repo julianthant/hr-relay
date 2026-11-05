@@ -391,7 +391,7 @@ export async function harness(options: {
       actorLabel: () => "Fixture Operator",
       authorityMeta: () => database.getMeta(),
       // The harness runs no backup lane; "missing" is its true state.
-      automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "missing",
+      backupSummary: () => "missing",
       preflightReport: () => preflight.report,
     },
     preflight: preflight.authority,

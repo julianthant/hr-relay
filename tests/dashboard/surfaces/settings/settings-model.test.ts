@@ -32,7 +32,7 @@ Reflect.set(globalThis, "ResizeObserver", MeasurementFreeResizeObserver);
 
 const STORAGE = StorageHealthSummaryWireSchema_m0.parse({
   authority: "healthy",
-  automaticRepair: { state: "none" }, backup: "current",
+  backup: "current",
   checkedAt: "2026-08-26T17:00:00.000Z",
 });
 const servedStatusSections = SettingsSectionPrimitiveSchema_m0.array().parse([
@@ -191,7 +191,7 @@ function section(id: string, label: string): SettingsSection_m2 {
 const STORAGE = section("storage", "Storage checks");
 const HEALTHY_STORAGE = StorageHealthSummaryWireSchema_m2.parse({
   authority: "healthy",
-  automaticRepair: { state: "none" }, backup: "current",
+  backup: "current",
   checkedAt: "2026-08-26T16:00:00.000Z",
 });
 const STATIC_SETTINGS_CLIENT = {} as DashboardClient_m2;

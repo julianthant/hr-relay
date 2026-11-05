@@ -22,7 +22,7 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
 const HEALTHY_STORAGE = StorageHealthSummaryWireSchema.parse({
   authority: "healthy",
-  automaticRepair: { state: "none" }, backup: "current",
+  backup: "current",
   checkedAt: "2026-08-26T17:00:00.000Z",
 });
 
