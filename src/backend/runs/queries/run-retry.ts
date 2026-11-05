@@ -2,9 +2,9 @@ import type { RunRecord } from "../../../models/run/record.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
-export function lookupBatchMemberRetryAvailable(repositories: AuthorityRepositories, run: RunRecord,
-  descriptor: AnyWorkflowDescriptor | undefined): boolean {
-  if (run.envelope.workflow !== "person-lookup" || run.envelope.parent !== undefined || run.sessionId === undefined
+export function batchMemberRetryAvailable(repositories: AuthorityRepositories, run: RunRecord,
+  descriptor: AnyWorkflowDescriptor | undefined, capabilities?: Readonly<{ retryBatchMembers?: boolean }>): boolean {
+  if (capabilities?.retryBatchMembers !== true || run.envelope.parent !== undefined || run.sessionId === undefined
     || run.lifecycle.state !== "terminal" || run.lifecycle.outcome !== "failed" || descriptor === undefined
     || descriptor.id !== run.envelope.workflow || descriptor.version !== run.envelope.descriptorVersion
     || descriptor.contractFingerprint !== run.envelope.contractFingerprint || repositories.runs.admission().state !== "open"

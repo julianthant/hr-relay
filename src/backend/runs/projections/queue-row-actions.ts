@@ -36,7 +36,7 @@ export interface QueueRowActionFacts {
   readonly named: boolean;
   /** ref dashboard-surfaces's `has-review-panel` condition input */
   readonly hasReviewPanel: boolean;
-  readonly lookupBatchMemberRetryAvailable?: boolean;
+  readonly batchMemberRetryAvailable?: boolean;
 }
 
 /** The verbs this projection may serve, each a member of `ActionCommandKeySchema`. */
@@ -155,7 +155,7 @@ export function queueRowActions(
   facts: QueueRowActionFacts,
 ): ActionDescriptorWire[] {
   if (policy === undefined) return [];
-  const retry = facts.lookupBatchMemberRetryAvailable === true && facts.status === "failed" && !facts.isChild && !facts.parkedWrite
+  const retry = facts.batchMemberRetryAvailable === true && facts.status === "failed" && !facts.isChild && !facts.parkedWrite
     && policyEnables(policy, "retry", facts)
     ? [ActionDescriptorWireSchema.parse({ key: "retry-batch-member", label: "Retry", kind: "command", command: "retry",
       expectedVersion: facts.rowRevision, intent: "neutral", icon: "retry", placement: ["banner"] })] : [];

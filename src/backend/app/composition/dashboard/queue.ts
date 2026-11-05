@@ -1,4 +1,4 @@
-import { lookupBatchMemberRetryAvailable } from "../../../runs/queries/run-retry.js";
+import { batchMemberRetryAvailable } from "../../../runs/queries/run-retry.js";
 import type { WorkerLeaseRecord } from "../../../../models/run/worker.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 
@@ -9,6 +9,7 @@ import {
 import { createRunQueueProjection } from "../../../runs/projections/run-queue-projection.js";
 import { readQueueRecordMembers } from "../../../runs/queries/ocr-record-members.js";
 import { readOcrReviewAuthority } from "../../../runs/lifecycle/ocr-review-authority.js";
+import { workflowQueueCapabilities } from "../../registries/workflow-registry.js";
 
 export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; ownsWorker?: (lease: WorkerLeaseRecord) => boolean; reader: Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;
@@ -20,8 +21,9 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
     descriptorSetHash,
     ledger,
     reader: input.reader,
+    queueCapabilities: workflowQueueCapabilities,
     authority: {
-      lookupBatchMemberRetryAvailable: run => lookupBatchMemberRetryAvailable(database.authority, run, descriptors.resolve(run.envelope.workflow)),
+      batchMemberRetryAvailable: run => batchMemberRetryAvailable(database.authority, run, descriptors.resolve(run.envelope.workflow), workflowQueueCapabilities(run.envelope.workflow)),
       queueParents: envelopes => database.authority.dependencies.parents(envelopes),
       recordMembers: (run, children) => database.withAuthorityReadSnapshot(() => readQueueRecordMembers(database.authority, input.reader,
         run, children, id => descriptors.resolve(id))),

@@ -1,6 +1,7 @@
 import { executeSettingsCommand } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, derivePersistedSettingsFingerprint } from "../../../../src/models/config/settings.js";
-import { lookupBatchMemberRetryAvailable } from "../../../../src/backend/runs/queries/run-retry.js";
+import { batchMemberRetryAvailable } from "../../../../src/backend/runs/queries/run-retry.js";
+import { workflowQueueCapabilities } from "../../../../src/backend/app/registries/workflow-registry.js";
 import type { AuthorityRepositories } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { WorkerControlRecordSchema } from "../../../../src/models/run/worker-control.js";
 import assert from "node:assert/strict";
@@ -57,7 +58,8 @@ it("serves a native Lookup batch root Retry, retains its session once on replay 
   const stale = h.kernel.execute({ ...command, commandId: randomUUID(), target: { runId, expectedVersion: failed.version - 1 } });
   assert.equal(stale.state, "conflict");
   descriptor = { ...personLookupDescriptor, contractFingerprint: FingerprintSchema.parse("b".repeat(64)) };
-  assert.equal(lookupBatchMemberRetryAvailable(h.database.authority, failed, descriptor), false);
+  assert.equal(batchMemberRetryAvailable(h.database.authority, failed, descriptor, workflowQueueCapabilities("person-lookup")), false);
+  assert.equal(batchMemberRetryAvailable(h.database.authority, failed, descriptor), false);
   const mismatched = h.kernel.execute({ ...command, commandId: randomUUID() });
   assert.ok(mismatched.state === "rejected" && mismatched.code === "schema-mismatch");
   descriptor = personLookupDescriptor;
@@ -71,7 +73,7 @@ it("serves a native Lookup batch root Retry, retains its session once on replay 
     repositories => ({ ...repositories, workerControls: { ...repositories.workerControls, resetForRun: () => reset } }),
   ];
   for (const view of blocked) {
-    assert.equal(lookupBatchMemberRetryAvailable(view(h.database.authority), failed, descriptor), false);
+    assert.equal(batchMemberRetryAvailable(view(h.database.authority), failed, descriptor, workflowQueueCapabilities("person-lookup")), false);
     const transaction = h.database.withAuthorityTransaction.bind(h.database);
     const views = new WeakMap<AuthorityRepositories, AuthorityRepositories>();
     const intercepted = vi.spyOn(h.database, "withAuthorityTransaction").mockImplementation(work => transaction(repositories => {
@@ -85,7 +87,7 @@ it("serves a native Lookup batch root Retry, retains its session once on replay 
     assert.equal(h.database.authority.runs.listBySession(source.sessionId).length, 2);
   }
   const runtimeMissing = { ...h.database.authority, runtimeConfig: { ...h.database.authority.runtimeConfig, get: () => undefined } };
-  assert.throws(() => lookupBatchMemberRetryAvailable(runtimeMissing, failed, descriptor), /run-retry-runtime-unavailable/);
+  assert.throws(() => batchMemberRetryAvailable(runtimeMissing, failed, descriptor, workflowQueueCapabilities("person-lookup")), /run-retry-runtime-unavailable/);
   const applied = h.kernel.execute(command); assert.equal(applied.state, "applied");
   assert.equal(h.kernel.execute(command).state, "already-applied");
   const attempts = h.database.authority.runs.listBySession(source.sessionId);

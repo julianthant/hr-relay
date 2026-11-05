@@ -126,10 +126,9 @@ as failed member lines. Native operation/member scheduling shapes do not change.
 single or member can present an operation without changing its stored shape.
 
 A nondelegated Person Lookup start with served `groupInQueue` appears as one presentation batch.
-The native Queue projection serves session `itemScope` and presentation `layout` facts. Lookup roots
-use session-scoped item identity; other workflows and children use workflow-scoped identity. Only
-grouped Lookup roots without an operation presentation receive the `batch` layout. The browser
-consumes these facts without choosing workflow eligibility.
+The native Queue projection serves session `itemScope` and presentation `layout` facts from queue
+capabilities declared by the owning workflow registration. The browser consumes these facts without
+choosing workflow eligibility.
 Its session ID, revision, origin and enqueue time identify the group; it has no native parent run,
 trace, run number or representative command. The existing Name/Status well shows one logical person
 per start, attention first with source order retained within tiers. Each person uses its latest attempt

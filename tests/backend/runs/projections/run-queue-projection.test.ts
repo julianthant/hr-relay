@@ -3,6 +3,7 @@ import { describe,it } from "vitest";
 import { applyDashboardDayPatch } from "../../../../src/dashboard/client/queries/day-state.js";
 import { lookupBatchId, queueBatches, queueItemKey } from "../../../../src/dashboard/surfaces/queue/queue-model.js";
 import { RunSessionRecordSchema } from "../../../../src/models/run/session.js";
+import { workflowQueueCapabilities } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { instantOffsetOf,makeWorld,DAY as PROJECTION_DAY,queuedEventOf,runRecordOf,uuidOf as runUuidOf,taskEventsOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
 
@@ -15,7 +16,7 @@ describe("session origin projection", () => {
     { name: "native operation", workflow: "person-lookup", grouped: true, shape: "operation", itemScope: "session", layout: "items" },
     { name: "presented operation", workflow: "person-lookup", grouped: true, shape: "single", itemScope: "session", layout: "items", child: true },
   ] as const)("serves item identity and layout for $name", async (input) => {
-    const w = await makeWorld();
+    const w = await makeWorld({ queueCapabilities: workflowQueueCapabilities });
     try {
       const batch = RunSessionRecordSchema.parse({ sessionId: runUuidOf(70), workflow: input.workflow,
         origin: { kind: "start-plan", startPlanId: runUuidOf(71), actorId: "local-operator" },
@@ -40,7 +41,7 @@ describe("session origin projection", () => {
     { kind: "start-plan", startPlanId: runUuidOf(71), actorId: "local-operator" },
     { kind: "intake-manifest", intakeManifestId: runUuidOf(72), actorId: "local-operator" },
   ] as const)("round trips the $kind origin", async (origin) => {
-    const w = await makeWorld();
+    const w = await makeWorld({ queueCapabilities: workflowQueueCapabilities });
     try {
       const batch = RunSessionRecordSchema.parse({ sessionId: runUuidOf(70), workflow: "person-lookup", origin,
         startedAt: instantOffsetOf(0), createdAt: instantOffsetOf(0), groupInQueue: true, version: 1 });

@@ -143,7 +143,7 @@ export interface RunQueueProjectionDeps {
   };
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
-    lookupBatchMemberRetryAvailable?(run: RunRecord): boolean;
+    batchMemberRetryAvailable?(run: RunRecord): boolean;
     queueParents(envelopes: readonly RunRecord["envelope"][]): ReadonlyMap<string, QueueParent | null>;
     delegationWait?(runId: string): DelegationWaitState | null;
     reviewAvailable?(runId: string): boolean;
@@ -180,6 +180,10 @@ export interface RunQueueProjectionDeps {
       nodeId: string,
     ): RunCheckpointRecord | undefined;
   };
+  readonly queueCapabilities?: (workflowId: string) => Readonly<{
+    sessionItemScope?: boolean;
+    groupedBatchLayout?: boolean;
+  }> | undefined;
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
 
   readonly scheduleRebuild?: (rebuild: () => void) => void;
@@ -1077,10 +1081,11 @@ export class RunQueueProjection {
     if (authority.sessionId === undefined) return { state: "absent", reason: "no session grouping was recorded for this run or its retry source" };
     const batch = this.#deps.authority.getRunBatch(authority.sessionId);
     if (batch === undefined || batch.workflow !== authority.envelope.workflow) throw new Error(`workflow batch ${authority.sessionId} is missing or belongs to another workflow`);
-    const sessionScoped = authority.envelope.workflow === "person-lookup" && authority.envelope.parent === undefined;
+    const capabilities = this.#deps.queueCapabilities?.(authority.envelope.workflow);
+    const sessionScoped = capabilities?.sessionItemScope === true && authority.envelope.parent === undefined;
     return { state: "present", sessionId: batch.sessionId, itemScope: sessionScoped ? "session" : "workflow",
       origin: batch.origin,
-      presentation: { layout: sessionScoped && !operation && batch.groupInQueue ? "batch" : "items",
+      presentation: { layout: sessionScoped && capabilities?.groupedBatchLayout === true && !operation && batch.groupInQueue ? "batch" : "items",
         groupInQueue: batch.groupInQueue, version: PositiveIntSchema.parse(batch.version), startedAt: batch.startedAt } };
   }
 
@@ -1322,7 +1327,7 @@ export class RunQueueProjection {
         named: authority.displayName !== undefined,
 
         hasReviewPanel: descriptor?.capabilities?.review ?? false,
-        lookupBatchMemberRetryAvailable: this.#deps.authority.lookupBatchMemberRetryAvailable?.(authority) === true,
+        batchMemberRetryAvailable: this.#deps.authority.batchMemberRetryAvailable?.(authority) === true,
       }),
       rowRevision: authority.version,
     };

@@ -44,3 +44,7 @@ export const CHILD_ONLY_WORKFLOW_MODULES = Object.freeze([
   ocrPageModule,
   onbaseModule,
 ] as const);
+
+export const WORKFLOW_QUEUE_CAPABILITIES = Object.freeze([
+  [String(personLookupModuleRegistration.definition.id), personLookupModuleRegistration.queueCapabilities] as const,
+] as const);
