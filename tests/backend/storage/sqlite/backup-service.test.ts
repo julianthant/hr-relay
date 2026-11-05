@@ -189,7 +189,10 @@ describe("native authority backup", () => {
     const restore = f.lifetime.beginOfflineMaintenance(f.workspace);
     let recovered: ReturnType<typeof acquireRecoveryRuntimeRestore> | undefined;
     try {
-      expect(() => acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, "ffffffff-ffff-4fff-8fff-ffffffffffff", restore)).toThrow(/exact offline restore recovery/u);
+      const replacementBytes = readFileSync(f.path);
+      expect(() => acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, "ffffffff-ffff-4fff-8fff-ffffffffffff", restore)).toThrow(/^runtime-control: profile-restore-context-unavailable$/u);
+      expect(readFileSync(journalPath)).toEqual(journalBytes);
+      expect(readFileSync(f.path)).toEqual(replacementBytes);
       recovered = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, journal.restore.operationId, restore);
       const currentRecovery = recovered;
       let wrongBindingVerifications = 0;
@@ -205,6 +208,7 @@ describe("native authority backup", () => {
       recovered = acquireRecoveryRuntimeRestore(f.workspace, f.lifetime, journal.restore.operationId, nextOperation);
       const settled = await resumeAutomaticAuthorityRestore({ browserClosure: profileBrowserClosure, admission: recovered.admission, operationId: journal.restore.operationId,
         processLockRoot, restoreAdmission: nextOperation });
+      expect(() => nextOperation.consume()).toThrow(/offline-maintenance-already-consumed/u);
       nextOperation.release();
       expect(settled).toEqual({ state: "settled", operationId: journal.restore.operationId, outcome: "replaced" });
       expect(existsSync(journalPath)).toBe(false);
