@@ -261,11 +261,23 @@ presence on a later read.
 Member previews use the ordinary protected sequencer and stop after preparation. Exact persisted
 presence skips preparation; an indeterminate probe or an attempting/parked permanent key refuses.
 The permanent key is employee plus canonical desired effect, independent of run and before-set.
-Real mode returns `CONTACT_SAVE_UNAVAILABLE` before contact acquisition. The driver has no Save
-method. Emergency Contact remains on its mock source. Delegated read-only children retain
-`dryRun: true` and return ordinary read results. Root compositions without a local transaction
-still refuse dry-run admission, and transaction-child preview joins refuse; parent previews need
-authenticated descendant-preview aggregation before this operation preview is usable.
+Real mode follows the same authenticated approved-snapshot route before contact acquisition.
+The protected sequencer captures the submit boundary and durably fences one Save. The production
+page adapter supplies the Save port; `CONTACT_SAVE_UNAVAILABLE` applies to compositions without it.
+Save succeeds only after an independent complete persisted-set re-read matches the approved plan
+and the mandatory `ucpath/verify-emergency-contact-plan` verifier confirms it. Post-fence uncertainty
+parks as `UNKNOWN` without automatic retry. Dry runs create no write intent and never click Save.
+The [write-safety contract](write-safety.md#current-write-keys) owns the detailed Save and verification rules.
+
+Emergency Contact remains on its mock dashboard source. The first live Save requires the operator
+present and separate authorization. Live acceptance is outstanding for success and error UI,
+settlement and network completion, persisted reload, `UNKNOWN` handling, multi-row expansion,
+typing postbacks, and preservation of Address 3, County, and Same Phone as Employee.
+
+Delegated read-only children retain `dryRun: true` and return ordinary read results.
+Parents with supported descendant transactions aggregate authenticated child previews separately
+from ordinary workflow output. Root compositions with neither a local transaction nor a supported
+descendant transaction still refuse dry-run admission.
 
 ### 4.6 Artifact projections
 

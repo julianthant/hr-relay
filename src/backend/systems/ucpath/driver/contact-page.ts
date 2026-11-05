@@ -6,7 +6,7 @@ import { UcpathContactAddressFieldsSchema, UcpathContactRefusedError } from "../
 import type { UcpathEmergencyContactInput } from "../../../../models/systems/ucpath/emergency-contacts.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../models/ui/ucpath-emergency-contact.js";
 import type { UcpathContactPageSnapshot } from "../../../../models/ui/ucpath-emergency-contact.js";
-import { createContactOperations, interpretContactPage } from "./contact-operation.js";
+import { createContactOperations, interpretContactPage, readContactSetWithPort } from "./contact-operation.js";
 import type { UcpathContactPagePort } from "./contact-operation.js";
 import { UCPATH_PENDING_CONTACT_RECIPES as recipes } from "./ui-registry.js";
 import type { UcpathEmergencyContactDriver } from "../../../../models/ui/ucpath-emergency-contact.js";
@@ -208,5 +208,15 @@ export function createUcpathContactOperations(assertCurrent: () => void, page: P
     return port(input);
   }
 
-  return createContactOperations(open);
+  return createContactOperations(open, {
+    async save() {
+      const save = page.locator(recipes.save).filter({ visible: true });
+      if (await current(() => save.count()) !== 1) throw new UcpathContactRefusedError("unexpected-contact-page");
+      await current(() => save.click());
+      await settle();
+    },
+    async readPersisted(subject) {
+      return readContactSetWithPort(await open(subject), subject);
+    },
+  });
 }
