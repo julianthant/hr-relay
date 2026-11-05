@@ -37,7 +37,7 @@ import { resolveDateSelection, routeForStartedRun } from "./navigation/date-stat
 import { RunLaunchHost } from "../surfaces/run-start/run-launch.js";
 import { launchWorkflows, useRunLaunch } from "../surfaces/run-start/run-launch-model.js";
 import { PanelRight } from "lucide-react";
-import { useCallback,useContext,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type ReactNode } from "react";
+import { Component,useCallback,useContext,useEffect,useLayoutEffect,useMemo,useRef,useState,type CSSProperties,type ReactNode } from "react";
 import { CommandRequestSchema, BulkRunCommandRequestSchema, WorkflowBatchCommandRequestSchema, type BulkRunCommandResponse } from "../../rules/commands/commands.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
@@ -90,7 +90,7 @@ DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
 import {parseWorkflows,useSelectedWorkflow,workflowStatusCounts,type StatusBucket } from "../surfaces/shell/shell-model.js";
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflows/mocks/workflow-mock-queue.js";
 import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, mockRunSubset, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
 import { completeMockReviewAction, type MockReviewAction } from "../surfaces/workflows/mocks/workflow-review-action-model.js";
 import { mockQueueId } from "../surfaces/workflows/mocks/workflow-queue-model.js";
 import { updateMockReview } from "../surfaces/workflows/mocks/workflow-review-model.js";
@@ -150,6 +150,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
   const inheritedOcr = useContext(PreflightOcrContext);
   const profileId = session?.state === "active" ? session.profileId : undefined;
   const profileEpoch = session?.state === "active" ? session.epoch : undefined;
+  const profileTarget = useMemo(() => profileId === undefined || profileEpoch === undefined ? undefined : { profileId, epoch: profileEpoch }, [profileId, profileEpoch]);
   const accountScope = useMemo(() => ({ profileClient, profileSource, profileId, profileEpoch }), [profileClient, profileSource, profileId, profileEpoch]);
   const [accountOwner, setAccountOwner] = useState<{ scope: typeof accountScope; port: ReturnType<typeof createServedChatGptAccountPort>; ocr: ReturnType<typeof createServedPreflightOcrPort> }>();
   const account = accountOwner?.scope === accountScope ? accountOwner.port : undefined;
@@ -227,8 +228,9 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       ) : boot === undefined ? (
         <BootGate bootstrap={bootstrap} />
       ) : (
-        <ViewNavigationProvider route={route} setRoute={setRoute}><LoadedApp
+        <ViewNavigationProvider route={route} setRoute={setRoute}><DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}><LoadedApp
           preferences={preferences}
+          profileTarget={profileTarget}
           boot={boot}
           onProfileLogout={profileSource === "served" ? publicProfile.logout : undefined}
           deleteAccount={profileSource === "served" && session?.state === "active" && session.duoState === "ready"
@@ -257,7 +259,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
           onSelectMode={setSelectMode}
           bulkIds={bulkIds}
           onBulkIds={setBulkIds}
-        /></ViewNavigationProvider>
+        /></DashboardPageBoundary></ViewNavigationProvider>
       )}
     </ToastProvider>
     </TooltipProvider>
@@ -265,6 +267,20 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
     </ChatGptAccountContext.Provider>
     </div></PersonPreferencesContext.Provider>
   );
+}
+
+export class DashboardPageBoundary extends Component<{ resetKey: string; onRecover: () => void; children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  override componentDidCatch(error: Error) { window.reportError(error); }
+  override componentDidUpdate(previous: Readonly<typeof this.props>) {
+    if (this.state.failed && previous.resetKey !== this.props.resetKey) this.setState({ failed: false });
+  }
+  override render() {
+    return this.state.failed ? <Panel className="min-h-0 flex-1"><PanelBody><EmptyState title="Page unavailable"
+      description={operatorFailureSentence("DASHBOARD_PAGE_FAILED")}
+      action={<Button onClick={this.props.onRecover}>Open dashboard</Button>} /></PanelBody></Panel> : this.props.children;
+  }
 }
 
 
@@ -301,6 +317,7 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
 
 
 interface LoadedAppProps {
+  profileTarget?: DashboardAuthority["profileTarget"];
   preferences: PersonPreferencesOwner;
   onProfileLogout?: () => Promise<void>;
   deleteAccount?: ReactNode;
@@ -330,6 +347,7 @@ interface LoadedAppProps {
 
 
 function LoadedApp({
+  profileTarget,
   preferences,
   onProfileLogout,
   deleteAccount,
@@ -356,7 +374,7 @@ function LoadedApp({
   /** THE clock. The server's instant is the authority; the browser contributes
  * only the monotonic time since that instant arrived, and every live elapsed */
   const client = useDashboardClient();
-  const authorityEpoch = useMemo(() => Object.freeze({ client, bootstrap: boot }), [client, boot]);
+  const authorityEpoch = useMemo(() => Object.freeze({ client, bootstrap: boot, profileTarget }), [client, boot, profileTarget]);
   const lifecycle = useApplicationLifecycle(client, authorityEpoch);
   const application = lifecycle.resource.state === "loaded" ? lifecycle.resource.value : undefined;
   const [quitRequested, setQuitRequested] = useState(false);
@@ -398,8 +416,8 @@ function LoadedApp({
   const activeWorkflowId = (selectedRow === undefined ? undefined : queueScopeWorkflow(selectedRow, dayWire?.queueSurfaces ?? NO_QUEUE_ROWS)) ?? route.view?.workflow ?? chosenWorkflowId;
   const queueWorkflowAvailable = workflows.some(workflow => workflow.id === activeWorkflowId)
     || queueRows.some(row => row.workflowId === activeWorkflowId && row.parent !== null);
-  const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, catalog: workflowCatalog, nowIso, today, day, dayState,
-    selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, workflowCatalog, nowIso, today, day, dayState, route, activeWorkflowId]);
+  const authority: DashboardAuthority = useMemo(() => Object.freeze({ epoch: authorityEpoch, profileTarget, catalog: workflowCatalog, nowIso, today, day, dayState,
+    selection: Object.freeze({ route, workflowId: activeWorkflowId }) }), [authorityEpoch, profileTarget, workflowCatalog, nowIso, today, day, dayState, route, activeWorkflowId]);
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID, authorityEpoch);
   const [requestedPreview, setRailPreview] = useViewState("preview", null);
   const routeWorkflowId = requestedPreview ?? activeWorkflowId;
@@ -407,7 +425,7 @@ function LoadedApp({
     : routeWorkflowId && workflowComposition.sourceForRoute(routeWorkflowId, requestedPreview !== null) === "mock" ? routeWorkflowId : null;
   const [allMockRuns, setMockRuns] = useState<readonly MockRun[]>(seedMockRuns);
   const startRestrictions = useMemo(() => workflowStartRestrictions(boot.featureAvailability), [boot.featureAvailability]);
-  const mockRuns = useMemo(() => allMockRuns.filter(run => !startRestrictions.has(run.workflowId) && workflowComposition.sourceForRoute(run.workflowId, true) === "mock"), [allMockRuns, workflowComposition, startRestrictions]);
+  const mockRuns = useMemo(() => mockRunSubset(allMockRuns, run => !startRestrictions.has(run.workflowId) && workflowComposition.sourceForRoute(run.workflowId, true) === "mock"), [allMockRuns, workflowComposition, startRestrictions]);
   // The route selection clears after the removal commits; a run deleted here is not an unavailable destination.
   const [deletedMockRuns, setDeletedMockRuns] = useState<ReadonlySet<string>>(() => new Set());
   const launchWorkflow = route.view?.launchWorkflow;
@@ -1092,6 +1110,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         tabIndex={-1}
         className="flex min-h-0 min-w-0 flex-1 flex-col"
       >
+        <DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}>
         {/* Show unreachable authority on every view; backup warnings do not stop work. */}
         {}
         <StorageBanner
@@ -1211,6 +1230,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
           </DashboardTakeovers>
           </div>
         </div>
+        </DashboardPageBoundary>
       </main>
       </div>
 

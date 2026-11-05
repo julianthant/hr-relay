@@ -144,7 +144,10 @@ describe_m1("frontend workflow catalog", () => {
     const product = buildWorkflowCatalog_m1(served, true);
     expect_m1(product.find(entry => entry.id === "separations")).toMatchObject({ source: "served" });
     expect_m1(product.find(entry => entry.id === "person-lookup")).toMatchObject({ source: "served" });
-    expect_m1(product.find(entry => entry.id === "ocr")).toMatchObject({ source: "served", role: { kind: "composition" }, launch: { state: "unavailable" } });
+    const ocr = product.find(entry => entry.id === "ocr");
+    expect_m1(ocr).toMatchObject({ source: "served", role: { kind: "composition" }, launch: { state: "unavailable", label: "No direct start" } });
+    if (ocr?.launch.state !== "unavailable") throw new Error("missing OCR direct-start explanation");
+    expect_m1(ocr.launch.reason).toContain("no standalone launch input");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("ocr", false)).toBe("served");
     expect_m1(PRODUCT_WORKFLOW_COMPOSITION_m1.sourceForRoute("ocr", true)).toBe("served");
     expect_m1(explorerRecoveryWorkflow_m1(product)).toBe("separations");
