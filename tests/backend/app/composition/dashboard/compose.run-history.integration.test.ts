@@ -121,6 +121,7 @@ it("binds Clear and result to the confirmed person and epoch despite a shared co
       assert.equal(active.state, "active");
     } finally { await setup.close(); }
     const bHistory = await seedPerson("second@ucsd.edu");
+    createProfileRegistry(fixture.machine).advanceSession(null);
     app = await composeDashboardApplication({ admission: fixture.machine, lifetimeLock: fixture.lifetime, repoRoot: fixture.workspace,
       isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, clock, env: {},
       onboardingDuo: syntheticOnboardingDuo(), preflightRunnerFactory: healthyRuntimePreflightRunners,
