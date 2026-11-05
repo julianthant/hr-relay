@@ -37,7 +37,6 @@ import { createTimeoutDeadlineScheduler } from "../../../runtime/scheduling/time
 import { activeSettingsConfig,activeSettingsRuntimeIdentity } from "../../../runtime/settings/settings-runtime.js";
 import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 import { createDuoCredentialStore } from "../../../storage/configuration/duo-credential-store.js";
-import { readAutomaticRepairNotice } from "../../../storage/maintenance/automatic-repair-notice.js";
 import { createTransactionHistory } from "../../../storage/sqlite/transaction-history.js";
 import { startDashboardHttpServer,type DashboardHttpServer } from "../../../transports/http/http-server.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../transports/http/request-identity.js";
@@ -295,7 +294,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     },
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     notificationPublications: composeNotificationPublications({ database, clock, lifecycle, descriptors, runDetailDeps, notificationInbox }),
-    preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary, automaticRepair: () => readAutomaticRepairNotice(admission),
+    preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
   });
   const { hub } = shell;
   startupCleanups.push(requiredClosure(() => hub.close()));

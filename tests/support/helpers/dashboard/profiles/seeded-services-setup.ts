@@ -166,7 +166,7 @@ createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<Dashboard
         actorLabel: () => "Fixture Operator",
         authorityMeta: () => database.getMeta(),
         // The seeded adapter runs no backup lane; "missing" is its true state.
-        automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "missing",
+        backupSummary: () => "missing",
         preflightReport: () => healthyDashboardPreflightReport(clock),
       },
       projection,

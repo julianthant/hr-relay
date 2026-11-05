@@ -53,7 +53,7 @@ describe("registry-wide conformance covers every explicit entry kind", () => {
         projection: world.projection,
         actorLabel: () => "Fixture Operator",
         authorityMeta: () => ({ schemaVersion: 13, authorityGeneration: 4 }),
-        automaticRepair: () => ({ state: "none" as const }), backupSummary: () => "current",
+        backupSummary: () => "current",
         preflightReport: () => healthyDashboardPreflightReport(manualClock(AT)),
       });
       const start = WorkflowBootstrapPrimitiveSchema.array().parse(bootstrap.workflows)
