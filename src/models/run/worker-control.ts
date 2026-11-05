@@ -211,7 +211,7 @@ export const WorkerBrowserObservationSchema = z.strictObject({
   profileDirectory: z.string().min(1).optional(),
   acceptDownloads: z.boolean(),
   exclusive: z.boolean(),
-  health: z.enum(["authenticated", "unknown", "failed", "closed"]),
+  health: z.enum(["starting", "authenticated", "unknown", "failed", "closed"]),
   observedAt: IsoInstantSchema,
   openedAt: IsoInstantSchema,
   profileRevision: PositiveIntSchema,

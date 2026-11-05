@@ -382,7 +382,7 @@ export const WorkerBrowserWireSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   openedAt: IsoInstantSchema,
   observation: z.discriminatedUnion("state", [
-    z.strictObject({ state: z.literal("present"), health: z.enum(["authenticated", "unknown", "failed"]), observedAt: IsoInstantSchema,
+    z.strictObject({ state: z.literal("present"), health: z.enum(["starting", "authenticated", "unknown", "failed"]), observedAt: IsoInstantSchema,
       instance: z.string().optional(), browserMode: z.enum(["headed", "headless"]), configFingerprint: FingerprintSchema }),
     z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
   ]).optional(),
@@ -429,6 +429,7 @@ export const WorkerCardWireSchema = z.strictObject({
     z.strictObject({ state: z.literal("present"), runId: RunIdSchema, traceId: TraceIdSchema }),
   ]),
   browserRequirements: WorkerBrowserRequirementsWireSchema.optional(),
+  closedBrowserSystems: z.array(BrowserSystemIdSchema).optional(),
   browsers: z.array(WorkerBrowserWireSchema),
   leaseVersion: RowRevisionSchema,
   revision: RowRevisionSchema,

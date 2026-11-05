@@ -13,6 +13,12 @@ function catalogEntry<const Parameters extends z.ZodTypeAny>(text: string, param
 }
 
 export const ERROR_CATALOG = Object.freeze({
+  PROFILE_BROWSER_CLEANUP_UNPROVED: catalogEntry("Browser profile cleanup could not be verified.", EmptyParametersSchema),
+  PROFILE_BROWSER_MEMBERSHIP_MISMATCH: catalogEntry("Retained browser profiles do not match the browser registry.", EmptyParametersSchema),
+  PROFILE_BROWSER_LAUNCH_UNCLOSED: catalogEntry("Browser launch closure could not be verified.", EmptyParametersSchema),
+  PROFILE_BROWSER_NATIVE_CUSTODY_RETAINED: catalogEntry("A browser custody operation is still unresolved.", EmptyParametersSchema),
+  PROFILE_BROWSER_SESSION_AHEAD: catalogEntry("The browser session is ahead of the current profile session.", EmptyParametersSchema),
+  PROFILE_BROWSER_DIRECTORY_UNBOUND: catalogEntry("A registered browser profile has no matching custody record.", EmptyParametersSchema),
   APPLICATION_DATA_WORKSPACE_REFUSED: catalogEntry("Relay could not verify the Windows application data location. Restore a valid LOCALAPPDATA host setting before restarting Relay. Existing files have been preserved.", EmptyParametersSchema),
   WINDOWS_PRIVATE_PATH_REFUSED: catalogEntry("Windows storage permissions, identity or durability could not be verified. Preserve the files and resolve the storage failure before restarting Relay.", EmptyParametersSchema),
   CRM_DOCUMENT_SOURCE_UNAVAILABLE: catalogEntry("CRM document records could not be verified. Review the requested people and their latest onboarding records.", EmptyParametersSchema),

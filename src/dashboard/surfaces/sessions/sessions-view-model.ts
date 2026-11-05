@@ -6,7 +6,7 @@ import { workerBrowserView, workerElapsedSeconds, WORKER_STOP_REASON_LABEL } fro
 
 type WorkerCardWire = DashboardDayWire["workerCards"][number];
 
-export type SessionWorkerState = "running" | "starting" | "idle" | "waiting" | "paused" | "failed";
+export type SessionWorkerState = "running" | "starting" | "idle" | "waiting" | "paused" | "stopped" | "failed";
 export type SessionControl = "pause" | "resume" | "retry" | "stop" | "remove";
 export type SessionNode = Readonly<{ id: string; label: string; state: "completed" | "active" | "pending" | "waiting" | "paused" | "failed" }>;
 export type SessionWorker = Readonly<{
@@ -22,7 +22,7 @@ export type SessionWorker = Readonly<{
   elapsed?: string;
   timeline?: readonly SessionNode[];
   problem?: string;
-  browsers: readonly Readonly<{ id: string; label: string; state: "ready" | "active" | "starting" | "unopened" | "unavailable" }>[];
+  browsers: readonly Readonly<{ id: string; label: string; state: "ready" | "active" | "starting" | "unopened" | "closed" | "unavailable" }>[];
 }>;
 export type SessionsViewState = Readonly<{ state: "ready"; workers: readonly SessionWorker[] }>
   | Readonly<{ state: "loading" }> | Readonly<{ state: "unavailable"; reason: string; diagnostic?: unknown }>;
@@ -31,14 +31,14 @@ export function sessionsUnavailable(diagnostic?: unknown): SessionsViewState {
     ...(diagnostic === undefined ? {} : { diagnostic }) };
 }
 export const SESSION_STATE_LABELS: Readonly<Record<SessionWorkerState, string>> = {
-  running: "Running", starting: "Starting", idle: "Idle", waiting: "Waiting", paused: "Paused", failed: "Failed",
+  running: "Running", starting: "Starting", idle: "Idle", waiting: "Waiting", paused: "Paused", stopped: "Stopped", failed: "Failed",
 };
 export function sessionStateColor(state: SessionWorkerState): string {
   return state === "failed" ? "text-ui-danger" : state === "waiting" || state === "starting" ? "text-ui-warning"
     : state === "running" ? "text-ui-positive" : "text-ui-muted";
 }
 export function sessionTallies(workers: readonly SessionWorker[]): readonly { state: SessionWorkerState; count: number }[] {
-  const order: readonly SessionWorkerState[] = ["running", "starting", "idle", "waiting", "paused", "failed"];
+  const order: readonly SessionWorkerState[] = ["running", "starting", "idle", "waiting", "paused", "stopped", "failed"];
   return order.map(state => ({ state, count: workers.filter(worker => worker.state === state).length }))
     .filter(tally => tally.count > 0 || ["running", "starting", "idle"].includes(tally.state));
 }
@@ -72,8 +72,9 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
     const seconds = workerElapsedSeconds(card, nowIso);
     const browserView = workerBrowserView(card);
     const problem = card.stopReason === undefined ? browserView.unavailableReason : WORKER_STOP_REASON_LABEL[card.stopReason];
+    const state = card.state === "failed" && (card.stopReason === "operator" || card.stopReason === "shutdown") ? "stopped" : card.state;
     workers.push({ id: card.workerId, label: `Worker ${card.member.ordinal}`, workflowId: card.workflowId, workflow: registration.label,
-      authority: card, state: card.state,
+      authority: card, state,
       ...(row === undefined ? {} : { subject: row.title }),
       action: currentRun.state === "present" && ["running", "waiting", "paused"].includes(card.state) && timelineUnavailable !== undefined ? timelineUnavailable
         : row?.liveMessage.state === "present" ? row.liveMessage.value : row?.pipeline.find(step => step.state === "active" || step.state === "blocked")?.label
@@ -81,10 +82,13 @@ export function sessionsFromDay(day: DashboardDayWire, catalog: readonly Workflo
       ...(card.state === "idle" ? {} : { elapsed: seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s` }),
       ...(timeline === undefined ? { timelineUnavailable } : { timeline }),
       ...(problem === undefined ? {} : { problem }),
-      browsers: browserView.slots.map((slot, index) => slot.state === "required"
-        ? { id: `required:${card.workerId}:${index}:${slot.system}`, label: SYSTEM_LABEL[slot.system], state: card.state === "starting" ? "starting" : "unopened" }
+      browsers: browserView.slots.map((slot, index) => slot.state !== "open"
+        ? { id: `required:${card.workerId}:${index}:${slot.system}`, label: SYSTEM_LABEL[slot.system], state: slot.state === "closed" ? "closed" : card.state === "starting" ? "starting" : "unopened" }
         : { id: slot.browser.sessionId, label: SYSTEM_LABEL[slot.browser.system],
-          state: slot.browser.observation?.state === "present" && slot.browser.observation.health === "authenticated" ? "ready" : "unavailable" }),
+          state: slot.browser.observation?.state !== "present" ? "unavailable"
+            : slot.browser.observation.health === "starting" ? "starting"
+            : slot.browser.observation.health === "authenticated" ? "ready"
+            : slot.browser.observation.health === "unknown" && card.state === "running" ? "active" : "unavailable" }),
     });
   }
   return { state: "ready", workers };

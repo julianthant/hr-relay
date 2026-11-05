@@ -74,7 +74,8 @@ for (const state of ["earlier", "current", "future", "unknown"] as const)
       const before = readFileSync(path), directory = seeded.paths[0]; assert.ok(directory);
       const identity = lstatSync(directory);
       if (state === "earlier" || state === "current") await f.inventory.prepare();
-      else await assert.rejects(f.inventory.prepare(), { message: "profile-closure-browser-custody-unproved" });
+      else await assert.rejects(f.inventory.prepare(), { message: "profile-closure-browser-custody-unproved",
+        code: state === "future" ? "PROFILE_BROWSER_SESSION_AHEAD" : "PROFILE_BROWSER_LAUNCH_UNCLOSED" });
       assert.deepEqual(readFileSync(path), before);
       const after = lstatSync(directory);
       assert.equal(after.dev, identity.dev); assert.equal(after.ino, identity.ino);
@@ -85,6 +86,22 @@ for (const state of ["earlier", "current", "future", "unknown"] as const)
       if (f === undefined) await base.close(); else await f.cleanup();
     }
   });
+
+it("names missing browser cleanup proof without treating an absent directory as closed", async () => {
+  const base = await createBoundProfileFixture();
+  let f: Awaited<ReturnType<typeof fixture>> | undefined;
+  try {
+    const seeded = await seedRegisteredBrowserProfiles(base, manualClock(new Date("2026-10-21T12:00:00.000Z")), ["crm"]);
+    f = await fixture(base);
+    const directory = seeded.paths[0]; assert.ok(directory);
+    await f.inventory.prepareShutdown();
+    const held = `${directory}-held`;
+    renameSync(directory, held);
+    try {
+      await assert.rejects(f.inventory.prepareShutdown(), { message: "profile-closure-browser-custody-unproved", code: "PROFILE_BROWSER_CLEANUP_UNPROVED" });
+    } finally { renameSync(held, directory); }
+  } finally { if (f === undefined) await base.close(); else await f.cleanup(); }
+});
 
 function nativeKey(f: Awaited<ReturnType<typeof fixture>>) {
   const head = CanonicalCredentialHeadSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "credential-keys", `${f.admission.profileBinding.profileId}.json`), "utf8")));
