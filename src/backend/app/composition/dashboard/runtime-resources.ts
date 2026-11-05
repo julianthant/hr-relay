@@ -10,7 +10,8 @@ import { ActorIdSchema,LOCAL_OPERATOR_ACTOR_ID } from "../../../../rules/identit
 import { runtimeTimeZone,systemClock } from "../../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
 import { createDebugEventWriter } from "../../../logs/debug-events.js";
-import { importEmergencyFaults,withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
+import { withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
+import { importLocalDebugLog } from "../../../storage/events/local-debug-log.js";
 import { runQueuedSpanEvent } from "../../../runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 import { reconcileStartupCrash } from "../../../runs/lifecycle/startup-crash-recovery.js";
@@ -124,8 +125,8 @@ export function prepareDashboardRuntime(input: DashboardComposeInput, startupCle
     await profile.runtime.close();
     databaseClosed = true;
   });
-  importEmergencyFaults(stateRoot, database.authority.timelineEvents);
-  importEmergencyFaults(machineAdmission.stateRoot, database.authority.timelineEvents);
+  importLocalDebugLog(stateRoot, database.authority.timelineEvents);
+  importLocalDebugLog(machineAdmission.stateRoot, database.authority.timelineEvents);
   database.sweepOrdinaryDiagnostics(clock.now().toISOString());
   const bootConfig = (() => {
     const persistedSettings = database.withAuthorityTransaction((repositories) => readBootSettings(repositories));

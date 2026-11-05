@@ -49,6 +49,28 @@ export const ProfileRegistryDocumentSchema = z.strictObject({
 });
 export type ProfileRegistryDocument = z.infer<typeof ProfileRegistryDocumentSchema>;
 
+export const ProfileSelectionChangeReasonSchema = z.enum([
+  "profile-activated", "profile-sign-in-refused", "profile-logout-requested", "profile-logout-continuation",
+  "profile-registry-published", "profile-incomplete-reclassified", "profile-authority-restored",
+]);
+export type ProfileSelectionChangeReason = z.infer<typeof ProfileSelectionChangeReasonSchema>;
+export const PROFILE_SELECTION_CHANGE_CALLERS = Object.freeze({
+  "profile-activated": "src/backend/profiles/profile-session.ts:activate",
+  "profile-sign-in-refused": "src/backend/profiles/profile-session.ts:admitSignedIn",
+  "profile-logout-requested": "src/backend/profiles/profile-session.ts:logOut",
+  "profile-logout-continuation": "src/backend/profiles/profile-session.ts:continueLogout",
+  "profile-registry-published": "src/backend/storage/admission/admission.ts:publishProfileRegistry",
+  "profile-incomplete-reclassified": "src/backend/storage/admission/installation.ts:prepareIncompleteProfileDraft",
+  "profile-authority-restored": "src/backend/storage/admission/installation.ts:settleAuthorityRestore",
+} as const);
+export const ProfileSelectionChangeSchema = z.strictObject({
+  reason: ProfileSelectionChangeReasonSchema,
+  caller: z.enum(Object.values(PROFILE_SELECTION_CHANGE_CALLERS)),
+  oldGeneration: ProfileRegistryDocumentSchema.shape.sessionGeneration,
+  newGeneration: ProfileRegistryDocumentSchema.shape.sessionGeneration,
+}).refine(value => value.caller === PROFILE_SELECTION_CHANGE_CALLERS[value.reason]
+  && value.newGeneration >= value.oldGeneration, "profile-selection-change-invalid");
+
 export function advanceProfileRegistryDocument(current: ProfileRegistryDocument,
   patch: Partial<Omit<ProfileRegistryDocument, "schemaVersion" | "installationId" | "revision">>): ProfileRegistryDocument {
   return ProfileRegistryDocumentSchema.parse({ ...current, ...patch, schemaVersion: current.schemaVersion, installationId: current.installationId, revision: current.revision + 1 });

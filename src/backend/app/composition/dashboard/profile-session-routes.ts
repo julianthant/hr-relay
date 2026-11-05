@@ -155,6 +155,10 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
         ...registry.activeProfileId !== null && { resumable: true },
         ...(registry.profiles.some(row => row.lifecycle === "cancelling") || profileRuntime.session.logoutOperations().some(operation => operation.phase !== "complete")) && { logoutIncomplete: true } }));
     }
+    if (!transitioning && cookieOf(c.req.raw) !== selection.sessionId) {
+      profileRuntime.assertCurrent(selection.token);
+      return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: false, resumable: true }));
+    }
     const active = current(c.req.raw);
     return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: active.profileId, epoch: active.epoch,
       duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.duoState }));
@@ -190,7 +194,14 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     return { state: "active" as const, profileId: result.profileId, epoch: result.epoch, duoState: row.duoState };
   };
   const activate = async (request: Request, mode: "signup" | "signin" | "resume"): Promise<PublicProfileState> => {
-    if (transitioning || selection !== undefined || pending !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+    if (transitioning || pending !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+    if (selection !== undefined) {
+      if (mode !== "resume") throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+      const { token, profileId, epoch } = selection;
+      profileRuntime.assertCurrent(token);
+      return PublicProfileStateSchema.parse({ state: "active", profileId, epoch,
+        duoState: machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.duoState });
+    }
     transitioning = true;
     try {
       const result = await (async () => {

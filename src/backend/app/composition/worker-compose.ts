@@ -15,7 +15,8 @@ import { isLiveWorker } from "../../../models/run/worker.js";
 import { WorkerSessionClosureUnprovedError, withBoundRunConfigFingerprint } from "../../runtime/workers/worker-sessions.js";
 import { sanitizeDebugText } from "../../../rules/redaction/redaction.js";
 import { readFileSync as readBuildFile } from "node:fs";
-import { appendEmergencyFault, withEmergencyTimelineWriter, importEmergencyFaults } from "../../logs/emergency-faults.js";
+import { appendEmergencyFault, withEmergencyTimelineWriter } from "../../logs/emergency-faults.js";
+import { importLocalDebugLog } from "../../storage/events/local-debug-log.js";
 import { admitDirectWorker, admitSupervisedWorker } from "../../storage/sqlite/worker-slots.js";
 import { z } from "zod";
 import { workerPoolMember, WorkerPoolMemberSchema } from "../../../models/run/worker-slot.js";
@@ -542,7 +543,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   const debugEvents = createDebugEventWriter({ repository: loggingRepository, clock, build });
 
   try {
-  importEmergencyFaults(stateRoot, database.authority.timelineEvents);
+  importLocalDebugLog(stateRoot, database.authority.timelineEvents);
   const taskNotes = createNoteTimelineWriter({ repository: loggingRepository, clock });
   const protectedSecrets = createCredentialSecretSource({ read: () => { assertCurrent(); return protectedAuthority.read(); } }, () => { const identity = readAdmittedProfileIdentity(machine, admission); assertCurrent(); return identity; });
   const executionDescriptor = resolveDescriptor;
