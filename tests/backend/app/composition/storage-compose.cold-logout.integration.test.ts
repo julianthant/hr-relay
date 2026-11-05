@@ -255,7 +255,15 @@ it("keeps schema-4 login refused until stopped startup converts a ready saved pr
     machine = acquireEntrypointAdmission(f.workspace, "shared", lifetime);
     runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
     assert.throws(() => runtime.session.signIn(fields), { code: "PROFILE_STARTUP_CONVERSION_REFUSED" });
-    assert.equal(runtime.session.signIn(otherFields).state, "active");
+    const other = runtime.session.signIn(otherFields);
+    assert.equal(other.state, "active");
+    if (other.state !== "active") throw new Error("unaffected profile login refused");
+    await runtime.drainForLogout(other.token);
+    const logout = runtime.session.logOut(other.token, { at: fields.at });
+    assert.equal(logout.state, "cancelling");
+    if (logout.state !== "cancelling" || logout.operationId === undefined) throw new Error("unaffected profile logout refused");
+    await runtime.awaitClosurePreparation(other.profileId);
+    assert.equal(runtime.session.resumeLogout(logout.operationId).state, "signed-out");
     await runtime.close("shutdown"); machine.release();
     await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, clock);
     machine = acquireEntrypointAdmission(f.workspace, "shared", lifetime);
