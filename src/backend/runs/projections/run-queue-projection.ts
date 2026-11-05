@@ -143,6 +143,7 @@ export interface RunQueueProjectionDeps {
   };
   /** Narrow authority read view; the projection never mutates authority. */
   readonly authority: {
+    lookupBatchMemberRetryAvailable?(run: RunRecord): boolean;
     queueParents(envelopes: readonly RunRecord["envelope"][]): ReadonlyMap<string, QueueParent | null>;
     delegationWait?(runId: string): DelegationWaitState | null;
     reviewAvailable?(runId: string): boolean;
@@ -1318,6 +1319,7 @@ export class RunQueueProjection {
         named: authority.displayName !== undefined,
 
         hasReviewPanel: descriptor?.capabilities?.review ?? false,
+        lookupBatchMemberRetryAvailable: this.#deps.authority.lookupBatchMemberRetryAvailable?.(authority) === true,
       }),
       rowRevision: authority.version,
     };

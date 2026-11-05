@@ -129,6 +129,26 @@ and served outcome, including successful Inactive and Not found results. Its att
 prior attempts reachable at their exact Logs and timeline. Different starts stay separate even when
 they contain the same person. Single starts and other workflows keep their ordinary item rows.
 
+A failed Person Lookup batch member may serve one Retry icon in its own Logs header. It targets
+that native root run and revision through the existing command executor. Admission requires the
+current descriptor and runtime authority, open run admission, no reserved reset and no active attempt
+for that person. A source may retain older saved configuration when native root Retry can select the
+current saved configuration. A confirmed replacement keeps the same item and start session; siblings
+stay unchanged. Fresh Retry disappears while a replacement is active. Pending and uncertain commands
+stay disabled; exact replay retains the original command identity and never creates a fresh request.
+Readback authenticates the immutable failed source and one native replacement independently of the
+action still being served.
+
+Emergency Contact consumer Retry is unavailable. Native Retry can race with a running parent that
+has already read the earlier dependency result: it admits a replacement and requests pause, then
+parent failure settlement refuses the nonterminal replacement and the worker exits. EC enablement
+is deferred pending a separately designed and reviewed native repair. An explicitly paused parent
+does not grant a consumer Retry action. Existing OCR page and lookup child Retry remain separate.
+
+Settled mixed-outcome EC parents also remain immutable and refuse member Retry under their current
+all-settled/allow-partial/manual-parent-resume policy. Enabling Retry after settlement is a separate
+policy follow-up. Approved snapshots, committed Save evidence and UNKNOWN fences remain unchanged.
+
 Lookup status filters admit a batch when one of its attempts matches and retain its canonical
 selected-day cohort. The well labels its population as people on this day: the wire does not claim
 complete cross-day session membership. Group status and end time derive from current member facts;
