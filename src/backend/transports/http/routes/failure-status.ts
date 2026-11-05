@@ -1,4 +1,5 @@
 import { ERROR_CATALOG,createErrorCatalogFailure,formatErrorCatalogFailure } from "../../../../models/failures/error-catalog.js";
+import { CredentialMaintenanceHold } from "../../../storage/configuration/canonical-credential-store.js";
 import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
 import { AssistantAuthorizationError } from "../../../assistant/authorization.js";
 import { OcrReviewRefusedError } from "../../../processing/ocr/review-authority.js";
@@ -31,6 +32,7 @@ export function wireError(code: string, message: string, retryable: boolean): Wi
 export function failureStatus(
   error: unknown,
 ): { status: 400 | 403 | 404 | 409 | 500; body: Record<string, unknown> } {
+  if (error instanceof CredentialMaintenanceHold) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof OcrSourceRefusedError || error instanceof OcrReviewRefusedError) return { status: 409,
     body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };
   if (error instanceof StartupCrashRecoveryRefusedError) return { status: 409, body: wireError(error.code, ERROR_CATALOG[error.code].text, false) };

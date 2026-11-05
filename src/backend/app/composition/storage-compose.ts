@@ -96,6 +96,8 @@ export class RegisteredPersonUpgradeRefusedError extends Error {
   constructor(cause: unknown) { super(ERROR_CATALOG.STORAGE_PROFILE_UPGRADE_REFUSED.text, { cause }); this.name = "RegisteredPersonUpgradeRefusedError"; }
 }
 
+const refusedProfileUpgrades = new WeakMap<object, Map<string, unknown>>();
+
 export async function resumePendingAutomaticRestore(workspace: string, lifetime: RuntimeLifetimeLock): Promise<void> {
   lifetime.assertExclusiveWorkspaceTarget(workspace);
   const path = join(workspace, ".tracker", "control", "journal.json");
@@ -235,14 +237,33 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
         catch (repair) { throw new AggregateError([error, repair], "startup-inspection-and-repair-failed", { cause: repair }); }
       }
     }
-    await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
+    const pendingLogouts = await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
       for (const profileId of registered) if (hasPendingShutdownBackupRetirement(join(machine.stateRoot, "profiles", profileId))) {
         assertMaintenanceCustodyAvailable("backup-retirement");
         const admission = machine.admitStoppedProfileRepair(profileId, machine.maintenanceOperation()); owned.push(admission);
         await resumeShutdownBackupRetirement(admission, clock);
       }
+      return machine.requiresFlatStoreMigration() ? [] : machine.readPendingLogoutProfileIds();
     });
     await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts, clock);
+    if (pendingLogouts.length !== 0) {
+      const logoutMachine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
+      let logoutRuntime: ReturnType<typeof composeProfileRuntime> | undefined;
+      let logoutFailure: { error: unknown } | undefined;
+      try {
+        logoutRuntime = composeProfileRuntime({ admission: logoutMachine, hostFacts, clock });
+        for (const operation of logoutRuntime.session.logoutOperations()) {
+          if (operation.phase === "complete") continue;
+          logoutRuntime.session.resumeLogout(operation.operationId);
+          await logoutRuntime.awaitClosurePreparation(operation.profileId);
+          logoutRuntime.session.resumeLogout(operation.operationId);
+        }
+      } catch (error) { logoutFailure = { error }; }
+      if (logoutFailure !== undefined && hasUnprovedSourceClosure(logoutFailure.error)) throw retainAuthoritySourceClosure([logoutFailure.error], { admission: { logoutMachine, logoutRuntime } });
+      try { await logoutRuntime?.close(); logoutMachine.release(); }
+      catch (error) { throw retainAuthoritySourceClosure(logoutFailure === undefined ? [error] : [logoutFailure.error, error], { admission: { logoutMachine, logoutRuntime } }); }
+      if (logoutFailure !== undefined) throw logoutFailure.error;
+    }
     const registrationProofs = await withStoppedMachineStorage(workspace, lifetime, async machine => machine.requiresFlatStoreMigration() ? undefined : machine.captureStartupRegistrationProofs());
     if (registrationProofs !== undefined && registrationProofs.length !== 0) {
       const recoveryMachine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
@@ -263,6 +284,8 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
       const pending = new Set(machine.readPendingLogoutProfileIds());
       return machine.readProfileRegistry().profiles.filter(row => row.lifecycle === "ready" && !pending.has(row.profileId)).map(row => row.profileId);
     });
+    const refused = refusedProfileUpgrades.get(lifetime) ?? new Map<string, unknown>();
+    refusedProfileUpgrades.set(lifetime, refused);
     try {
       await withStoppedMachineStorage(workspace, lifetime, async (machine, owned) => {
         const { upgradeProtectedSettings } = await import("../../storage/maintenance/protected-settings-upgrade.js");
@@ -271,12 +294,18 @@ async function prepareRegisteredPersonStores(workspace: string, lifetime: Runtim
           const person = machine.readProfileRegistry().profiles.find(row => row.profileId === profileId);
           if (person === undefined) throw new Error("protected-settings-upgrade-profile-missing");
           if (person.credentialState !== "saved") continue;
-          const admission = machine.admitStoppedProfileSettingsUpgrade(profileId, operation); owned.push(admission);
-          await upgradeProtectedSettings(admission, profileBrowserClosure, operation, clock, processLockRoot, READABLE_WORKFLOW_MODULES.map(module => module.descriptor));
+          try {
+            const admission = machine.admitStoppedProfileSettingsUpgrade(profileId, operation); owned.push(admission);
+            await upgradeProtectedSettings(admission, profileBrowserClosure, operation, clock, processLockRoot, READABLE_WORKFLOW_MODULES.map(module => module.descriptor));
+            refused.delete(profileId);
+          } catch (error) {
+            if (hasUnprovedSourceClosure(error)) throw error;
+            refused.set(profileId, error);
+          }
         }
       });
     } catch (error) { throw new RegisteredPersonUpgradeRefusedError(error); }
-    return registered;
+    return registered.filter(profileId => !refused.has(profileId));
   } catch (error) {
     if (error instanceof RegisteredPersonUpgradeRefusedError) throw error;
     throw new AutomaticPersonRepairRefusedError(error);
@@ -760,7 +789,10 @@ export function composeProfileRuntime(input: Readonly<{
     const existing = coldLogouts.get(inputOperation.profileId);
     if (existing !== undefined) {
       if (existing.operationId !== inputOperation.operationId) throw new Error("profile-logout-cold-operation-changed");
-      if (existing.state === "failed") throw existing.error;
+      if (existing.state === "failed") {
+        if (!hasUnprovedSourceClosure(existing.error)) coldLogouts.delete(inputOperation.profileId);
+        throw existing.error;
+      }
       return;
     }
     machine.assertColdPendingLogout(inputOperation);
@@ -780,26 +812,6 @@ export function composeProfileRuntime(input: Readonly<{
         await stopped.complete();
       }
       stopped.dispose();
-      if (!job.busy) {
-        const row = machine.readProfileRegistry().profiles.find(row => row.profileId === operation.profileId);
-        if (row?.lifecycle !== "ready") throw new Error("profile-logout-settled-registration-required");
-        if (row.credentialState === "saved") {
-          const maintenance = machine.acquireOfflineMaintenance();
-          let owner: RuntimeAdmission | undefined, failure: { error: unknown } | undefined;
-          try {
-            owner = machine.admitStoppedProfileSettingsUpgrade(operation.profileId, maintenance);
-            const context = machine.readInstallationContext();
-            if (context === undefined) throw new Error("profile-parent-context-unavailable");
-            const { upgradeProtectedSettings } = await import("../../storage/maintenance/protected-settings-upgrade.js");
-            await upgradeProtectedSettings(owner, profileBrowserClosure, maintenance, input.clock,
-              join(context.workspace, rebuildRuntimeIsolation.processLockRoot), READABLE_WORKFLOW_MODULES.map(module => module.descriptor));
-          } catch (error) { failure = { error }; }
-          if (failure !== undefined && hasUnprovedSourceClosure(failure.error)) throw retainAuthoritySourceClosure([failure.error], { admission: { owner, machine }, restore: maintenance });
-          try { owner?.release(); maintenance.release(); }
-          catch (error) { throw retainAuthoritySourceClosure(failure === undefined ? [error] : [failure.error, error], { admission: { owner, machine }, restore: maintenance }); }
-          if (failure !== undefined) throw failure.error;
-        }
-      }
       if (!job.busy) completedLogouts.set(operation.operationId, { profileId: operation.profileId, epoch: operation.sessionGeneration + 1 });
       job.state = "ready";
     })();
@@ -827,8 +839,12 @@ export function composeProfileRuntime(input: Readonly<{
     settings: { read: () => contextFor().settings.read() },
     account: { readAuthority: admission => contextFor(admission).accountAuthority.readAuthority(admission),
       revalidateAuthority: (capture, admission) => contextFor(admission).accountAuthority.revalidateAuthority(capture, admission) },
-    sessionChange: profileId => resources.get(profileId)?.ordinary?.context !== undefined && resources.get(profileId)?.ordinary?.state !== "closed"
-      ? { state: "refused", code: "PROFILE_TRANSITION_BLOCKED", message: ERROR_CATALOG.PROFILE_TRANSITION_BLOCKED.text } : { state: "closed" },
+    sessionChange: profileId => {
+      const failed = refusedProfileUpgrades.get(machine.lifetime);
+      if (failed?.has(profileId)) throw new ProfileSessionRefusedError("PROFILE_STARTUP_CONVERSION_REFUSED", { cause: failed.get(profileId) });
+      return resources.get(profileId)?.ordinary?.context !== undefined && resources.get(profileId)?.ordinary?.state !== "closed"
+      ? { state: "refused", code: "PROFILE_TRANSITION_BLOCKED", message: ERROR_CATALOG.PROFILE_TRANSITION_BLOCKED.text } : { state: "closed" };
+    },
     prepareLogout: (profileId, admission) => {
       const entry = resources.get(profileId)?.ordinary, drain = entry?.logoutDrain;
       if (entry === undefined || entry.admission !== admission || entry.context === undefined || drain?.state !== "ready"
@@ -1031,7 +1047,10 @@ export function composeProfileRuntime(input: Readonly<{
     },
     async close(purpose: "logout" | "shutdown" = closePurpose): Promise<void> {
       beginClose(purpose);
-      for (const cold of coldLogouts.values()) { await cold.completion; if (cold.state === "failed") throw cold.error; }
+      for (const cold of coldLogouts.values()) {
+        try { await cold.completion; }
+        catch (error) { if (hasUnprovedSourceClosure(error)) throw error; }
+      }
       try { await session.closeOnboarding(); }
       catch (error) { throw new RuntimeCustodyUncertainError([error]); }
       for (const [profileId, entry] of resources) {

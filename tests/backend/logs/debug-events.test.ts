@@ -1,13 +1,27 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
-import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.js";
+import { createDebugEventWriter, valueFreeErrorCauses } from "../../../src/backend/logs/debug-events.js";
 import { debugTimelineFixture as fixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { debugEventLevel } from "../../../src/models/events/timeline.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
 describe("bounded native debug events", () => {
+  it("retains only names, codes and source locations from cyclic aggregate causes", () => {
+    const cause = new TypeError("Quillan, Petra; fictional record contents");
+    cause.stack = "TypeError: fictional private message\n    at privateFunction (/Users/private/project/src/backend/runs/queries/run-detail.ts:42:7)\n    at /private/profiles/record.txt:1:2\nprivate continuation";
+    const error = new AggregateError([cause, cause], "fictional private aggregate", { cause });
+    Object.defineProperty(error, "code", { value: "INTERNAL_FAILURE" });
+    Object.defineProperty(cause, "cause", { value: error });
+    error.stack = "AggregateError: private\n    at handler (/Users/private/project/src/backend/transports/http/routes/api.ts:40:1)";
+    const details = valueFreeErrorCauses(error);
+    assert.deepEqual(details, [
+      { name: "AggregateError", code: "INTERNAL_FAILURE", stack: "AggregateError\n    at src/backend/transports/http/routes/api.ts:40:1" },
+      { name: "TypeError", code: "INTERNAL_FAILURE", stack: "TypeError\n    at src/backend/runs/queries/run-detail.ts:42:7" },
+    ]);
+    assert.equal(/Quillan|Petra|private|fictional|record/u.test(JSON.stringify(details)), false);
+  });
   it("mirrors HTTP method, registered route template and status without client routes or payloads", () => {
     const { repository } = fixture(); const lines: string[] = [];
     const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test", development: true,

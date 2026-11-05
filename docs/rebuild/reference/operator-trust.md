@@ -78,6 +78,8 @@ redactor.
 The worker logger in `src/backend/app/composition/worker-compose.ts` sanitizes its message and
 string-valued fields. Local diagnostic-field retention is a separate path.
 
+`src/backend/storage/events/local-debug-log.ts` owns the machine and profile `logs/boot.jsonl` files, which spool boot faults and closed profile-selection diagnostics before a timeline writer is available. Dashboard composition imports them into the selected profile's timeline, verifies each retained event ID and exact content, then removes the source file. Failed import or readback keeps the bytes. Selection diagnostics contain only a closed reason, fixed caller path and old/new generations; their started/settled phases distinguish an attempted publication from a completed registry write. The file has a hard size cap, not a rotation policy. Duo diagnostics rotate only their own `duo*.jsonl` files.
+
 `attachBrowserDiagnostics` in `src/backend/runtime/browser/browser-diagnostics.ts` collects bounded
 console kinds, request methods, error-response statuses, and instants. Each console or network list
 holds at most 128 rows. Its summaries omit console text, page-error text, request bodies, headers,

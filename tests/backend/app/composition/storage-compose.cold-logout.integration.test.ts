@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import fs, { existsSync, readFileSync, readdirSync } from "node:fs";
+import fs, { copyFileSync, existsSync, readFileSync, readdirSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import { join } from "node:path";
 import { it, vi } from "vitest";
-import { composeProfileRuntime } from "../../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime, initializeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
+import * as settingsMaintenance from "../../../../src/backend/storage/maintenance/protected-settings-upgrade.js";
+import { CredentialMaintenanceHold } from "../../../../src/backend/storage/configuration/canonical-credential-store.js";
+import { createProfileRegistry } from "../../../../src/backend/profiles/registry.js";
+import { captureProfileCredentialFixture, installPredecessorProfileCredentials } from "../../../support/helpers/predecessor-profile-credentials.js";
 import { createProfileSession } from "../../../../src/backend/profiles/profile-session.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
@@ -16,7 +20,12 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } fro
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { runLogoutSettlementCase } from "../../../support/helpers/credential-source-retention.js";
-import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
+import { createBoundProfileFixture, finishProfileOnboarding, syntheticOnboardingDuo } from "../../../support/helpers/admission-fixture.js";
+import { composeDashboardApplication } from "../../../../src/backend/app/composition/dashboard/profile-session-routes.js";
+import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
+import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
+import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
+import { StorageMaintenanceCustodyUnavailableError } from "../../../../src/backend/storage/maintenance/custody-availability.js";
 
 const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-21T12:01:00.000Z" };
 
@@ -80,15 +89,194 @@ async function fixture(phase: "admitted" | "cancelling" | "incomplete" = "cancel
   };
   return { f, clock, active, database, operation, operationPath, readOperation, binding, retained,
     assertRetained() { for (const item of retained) assert.deepEqual(readFileSync(item.path), item.bytes); },
-    async restart() {
+    async restart(mode: "exclusive" | "shared" = "exclusive", startup = false) {
       await stop();
       const lifetime = await RuntimeLifetimeLock.acquire(f.lifetime.port);
-      const machine = acquireEntrypointAdmission(f.workspace, "exclusive", lifetime);
+      if (startup) await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, clock);
+      const machine = acquireEntrypointAdmission(f.workspace, mode, lifetime);
       const runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
-      return { machine, runtime, async close() { await runtime.close(); machine.release(); await lifetime.close(); await f.close(); } };
+      return { machine, runtime, lifetime, async close() { await runtime.close(); machine.release(); await lifetime.close(); await f.close(); } };
     },
     async close() { await stop(); await f.close(); }, records, values };
 }
+
+it("finishes cold logout under shared dashboard admission, signs in again and shuts down cleanly", async () => {
+  const f = await fixture(), stopped = await f.restart("shared");
+  try {
+    const authorized = stopped.runtime.session.authorizeLogoutContinuation(fields);
+    assert.equal(authorized.state, "authorized");
+    if (authorized.state !== "authorized") throw new Error("fixture continuation refused");
+    assert.equal(authorized.resume().state, "cancelling");
+    await stopped.runtime.awaitClosurePreparation(f.active.profileId);
+    assert.equal(stopped.runtime.session.resumeLogout(f.operation.operationId).state, "signed-out");
+    assert.equal(stopped.runtime.session.signIn(fields).state, "active");
+    f.assertRetained();
+    await stopped.runtime.close("shutdown");
+  } finally { await stopped.close(); }
+});
+
+for (const interrupted of [false, true]) it(`settles a boot-observed unfinished logout before shared dashboard admission, interrupted conversion=${interrupted}`, async () => {
+  const f = await fixture();
+  const failure = interrupted ? vi.spyOn(settingsMaintenance, "upgradeProtectedSettings").mockRejectedValueOnce(new Error("synthetic interruption after logout settlement")) : undefined;
+  const stopped = await f.restart("shared", true);
+  failure?.mockRestore();
+  let machine = stopped.machine, runtime = stopped.runtime;
+  try {
+    assert.equal(existsSync(f.operationPath), false);
+    assert.equal(machine.readProfileRegistry().profiles[0]?.lifecycle, "ready");
+    if (interrupted) {
+      assert.throws(() => runtime.session.signIn(fields), { code: "PROFILE_STARTUP_CONVERSION_REFUSED" });
+      f.assertRetained(); await runtime.close("shutdown"); machine.release();
+      await initializeRegisteredPersonStores(f.f.workspace, stopped.lifetime, { primaryDisplay: null }, f.clock);
+      machine = acquireEntrypointAdmission(f.f.workspace, "shared", stopped.lifetime);
+      runtime = composeProfileRuntime({ admission: machine, clock: f.clock, hostFacts: { primaryDisplay: null } });
+    }
+    assert.equal(runtime.session.signIn(fields).state, "active");
+    f.assertRetained();
+  } finally { failure?.mockRestore(); await runtime.close("shutdown"); machine.release(); await stopped.close(); }
+});
+
+it("serves the unfinished logout after restart, truthfully refuses signup, continues login and stops the shared application", async () => {
+  const f = await fixture(), stopped = await f.restart("shared");
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.f.workspace, name));
+  let app: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  try {
+    app = await composeDashboardApplication({ admission: stopped.machine, lifetimeLock: stopped.lifetime, repoRoot: f.f.workspace,
+      isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, clock: f.clock, env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+    const base = `http://127.0.0.1:${app.port}`;
+    const post = async (path: string, body: unknown) => {
+      const response = await fetch(`${base}/api/v1/profile/${path}`, { method: "POST", headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify(body) });
+      return { status: response.status, body: PublicProfileStateSchema.parse(await response.json()) };
+    };
+    assert.deepEqual(await (await fetch(`${base}/api/v1/profile/state`)).json(), { state: "signed-out", signUpRequired: false, logoutIncomplete: true });
+    assert.deepEqual(await post("sign-up", { email: fields.email, password: fields.password, firstName: "New", lastName: "Fixture" }), {
+      status: 200, body: { state: "refused", code: "PROFILE_LOGOUT_INCOMPLETE" },
+    });
+    assert.equal((await post("sign-in", { email: fields.email, password: fields.password })).body.state, "cancelling");
+    await vi.waitFor(async () => {
+      const result = await post("sign-in", { email: fields.email, password: fields.password });
+      assert.equal(result.status, 200); assert.equal(result.body.state, "active");
+    });
+    assert.equal(existsSync(f.operationPath), false); f.assertRetained();
+    await app.stop(); app = undefined;
+  } finally { await app?.stop(); await stopped.close(); }
+});
+
+it("closes shared runtime after an ordinary failed cold job while preserving unfinished logout evidence", async () => {
+  const f = await fixture(), stopped = await f.restart("shared"), primary = new Error("synthetic pre-open failure");
+  const failure = vi.spyOn(AuthorityDatabase, "resumePendingLogout").mockRejectedValueOnce(primary);
+  try {
+    const authorized = stopped.runtime.session.authorizeLogoutContinuation(fields);
+    assert.equal(authorized.state, "authorized");
+    if (authorized.state !== "authorized") throw new Error("fixture continuation refused");
+    assert.equal(authorized.resume().state, "cancelling");
+    await assert.rejects(stopped.runtime.awaitClosurePreparation(f.active.profileId), error => error === primary);
+    await stopped.runtime.close("shutdown");
+    assert.equal(existsSync(f.operationPath), true); f.assertRetained();
+  } finally { failure.mockRestore(); await stopped.close(); }
+});
+
+it("reports an ordinary pre-open cold job failure, permits a fresh login continuation and stops cleanly", async () => {
+  const f = await fixture(), stopped = await f.restart("shared"), primary = new Error("synthetic pre-open refusal");
+  const failure = vi.spyOn(AuthorityDatabase, "resumePendingLogout").mockRejectedValueOnce(primary);
+  try {
+    const begin = () => {
+      const authorized = stopped.runtime.session.authorizeLogoutContinuation(fields);
+      assert.equal(authorized.state, "authorized");
+      if (authorized.state !== "authorized") throw new Error("fixture continuation refused");
+      return authorized.resume();
+    };
+    assert.equal(begin().state, "cancelling");
+    await assert.rejects(stopped.runtime.awaitClosurePreparation(f.active.profileId), error => error === primary);
+    assert.throws(begin, error => error === primary);
+    failure.mockRestore();
+    assert.equal(begin().state, "cancelling");
+    await stopped.runtime.awaitClosurePreparation(f.active.profileId);
+    assert.equal(stopped.runtime.session.resumeLogout(f.operation.operationId).state, "signed-out");
+    assert.equal(stopped.runtime.session.signIn(fields).state, "active");
+    await stopped.runtime.close("shutdown");
+  } finally { failure.mockRestore(); await stopped.close(); }
+});
+
+it("returns the real schema-4 login hold over HTTP and closes the application after that failed attempt", async () => {
+  const f = await createBoundProfileFixture(), source = captureProfileCredentialFixture(f.admission);
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(f.workspace, name));
+  createProfileRegistry(f.machine).advanceSession(null);
+  await f.closeController(); installPredecessorProfileCredentials(source, "FX");
+  const bytes = readFileSync(join(f.stateRoot, "credentials", "protected.json")), lifetime = await RuntimeLifetimeLock.acquire(0);
+  const machine = acquireEntrypointAdmission(f.workspace, "shared", lifetime);
+  let app: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  try {
+    app = await composeDashboardApplication({ admission: machine, lifetimeLock: lifetime, repoRoot: f.workspace,
+      isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0, env: {} });
+    const base = `http://127.0.0.1:${app.port}`, generation = machine.readProfileRegistry().sessionGeneration;
+    const response = await fetch(`${base}/api/v1/profile/sign-in`, { method: "POST", headers: { origin: base, "content-type": "application/json" },
+      body: JSON.stringify({ email: fields.email, password: fields.password }) });
+    assert.equal(response.status, 409);
+    assert.deepEqual(await response.json(), { state: "error", code: "CREDENTIAL_CONVERSION_REQUIRED" });
+    assert.equal(machine.readProfileRegistry().activeProfileId, null);
+    assert.equal(machine.readProfileRegistry().sessionGeneration, generation + 2);
+    const log = readFileSync(join(machine.stateRoot, "logs", "boot.jsonl"), "utf8");
+    assert.ok(log.includes("CredentialMaintenanceHold")); assert.ok(log.includes("CREDENTIAL_CONVERSION_REQUIRED"));
+    assert.equal(log.includes(fields.email), false); assert.equal(log.includes(fields.password), false);
+    if (process.platform === "win32") await assert.rejects(app.stop(), StorageMaintenanceCustodyUnavailableError);
+    else await app.stop();
+    app = undefined;
+    assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), bytes);
+  } finally { await app?.stop(); machine.release(); await lifetime.close(); await f.close(); }
+});
+
+it("keeps schema-4 login refused until stopped startup converts a ready saved profile with no logout operation", async () => {
+  const f = await createBoundProfileFixture(), clock = manualClock(new Date(fields.at));
+  const source = captureProfileCredentialFixture(f.admission), profileId = f.admission.profileBinding.profileId;
+  createProfileRegistry(f.machine).advanceSession(null);
+  const otherFields = { email: "other@ucsd.edu", password: "disposable-other-password", at: fields.at };
+  const setup = createProfileSession({ machineRoot: f.machine.stateRoot, admission: f.machine, clock, onboardingDuo: syntheticOnboardingDuo() });
+  await finishProfileOnboarding(setup, setup.signUp({ ...otherFields, firstName: "Other", lastName: "Fixture", createdAt: fields.at }));
+  setup.close(); createProfileRegistry(f.machine).advanceSession(null);
+  await f.closeController();
+  installPredecessorProfileCredentials(source, "FX");
+  const lifetime = await RuntimeLifetimeLock.acquire(0);
+  let machine = acquireEntrypointAdmission(f.workspace, "shared", lifetime);
+  let runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
+  try {
+    assert.equal(machine.readProfileRegistry().profiles[0]?.credentialState, "saved");
+    assert.equal(runtime.session.logoutOperations().length, 0);
+    const generation = machine.readProfileRegistry().sessionGeneration;
+    assert.throws(() => runtime.session.signIn(fields), error => error instanceof CredentialMaintenanceHold && error.code === "CREDENTIAL_CONVERSION_REQUIRED");
+    assert.equal(machine.readProfileRegistry().activeProfileId, null);
+    assert.equal(machine.readProfileRegistry().sessionGeneration, generation + 2);
+    await runtime.close("shutdown"); machine.release();
+    const bytes = readFileSync(join(f.stateRoot, "credentials", "protected.json"));
+    const failure = vi.spyOn(settingsMaintenance, "upgradeProtectedSettings").mockRejectedValueOnce(new Error("synthetic closed conversion failure"));
+    try { await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, clock); }
+    finally { failure.mockRestore(); }
+    assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), bytes);
+    machine = acquireEntrypointAdmission(f.workspace, "shared", lifetime);
+    runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
+    assert.throws(() => runtime.session.signIn(fields), { code: "PROFILE_STARTUP_CONVERSION_REFUSED" });
+    const other = runtime.session.signIn(otherFields);
+    assert.equal(other.state, "active");
+    if (other.state !== "active") throw new Error("unaffected profile login refused");
+    await runtime.drainForLogout(other.token);
+    const logout = runtime.session.logOut(other.token, { at: fields.at });
+    assert.equal(logout.state, "cancelling");
+    if (logout.state !== "cancelling" || logout.operationId === undefined) throw new Error("unaffected profile logout refused");
+    await runtime.awaitClosurePreparation(other.profileId);
+    assert.equal(runtime.session.resumeLogout(logout.operationId).state, "signed-out");
+    await runtime.close("shutdown"); machine.release();
+    await initializeRegisteredPersonStores(f.workspace, lifetime, { primaryDisplay: null }, clock);
+    machine = acquireEntrypointAdmission(f.workspace, "shared", lifetime);
+    runtime = composeProfileRuntime({ admission: machine, clock, hostFacts: { primaryDisplay: null } });
+    const active = runtime.session.signIn(fields);
+    assert.equal(active.state, "active");
+    if (active.state !== "active") throw new Error("converted fixture login refused");
+    assert.equal(active.profileId, profileId);
+    const canonical = createCanonicalCredentials(runtime.selectedContext(active.token).admission).readRecord("protected");
+    assert.ok(canonical);
+    assert.equal(Reflect.get(Object(canonical.value), "schemaVersion"), 5);
+  } finally { await runtime.close("shutdown"); machine.release(); await lifetime.close(); await f.close(); }
+});
 
 for (const phase of ["admitted", "cancelling", "incomplete"] as const) it(`finishes genuine cold Logout2 ${phase} while retaining every canonical credential`, async () => {
   const f = await fixture(phase), stopped = await f.restart();
