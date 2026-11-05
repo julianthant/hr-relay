@@ -6,6 +6,7 @@ import { describe } from "vitest";
 import { it } from "vitest";
 import { runSessionActorId } from "../../../src/models/run/session.js";
 import { RunSessionRecordSchema } from "../../../src/models/run/session.js";
+import { workflowQueueCapabilities } from "../../../src/backend/app/registries/workflow-registry.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
@@ -115,8 +116,8 @@ const { queuedEventOf } = createSeededDashboardWorld();
 
 const worlds: DashboardWorld[] = [];
 
-async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
-  const created = await makeWorld(...args);
+async function world(): Promise<DashboardWorld> {
+  const created = await makeWorld({ queueCapabilities: workflowQueueCapabilities });
   worlds.push(created);
   return created;
 }
