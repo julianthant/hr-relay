@@ -23,7 +23,7 @@ Complete these in order on the Mac.
 - [done] Workflow logins — use fast-duo for every workflow login.
 - [done] Runs — pause and resume at completed steps, rerun failed items from saved results, confirm quitting and park interrupted submits as unknown.
 - [done] Write safety — capture browser steps and submit boundaries, retain dry-run evidence, show UCPath transaction findings for operator review and keep Kuali reload verification.
-- [now] OCR and Emergency Contact — dry-run preview and fake-driver Save are proven and live selectors are captured; finish the selector fixes, Add record, review retry and per-person rows, then wire production Save.
+- [now] OCR and Emergency Contact — dry-run preview and fake-driver Save are proven, live selectors are captured and production Save is wired but never run live; finish review retry and per-person rows, then prove the first live Save with the operator present.
 - [done] Served Explorer matches the mock — make Person Lookup and Separations Explorer read like the approved mock from served workflow definitions.
 - [now] Assistant usable — allowlist reads, make every changing action and workflow start a confirmed proposal, show citations and failures, and add Test assistant.
 - [done] Operator dashboard fixes — tidy Settings (nav, theme, storage, account), derive the timekeeper name and initials from the signed-in name, clean Employee ID input, keep worker notices in toasts, fix spreadsheet import size and add Clear run history.
