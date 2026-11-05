@@ -39,6 +39,27 @@ describe("browser current-owner fence", () => {
     return { revoke: () => { current = false; }, assertCurrent: () => { if (!current) throw new ProfileCustodyUnavailableError(); } };
   }
 
+  it("retains value-free screenshot verification causes while refusing the capture", async () => {
+    await fixtures.withTempRuntime(async ({ config }) => {
+      const native = fixtures.fakeLauncher(), owner = epoch();
+      const cause = new TypeError("Quillan, Petra; fictional private page");
+      cause.stack = "TypeError: fictional private page\n    at verify (/private/project/src/backend/systems/crm/session.ts:42:7)";
+      const debug: unknown[] = [];
+      const factory = new PlaywrightWorkerSessionFactory({ ...options(config, native, owner.assertCurrent),
+        bindings: fixtures.recordingBindings({ verify: async () => { throw cause; } }),
+        onDebug: (_worker, event) => { if (event.reason === "capture-cause") debug.push(event); } });
+      const resource = await factory.open(input);
+      try {
+        const capture = await resource.screenshot!();
+        assert.equal(capture.state, "unavailable");
+        if (capture.state === "unavailable") assert.equal(capture.reason, "verification-failed");
+        assert.deepEqual(debug, [{ phase: "failed", correlationId: sessionId, reason: "capture-cause", code: "INTERNAL_FAILURE",
+          message: "TypeError", stack: "TypeError\n    at src/backend/systems/crm/session.ts:42:7" }]);
+        assert.equal(/Quillan|Petra|private|fictional/u.test(JSON.stringify(debug)), false);
+      } finally { await resource.close({ reason: "worker-stop" }); }
+    });
+  });
+
   it("refuses launch when ownership expires while profile admission resolves", async () => {
     await fixtures.withTempRuntime(async ({ config }) => {
       const owner = epoch(), native = fixtures.fakeLauncher();

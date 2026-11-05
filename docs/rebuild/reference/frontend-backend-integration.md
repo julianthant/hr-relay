@@ -494,6 +494,8 @@ A workflow declares `plannedOutputs(input, references)` to project output facts 
 Unknown profile-request failures retain their error names, codes and source stack locations in the
 local boot log, including nested causes. Exception messages, request values and private file paths
 are omitted. HTTP responses retain the catalogued public code.
+Unexpected inner API failures and screenshot verification exceptions retain the same value-free
+cause shape through the existing debug writer. Exception messages stay out of those diagnostic events.
 
 `logs/debug-events.ts` is the debug timeline writer. Severity is derived from the persisted phase, reason and HTTP status for terminal output and diagnostics reads; no level is stored. Events retain redacted text, per-category size caps and the existing timeline retention. Development backend and worker launches mirror inserted events to stderr with time, level, category, phase, code, area, reason and structural IDs. HTTP events also retain method, registered route template and status in that mirror. Client routes, messages, stacks and request values stay out of the mirror. Production builds do not mirror.
 
