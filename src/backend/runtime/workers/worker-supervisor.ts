@@ -98,6 +98,7 @@ export interface DashboardWorkerSupervisorDependencies {
   readonly browserControl?: Readonly<{ request(commandId: string): Promise<string>; closeForRemoval(commandId: string): Promise<void> }>;
   readonly spawn: WorkerProcessSpawner;
   readonly settleNonBirth?: () => void;
+  readonly nonBirthOwner?: object;
   readonly leases: WorkerLeaseProbe;
   readonly gracefulStop: WorkerGracefulStopChannel;
   readonly clock: Clock;
@@ -1101,9 +1102,9 @@ export function createDashboardWorkerProcessSupervisor(
           `worker supervisor received an unknown request: ${JSON.stringify(request)}`,
         );
       } catch (error) {
-        if (launch !== undefined && !launch.attempted && error instanceof WorkerControlRefusal) {
+        if (launch !== undefined && !launch.attempted && error instanceof WorkerControlRefusal && deps.nonBirthOwner !== undefined) {
           const tracked = launches.get(launch.member.workerId);
-          if (tracked !== undefined) tracked.proof = mintWorkerNonBirthProof(supervisor, launch.member, launch.commandId, launch.launchCount,
+          if (tracked !== undefined) tracked.proof = mintWorkerNonBirthProof(supervisor, deps.nonBirthOwner, launch.member, launch.commandId, launch.launchCount,
             () => !closed && launches.get(launch.member.workerId) === tracked && !tracked.attempted);
         }
         throw error;

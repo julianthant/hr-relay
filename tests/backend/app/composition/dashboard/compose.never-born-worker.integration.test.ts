@@ -1,6 +1,7 @@
 import { WireErrorSchema } from "../../../../../src/models/dashboard/primitives.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { rmSync } from "node:fs";
@@ -98,6 +99,20 @@ it("refuses the missing settlement identity through native, sync, async and HTTP
     onlyHttpDiagnostics(before, nativeWorkerBytes(f.profile.path), 1);
     assert.equal(f.spawns(), 0); assert.equal(db.hasWorkerNonBirth(started.slot), true);
   } finally { await f.close(); }
+});
+
+it("does not admit settlement replay when the original Spawn control record is missing", async () => {
+  await positiveControl();
+  const f = await neverBornFixture(true);
+  try {
+    const started = await refusedStart(f), db = f.context.database;
+    const raw = new DatabaseSync(f.profile.path);
+    try { raw.prepare("DELETE FROM worker_controls WHERE command_id=?").run(started.spawn.commandId); }
+    finally { raw.close(); }
+    const before = nativeWorkerBytes(f.profile.path);
+    assert.throws(() => db.withAuthorityTransaction(repositories => repositories.commands.assertIdentity(settlement(started))));
+    assert.deepEqual(nativeWorkerBytes(f.profile.path), before);
+  } finally { await assert.rejects(f.close(), RuntimeCustodyUncertainError); }
 });
 
 for (const typed of [false, true]) it(`does not treat an entered ${typed ? "typed-refusal" : "unknown-outcome"} spawner as positive non-birth`, async () => {
@@ -247,12 +262,13 @@ for (const arm of ["pool", "resource", "forged-proof"] as const) it(`refuses ${a
     } else {
       const minted = vi.mocked(proofs.mintWorkerNonBirthProof), call = minted.mock.lastCall, result = minted.mock.results.at(-1);
       assert.ok(call); assert.ok(result?.type === "return");
-      const binding = proofs.authenticateWorkerNonBirthProof(result.value, call[0]);
+      const binding = proofs.authenticateWorkerNonBirthProof(result.value, call[0], call[1]);
       assert.throws(() => Object.assign(binding, { commandId: randomUUID() }), TypeError);
       assert.throws(() => Object.assign(binding.member, { membershipRevision: binding.member.membershipRevision + 1 }), TypeError);
-      assert.throws(() => proofs.authenticateWorkerNonBirthProof({ ...result.value }, call[0]), /authority-unavailable/);
-      assert.throws(() => proofs.authenticateWorkerNonBirthProof(result.value, {}), /authority-unavailable/);
-      assert.throws(() => proofs.authenticateWorkerNonBirthProof({ kind: "worker-non-birth" }, {}), /authority-unavailable/);
+      assert.throws(() => proofs.authenticateWorkerNonBirthProof({ ...result.value }, call[0], call[1]), /authority-unavailable/);
+      assert.throws(() => proofs.authenticateWorkerNonBirthProof(result.value, {}, call[1]), /authority-unavailable/);
+      assert.throws(() => proofs.authenticateWorkerNonBirthProof(result.value, call[0], {}), /authority-unavailable/);
+      assert.throws(() => proofs.authenticateWorkerNonBirthProof({ kind: "worker-non-birth" }, {}, {}), /authority-unavailable/);
       assert.throws(() => db.bindWorkerNonBirthSupervisor({ nonBirthProof: () => ({ kind: "worker-non-birth" }) }, () => undefined), /already-bound/);
       return;
     }

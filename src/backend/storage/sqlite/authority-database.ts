@@ -3376,6 +3376,18 @@ export class AuthorityDatabase implements Disposable {
     this.#nonBirthOwner = { supervisor, assertUnused };
   }
 
+  #workerSpawnRequests() {
+    return this.#database.prepare("SELECT * FROM commands WHERE family='worker-browser' AND json_extract(request_json,'$.type')='spawn-worker'").all().map(row => {
+      const request = WorkerBrowserCommandRequestSchema.parse(commandFromRow(row));
+      if (request.type !== "spawn-worker") throw new Error("worker-spawn-command-binding-mismatch");
+      return request;
+    });
+  }
+
+  workerHasSpawnRequest(workerId: string): boolean {
+    return this.#withReadSnapshot(() => this.#workerSpawnRequests().some(request => request.payload.workerId === workerId));
+  }
+
   recordWorkerNonBirthRefusal(commandId: string): void {
     if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") throw new Error("worker-non-birth-refusal-transaction-required");
     const owner = this.#nonBirthOwner, spawn = this.authority.workerControls.get(commandId);
@@ -3391,7 +3403,7 @@ export class AuthorityDatabase implements Disposable {
       .find(command => "family" in command && command.family === "start" && command.target.workflowId === origin.slot.workflow
         && lifecycleCommandId("run-start-plan-worker-count", [command.commandId, origin.slot.poolIndex]) === plan.commandId);
     if (parent === undefined) return;
-    const binding = authenticateWorkerNonBirthProof(proof, owner.supervisor);
+    const binding = authenticateWorkerNonBirthProof(proof, owner.supervisor, this);
     if (binding.commandId !== commandId || canonicalJsonStringify(binding.member) !== canonicalJsonStringify(workerPoolMember(origin.slot))) throw new Error("worker-non-birth-binding-mismatch");
     const spawns = this.readProfileResourceCustody().controls.filter(control => control.request.type === "spawn-worker" && control.request.payload.workerId === origin.slot.workerId);
     const audits = spawns.map(control => this.authority.commandAudits.findByCommand(control.commandId));
@@ -3405,7 +3417,7 @@ export class AuthorityDatabase implements Disposable {
     this.#admission.assertProfileRuntime();
     const origin = this.#freshWorkerAllocations.get(slot.workerId), owner = this.#nonBirthOwner;
     if (origin?.sealed === undefined || owner === undefined || origin.consumed) throw new Error("worker-non-birth-authority-unavailable");
-    const sealed = origin.sealed, binding = authenticateWorkerNonBirthProof(sealed.proof, owner.supervisor);
+    const sealed = origin.sealed, binding = authenticateWorkerNonBirthProof(sealed.proof, owner.supervisor, this);
     if (slot.reservationCommandId === null) throw new Error("worker-non-birth-allocation-unavailable");
     const facts = this.readProfileResourceCustody();
     const spawns = facts.controls.filter(control => control.request.type === "spawn-worker" && control.request.payload.workerId === slot.workerId);
@@ -3414,6 +3426,7 @@ export class AuthorityDatabase implements Disposable {
       || canonicalJsonStringify(this.authority.workerPools.get(slot.workflow)) !== origin.pool
       || canonicalJsonStringify(this.authority.runtimeConfig.get()) !== origin.runtime
       || binding.commandId !== sealed.commandId || canonicalJsonStringify(binding.member) !== canonicalJsonStringify(workerPoolMember(slot))
+      || this.#workerSpawnRequests().filter(request => request.payload.workerId === slot.workerId).length !== binding.launchCount
       || spawns.length !== binding.launchCount || canonicalJsonStringify(spawns) !== sealed.spawn
       || canonicalJsonStringify(this.authority.workerControls.get(slot.reservationCommandId)) !== sealed.plan
       || canonicalJsonStringify(spawns.map(control => this.authority.commandAudits.findByCommand(control.commandId))) !== sealed.audit
@@ -3472,7 +3485,7 @@ export class AuthorityDatabase implements Disposable {
           this.#admission.assertProfileRuntime();
           const owner = this.#nonBirthOwner;
           if (owner === undefined) throw new Error("worker-non-birth-owner-unavailable");
-          authenticateWorkerNonBirthProof(sealed.proof, owner.supervisor);
+          authenticateWorkerNonBirthProof(sealed.proof, owner.supervisor, this);
           owner.assertUnused(slot);
           const retired = repositories.workerSlots.get(slot.workerId);
           if (retired?.membershipRevision !== slot.membershipRevision + 1 || retired.retirementCommandId !== commandId || retired.retiredAt !== now
@@ -3520,10 +3533,9 @@ export class AuthorityDatabase implements Disposable {
     if (!protectedCommand && this.#credentialCommandIds(record.commandId)) throw new CommandIdentityConflictError();
     if ("family" in record
       && this.#nonBirthSettlementCommand !== record.commandId && this.authority.commandAudits.findByCommand(record.commandId) === undefined) {
-      for (const control of this.authority.workerControls.list()) {
-        if (control.request.type !== "spawn-worker") continue;
-        const slot = this.authority.workerSlots.get(control.request.payload.workerId);
-        if (slot !== undefined && lifecycleCommandId("never-born-retirement", [slot.reservationCommandId, control.commandId, slot.workerId]) === record.commandId) {
+      for (const spawn of this.#workerSpawnRequests()) {
+        const slot = this.authority.workerSlots.get(spawn.payload.workerId);
+        if (slot !== undefined && lifecycleCommandId("never-born-retirement", [slot.reservationCommandId, spawn.commandId, slot.workerId]) === record.commandId) {
           throw new CommandIdentityConflictError("worker-non-birth-missing-settlement-replay-refused");
         }
       }

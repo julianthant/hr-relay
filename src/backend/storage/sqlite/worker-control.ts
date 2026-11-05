@@ -19,15 +19,15 @@ import { WorkerSupervisorEffectObservationSchema, WorkerLifecycleBindingSchema, 
 import { CommandIdSchema, IsoInstantSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 
 export type WorkerNonBirthProof = Readonly<{ kind: "worker-non-birth" }>;
-const nonBirthProofs = new WeakMap<object, Readonly<{ owner: object; member: WorkerPoolMember; commandId: string; launchCount: number; valid(): boolean }>>();
-export function mintWorkerNonBirthProof(owner: object, member: WorkerPoolMember, commandId: string, launchCount: number, valid: () => boolean): WorkerNonBirthProof {
+const nonBirthProofs = new WeakMap<object, Readonly<{ owner: object; database: object; member: WorkerPoolMember; commandId: string; launchCount: number; valid(): boolean }>>();
+export function mintWorkerNonBirthProof(owner: object, database: object, member: WorkerPoolMember, commandId: string, launchCount: number, valid: () => boolean): WorkerNonBirthProof {
   const proof: WorkerNonBirthProof = Object.freeze({ kind: "worker-non-birth" });
-  nonBirthProofs.set(proof, Object.freeze({ owner, member: Object.freeze({ ...member }), commandId, launchCount, valid }));
+  nonBirthProofs.set(proof, Object.freeze({ owner, database, member: Object.freeze({ ...member }), commandId, launchCount, valid }));
   return proof;
 }
-export function authenticateWorkerNonBirthProof(proof: WorkerNonBirthProof, owner: object) {
+export function authenticateWorkerNonBirthProof(proof: WorkerNonBirthProof, owner: object, database: object) {
   const record = nonBirthProofs.get(proof);
-  if (record === undefined || record.owner !== owner || !record.valid()) throw new Error("worker-non-birth-authority-unavailable");
+  if (record === undefined || record.owner !== owner || record.database !== database || !record.valid()) throw new Error("worker-non-birth-authority-unavailable");
   return record;
 }
 export function consumeWorkerNonBirthProof(proof: WorkerNonBirthProof): void {

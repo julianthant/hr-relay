@@ -68,6 +68,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
   const supervisor = createDashboardWorkerProcessSupervisor({
     onExit: input.onExit,
     settleNonBirth: () => input.database.settleNeverSpawnedWorkers(),
+    nonBirthOwner: input.database,
     launch: input.launch,
     spawn: input.spawn,
     browserControl: browserChannel,
@@ -205,7 +206,8 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
           if (browser.profileDirectory !== workerProfileDirectory({ profileRoot: input.profileRoot, slotOrdinal: slot.ordinal, system: browser.system })) throw new WorkerControlRefusal("worker-retirement-profile-identity-mismatch");
         }
         const launches = repositories.workerControls.list().filter(control => control.request.type === "spawn-worker" && control.request.payload.workerId === member.workerId);
-        return { browsers, launches, browserSystems: lease?.browserSystems, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease: lease ?? null, pending, standing: standing ?? null, browsers, launches }) };
+        const spawnAdmitted = input.database.workerHasSpawnRequest(member.workerId);
+        return { browsers, launches, spawnAdmitted, browserSystems: lease?.browserSystems, processId: lease?.processId, identity: canonicalJsonStringify({ slot, lease: lease ?? null, pending, standing: standing ?? null, browsers, launches, spawnAdmitted }) };
       });
       const before = capture(), roots = createBrowserRoots(input.admission);
       const directory = join(input.profileRoot, `w${String(member.ordinal)}`);
@@ -213,7 +215,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       const process = child?.nativeProcess, lifetime = input.admission.lifetime;
       const requiresChild = before.processId !== undefined && before.processId !== null || process !== undefined
         || retained.length !== 0 || lstatSync(directory, { throwIfNoEntry: false }) !== undefined;
-      if (!requiresChild && before.launches.length !== 0) throw new WorkerControlRefusal("worker-retirement-non-birth-capability-required");
+      if (!requiresChild && (before.launches.length !== 0 || before.spawnAdmitted)) throw new WorkerControlRefusal("worker-retirement-non-birth-capability-required");
       const rootAssertions: Array<() => void> = [];
       const assertCurrent = () => {
         input.admission.assertProfileRuntime();
