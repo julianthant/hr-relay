@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../../../src/models/config/catalog.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS, RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS } from "../../../src/models/config/catalog.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../src/models/config/host-display.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -147,6 +147,8 @@ describe("composition-reads-no-environment-leaf", () => {
 
     const expected = (RETIRED_TEST_TARGET_ENVIRONMENT_KEYS as readonly string[]).includes(key)
       ? `retired test-target environment key ${key} is refused; test-target inputs live in config/test-data.local.json, so remove it`
+      : (RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS as readonly string[]).includes(key)
+      ? `retired protected setting ${key} is refused; remove it from the environment`
       : `migrated environment key ${key} is refused; set it in Settings, then remove it`;
     const refuse = (error: unknown): boolean => error instanceof Error && error.message === expected;
     await assert.rejects(composeDashboardRuntime({ lifetimeLock: await runtimeLifetimeLock(), ...common, backendPortOverride: 0, frontendPortOverride: 0 }), refuse);

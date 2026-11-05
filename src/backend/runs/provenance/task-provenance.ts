@@ -1,3 +1,5 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
+import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
 import type { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
 import { delegationEvidenceOutput, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../models/run/result.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
@@ -47,6 +49,7 @@ export type TaskProvenanceCollector = Readonly<{
 
 export type TaskProvenanceCollectorInput = Readonly<{
   readonly descriptor: AnyWorkflowDescriptor;
+  readonly schemaReader?: EvidenceSchemaReader;
   readonly execution: z.input<typeof TaskExecutionIdentitySchema>;
   readonly upstreamEvidence: z.input<typeof TaskUpstreamCheckpointEvidenceSchema>;
   readonly clock: Clock;
@@ -249,13 +252,13 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
     }
     const producer = nodes.find(node => node.id === checkpoint.nodeId);
     if (producer?.kind !== "task" || checkpoint.contractFingerprint !== input.descriptor.contractFingerprint || checkpoint.descriptorVersion !== input.descriptor.version
-      || checkpoint.output.schemaHash !== deriveSchemaHash(producer.uses.output, "output")) throw new Error(`invalid condition checkpoint ${checkpoint.nodeId}`);
+      || (input.schemaReader?.({ kind: "task-output", id: checkpointRecordKey(checkpoint) }, checkpoint, checkpoint.output.schemaHash, deriveSchemaHash(producer.uses.output, "output")) ?? checkpoint.output.schemaHash) !== deriveSchemaHash(producer.uses.output, "output")) throw new Error(`invalid condition checkpoint ${checkpoint.nodeId}`);
     validateCheckpointFacts(execution.workflowId, checkpoint);
     outputs[String(checkpoint.nodeId)] = JsonValueSchema.parse(producer.uses.output.parse(checkpoint.output.value));
   }
   for (const gate of allGates) {
     const producer = nodes.find(node => String(node.id) === String(gate.nodeId));
-    if (producer?.kind !== "gate" || String(gate.gateId) !== String(producer.id) || (gate.runId !== execution.runId && !input.continuation?.permitsGate(gate)) || gate.result.schemaHash !== deriveSchemaHash(producer.result, "output")) throw new Error(`invalid condition gate ${gate.gateId}`);
+    if (producer?.kind !== "gate" || String(gate.gateId) !== String(producer.id) || (gate.runId !== execution.runId && !input.continuation?.permitsGate(gate)) || (input.schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate, gate.result.schemaHash, deriveSchemaHash(producer.result, "output")) ?? gate.result.schemaHash) !== deriveSchemaHash(producer.result, "output")) throw new Error(`invalid condition gate ${gate.gateId}`);
     outputs[String(gate.nodeId)] = JsonValueSchema.parse(producer.result.parse(gate.result.value));
   }
   for (const id of visited) {
@@ -272,7 +275,7 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
       || child.evidence.manifest.cardinality !== declared.cardinality || child.evidence.manifest.join !== declared.join
       || canonicalJsonStringify(child.evidence.manifest.policy) !== canonicalJsonStringify(declared.policy)
       || child.evidence.children.some(member => member.run.envelope.workflow !== declared.target.id)) throw new Error("task-child-upstream-identity-mismatch");
-    delegationEvidenceOutput(child.evidence, declared.target.result);
+    delegationEvidenceOutput(child.evidence, declared.target.result, input.schemaReader);
     const records = new Map(child.results.map(result => [result.runId, result]));
     if (records.size !== child.results.length || child.evidence.children.some(member => canonicalJsonStringify(records.get(member.result.runId)) !== canonicalJsonStringify(member.result))
       || new Set(child.checkpoints.map(checkpoint => canonicalJsonStringify(checkpoint))).size !== child.checkpoints.length) throw new Error("task-child-upstream-result-mismatch");

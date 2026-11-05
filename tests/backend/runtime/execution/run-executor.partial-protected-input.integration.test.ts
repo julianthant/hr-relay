@@ -27,7 +27,7 @@ it("refuses partial signer metadata from a genuinely admitted private producer b
     assert.ok(document);
     const documentBinding = ProtectedInputBindingSchema.parse({ kind: "test-data-local", inputPath: "documentNumber",
       name: "separationsKualiFinalizationCanaryDocumentNumber", sourceId: document.valueId });
-    const secretSource = protectedSecretSource({ timekeeperName: "Synthetic signer" });
+    const secretSource = protectedSecretSource({ profileName: "Synthetic signer" });
     let credentialReads = 0;
     const snapshot = h.database.authority.runtimeConfig.get();
     assert.ok(snapshot);
@@ -40,7 +40,7 @@ it("refuses partial signer metadata from a genuinely admitted private producer b
     assert.equal(plan.refused.length, 0);
     const planned = plan.planned[0];
     assert.ok(planned);
-    assert.deepEqual(planned.input.protectedBindings?.map(binding => binding.kind), ["test-data-local", "protected-store"]);
+    assert.deepEqual(planned.input.protectedBindings?.map(binding => binding.kind), ["test-data-local", "profile"]);
     const runId = h.ids.uuid();
     const run = buildQueuedRun({ descriptor: separationsDescriptor, runId, itemId: planned.itemId,
       traceId: deriveTraceId(separationsDescriptor.code, runId, h.clock), rawInput: planned.rawInput,

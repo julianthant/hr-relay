@@ -1,3 +1,5 @@
+import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
+import { readProfileIdentity } from "../../../../src/models/config/secrets.js";
 import { separationsDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { z } from "zod";
 import { JsonValueSchema } from "../../../../src/rules/validation/canonical-json.js";
@@ -48,7 +50,6 @@ describe("failed-run single-field rerun", () => {
       reRead: original.reRead, operatorEmployeeId: "10800001" });
     assert.deepEqual(run.input.parsed.value, original);
     assert.deepEqual(request.rerunSource?.failureCorrection, { failureId: failure.failureId, inputField: "operatorEmployeeId" });
-    // The normal planner restores the retained private field rather than accepting it from the browser.
     assert.equal(Object.hasOwn(submission, "timekeeperName"), false);
   });
   it("refuses stale revisions, invalid EIDs, extra changes and undeclared failures", () => {
@@ -124,7 +125,9 @@ it("replans a missing Kuali document as the corrected item, preserving lineage a
 
   const submission = failureCorrectionSubmission(separationsDescriptor, run, failure, request);
   assert.deepEqual(submission, { documentNumber: "4502", searchTimeoutMs: original.searchTimeoutMs, reRead: original.reRead });
-  const plan = planStart({ authority: { authority: repositories }, clock: manualClock(new Date(run.updatedAt)),
+  const protectedSecrets = protectedSecretSource({ profileName: "Fresh Synthetic Operator" });
+  const freshIdentity = readProfileIdentity(protectedSecrets);
+  const plan = planStart({ authority: { authority: repositories }, protectedSecrets, clock: manualClock(new Date(run.updatedAt)),
     ids: { uuid: () => uuidOf(100) }, planTtlMs: 600_000 }, {
     descriptor: separationsDescriptor, submissions: [submission], retainedInputs: [run.input.parsed],
     dryRun: request.dryRun, priority: run.envelope.priority, shape: "single", plannedBy: "local-operator",
@@ -136,8 +139,9 @@ it("replans a missing Kuali document as the corrected item, preserving lineage a
   assert.equal(planned.matchKey, "separations:4502#re-read-1");
   assert.equal(planned.itemId, deriveItemId(separationsDescriptor.id, "separations:4502#re-read-1"));
   assert.notEqual(planned.itemId, run.envelope.itemId);
-  assert.deepEqual(planned.input.value, { ...original, documentNumber: "4502" });
-  assert.deepEqual(planned.input.protectedBindings, run.input.parsed.protectedBindings);
+  assert.deepEqual(planned.input.value, { ...original, documentNumber: "4502", timekeeperName: freshIdentity.displayName });
+  assert.deepEqual(planned.input.protectedBindings, [{ kind: "profile", inputPath: "timekeeperName", name: "timekeeperName", profileId: freshIdentity.profileId, sessionEpoch: freshIdentity.sessionEpoch }]);
+  assert.notDeepEqual(planned.input.protectedBindings, run.input.parsed.protectedBindings);
   assert.deepEqual(run.input.parsed.value, original);
   assert.ok(request.rerunSource);
   const rerun = buildRerunPlan(repositories, separationsDescriptor, request.rerunSource, plan.planned);

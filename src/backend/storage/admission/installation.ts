@@ -28,7 +28,7 @@ import { AuthorityBackupService,verifyBackupManifestAtPath } from "../sqlite/bac
 import { assertCanonicalProfileBinding,assertProfileRestoreDatabaseBinding,readProfileDatabaseBinding } from "../sqlite/profile-local-databases.js";
 import { AuthorityBackupManifestSchema } from "../sqlite/recovery-contracts.js";
 import { requireRuntimeAdmission } from "./admission-identity.js";
-import type { RuntimeAdmission } from "./admission.js";
+import type { RuntimeAdmission, StartupRegistrationProof } from "./admission.js";
 import { OfflineMaintenanceOperationUnavailableError,RuntimeLifetimeLock,WorkerRuntimeLifetimeLock,assertOfflineMaintenanceOperation,isOfflineMaintenanceOperationActive,type OfflineMaintenanceOperation } from "./lifetime-lock.js";
 import { assertNoOldBuildRuntimeArtifacts,assertNoSymlinkComponents,lstatMaybe } from "./process-root.js";
 
@@ -224,7 +224,7 @@ export type InstallationLease = Readonly<{ retainSourceClosure(error: unknown): 
     assertHeld(): void; logout?: z.infer<typeof LogoutOperationSchema>;
     settleLogout(conversion: StartupLogoutConversion): void;
   }>;
-  publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, profile: RuntimeAdmission): void;
+  publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, profile: RuntimeAdmission, proof?: StartupRegistrationProof): void;
   publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument): void;
   beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "credentials">): z.infer<typeof SignUpOperationSchema>;
   publishProfileOperation(operation: ProfileOperation | string): void;
@@ -1581,7 +1581,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   }
 
   function publishRegistry(expected: ProfileRegistryDocument | undefined, document: ProfileRegistryDocument | undefined,
-    registration?: { operation: z.infer<typeof SignUpOperationSchema>; profile: RuntimeAdmission; lease: InstallationLease }): void {
+    registration?: { operation: z.infer<typeof SignUpOperationSchema>; profile: RuntimeAdmission; lease: InstallationLease; proof?: StartupRegistrationProof }): void {
     mutate(held => {
       const current = () => { assertHeld(); lifetime.assertRuntimeAvailable(); held.assertHeld(); };
       current();
@@ -1590,7 +1590,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (registration !== undefined) {
         const { operation } = registration, scope = new ActiveProfilePublicationRead(control, workspace, locator, operation.operationId, held, current);
         try {
-          const inspect = () => { current(); return requireRuntimeAdmission(registration.profile, scope).readProfileRegistration(registration.lease, operation, scope); };
+          const inspect = () => { current(); return requireRuntimeAdmission(registration.profile, scope).readProfileRegistration(registration.lease, operation, scope, registration.proof); };
           const captured = inspect();
           if (lstatMaybe(intentPath)) {
             const pending = readStrict(intentPath, ProfilePublicationSchema);
@@ -2070,7 +2070,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       } });
     },
     publishProfileRegistry(expected: ProfileRegistryDocument, document: ProfileRegistryDocument) { publishRegistry(expected, document); },
-    publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, profile: RuntimeAdmission) { publishRegistry(undefined, undefined, { operation, profile, lease: this }); },
+    publishProfileRegistration(operation: z.infer<typeof SignUpOperationSchema>, profile: RuntimeAdmission, proof?: StartupRegistrationProof) { publishRegistry(undefined, undefined, { operation, profile, lease: this, proof }); },
     beginProfileSignUp(fields: Omit<z.infer<typeof SignUpOperationSchema>, "operationId" | "profileId" | "commandId" | "writeId" | "schemaVersion" | "kind" | "phase" | "onboarding" | "credentials">) {
       const profileId = randomUUID(), operationId = randomUUID();
       const operation = SignUpOperationSchema.parse({ ...fields, schemaVersion: 2, kind: "sign-up", phase: "applying",

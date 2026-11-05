@@ -36,7 +36,7 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
     assert.equal(resolution.state, "unknown");
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
       client: STATIC_SETTINGS_CLIENT,
-      children: createElement(SettingsPage, { onClose: () => undefined,
+      children: createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: () => undefined,
         storage: HEALTHY_STORAGE,
         sections: [STORAGE],
       section: "budgets",
@@ -54,7 +54,7 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
   it("quotes an unrendered served section's id with curly quotes, not &quot;", () => {
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
       client: STATIC_SETTINGS_CLIENT,
-      children: createElement(SettingsPage, { onClose: () => undefined,
+      children: createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: () => undefined,
         storage: HEALTHY_STORAGE,
         sections: [STORAGE, section("budgets", "Budgets")],
       section: "budgets",

@@ -12,6 +12,24 @@ import { ExtractFormPage } from "../../../src/models/processing/ocr/extract-form
 import { admitOcrExtraction } from "../../../src/models/ocr/extraction.js";
 import { evidenceLeaves } from "../../../src/models/trust/evidence-classification.js";
 import { redactValue } from "../../../src/rules/redaction/redaction.js";
+import { SeparationsMatchIdentity } from "../../../src/models/workflows/separations/match-identity.js";
+import { createSeparationIdentityPacketFixture } from "../../support/helpers/separation-identity-packet-fixture.js";
+
+it("classifies the admitted profile binding in the Separations approval evidence", () => {
+  const packet = createSeparationIdentityPacketFixture().packetWithPlan();
+  assert.equal(packet.plan.state, "planned");
+  if (packet.plan.state !== "planned") throw new Error("fixture must carry a plan");
+  const output = SeparationsMatchIdentity.output.parse({ ...SeparationsMatchIdentity.example,
+    packet: { ...packet, plan: { ...packet.plan, document: { ...packet.plan.document, timekeeperName: {
+      kind: "profile", inputPath: "timekeeperName", name: "timekeeperName",
+      profileId: "10000000-0000-4000-8000-000000000001", sessionEpoch: 3,
+    } } } } });
+  const scope = { kind: "task-output", taskId: SeparationsMatchIdentity.id } as const;
+  for (const leaf of evidenceLeaves(output)) classifyEvidenceLeaf(scope, leaf.path);
+  for (const field of ["profileId", "sessionEpoch"]) {
+    assert.equal(classifyEvidenceLeaf(scope, `packet.plan.document.timekeeperName.${field}`).classification, "safe-diagnostic");
+  }
+});
 
 {
 

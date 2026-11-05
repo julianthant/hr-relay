@@ -26,7 +26,7 @@ Complete these in order on the Mac.
 - [now] OCR and Emergency Contact — dry-run preview and fake-driver Save are proven and live selectors are captured; finish the selector fixes, Add record, review retry and per-person rows, then wire production Save.
 - [done] Served Explorer matches the mock — make Person Lookup and Separations Explorer read like the approved mock from served workflow definitions.
 - [now] Assistant usable — allowlist reads, make every changing action and workflow start a confirmed proposal, show citations and failures, and add Test assistant.
-- [now] Operator dashboard fixes — tidy Settings (nav, theme, storage, account), derive the timekeeper name and initials from the signed-in name, clean Employee ID input, keep worker notices in toasts, fix spreadsheet import size and add Clear run history.
+- [done] Operator dashboard fixes — tidy Settings (nav, theme, storage, account), derive the timekeeper name and initials from the signed-in name, clean Employee ID input, keep worker notices in toasts, fix spreadsheet import size and add Clear run history.
 - [done] Dashboard cleanups — make Explorer read-only, have the assistant always ask before acting and propose workflow starts, and save appearance preferences per person.
 - [done] Spreadsheet library — retain named versions, bind reference plans to approved snapshots, authenticate SharePoint Sync and publish worksheet archives.
 - [done] CRM Document Download — package verified PDFs by worksheet with retained reference choices.

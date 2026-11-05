@@ -1,3 +1,4 @@
+import { EvidenceSchemaConversionSchema } from "../storage/evidence-schema-admission.js";
 import { z } from "zod";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { RunRecordSchema, RunStateSchema } from "../run/record.js";
@@ -172,9 +173,15 @@ const AuthorityForwardUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.ext
   }),
 });
 
+export const AuthorityEvidenceSchemaUpgradeRecordSchema = AuthorityForwardUpgradeRecordSchema.omit({ startupLogout: true }).extend({
+  phase: z.literal("settled"), fromSchemaVersion: z.literal(20), toSchemaVersion: z.literal(20),
+  evidenceSchemas: EvidenceSchemaConversionSchema, evidenceSchemaMac: FingerprintSchema,
+});
+
 export const AuthorityUpgradeRecordSchema = z.union([
   AuthorityUpgradeBaselineRecordSchema,
   AuthorityForwardUpgradeRecordSchema,
+  AuthorityEvidenceSchemaUpgradeRecordSchema,
 ]);
 export type AuthorityUpgradeRecord = z.infer<typeof AuthorityUpgradeRecordSchema>;
 

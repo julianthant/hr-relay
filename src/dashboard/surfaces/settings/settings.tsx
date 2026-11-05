@@ -157,6 +157,7 @@ export function SettingsPage({
   spreadsheetSource,
   onOpenRun,
   actorId,
+  profileName,
   descriptorFingerprint,
   preflight: _preflight,
   onSection,
@@ -179,6 +180,7 @@ export function SettingsPage({
   spreadsheetSource?: "mock" | "served";
   onOpenRun?: (runId: string, partitionDay: string) => void;
   actorId: string;
+  profileName: string;
   descriptorFingerprint: string;
   preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
   onSection: (next: string, target?: string) => void;
@@ -325,7 +327,7 @@ export function SettingsPage({
         {resolution.state === "open" && resolution.entry.id !== "routes" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} deleteAccount={deleteAccount} />
         )}
-        {resolution.state === "open" && resolution.entry.id === "credentials" && <SettingsAuthoritySection editor={editor} sectionId="credentials" />}
+        {resolution.state === "open" && resolution.entry.id === "credentials" && <SettingsAuthoritySection editor={editor} sectionId="credentials" profileName={profileName} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
           <PreflightSection editor={editor} workflowLabels={workflowLabels} />
         )}

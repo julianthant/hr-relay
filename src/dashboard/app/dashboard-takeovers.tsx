@@ -53,6 +53,7 @@ export function DashboardTakeovers({client,activitySource,today,workflowSources,
               searchTarget={route.settingsTarget}
               dataContent={dataContent}
               actorId={boot.actor.id}
+              profileName={boot.actor.label}
               descriptorFingerprint={boot.descriptorHash}
               preflight={boot.preflight ?? []}
               onSection={(next, settingsTarget) => setRoute({ ...routeWithoutTakeovers(route), settings: next, settingsTarget,

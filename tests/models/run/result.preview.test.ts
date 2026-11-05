@@ -30,6 +30,7 @@ it("distinguishes delegated preview accounting from ordinary workflow observatio
   const result = bound(RunDelegatedDryRunPreviewResultSchema, delegated);
   assert.deepEqual(readRunPreviewResult(result), delegated);
   assert.equal(isRunPreviewSchemaHash(result.resultSchemaHash), true);
+  assert.equal(result.resultSchemaHash, "06bdc474498e86c00a7982fce5a5b223704504ccd91f8c4ed2f9fb5384c6984f");
   assert.notEqual(result.resultSchemaHash, deriveSchemaHash(RunDryRunPreviewResultSchema, "output"));
   const observed = bound(z.strictObject({ state: z.literal("observed") }), { state: "observed" });
   assert.equal(isRunPreviewSchemaHash(observed.resultSchemaHash), false);

@@ -48,7 +48,7 @@ describe("complete Settings catalog projection", () => {
   });
   it("shows only the current fiscal year's required date and retains stored history without exposing it", () => {
     const document = fixtureSettingsDocument({ annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026", kronosDefaultEndDate: "6/30/2027" } } }, 2);
-    assert.equal(document.catalog.length, 74);
+    assert.equal(document.catalog.length, 72);
     const leaves = document.sections.flatMap(section => section.leaves);
     assert.equal(leaves.length, 61);
     assert.equal(leaves.some(leaf => leaf.path === "paths.browserProfileRoot"), false);

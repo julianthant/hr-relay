@@ -16,6 +16,7 @@ it("authenticates every observation against its native event and producer before
     const generation = database.getMeta().authorityGeneration;
     const refuse = (alter: (repositories: AuthorityRepositories) => AuthorityRepositories, error: RegExp) => {
       const observed = new Proxy(database, { get(target,key) {
+        if (key === "evidenceSchemaHash") return target.evidenceSchemaHash.bind(target);
         if (key === "withAuthorityTransaction") return <Result>(work: (repositories: AuthorityRepositories) => Result) =>
           target.withAuthorityTransaction(repositories => work(alter(repositories)));
         const value: unknown = Reflect.get(target,key,target);

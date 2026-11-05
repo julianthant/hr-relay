@@ -55,7 +55,7 @@ afterEach(_afterEachFixture0);
     "keeps %s credential state unavailable and untouched with a closed diagnostic",
     async (fault) => {
       const f = await fixture();
-      writeCredentials(f, { timekeeperName: { set: "Protected Doctor Canary" } });
+      writeCredentials(f, { ucpathUserId: { set: "Protected Doctor Canary" } });
       if (fault === "corrupt") writeFileSync(f.credentialPath, "Protected Doctor Canary");
       if (fault === "permissions") chmodSync(f.credentialPath, 0o644);
 

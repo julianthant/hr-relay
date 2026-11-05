@@ -39,6 +39,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
   const failures = createFailureResolutionQuery(authority);
 
   const store: EvidenceReceiptStore = Object.freeze({
+    schemaReader: deps.database.evidenceSchemaHash.bind(deps.database),
     refreshedSettlementVersion: (runId: string) => authority.runResults.refreshedSettlementVersion(runId),
     getRun: (runId: string) => {
       const run = requireTrustRun(deps.runReader, runId);

@@ -1,5 +1,5 @@
 import { PREFERENCES_SNAPSHOT } from "../phase1c-contract-fixtures.js";
-import { ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
+import { readProtectedCredentials } from "../../../../src/models/config/secrets.js";
 import { renameSync } from "node:fs";
 import { runtimeFixture, populatedProtectedRecord } from "./runtime-fixture.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
@@ -42,6 +42,6 @@ export async function servedPreflightRuntime(scene: SetupScene) {
   await dashboard.refresh(new AbortController().signal);
   if(scene!=="unavailable") await runtime.admission.prepare(runtime.currentScope(personLookupDescriptor.id),new AbortController().signal);
   if(scene==="stale"){f.clock.advanceWall(60_000);f.clock.advanceMonotonic(60_000);}
-  const document=()=>buildSettingsEditor({settings:{read:()=>({record:settings,runtimeStatus:{state:"current",identity:settingsRuntimeIdentity(settings,fingerprint)}})},protectedSettings:createProtectedSettingsRuntimeReader({read:()=>ProtectedStoreRecordSchema.parse(f.input.protectedSecrets.read())}),environment:{},clock:f.clock,resolve:()=>resolved});
+  const document=()=>buildSettingsEditor({settings:{read:()=>({record:settings,runtimeStatus:{state:"current",identity:settingsRuntimeIdentity(settings,fingerprint)}})},protectedSettings:createProtectedSettingsRuntimeReader({read:()=>readProtectedCredentials(f.input.protectedSecrets)}),environment:{},clock:f.clock,resolve:()=>resolved});
   return {clock:f.clock,service,document,scope:personLookupDescriptor.id,database,runtime,identity,fixture:f,async close(){database.close();await f.close();},provenance:{detectors:"createRuntimePreflightRunners",admission:"composeRuntimePreflight",report:"createPreflightReportService",effects:"Synthetic private files and SQLite; no workflow execution, browser launch or external requests."}};
 }
