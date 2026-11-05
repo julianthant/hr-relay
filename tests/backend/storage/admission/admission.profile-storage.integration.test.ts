@@ -637,6 +637,34 @@ it("binds stopped profile inspection to its selected epoch and exact native oper
   } finally { stopped.release(); first.release(); await f.close(); }
 });
 
+it("repairs a stopped ready peer without granting runtime access or touching a pending signup", async () => {
+  const f = await createBoundProfileFixture(), id = f.admission.profileBinding.profileId;
+  let operation: ReturnType<RuntimeAdmission["acquireOfflineMaintenance"]> | undefined;
+  let repair: RuntimeAdmission | undefined;
+  try {
+    createProfileRegistry(f.machine).advanceSession(null);
+    const draft = f.machine.beginProfileSignUp({ emailKey: "a".repeat(64), firstName: "Pending", lastName: "Peer",
+      createdAt: IsoInstantSchema.parse("2026-10-01T12:00:00.000Z"), commandFingerprint: "b".repeat(64) });
+    const pendingPath = join(f.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
+    const pending = readFileSync(pendingPath), before = readFileSync(f.path);
+    assert.throws(() => f.machine.admitProfile(id), /profile-storage-claim-unavailable/u);
+    const maintenance = f.machine.acquireOfflineMaintenance(); operation = maintenance;
+    const stopped = f.machine.admitStoppedProfileRepair(id, maintenance); repair = stopped;
+    stopped.assertStoppedStartupRecoveryDatabase(f.path);
+    assert.throws(() => stopped.assertProfileRuntime(), /profile-bound-authority-required/u);
+    assert.throws(() => stopped.assertWritable(), /profile-settlement-runtime-refused/u);
+    assert.throws(() => stopped.assertCredentialRead(), /profile-settlement-credential-read-refused/u);
+    assert.throws(() => f.machine.admitStoppedProfileRepair(draft.profileId, maintenance), /profile-repair-registration-required/u);
+    assert.throws(() => f.machine.beginProfileSignUp({ emailKey: "c".repeat(64), firstName: "Foreign", lastName: "Peer",
+      createdAt: IsoInstantSchema.parse("2026-10-01T12:00:00.000Z"), commandFingerprint: "d".repeat(64) }), /offline-maintenance-busy/u);
+    maintenance.release();
+    assert.throws(() => stopped.assertStoppedStartupRecoveryDatabase(f.path), /offline-maintenance-unissued/u);
+    assert.deepEqual(readFileSync(pendingPath), pending);
+    assert.deepEqual(readFileSync(f.path), before);
+    assert.throws(() => f.machine.admitProfile(id), /profile-storage-claim-unavailable/u);
+  } finally { repair?.release(); operation?.release(); await f.close(); }
+});
+
 it("refuses stopped setup selection before creating or opening an authority database", async () => {
   const f=await createBoundProfileFixture({pending:"storage"});
   const operation=f.machine.acquireOfflineMaintenance();
