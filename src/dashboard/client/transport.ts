@@ -1,6 +1,7 @@
 /** The ONE transport implementation (ref frontend-backend-integration ): nothing outside `src/dashboard/client/**` may call `fetch` or open an event stream.
  * The */
 import type { ErrorCatalogCode } from "../../models/failures/error-catalog.js";
+import { PublicProfileStateSchema } from "../../models/profiles/public-profile.js";
 import { debugFailureOutcome, debugFailureOutcomes, diagnosticRequestRoute } from "../../models/events/debug-report.js";
 import { DashboardClientError, httpError,networkError,markDashboardErrorReported } from "./errors.js";
 import { CHATGPT_COMPLETION_READ_DEADLINE_MS,SETTINGS_READ_DEADLINE_MS,STORAGE_DOCTOR_DEADLINE_MS,readWithDeadline } from "./read-deadline.js";
@@ -54,10 +55,16 @@ export function createDashboardTransport(input: Readonly<{
   baseUrl: string;
   fetchImpl?: FetchLike;
   onFailure?: (failure: NonNullable<ReturnType<typeof debugFailureOutcome>> & { route: string }) => void;
+  captureProfileSessionStale?: () => () => void;
 }>): DashboardTransport {
   const baseUrl = input.baseUrl.replace(/\/$/, "");
   const baseOrigin = new URL(baseUrl).origin;
   const fetchImpl: FetchLike = input.fetchImpl ?? ((url, init) => fetch(url, init));
+  const observeProfileSession = (path: string, status: number, body: unknown, notify: (() => void) | undefined): void => {
+    if (status !== 401 || /^\/api\/v1\/profile\//u.test(path) || path === "/api/v1/debug/errors") return;
+    const parsed = PublicProfileStateSchema.safeParse(body);
+    if (parsed.success && parsed.data.state === "refused" && parsed.data.code === "PROFILE_SESSION_STALE") notify?.();
+  };
 
   /** Every non-GET request carries the transport's own Origin. A browser sets
  * (and refuses to let a page override) this header itself, so in the real */
@@ -69,6 +76,7 @@ export function createDashboardTransport(input: Readonly<{
     || (path === "/api/v1/commands/bulk" && status === 422);
 
   const sendUnbounded = async (path: string, init?: RequestInit): Promise<JsonResponse> => {
+    const notify = input.captureProfileSessionStale?.();
     let response: Response;
     try {
       response = await fetchImpl(`${baseUrl}${path}`, {
@@ -86,6 +94,7 @@ export function createDashboardTransport(input: Readonly<{
     const body: unknown = await response.json().catch((error: unknown) => {
       throw httpError(response.status, { unparseable: String(error) });
     });
+    observeProfileSession(path, response.status, body, notify);
     return Object.freeze({ status: response.status, ok: response.ok, body });
   };
 
@@ -137,6 +146,7 @@ export function createDashboardTransport(input: Readonly<{
     requestJsonResponse: send,
 
     async requestBinary(path: string, init?: RequestInit): Promise<BinaryResponse> {
+      const notify = input.captureProfileSessionStale?.();
       try {
       let response: Response;
       try {
@@ -156,6 +166,7 @@ export function createDashboardTransport(input: Readonly<{
         const body: unknown = await response.json().catch((error: unknown) => {
           throw httpError(response.status, { unparseable: String(error) });
         });
+        observeProfileSession(path, response.status, body, notify);
         throw httpError(response.status, body);
       }
       return Object.freeze({ headers: response.headers, bytes: await response.arrayBuffer() });
@@ -176,6 +187,7 @@ export function createDashboardTransport(input: Readonly<{
         onMessage: (message: SseMessage) => void;
       }>,
     ): StreamHandle {
+      const notify = input.captureProfileSessionStale?.();
       const controller = new AbortController();
       const done = (async (): Promise<void> => {
         let response: Response;
@@ -195,7 +207,9 @@ export function createDashboardTransport(input: Readonly<{
           throw networkError(`stream ${path}`, error);
         }
         if (!response.ok || response.body === null) {
-          throw httpError(response.status, await response.json().catch(() => ({ unparseable: true })));
+          const body: unknown = await response.json().catch(() => ({ unparseable: true }));
+          observeProfileSession(path, response.status, body, notify);
+          throw httpError(response.status, body);
         }
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
