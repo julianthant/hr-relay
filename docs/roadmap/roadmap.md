@@ -19,7 +19,7 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 Complete these in order on the Mac.
 
 - [done] Portable storage core — keep one database and settings per person, simplify Mac safety checks, retain the last three quit-time backups and repair crash or corruption damage automatically without relocating folders.
-- [now] Sign-up and accounts — require Touch ID and a Duo security key, both added in Duo's device management at duo.ucsd.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Keep credentials on logout. Put Delete account in Settings > General. Tell an empty machine to sign up first. Back up the old store, then start clean. Resume a signed-in profile after a restart; Log out ends it. Let Log out finish while workflows run, and keep the login page checking until it completes.
+- [now] Sign-up and accounts — require Touch ID and a Duo security key, both added in Duo's device management at duo.ucsd.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Keep credentials on logout. Put Delete account in Settings > General. Tell an empty machine to sign up first. Back up the old store, then start clean. Resume a signed-in profile after a restart; only Log out or Delete account ends it. Let Log out finish while workflows run, and keep the login page checking until it completes.
 - [done] Workflow logins — use fast-duo for every workflow login.
 - [done] Runs — pause and resume at completed steps, rerun failed items from saved results, confirm quitting and park interrupted submits as unknown.
 - [done] Write safety — capture browser steps and submit boundaries, retain dry-run evidence, show UCPath transaction findings for operator review and keep Kuali reload verification.
@@ -35,7 +35,7 @@ Complete these in order on the Mac.
 - [done] OnBase import — import PDFs through the child workflow with durable exclusive sessions.
 - [now] Duo enrollment — show Duo's real error codes and verify sign-up capture and cancellation on the Mac at duo.ucsd.edu.
 - [next] Operator preview — complete the full test pass and verify automatic backup and self-repair before preview.
-- [now] Person Lookup and Separations readiness — fix run and session start errors, the worker preflight crash and the read-failure label.
+- [now] Person Lookup and Separations readiness — fix run and session start errors, the worker preflight crash and the read-failure label. Select a person only on an exact name or ID match. Pass one read-only exact-ID live run before any live Separations.
 - [next] Workflow sign-off — Person Lookup live read and sign-off, then Separations dry run and sign-off, then OCR to Emergency Contact sign-off after production Save and live selector support, then real runs.
 
 ## Windows, after the Mac is signed off
