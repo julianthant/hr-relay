@@ -507,15 +507,21 @@ async function runLogout(): Promise<void> {
   }
   const predecessor = fs.existsSync(join(workspace, `.logout-predecessor-${nonce}.json`));
   const protectedPath = join(root, "profiles", profileId, "credentials", "protected.json");
-  if (predecessor) {
-    const pending = fs.readdirSync(operations).some(name => name.endsWith(".json"));
-    const source = fs.readFileSync(protectedPath), operation = pending ? fs.readFileSync(operationPath()) : undefined;
+  if (predecessor && !fs.readdirSync(operations).some(name => name.endsWith(".json"))) {
     machine.release();
     await initializeRegisteredPersonStores(workspace, controller, { primaryDisplay: null }, wall);
-    machine = acquireEntrypointAdmission(workspace, "exclusive", controller);
-    if (pending) { assert.deepEqual(fs.readFileSync(protectedPath), source); assert.deepEqual(fs.readFileSync(operationPath()), operation); }
+    machine = acquireEntrypointAdmission(workspace, "shared", controller);
   }
-  const runtime = composeProfileRuntime({ admission: machine, clock: wall, hostFacts: { primaryDisplay: null } });
+  if (scenario === "logout-unknown") {
+    const source = fs.readFileSync(protectedPath), operation = readOperation();
+    machine.release();
+    await initializeRegisteredPersonStores(workspace, controller, { primaryDisplay: null }, wall);
+    machine = acquireEntrypointAdmission(workspace, "shared", controller);
+    assert.equal(readOperation().operationId, operation.operationId);
+    assert.equal(retainedRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "cancelling");
+    assert.deepEqual(fs.readFileSync(protectedPath), source);
+  }
+  let runtime = composeProfileRuntime({ admission: machine, clock: wall, hostFacts: { primaryDisplay: null } });
   if (scenario === "logout-collision") {
     const operation = readOperation(), before = fs.readFileSync(protectedPath);
     const marker = z.strictObject({ valueId: z.uuid(), collisionCommandId: z.uuid() }).parse(JSON.parse(fs.readFileSync(join(workspace, `.logout-predecessor-${nonce}.json`), "utf8")));
@@ -544,7 +550,14 @@ async function runLogout(): Promise<void> {
     const custodyUnavailable = (error: unknown): boolean => error instanceof Error
       && (("code" in error && error.code === "STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE") || custodyUnavailable(error.cause)
         || error instanceof AggregateError && error.errors.some(custodyUnavailable));
-    await assert.rejects(runtime.awaitClosurePreparation(profileId), custodyUnavailable);
+    await runtime.awaitClosurePreparation(profileId);
+    assert.equal(runtime.session.resumeLogout(operation.operationId).state, "signed-out");
+    await runtime.close(); machine.release();
+    await initializeRegisteredPersonStores(workspace, controller, { primaryDisplay: null }, wall);
+    machine = acquireEntrypointAdmission(workspace, "shared", controller);
+    runtime = composeProfileRuntime({ admission: machine, clock: wall, hostFacts: { primaryDisplay: null } });
+    assert.throws(() => runtime.session.signIn(fields), error => error instanceof Error
+      && "code" in error && error.code === "PROFILE_STARTUP_CONVERSION_REFUSED" && custodyUnavailable(error.cause));
     assert.deepEqual(fs.readFileSync(protectedPath), source);
     assert.equal(fs.existsSync(join(root, "machine", "erasures", `${profileId}.json`)), false);
     assert.equal(operation.profileId, profileId);
@@ -616,6 +629,12 @@ async function runLogout(): Promise<void> {
       workerLifetime: source.workerLifetime, now: settled.stoppedAt });
     assert.deepEqual(settled.requests, [request]);
     assert.deepEqual(settled.workers, [{ member: source.member, processId: source.processId, leaseGeneration: source.workerLifetime.leaseGeneration }]);
+    if (predecessor) {
+      await runtime.close(); machine.release();
+      await initializeRegisteredPersonStores(workspace, controller, { primaryDisplay: null }, wall);
+      machine = acquireEntrypointAdmission(workspace, "shared", controller);
+      runtime = composeProfileRuntime({ admission: machine, clock: wall, hostFacts: { primaryDisplay: null } });
+    }
     const fresh = runtime.session.signIn(fields);
     assert.equal(fresh.state, "active"); if (fresh.state !== "active") throw new Error("completed logout readback sign-in refused");
     assert.equal(fresh.profileId, profileId); assert.equal(fresh.epoch, source.epoch + 2);
