@@ -10,6 +10,8 @@ createCrmOnboardingDriver,
 parseCrmDateOnly,
 } from "../../../../../src/backend/systems/crm/driver/interpreter.js";
 import { EidSchema } from "../../../../../src/rules/identity/ids.js";
+import { resolvePersonLookupIdentity } from "../../../../../src/rules/matching/person-lookup.js";
+import { PersonLookupInput } from "../../../../../src/models/workflows/person-lookup/input.js";
 
 type FixtureNode = Readonly<{
   text: string | null;
@@ -312,6 +314,37 @@ describe("CRM onboarding selector-backed driver", () => {
     };
     await assert.rejects(createCrmOnboardingDriver(() => undefined, changing).searchOnboardingRecords({ eid: EID }),
       /discovery results changed before capture/u);
+  });
+
+  it("cannot recover a different UCPath employee through a name-only prefix CRM result", async () => {
+    const requestedName = "Quillan, Petra";
+    const input = PersonLookupInput.parse({ mode: "search", name: requestedName, crmCheck: true });
+    for (const exact of [false, true]) {
+      const fullName = exact ? "Quillan, Petra" : "Quillanmore, Petral";
+      const rows = [{ fullName, rawStage: "Completed", recordId: "fictional-record" }];
+      const page = fixturePage({ searches: { Quillan: rows, Petra: rows }, records: {
+        "fictional-record": { eid: "81000992", firstName: exact ? "Petra" : "Petral", lastName: exact ? "Quillan" : "Quillanmore", firstDayOfService: "7/1/2026" },
+      } });
+      let recordReads = 0;
+      const goto = page.goto.bind(page);
+      page.goto = (...args) => { if (new URL(args[0]).pathname === "/hr/ONB_ViewOnboarding") recordReads++; return goto(...args); };
+      const records = await createCrmOnboardingDriver(() => undefined, page).searchOnboardingRecords({ name: requestedName });
+      const identity = resolvePersonLookupIdentity({ input, person: { results: [],
+        selection: { status: "not-found", selected: null, candidateEids: [], searchName: requestedName } }, crm: { state: "checked", records } });
+      assert.equal(identity.state, exact ? "crm-only" : "not-found");
+      assert.equal(identity.recoveryEid, exact ? "81000992" : null);
+      assert.equal(recordReads, exact ? 1 : 0);
+    }
+  });
+
+  it("keeps supplied-EID discovery authoritative even when its optional name is a prefix", async () => {
+    const rows = [{ fullName: "Quillanmore, Petral", rawStage: "Completed", recordId: "fictional-record" }];
+    const page = fixturePage({ searches: { "81000992": rows }, records: {
+      "fictional-record": { eid: "81000992", firstName: "Petral", lastName: "Quillanmore", firstDayOfService: "7/1/2026" },
+    } });
+    const records = await createCrmOnboardingDriver(() => undefined, page).searchOnboardingRecords({ eid: "81000992", name: "Quillan, Petra" });
+    assert.equal(records[0]?.emplId, "81000992");
+    assert.equal(records[0]?.name, "Quillanmore, Petral");
   });
 
   it("reads Department beside Department HR Rep Name using the complete label", async () => {
