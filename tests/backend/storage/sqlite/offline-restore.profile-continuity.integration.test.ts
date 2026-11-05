@@ -265,12 +265,14 @@ describe("profile restore continuity", () => {
       assert.deepEqual(readFileSync(keyPath), metadata);
       assert.deepEqual(readFileSync(join(f.stateRoot, "credentials", "protected.json")), protectedBefore);
       assert.equal(f.machine.readProfileRegistry().sessionGeneration, before + 1);
+      assert.equal(f.machine.readProfileRegistry().activeProfileId, f.profileId);
       assert.throws(() => store.read());
       assert.throws(() => AuthorityDatabase.open(old, { path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-old-context" }), /profile-restore-context-expired/);
-      const fresh = f.renew(true);
+      const fresh = f.renew();
       const database = AuthorityDatabase.open(fresh, { path: f.path, busyTimeoutMs: 250, migrationOwner: "restore-fresh-context" });
       assert.equal(database.getMeta().profileId, f.profileId); database.close();
       assert.ok(f.store().read().entries.ucpathPassword);
+      assert.equal(f.session().resumeSignedInProfile({ at: "2026-10-21T12:00:00.000Z" }).state, "active");
     } finally { await f.close(); }
   });
 

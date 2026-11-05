@@ -2,7 +2,7 @@
 import { join } from "node:path";
 import type { z } from "zod";
 import { TimelinePageRequestSchema, TimelineEventRecordSchema, debugEventLevel, type TimelineAppend } from "../../../models/events/timeline.js";
-import { readEmergencyFaults } from "../../logs/emergency-faults.js";
+import { readLocalDebugLog } from "../../storage/events/local-debug-log.js";
 import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import { CHILD_ONLY_WORKFLOW_MODULES, DESCRIPTORS } from "../registries/workflow-registry.js";
 import { STEP_PROOF_DESCRIPTORS, stepProofDescriptorOf } from "../registries/step-proof-modules.js";
@@ -66,7 +66,7 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
     const options = parseDiagnosticArgs(input.args.slice(1));
     if (options.boot) {
       admission.assertExclusive();
-      const stored = readEmergencyFaults(admission.stateRoot);
+      const stored = readLocalDebugLog(admission.stateRoot);
       const report = stored.state === "present" ? { ...stored, records: stored.records.map(debugRecordView) } : stored;
       return options.json ? JSON.stringify(report, null, 2) : report.state === "absent" ? `boot diagnostics: absent (${report.reason})`
         : report.records.map(record => `${record.occurredAt} ${JSON.stringify(record.payload)}`).join("\n");

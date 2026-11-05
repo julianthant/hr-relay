@@ -556,6 +556,7 @@ export const ERROR_CATALOG = Object.freeze({
   ONBOARDING_DUO_DIAGNOSTIC_LOG_UNAVAILABLE: catalogEntry("Duo diagnostic logging is unavailable.", EmptyParametersSchema),
   PROFILE_CONNECTION_FAILED: catalogEntry("Could not connect to Relay. Check that Relay is running, then try again.", EmptyParametersSchema),
   PROFILE_AUTHORITY_UNAVAILABLE: catalogEntry("Current profile authority is unavailable.", EmptyParametersSchema),
+  PROFILE_SESSION_LOG_UNAVAILABLE: catalogEntry("Relay could not record session transition evidence. The transition could not finish.", EmptyParametersSchema),
   PROFILE_AUTHORITY_CHANGED: catalogEntry("Profile authority changed. Capture it again before continuing.", EmptyParametersSchema),
   PROFILE_SESSION_STALE: catalogEntry(
     "This sign-in is no longer active. Sign in again.",
