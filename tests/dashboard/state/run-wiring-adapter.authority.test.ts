@@ -756,7 +756,7 @@ describe("served not-found failure actions", () => {
     const decision = projectRunLogs(snapshot, fixture.client).steps.flatMap(step => step.entries).find(entry => entry.kind === "decision");
     assert.ok(decision?.kind === "decision");
     assert.deepEqual(decision.decision.actions?.map(action => action.label), ["Check again", "Enter EID"]);
-    assert.equal(decision.decision.footer, undefined);
+    assert.equal(decision.decision.footer, "No changes were made.");
     assert.deepEqual(failureLogActions(FailureDetailWireSchema.parse({ ...fixture.failed, recovery: undefined })), []);
     assert.equal(FailureDetailWireSchema.safeParse({ ...fixture.failed, code: "another-failure" }).success, false);
     assert.equal(FailureDetailWireSchema.safeParse({ ...fixture.failed, recovery: { ...fixture.failed.recovery, expectedVersion: 4 } }).success, false);

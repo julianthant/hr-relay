@@ -16,3 +16,9 @@ export const SYSTEM_LABEL: Record<BrowserSystemId, string> = {
   "old-kronos": "OLD KRONOS",
   sharepoint: "SHAREPOINT",
 };
+
+/** Names in running text; `SYSTEM_LABEL` is the chip's capitalised form. Local work has no system name. */
+export const SYSTEM_NAME: Readonly<Record<BrowserSystemId, string>> = {
+  ucpath: "UCPath", crm: "CRM", onbase: "OnBase", kuali: "Kuali", servicenow: "ServiceNow", i9: "I-9",
+  "new-kronos": "Kronos", "old-kronos": "Kronos", sharepoint: "SharePoint",
+};
