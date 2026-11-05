@@ -89,6 +89,8 @@ export function workerCardOf(input: Readonly<{
     if (value.health === "closed") browsers.delete(value.sessionId);
     else if (value.openedAt !== undefined) browsers.set(value.sessionId, { sessionId: value.sessionId, system: value.system, openedAt: value.openedAt });
   }
+  const closedBrowserSystems = [...new Set(observations?.filter(value => value.health === "closed"
+    && ![...browsers.values()].some(browser => browser.system === value.system)).map(value => value.system))];
   return WorkerCardWireSchema.parse({
     member: workerPoolMember(member),
     workerId: lease.workerId,
@@ -116,6 +118,7 @@ export function workerCardOf(input: Readonly<{
         reason: `worker ${lease.workerId} lease predates launch-time browser requirements`,
       }
       : { state: "present", systems: lease.browserSystems },
+    ...(closedBrowserSystems.length === 0 ? {} : { closedBrowserSystems }),
     // A settled lease owns no live browser; open span evidence does not prove a surviving process.
     browsers: terminal
       ? []
