@@ -1,4 +1,5 @@
 import { selectPreferredUcpathCandidate } from "../../../../rules/matching/ucpath-person.js";
+import { matchesExactPersonName } from "../../../../rules/matching/name-match.js";
 
 import { UCPATH_PENDING_READ_RECIPES } from "./ui-registry.js";
 import type { Locator, Page } from "playwright";
@@ -430,8 +431,10 @@ async function candidatesFromGrid(
   assertCurrent: () => void,
   pagePort: PersonOrgPagePort,
   rows: readonly PersonOrgResultGridRow[],
+  requestedName?: string,
 ): Promise<readonly UcpathCandidate[]> {
-  const sdcmpRows = rows.filter(({ businessUnit }) => businessUnit === "SDCMP");
+  const sdcmpRows = rows.filter(row => row.businessUnit === "SDCMP"
+    && (requestedName === undefined || matchesExactPersonName(row.name, requestedName)));
   const candidates: UcpathCandidate[] = [];
   for (let index = 0; index < sdcmpRows.length; index += 1) {
     const row = sdcmpRows[index];
@@ -444,6 +447,9 @@ async function candidatesFromGrid(
       );
     }
     const candidate = candidateFromDetail(detail, row.lastName);
+    if (requestedName !== undefined && !matchesExactPersonName(candidate.name, requestedName)) {
+      throw new Error("Person Org detail name does not match the requested name");
+    }
     candidates.push(candidate);
     assertCurrent();
     recordBrowserAction("read", "ucpath.person-org.candidate", JSON.stringify(candidate));
@@ -455,11 +461,12 @@ async function candidatesFromGrid(
   return candidates;
 }
 
-async function verifySelectedGridDetail(assertCurrent: () => void, pagePort: PersonOrgPagePort, rows: readonly PersonOrgResultGridRow[], candidates: readonly UcpathCandidate[], selected: UcpathCandidate | null): Promise<void> {
+async function verifySelectedGridDetail(assertCurrent: () => void, pagePort: PersonOrgPagePort, rows: readonly PersonOrgResultGridRow[], candidates: readonly UcpathCandidate[], selected: UcpathCandidate | null, requestedName?: string): Promise<void> {
   assertCurrent();
   if (selected === null) return;
   const index = candidates.findIndex(candidate => JSON.stringify(candidate) === JSON.stringify(selected));
-  const row = rows.filter(({ businessUnit }) => businessUnit === "SDCMP")[index];
+  const row = rows.filter(row => row.businessUnit === "SDCMP"
+    && (requestedName === undefined || matchesExactPersonName(row.name, requestedName)))[index];
   if (row === undefined) throw new Error("Person Org selected candidate has no verified results row");
   const detail = await pagePort.drill(row.rowIndex);
   if (detail.observedEid !== row.emplId || JSON.stringify(candidateFromDetail(detail, row.lastName)) !== JSON.stringify(selected)) {
@@ -473,11 +480,15 @@ async function candidatesFromOutcome(
   pagePort: PersonOrgPagePort,
   outcome: PersonOrgSearchPageOutcome,
   expectedLastName: string,
+  requestedName?: string,
 ): Promise<readonly UcpathCandidate[]> {
   assertCurrent();
   if (outcome.kind === "not-found") return [];
-  if (outcome.kind === "detail") return [candidateFromDetail(outcome.detail, expectedLastName)];
-  return candidatesFromGrid(assertCurrent, pagePort, outcome.rows);
+  if (outcome.kind === "detail") {
+    if (requestedName !== undefined && !matchesExactPersonName(outcome.detail.displayedName, requestedName)) return [];
+    return [candidateFromDetail(outcome.detail, expectedLastName)];
+  }
+  return candidatesFromGrid(assertCurrent, pagePort, outcome.rows, requestedName);
 }
 
 export async function searchPersonOrgWithPagePort(
@@ -522,6 +533,7 @@ export async function searchPersonOrgWithPagePort(
   }
 
   const searchNames = buildLastFirstSearchNames(input.name);
+  const requestedLastName = parseLastFirstName(toLastFirstSearchName(input.name)).lastName;
   const attempts = searchNames.flatMap((searchName) => buildPersonOrgNameSearchAttempts(parseLastFirstName(searchName))).slice(0, 3);
   if (attempts.length === 0) throw new Error("Person Org by-name search received an empty normalized name");
   let results: readonly UcpathCandidate[] = [];
@@ -536,7 +548,7 @@ export async function searchPersonOrgWithPagePort(
     assertCurrent();
     recordBrowserAction("read", "ucpath.person-org.search-results", JSON.stringify({ total, sdcmp }));
     assertCurrent();
-    const observed = await candidatesFromOutcome(assertCurrent, pagePort, outcome, attempt.lastName);
+    const observed = await candidatesFromOutcome(assertCurrent, pagePort, outcome, requestedLastName, input.name);
     finalGrid = outcome.kind === "grid" ? { rows: outcome.rows, candidates: observed } : undefined;
     const removed = input.keepNonHdh ? [] : observed.filter(({ hdh }) => !hdh);
     results = input.keepNonHdh ? observed : observed.filter(({ hdh }) => hdh);
@@ -548,7 +560,7 @@ export async function searchPersonOrgWithPagePort(
   const output = outputFor(assertCurrent, input, results);
   if (finalGrid !== undefined) {
     assertCurrent();
-    await verifySelectedGridDetail(assertCurrent, pagePort, finalGrid.rows, finalGrid.candidates, output.selection.selected);
+    await verifySelectedGridDetail(assertCurrent, pagePort, finalGrid.rows, finalGrid.candidates, output.selection.selected, input.name);
   }
   assertCurrent();
   return output;

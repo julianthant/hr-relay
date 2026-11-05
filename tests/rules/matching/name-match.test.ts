@@ -4,7 +4,19 @@ import { describe,it } from "vitest";
 import {
 classifyNameSimilarity,
 scoreNameMatch,
+matchesExactPersonName,
 } from "../../../src/rules/matching/name-match.js";
+
+describe("exact person names", () => {
+  it("accepts case, whitespace and Last, First display order without accepting prefixes or missing names", () => {
+    assert.equal(matchesExactPersonName("Petra Mira Quillan", "QUILLAN, Petra   Mira"), true);
+    assert.equal(matchesExactPersonName("Quillan, Petra M.", "Petra M Quillan"), true);
+    assert.equal(matchesExactPersonName("Petra M. Quillan", "Quillan, Petra M"), true);
+    for (const observed of ["Quillanmore, Petral", "Quillan, Petra", "Quillan, Mira", "Quillan, Petra Mirabel", "Petra, Quillan"]) {
+      assert.equal(matchesExactPersonName(observed, "Quillan, Petra Mira"), false);
+    }
+  });
+});
 
 describe("scoreNameMatch — the ported five-tier scorer", () => {
   it("scores identical token sets 1.0 regardless of order and punctuation", () => {

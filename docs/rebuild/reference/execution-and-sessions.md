@@ -230,6 +230,8 @@ backwards generations and unavailable-source transitions remain ordinary detecto
 A successful callback resets to neutral entry and proves authentication again. Failure or
 cancellation poison-closes the resource. Failed closure retains poison and refuses reuse;
 `AggregateError` preserves both operation and cleanup failures.
+Browser observations distinguish `starting` login from authenticated, leased unknown, failed and
+proved closed states. The dashboard keeps closed system history separate from live browser identities.
 
 `withTransactionDriver` adds the sequencer's one-way `retainAfterFence()` transition. Before the
 fence, abort races the callback normally. After the fence, cancellation reaches the task but

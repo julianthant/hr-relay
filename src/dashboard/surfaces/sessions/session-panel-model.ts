@@ -34,6 +34,7 @@ export type WorkerSessionMembership =
 
 export type WorkerBrowserSlot =
   | Readonly<{ state: "open"; browser: WorkerCardWire["browsers"][number] }>
+  | Readonly<{ state: "closed"; system: WorkerCardWire["browsers"][number]["system"] }>
   | Readonly<{ state: "required"; system: WorkerCardWire["browsers"][number]["system"] }>;
 
 
@@ -62,7 +63,7 @@ export function workerBrowserView(card: WorkerCardWire): Readonly<{
   const consumed = new Set<number>();
   const slots: WorkerBrowserSlot[] = requirements.systems.map((system) => {
     const index = open.findIndex((browser, candidate) => !consumed.has(candidate) && browser.system === system);
-    if (index === -1) return { state: "required", system };
+    if (index === -1) return { state: card.closedBrowserSystems?.includes(system) ? "closed" : "required", system };
     consumed.add(index);
     const browser = open[index];
     if (browser === undefined) throw new Error(`browser requirement ${system} resolved to a missing observed session`);
