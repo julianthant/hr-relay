@@ -7,6 +7,7 @@ import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.j
 import type { AssistantInferenceRequest } from "../../../src/models/dashboard/assistant.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
 import { chatGptFixture, completedOcrStream } from "../../support/helpers/chatgpt-account-fixtures.js";
+import { partialTextStream } from "../../support/helpers/chatgpt-response-stream.js";
 import { syntheticAssistantTools } from "../../support/helpers/assistant-function-fixtures.js";
 import { debugTimelineFixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
@@ -75,7 +76,7 @@ it.each([
   ["response-incomplete", () => sse('data: {"type":"response.incomplete","response":{"error":null}}\n\n'), "CHATGPT_OCR_INCOMPLETE", "text/event-stream"],
   ["terminal-schema", () => sse('data: {"type":"response.completed","response":{"error":null}}\n\n'), "CHATGPT_OCR_INCOMPLETE", "text/event-stream"],
   ["output-schema", () => sse(completedOcrStream("PRIVATE_RESPONSE_CANARY").replace('"role":"assistant"', '"role":"system"')), "CHATGPT_OCR_INCOMPLETE", "text/event-stream"],
-  ["stream-incomplete", () => sse('data: {"type":"response.output_text.delta","delta":"PRIVATE_RESPONSE_CANARY"}\n\n'), "CHATGPT_OCR_INCOMPLETE", "text/event-stream"],
+  ["stream-incomplete", () => sse(partialTextStream("PRIVATE_RESPONSE_CANARY")), "CHATGPT_OCR_INCOMPLETE", "text/event-stream"],
 ] as const)("records the %s failure path without response text", async (path, response, code, contentType) => {
   const f = await fixture();
   try {
@@ -96,7 +97,7 @@ for (const event of ["error", "response.failed", "response.incomplete"] as const
     const f = await fixture();
     try {
       await f.connected();
-      f.setResponse(() => sse('data: {"type":"response.output_text.delta","delta":"PRIVATE_RESPONSE_CANARY"}\n\n'
+      f.setResponse(() => sse(partialTextStream("PRIVATE_RESPONSE_CANARY")
         + `data: ${JSON.stringify({ type: event, response: { error: { code: "model_not_found" } } })}\n\n`));
       await assert.rejects(f.service.inferAssistant(assistant), { code: "CHATGPT_MODEL_UNAVAILABLE" });
       assert.equal(f.records.length, 1);
@@ -163,7 +164,7 @@ it("preserves native headers and accepts validated headerless streams through th
   const server = createServer((request, response) => {
     requests++; request.resume();
     response.writeHead(200, omitContentType ? {} : { "Content-Type": "text/event-stream; charset=utf-8" });
-    const stream = omitContentType ? completedOcrStream("Synthetic streamed form").replace('"status":"completed",', "") : completedOcrStream("Synthetic streamed form");
+    const stream = omitContentType ? completedOcrStream("Synthetic streamed form").replace('"model":"gpt-6.1-sol","status":"completed",', '"model":"gpt-6.1-sol",') : completedOcrStream("Synthetic streamed form");
     response.write(stream.slice(0, 31)); response.end(stream.slice(31));
   });
   server.listen(0, "127.0.0.1"); await once(server, "listening");
@@ -184,7 +185,7 @@ it("preserves native headers and accepts validated headerless streams through th
     await f.connected();
     assert.deepEqual(await account.extractText(image), { text: "Synthetic streamed form", model: image.model, responseId: "resp_synthetic" });
     const result = await account.inferAssistant(assistant);
-    assert.deepEqual(result.output, [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Synthetic streamed form" }] }]);
+    assert.deepEqual(result.output, [{ id: "item_synthetic_0", type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Synthetic streamed form" }] }]);
     assert.equal(requests, 2);
     assert.equal(f.records.length, 0);
     omitContentType = true;
@@ -201,15 +202,17 @@ it("preserves native headers and accepts validated headerless streams through th
 for (const operation of ["ocr", "assistant"] as const) {
   it.each([
     ["id", null, "null"], ["model", null, "null"], ["model", "PRIVATE MODEL CANARY", "string"],
-    ["status", "failed", "string"], ["status", null, "null"], ["output", null, "null"], ["output", [], "array"],
+    ["status", "failed", "string"], ["status", null, "null"], ["output", null, "null"], ["output", Array.from({ length: 33 }, () => null), "array"],
   ] as const)(`${operation} retains value-free terminal shape and event order when %s is invalid`, async (key, invalid, type) => {
     const f = await fixture();
     try {
       await f.connected();
       const terminal = { id: "PRIVATE_ID_CANARY", model: image.model, status: "completed", output: [{ type: "message", role: "assistant", status: "completed",
         content: [{ type: "output_text", text: "PRIVATE_TEXT_CANARY" }] }], metadata: { PRIVATE_KEY_CANARY: "PRIVATE_VALUE_CANARY" }, [key]: invalid };
-      const events = [{ type: "response.created", response: {} }, { type: "PRIVATE_EVENT_CANARY" },
-        { type: "response.output_text.delta", delta: "PRIVATE_TEXT_CANARY", output_index: 0, content_index: 0 },
+      const events = [{ type: "response.created", response: { id: "PRIVATE_ID_CANARY", model: image.model } }, { type: "PRIVATE_EVENT_CANARY" },
+        { type: "response.output_item.added", output_index: 0, item: { id: "PRIVATE_ITEM_CANARY", type: "message" } },
+        { type: "response.content_part.added", item_id: "PRIVATE_ITEM_CANARY", output_index: 0, content_index: 0, part: { type: "output_text", text: "" } },
+        { type: "response.output_text.delta", item_id: "PRIVATE_ITEM_CANARY", delta: "PRIVATE_TEXT_CANARY", output_index: 0, content_index: 0 },
         { type: "response.completed", sequence_number: 4, response: terminal }];
       f.setResponse(() => new Response(new TextEncoder().encode(events.map(event => `data: ${JSON.stringify(event)}\n\n`).join(""))));
       await assert.rejects(operation === "ocr" ? f.service.extractText(image) : f.service.inferAssistant(assistant), { code: "CHATGPT_OCR_INCOMPLETE" });
@@ -218,7 +221,7 @@ for (const operation of ["ocr", "assistant"] as const) {
       if (payload.kind !== "debug") throw new Error("inference diagnostic required");
       const diagnostic = payload.event.chatGptInference; assert.ok(diagnostic);
       assert.equal(diagnostic.path, "terminal-schema");
-      assert.deepEqual(diagnostic.events, { types: ["response.created", "unknown", "response.output_text.delta", "response.completed"], truncated: false });
+      assert.deepEqual(diagnostic.events, { types: ["response.created", "unknown", "response.output_item.added", "response.content_part.added", "response.output_text.delta", "response.completed"], truncated: false });
       assert.ok(diagnostic.terminalShape?.fields.some(field => field.path.join(".") === `response.${key}` && field.type === type));
       assert.ok(diagnostic.terminalShape?.fields.some(field => field.path.join(".") === "response.metadata.*" && field.type === "string"));
       assert.equal(diagnostic.terminalShape?.truncated, false);

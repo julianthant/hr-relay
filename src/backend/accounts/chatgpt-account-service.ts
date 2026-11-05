@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { Clock } from "../../rules/time/clock.js";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
 import { privateEqual } from "../../rules/validation/private-equal.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { type RuntimeAdmission } from "../storage/admission/admission.js";
 import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
 import { createChatGptCredentialRepository, ChatGptCredentialError, type ChatGptCredentialRecord, type ChatGptCredentialRepositoryOptions, type ChatGptCredentialTransaction } from "../storage/configuration/chatgpt-credential-repository.js";
@@ -845,6 +846,20 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         let textOutputIndex: number | undefined;
         let result: T | undefined;
         const argumentDeltas = new Map<number, string>();
+        const indexSchema = z.number().int().min(0).max(31), idSchema = z.string().min(1).max(256);
+        const itemSchema = z.object({ id: idSchema, type: z.enum(["message", "reasoning", "function_call"]), status: z.literal("completed").optional() }).passthrough();
+        const addedItemSchema = itemSchema.omit({ status: true });
+        const addedItems = new Map<number, z.infer<typeof addedItemSchema>>();
+        const doneItems = new Map<number, z.infer<typeof itemSchema>>();
+        const addedParts = new Map<string, string>();
+        const doneText = new Map<string, { item_id: string; output_index: number; content_index: number; text: string }>();
+        const doneArguments = new Map<number, { item_id: string; name: string; arguments: string }>();
+        const doneParts = new Map<string, { output_index: number; content_index: number; part: unknown }>();
+        let responseIdentity: { id: string; model: string } | undefined;
+        const assertMember = (index: number, id: string, type?: string): void => {
+          const added = addedItems.get(index);
+          if (added?.id !== id || type !== undefined && added.type !== type || doneItems.has(index)) throw fault("CHATGPT_OCR_INCOMPLETE");
+        };
         let outcome: { readonly kind: "value"; readonly value: T } | { readonly kind: "error"; readonly error: unknown };
         try {
           for (;;) {
@@ -882,8 +897,31 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                 }
                 if (event.type.includes("refusal")) diagnostic.path = "stream-refusal";
                 if (event.type === "error" || event.type.includes("refusal")) throw fault(assistant !== undefined && event.type.includes("refusal") ? "CHATGPT_ASSISTANT_REFUSED" : "CHATGPT_OCR_FAILED");
+                if (event.type === "response.created" || event.type === "response.in_progress") {
+                  diagnostic.path = "stream-schema";
+                  const identity = z.object({ id: idSchema, model: ChatGptOcrRequestSchema.shape.model }).parse(event.response);
+                  if (responseIdentity !== undefined && (identity.id !== responseIdentity.id || identity.model !== responseIdentity.model)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  responseIdentity = identity;
+                }
+                if (event.type === "response.output_item.added") {
+                  diagnostic.path = "stream-done";
+                  const added = z.object({ output_index: indexSchema, item: addedItemSchema }).parse(value);
+                  if (added.output_index !== addedItems.size || [...addedItems.values()].some(item => item.id === added.item.id)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  addedItems.set(added.output_index, added.item);
+                }
+                if (event.type === "response.content_part.added") {
+                  diagnostic.path = "stream-done";
+                  const added = z.object({ output_index: indexSchema, item_id: idSchema, content_index: z.number().int().min(0).max(7), part: z.object({ type: z.string() }) }).parse(value);
+                  assertMember(added.output_index, added.item_id, "message");
+                  const key = `${added.output_index}:${added.content_index}`;
+                  if (addedParts.has(key) || added.content_index > 0 && !addedParts.has(`${added.output_index}:${added.content_index - 1}`)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  addedParts.set(key, added.part.type);
+                }
                 if (event.type === "response.output_text.delta") {
                   diagnostic.path = "stream-delta";
+                  const delta = z.object({ output_index: indexSchema, item_id: idSchema }).parse(value);
+                  assertMember(delta.output_index, delta.item_id, "message");
+                  if (addedParts.get(`${delta.output_index}:0`) !== "output_text" || doneText.has(`${delta.output_index}:0`)) throw fault("CHATGPT_OCR_INCOMPLETE");
                   if (event.delta === undefined || event.output_index !== undefined && (!Number.isInteger(event.output_index) || event.output_index < 0
                       || textOutputIndex !== undefined && event.output_index !== textOutputIndex)
                     || event.content_index !== undefined && event.content_index !== 0) throw fault("CHATGPT_OCR_INCOMPLETE");
@@ -892,23 +930,80 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                 }
                 if (event.type === "response.function_call_arguments.delta") {
                   diagnostic.path = "stream-delta";
+                  const delta = z.object({ output_index: indexSchema, item_id: idSchema }).parse(value);
+                  assertMember(delta.output_index, delta.item_id, "function_call");
+                  if (doneArguments.has(delta.output_index)) throw fault("CHATGPT_OCR_INCOMPLETE");
                   if (assistant === undefined || event.delta === undefined || event.output_index === undefined || !Number.isInteger(event.output_index) || event.output_index < 0 || event.output_index >= 32) throw fault("CHATGPT_OCR_INCOMPLETE");
                   argumentDeltas.set(event.output_index, (argumentDeltas.get(event.output_index) ?? "") + event.delta);
+                }
+                if (event.type === "response.output_text.done" || event.type === "response.content_part.done") {
+                  diagnostic.path = "stream-done";
+                  const done = z.object({ output_index: indexSchema, item_id: idSchema, content_index: z.number().int().min(0).max(7) }).parse(value);
+                  assertMember(done.output_index, done.item_id, "message");
+                  const key = `${done.output_index}:${done.content_index}`;
+                  if (!addedParts.has(key)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  if (event.type === "response.output_text.done") {
+                    const text = z.object({ text: z.string().min(1) }).parse(value);
+                    if (doneText.has(key)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                    doneText.set(key, { ...done, text: text.text });
+                  } else {
+                    const part = z.object({ part: z.unknown().refine(value => value !== undefined) }).parse(value);
+                    if (doneParts.has(key)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                    doneParts.set(key, { ...done, part: part.part });
+                  }
+                }
+                if (event.type === "response.function_call_arguments.done") {
+                  diagnostic.path = "stream-done";
+                  const done = z.object({ output_index: indexSchema, item_id: idSchema, name: z.string().min(1).max(64), arguments: z.string().max(32_000) }).parse(value);
+                  assertMember(done.output_index, done.item_id, "function_call");
+                  if (doneArguments.has(done.output_index)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  doneArguments.set(done.output_index, done);
+                }
+                if (event.type === "response.output_item.done") {
+                  diagnostic.path = "stream-done";
+                  const done = z.object({ output_index: indexSchema, item: itemSchema }).parse(value);
+                  assertMember(done.output_index, done.item.id, done.item.type);
+                  const added = addedItems.get(done.output_index);
+                  for (const key of ["role", "call_id", "namespace", "name"]) if (added?.[key] !== undefined && added[key] !== done.item[key]) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  doneItems.set(done.output_index, done.item);
                 }
                 if (event.type === "response.completed") {
                   diagnostic.path = "terminal-schema";
                   const parsedTerminal = z.object({ id: z.string().min(1).max(256), model: ChatGptOcrRequestSchema.shape.model,
-                    status: z.literal("completed").optional(), error: z.null().optional(), incomplete_details: z.null().optional(), output: z.array(z.unknown()).min(1).max(32),
+                    status: z.literal("completed").optional(), error: z.null().optional(), incomplete_details: z.null().optional(), output: z.array(z.unknown()).max(32),
                   }).safeParse(event.response);
                   if (!parsedTerminal.success) {
                     diagnostic.terminalIssues = { issues: parsedTerminal.error.issues.slice(0, 16).map(issue => ({ path: [inferenceShapeKey("response"), ...issue.path.map(inferenceShapeKey)].slice(0, 8), code: issue.code })),
                       truncated: parsedTerminal.error.issues.length > 16 || parsedTerminal.error.issues.some(issue => issue.path.length > 7) };
                     throw fault("CHATGPT_OCR_INCOMPLETE");
                   }
-                  const terminal = parsedTerminal.data;
-                  if (assistant !== undefined && terminal.output.some(item => typeof item === "object" && item !== null && "content" in item
-                    && Array.isArray(item.content) && item.content.some((part: unknown) => typeof part === "object" && part !== null && "type" in part && part.type === "refusal"))) {
+                  diagnostic.path = "output-schema";
+                  const items = [...doneItems.entries()].sort(([a], [b]) => a - b).map(([, item]) => item);
+                  if (items.length === 0 || doneItems.size !== addedItems.size || doneParts.size !== addedParts.size || items.some((_, index) => !doneItems.has(index))
+                    || parsedTerminal.data.model !== model || responseIdentity !== undefined && (responseIdentity.id !== parsedTerminal.data.id || responseIdentity.model !== parsedTerminal.data.model)
+                    || parsedTerminal.data.output.length > 0 && canonicalJsonStringify(parsedTerminal.data.output) !== canonicalJsonStringify(items)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                  const terminal = { ...parsedTerminal.data, output: items };
+                  if (assistant !== undefined && terminal.output.some(item => "content" in item && Array.isArray(item.content)
+                    && item.content.some((part: unknown) => typeof part === "object" && part !== null && "type" in part && part.type === "refusal"))) {
                     diagnostic.path = "stream-refusal"; throw fault("CHATGPT_ASSISTANT_REFUSED");
+                  }
+                  for (const [index, item] of doneItems) {
+                    if (item.type === "message") {
+                      const message = z.object({ content: z.array(z.object({ type: z.string(), text: z.string().optional() }).passthrough()).min(1).max(8) }).parse(item);
+                      for (const [contentIndex, part] of message.content.entries()) {
+                        const key = `${index}:${contentIndex}`, done = doneText.get(key);
+                        if (addedParts.get(key) !== part.type) throw fault("CHATGPT_OCR_INCOMPLETE");
+                        if (part.type === "output_text" && (done?.item_id !== item.id || done.text !== part.text)) throw fault("CHATGPT_OCR_INCOMPLETE");
+                      }
+                    }
+                    if (item.type === "function_call") {
+                      const done = doneArguments.get(index);
+                      if (done?.item_id !== item.id || done.name !== item.name || done.arguments !== item.arguments) throw fault("CHATGPT_OCR_INCOMPLETE");
+                    }
+                  }
+                  for (const done of doneParts.values()) {
+                    const message = z.object({ type: z.literal("message"), content: z.array(z.unknown()) }).parse(doneItems.get(done.output_index));
+                    if (canonicalJsonStringify(message.content[done.content_index]) !== canonicalJsonStringify(done.part)) throw fault("CHATGPT_OCR_INCOMPLETE");
                   }
                   diagnostic.path = "output-schema";
                   result = accept(terminal, output, textOutputIndex, argumentDeltas); completed = true;

@@ -30,7 +30,15 @@ export const ChatGptStreamEventTypeSchema = z.enum(["unknown", "error", "respons
   "response.content_part.added", "response.content_part.done", "response.output_text.delta", "response.output_text.done",
   "response.refusal.delta", "response.refusal.done", "response.function_call_arguments.delta", "response.function_call_arguments.done",
   "response.reasoning_summary_part.added", "response.reasoning_summary_part.done", "response.reasoning_summary_text.delta", "response.reasoning_summary_text.done",
-  "response.reasoning_text.delta", "response.reasoning_text.done", "response.custom_tool_call_input.delta", "response.custom_tool_call_input.done"]);
+  "response.reasoning_text.delta", "response.reasoning_text.done", "response.custom_tool_call_input.delta", "response.custom_tool_call_input.done",
+  "response.output_text.annotation.added", "response.file_search_call.in_progress", "response.file_search_call.searching", "response.file_search_call.completed",
+  "response.web_search_call.in_progress", "response.web_search_call.searching", "response.web_search_call.completed", "response.image_generation_call.completed",
+  "response.image_generation_call.generating", "response.image_generation_call.in_progress", "response.image_generation_call.partial_image",
+  "response.mcp_call_arguments.delta", "response.mcp_call_arguments.done", "response.mcp_call.completed", "response.mcp_call.failed", "response.mcp_call.in_progress",
+  "response.mcp_list_tools.completed", "response.mcp_list_tools.failed", "response.mcp_list_tools.in_progress", "response.code_interpreter_call.in_progress",
+  "response.code_interpreter_call.interpreting", "response.code_interpreter_call.completed", "response.code_interpreter_call_code.delta", "response.code_interpreter_call_code.done",
+  "response.audio.delta", "response.audio.done", "response.audio.transcript.delta", "response.audio.transcript.done", "response.compaction.compacting",
+  "response.shell_call_command.added", "response.shell_call_command.delta", "response.shell_call_command.done", "response.shell_call_output_content.delta", "response.shell_call_output_content.done"]);
 export const ChatGptShapeKeySchema = z.enum(["*", "[]", "type", "sequence_number", "response", "id", "object", "status", "model", "output",
   "error", "code", "message", "incomplete_details", "reason", "created_at", "completed_at", "content", "role", "text", "annotations", "logprobs",
   "summary", "encrypted_content", "call_id", "name", "namespace", "arguments", "caller", "usage", "input_tokens", "output_tokens", "total_tokens",
@@ -41,7 +49,7 @@ const ChatGptShapePathSchema = z.array(ChatGptShapeKeySchema).max(8);
 export const ChatGptInferenceDiagnosticSchema = z.strictObject({
   operation: z.enum(["ocr", "assistant"]),
   path: z.enum(["transport", "http-error-body", "http-error", "content-type", "stream-read", "stream-decode", "stream-json", "stream-schema",
-    "stream-error", "stream-refusal", "response-failed", "response-incomplete", "stream-delta", "terminal-schema", "output-schema", "stream-incomplete", "usage-persistence", "resource-closure"]),
+    "stream-error", "stream-refusal", "response-failed", "response-incomplete", "stream-delta", "stream-done", "terminal-schema", "output-schema", "stream-incomplete", "usage-persistence", "resource-closure"]),
   contentType: ChatGptContentTypeSchema,
   hasBody: z.boolean().optional(),
   transport: z.strictObject({ source: z.enum(["native", "injected"]), status: z.number().int().min(100).max(599),

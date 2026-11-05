@@ -22,6 +22,7 @@ import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../.
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 import { chatGptFixture , publicCapabilityResponses } from "../../../../support/helpers/chatgpt-account-fixtures.js";
+import { completedResponseStream } from "../../../../support/helpers/chatgpt-response-stream.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { workerPoolMember, type WorkerPoolMember } from "../../../../../src/models/run/worker-slot.js";
@@ -174,7 +175,7 @@ it('serves canonical selected-run reads through authenticated composition withou
       const user = request.input.find(item => 'role' in item && item.role === 'user'); assert.ok(user && 'content' in user && typeof user.content === 'string');
       const projected = z.strictObject({ intent: z.literal('selected-run-explanation'), reference: z.string().regex(/^ref_[a-f0-9]{32}$/u) }).parse(JSON.parse(user.content));
       turns++;
-      return new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_run_read', model: request.model, status: 'completed', output: [{ type: 'function_call', namespace: 'relay', name: 'explain_selected_run', call_id: 'read_run', arguments: JSON.stringify({ reference: forged ? 'ref_' + 'f'.repeat(32) : projected.reference }), status: 'completed' }] } })}\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
+      return new Response(completedResponseStream([{ type: 'function_call', namespace: 'relay', name: 'explain_selected_run', call_id: 'read_run', arguments: JSON.stringify({ reference: forged ? 'ref_' + 'f'.repeat(32) : projected.reference }), status: 'completed' }], request.model, 'resp_run_read'), { headers: { 'Content-Type': 'text/event-stream' } });
     });
     const durable = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), database => ({
       chats: database.prepare('SELECT * FROM assistant_chats ORDER BY id').all(), actions: database.prepare('SELECT * FROM assistant_actions ORDER BY id').all(),
@@ -233,7 +234,7 @@ it('refuses a selected-run revision changed during authenticated composed infere
       turns++; entered.resolve();
       return new Response(new ReadableStream({ async start(controller) {
         await release.promise;
-        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: 'response.completed', response: { id: 'resp_held_read', model: request.model, status: 'completed', output: [{ type: 'function_call', namespace: 'relay', name: 'explain_selected_run', call_id: 'read_run', arguments: JSON.stringify({ reference: projected.reference }), status: 'completed' }] } })}\n\n`)); controller.close();
+        controller.enqueue(new TextEncoder().encode(completedResponseStream([{ type: 'function_call', namespace: 'relay', name: 'explain_selected_run', call_id: 'read_run', arguments: JSON.stringify({ reference: projected.reference }), status: 'completed' }], request.model, 'resp_held_read'))); controller.close();
       } }), { headers: { 'Content-Type': 'text/event-stream' } });
     });
     const reading = client.assistantRespond({ message: 'run status', subjectRef });
@@ -291,8 +292,7 @@ it.each([
       transport.setResponse(init => {
         if (typeof init.body !== "string") throw new Error("synthetic JSON request body required");
         const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body));
-        return new Response(`data: ${JSON.stringify({ type: "response.completed", response: { id: "text_without_effect", model: request.model, status: "completed",
-          output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Completed. All notifications marked read." }] }] } })}\n\n`, { headers: { "content-type": "text/event-stream" } });
+        return new Response(completedResponseStream([{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Completed. All notifications marked read." }] }], request.model, "text_without_effect"), { headers: { "content-type": "text/event-stream" } });
       });
       {
         const refused = AssistantResultSchema.parse(await post("assistant/respond", { message: "mark notifications read" }));
@@ -317,7 +317,7 @@ it.each([
         const reference = z.object({ references: z.array(z.string()) }).parse(projection).references; assert.equal(reference.length, 1);
         const output = turns === 1 ? [{ type: "function_call", namespace: "relay", name: "notification_read_all", call_id: "call_local", arguments: JSON.stringify({ reference: reference[0] }), status: "completed" }]
           : [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Notification updated." }] }];
-        return new Response(`data: ${JSON.stringify({ type: "response.completed", response: { id: `resp_${turns}`, model: request.model, status: "completed", output } })}\n\n`, { headers: { "Content-Type": "text/event-stream" } });
+        return new Response(completedResponseStream(output, request.model, `resp_${turns}`), { headers: { "Content-Type": "text/event-stream" } });
       });
       const result = AssistantResultSchema.parse(await post("assistant/respond", { message: "mark notifications read" }));
       if (mode === "every-action") {
@@ -463,9 +463,8 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
         const projection = z.strictObject({ intent: z.literal("workflow-start-proposal"), workflow: z.literal("person-lookup"),
           mode: z.literal("live-read"), reference: z.string() }).parse(JSON.parse(user.content));
         proposalTurns++;
-        return new Response(`data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_start_proposal", model: request.model, status: "completed",
-          output: [{ type: "function_call", namespace: "relay", name: "propose_workflow_start", call_id: "call_start_proposal",
-            arguments: JSON.stringify({ reference: projection.reference }), status: "completed" }] } })}\n\n`, { headers: { "Content-Type": "text/event-stream" } });
+        return new Response(completedResponseStream([{ type: "function_call", namespace: "relay", name: "propose_workflow_start", call_id: "call_start_proposal",
+          arguments: JSON.stringify({ reference: projection.reference }), status: "completed" }], request.model, "resp_start_proposal"), { headers: { "Content-Type": "text/event-stream" } });
       });
       const proposed = await client.assistantRespond({ message: "start selected workflow", subjectRef });
       assert.equal(proposed.state, "action-proposal");

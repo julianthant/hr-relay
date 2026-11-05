@@ -264,6 +264,13 @@ decoding, a valid `response.completed`, and operation-specific output validation
 media types, malformed bytes, incomplete streams and inconsistent output remain refused.
 The completed event supplies terminal success when its optional response status is absent; an explicit
 status must be `completed`. IDs, model, output and error/incomplete consistency remain validated.
+Output comes from finalized `response.output_item.done` events, ordered by their declared indices.
+Each item must match its added identity and kind, and all added items and content parts must finish.
+Text and function-argument done events must agree with their finalized items and streamed deltas.
+Collection remains within 32 output items, eight content parts per message and the operation's byte
+limit. `response.completed` supplies the terminal marker and status; its output may be empty, but
+nonempty output must agree with the finalized items. Missing done items, duplicates, orphan indices,
+identity changes and inconsistent content remain refused before output acceptance or usage settlement.
 
 ### Paths and validation
 
