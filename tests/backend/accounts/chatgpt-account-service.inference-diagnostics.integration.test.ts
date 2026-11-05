@@ -75,7 +75,7 @@ it.each([
   ["response-failed", () => sse('data: {"type":"response.failed","response":{"error":{"code":"server_error","message":"PRIVATE_RESPONSE_CANARY"}}}\n\n'), "CHATGPT_OCR_FAILED", "text/event-stream"],
   ["response-incomplete", () => sse('data: {"type":"response.incomplete","response":{"error":null}}\n\n'), "CHATGPT_OCR_INCOMPLETE", "text/event-stream"],
   ["terminal-schema", () => sse('data: {"type":"response.completed","response":{"error":null}}\n\n'), "CHATGPT_OCR_INCOMPLETE", "text/event-stream"],
-  ["output-schema", () => sse(completedOcrStream("PRIVATE_RESPONSE_CANARY").replace('"role":"assistant"', '"role":"system"')), "CHATGPT_OCR_INCOMPLETE", "text/event-stream"],
+  ["output-schema", () => sse(completedOcrStream("PRIVATE_RESPONSE_CANARY").replaceAll('"role":"assistant"', '"role":"system"')), "CHATGPT_OCR_INCOMPLETE", "text/event-stream"],
   ["stream-incomplete", () => sse(partialTextStream("PRIVATE_RESPONSE_CANARY")), "CHATGPT_OCR_INCOMPLETE", "text/event-stream"],
 ] as const)("records the %s failure path without response text", async (path, response, code, contentType) => {
   const f = await fixture();

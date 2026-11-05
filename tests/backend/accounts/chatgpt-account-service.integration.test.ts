@@ -307,13 +307,18 @@ for (const kind of ["error", "refusal", "incomplete", "empty", "contradictory", 
     await f.connected();
     const text = '{"synthetic":"valid-looking"}';
     const response = { id: "resp_synthetic", model: image.model, status: kind === "contradictory" ? "failed" : "completed",
-      output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: kind === "mismatch" ? "different" : text }] }] };
-    if (kind === "multiple") response.output.push(response.output[0]);
+      output: [{ id: "item_synthetic_0", type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: kind === "mismatch" ? "different" : text }] }] };
+    if (kind === "multiple") response.output.push({ ...response.output[0], id: "item_synthetic_1" });
     const prelude = kind === "error" ? 'data: {"type":"error","code":"synthetic"}\n\n'
       : kind === "refusal" ? 'data: {"type":"response.refusal.delta","delta":"refused"}\n\n'
       : kind === "incomplete" ? 'data: {"type":"response.incomplete"}\n\n' : "";
-    const done = completedResponseStream(response.output, image.model).split('data: {"type":"response.completed"')[0]
+    let done = completedResponseStream(response.output, image.model).split('data: {"type":"response.completed"')[0]
       .replace('"delta":"different"', `"delta":${JSON.stringify(text)}`);
+    if (kind === "multiple") {
+      const secondDelta = `data: ${JSON.stringify({ type: "response.output_text.delta", output_index: 1, item_id: "item_synthetic_1", content_index: 0, delta: text })}\n\n`;
+      assert.ok(done.includes(secondDelta));
+      done = done.replace(secondDelta, "");
+    }
     f.setSse(`${done}${prelude}data: ${JSON.stringify({ type: "response.completed", ...(kind === "empty" ? {} : { response }) })}\n\n`);
     await assert.rejects(f.service.extractText(image));
   } finally { await f.cleanup(); }
