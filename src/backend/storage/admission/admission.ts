@@ -69,7 +69,7 @@ interface ProfileAccess {
   readonly profileId: string;
   readonly phase: "setup" | "runtime" | "settlement";
   readonly operationId?: string;
-  verify(purpose: "issue" | "custody" | "runtime", publication?: ProfilePublicationRead): void;
+  verify(purpose: "issue" | "custody" | "runtime" | "repair", publication?: ProfilePublicationRead): void;
 }
 
 const issuanceToken = Symbol("runtime-admission-issuance");
@@ -767,6 +767,7 @@ export class RuntimeAdmission {
         profileId: row?.profileId, createdAt: row?.createdAt, firstName: row?.firstName, lastName: row?.lastName, registration: row?.registration,
       })).digest("hex");
       return { profileId: id, phase, verify: (purpose, publication) => {
+        if (purpose === "repair" && phase !== "runtime") throw new Error("profile-storage-claim-unavailable");
         if (publication !== undefined) {
           if (phase !== "setup" || pendingOperation === undefined) throw new Error("profile-credential-key-stage-owner-mismatch");
           publication.assertOperation(root, pendingOperation.operationId);
@@ -795,7 +796,8 @@ export class RuntimeAdmission {
             if (file === undefined) throw new Error("profile-storage-claim-changed");
             return z.union([SignUpOperationSchema, LogoutOperationSchema]).parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(file.bytes)));
           }) : [];
-          if (currentOperations.some(operation => operation.kind === "logout" ? operation.phase !== "complete" : phase === "runtime")
+          if (currentOperations.some(operation => operation.kind === "logout" ? operation.phase !== "complete"
+            : phase === "runtime" && (purpose !== "repair" || operation.profileId === id))
             || (phase === "setup" ? current.activeProfileId !== null && current.activeProfileId !== id
               : registered?.lifecycle !== "ready" || registered.credentialState !== "saved" || registered.registration.onboardingCompletion === undefined)) {
             throw new Error("profile-storage-claim-unavailable");
@@ -1036,7 +1038,7 @@ export class RuntimeAdmission {
     this.assertWritable();
     if (this.#scope !== "installation") throw new Error("profile-machine-authority-required");
     const verifyStoppedClaim = () => {
-      if (stoppedPurpose !== "settings") { claim.verify(stoppedPurpose === undefined ? "runtime" : "issue"); return; }
+      if (stoppedPurpose !== "settings") { claim.verify(repair ? "repair" : stoppedPurpose === undefined ? "runtime" : "issue"); return; }
       claim.verify("custody");
       const row = this.readProfileRegistry().profiles.find(row => row.profileId === claim.profileId);
       if (row?.lifecycle !== "ready" || row.credentialState !== "saved" || row.registration.onboardingCompletion === undefined) throw new Error("profile-settings-upgrade-registration-changed");
@@ -1106,7 +1108,7 @@ export class RuntimeAdmission {
       },
       assertProfileRuntime: publication => {
         if (restoreCustody !== undefined || restoreSettled) throw new Error("profile-restore-runtime-refused");
-        if (stoppedPurpose === "settings") verifyStoppedClaim();
+        if (stoppedPurpose === "settings" || repair) verifyStoppedClaim();
         else claim.verify(stoppedPurpose === undefined ? "runtime" : "issue", publication);
       },
       assertPendingLogoutCustody: operationId => {

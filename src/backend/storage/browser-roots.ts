@@ -186,7 +186,7 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
   function mutate<T>(body: (document: StoppedBrowserRootsDocument) => Readonly<{ document: BrowserRegistryDraft; result: T }>,
     guard: () => void = assertHeld): T {
     let publicationStarted = false;
-    try { return withPrivateFileLock(directory, ".browser-roots.lock", () => {
+    try { assertHeld(); return withPrivateFileLock(directory, ".browser-roots.lock", () => {
       const prior = readLocked(), outcome = body(prior), next = parseDocument({ ...outcome.document, revision: increment(prior.revision) });
       if (next.installationId !== prior.installationId) throw new BrowserRootUnavailableError();
       const stage = join(directory, `.browser-roots.${randomUUID()}.tmp`), bytes = encode(next);

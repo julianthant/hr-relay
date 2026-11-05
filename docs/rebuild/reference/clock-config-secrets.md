@@ -329,7 +329,9 @@ runtime lifetime. Finish publication rechecks that opaque proof, its original re
 Duo evidence and verifier custody; it consumes the operation before conversion adds a receipt.
 Early storage initialization settles only explicit Finish operations. Other pending drafts and their
 owned browser roots remain for ordinary onboarding recovery, which retains its missing-root and
-owned-cleanup refusals. Startup defers profile activation until conversion completes. Ordinary
+owned-cleanup refusals. Stopped repair of a READY peer may coexist with another profile's pending
+sign-up; it retains registration, session-generation and maintenance-operation checks, and grants
+no ordinary runtime access. Startup defers profile activation until conversion completes. Ordinary
 publication and credential reads remain current-format only.
 
 Pending logout retains its captured credential source through crash reconciliation and native

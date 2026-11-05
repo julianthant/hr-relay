@@ -3,10 +3,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
-import { predecessorKualiEvidence } from "../../../support/helpers/backend/predecessor-kuali-evidence.js";
+import { predecessorSeparationsRerun } from "../../../support/helpers/backend/predecessor-separations-rerun.js";
 import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 
-const tables = ["runs", "run_results", "run_checkpoints", "write_intents", "write_attempts", "gate_results", "run_delegations", "commands", "command_audits", "run_receipts", "timeline_events", "delegation_invocations", "delegation_dependencies", "run_failures"] as const;
+const tables = ["runs", "run_results", "run_checkpoints", "write_intents", "write_attempts", "gate_results", "run_delegations", "commands", "command_audits", "run_receipts", "timeline_events", "delegation_dependencies", "run_failures"] as const;
 async function assertConversionRefused(workspace: string, lifetime: RuntimeLifetimeLock) {
   const { acquireEntrypointAdmission } = await import("../../../../src/backend/storage/admission/bootstrap-admission.js");
   const { composeProfileRuntime } = await import("../../../../src/backend/app/composition/storage-compose.js");
@@ -34,7 +34,8 @@ function conversions(path: string) {
 }
 
 for (const interrupted of [false, true]) it(`upgrades real retained predecessor Kuali evidence through startup${interrupted ? " after an interrupted committed conversion" : ""}, preserving every frozen row and a second startup`, async () => {
-  const f = await predecessorKualiEvidence();
+  const f = await predecessorSeparationsRerun();
+  assert.ok(f.writes.some(intent => intent.status === "committed"));
   const { RuntimeLifetimeLock } = await import("../../../../src/backend/storage/admission/lifetime-lock.js");
   const { acquireEntrypointAdmission } = await import("../../../../src/backend/storage/admission/bootstrap-admission.js");
   const { initializeRegisteredPersonStores, composeProfileRuntime } = await import("../../../../src/backend/app/composition/storage-compose.js");
@@ -44,7 +45,7 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
   const { createCanonicalCredentials } = await import("../../../../src/backend/storage/configuration/canonical-credential-store.js");
   const { authenticateDocument, createCredentialStore } = await import("../../../../src/backend/storage/configuration/credential-store.js");
   const { deriveSchemaHash } = await import("../../../../src/models/validation/schema-bound-value.js");
-  const { separationsKualiFinalizationDescriptor: descriptor } = await import("../../../support/helpers/registered-workflows.js");
+  const { separationsDescriptor: descriptor } = await import("../../../support/helpers/registered-workflows.js");
   const { systemClock } = await import("../../../../src/rules/time/clock.js");
   const before = frozenRows(f.path), protectedPath = join(f.stateRoot, "credentials", "protected.json"), oldCredentials = readFileSync(protectedPath);
   const lifetime = await RuntimeLifetimeLock.acquire(0);
@@ -109,7 +110,7 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
         const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse(JSON.parse(String(journal[0]?.payload_json)));
         assert.throws(() => admission.assertEvidenceSchemaConversion({ ...record, evidenceSchemaMac: "0".repeat(64) }), /seal-invalid/u);
         assert.throws(() => admission.assertEvidenceSchemaConversion({ ...record, evidenceSchemas: { ...record.evidenceSchemas, profileId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" } }), /foreign/u);
-        for (const { intent } of f.writes) {
+        for (const intent of f.writes) {
           if (intent.status !== "committed") throw new Error("fixture-completion-proof-required");
           const certificate = record.evidenceSchemas.admissions.find(entry => entry.owner.kind === "write-proof" && entry.owner.id === intent.writeIntentId);
           assert.ok(certificate);
@@ -121,7 +122,6 @@ for (const interrupted of [false, true]) it(`upgrades real retained predecessor 
 });
 
 it("opens certified predecessor Separations Rerun after backed startup and derives fresh admitted identity", async () => {
-  const { predecessorSeparationsRerun } = await import("../../../support/helpers/backend/predecessor-separations-rerun.js");
   const f = await predecessorSeparationsRerun();
   const { RuntimeLifetimeLock } = await import("../../../../src/backend/storage/admission/lifetime-lock.js");
   const { acquireEntrypointAdmission } = await import("../../../../src/backend/storage/admission/bootstrap-admission.js");
