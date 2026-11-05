@@ -1,10 +1,12 @@
 import { createSeparationTaskFixtures, TaskRefusal } from "../../../support/helpers/separation-task-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { EidSchema } from "../../../../src/rules/identity/ids.js";
+import { EidSchema, FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { IdentityEvidencePacketSchema } from "../../../../src/rules/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../../src/rules/separations/write-plan.js";
 import type { DataPoint } from "../../../../src/rules/workflow/task-provenance.js";
 import { matchIdentityTask } from "../../../../src/workflows/separations/tasks/match-identity.js";
+import { verifyIdentityApproval } from "../../../../src/rules/separations/identity-approval.js";
 
 const { DOCUMENT, EID, NAME, NOW, taskContext, jobRow, jobSummary, nameSelection } = createSeparationTaskFixtures();
 
@@ -123,6 +125,26 @@ describe("separations workflow task wrappers", () => {
 });
 
 describe("operator-entered identity", () => {
+  it("shows a mismatched document and UCPath name side by side and still requires approval", async () => {
+    const context = taskContext();
+    const output = await matchIdentityTask.impl.run({ input: {
+      ...identityInput(),
+      documentName: "Quillan, Petra",
+      documentEid: { state: "absent", reason: "no employee ID supplied" },
+      emplIdSource: "name-resolved",
+      jobSummary: { ...jobSummary(), displayedName: "Quillanmore, Petral" },
+    }, ctx: context.ctx });
+    assert.equal(output.approvalRequired, true);
+    const comparison = output.packet.comparisons.find(row => row.field === "name");
+    assert.equal(comparison?.documentValue, "Quillan, Petra");
+    assert.equal(comparison?.ucpathValue, "Quillanmore, Petral");
+    assert.equal(comparison?.agrees, false);
+    assert.equal(output.packet.documentName, "Quillan, Petra");
+    assert.equal(output.packet.ucpathName, "Quillanmore, Petral");
+    const unapproved = verifyIdentityApproval(IdentityEvidencePacketSchema.parse(output.packet), undefined, FingerprintSchema.parse(output.evidenceDigest));
+    assert.equal(unapproved.state, "refused");
+    if (unapproved.state === "refused") assert.equal(unapproved.code, "identity-approval-required");
+  });
   for (const documentEid of [{ state: "present" as const, value: OTHER_EID }, { state: "absent" as const, reason: "blank on the document" }]) {
     it(`reads the exact entered subject and preserves the ${documentEid.state} document observation`, async () => {
       const success = taskContext();

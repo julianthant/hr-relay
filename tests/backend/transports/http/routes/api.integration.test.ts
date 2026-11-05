@@ -3,11 +3,29 @@ import assert from "node:assert/strict";
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
+import { readTimelineRecords } from "../../../../../src/backend/storage/events/timeline-reader.js";
 import { RequestIdentityRefusedError } from "../../../../../src/backend/runs/commands/refusals.js";
 import { UUID_4 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
+import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 
 describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
+  it("logs a run-detail 500 cause without retaining the thrown message or request values", async () => {
+    const cause = new TypeError("Quillan, Petra; fictional private record");
+    cause.stack = "TypeError: private record\n    at query (/private/project/src/backend/runs/queries/run-detail.ts:42:7)";
+    const h = await harness();
+    h.database.authority.runs.enqueue(personLookupQueuedRun({ runId: UUID_4 }));
+    vi.spyOn(h.projection, "runFold").mockImplementation(() => { throw cause; });
+    const response = await h.app.request(`/api/v1/runs/${UUID_4}`);
+    assert.equal(response.status, 500);
+    assert.equal((await json(response)).code, "INTERNAL_FAILURE");
+    const records = readTimelineRecords(h.database.authority.timelineEvents).records;
+    const diagnostics = records.flatMap(record => record.payload.kind === "debug" && record.payload.event.reason === "request-cause" ? [record.payload.event] : []);
+    assert.equal(diagnostics.length, 1);
+    assert.equal(diagnostics[0]?.message, "TypeError");
+    assert.equal(diagnostics[0]?.stack, "TypeError\n    at src/backend/runs/queries/run-detail.ts:42:7");
+    assert.equal(/Quillan|Petra|private record/u.test(JSON.stringify(diagnostics)), false);
+  });
 
   it("crosses one request-identity checkpoint on every registered route and refuses before effects", async () => {
     let checkpointCalls = 0;

@@ -1058,6 +1058,7 @@ export class WorkerSessionManager {
       }
       const authenticated = this.#onActivity?.("authenticating");
       try {
+      this.#observe(resource, "starting");
       login = LoginResultSchema.parse(await store.session.login(resource.authentication, {
         ...(instance === undefined ? {} : { instance }),
         signal,

@@ -2,6 +2,14 @@
 import { z } from "zod";
 import { levenshteinDistance } from "./levenshtein.js";
 
+export function matchesExactPersonName(displayed: string, requested: string): boolean {
+  const key = (name: string): string => {
+    const parts = name.toLowerCase().trim().replace(/\.(?=\s|,|$)/gu, "").split(",").map(part => part.trim());
+    return (parts.length === 2 ? `${parts[1]} ${parts[0]}` : parts.join(" ")).replace(/\s+/gu, " ");
+  };
+  return key(displayed) === key(requested);
+}
+
 /** 0..1 confidence plus which tier produced it. */
 export const NameMatchResultSchema = z.strictObject({
   score: z.number().min(0).max(1),

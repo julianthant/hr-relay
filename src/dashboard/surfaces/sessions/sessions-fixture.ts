@@ -47,7 +47,7 @@ export function previewSessionControl(data: SessionsViewState, id: string, contr
     if (control === "stop") return { id: worker.id, label: worker.label, workflowId: worker.workflowId, workflow: worker.workflow, action: "Ready for the next run", state: "idle", browsers: [] };
     if (control === "pause" && worker.state !== "running") throw new Error("sessions-preview-pause-invalid");
     if (control === "resume" && worker.state !== "paused") throw new Error("sessions-preview-resume-invalid");
-    if (control === "retry" && worker.state !== "failed") throw new Error("sessions-preview-retry-invalid");
+    if (control === "retry" && worker.state !== "failed" && worker.state !== "stopped") throw new Error("sessions-preview-retry-invalid");
     const { problem: _problem, ...rest } = worker;
     const timeline = worker.timeline?.map((node, index): SessionNode => ({ ...node, state: control === "retry" ? index === 0 ? "active" : "pending" : control === "pause" && node.state === "active" ? "paused" : control === "resume" && node.state === "paused" ? "active" : node.state }));
     return { ...rest, timeline, state: control === "pause" ? "paused" : control === "retry" ? "starting" : "running", ...(control === "retry" ? { action: "Reopen browser sessions", browsers: worker.browsers.map(browser => ({ ...browser, state: "starting" as const })) } : {}) };

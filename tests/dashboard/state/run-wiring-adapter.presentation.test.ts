@@ -240,6 +240,11 @@ it("renders capture failure from structured boundary facts and preserves indepen
     assert.ok(entry?.kind === "note");
     assert.equal(entry.captureFailure, state);
     if (state === "post-submit-proved" && failure.section === "failure" && failure.payload.state === "available") {
+      const failureId = failure.payload.value.failureId;
+      const decision = result.steps.flatMap(step => step.entries).find(entry => entry.id === failureId);
+      assert.ok(decision?.kind === "decision");
+      assert.equal(decision.decision.message, "The browser screenshot could not be captured or saved.");
+      assert.equal(decision.decision.caution, "The change was saved and read back.");
       const laterFailure = RunDetailSectionResponseSchema.parse({ ...failure, payload: { ...failure.payload, value: { ...failure.payload.value,
         attempt: 2, native: { ...failure.payload.value.native, attempt: 2 } } } });
       const detail = RunDetailWireSchema.parse({ ...base.detail, header: { ...base.detail.header, attempt: 2 } });
