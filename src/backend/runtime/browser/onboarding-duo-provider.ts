@@ -6,7 +6,7 @@ import { DuoAssertionRequestSchema } from "../../storage/configuration/duo-signi
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
 import { lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
-import { submitPinnedUcsdSsoCredentials, waitForPinnedUcsdSsoForm } from "../../systems/browser-shared/ucsd-sso.js";
+import { submitPinnedUcsdSsoCredentials, waitForUcsdDuoSignIn } from "../../systems/browser-shared/ucsd-sso.js";
 import type { BrowserContext, Page, Worker } from "playwright";
 import { z } from "zod";
 import { BrowserDocumentIdSchema, PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../models/config/duo-credential-store.js";
@@ -347,9 +347,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         session.portal = page; browserCurrent(session);
         await page.goto("https://duo.ucsd.edu", { waitUntil: "domcontentloaded", timeout: options.closeProofMs });
         browserCurrent(session);
-        await waitForPinnedUcsdSsoForm(page, () => browserCurrent(session), options.closeProofMs);
+        const landing = await waitForUcsdDuoSignIn(page, () => browserCurrent(session), options.closeProofMs);
         browserCurrent(session);
-        await submitPinnedUcsdSsoCredentials(page, () => session.owner.acquireCredentials(), () => browserCurrent(session), options.closeProofMs, "/tritON/profile/SAML2/Redirect/SSO");
+        if (landing === "sso-form") await submitPinnedUcsdSsoCredentials(page, () => session.owner.acquireCredentials(), () => browserCurrent(session), options.closeProofMs, "/tritON/profile/SAML2/Redirect/SSO");
         browserCurrent(session);
       } catch (error) {
         try { reportDuoEvent(session.owner, failureEvent(error, "portal-open", Math.max(0, options.clock.monotonicMs() - started))); }

@@ -94,19 +94,24 @@ function passwordField(page: Page): Locator {
   return byLabels(page, page.locator(SSO_PASSWORD_SELECTOR), SSO_PASSWORD_LABELS).first();
 }
 
-export async function waitForPinnedUcsdSsoForm(page: Page, assertCurrent: () => void, timeout: number): Promise<void> {
+export async function waitForUcsdDuoSignIn(page: Page, assertCurrent: () => void, timeout: number): Promise<"sso-form" | "duo"> {
   const deadline = systemClock.monotonicMs() + timeout;
   const remaining = () => Math.max(1, deadline - systemClock.monotonicMs());
+  const allowed = (url: URL) => url.protocol === "https:" && url.port === "" && url.username === "" && url.password === ""
+    && (url.hostname === "a5.ucsd.edu" && url.pathname === "/tritON/profile/SAML2/Redirect/SSO"
+      || url.hostname === "duo.ucsd.edu" || url.hostname === DUO_HOST || url.hostname.endsWith(`.${DUO_HOST}`));
   assertCurrent();
   try {
-    await page.waitForURL(url => url.origin === "https://a5.ucsd.edu" && url.username === "" && url.password === ""
-      && url.pathname === "/tritON/profile/SAML2/Redirect/SSO", { waitUntil: "domcontentloaded", timeout: remaining() });
+    await page.waitForURL(allowed, { waitUntil: "domcontentloaded", timeout: remaining() });
   } catch (cause) {
     assertCurrent();
     if (cause instanceof Error && cause.name === "TimeoutError") throw new Error("UCSD_SSO_REDIRECT_TIMEOUT", { cause });
     throw cause;
   }
   assertCurrent();
+  const landing = new URL(page.url());
+  if (!allowed(landing)) throw new Error("UCSD_SSO_SCOPE");
+  if (landing.hostname !== "a5.ucsd.edu") return "duo";
   try {
     const ready = await page.waitForFunction(selectors => {
       const url = new URL(location.href);
@@ -126,6 +131,7 @@ export async function waitForPinnedUcsdSsoForm(page: Page, assertCurrent: () => 
     throw cause;
   }
   assertCurrent();
+  return "sso-form";
 }
 
 export async function submitPinnedUcsdSsoCredentials(page: Page,

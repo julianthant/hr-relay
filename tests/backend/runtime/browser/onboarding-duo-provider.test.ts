@@ -41,6 +41,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let captureFailure: Error | undefined, focusFailure: Error | undefined, returnFailure: Error | undefined;
   let browserSetupFailure: Error | undefined, browserSetupDurationMs = 0;
   let portalFailure = new Error("synthetic navigation failure");
+  let portalLanding: string | undefined;
   let installFailure: Error | undefined, installDurationMs = 0;
   let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
   let launchCount = 0, nativeProbes = 0, nativeBusy = false, revokeDuringProbe = false, mutateOwnerDuringProbe = false;
@@ -88,7 +89,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     let url = initialUrl;
     const frame = { url: () => url, evaluate: async () => true };
     return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : [frame], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
-      goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; throw portalFailure; } url = destination; },
+      goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; if (portalLanding === undefined) throw portalFailure; url = portalLanding; } else url = destination; },
+      waitForURL: async (matches: (candidate: URL) => boolean) => { assert.ok(matches(new URL(url))); },
       close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
   }
   let pages = [makePage()];
@@ -176,6 +178,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     refuseInstall(error: Error, durationMs: number) { installFailure = error; installDurationMs = durationMs; },
     refuseBrowserSetup(error: Error, durationMs: number) { browserSetupFailure = error; browserSetupDurationMs = durationMs; },
     refusePortal(error: Error) { portalFailure = error; },
+    landPortal(url: string) { portalLanding = url; },
     refuseCapture(error: Error) { captureFailure = error; },
     refuseFocus(error: Error) { focusFailure = error; },
     refuseReturn(error: Error) { returnFailure = error; },
@@ -420,6 +423,21 @@ describe("draft Duo provider", () => {
       assert.equal(w.osFocuses(), 2); assert.equal(w.windowFocuses(), 2); assert.equal(w.relayCaptures(), 1);
       assert.deepEqual(await w.sendBrowser("return"), { ok: true, value: state });
       assert.equal(w.relayReturns(), 1); assert.equal(w.launches(), 1); assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
+
+  for (const url of ["https://duo.ucsd.edu/", "https://test.duosecurity.com/"]) it(`opens a direct Duo landing at ${url} without acquiring or submitting credentials`, async () => {
+    const w = world();
+    let acquisitions = 0;
+    w.owner.acquireCredentials = async () => { acquisitions++; throw new Error("must not acquire credentials on a Duo landing"); };
+    w.landPortal(url);
+    try {
+      await w.provider.openPortal(w.owner);
+      await w.provider.openPortal(w.owner);
+      assert.equal(w.portalPages(), 1);
+      assert.equal(acquisitions, 0);
+      assert.equal(w.failures.length, 0);
+      assert.deepEqual(w.calls, []);
     } finally { await w.cleanup(); }
   });
 
