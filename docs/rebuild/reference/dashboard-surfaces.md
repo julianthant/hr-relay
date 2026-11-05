@@ -687,8 +687,9 @@ state; the dashboard renders the admitted projection and exact command result.
 ### Assistant production input boundary
 
 The selected dashboard composition owns the assistant service and the same profile account and
-canonical command authorization. The local intent projection accepts only named help topics and
-notification actions. It sends fixed application text and request-local opaque notification references;
+canonical command authorization. The local intent projection accepts only named help topics,
+selected-run explanations, supported workflow-start proposals and notification actions. It sends fixed
+application text, public workflow/mode metadata and request-local opaque references;
 operator messages, notification text, subject identifiers and source-file bodies stay local. Unknown
 or ambiguous input refuses before inference. The trusted local projection also binds whether a
 request permits a help answer or requires canonical action completion. A notification action with
@@ -726,8 +727,10 @@ request reference reaches the model. The final local reply quotes the canonical 
 outcome and the newest exact subset of at most ten timeline events that fits the quotation bound,
 with an explicit omitted-event count and exact run/revision/source/digest citations. Currentness
 still checks all ten recent candidates, including those omitted from the quotation.
-Forged citations, changed evidence and text-only claims refuse. The adapter is available for direct
-injection; the production `compose.ts` call site still awaits its assigned integration phase.
+Forged citations, changed evidence and text-only claims refuse. `dashboard-wiring.ts` injects the
+adapter into the production assistant with the same selected-profile run-detail dependencies and
+currentness check used by the dashboard. The authenticated read requires current model verification;
+it creates no permission grant, proposal or command.
 
 `context.ts` projects the finite plain help artifact. Run
 `tsx scripts/build/generate-assistant-knowledge.ts` and its `--check` mode to generate and verify

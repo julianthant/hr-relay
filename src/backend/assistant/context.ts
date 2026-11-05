@@ -49,10 +49,10 @@ export type AssistantContext = ReturnType<typeof createAssistantContext>;
 export const ASSISTANT_INPUT_PROJECTION_VERSION = 1;
 export const ASSISTANT_KNOWLEDGE_PATH = "src/backend/assistant/generated-knowledge.json";
 const APPLICATION_HELP = {
-  assistant: "Relay can explain app help and available local run evidence, and propose supported local changes for you to confirm. Try help permissions, help notifications or run status with a selected served run. Account sign-in and protected values stay in Settings. Unsupported requests refuse without taking action.",
+  assistant: "Relay can explain app help and selected-run evidence, propose local changes and prepare supported workflow starts for you to confirm. With a selected served run, try run status or start selected workflow. For app help, try help permissions or help notifications. Account sign-in and protected values stay in Settings. Unsupported requests refuse without taking action.",
   permissions: "Assistant actions use the current operator grant. Required confirmation never comes from the model. Authentication and protected values stay in the operator interface.",
   notifications: "Notifications can be marked read, unread, snoozed or unsnoozed through their canonical command owner. Notification text and linked HR records stay local.",
-  "dry-run": "A workflow dry run requires the selected subject and a current canonical plan. It stops before the external transaction commit. Workflow actions require the dashboard Run interface.",
+  "dry-run": "A workflow dry run requires the selected subject and a current canonical plan. It stops before the external transaction commit. A supported assistant workflow-start proposal uses the same canonical plan and requires explicit confirmation.",
   settings: "Ordinary settings use their canonical save command. Protected settings and account authentication require operator entry. Settings changes require the Settings interface.",
 } as const;
 export const ASSISTANT_SAFE_KNOWLEDGE: Readonly<Record<string, string>> = Object.freeze({
@@ -65,7 +65,7 @@ export function assistantKnowledgeArtifact(workflows: readonly Readonly<{ id: st
   const declarations = z.array(z.strictObject({ id: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u), label: z.string().min(1).max(160).regex(/^[A-Za-z0-9 ()/—–-]+$/u) })).parse(workflows);
   if (new Set(declarations.map(entry => entry.id)).size !== declarations.length) throw new AssistantContextError("ASSISTANT_CONTEXT_UNAVAILABLE");
   const knowledge = Object.freeze({ ...ASSISTANT_SAFE_KNOWLEDGE, ...Object.fromEntries(declarations.toSorted((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-    .map(entry => [`workflow ${entry.id}`, `${entry.label} is a served workflow. Use dashboard Run with the selected subject and a current plan. Assistant workflow execution is unavailable until subject binding is implemented.`])) });
+    .map(entry => [`workflow ${entry.id}`, `${entry.label} is a served workflow. For supported starts, select a retained served run and send start selected workflow to request a canonical read or dry-run proposal. Review and confirm its exact plan before dispatch. Use dashboard Run for other inputs.`])) });
   const topics = Object.keys(knowledge);
   if (new Set(topics.map(topic => topic.toLowerCase())).size !== topics.length) throw new AssistantContextError("ASSISTANT_CONTEXT_UNAVAILABLE");
   const text = Object.entries(knowledge).map(([topic, body]) => `${topic}: ${body}`).join("\n");
