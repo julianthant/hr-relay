@@ -23,7 +23,8 @@ it("retains fresh production PL task observations/checkpoints and collapses only
   expect(logPlainText(logs.steps)).toContain("UCPath search");
   expect(logPlainText(logs.steps)).toContain("HDH department");
   expect(logPlainText(logs.steps)).toContain("Yes");
-  expect(logs.steps.some(step=>step.title==="Run note")).toBe(true);
+  expect(logs.steps.some(step=>step.title==="Run note")).toBe(false);
+  expect(logPlainText(logs.steps)).not.toContain("Identity cross-check");
   expect(p.harness.sessions.opens("ucpath")).toBe(1);
   expect(p.harness.sessions.opens("crm")).toBe(1);
  }finally{await p.dispose();}

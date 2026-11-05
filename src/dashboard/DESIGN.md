@@ -109,6 +109,21 @@ with equal cards and captions below; incomplete or ambiguous capture association
 Sessions Add workers progress and success use toasts; inline feedback retains refusals and outcome checks.
 Required browser slots without an observed session read “Not opened”; observed health failures stay “Unavailable”.
 
+## Run logs
+
+Shared by every workflow's served Logs (`projectRunLogs`); display only, so evidence and Run data keep every observation.
+
+- Show one operator-readable sentence or labelled row per fact; never an internal control, selector, task, node or field name.
+- Name a step's system as UCPath, CRM, Kuali and the like; local work shows no system.
+- Show declared operator fields as aligned rows (label, eye or pencil icon, time, value). A declared value that was not kept reads "Not retained" in its row, once.
+- Hide browser gestures whose label comes only from the UI registry; a gesture appears only through a declared operator label or field.
+- Hide task diagnostics: an info note with structured fields repeats the labelled rows. Warnings and errors still show.
+- Leave stage state to the timeline strip: no Pending, In progress, Completed or Failed lines. Skipped keeps one line, "Skipped · Not needed for this run"; a wait or cancel keeps its line.
+- Never write a "<step> completed" line for a step with no rows.
+- Label a capture with its step's system and "Browser"; its caption is its label, else its capture time.
+- A failed step is one card: the step's failure title, a Failed badge, the catalog sentence for its code, and the write outcome in operator words ("No changes were made." in the footer; any other outcome as a caution sentence). Never "Write state: …", a developer remark about the panel, or a failure code.
+- Do not repeat a fact between the card, the row, and the timeline.
+
 ## Motion
 
 `dsMotion.base` is a 140ms color/fill/edge transition. `fast` is a 90ms command hover/press,
