@@ -1,3 +1,4 @@
+import { RunLifecycleCommandRecordSchema } from "../../../../../src/rules/commands/commands.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -81,7 +82,7 @@ it("serves history counts, refuses active deletion, then clears a finished run a
   assert.deepEqual(await client.runHistoryStatus(), { state: "available", finishedRuns: 1, activeRuns: 0 });
   const command = ClearRunHistoryRequestSchema.parse({ commandId: randomUUID(), target });
   assert.deepEqual(await client.clearRunHistory(command), { state: "cleared", commandId: command.commandId, deletedRuns: 1 });
-  assert.deepEqual(database.authority.lifecycleJournal.getCommand(command.commandId)?.request, { commandId: command.commandId });
+  assert.deepEqual(RunLifecycleCommandRecordSchema.parse(database.authority.lifecycleJournal.getCommand(command.commandId)).request, { commandId: command.commandId });
   assert.equal(database.authority.runs.get(runId), undefined);
   assert.equal(database.authority.timelineEvents.get(eventId), undefined);
   assert.equal(database.authority.diagnosticBundles.get(bundleId), undefined);
@@ -138,6 +139,7 @@ it("binds Clear and result to the confirmed person and epoch despite a shared co
     assert.equal(a.state, "active"); if (a.state !== "active") throw new Error("A sign-in refused");
     const confirmedA = ClearRunHistoryRequestSchema.parse({ commandId: randomUUID(), target: { profileId: a.profileId, epoch: a.epoch } });
     const aCookie = sharedCookie;
+    assert.equal((await bTab.logOutProfile()).state, "signed-out");
     const b = await bTab.signInProfile({ email: "second@ucsd.edu", password });
     assert.equal(b.state, "active"); if (b.state !== "active") throw new Error("B sign-in refused");
     assert.notEqual(a.profileId, b.profileId); assert.notEqual(sharedCookie, aCookie);
@@ -160,6 +162,7 @@ it("binds Clear and result to the confirmed person and epoch despite a shared co
     await refuseWithoutEffects(confirmedA, "PROFILE_SESSION_STALE", 409);
     await refuseWithoutEffects({ commandId: randomUUID() }, "SCHEMA_INVALID", 400);
     const confirmedB = ClearRunHistoryRequestSchema.parse({ commandId: randomUUID(), target: { profileId: b.profileId, epoch: b.epoch } });
+    assert.equal((await bTab.logOutProfile()).state, "signed-out");
     const newerB = await bTab.signInProfile({ email: "second@ucsd.edu", password });
     assert.equal(newerB.state, "active"); if (newerB.state !== "active") throw new Error("new B sign-in refused");
     assert.equal(newerB.profileId, b.profileId); assert.ok(newerB.epoch > b.epoch);

@@ -108,7 +108,7 @@ describe("redaction surface scan — the declaration audit", () => {
       assert.equal(ClearRunHistoryResultSchema.safeParse({state: "cleared", commandId: UUID_1, deletedRuns: count}).success, false);
     }
     for (const canary of Object.values(REDACTION_CANARIES)) {
-      assert.equal(ClearRunHistoryRequestSchema.safeParse({commandId: canary}).success, false);
+      assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, commandId: canary}).success, false);
       assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, note: canary}).success, false);
       assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, target: {profileId: canary, epoch: 1}}).success, false);
       assert.equal(RunHistoryStatusSchema.safeParse({state: canary}).success, false);
