@@ -346,6 +346,7 @@ it("opening the setup browser spins the button and leaves the instruction in pla
   try {
     await act(async () => root.render(createElement(Onboarding, { step: "duo", onStep() {}, onDashboard() {}, port })));
     const before = instruction();
+    assert.match(before ?? "", /select the Chromium window named Fast Duo · Relay sign-in setup/);
     assert.equal(show()?.getAttribute("aria-busy"), null);
     await act(async () => show()!.click());
     assert.equal(instruction(), before);

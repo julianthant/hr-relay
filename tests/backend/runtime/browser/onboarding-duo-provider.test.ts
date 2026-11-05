@@ -38,8 +38,9 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let startupHold: Promise<void> | undefined, releaseStartup: (() => void) | undefined, startupEntered: (() => void) | undefined;
   const replies = new Map<string, (value: unknown) => void>();
   let windowFocusCount = 0, osFocusCount = 0, capturedRelay = 0, returnedRelay = 0, failInstall = false;
-  let captureFailure: Error | undefined;
+  let captureFailure: Error | undefined, focusFailure: Error | undefined, returnFailure: Error | undefined;
   let browserSetupFailure: Error | undefined, browserSetupDurationMs = 0;
+  let portalFailure = new Error("synthetic navigation failure");
   let installFailure: Error | undefined, installDurationMs = 0;
   let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
   let launchCount = 0, nativeProbes = 0, nativeBusy = false, revokeDuringProbe = false, mutateOwnerDuringProbe = false;
@@ -87,7 +88,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     let url = initialUrl;
     const frame = { url: () => url, evaluate: async () => true };
     return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : [frame], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
-      goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; throw new Error("synthetic navigation failure"); } url = destination; },
+      goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; throw portalFailure; } url = destination; },
       close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
   }
   let pages = [makePage()];
@@ -106,8 +107,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     : { platform: "darwin" as const, processId: 72 };
   const browserRoots = mockBrowserRootPort().browserRoots;
   const realProvider = createProfileOnboardingDuoProvider({ browserRoots, browserRoot, extensionDirectory, clock, closeProofMs: 50, platform,
-    focus: { async captureRelay() { capturedRelay++; if (captureFailure) throw captureFailure; return relayTarget; }, async show(owned) { assert.equal(owned, context); osFocusCount++; },
-      async returnToRelay(target) { assert.equal(target, relayTarget); returnedRelay++; } },
+    focus: { async captureRelay() { capturedRelay++; if (captureFailure) throw captureFailure; return relayTarget; }, async show(owned) { assert.equal(owned, context); osFocusCount++; if (focusFailure) throw focusFailure; },
+      async returnToRelay(target) { assert.equal(target, relayTarget); returnedRelay++; if (returnFailure) throw returnFailure; } },
     launcher: { launch: async input => {
       assert.equal(Object.hasOwn(input, "nativePlatform"), false);
       if(input.nativeOnly===true){
@@ -174,7 +175,10 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     },
     refuseInstall(error: Error, durationMs: number) { installFailure = error; installDurationMs = durationMs; },
     refuseBrowserSetup(error: Error, durationMs: number) { browserSetupFailure = error; browserSetupDurationMs = durationMs; },
+    refusePortal(error: Error) { portalFailure = error; },
     refuseCapture(error: Error) { captureFailure = error; },
+    refuseFocus(error: Error) { focusFailure = error; },
+    refuseReturn(error: Error) { returnFailure = error; },
     rejectPoll(method: "next" | "browserNext", error: Error) { const reject = rejectPolls.get(method); assert.ok(reject); reject(error); },
     loseBrowserStopAck: () => { lostStopAck = true; }, withholdCloseEvent: () => { missingCloseEvent = true; }, closeSetup: () => pages[0].close(), pages: () => context.pages().length, focuses: () => focusCount, windowFocuses: () => windowFocusCount, osFocuses: () => osFocusCount, relayCaptures: () => capturedRelay, relayReturns: () => returnedRelay, failInstall: () => { failInstall = true; }, launches: () => launchCount, profile: () => profile,
     portalPages: () => portalPages, blockStop: () => { blockedStop = true; }, releaseStop: () => { releaseStop?.(); },
@@ -389,6 +393,22 @@ describe("draft Duo provider", () => {
     } finally { await w.cleanup(); }
   });
 
+  it("keeps macOS setup, enrollment and portal attempts available after a foreground refusal", async () => {
+    const w = world();
+    w.refuseFocus(new Error("synthetic foreground refusal"));
+    try {
+      await w.provider.showBrowser(w.owner);
+      await w.provider.start(w.attempt, w.bind, w.reportFailure);
+      assert.ok(w.workerCalls.includes("install"));
+      assert.equal(w.failures.length, 0);
+      assert.ok(w.events.some(event => event.code === "ONBOARDING_DUO_FOCUS_FAILED" && event.operation === "browser-focus"));
+      await assert.rejects(w.provider.openPortal(w.owner), error => error instanceof ProfileOnboardingDuoProviderError
+        && error.cause instanceof Error && error.cause.message === "synthetic navigation failure");
+      assert.equal(w.portalPages(), 1);
+      assert.equal(w.failures.length, 0);
+    } finally { await w.cleanup(); }
+  });
+
   for (const platform of ["darwin", "win32"] as const) it(`activates each ${platform} show and returns to the original Relay target without starting an attempt`, async () => {
     const w = world("key", platform);
     const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
@@ -400,6 +420,22 @@ describe("draft Duo provider", () => {
       assert.equal(w.osFocuses(), 2); assert.equal(w.windowFocuses(), 2); assert.equal(w.relayCaptures(), 1);
       assert.deepEqual(await w.sendBrowser("return"), { ok: true, value: state });
       assert.equal(w.relayReturns(), 1); assert.equal(w.launches(), 1); assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
+
+  it("logs an unverified macOS return without failing the finished Duo state", async () => {
+    const w = world();
+    const complete = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const state = ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
+      step: "ready", methods: { key: complete, touch: complete } });
+    w.owner.readState = () => state;
+    w.refuseReturn(new Error("synthetic return verification failure"));
+    try {
+      await w.provider.showBrowser(w.owner);
+      assert.deepEqual(await w.sendBrowser("return"), { ok: true, value: state });
+      assert.equal(w.failures.length, 0);
+      assert.ok(w.events.some(event => event.code === "ONBOARDING_DUO_FOCUS_FAILED" && event.operation === "browser-return"));
+      assert.equal(w.pages(), 1);
     } finally { await w.cleanup(); }
   });
 
@@ -433,17 +469,36 @@ describe("draft Duo provider", () => {
     } finally { await w.cleanup(); }
   });
 
-  it("single-flights concurrent portal commands and retains failed initialization instead of claiming a later success", async () => {
+  it("single-flights concurrent portal commands and retries a failed initialization in the same tab", async () => {
     const w = world();
     try {
       await w.provider.showBrowser(w.owner);
       const attempts = await Promise.allSettled([w.provider.openPortal(w.owner), w.provider.openPortal(w.owner)]);
       assert.ok(attempts.every(result => result.status === "rejected"));
       assert.equal(w.portalPages(), 1);
+      assert.equal(w.pages(), 2);
       await assert.rejects(w.provider.openPortal(w.owner));
-      assert.equal(w.portalPages(), 1);
+      assert.equal(w.portalPages(), 2);
+      assert.equal(w.pages(), 2);
     } finally { await w.cleanup(); }
   });
+
+  for (const code of ["UCSD_SSO_SCOPE", "UCSD_SSO_FIELDS", "UCSD_SSO_REDIRECT_TIMEOUT", "UCSD_SSO_FORM_TIMEOUT", "synthetic secret person@example.edu"] as const) {
+    it(`records only allowlisted portal causes (${code.startsWith("UCSD_") ? code : "unknown"}) and retains the original failure`, async () => {
+      const w = world();
+      const original = new TypeError(code);
+      w.refusePortal(original);
+      try {
+        await w.provider.showBrowser(w.owner);
+        await assert.rejects(w.provider.openPortal(w.owner), error => error instanceof ProfileOnboardingDuoProviderError && error.cause === original);
+        const event = w.events.find(event => event.operation === "portal-open");
+        assert.ok(event);
+        assert.equal(event.code, code.startsWith("UCSD_") ? code : "ONBOARDING_DUO_PROVIDER_FAILED");
+        assert.equal(event.exceptionType, "TypeError");
+        assert.doesNotMatch(JSON.stringify(w.events), /synthetic secret|person@example|stack|message/);
+      } finally { await w.cleanup(); }
+    });
+  }
 
   it("bounded failed arm closure stays uncertain and cannot permit a replacement attempt", async () => {
     const w = world();

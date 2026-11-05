@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { BrowserContext } from "playwright";
+import type { BrowserContext, Page } from "playwright";
 import { z } from "zod";
 
 const ProcessIdSchema = z.number().int().positive().max(0xffff_ffff);
@@ -10,7 +10,7 @@ const WindowTargetSchema = z.strictObject({ platform: z.literal("win32"), proces
 export type NativeFocusTarget = Readonly<z.infer<typeof AppTargetSchema> | z.infer<typeof WindowTargetSchema>>;
 export interface DuoBrowserFocus {
   captureRelay(): Promise<NativeFocusTarget | undefined>;
-  show(context: BrowserContext): Promise<void>;
+  show(context: BrowserContext, page: Page): Promise<void>;
   returnToRelay(target: NativeFocusTarget): Promise<void>;
 }
 export type FocusCommandRunner = (file: string, args: readonly string[], timeoutMs: number) => Promise<string>;
@@ -33,8 +33,15 @@ const CAPTURE_APP = `function run() {
 }`;
 const ACTIVATE_APP = `function run(args) {
   ObjC.import('AppKit');
-  var app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(Number(args[0]));
-  if (!app.activateWithOptions(2)) throw new Error('duo-browser-focus-refused');
+  var pid = Number(args[0]);
+  var app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(pid);
+  app.unhide();
+  app.activateWithOptions(1);
+  var deadline = Date.now() + Number(args[1]);
+  while (Number($.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier) !== pid) {
+    if (Date.now() >= deadline) throw new Error('duo-browser-focus-refused');
+    $.NSRunLoop.currentRunLoop.runUntilDate($.NSDate.dateWithTimeIntervalSinceNow(0.05));
+  }
   return 'focused';
 }`;
 
@@ -80,7 +87,7 @@ export function createDuoBrowserFocus(timeoutMs: number, platform: NodeJS.Platfo
   async function activate(processId: number, windowHandle?: string): Promise<void> {
     const id = ProcessIdSchema.parse(processId);
     let result: string;
-    if (platform === "darwin") result = await command("/usr/bin/osascript", ["-l", "JavaScript", "-e", ACTIVATE_APP, String(id)]);
+    if (platform === "darwin") result = await command("/usr/bin/osascript", ["-l", "JavaScript", "-e", ACTIVATE_APP, String(id), String(Math.floor(timeoutMs * 0.8))]);
     else if (platform === "win32") result = await powershell(`${WINDOWS_API}
 $relayProcessId = ${id}
 $relayWindowHandle = ${windowHandle === undefined ? `(Get-Process -Id $relayProcessId -ErrorAction Stop).MainWindowHandle` : `[IntPtr]::new([long]'${WindowTargetSchema.shape.windowHandle.parse(windowHandle)}')`}
@@ -103,8 +110,22 @@ Write-Output 'focused'
       const observation = z.record(z.string(), z.unknown()).parse(value);
       return platform === "darwin" ? AppTargetSchema.parse({ ...observation, platform }) : WindowTargetSchema.parse({ ...observation, platform });
     },
-    async show(context) {
-      if (platform === "darwin" || platform === "win32") await activate(await browserProcessId(context));
+    async show(context, page) {
+      if (platform !== "darwin" && platform !== "win32") return;
+      const processId = await browserProcessId(context);
+      if (platform === "darwin") {
+        const pipe = await context.newCDPSession(page);
+        let failure: { error: unknown } | undefined;
+        try {
+          const { windowId } = await pipe.send("Browser.getWindowForTarget");
+          await pipe.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } });
+          await pipe.send("Page.bringToFront");
+        } catch (error) { failure = { error }; }
+        try { await pipe.detach(); }
+        catch (cleanup) { throw new AggregateError(failure ? [failure.error, cleanup] : [cleanup], "duo-browser-focus-restoration-unproved", { cause: cleanup }); }
+        if (failure) throw failure.error;
+      }
+      await activate(processId);
     },
     async returnToRelay(target) {
       if (target.platform !== platform) throw new DuoBrowserFocusError();

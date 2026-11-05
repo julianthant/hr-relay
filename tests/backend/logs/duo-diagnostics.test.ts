@@ -4,6 +4,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
 import { appendDuoDiagnostic, DuoDiagnosticLogError } from "../../../src/backend/logs/duo-diagnostics.js";
+import { DuoPortalDiagnosticCodeSchema } from "../../../src/models/profiles/profile.js";
+
+it("records closed portal causes and refuses arbitrary messages and stacks", () => {
+  const root = mkdtempSync(join(tmpdir(), "relay duo portal log "));
+  try {
+    for (const code of DuoPortalDiagnosticCodeSchema.options) appendDuoDiagnostic(root, new Date("2026-11-04T00:00:00Z"), {
+      stage: "refused", code, operation: "portal-open", exceptionType: "Error",
+    });
+    for (const field of ["message", "stack", "code"]) assert.throws(() => appendDuoDiagnostic(root, new Date(), {
+      stage: "refused", [field]: "person@example.edu synthetic-password",
+    }), DuoDiagnosticLogError);
+    const content = readFileSync(join(root, "logs", "duo.jsonl"), "utf8");
+    assert.equal(content.trim().split("\n").length, DuoPortalDiagnosticCodeSchema.options.length);
+    assert.doesNotMatch(content, /person@example|synthetic-password|stack|message/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 it("writes only closed diagnostic fields and omits correlation identifiers", () => {
   const root = mkdtempSync(join(tmpdir(), "relay duo log "));

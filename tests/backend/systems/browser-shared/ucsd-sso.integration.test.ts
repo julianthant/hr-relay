@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium, type Browser } from "playwright";
 import { afterAll, beforeAll, it } from "vitest";
-import { submitPinnedUcsdSsoCredentials } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
+import { submitPinnedUcsdSsoCredentials, waitForPinnedUcsdSsoForm } from "../../../../src/backend/systems/browser-shared/ucsd-sso.js";
 
 const SSO = "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO";
 const form = (action = SSO) => `<form action="${action}" method="post"><input id="ssousername" name="username"><input id="ssopassword" type="password" name="password"><button name="_eventId_proceed">Sign in</button></form>`;
@@ -9,6 +9,57 @@ const form = (action = SSO) => `<form action="${action}" method="post"><input id
 let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch({ channel: "chromium", headless: true }); });
 afterAll(async () => { await browser?.close(); });
+
+it("waits through a client redirect and a delayed ready form before acquiring credentials", async () => {
+  const context = await browser.newContext();
+  let acquisitions = 0, submissions = 0;
+  await context.route("**/*", async route => {
+    if (route.request().method() === "POST") submissions++;
+    await route.fulfill({ contentType: "text/html", body: "<main>Loading</main>" });
+  });
+  const page = await context.newPage();
+  try {
+    await page.goto("https://portal.example.invalid/");
+    const signing = (async () => {
+      await waitForPinnedUcsdSsoForm(page, () => undefined, 1000);
+      await submitPinnedUcsdSsoCredentials(page, async () => {
+        acquisitions++;
+        return { userId: "synthetic-user", password: "synthetic-password" };
+      }, () => undefined, 1000, "/tritON/profile/SAML2/Redirect/SSO");
+    })();
+    void signing.catch(() => undefined);
+    assert.equal(acquisitions, 0);
+    await page.evaluate(url => { location.href = url; }, SSO);
+    await page.waitForURL(SSO);
+    assert.equal(acquisitions, 0);
+    await page.locator("body").evaluate((body, html) => { body.innerHTML = html; }, form().replace('type="password"', 'type="password" disabled'));
+    assert.equal(acquisitions, 0);
+    await page.locator("#ssopassword").evaluate(element => { if (element instanceof HTMLInputElement) element.disabled = false; });
+    await signing;
+    assert.equal(acquisitions, 1); assert.equal(submissions, 1);
+  } finally { await context.close(); }
+});
+
+it("reports redirect and form timeouts without acquiring or sending credentials", async () => {
+  const context = await browser.newContext();
+  let submissions = 0;
+  await context.route("**/*", async route => {
+    if (route.request().method() === "POST") submissions++;
+    await route.fulfill({ contentType: "text/html", body: form() });
+  });
+  const page = await context.newPage();
+  try {
+    for (const url of ["https://elsewhere.invalid/", SSO.replace("/tritON/", "/idp/"), SSO.replace("a5.ucsd.edu", "a5.ucsd.edu.invalid")]) {
+      await page.goto(url);
+      await assert.rejects(waitForPinnedUcsdSsoForm(page, () => undefined, 100), { message: "UCSD_SSO_REDIRECT_TIMEOUT" });
+      assert.equal(await page.locator("#ssopassword").inputValue(), "");
+    }
+    await page.goto(SSO);
+    await page.locator("#ssopassword").evaluate(element => { if (element instanceof HTMLInputElement) element.disabled = true; });
+    await assert.rejects(waitForPinnedUcsdSsoForm(page, () => undefined, 100), { message: "UCSD_SSO_FORM_TIMEOUT" });
+    assert.equal(submissions, 0);
+  } finally { await context.close(); }
+});
 
 it("submits the exact UCSD form once and refuses wrong origin, action, fields and authority before secrets", async () => {
   const context = await browser.newContext();

@@ -111,7 +111,11 @@ export const ProfileOnboardingDuoFailureSchema = z.strictObject({
 export type ProfileOnboardingDuoFailure = z.infer<typeof ProfileOnboardingDuoFailureSchema>;
 
 export const DuoDiagnosticExceptionTypeSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/u);
+export const DuoPortalDiagnosticCodeSchema = z.enum([
+  "UCSD_SSO_SCOPE", "UCSD_SSO_FIELDS", "UCSD_SSO_REDIRECT_TIMEOUT", "UCSD_SSO_FORM_TIMEOUT", "ONBOARDING_DUO_FOCUS_FAILED",
+]);
 export const DuoDiagnosticCodeSchema = z.enum([
+  ...DuoPortalDiagnosticCodeSchema.options,
   "ONBOARDING_DUO_ALREADY_STARTED",
   "ONBOARDING_DUO_BROKER_BUSY",
   "ONBOARDING_DUO_BUSY",
@@ -139,7 +143,7 @@ export const DuoDiagnosticCodeSchema = z.enum([
   "ONBOARDING_DUO_PROVIDER_FAILED",
   "ONBOARDING_DUO_SLOW_OPERATION",
 ]);
-export const DuoDiagnosticOperationSchema = z.enum(["browser-setup", "attempt-setup", "browser-request", "broker-request"]);
+export const DuoDiagnosticOperationSchema = z.enum(["browser-setup", "attempt-setup", "browser-request", "broker-request", "portal-open", "browser-focus", "browser-return"]);
 
 export const ProfileOnboardingDuoEventSchema = z.strictObject({
   stage: z.enum(["intercepted", "forwarded", "backend-received", "replied", "refused", "timed-out", "aborted", "platform-native", "platform-virtual", "slow-operation"]),

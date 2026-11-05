@@ -132,3 +132,30 @@ it("a refused action leaves setup usable and an unconfirmed method can start ove
     document.body.replaceChildren(); vi.unstubAllGlobals(); vi.useRealTimers();
   }
 });
+
+it("offers manual sign-in and a retry after a portal failure", async () => {
+  const { mountRelayOptions } = await import(pathToFileURL(resolve("fast-duo/src/relay-options.js")).href) as { mountRelayOptions(this: void, profile: unknown): Promise<void> };
+  vi.useFakeTimers();
+  document.body.innerHTML = readFileSync("fast-duo/src/options.html", "utf8");
+  const profile = { operationId: "synthetic-operation", profileId: "synthetic-profile",
+    methods: { key: { state: "pending", attemptId: "synthetic-attempt" }, touch: { state: "idle" } } };
+  let openings = 0;
+  vi.stubGlobal("chrome", { runtime: { sendMessage: async ({ type }: { type: string }) => {
+    if (type === "RELAY_OPEN_PORTAL") { openings++; return { success: false }; }
+    return { success: true, result: { relaySetup: true, profile } };
+  } } });
+  try {
+    await mountRelayOptions(profile);
+    const button = document.querySelector<HTMLButtonElement>("#primaryAction")!;
+    assert.equal(button.textContent, "Show Duo");
+    button.click(); await vi.advanceTimersByTimeAsync(0);
+    assert.match(document.getElementById("message")!.textContent ?? "", /Select the Duo tab in this Chromium window and sign in by hand/);
+    await vi.advanceTimersByTimeAsync(1000);
+    assert.equal(button.disabled, false);
+    button.click(); await vi.advanceTimersByTimeAsync(0);
+    assert.equal(openings, 2);
+  } finally {
+    window.dispatchEvent(new Event("pagehide"));
+    document.body.replaceChildren(); vi.unstubAllGlobals(); vi.useRealTimers();
+  }
+});

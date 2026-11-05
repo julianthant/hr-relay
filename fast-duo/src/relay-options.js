@@ -70,7 +70,7 @@ export async function mountRelayOptions(initial) {
     $('returnRelay').hidden = current.action === 'Return to Relay';
     $('returnRelay').disabled = busy;
     $('message').hidden = !unavailable || unavailable === 'state';
-    $('message').textContent = unavailable === 'return' ? 'Could not bring Relay forward. Select its window to review setup.' : 'Relay could not finish that action. Try again, or return to Relay.';
+    $('message').textContent = unavailable === 'return' ? 'Could not bring Relay forward. Select its window to review setup.' : unavailable === 'portal' ? 'Relay could not sign in to Duo. Select the Duo tab in this Chromium window and sign in by hand, or try Show Duo again.' : 'Relay could not finish that action. Try again, or return to Relay.';
     $('message').setAttribute('role', 'alert');
   }
   const duoOption = { key: 'Security key', touch: 'Touch ID or Windows Hello' };
@@ -106,7 +106,7 @@ export async function mountRelayOptions(initial) {
       profile = next; if (type !== 'STATE' || unavailable === 'state') unavailable = false;
     } catch {
       if (type === 'RELAY_RETURN') unavailable = 'return';
-      else if ((!stateRead || generation === actionGeneration) && (type !== 'STATE' || !unavailable)) unavailable = type === 'STATE' ? 'state' : 'action';
+      else if ((!stateRead || generation === actionGeneration) && (type !== 'STATE' || !unavailable)) unavailable = type === 'STATE' ? 'state' : type === 'RELAY_OPEN_PORTAL' ? 'portal' : 'action';
     }
     finally { if (stateRead) polling = false; else busy = false; render(); if (focusedMethod && document.activeElement === document.body) $('accountList').querySelector(`[data-method="${focusedMethod}"]`).focus({ preventScroll: true }); }
   }

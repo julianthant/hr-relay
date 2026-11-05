@@ -124,7 +124,7 @@ export function Onboarding({ step, onStep, onDashboard, port = mockOnboardingPor
         const current = step === "signup" ? 0 : step === "duo" ? 1 : 2;
         return <li key={item} aria-current={item === step ? "step" : undefined} data-complete={index < current}><button tabIndex={0} className="step-link" type="button" disabled={item === "duo" && !detailsDone || item === "ready" && !both} onClick={() => navigate(item)}><span className="progress-marker" aria-hidden="true">{index < current ? <Check className="icon" /> : index + 1}</span>{["Your details", "Duo setup", "Ready"][index]}</button></li>;
       })}</ol>}
-      <div className="stack"><header className="heading"><h1 ref={heading} tabIndex={-1}>{title}</h1><p>{description}</p></header>
+      <div className="stack"><header className="heading"><h1 ref={heading} tabIndex={-1}>{title}</h1><p>{description}{step === "duo" && !both && port.source === "served" && " If the browser stays behind, select the Chromium window named Fast Duo · Relay sign-in setup."}</p></header>
         {(step === "login" || signup) ? <><form ref={form} noValidate onSubmit={async event => {
           event.preventDefault();
           if (submitting) return; const nextErrors = port.validate(signup ? "signup" : "login", details); setErrors(nextErrors);
