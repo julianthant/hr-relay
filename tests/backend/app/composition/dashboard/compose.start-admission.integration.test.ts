@@ -1,54 +1,14 @@
+import { neverBornFixture as fixture } from "../../../../support/helpers/backend/never-born-worker-world.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { copyFileSync } from "node:fs";
-import { join } from "node:path";
 import { it } from "vitest";
-import { composeDashboardRuntime } from "../../../../../src/backend/app/composition/dashboard/compose.js";
-import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
-import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { readSettings } from "../../../../../src/backend/runtime/settings/settings-runtime.js";
 import { StartPlanWireSchema } from "../../../../../src/models/dashboard/start-plan.js";
 import { WireErrorSchema } from "../../../../../src/models/dashboard/primitives.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
-import { manualClock } from "../../../../../src/rules/time/clock.js";
-import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
-import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { PreflightObservationChangedError } from "../../../../../src/rules/preflight/preflight-admission.js";
-import { RuntimeCustodyUncertainError } from "../../../../../src/backend/app/composition/storage-compose.js";
 
-async function fixture(realDoctor = false) {
-  const profile = await createBoundProfileFixture();
-  const clock = manualClock(new Date("2026-10-21T12:00:00.000Z"));
-  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(profile.workspace, name));
-  const runtime = composeProfileRuntime({ admission: profile.machine, clock, hostFacts: { primaryDisplay: null } });
-  const active = runtime.session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: clock.now().toISOString() });
-  assert.equal(active.state, "active");
-  if (active.state !== "active") throw new Error("profile activation required");
-  const context = runtime.selectedContext(active.token);
-  let doctorRace = false;
-  const detectorErrors: unknown[] = [];
-  let spawns = 0;
-  try {
-    const dashboard = await composeDashboardRuntime({ lifetimeLock: profile.lifetime, admission: profile.machine, profile: { runtime, token: active.token },
-      repoRoot: profile.workspace, clock, isolation: rebuildRuntimeIsolation, env: {}, backendPortOverride: 0, frontendPortOverride: 0,
-      preflightRunnerFactory: input => healthyRuntimePreflightRunners(input).map(runner => !realDoctor || runner.check !== "authority.health" ? runner : {
-        ...runner, async run(check) {
-          const checking = input.dashboard.authorityHealth.run(check);
-          if (doctorRace) context.database.authority.notifications.create({ notificationId: randomUUID(), actorId: "local-operator", dedupeFingerprint: "e".repeat(64),
-            trigger: "failed", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: "Fixture notice", summary: "Concurrent fixture write",
-            links: [{ kind: "run", runId: "00010001-0001-4001-8001-000100010001" }], count: 1, lastSeenAt: clock.now().toISOString(), version: 1,
-            createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() });
-          try { return await checking; } catch (error) { detectorErrors.push(error); throw error; }
-        },
-      }),
-      workerProcess: { spawn: () => { spawns += 1; throw new Error("refused start must not spawn a worker"); } } });
-    const origin = `http://127.0.0.1:${String(dashboard.port)}`;
-    return { clock, context, spawns: () => spawns, detectorErrors, armDoctorRace() { doctorRace = true; },
-      post: (path: string, input: unknown) => fetch(`${origin}/api/v1/${path}`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(input) }),
-      async close() { try { await dashboard.stop(); } finally { await profile.close(); } } };
-  } catch (error) { await runtime.close(); await profile.close(); throw error; }
-}
 
 for (const input of [
   { workflowId: "person-lookup", submissions: [{ emplId: "10873698" }], dryRun: false },
@@ -116,13 +76,7 @@ for (const input of [
     assert.equal(f.detectorErrors.length, 1); assert.equal(f.spawns(), 0);
     assert.deepEqual(f.context.database.authority.runs.listByWorkflow(input.workflowId), runs);
   } finally {
-    await assert.rejects(f.close(), (error: unknown) => {
-      assert.ok(error instanceof RuntimeCustodyUncertainError);
-      const messages = (value: unknown): string[] => value instanceof AggregateError
-        ? [value.message, ...value.errors.flatMap(messages)] : value instanceof Error ? [value.message] : [];
-      assert.ok(messages(error).includes("profile-worker-lifetime-unavailable"));
-      return true;
-    });
+    await f.close();
   }
 });
 

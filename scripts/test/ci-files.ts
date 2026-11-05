@@ -61,6 +61,7 @@ export const SERIAL_FILES: readonly string[] = [
   "tests/backend/app/composition/dashboard/compose.worker-browser-control-process.integration.test.ts",
   "tests/backend/runtime/browser/onboarding-duo-provider.integration.test.ts",
   "tests/backend/runtime/workers/worker-supervisor.integration.test.ts",
+  "tests/backend/app/composition/dashboard/compose.never-born-worker.integration.test.ts",
   "tests/backend/transports/http/native-path-picker.windows-native.integration.test.ts",
 ];
 

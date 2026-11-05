@@ -1,3 +1,4 @@
+import type { WorkerPoolMember } from "../../../models/run/worker-slot.js";
 import { observePid } from "./runtime-process-locks.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
@@ -16,6 +17,22 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { CommandAuditRecordSchema, CommandIdentityConflictError, LiveWorkerResetRequestSchema, WorkerBrowserCommandRequestSchema } from "../../../rules/commands/commands.js";
 import { WorkerSupervisorEffectObservationSchema, WorkerLifecycleBindingSchema, WorkerResetBindingSchema, WorkerBrowserObservationSchema, WorkerControlRecordSchema, WorkerControlPhaseSchema, type WorkerControlPhase, type WorkerResetBinding, type WorkerLifecycleBinding, type WorkerSupervisorEffectObservation } from "../../../models/run/worker-control.js";
 import { CommandIdSchema, IsoInstantSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
+
+export type WorkerNonBirthProof = Readonly<{ kind: "worker-non-birth" }>;
+const nonBirthProofs = new WeakMap<object, Readonly<{ owner: object; member: WorkerPoolMember; commandId: string; launchCount: number; valid(): boolean }>>();
+export function mintWorkerNonBirthProof(owner: object, member: WorkerPoolMember, commandId: string, launchCount: number, valid: () => boolean): WorkerNonBirthProof {
+  const proof: WorkerNonBirthProof = Object.freeze({ kind: "worker-non-birth" });
+  nonBirthProofs.set(proof, Object.freeze({ owner, member: Object.freeze({ ...member }), commandId, launchCount, valid }));
+  return proof;
+}
+export function authenticateWorkerNonBirthProof(proof: WorkerNonBirthProof, owner: object) {
+  const record = nonBirthProofs.get(proof);
+  if (record === undefined || record.owner !== owner || !record.valid()) throw new Error("worker-non-birth-authority-unavailable");
+  return record;
+}
+export function consumeWorkerNonBirthProof(proof: WorkerNonBirthProof): void {
+  if (!nonBirthProofs.delete(proof)) throw new Error("worker-non-birth-already-consumed");
+}
 
 const resetClosures = new WeakMap<object, Readonly<{ binding: WorkerResetBinding | WorkerLifecycleBinding; sessions: readonly string[]; valid: () => boolean }>>();
 export type WorkerControlClosure = Readonly<{ readonly kind: "worker-control-owner-closure" }>;

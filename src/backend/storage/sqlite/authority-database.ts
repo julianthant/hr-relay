@@ -1,3 +1,6 @@
+import { WorkerBrowserCommandRequestSchema } from "../../../rules/commands/commands.js";
+import { authenticateWorkerNonBirthProof, consumeWorkerNonBirthProof, type WorkerNonBirthProof } from "./worker-control.js";
+import { admitWorkerPoolRoster, applyWorkerPoolPlan } from "./worker-slots.js";
 import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
 import { collectEvidenceSchemaAdmissions } from "./evidence-schema-upgrade.js";
 import { evidenceSchemaSourceDigest, type EvidenceSchemaOwner } from "../../../models/storage/evidence-schema-admission.js";
@@ -1992,6 +1995,10 @@ export class AuthorityDatabase implements Disposable {
   #terminalizationHooks: AuthorityTerminalizationHooks | undefined;
 
   #authorityCommitCallbacks: (() => void)[] = [];
+  #nonBirthOwner: { supervisor: { nonBirthProof(member: WorkerPoolMember): WorkerNonBirthProof | undefined }; assertUnused(slot: z.infer<typeof WorkerSlotRecordSchema>): void } | undefined;
+  #freshWorkerAllocations = new Map<string, { slot: z.infer<typeof WorkerSlotRecordSchema>; slots: string; pool: string; runtime: string;
+    sealed?: { proof: WorkerNonBirthProof; plan: string; spawn: string; audit: string; commandId: string }; inFlight?: boolean; consumed?: boolean }>();
+  #nonBirthSettlementCommand: string | undefined;
   #lifecycleHooks: AuthorityLifecycleHooks | undefined;
 
   readonly authority: AuthorityRepositories;
@@ -3362,6 +3369,122 @@ export class AuthorityDatabase implements Disposable {
     return this.#withTransaction("authority", () => work(this.authority));
   }
 
+  bindWorkerNonBirthSupervisor(supervisor: { nonBirthProof(member: WorkerPoolMember): WorkerNonBirthProof | undefined },
+    assertUnused: (slot: z.infer<typeof WorkerSlotRecordSchema>) => void): void {
+    this.#admission.assertProfileRuntime();
+    if (this.#nonBirthOwner !== undefined) throw new Error("worker-non-birth-supervisor-already-bound");
+    this.#nonBirthOwner = { supervisor, assertUnused };
+  }
+
+  recordWorkerNonBirthRefusal(commandId: string): void {
+    if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") throw new Error("worker-non-birth-refusal-transaction-required");
+    const owner = this.#nonBirthOwner, spawn = this.authority.workerControls.get(commandId);
+    if (owner === undefined || spawn?.request.type !== "spawn-worker" || spawn.phase.state !== "refused" || spawn.auditedAt === undefined) return;
+    const origin = this.#freshWorkerAllocations.get(spawn.request.payload.workerId);
+    if (origin === undefined || origin.inFlight || origin.slot.reservationCommandId === null) return;
+    const plan = this.authority.workerControls.get(origin.slot.reservationCommandId);
+    const audit = this.authority.commandAudits.findByCommand(commandId);
+    const proof = owner.supervisor.nonBirthProof(workerPoolMember(origin.slot));
+    if (proof === undefined || plan?.request.type !== "plan-worker-count" || plan.phase.state !== "succeeded" || plan.auditedAt === undefined
+      || audit?.result.state !== "rejected" || this.authority.commandAudits.findByCommand(plan.commandId)?.result.state !== "applied") return;
+    const parent = this.#database.prepare("SELECT * FROM commands WHERE family='start'").all().map(commandFromRow)
+      .find(command => "family" in command && command.family === "start" && command.target.workflowId === origin.slot.workflow
+        && lifecycleCommandId("run-start-plan-worker-count", [command.commandId, origin.slot.poolIndex]) === plan.commandId);
+    if (parent === undefined) return;
+    const binding = authenticateWorkerNonBirthProof(proof, owner.supervisor);
+    if (binding.commandId !== commandId || canonicalJsonStringify(binding.member) !== canonicalJsonStringify(workerPoolMember(origin.slot))) throw new Error("worker-non-birth-binding-mismatch");
+    const spawns = this.readProfileResourceCustody().controls.filter(control => control.request.type === "spawn-worker" && control.request.payload.workerId === origin.slot.workerId);
+    const audits = spawns.map(control => this.authority.commandAudits.findByCommand(control.commandId));
+    if (binding.launchCount !== spawns.length || spawns.some(control => control.phase.state !== "refused" || control.auditedAt === undefined)
+      || audits.some(value => value?.result.state !== "rejected")) return;
+    const sealed = { proof, plan: canonicalJsonStringify(plan), spawn: canonicalJsonStringify(spawns), audit: canonicalJsonStringify(audits), commandId };
+    this.afterAuthorityCommit(() => { origin.sealed = sealed; });
+  }
+
+  #requireWorkerNonBirth(slot: z.infer<typeof WorkerSlotRecordSchema>) {
+    this.#admission.assertProfileRuntime();
+    const origin = this.#freshWorkerAllocations.get(slot.workerId), owner = this.#nonBirthOwner;
+    if (origin?.sealed === undefined || owner === undefined || origin.consumed) throw new Error("worker-non-birth-authority-unavailable");
+    const sealed = origin.sealed, binding = authenticateWorkerNonBirthProof(sealed.proof, owner.supervisor);
+    if (slot.reservationCommandId === null) throw new Error("worker-non-birth-allocation-unavailable");
+    const facts = this.readProfileResourceCustody();
+    const spawns = facts.controls.filter(control => control.request.type === "spawn-worker" && control.request.payload.workerId === slot.workerId);
+    if (canonicalJsonStringify(slot) !== canonicalJsonStringify(origin.slot)
+      || canonicalJsonStringify(facts.slots.filter(member => member.workflow === slot.workflow && member.retiredAt === null)) !== origin.slots
+      || canonicalJsonStringify(this.authority.workerPools.get(slot.workflow)) !== origin.pool
+      || canonicalJsonStringify(this.authority.runtimeConfig.get()) !== origin.runtime
+      || binding.commandId !== sealed.commandId || canonicalJsonStringify(binding.member) !== canonicalJsonStringify(workerPoolMember(slot))
+      || spawns.length !== binding.launchCount || canonicalJsonStringify(spawns) !== sealed.spawn
+      || canonicalJsonStringify(this.authority.workerControls.get(slot.reservationCommandId)) !== sealed.plan
+      || canonicalJsonStringify(spawns.map(control => this.authority.commandAudits.findByCommand(control.commandId))) !== sealed.audit
+      || facts.leases.some(lease => lease.workerId === slot.workerId) || facts.browsers.some(browser => browser.workerId === slot.workerId)
+      || facts.runs.some(run => runClaim(run)?.workerId === slot.workerId)
+      || facts.duoLeases.some(lease => lease.holder.workerId === slot.workerId && lease.state === "held")
+      || facts.exclusiveSessionLeases.some(lease => lease.workerId === slot.workerId && lease.releasedAt === null)
+      || facts.pendingArtifacts.length !== 0 || this.authority.workerSlots.verifications(slot.workflow).length !== 0
+      || this.authority.workerSlots.recoveries(slot.workflow).length !== 0
+      || facts.controls.some(control => control.scope === `worker-pool:${slot.workflow}` && control.auditedAt === undefined)) throw new Error("worker-non-birth-custody-changed");
+    owner.assertUnused(slot);
+  }
+
+  hasWorkerNonBirth(slot: z.infer<typeof WorkerSlotRecordSchema>): boolean {
+    if (this.#freshWorkerAllocations.get(slot.workerId)?.sealed === undefined) return false;
+    return this.#withReadSnapshot(() => { this.#requireWorkerNonBirth(slot); return true; });
+  }
+
+  settleNeverSpawnedWorkers(): void {
+    for (const origin of this.#freshWorkerAllocations.values()) {
+      if (origin.sealed === undefined || origin.consumed) continue;
+      const sealed = origin.sealed, slot = origin.slot;
+      const commandId = lifecycleCommandId("never-born-retirement", [slot.reservationCommandId, sealed.commandId, slot.workerId]);
+      if (origin.inFlight) throw new Error("worker-non-birth-settlement-unproved");
+      if (this.authority.commandAudits.findByCommand(commandId) !== undefined) continue;
+      origin.inFlight = true;
+      this.withAuthorityTransaction(repositories => {
+        if (repositories.runs.admission().state === "open") throw new Error("worker-non-birth-drain-required");
+        this.#requireWorkerNonBirth(slot);
+        const active = repositories.workerSlots.list(slot.workflow).filter(member => member.retiredAt === null);
+        const pool = repositories.workerPools.get(slot.workflow);
+        if (active.at(-1)?.workerId !== slot.workerId || pool?.desiredWorkers !== active.length) throw new Error("worker-non-birth-exact-excess-required");
+        const now = IsoInstantSchema.parse(this.#now());
+        const spawn = repositories.workerControls.get(sealed.commandId);
+        if (spawn?.request.type !== "spawn-worker") throw new Error("worker-non-birth-spawn-unavailable");
+        const request = WorkerBrowserCommandRequestSchema.parse({ ...spawn.request, commandId, type: "plan-worker-count", requestedAt: now,
+          target: { workflowId: slot.workflow, expectedVersion: pool.version }, payload: { desiredWorkers: pool.desiredWorkers - 1 } });
+        if (request.type !== "plan-worker-count") throw new Error("worker-non-birth-plan-required");
+        const roster = admitWorkerPoolRoster(repositories, request, now);
+        if (canonicalJsonStringify(roster.excess) !== canonicalJsonStringify([slot])
+          || canonicalJsonStringify(roster.selected) !== canonicalJsonStringify(active.slice(0, -1))) throw new Error("worker-non-birth-exact-excess-required");
+        this.#nonBirthSettlementCommand = commandId;
+        try {
+          repositories.commands.insert(request);
+          repositories.workerControls.admit({ commandId, request, scope: `worker-pool:${slot.workflow}`, executorId: randomUUID(),
+            admittedAt: now, expiresAt: new Date(Date.parse(now) + 180_000).toISOString(), basisVersion: pool.version, roster, phase: { state: "admitted" } });
+          repositories.workerControls.transition(commandId, "admitted", { state: "executing", startedAt: now });
+          const acknowledgement = { kind: "plan" as const, workerIds: roster.selected.map(member => member.workerId),
+            retirements: [{ workerId: slot.workerId, membershipRevision: slot.membershipRevision, checkedAt: now,
+              processStopped: true as const, browsersClosed: true as const, exclusive: true as const }] };
+          const application = applyWorkerPoolPlan(repositories, request, now, pool.version, acknowledgement);
+          repositories.workerControls.transition(commandId, "executing", { state: "succeeded", startedAt: now, completedAt: now, acknowledgement, application });
+          repositories.commandAudits.insert({ auditId: randomUUID(), request, result: application.result, completedAt: now,
+            versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds });
+          repositories.workerControls.audit(commandId, now);
+          this.#admission.assertProfileRuntime();
+          const owner = this.#nonBirthOwner;
+          if (owner === undefined) throw new Error("worker-non-birth-owner-unavailable");
+          authenticateWorkerNonBirthProof(sealed.proof, owner.supervisor);
+          owner.assertUnused(slot);
+          const retired = repositories.workerSlots.get(slot.workerId);
+          if (retired?.membershipRevision !== slot.membershipRevision + 1 || retired.retirementCommandId !== commandId || retired.retiredAt !== now
+            || canonicalJsonStringify(repositories.workerSlots.list(slot.workflow).filter(member => member.retiredAt === null)) !== canonicalJsonStringify(roster.selected)
+            || repositories.workerPools.get(slot.workflow)?.version !== pool.version + 1
+            || repositories.workerPools.get(slot.workflow)?.desiredWorkers !== pool.desiredWorkers - 1) throw new Error("worker-non-birth-settlement-changed");
+          this.afterAuthorityCommit(() => { consumeWorkerNonBirthProof(sealed.proof); origin.consumed = true; });
+        } finally { this.#nonBirthSettlementCommand = undefined; }
+      });
+    }
+  }
+
   #assertCommandIdentity(record: z.infer<typeof StoredAuthorityCommandRecordSchema>, parentCommandId?: string): void {
     if (this.#transactionDepth === 0 || this.#transactionMode !== "authority") {
       throw new Error("command identity admission requires an authority transaction");
@@ -3395,6 +3518,16 @@ export class AuthorityDatabase implements Disposable {
     }
     const protectedCommand = "family" in record && record.family === "settings" && record.type === "apply-protected-settings";
     if (!protectedCommand && this.#credentialCommandIds(record.commandId)) throw new CommandIdentityConflictError();
+    if ("family" in record
+      && this.#nonBirthSettlementCommand !== record.commandId && this.authority.commandAudits.findByCommand(record.commandId) === undefined) {
+      for (const control of this.authority.workerControls.list()) {
+        if (control.request.type !== "spawn-worker") continue;
+        const slot = this.authority.workerSlots.get(control.request.payload.workerId);
+        if (slot !== undefined && lifecycleCommandId("never-born-retirement", [slot.reservationCommandId, control.commandId, slot.workerId]) === record.commandId) {
+          throw new CommandIdentityConflictError("worker-non-birth-missing-settlement-replay-refused");
+        }
+      }
+    }
     const row = this.#database.prepare("SELECT request_json AS payload_json FROM commands WHERE id = ?").get(record.commandId);
     if (row !== undefined && canonicalJsonStringify(JSON.parse(JsonRowSchema.parse(row).payload_json) as unknown) !== canonicalJsonStringify(record)) {
       if ("family" in record && (record.family === "settings" || record.family === "failure-resolution" || record.family === 'assistant-model-preference' || record.family === "ocr-review")) throw new CommandIdentityConflictError();
@@ -5119,7 +5252,15 @@ export class AuthorityDatabase implements Disposable {
       ocrReviews: createOcrReviewRepository({ database: this.#database,
         read: work => this.#withReadSnapshot(work), mutate: (table, work) => this.#authorityWrite(table, work) }),
       workerPools: this.#buildWorkerPoolRepository(),
-      workerSlots: createWorkerSlotRepository({ database: this.#database, admission: this.#admission, clock: this.#clock, mutate: work => this.#authorityWrite("worker_slots", () => {
+      workerSlots: createWorkerSlotRepository({ database: this.#database,
+        allocated: slot => {
+          if (this.#nonBirthOwner === undefined) return;
+          this.afterAuthorityCommit(() => {
+          this.#freshWorkerAllocations.set(slot.workerId, { slot,
+            slots: canonicalJsonStringify(this.authority.workerSlots.list(slot.workflow).filter(member => member.retiredAt === null)),
+            pool: canonicalJsonStringify(this.authority.workerPools.get(slot.workflow)), runtime: canonicalJsonStringify(this.authority.runtimeConfig.get()) });
+          });
+        }, admission: this.#admission, clock: this.#clock, mutate: work => this.#authorityWrite("worker_slots", () => {
         const outcome = work();
         if (outcome.changes > 0) this.#workerMembershipChanges.add(outcome.result.workflow);
         return outcome;

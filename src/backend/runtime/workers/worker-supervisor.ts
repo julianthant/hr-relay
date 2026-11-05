@@ -1,6 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import { WorkerRetirementProofSchema, type WorkerRetirementProof } from "../../../models/run/worker-slot.js";
-import { mintWorkerSupervisorEffect, type WorkerSupervisorEffect } from "../../storage/sqlite/worker-control.js";
+import { mintWorkerNonBirthProof, mintWorkerSupervisorEffect, type WorkerNonBirthProof, type WorkerSupervisorEffect } from "../../storage/sqlite/worker-control.js";
 import { WorkerLifecycleBindingSchema, type WorkerLifecycleBinding } from "../../../models/run/worker-control.js";
 import { WorkerControlRefusal } from "../../../models/run/worker-control.js";
 
@@ -97,6 +97,7 @@ export interface DashboardWorkerSupervisorDependencies {
   readonly prepareAdmission?: (request: WorkerSupervisorRequest) => Promise<void>;
   readonly browserControl?: Readonly<{ request(commandId: string): Promise<string>; closeForRemoval(commandId: string): Promise<void> }>;
   readonly spawn: WorkerProcessSpawner;
+  readonly settleNonBirth?: () => void;
   readonly leases: WorkerLeaseProbe;
   readonly gracefulStop: WorkerGracefulStopChannel;
   readonly clock: Clock;
@@ -223,6 +224,7 @@ export interface DashboardWorkerProcessSupervisor extends WorkerPoolProcessSuper
   execute(request: WorkerSupervisorRequest): Promise<WorkerSupervisorAcknowledgement>;
   /** Evidence about a member THIS supervisor spawned; undefined = never spawned here. */
   memberEvidence(member: WorkerPoolMember): WorkerChildEvidence | undefined;
+  nonBirthProof(member: WorkerPoolMember): WorkerNonBirthProof | undefined;
   ownsWorker(workerId: string, processId: number, startedAt: string): boolean;
 
   restoreStandingWorker(binding: WorkerLifecycleBinding): Promise<void>;
@@ -243,6 +245,7 @@ export function createDashboardWorkerProcessSupervisor(
     );
   }
   const records = new Map<string, MemberRecord>();
+  const launches = new Map<string, { member: WorkerPoolMember; commandId: string; launchCount: number; attempted: boolean; proof?: WorkerNonBirthProof }>();
   const instant = (): string => deps.clock.now().toISOString();
   let closed = false;
   let draining: Promise<void> | undefined;
@@ -299,6 +302,8 @@ export function createDashboardWorkerProcessSupervisor(
         + "did not spawn it; an externally started worker is never adopted or controlled",
       );
     }
+    const launch = launches.get(member.workerId);
+    if (launch !== undefined) launch.attempted = true;
     const child = deps.spawn(Object.freeze({
       environment: deps.launch.environment,
       command: deps.launch.command,
@@ -977,7 +982,7 @@ export function createDashboardWorkerProcessSupervisor(
       return { binding, born, birth: { processId: born.pid, startedAt: born.leaseStartedAt } };
   };
 
-  return Object.freeze({
+  const supervisor: DashboardWorkerProcessSupervisor = Object.freeze({
     assertLifecycleOwner(operation: "remove" | "retry", member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void {
       if (closed || draining !== undefined) throw new WorkerControlRefusal("worker-lifecycle-supervisor-unavailable");
       const record = records.get(member.workerId);
@@ -1049,44 +1054,60 @@ export function createDashboardWorkerProcessSupervisor(
           + "a shutting-down supervisor acknowledges nothing",
         );
       }
-      if (deps.prepareAdmission !== undefined) await deps.prepareAdmission(request);
-      if (closed || draining !== undefined) {
-        throw new WorkerControlRefusal(
-          `${request.command} refused: this worker supervisor is ${closed ? "closed" : "draining"}; `
-          + "a shutting-down supervisor acknowledges nothing",
-        );
+      const launch = request.command === "spawn-worker" && request.commandId !== undefined
+        ? { member: WorkerPoolMemberSchema.parse(request.member), commandId: request.commandId, launchCount: 1, attempted: false } : undefined;
+      if (launch !== undefined) {
+        const prior = launches.get(launch.member.workerId);
+        if (prior !== undefined) { launch.launchCount = prior.launchCount + 1; launch.attempted = prior.attempted || prior.proof === undefined; }
+        launches.set(launch.member.workerId, launch);
       }
-      deps.admission?.(request);
-      switch (request.command) {
-        case "plan-worker-count":
-          return planWorkerCount(request);
-        case "spawn-worker":
-          return spawnWorker(WorkerPoolMemberSchema.parse(request.member), CommandIdSchema.parse(request.commandId));
-        case "stop-worker":
-          return stopWorker(
-            WorkerPoolMemberSchema.parse(request.member),
-            WorkerStopEscalationPolicySchema.parse(request.escalation),
-            WorkerStopDirectiveContextSchema.parse(request.directive),
+      try {
+        if (deps.prepareAdmission !== undefined) await deps.prepareAdmission(request);
+        if (closed || draining !== undefined) {
+          throw new WorkerControlRefusal(
+            `${request.command} refused: this worker supervisor is ${closed ? "closed" : "draining"}; `
+            + "a shutting-down supervisor acknowledges nothing",
           );
-        case "pause-worker":
-          return attestDirective("pause-worker", WorkerPoolMemberSchema.parse(request.member), "pause-requested");
-        case "resume-worker":
-          return attestDirective("resume-worker", WorkerPoolMemberSchema.parse(request.member), "resume-requested");
-        case "refresh-browser":
-        case "reopen-browser": {
-          const member = WorkerPoolMemberSchema.parse(request.member);
-          const owned = requireLiveOwnedChild(request.command, member);
-          if (owned.state !== "running" || owned.stopInFlight) throw new WorkerControlRefusal("worker-browser-worker-stopping");
-          if (deps.browserControl === undefined || request.commandId === undefined) throw new WorkerControlRefusal("worker-browser-channel-unavailable: no admitted cross-process command");
-          await deps.browserControl.request(request.commandId);
-          return WorkerSupervisorAcknowledgementSchema.parse({ command: request.command, state: "acknowledged", member,
-            ownership: "supervised", browserSessionId: request.browserSessionId,
-            stage: request.command === "refresh-browser" ? "refreshed" : "reopened" });
         }
+        deps.admission?.(request);
+        switch (request.command) {
+          case "plan-worker-count":
+            return planWorkerCount(request);
+          case "spawn-worker":
+            return await spawnWorker(WorkerPoolMemberSchema.parse(request.member), CommandIdSchema.parse(request.commandId));
+          case "stop-worker":
+            return stopWorker(
+              WorkerPoolMemberSchema.parse(request.member),
+              WorkerStopEscalationPolicySchema.parse(request.escalation),
+              WorkerStopDirectiveContextSchema.parse(request.directive),
+            );
+          case "pause-worker":
+            return attestDirective("pause-worker", WorkerPoolMemberSchema.parse(request.member), "pause-requested");
+          case "resume-worker":
+            return attestDirective("resume-worker", WorkerPoolMemberSchema.parse(request.member), "resume-requested");
+          case "refresh-browser":
+          case "reopen-browser": {
+            const member = WorkerPoolMemberSchema.parse(request.member);
+            const owned = requireLiveOwnedChild(request.command, member);
+            if (owned.state !== "running" || owned.stopInFlight) throw new WorkerControlRefusal("worker-browser-worker-stopping");
+            if (deps.browserControl === undefined || request.commandId === undefined) throw new WorkerControlRefusal("worker-browser-channel-unavailable: no admitted cross-process command");
+            await deps.browserControl.request(request.commandId);
+            return WorkerSupervisorAcknowledgementSchema.parse({ command: request.command, state: "acknowledged", member,
+              ownership: "supervised", browserSessionId: request.browserSessionId,
+              stage: request.command === "refresh-browser" ? "refreshed" : "reopened" });
+          }
+        }
+        throw new Error(
+          `worker supervisor received an unknown request: ${JSON.stringify(request)}`,
+        );
+      } catch (error) {
+        if (launch !== undefined && !launch.attempted && error instanceof WorkerControlRefusal) {
+          const tracked = launches.get(launch.member.workerId);
+          if (tracked !== undefined) tracked.proof = mintWorkerNonBirthProof(supervisor, launch.member, launch.commandId, launch.launchCount,
+            () => !closed && launches.get(launch.member.workerId) === tracked && !tracked.attempted);
+        }
+        throw error;
       }
-      throw new Error(
-        `worker supervisor received an unknown request: ${JSON.stringify(request)}`,
-      );
     },
     assertResetOwner(member: WorkerPoolMember, lifetime: Readonly<{ leaseGeneration: number; processId: number; startedAt: string }>): void {
       if (closed || draining !== undefined) throw new WorkerControlRefusal("worker-reset-supervisor-unavailable");
@@ -1098,6 +1119,10 @@ export function createDashboardWorkerProcessSupervisor(
     ownsWorker(workerId: string, processId: number, startedAt: string): boolean {
       const record = records.get(workerId);
       return !closed && record !== undefined && (record.state === "running" || record.state === "stopping") && record.pid === processId && record.leaseStartedAt === startedAt;
+    },
+    nonBirthProof(member: WorkerPoolMember): WorkerNonBirthProof | undefined {
+      const launch = launches.get(member.workerId);
+      return launch !== undefined && canonicalJsonStringify(launch.member) === canonicalJsonStringify(member) ? launch.proof : undefined;
     },
     memberEvidence(member: WorkerPoolMember): WorkerChildEvidence | undefined {
       const record = records.get(member.workerId);
@@ -1164,6 +1189,7 @@ export function createDashboardWorkerProcessSupervisor(
         if (failures.length > 0) {
           throw new AggregateError(failures, "dashboard could not observe every owned worker exit", { cause: failures[0] });
         }
+        deps.settleNonBirth?.();
       })();
       return draining;
     },
@@ -1180,4 +1206,5 @@ export function createDashboardWorkerProcessSupervisor(
       return Object.freeze(live);
     },
   });
+  return supervisor;
 }
