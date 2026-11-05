@@ -23,7 +23,7 @@ function snapshot(): RunLogSnapshot {
       timeline: { steps: ["first", "crm", "local"].map(nodeId => ({ key: nodeId, label: "Same label", state: "done",
         members: [{ nodeId, categoryKey: nodeId, label: "Same label", state: "done" }] })),
       events: [{ native: native(1), categoryKey: "first", noteId: id(101), sequence: 0,
-        at: "2026-08-03T23:00:00.000Z", label: "Same label", state: "done", notRun: { state: "absent", reason: "ran" } }] },
+        at: "2026-08-03T23:00:00.000Z", label: "Same label", state: "skipped", notRun: { state: "present", reason: "condition-false" } }] },
       gate: { state: "absent", reason: "no gate" }, outcome: { state: "absent", reason: "running" },
       context: { dataFacts: 0, evidenceFacts: 0, attempts: 1 }, availableSections: ["logs"] }),
     logs: NotePageSchema.parse({ runId: RUN, rows: [
