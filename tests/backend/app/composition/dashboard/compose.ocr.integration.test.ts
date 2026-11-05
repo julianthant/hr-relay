@@ -94,7 +94,9 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
     const payload = inferenceFaults[0].payload; assert.equal(payload.kind, "debug");
     if (payload.kind !== "debug") throw new Error("inference diagnostic required");
     assert.equal(payload.event.status, 400);
-    assert.deepEqual(payload.event.chatGptInference, { operation: "ocr", path: "http-error", contentType: "application/json", providerCode: "subscription_sharing_unsupported_capability" });
+    assert.deepEqual(payload.event.chatGptInference, { operation: "ocr", path: "http-error", contentType: "application/json", hasBody: true,
+      providerCode: "subscription_sharing_unsupported_capability",
+      transport: { source: "injected", status: 400, contentType: "application/json", hasBody: true, redirected: false, target: "missing" } });
     const cancellation = new AbortController();
     transport.setResponse(() => { cancellation.abort(); return new Response(completedOcrStream("synthetic"), { headers: { "content-type": "text/event-stream" } }); });
     const cancelled = await invoke("{}", cancellation.signal); assert.equal((await cancelled.json() as { code: string }).code, "CHATGPT_OCR_CANCELLED"); unchanged(5);

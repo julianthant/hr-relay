@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { once } from "node:events";
+import { createServer } from "node:http";
 import { it } from "vitest";
+import { createChatGptAccountService } from "../../../src/backend/accounts/chatgpt-account-service.js";
 import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.js";
 import type { AssistantInferenceRequest } from "../../../src/models/dashboard/assistant.js";
 import { ERROR_CATALOG } from "../../../src/models/failures/error-catalog.js";
@@ -14,9 +17,10 @@ const assistant: AssistantInferenceRequest = { model: image.model, reasoning: { 
 
 async function fixture(admission?: Parameters<typeof chatGptFixture>[0]) {
   const f = await chatGptFixture(admission), timeline = debugTimelineFixture(), mirrors: string[] = [];
-  f.service.setDebugEvents(createDebugEventWriter({ repository: timeline.repository, clock: f.clock, build: "test", development: true,
-    writeStderr: line => { mirrors.push(line); } }));
-  return { ...f, mirrors, records: timeline.records };
+  const debugEvents = createDebugEventWriter({ repository: timeline.repository, clock: f.clock, build: "test", development: true,
+    writeStderr: line => { mirrors.push(line); } });
+  f.service.setDebugEvents(debugEvents);
+  return { ...f, mirrors, records: timeline.records, debugEvents };
 }
 
 for (const operation of ["ocr", "assistant"] as const) {
@@ -41,7 +45,8 @@ for (const operation of ["ocr", "assistant"] as const) {
         const payload = f.records[0].payload; assert.equal(payload.kind, "debug");
         if (payload.kind !== "debug") throw new Error("inference diagnostic required");
         assert.equal(payload.event.status, status); assert.equal(payload.event.code, code);
-        const expected = { operation, path: "http-error", contentType: "application/json", providerCode };
+        const expected = { operation, path: "http-error", contentType: "application/json", providerCode, hasBody: true,
+          transport: { source: "injected", status, contentType: "application/json", hasBody: true, redirected: false, target: "missing" } };
         assert.deepEqual(payload.event.chatGptInference, expected);
         const mirrored: unknown = JSON.parse(f.mirrors[0]);
         assert.ok(mirrored !== null && typeof mirrored === "object" && "chatGptInference" in mirrored);
@@ -152,3 +157,46 @@ it("keeps successful inference quiet and the request contract unchanged", async 
 });
 
 function sse(text: string): Response { return new Response(text, { headers: { "content-type": "text/event-stream; charset=utf-8" } }); }
+
+it("preserves native fetch headers and streamed bytes through the real request wrapper for OCR and assistant", async () => {
+  const f = await fixture(); let requests = 0, omitContentType = false;
+  const server = createServer((request, response) => {
+    requests++; request.resume();
+    response.writeHead(200, omitContentType ? {} : { "Content-Type": "text/event-stream; charset=utf-8" });
+    const stream = completedOcrStream("Synthetic streamed form");
+    response.write(stream.slice(0, 31)); response.end(stream.slice(31));
+  });
+  server.listen(0, "127.0.0.1"); await once(server, "listening");
+  const address = server.address(); assert.ok(address !== null && typeof address !== "string");
+  const account = createChatGptAccountService({ admission: f.admission, stateRoot: f.root, clock: f.clock,
+    fetch: async (input, init) => {
+      const url = input instanceof Request ? input.url : input instanceof URL ? input.href : input;
+      if (url !== "https://api.openai.com/v1/responses") return f.transport(input, init);
+      assert.equal(init?.method, "POST"); assert.equal(init.redirect, "error");
+      const response = await fetch(`http://127.0.0.1:${String(address.port)}/responses`, init);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("content-type"), omitContentType ? null : "text/event-stream; charset=utf-8");
+      assert.ok(response.body);
+      return response;
+    } });
+  account.setDebugEvents(f.debugEvents);
+  try {
+    await f.connected();
+    assert.deepEqual(await account.extractText(image), { text: "Synthetic streamed form", model: image.model, responseId: "resp_synthetic" });
+    const result = await account.inferAssistant(assistant);
+    assert.deepEqual(result.output, [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Synthetic streamed form" }] }]);
+    assert.equal(requests, 2);
+    assert.equal(f.records.length, 0);
+    omitContentType = true;
+    await assert.rejects(account.extractText(image), { code: "CHATGPT_OCR_FAILED" });
+    assert.equal(requests, 3); assert.equal(f.records.length, 1);
+    const payload = f.records[0].payload; assert.equal(payload.kind, "debug");
+    if (payload.kind !== "debug") throw new Error("inference diagnostic required");
+    assert.deepEqual(payload.event.chatGptInference, { operation: "ocr", path: "content-type", contentType: "missing", hasBody: true, providerCode: "none",
+      transport: { source: "injected", status: 200, contentType: "missing", hasBody: true, redirected: false, target: "other" } });
+    assert.equal(JSON.stringify([f.records, f.mirrors]).includes("127.0.0.1"), false);
+  } finally {
+    try { await account.close(); await f.cleanup(); }
+    finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error === undefined ? resolve() : reject(error))); }
+  }
+});

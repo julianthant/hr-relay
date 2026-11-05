@@ -251,6 +251,9 @@ The HTTP status is retained when received. Headers, prompts, response text, toke
 identifiers are excluded. Development stderr mirrors the same metadata. HTTP `error.code` and
 `detail.code`, and streamed error codes, distinguish usage limits, unavailable models and rejected
 Relay requests. A diagnostic write failure is visible and never clears resource-closure uncertainty.
+The transport observation captures status, media-type classification and body presence before
+response wrapping, plus native/injected source, redirect state and expected/other/missing target
+classification. The delivered response separately retains body presence and media type. No URL is retained.
 
 ### Paths and validation
 

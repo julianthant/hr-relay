@@ -104,6 +104,11 @@ async function interruptible<T>(operation: Promise<T>, signal: AbortSignal): Pro
   try { if (signal.aborted) abort(); return await Promise.race([operation, cancelled]); }
   finally { signal.removeEventListener("abort", abort); }
 }
+function inferenceContentType(headers: Headers): ChatGptInferenceDiagnostic["contentType"] {
+  const contentType = headers.get("content-type")?.split(";")[0].trim().toLowerCase();
+  const parsed = ChatGptInferenceDiagnosticSchema.shape.contentType.exclude(["missing", "other"]).safeParse(contentType);
+  return contentType === undefined ? "missing" : parsed.success ? parsed.data : "other";
+}
 
 export function createChatGptAccountService(options: ChatGptAccountServiceOptions) {
   const credentialRepository = createChatGptCredentialRepository({ admission: options.admission, stateRoot: options.stateRoot, ...options.credentialHooks });
@@ -139,12 +144,15 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
   let pending: { cancel(): Promise<void> } | undefined;
   let signOutLifetime: Promise<ChatGptSignedOut> | undefined;
   function active(): void { if (closed) throw fault("CHATGPT_SERVICE_CLOSED"); options.admission.assertLive(); }
-  async function request(url: string, init: RequestInit, signal?: AbortSignal): Promise<Response> {
+  async function request(url: string, init: RequestInit, signal?: AbortSignal, diagnostic?: ChatGptInferenceDiagnostic): Promise<Response> {
     active();
     const controller = new AbortController(); requests.add(controller);
     const combined = AbortSignal.any([controller.signal, AbortSignal.timeout(120_000), ...(signal === undefined ? [] : [signal])]);
     try {
       const response = await interruptible(transport(url, { ...init, signal: combined, redirect: "error" }), combined);
+      if (diagnostic !== undefined) diagnostic.transport = { source: options.fetch === undefined ? "native" : "injected", status: response.status,
+        contentType: inferenceContentType(response.headers), hasBody: response.body !== null, redirected: response.redirected,
+        target: response.url === "" ? "missing" : response.url === url ? "expected" : "other" };
       if (response.body === null) { requests.delete(controller); return response; }
       const reader = response.body.getReader();
       let readerClosure: Promise<void> | undefined;
@@ -800,11 +808,10 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       if (session === null) throw fault("CHATGPT_PLAN_DISABLED");
       const persistUsage = (usage: "available" | "limit-reached" | "unavailable") => persistPlanUsage(operation, usage);
       const response = await request(`${RESOURCE}/responses`, { method: "POST", headers: { Authorization: `Bearer ${session.accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model, store: false, stream: true, input, ...assistant }) }, signal);
+        body: JSON.stringify({ model, store: false, stream: true, input, ...assistant }) }, signal, diagnostic);
       responseStatus = response.status;
-      const contentType = response.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
-      const parsedContentType = ChatGptInferenceDiagnosticSchema.shape.contentType.exclude(["missing", "other"]).safeParse(contentType);
-      diagnostic.contentType = contentType === undefined ? "missing" : parsedContentType.success ? parsedContentType.data : "other";
+      diagnostic.contentType = inferenceContentType(response.headers);
+      diagnostic.hasBody = response.body !== null;
       return await consumeInferenceResponse(response, async () => {
         operation.assertCurrent();
         if (!response.ok) await rejectPlanResponse(response, operation, diagnostic);

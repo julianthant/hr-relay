@@ -24,11 +24,15 @@ export const TimelineCheckpointReferenceSchema = z.strictObject({
 const { proof: _proof, ...ledgerFields } = LedgerEntryPayloadSchema.shape;
 const ConfirmedOperationFactsSchema = z.strictObject(ledgerFields);
 
+const ChatGptContentTypeSchema = z.enum(["text/event-stream", "application/json", "text/plain", "text/html", "missing", "other"]);
 export const ChatGptInferenceDiagnosticSchema = z.strictObject({
   operation: z.enum(["ocr", "assistant"]),
   path: z.enum(["transport", "http-error-body", "http-error", "content-type", "stream-read", "stream-decode", "stream-json", "stream-schema",
     "stream-error", "stream-refusal", "response-failed", "response-incomplete", "stream-delta", "terminal-schema", "output-schema", "stream-incomplete", "usage-persistence", "resource-closure"]),
-  contentType: z.enum(["text/event-stream", "application/json", "text/plain", "text/html", "missing", "other"]),
+  contentType: ChatGptContentTypeSchema,
+  hasBody: z.boolean().optional(),
+  transport: z.strictObject({ source: z.enum(["native", "injected"]), status: z.number().int().min(100).max(599),
+    contentType: ChatGptContentTypeSchema, hasBody: z.boolean(), redirected: z.boolean(), target: z.enum(["expected", "other", "missing"]) }).optional(),
   providerCode: z.enum(["none", "unknown", "subscription_sharing_user_not_eligible", "subscription_sharing_usage_limit_exceeded",
     "subscription_sharing_usage_unavailable", "subscription_sharing_unsupported_capability", "subscription_sharing_route_not_supported",
     "subscription_sharing_invalid_user", "subscription_sharing_user_unavailable", "chatpass_v2_scope_not_authorized", "chatpass_v2_invalid_authorization_context",
