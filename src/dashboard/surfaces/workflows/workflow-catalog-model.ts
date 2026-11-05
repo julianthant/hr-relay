@@ -25,7 +25,7 @@ export function buildWorkflowCatalog(served: readonly RunStartWorkflow[], includ
     return { id: flow.workflowId, label: flow.label, categoryId: workflowRailCategory(flow.workflowId, flow.categoryId), role: flow.role,
       code: flow.code, source: "served", served: flow, preview,
       launch: flow.inputRun.state === "present" || flow.uploadRun?.pdfInput !== undefined ? { state: "served" }
-        : { state: "unavailable", label: "Unavailable", reason: flow.inputRun.reason } };
+        : { state: "unavailable", label: "No direct start", reason: `This served workflow has no standalone launch input. ${flow.inputRun.reason}` } };
   });
   if (includePreviews) for (const preview of MOCK_WORKFLOW_CATALOG.workflows) {
     if (workflowSource(preview.id, sources) !== "mock") {

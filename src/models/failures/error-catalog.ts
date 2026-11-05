@@ -401,6 +401,7 @@ export const ERROR_CATALOG = Object.freeze({
     "Dashboard error report was not recorded",
     EmptyParametersSchema,
   ),
+  DASHBOARD_PAGE_FAILED: catalogEntry("Relay could not display this page. Open the dashboard to continue.", EmptyParametersSchema),
   DASHBOARD_READ_FAILED: catalogEntry(
     "The dashboard could not load this from the local service. Try again.",
     EmptyParametersSchema,
@@ -542,7 +543,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   PROFILE_OTHER_EMAIL: catalogEntry(
-    "That email belongs to a different profile.",
+    "This email already has a profile on this computer. Log in to continue.",
     EmptyParametersSchema,
   ),
   PROFILE_ACCOUNT_DELETION_REFUSED: catalogEntry("Relay could not complete account deletion. If erasure has started, sign-in stays blocked; restart Relay to settle it safely.", EmptyParametersSchema),
