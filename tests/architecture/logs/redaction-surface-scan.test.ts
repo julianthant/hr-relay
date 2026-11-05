@@ -376,9 +376,7 @@ describe("redaction surface scan — the declaration audit", () => {
   });
 
   it("holds exact membership for current operation, action, display and notification leaves", () => {
-    assert.equal(SURFACE_LEAF_ORIGINS.find(entry => entry.surface === "wire/bootstrap" && entry.path === "storage.automaticRepair.message")?.origin, "repository-authored");
     const currentLeaves = [
-      "wire/bootstrap|storage.automaticRepair.message",
       "wire/activity-population|population[].title",
       "wire/activity-population-selected|browse.identity.browse.query",
       "wire/activity-population-selected|browse.rows[].title",

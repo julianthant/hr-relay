@@ -14,7 +14,7 @@ export function createFixtureStorageSetup({ FIXTURE_BOOTSTRAP, at, uuidOf }: {
       ...FIXTURE_BOOTSTRAP,
       storage: {
         authority: "unavailable",
-        automaticRepair: { state: "none" }, backup: "current",
+        backup: "current",
         checkedAt: at(0),
       },
     });
