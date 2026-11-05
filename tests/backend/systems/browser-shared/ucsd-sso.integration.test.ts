@@ -19,7 +19,7 @@ it("waits through a client redirect and a delayed ready form before acquiring cr
   });
   const page = await context.newPage();
   try {
-    await page.goto("https://portal.example.invalid/");
+    await page.goto("https://duo.ucsd.edu/");
     const signing = (async () => {
       assert.equal(await waitForUcsdDuoSignIn(page, () => undefined, 1000), "sso-form");
       await submitPinnedUcsdSsoCredentials(page, async () => {
@@ -37,6 +37,21 @@ it("waits through a client redirect and a delayed ready form before acquiring cr
     await page.locator("#ssopassword").evaluate(element => { if (element instanceof HTMLInputElement) element.disabled = false; });
     await signing;
     assert.equal(acquisitions, 1); assert.equal(submissions, 1);
+  } finally { await context.close(); }
+});
+
+it("waits at duo.ucsd.edu for a delayed client redirect to the exact a5 form", async () => {
+  const context = await browser.newContext();
+  await context.route("**/*", route => route.fulfill({ contentType: "text/html", body: route.request().url() === SSO ? form() : "<main>Loading</main>" }));
+  const page = await context.newPage();
+  try {
+    await page.goto("https://duo.ucsd.edu/");
+    const landing = waitForUcsdDuoSignIn(page, () => undefined, 1000);
+    void landing.catch(() => undefined);
+    await page.evaluate(url => { setTimeout(() => { location.href = url; }, 50); }, SSO);
+    assert.equal(await landing, "sso-form");
+    assert.equal(page.url(), SSO);
+    assert.equal(await page.locator("#ssopassword").inputValue(), "");
   } finally { await context.close(); }
 });
 
@@ -70,12 +85,12 @@ it("hands a direct Duo landing back without treating a page on another host as a
   });
   const page = await context.newPage();
   try {
-    for (const url of ["https://duo.ucsd.edu/", "https://duosecurity.com/", "https://test.duosecurity.com/"]) {
+    for (const url of ["https://duosecurity.com/", "https://test.duosecurity.com/"]) {
       await page.goto(url);
       assert.equal(await waitForUcsdDuoSignIn(page, () => undefined, 100), "duo");
       assert.equal(await page.locator("#ssopassword").inputValue(), "");
     }
-    for (const url of ["http://test.duosecurity.com/", "https://test.duosecurity.com:444/", "https://duosecurity.com.invalid/", "https://duo.ucsd.edu.invalid/"]) {
+    for (const url of ["https://duo.ucsd.edu/", "http://test.duosecurity.com/", "https://test.duosecurity.com:444/", "https://duosecurity.com.invalid/", "https://duo.ucsd.edu.invalid/"]) {
       await page.goto(url);
       await assert.rejects(waitForUcsdDuoSignIn(page, () => undefined, 100), { message: "UCSD_SSO_REDIRECT_TIMEOUT" });
     }

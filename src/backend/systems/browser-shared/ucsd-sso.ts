@@ -99,7 +99,7 @@ export async function waitForUcsdDuoSignIn(page: Page, assertCurrent: () => void
   const remaining = () => Math.max(1, deadline - systemClock.monotonicMs());
   const allowed = (url: URL) => url.protocol === "https:" && url.port === "" && url.username === "" && url.password === ""
     && (url.hostname === "a5.ucsd.edu" && url.pathname === "/tritON/profile/SAML2/Redirect/SSO"
-      || url.hostname === "duo.ucsd.edu" || url.hostname === DUO_HOST || url.hostname.endsWith(`.${DUO_HOST}`));
+      || url.hostname === DUO_HOST || url.hostname.endsWith(`.${DUO_HOST}`));
   assertCurrent();
   try {
     await page.waitForURL(allowed, { waitUntil: "domcontentloaded", timeout: remaining() });

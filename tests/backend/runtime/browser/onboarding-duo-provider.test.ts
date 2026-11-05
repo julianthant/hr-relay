@@ -42,6 +42,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let browserSetupFailure: Error | undefined, browserSetupDurationMs = 0;
   let portalFailure = new Error("synthetic navigation failure");
   let portalLanding: string | undefined;
+  let portalSubmitFailure: Error | undefined;
   let nativeProbeHold: Promise<void> | undefined, releaseNativeProbe: (() => void) | undefined, nativeProbeEntered: (() => void) | undefined;
   let installFailure: Error | undefined, installDurationMs = 0;
   let closed = false, focusCount = 0, lostStopAck = false, missingCloseEvent = false;
@@ -92,6 +93,12 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : [frame], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
       goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; if (portalLanding === undefined) throw portalFailure; url = portalLanding; } else url = destination; },
       waitForURL: async (matches: (candidate: URL) => boolean) => { assert.ok(matches(new URL(url))); },
+      waitForFunction: async () => ({ dispose: async () => undefined }),
+      locator: () => ({ count: async () => 1, elementHandle: async () => ({
+        isVisible: async () => true, isEditable: async () => true, isEnabled: async () => true,
+        evaluate: async () => true, fill: async () => undefined, dispose: async () => undefined,
+        click: async () => { if (portalSubmitFailure) throw portalSubmitFailure; throw new Error("unexpected synthetic submit"); },
+      }) }),
       close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
   }
   let pages = [makePage()];
@@ -180,6 +187,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     refuseInstall(error: Error, durationMs: number) { installFailure = error; installDurationMs = durationMs; },
     refuseBrowserSetup(error: Error, durationMs: number) { browserSetupFailure = error; browserSetupDurationMs = durationMs; },
     refusePortal(error: Error) { portalFailure = error; },
+    refuseSubmit(error: Error) { portalSubmitFailure = error; },
     landPortal(url: string) { portalLanding = url; },
     blockNativeProbe() { nativeProbeHold = new Promise(resolve => { releaseNativeProbe = resolve; }); return new Promise<void>(resolve => { nativeProbeEntered = resolve; }); },
     releaseNativeProbe() { releaseNativeProbe?.(); },
@@ -447,7 +455,7 @@ describe("draft Duo provider", () => {
     } finally { await w.cleanup(); }
   });
 
-  for (const url of ["https://duo.ucsd.edu/", "https://test.duosecurity.com/"]) it(`opens a direct Duo landing at ${url} without acquiring or submitting credentials`, async () => {
+  for (const url of ["https://duosecurity.com/", "https://test.duosecurity.com/"]) it(`opens a direct Duo landing at ${url} without acquiring or submitting credentials`, async () => {
     const w = world();
     let acquisitions = 0;
     w.owner.acquireCredentials = async () => { acquisitions++; throw new Error("must not acquire credentials on a Duo landing"); };
@@ -538,6 +546,25 @@ describe("draft Duo provider", () => {
       } finally { await w.cleanup(); }
     });
   }
+
+  for (const phase of ["navigation", "submit"] as const) it(`gives a ${phase} timeout its closed code and preserves the original cause`, async () => {
+    const w = world();
+    const original = new Error("synthetic secret person@example.edu");
+    original.name = "TimeoutError";
+    const code = phase === "navigation" ? "UCSD_DUO_NAVIGATION_TIMEOUT" : "UCSD_SSO_SUBMIT_TIMEOUT";
+    let acquisitions = 0;
+    w.owner.acquireCredentials = async () => { acquisitions++; return { userId: "synthetic-user", password: "synthetic-password" }; };
+    if (phase === "navigation") w.refusePortal(original);
+    else { w.landPortal("https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO"); w.refuseSubmit(original); }
+    try {
+      await assert.rejects(w.provider.openPortal(w.owner), error => error instanceof ProfileOnboardingDuoProviderError
+        && error.cause instanceof Error && error.cause.message === code && error.cause.cause === original);
+      assert.equal(acquisitions, phase === "navigation" ? 0 : 1);
+      const event = w.events.find(event => event.operation === "portal-open");
+      assert.equal(event?.code, code);
+      assert.doesNotMatch(JSON.stringify(w.events), /synthetic secret|person@example|synthetic-password|stack|message/);
+    } finally { await w.cleanup(); }
+  });
 
   it("bounded failed arm closure stays uncertain and cannot permit a replacement attempt", async () => {
     const w = world();

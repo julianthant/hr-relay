@@ -113,6 +113,7 @@ export type ProfileOnboardingDuoFailure = z.infer<typeof ProfileOnboardingDuoFai
 export const DuoDiagnosticExceptionTypeSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/u);
 export const DuoPortalDiagnosticCodeSchema = z.enum([
   "UCSD_SSO_SCOPE", "UCSD_SSO_FIELDS", "UCSD_SSO_REDIRECT_TIMEOUT", "UCSD_SSO_FORM_TIMEOUT", "ONBOARDING_DUO_FOCUS_FAILED",
+  "UCSD_DUO_NAVIGATION_TIMEOUT", "UCSD_SSO_SUBMIT_TIMEOUT",
 ]);
 export const DuoDiagnosticCodeSchema = z.enum([
   ...DuoPortalDiagnosticCodeSchema.options,

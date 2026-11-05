@@ -360,11 +360,17 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       try {
         const page = session.portal ?? await context.newPage();
         session.portal = page; browserCurrent(session);
-        await page.goto("https://duo.ucsd.edu", { waitUntil: "domcontentloaded", timeout: options.closeProofMs });
+        await page.goto("https://duo.ucsd.edu", { waitUntil: "domcontentloaded", timeout: options.closeProofMs }).catch((cause: unknown) => {
+          if (cause instanceof Error && cause.name === "TimeoutError") throw new Error("UCSD_DUO_NAVIGATION_TIMEOUT", { cause });
+          throw cause;
+        });
         browserCurrent(session);
         const landing = await waitForUcsdDuoSignIn(page, () => browserCurrent(session), options.closeProofMs);
         browserCurrent(session);
-        if (landing === "sso-form") await submitPinnedUcsdSsoCredentials(page, () => session.owner.acquireCredentials(), () => browserCurrent(session), options.closeProofMs, "/tritON/profile/SAML2/Redirect/SSO");
+        if (landing === "sso-form") await submitPinnedUcsdSsoCredentials(page, () => session.owner.acquireCredentials(), () => browserCurrent(session), options.closeProofMs, "/tritON/profile/SAML2/Redirect/SSO").catch((cause: unknown) => {
+          if (cause instanceof Error && cause.name === "TimeoutError") throw new Error("UCSD_SSO_SUBMIT_TIMEOUT", { cause });
+          throw cause;
+        });
         browserCurrent(session);
       } catch (error) {
         try { reportDuoEvent(session.owner, failureEvent(error, "portal-open", Math.max(0, options.clock.monotonicMs() - started))); }

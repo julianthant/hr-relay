@@ -764,8 +764,9 @@ approved account surface is wired.
 Show setup browser opens one draft-owned full bundled Chromium window on macOS and Windows on the Relay Fast Duo extension's
 existing setup page. Open duo.ucsd.edu opens a separate tab in that same context, acquires the
 original protected Details only after verifying the exact UCSD SSO document and form controls,
-then submits that pinned POST form once. A direct HTTPS Duo landing opens the tab without acquiring
-credentials; it proves neither sign-in nor enrollment. Successful opening is reused in that context;
+then submits that pinned POST form once. A direct HTTPS `duosecurity.com` landing opens the tab without
+acquiring credentials; the starting `duo.ucsd.edu` URL is not landing evidence. Navigation and pinned
+submission timeouts have distinct closed diagnostic codes. Successful opening is reused in that context;
 a failed portal opening can be retried in the same tab. Login does not prove either enrollment method or MFA completion.
 An active attempt's lost stop acknowledgement retains uncertain custody until that exact attempt's
 startup, reporting, UNKNOWN retention and callbacks settle within its closure deadline. Only the
