@@ -5,8 +5,7 @@ export function preflightRemedy(check: string): PreflightRemedy {
   switch (check) {
     case 'authority.health':
     case 'filesystem.health': return 'storage';
-    case 'secrets.ucpath-sso':
-    case 'secrets.timekeeper': return 'credentials';
+    case 'secrets.ucpath-sso': return 'credentials';
     case 'secrets.sharepoint-roster': return 'routes';
     default: return 'settings';
   }

@@ -1,3 +1,4 @@
+import { protectedSecretSource } from "../../../support/helpers/protected-secret-source.js";
 import { fixtureDuoSigningSource } from "../../../support/helpers/browser/duo-signing.js";
 import assert from "node:assert/strict";
 import { chmodSync,mkdirSync,mkdtempSync,rmSync,writeFileSync } from "node:fs";
@@ -38,7 +39,7 @@ function fixture(capabilities: readonly RuntimeCapability[]) {
   return { root, clock, config, input, observe };
 }
 function protectedRecord(omit?: string) {
-  const values = { ucpathUserId: "SYNTHETIC_PRIVATE_PERSON", ucpathPassword: "SYNTHETIC_PRIVATE_SECRET", timekeeperName: "SYNTHETIC_PRIVATE_PERSON", sharepointOnboardingRosterUrl: "https://example.invalid/SYNTHETIC_PRIVATE_PATH" };
+  const values = { ucpathUserId: "SYNTHETIC_PRIVATE_PERSON", ucpathPassword: "SYNTHETIC_PRIVATE_SECRET", sharepointOnboardingRosterUrl: "https://example.invalid/SYNTHETIC_PRIVATE_PATH" };
   return ProtectedStoreRecordSchema.parse({ ...initialProtectedStoreRecord(), revision: 2,
     entries: Object.fromEntries(Object.entries(values).filter(([name]) => name !== omit).map(([name,value],index) => [name, {value, valueId: `${String(index+1).repeat(8)}-1111-4111-8111-111111111111`, updatedAt: "2026-09-19T12:00:00.000Z"}])),
     lastApplied: { commandId: "77777777-7777-4777-8777-777777777777", commandFingerprint: "7".repeat(64), expectedRevision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: "88888888-8888-4888-8888-888888888888" },
@@ -46,6 +47,21 @@ function protectedRecord(omit?: string) {
 }
 
 describe("registered workflow detectors", () => {
+  it("checks admitted profile identity without a stored timekeeper setting or exposing its name", async () => {
+    const f = fixture(["workflow.kuali-fill"]);
+    const source = protectedSecretSource({ profileName: "Synthetic Middle Operator" });
+    f.input.protectedSecrets.read = source.read;
+    const healthy = await f.observe("profile.identity", true);
+    assert.equal(healthy.state, "healthy");
+    assert.doesNotMatch(healthy.summary, /Synthetic|Middle|Operator|SMO/u);
+    f.input.protectedSecrets.read = initialProtectedStoreRecord;
+    assert.equal((await f.observe("profile.identity", true)).state, "unhealthy");
+    f.input.protectedSecrets.read = () => { throw new Error("private-profile-fixture-detail"); };
+    const unknown = await f.observe("profile.identity", true);
+    assert.equal(unknown.state, "unhealthy");
+    assert.doesNotMatch(unknown.summary, /private-profile-fixture-detail/u);
+  });
+
   for (const dependency of RUNTIME_DEPENDENCIES.filter(candidate => candidate.secretNames !== undefined)) {
     for (const name of dependency.secretNames ?? []) it(`detects and rechecks ${name} without exposing source data`, async () => {
       const f = fixture(dependency.capabilities);

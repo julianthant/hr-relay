@@ -17,16 +17,16 @@ for (const tamper of ["ciphertext", "nonce", "tag", "installationId", "profileId
       const first = store.read();
       const request = ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), commandFingerprint: "d".repeat(64), expectedRevision: first.revision,
         protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), updatedAt: "2026-10-21T12:00:00.000Z",
-        entries: { timekeeperName: { set: "Synthetic Keeper" }, sharepointOnboardingRosterUrl: { set: "https://synthetic.example.edu/roster" } } });
+        entries: { ucpathUserId: { set: "Synthetic Keeper" }, sharepointOnboardingRosterUrl: { set: "https://synthetic.example.edu/roster" } } });
       assert.equal(store.apply(request).state, "applied");
       const partial = ProtectedSettingsApplyInputSchema.parse({ ...request, commandId: randomUUID(), writeId: randomUUID(), expectedRevision: first.revision + 1,
-        entries: { timekeeperName: { set: "Synthetic Replacement" } } });
+        entries: { ucpathUserId: { set: "Synthetic Replacement" } } });
       assert.equal(store.apply(partial).state, "applied");
       assert.equal(store.read().entries.sharepointOnboardingRosterUrl?.value, "https://synthetic.example.edu/roster");
       assert.equal(store.verifyReplay(partial).state, "applied");
-      assert.equal(store.verifyReplay({ ...partial, entries: { timekeeperName: { set: "Synthetic Divergence" } } }).state, "rejected");
+      assert.equal(store.verifyReplay({ ...partial, entries: { ucpathUserId: { set: "Synthetic Divergence" } } }).state, "rejected");
       const frame = createCanonicalCredentials(f.admission).readRecord("protected"); assert.ok(frame);
-      assert.equal(authenticateDocument(frame.value).schemaVersion, 4);
+      assert.equal(authenticateDocument(frame.value).schemaVersion, 5);
       const before = readFileSync(path), envelope = z.record(z.string(), z.unknown()).parse(JSON.parse(before.toString("utf8")));
       assert.equal(envelope.schemaVersion, 1);
       for (const value of ["Synthetic Replacement", "https://synthetic.example.edu/roster", "disposable-fixture-password"]) assert.equal(before.includes(Buffer.from(value)), false);
@@ -42,7 +42,7 @@ for (const tamper of ["ciphertext", "nonce", "tag", "installationId", "profileId
       assert.throws(() => store.apply(ProtectedSettingsApplyInputSchema.parse({ ...partial, commandId: randomUUID(), writeId: randomUUID(), expectedRevision: first.revision + 2 })), { code: "CREDENTIAL_UNAVAILABLE" });
       assert.deepEqual(readFileSync(path), altered);
       writeFileSync(path, before, { mode: 0o600 });
-      assert.equal(store.read().entries.timekeeperName?.value, "Synthetic Replacement");
+      assert.equal(store.read().entries.ucpathUserId?.value, "Synthetic Replacement");
     } finally { await f.close(); }
   });
 

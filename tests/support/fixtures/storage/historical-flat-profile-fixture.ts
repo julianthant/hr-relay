@@ -10,7 +10,7 @@ import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admi
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
+import { STOPPED_PROTECTED_SETTINGS_SCHEMA_HASH as PROTECTED_SETTINGS_SCHEMA_HASH, StoppedProtectedSettingsApplyInputSchema as ProtectedSettingsApplyInputSchema, StoppedProtectedStoreRecordSchema as ProtectedStoreRecordSchema } from "../../../../src/backend/storage/configuration/protected-settings-upgrade.js";
 import { WorkerSlotRecordSchema } from "../../../../src/models/run/worker-slot.js";
 import { WorkerPoolRecordSchema } from "../../../../src/models/run/worker-pool.js";
 import { WorkerLeaseRecordSchema } from "../../../../src/models/run/worker.js";

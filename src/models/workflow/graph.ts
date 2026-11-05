@@ -1,3 +1,6 @@
+import type { EvidenceSchemaReader } from "../storage/evidence-schema-admission.js";
+import { checkpointRecordKey, type RunCheckpointRecord } from "./checkpoint.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import type { DryRunBinding, DryRunScope } from "./dry-run.js";
 import type { ProtectedInputBinding } from "../write-safety/protected-input.js";
 /** Bundle-safe workflow graph vocabulary: the node shapes a descriptor is made of, operational type surfaces rather than durable-data boundaries. */
@@ -109,10 +112,15 @@ export function projectTransactionOutcome<C extends AnyCommitTaskContract>(
   commit: C,
   storedValue: unknown,
   context: string,
+  retained?: Readonly<{ checkpoint: RunCheckpointRecord; schemaReader?: EvidenceSchemaReader }>,
 ): TypedTransactionOutcome<C> {
   const outcome = TransactionOutcomeSchema.parse(storedValue);
+  if (retained !== undefined && canonicalJsonStringify(retained.checkpoint.output.value) !== canonicalJsonStringify(storedValue))
+    throw new Error("transaction-projection-source-changed");
   const outputSchemaHash = deriveSchemaHash(commit.output, "output");
-  if (outcome.output.schemaHash !== outputSchemaHash) {
+  const outputHash = retained?.schemaReader?.({ kind: "checkpoint-output", id: checkpointRecordKey(retained.checkpoint) },
+    retained.checkpoint, outcome.output.schemaHash, outputSchemaHash) ?? outcome.output.schemaHash;
+  if (outputHash !== outputSchemaHash) {
     throw new Error(
       `${context}: stored transaction outcome binds commit output schema ${outcome.output.schemaHash}, `
       + `and ${commit.id} now declares ${outputSchemaHash}`,
@@ -120,7 +128,9 @@ export function projectTransactionOutcome<C extends AnyCommitTaskContract>(
   }
   const proofSchema = commit.writeSafety.completion.proofSchema;
   const proofSchemaHash = deriveSchemaHash(proofSchema, "output");
-  if (outcome.proof.schemaHash !== proofSchemaHash) {
+  const proofHash = retained?.schemaReader?.({ kind: "checkpoint-proof", id: checkpointRecordKey(retained.checkpoint) },
+    retained.checkpoint, outcome.proof.schemaHash, proofSchemaHash) ?? outcome.proof.schemaHash;
+  if (proofHash !== proofSchemaHash) {
     throw new Error(
       `${context}: stored transaction outcome binds completion proof schema ${outcome.proof.schemaHash}, `
       + `and ${commit.id} now declares ${proofSchemaHash}`,

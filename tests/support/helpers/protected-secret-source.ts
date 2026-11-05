@@ -1,3 +1,4 @@
+import { profileInitials } from "../../../src/models/profiles/profile-identity.js";
 import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
   ProtectedStoreRecordSchema,
@@ -12,16 +13,17 @@ const TEST_FINGERPRINT = "0".repeat(64);
 
 /** Synthetic private-store source. Values are test-only and never cross a production wire. */
 export function protectedSecretSource(
-  values: Partial<Record<ProtectedSettingsName, unknown>> = {},
+  values: Partial<Record<ProtectedSettingsName, unknown>> & { readonly profileName?: string } = {},
 ): ProtectedSecretSource {
-  const entries = Object.fromEntries(Object.entries(values).map(([name, value], index) => [name, {
+  const { profileName, ...credentials } = values;
+  const entries = Object.fromEntries(Object.entries(credentials).map(([name, value], index) => [name, {
     valueId: `00000000-0000-4000-8000-${String(index + 10).padStart(12, "0")}`,
     value,
     updatedAt: TEST_INSTANT,
   }]));
   const hasEntries = Object.keys(entries).length > 0;
   const record = ProtectedStoreRecordSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: 2,
     revision: hasEntries ? 2 : 1,
     protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
     entries,
@@ -35,5 +37,8 @@ export function protectedSecretSource(
       },
     } : {}),
   });
-  return { read: () => record };
+  return { read: () => ({ ...record, ...(profileName === undefined ? {} : { profileIdentity: {
+    profileId: "00000000-0000-4000-8000-000000000003", sessionEpoch: 1,
+    displayName: profileName, initials: profileInitials(profileName),
+  } }) }) };
 }

@@ -6,10 +6,13 @@ import { deriveProfileNames, LogoutOperationSchema, ProfileAuthoritySnapshotSche
 describe("profile names", () => {
   it("derives a timekeeper name and refuses padding", () => {
     assert.deepEqual(deriveProfileNames("Alex", "Rivera"), {
-      firstName: "Alex", lastName: "Rivera", initials: "AR", timekeeperName: "AR",
+      firstName: "Alex", lastName: "Rivera", initials: "AR", timekeeperName: "Alex Rivera",
     });
     assert.deepEqual(deriveProfileNames("alex", "rivera"), {
-      firstName: "alex", lastName: "rivera", initials: "AR", timekeeperName: "AR",
+      firstName: "alex", lastName: "rivera", initials: "AR", timekeeperName: "alex rivera",
+    });
+    assert.deepEqual(deriveProfileNames("Alex Middle", "Rivera"), {
+      firstName: "Alex Middle", lastName: "Rivera", initials: "AMR", timekeeperName: "Alex Middle Rivera",
     });
     assert.throws(() => deriveProfileNames(" Alex", "Rivera"));
   });

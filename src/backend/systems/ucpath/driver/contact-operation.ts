@@ -161,7 +161,7 @@ export async function stageContactPlanWithPort(port: UcpathContactPagePort, inpu
 /** Separate from preparation: Save and a new persisted read are one commit surface. */
 export interface UcpathContactSavePort {
   save(): Promise<void>;
-  readPersisted(): Promise<UcpathContactSet>;
+  readPersisted(subject: Pick<UcpathEmergencyContactInput, "emplId" | "expectedName">): Promise<UcpathContactSet>;
 }
 
 export function createContactOperations(
@@ -194,7 +194,7 @@ export function createContactOperations(
       if (!preparedContactPlanMatches(retained.plan, staged)) refuse("staged-effect-mismatch");
       await savePort.save();
       recordBrowserAction("clicked", "ucpath.emergency-contact.save");
-      const persisted = UcpathContactSetSchema.parse(await savePort.readPersisted());
+      const persisted = UcpathContactSetSchema.parse(await savePort.readPersisted(retained.input));
       if (!contactPlanPresent(retained.plan, persisted)
         || Date.parse(persisted.observedAt) <= Date.parse(staged.observedAt)
         || Date.parse(persisted.observedAt) <= Date.parse(retained.plan.before.observedAt)) throw new UcpathContactSaveError("saved-effect-mismatch");

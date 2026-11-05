@@ -1,3 +1,4 @@
+import { readProtectedCredentials } from "../../../models/config/secrets.js";
 import { fileStatus, privateFileNumber } from "../../storage/file-identity.js";
 import type { ExclusiveSessionLease } from "../../../models/sessions/exclusive-session-lease.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -56,7 +57,6 @@ import type { BrowserSystemBinding, BrowserSystemBindings } from "./system-bindi
 import { attachBrowserDiagnostics } from "./browser-diagnostics.js";
 import type { DebugEvent } from "../../../models/events/timeline.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { ProtectedStoreRecordSchema } from "../../../models/config/protected-settings.js";
 import { captureFullPage, FullPageCaptureRefusedError, FullPageCaptureRestoreError } from "./full-page-capture.js";
 
 export const BrowserProfileAdmissionSchema = z.strictObject({
@@ -662,7 +662,7 @@ export class DuoProvisioningError extends Error {
 }
 
 export function browserSignInFingerprint(config: Config, secrets: ProtectedSecretSource, system: BrowserSystemId, instance: RuntimeInstance, duo?: DuoSigningSource): Fingerprint {
-  const { entries } = ProtectedStoreRecordSchema.parse(secrets.read());
+  const { entries } = readProtectedCredentials(secrets);
   const urls = system === "new-kronos" ? config.urls.newKronos : system === "old-kronos" ? config.urls.oldKronos : config.urls[system];
   return FingerprintSchema.parse(sha256Hex(canonicalJsonStringify({ system, instance, urls,
     credentialIds: { userId: entries.ucpathUserId?.valueId ?? null, password: entries.ucpathPassword?.valueId ?? null },

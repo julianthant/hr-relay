@@ -16,6 +16,7 @@ export const DASHBOARD_SCENARIO_FILE_PATTERN =
 const INTEGRATION_SCENARIO_FILES = [
   "tests/backend/processing/providers/ocr-approved-snapshot-adapter.integration.test.ts",
   "tests/workflows/emergency-contact-member/workflow.integration.test.ts",
+  "tests/workflows/emergency-contact-member/workflow.save.integration.test.ts",
   "tests/workflows/i9-check-start/workflow.integration.test.ts",
   "tests/backend/processing/providers/workbook-library-adapter.test.ts",
   "tests/backend/processing/providers/ocr-review-adapter.integration.test.ts",
@@ -60,7 +61,7 @@ export const DECLARED_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSchem
   { scenarioId: "emergency-contact/conflict-refused", file: "tests/workflows/emergency-contact-member/workflow.integration.test.ts" },
   { scenarioId: "emergency-contact/dry-run", file: "tests/workflows/emergency-contact-member/workflow.integration.test.ts" },
   { scenarioId: "emergency-contact/unknown", file: "tests/workflows/emergency-contact-member/workflow.integration.test.ts" },
-  { scenarioId: "emergency-contact/real-save-unavailable", file: "tests/workflows/emergency-contact-member/workflow.integration.test.ts" },
+  { scenarioId: "emergency-contact/verified-save", file: "tests/workflows/emergency-contact-member/workflow.save.integration.test.ts" },
   { scenarioId: "i9-check-start/pdfs", file: "tests/workflows/i9-check-start/workflow.integration.test.ts" },
   { scenarioId: "workbooks/read-reference", file: "tests/backend/processing/providers/workbook-library-adapter.test.ts" },
   { scenarioId: "ocr/approved-records", file: "tests/backend/processing/providers/ocr-review-adapter.integration.test.ts" },

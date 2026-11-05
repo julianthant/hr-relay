@@ -15,7 +15,7 @@ import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-f
 function request(expectedRevision: number) {
   return ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(), commandFingerprint: "a".repeat(64),
     expectedRevision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-11-01T12:00:00.000Z",
-    entries: { timekeeperName: { set: "contention-proof" } } });
+    entries: { ucpathUserId: { set: "contention-proof" } } });
 }
 
 async function fixture(kind: "protected" | "counter") {

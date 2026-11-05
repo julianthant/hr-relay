@@ -100,7 +100,8 @@ function corpusViolations(files: readonly ScenarioCorpusFile[]): string {
 describe("scenario coverage", () => {
   it("claims the seven registered OCR/contact scenarios from their actual integration source titles", () => {
     const files = ["tests/backend/processing/providers/ocr-approved-snapshot-adapter.integration.test.ts",
-      "tests/workflows/emergency-contact-member/workflow.integration.test.ts"];
+      "tests/workflows/emergency-contact-member/workflow.integration.test.ts",
+      "tests/workflows/emergency-contact-member/workflow.save.integration.test.ts"];
     const actual = files.flatMap(file => {
       const source = ts.createSourceFile(file, readFileSync(new URL(`../../../${file}`, import.meta.url), "utf8"), ts.ScriptTarget.Latest, true);
       const claims: { file: string; scenarioId: string }[] = [];

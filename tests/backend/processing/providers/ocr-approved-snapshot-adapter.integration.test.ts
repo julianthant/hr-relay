@@ -32,7 +32,7 @@ import { ocrProofReadDatabase } from "../../../support/helpers/backend/ocr-proof
 import { createDeterministicUcpathContactPage } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { UcpathContactPageSnapshotSchema, type UcpathContactPageSnapshot } from "../../../../src/models/ui/ucpath-emergency-contact.js";
-import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, readRunPreviewResult } from "../../../../src/models/run/result.js";
+import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, RunTerminalEvidenceResultSchema, readRunPreviewResult } from "../../../../src/models/run/result.js";
 import { healthyCrmDriver, sessionFactoryHarness } from "../../../support/helpers/phase1f-executor-harness.js";
 import contactPage from "../../../support/fixtures/ui/ucpath/emergency-contact.fixture.json";
 
@@ -164,8 +164,10 @@ it("authenticates record reads under an admitted member's actual claim and node,
   assert.deepEqual(f.database.authority.ocrReviews.snapshot(input.approval.snapshotId), snapshot);
   assert.equal(f.harness.sessions.opens(), 0);
 });
-it("accounts for an actual unavailable real member as failed without inventing a saved child output", async () => {
-  const f = await world.fixture({ coordinator: true, record: true }); release(f, [0]);
+it("accounts for an actual foreign-person refusal as failed without inventing a saved child output", async () => {
+  const port = createDeterministicUcpathContactPage({ initial: UcpathContactPageSnapshotSchema.parse(contactPage.page) });
+  const sessions = sessionFactoryHarness({ ucpath: () => createDeterministicUcpathPersonOrgDriver(undefined, undefined, port) });
+  const f = await world.fixture({ coordinator: true, record: true, sessions }); release(f, [0]);
   let result = await f.canonical.execute(f.parentRun, new AbortController().signal);
   assert.equal(result.outcomes.at(-1)?.state, "failed");
   result = await f.canonical.execute(f.parentRun, new AbortController().signal);
@@ -174,8 +176,13 @@ it("accounts for an actual unavailable real member as failed without inventing a
   const output = EmergencyContactResultSchema.parse(stored.result.value);
   assert.equal(output.members.length, 1); assert.equal(output.members[0]?.state, "failed");
   const [member] = f.database.authority.runs.listChildren(f.parentRun.envelope.runId).filter(run => run.envelope.workflow === "emergency-contact-member"); assert.ok(member);
-  assert.equal(f.database.authority.failures.listByRun(member.envelope.runId)[0]?.code, "CONTACT_SAVE_UNAVAILABLE");
-  assert.equal(f.harness.sessions.opens(), 0);
+  assert.equal(f.database.authority.failures.listByRun(member.envelope.runId)[0]?.code, "CONTACT_SUBJECT_MISMATCH");
+  assert.ok(f.harness.sessions.opens() > 0);
+  assert.ok(port.actions.every(action => !/^(fill|demote|add)/u.test(action)));
+  const failed = f.database.authority.runResults.get(member.envelope.runId); assert.ok(failed);
+  assert.equal(RunTerminalEvidenceResultSchema.parse(failed.result.value).kind, "failed-evidence");
+  assert.equal(EmergencyContactMemberResultSchema.safeParse(failed.result.value).success, false);
+  assert.deepEqual(f.database.authority.writeIntents.listByRun(member.envelope.runId), []);
 });
 
 it("previews a nonempty parent through ordinary OCR, selected child preparations and authenticated aggregation with zero writes", async () => {

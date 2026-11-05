@@ -57,7 +57,7 @@ import { IdleRefreshCadenceSchema, LoginResultSchema, RetryPolicySchema, Session
 import { FreshnessPolicySchema, ProvenancePolicySchema, SubjectBindingSpecSchema, TaskEffectSchema } from "../../../src/models/task/task-contract.js";
 import { UiVerificationEvidenceManifestSchema, UiVerificationScenarioSchema } from "../../../src/models/ui/contracts.js";
 import { CRM_ONBOARDING_DISPLAYED_EID, CrmOnboardingDatesReadSchema, CrmOnboardingRecordReadSchema, CrmSubjectBindingSchema } from "../../../src/models/ui/crm-onboarding.js";
-import { ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE, ActivityPersonPseudonymSecretReferenceSchema, SECRET_SPECS, ProtectedSecretSourceSchema, SecretAvailabilitySchema, SecretSpecSchema } from "../../../src/models/config/secrets.js";
+import { SECRET_SPECS, ProtectedSecretSourceSchema, SecretAvailabilitySchema, SecretSpecSchema } from "../../../src/models/config/secrets.js";
 import { ActivityPersonPseudonymEvidenceSchema, ActivityPersonPseudonymGenerationBindingSchema } from "../../../src/models/trust/activity-person-pseudonym.js";
 import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
 import { ActionEvidenceSchema, DecisionEvidenceSchema, EvidenceFactSchema, ReuseEvidenceSchema, RunEvidenceReceiptSchema, UncertaintyEvidenceSchema, VerificationEvidenceSchema } from "../../../src/models/trust/evidence.js";
@@ -585,9 +585,7 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
 
 
 
-  { name: "ActivityPersonPseudonymSecretReference", schema: ActivityPersonPseudonymSecretReferenceSchema, fixtures: [
-    ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE,
-  ] },
+
 
   { name: "ImmutableInsertDisposition", schema: ImmutableInsertDispositionSchema, fixtures: ["inserted", "existing"] },
 

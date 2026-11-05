@@ -1,3 +1,4 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
 import { notificationMatchesCollection,type NotificationCollectionOperation,type NotificationRecord } from "../../../models/notifications/notifications.js";
 import { OcrApprovedSnapshotSchema,ocrSnapshotDigest } from "../../../models/ocr/review.js";
@@ -158,6 +159,7 @@ const DEFERRED_ARM_KEYS: ReadonlySet<string> = new Set(
 /* ── injected seams ──────────────────────────────────────────────────────── */
 
 export interface CommandAuthority {
+  readonly evidenceSchemaHash?: EvidenceSchemaReader;
   withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
 }
 
@@ -629,7 +631,7 @@ function executeRecover(
   let record: RunRecord;
   let children: readonly RunRecord[];
   try {
-    planRunRecovery(repositories, descriptor, current, request.commandId);
+    planRunRecovery(repositories, descriptor, current, request.commandId, dependencies.authority.evidenceSchemaHash?.bind(dependencies.authority));
     record = lifecycleRun(request, dependencies.lifecycle.recover({
       commandId: lifecycleCommandId("operator-recover-run", request.commandId),
       runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,

@@ -28,6 +28,13 @@ describe("Settings field search", () => {
     assert.equal(new Set(index.map(result => result.id)).size, index.length);
   });
 
+  it("finds read-only profile facts without retaining the retired pseudonym field", () => {
+    assert.deepEqual(searchSettings(index, "Timekeeper name").map(result => [result.entry.id, result.target]), [["credentials", "profile.displayName"]]);
+    assert.deepEqual(searchSettings(index, "Timekeeper initials").map(result => [result.entry.id, result.target]), [["credentials", "profile.initials"]]);
+    assert.deepEqual(searchSettings(index, "pseudonym"), []);
+    assert.equal(index.some(result => result.target === "protected.timekeeperName"), false);
+  });
+
   it("searches descriptions, normalizes whitespace/case, and ranks exact names first", () => {
     assert.equal(searchSettings(index, "  DARK  THEME ")[0]?.target, "appearance.theme");
     assert.deepEqual(searchSettings(index, "capture diagnostic"), []);

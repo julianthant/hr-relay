@@ -5,7 +5,7 @@ import { requireAnnualDates } from "../../../models/config/fiscal-year.js";
 import { CONFIG_ROUTE_SCHEMAS } from "../../../models/config/schema.js";
 import { PreflightObservationSchema, requiredPreflightChecks, type PreflightRunner } from "../../../models/preflight/preflight.js";
 import { PREFLIGHT_CHECKS, RUNTIME_DEPENDENCIES, SYSTEM_RUNTIME_SPECS } from "../../../models/runtime/runtime-dependencies.js";
-import { inspectSecret } from "../../../models/config/secrets.js";
+import { inspectSecret, readProfileIdentity } from "../../../models/config/secrets.js";
 import type { RuntimePreflightRunnerInput } from "./runtime-runners.js";
 
 function result(check: PreflightRunner["check"], ready: boolean, summary: string) {
@@ -51,6 +51,14 @@ export function createWorkflowPreflightRunners(input: RuntimePreflightRunnerInpu
         return result(check, true, `${year} annual dates are configured and current.`);
       } catch {
         return result(check, false, `${year} annual dates are missing, invalid or stale.`);
+      }
+    };
+    if (check === "profile.identity") inspect = () => {
+      try {
+        readProfileIdentity(input.protectedSecrets);
+        return result(check, true, "Signed-in profile timekeeper identity is available.");
+      } catch {
+        return result(check, false, "Signed-in profile timekeeper identity is unavailable.");
       }
     };
     if (check.startsWith("secrets.")) inspect = () => {

@@ -12,6 +12,7 @@ export function replaceOcrAuditRead(repositories: AuthorityRepositories, command
 }
 export function ocrProofReadDatabase(database: AuthorityDatabase, repositories: AuthorityRepositories): AuthorityDatabase {
   return new Proxy(database, { get(target, key) {
+    if (key === "evidenceSchemaHash") return target.evidenceSchemaHash.bind(target);
     if (key === "authority") return repositories;
     if (key === "withAuthorityReadSnapshot") return target.withAuthorityReadSnapshot.bind(target);
     if (key === "withAuthorityTransaction") return target.withAuthorityTransaction.bind(target);

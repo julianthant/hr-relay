@@ -111,7 +111,7 @@ async function mount(
   } as unknown as DashboardClient;
   const element = createElement(DashboardClientProvider, {
     client,
-    children: createElement(SettingsPage, { onClose: () => undefined,
+    children: createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: () => undefined,
       storage: HEALTHY_STORAGE,
       sections,
       workflowLabels: LABELS,

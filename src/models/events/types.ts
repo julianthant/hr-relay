@@ -381,6 +381,7 @@ const ActionValueProducerWireSchema = z.discriminatedUnion("kind", [
 ]);
 
 const ProtectedActionBindingWireSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("profile"), inputPath: z.literal("timekeeperName"), name: z.literal("timekeeperName"), profileId: UuidSchema, sessionEpoch: z.number().int().safe().positive() }),
   z.strictObject({ kind: z.literal("protected-store"), inputPath: z.literal("timekeeperName"), name: z.literal("timekeeperName"), valueId: UuidSchema }),
   z.strictObject({ kind: z.literal("test-data-local"), inputPath: z.enum(["documentNumber", "emplId"]),
     name: z.enum(["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]), sourceId: UuidSchema }),

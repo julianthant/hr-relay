@@ -1,3 +1,4 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 
 import { z } from "zod";
 import {
@@ -64,6 +65,7 @@ export type ReceiptDerivationBinding =
   }>;
 
 export interface ReceiptDerivationBindingInput {
+  readonly schemaReader?: EvidenceSchemaReader;
   readonly descriptor: AnyWorkflowDescriptor;
   readonly run: RunRecord;
   /** The immutable success result or truthful final evidence owner. */
@@ -138,7 +140,8 @@ export function evaluateReceiptDerivationBinding(
     ));
 
   const currentInputHash = deriveSchemaHash(descriptor.canonicalInput, "output");
-  checks.push(currentInputHash === run.input.parsed.schemaHash
+  const admittedInputHash = input.schemaReader?.({ kind: "run-input", id: run.envelope.runId }, run.input, run.input.parsed.schemaHash, currentInputHash) ?? run.input.parsed.schemaHash;
+  checks.push(currentInputHash === admittedInputHash
     ? held("canonical-input", `both bind canonical schema ${short(currentInputHash)}`)
     : moved(
       "canonical-input",
@@ -160,8 +163,8 @@ export function evaluateReceiptDerivationBinding(
     if (delegationIds.has(evidence.nodeId) || node?.kind !== "child-run"
       || evidence.parentRunId !== run.envelope.runId || evidence.manifest.parentRunId !== run.envelope.runId
       || evidence.edgeId !== node.edgeId || evidence.manifest.edgeId !== node.edgeId
-      || evidence.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")
-      || evidence.manifest.resultSchemaHash !== deriveSchemaHash(node.target.result, "output")
+      || (input.schemaReader?.({ kind: "delegation-input", id: evidence.manifest.manifestId }, evidence.manifest, evidence.manifest.inputSchemaHash, deriveSchemaHash(node.target.input, "input")) ?? evidence.manifest.inputSchemaHash) !== deriveSchemaHash(node.target.input, "input")
+      || (input.schemaReader?.({ kind: "delegation-result", id: evidence.manifest.manifestId }, evidence.manifest, evidence.manifest.resultSchemaHash, deriveSchemaHash(node.target.result, "output")) ?? evidence.manifest.resultSchemaHash) !== deriveSchemaHash(node.target.result, "output")
       || evidence.manifest.cardinality !== node.cardinality || evidence.manifest.join !== node.join
       || evidence.children.some(child => child.run.envelope.workflow !== node.target.id)
       || canonicalJsonStringify(evidence.manifest.policy) !== canonicalJsonStringify(node.policy)

@@ -1,3 +1,6 @@
+import { stoppedProfileOwnsCredentialCommand } from "../configuration/protected-settings-upgrade.js";
+import { collectEvidenceSchemaAdmissions } from "./evidence-schema-upgrade.js";
+import { evidenceSchemaSourceDigest, type EvidenceSchemaOwner } from "../../../models/storage/evidence-schema-admission.js";
 import { artifactReferencesIn, containsDeletionArtifactReference } from "./artifact-references.js";
 import { fileStatus } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
@@ -15,7 +18,7 @@ import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ArtifactRefSchema,type ArtifactRef } from "../../../models/artifacts/artifacts.js";
 import { AppSettingsSchema } from "../../../models/config/app-settings.js";
-import { AUTHORITY_TABLE_REGISTRY,AuthorityTableNameSchema,AuthorityUpgradeRecordSchema,ProjectionTableNameSchema,type AuthorityTableName,type RunRecordRefusal,type TableName } from "../../../models/config/authority.js";
+import { AUTHORITY_TABLE_REGISTRY,AuthorityTableNameSchema,AuthorityEvidenceSchemaUpgradeRecordSchema,AuthorityUpgradeRecordSchema,ProjectionTableNameSchema,type AuthorityTableName,type RunRecordRefusal,type TableName } from "../../../models/config/authority.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { type ActiveRuntimeConfigRecord,type RuntimeConfigClaimToken } from "../../../models/config/runtime-generation.js";
 import { type SettingsCurrentRecord } from "../../../models/config/settings-current.js";
@@ -64,7 +67,7 @@ import { RuntimeLifetimeLock,offlineMaintenanceWorkspace,type OfflineMaintenance
 import { assertOfflineMaintenanceForProcessRoot } from "../admission/process-root.js";
 import { inspectArtifactDeletionFile,pendingDiagnosticArtifacts,reclaimDiagnosticStages,removeArtifactDeletionFile } from "../artifacts/content-addressed-artifact-writer.js";
 import { fileIdentityObservation,sameDirectory,type DirectoryIdentity, clearOperationProofSlots,outermostOperationProof,readPrivateFile,revalidateOperationProof,withOperationProof } from "../configuration/credential-safe-file.js";
-import { assertCredentialStoreOwner,stoppedProfileOwnsCredentialCommand } from "../configuration/credential-store.js";
+import { assertCredentialStoreOwner } from "../configuration/credential-store.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import { profileAuthorityFileWitnesses } from "../maintenance/existing-data-backup-files.js";
 import { fixedLayoutOutputPaths,fixedLayoutSettingsUpdate,fixedLayoutSnapshot,readFixedLayoutIntent,type FixedLayoutActivation } from "../maintenance/fixed-layout.js";
@@ -2552,6 +2555,97 @@ export class AuthorityDatabase implements Disposable {
       if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId
         || record.planDigest !== deriveAuthorityUpgradePlanDigest(record.fromSchemaVersion, record.upgradeId)) throw new Error("profile-startup-logout-backup-changed");
       return convertedLogoutOperation(operation, record.upgradeId, inspection.authorityContentFingerprint);
+    });
+  }
+
+  static inspectEvidenceSchemaUpgrade(admission: RuntimeAdmission, descriptors: readonly AnyWorkflowDescriptor[]) {
+    admission.assertStoppedProtectedSettingsUpgrade();
+    return withAuthorityDatabaseReadOnly(admission, join(admission.stateRoot, "state.db"), database => {
+      const inspection = inspectNativeAuthority(database);
+      const admissions = collectEvidenceSchemaAdmissions({ descriptors,
+        runs: database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow),
+        writes: database.prepare("SELECT * FROM write_intents ORDER BY id").all().map(row => WriteIntentRecordSchema.parse(nativeOrdinaryRecordFromRow("write_intents", row))),
+        results: database.prepare("SELECT * FROM run_results ORDER BY run_id").all().map(row => RunResultRecordSchema.parse(nativeOrdinaryRecordFromRow("run_results", row))),
+        gates: database.prepare("SELECT * FROM gate_results ORDER BY run_id,node_id").all().map(row => GateResultRecordSchema.parse(nativeOrdinaryRecordFromRow("gate_results", row))),
+        delegations: database.prepare("SELECT * FROM run_delegations ORDER BY id").all().map(row => DelegationManifestSchema.parse(nativeOrdinaryRecordFromRow("run_delegations", row))),
+        checkpoints: database.prepare("SELECT * FROM run_checkpoints ORDER BY run_id,node_id").all().map(row => RunCheckpointRecordSchema.parse(nativeOrdinaryRecordFromRow("run_checkpoints", row))) });
+      const records = readAuthorityUpgradeRecords(database).filter(record => "evidenceSchemas" in record && record.evidenceSchemas !== undefined);
+      if (records.length > 1) throw new Error("evidence-schema-conversion-duplicate");
+      const record = records[0];
+      if (record !== undefined && "evidenceSchemas" in record) {
+        admission.assertEvidenceSchemaConversion(record);
+        const conversion = record.evidenceSchemas;
+        if (conversion === undefined || record.phase !== "settled" || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+          || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || conversion.installationId !== inspection.installationId
+          || conversion.profileId !== inspection.profileId || record.planDigest !== sha256Hex(`relay:evidence-schema-conversion:v1\0${record.upgradeId}\0${canonicalJsonStringify(conversion)}`)
+          || admissions.some(admission => !conversion.admissions.some(existing => canonicalJsonStringify(existing) === canonicalJsonStringify(admission))))
+          throw new Error("evidence-schema-conversion-source-changed");
+      }
+      return { inspection, admissions, record };
+    });
+  }
+
+  static convertEvidenceSchemas(admission: RuntimeAdmission, descriptors: readonly AnyWorkflowDescriptor[], processLockRoot: string,
+    clock: Clock, expectedFingerprint: string, backup: VerifiedBackup, verifyBackup: (admission: RuntimeAdmission, path: string) => VerifiedBackup): void {
+    admission.assertStoppedProtectedSettingsUpgrade();
+    const path = join(admission.stateRoot, "state.db");
+    requireStoppedUpgradeSource(admission, path, processLockRoot, clock);
+    const plan = AuthorityDatabase.inspectEvidenceSchemaUpgrade(admission, descriptors);
+    if (plan.record !== undefined || plan.admissions.length === 0 || plan.inspection.authorityContentFingerprint !== expectedFingerprint)
+      throw new Error("evidence-schema-conversion-source-changed");
+    const verified = verifyBackup(admission, backup.manifestPath), binding = admission.profileBinding;
+    if (canonicalJsonStringify(verified) !== canonicalJsonStringify(backup) || verified.manifest.installationId !== binding.installationId
+      || verified.manifest.profileId !== binding.profileId || verified.manifest.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+      || verified.manifest.authorityContentFingerprint !== expectedFingerprint || verified.manifest.authorityGeneration !== plan.inspection.authorityGeneration)
+      throw new Error("evidence-schema-conversion-backup-changed");
+    const conversion = { id: "profile-name-domain", ...binding, admissions: plan.admissions };
+    const statement = AuthorityEvidenceSchemaUpgradeRecordSchema.omit({ evidenceSchemaMac: true }).parse({ recordKey: randomUUID(), upgradeId: expectedFingerprint, phase: "settled",
+      fromSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
+      planDigest: sha256Hex(`relay:evidence-schema-conversion:v1\0${expectedFingerprint}\0${canonicalJsonStringify(conversion)}`),
+      evidenceSchemas: conversion, backup: { manifestPath: backup.manifestPath, sha256: backup.manifest.sha256, authorityGeneration: plan.inspection.authorityGeneration },
+      by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: clock.now().toISOString() });
+    const record = AuthorityEvidenceSchemaUpgradeRecordSchema.parse({ ...statement, evidenceSchemaMac: admission.sealStoppedEvidenceSchemaConversion(statement) });
+    const database = new DatabaseSync(existingDatabaseLocation(path), { enableForeignKeyConstraints: true, timeout: 250 });
+    let primary: { error: unknown } | undefined;
+    try {
+      database.exec("BEGIN EXCLUSIVE");
+      try {
+        admission.assertStoppedProtectedSettingsUpgrade();
+        if (inspectNativeAuthority(database).authorityContentFingerprint !== expectedFingerprint) throw new Error("evidence-schema-conversion-source-changed");
+        database.prepare("INSERT INTO database_upgrades(id,upgrade_id,phase,backup_digest,payload_json,created_at) VALUES(?,?,?,?,?,?)")
+          .run(record.recordKey, record.upgradeId, record.phase, backup.manifest.sha256, canonicalJsonStringify(record), record.recordedAt);
+        inspectNativeAuthority(database); admission.assertStoppedProtectedSettingsUpgrade();
+        database.exec("COMMIT");
+      } catch (error) {
+        try { database.exec("ROLLBACK"); }
+        catch (rollback) { throw retainAuthoritySourceClosure([error, rollback], { database, admission }); }
+        throw error;
+      }
+    } catch (error) { primary = { error }; }
+    try { database.close(); }
+    catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { database, admission }); }
+    if (primary !== undefined) throw primary.error;
+  }
+
+  evidenceSchemaHash(owner: EvidenceSchemaOwner, source: unknown, sourceSchemaHash: string, currentSchemaHash: string): string {
+    this.#assertOpen();
+    if (sourceSchemaHash === currentSchemaHash) return sourceSchemaHash;
+    return this.#withReadSnapshot(() => {
+      const records = readAuthorityUpgradeRecords(this.#database).filter(record => "evidenceSchemas" in record && record.evidenceSchemas !== undefined);
+      if (records.length > 1) throw new Error("evidence-schema-conversion-duplicate");
+      const record = records[0], conversion = record !== undefined && "evidenceSchemas" in record ? record.evidenceSchemas : undefined;
+      if (conversion === undefined) return sourceSchemaHash;
+      this.#admission.assertEvidenceSchemaConversion(record);
+      if (record === undefined || !("planDigest" in record) || record.phase !== "settled"
+        || record.fromSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+        || record.planDigest !== sha256Hex(`relay:evidence-schema-conversion:v1\0${record.upgradeId}\0${canonicalJsonStringify(conversion)}`)) throw new Error("evidence-schema-conversion-unproved");
+      if (conversion.installationId !== this.#admission.profileBinding.installationId || conversion.profileId !== this.#admission.profileBinding.profileId)
+        throw new Error("evidence-schema-conversion-foreign");
+      const certificate = conversion.admissions.find(entry => canonicalJsonStringify(entry.owner) === canonicalJsonStringify(owner));
+      if (certificate === undefined) return sourceSchemaHash;
+      if (certificate.sourceSchemaHash !== sourceSchemaHash || certificate.currentSchemaHash !== currentSchemaHash
+        || certificate.sourceDigest !== evidenceSchemaSourceDigest(owner, source)) throw new Error("evidence-schema-admission-source-changed");
+      return certificate.currentSchemaHash;
     });
   }
 

@@ -1,3 +1,4 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { parseCanonicalInputSnapshot } from "../../../models/workflow/canonical-input.js";
 import { planDelegationFanOut } from "../../../models/workflow/delegation.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
@@ -8,9 +9,9 @@ import { workflowPlanning, type AnyWorkflowDescriptor } from "../../../workflow-
 import type { ChildRunContext } from "../../runtime/execution/run-executor.js";
 import { hasProtectedSubject, protectedSubjectMatchKey } from "../start/protected-input.js";
 
-export function canonicalDelegationChild(context: ChildRunContext, target: AnyWorkflowDescriptor, bound: unknown) {
+export function canonicalDelegationChild(context: ChildRunContext, target: AnyWorkflowDescriptor, bound: unknown, schemaReader?: EvidenceSchemaReader) {
   const input = JsonValueSchema.parse(target.canonicalInput.parse(bound));
-  const parentInput = parseCanonicalInputSnapshot(context.descriptor.canonicalInput, context.run.input.parsed);
+  const parentInput = parseCanonicalInputSnapshot(context.descriptor.canonicalInput, context.run.input.parsed, { owner: { kind: "run-input", id: context.run.envelope.runId }, source: context.run.input, schemaReader });
   const bindings = retainedRunProtectedBindings(context.run).filter(binding => input !== null && typeof input === "object"
     && !Array.isArray(input) && Object.hasOwn(input, binding.inputPath));
   for (const binding of retainedRunProtectedBindings(context.run)) {
@@ -27,12 +28,12 @@ export function canonicalDelegationChild(context: ChildRunContext, target: AnyWo
   return { input, bindings, matchKey, canonicalItemId: ItemIdSchema.parse(deriveItemId(target.id, matchKey)) };
 }
 
-export function planCanonicalDelegation(context: ChildRunContext, target: AnyWorkflowDescriptor) {
+export function planCanonicalDelegation(context: ChildRunContext, target: AnyWorkflowDescriptor, schemaReader?: EvidenceSchemaReader) {
   const { node } = context;
   return planDelegationFanOut({ edgeId: node.edgeId, target: node.target, cardinality: node.cardinality, join: node.join,
     policy: node.policy, bound: node.bind(context.scope),
     ...(node.sourceRecordIds === undefined ? {} : { sourceRecordIds: node.sourceRecordIds(context.scope) }), deriveChildItemId: input => {
-      const { canonicalItemId } = canonicalDelegationChild(context, target, input);
+      const { canonicalItemId } = canonicalDelegationChild(context, target, input, schemaReader);
       return node.deriveChildItemId(input, Object.freeze({ canonicalItemId }));
     } });
 }

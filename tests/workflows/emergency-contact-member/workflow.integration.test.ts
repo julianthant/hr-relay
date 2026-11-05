@@ -153,14 +153,6 @@ it("emergency-contact/unknown — refuses an unknown full-set probe without prep
   assert.ok(f.ports.every(port => !port.actions.some(action => /^(fill|demote|add)/u.test(action))));
   f.assertNoWrites();
 });
-it("emergency-contact/real-save-unavailable — terminalizes the named refusal before approval-provider or contact acquisition", async () => {
-  const f = await memberFixture({ dryRun: false });
-  assert.equal(f.failures[0]?.code, "CONTACT_SAVE_UNAVAILABLE");
-  assert.equal(f.sessions.opens(), 0);
-  assert.equal(f.providerCalls, 0);
-  assert.deepEqual(f.captures, []);
-  f.assertNoWrites();
-});
 it("fails the preview when its final full-set capture fails", async () => {
   const f = await memberFixture({ captureFailure: true });
   assert.ok(f.failures.length > 0);

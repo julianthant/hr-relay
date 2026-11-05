@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "./catalog.js";
+import { ProfileIdentitySchema } from "../profiles/profile-identity.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "./catalog.js";
 import { ProtectedStoreRecordSchema, type ProtectedStoreRecord } from "./protected-settings.js";
 import { establishHostPrimaryDisplay, hostPrimaryDisplayEnvironment, type HostDisplayProbe } from "./host-display.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
@@ -21,20 +22,9 @@ export const SecretSpecSchema = z.strictObject({
   requiredAtBoot: z.boolean(),
   classification: z.enum(["secret", "direct-identifier"]),
 });
-export const ActivityPersonPseudonymSecretReferenceSchema = z.strictObject({
-  name: z.literal("activityPersonPseudonym"),
-});
-
-export const ACTIVITY_PERSON_PSEUDONYM_SECRET_REFERENCE = deepFreeze(
-  ActivityPersonPseudonymSecretReferenceSchema.parse({
-    name: "activityPersonPseudonym",
-  }),
-);
-
 export const SECRET_SPECS = deepFreeze(SecretSpecSchema.array().parse([
   { name: "ucpathUserId", source: "protected-store", requiredAtBoot: false, classification: "direct-identifier" },
   { name: "ucpathPassword", source: "protected-store", requiredAtBoot: false, classification: "secret" },
-  { name: "timekeeperName", source: "protected-store", requiredAtBoot: false, classification: "direct-identifier" },
   { name: "sharepointOnboardingRosterUrl", source: "protected-store", requiredAtBoot: false, classification: "secret" },
 ]));
 type SecretSpec = z.infer<typeof SecretSpecSchema>;
@@ -62,6 +52,21 @@ export const ProtectedSecretSourceSchema = z.strictObject({
 });
 export type ProtectedSecretSource = z.infer<typeof ProtectedSecretSourceSchema>;
 
+export const RuntimeInputSnapshotSchema = ProtectedStoreRecordSchema.safeExtend({ profileIdentity: ProfileIdentitySchema.optional() });
+
+export function readProtectedCredentials(source: ProtectedSecretSource): ProtectedStoreRecord {
+  const { profileIdentity: _profileIdentity, ...credentials } = RuntimeInputSnapshotSchema.parse(source.read());
+  return ProtectedStoreRecordSchema.parse(credentials);
+}
+
+export function readProfileIdentity(source: ProtectedSecretSource) {
+  let snapshot: z.infer<typeof RuntimeInputSnapshotSchema>;
+  try { snapshot = RuntimeInputSnapshotSchema.parse(source.read()); }
+  catch (cause) { throw new SecretSourceError("admitted profile identity is unreadable", { cause }); }
+  if (snapshot.profileIdentity === undefined) throw new SecretSourceError("admitted profile identity is unavailable");
+  return snapshot.profileIdentity;
+}
+
 export class SecretMissingError extends Error {
   constructor(message: string) {
     super(message);
@@ -83,6 +88,9 @@ const MIGRATED_ENVIRONMENT_KEY_SET: ReadonlySet<string> = new Set(
 function migratedEnvironmentRefusal(key: string): SecretSourceError {
   if (RETIRED_TEST_TARGET_ENVIRONMENT_KEY_SET.has(key)) {
     return new SecretSourceError(retiredTestTargetEnvironmentRefusal(key));
+  }
+  if (RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS.some(retired => retired === key)) {
+    return new SecretSourceError(`retired protected setting ${key} is refused; remove it from the environment`);
   }
   return new SecretSourceError(
     `migrated environment key ${key} is refused; set it in Settings, then remove it`,
@@ -114,7 +122,7 @@ function readProtectedStore(
   source: ProtectedSecretSource,
 ): ProtectedStoreRecord {
   try {
-    return ProtectedStoreRecordSchema.parse(ProtectedSecretSourceSchema.parse(source).read());
+    return readProtectedCredentials(source);
   } catch (error) {
     throw new SecretSourceError(`${name} could not be read from protected-store`, { cause: error });
   }

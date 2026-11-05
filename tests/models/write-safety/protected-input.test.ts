@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
+import { SchemaBoundCanonicalValueSchema, SchemaBoundEvidenceValueSchema } from "../../../src/models/validation/schema-bound-value.js";
 import { RunInputStorageSchema } from "../../../src/models/run/record.js";
 import {
 ProtectedInputBindingSchema,hasProtectedTransactionInput,protectedInputBindings,
@@ -14,6 +15,18 @@ const document = ProtectedInputBindingSchema.parse({kind:"test-data-local",input
 const marker = {kind:"legacy-protected-input",inputPath:"timekeeperName",name:"timekeeperName"};
 
 describe("current private protected origins and public projections", () => {
+  it("keeps durable proof envelopes separate from admitted run-input profile provenance", () => {
+    const profile = { kind: "profile", inputPath: "timekeeperName", name: "timekeeperName",
+      profileId: "10000000-0000-4000-8000-000000000003", sessionEpoch: 1 };
+    const value = { schemaHash: "a".repeat(64), value: { state: "observed" } };
+    assert.equal(SchemaBoundCanonicalValueSchema.safeParse({ ...value, protectedBindings: [profile] }).success, true);
+    assert.equal(SchemaBoundEvidenceValueSchema.safeParse({ ...value, protectedBindings: [profile] }).success, false);
+    assert.deepEqual(SchemaBoundEvidenceValueSchema.parse({ ...value, protectedBindings: [timekeeper, document] }),
+      { ...value, protectedBindings: [timekeeper, document] });
+    assert.equal(SchemaBoundEvidenceValueSchema.safeParse({ ...value, protectedBindings: [timekeeper, timekeeper] }).success, false);
+    assert.equal(SchemaBoundEvidenceValueSchema.safeParse({ ...value, protectedBindings: [{ ...document, inputPath: "emplId" }] }).success, false);
+    assert.equal(SchemaBoundEvidenceValueSchema.safeParse({ ...value, protectedBindings: [timekeeper, document, document, document] }).success, false);
+  });
   it("requires genuine private origin identities and refuses public markers as execution bindings", () => {
     assert.equal(ProtectedInputBindingSchema.safeParse(marker).success,false);
     const executionOrigin=SeparationWritePlanSchema.options[1].shape.document.shape.timekeeperName;

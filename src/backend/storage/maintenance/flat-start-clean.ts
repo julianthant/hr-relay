@@ -1,7 +1,7 @@
 import { lstatSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { ProtectedSettingsApplyInputSchema, ProtectedSettingsNameSchema, ProtectedStoreRecordSchema } from "../../../models/config/protected-settings.js";
+import { StoppedProtectedSettingsApplyInputSchema as ProtectedSettingsApplyInputSchema, StoppedProtectedSettingsNameSchema as ProtectedSettingsNameSchema, StoppedProtectedStoreRecordSchema as ProtectedStoreRecordSchema } from "../configuration/protected-settings-upgrade.js";
 import { DuoCredentialFileSchema } from "../../../models/config/duo-credential.js";
 import { ChatGptCredentialRecordSchema } from "../configuration/chatgpt-credential-repository.js";
 import { readPrivateFile, noSymlinkAncestry, unpublishedDraftAbortMembership } from "../configuration/credential-safe-file.js";

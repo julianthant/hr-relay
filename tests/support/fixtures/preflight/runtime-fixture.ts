@@ -13,9 +13,10 @@ import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js"
 import { createRuntimePreflightRunners, type RuntimePreflightRunnerInput } from "../../../../src/backend/app/preflight/runtime-runners.js";
 import { createTimeoutDeadlineScheduler } from "../../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 import { createDuoCredentialStore } from "../../../../src/backend/storage/configuration/duo-credential-store.js";
+import { createCredentialSecretSource, readAdmittedProfileIdentity } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 
 export function populatedProtectedRecord(omitted?: string) {
-  const names = ["ucpathUserId", "ucpathPassword", "timekeeperName", "sharepointOnboardingRosterUrl"];
+  const names = ["ucpathUserId", "ucpathPassword", "sharepointOnboardingRosterUrl"];
   return ProtectedStoreRecordSchema.parse({ ...initialProtectedStoreRecord(), revision: 2,
     entries: Object.fromEntries(names.filter(name => name !== omitted).map((name, index) => [name, {
       value: name === "sharepointOnboardingRosterUrl" ? "https://example.invalid/private-marker" : "private-marker",
@@ -49,8 +50,10 @@ export async function runtimeFixture(capabilities: readonly RuntimeCapability[],
     for (const capability of provider.capabilities) providerAvailability[`${provider.provider}/${capability}`] = true;
   }
   let record = populatedProtectedRecord();
+  let profileAvailable = true;
+  const profileSource = createCredentialSecretSource({ read: () => record }, () => readAdmittedProfileIdentity(profile.machine, profile.admission));
   const doctorOptions = { stateRootTrustAnchor: root, stateRoot, authorityPath: databasePath, backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 100 };
-  const input: RuntimePreflightRunnerInput = { config, duo, providerAvailability, protectedSecrets: { read: () => record }, browserExecutablePath: () => executable,
+  const input: RuntimePreflightRunnerInput = { config, duo, providerAvailability, protectedSecrets: { read: () => profileAvailable ? profileSource.read() : record }, browserExecutablePath: () => executable,
     scope: PreflightAdmissionScopeSchema.parse({configSnapshotId:"11111111-1111-4111-8111-111111111111", configFingerprint:"a".repeat(64), descriptorFingerprint:"b".repeat(64), requestedCapabilities:capabilities}),
     dashboard: {repoRoot:root, stateRoot, artifactRoot, backendPort:0, frontendPort:0, clock,
       authorityHealth: new AuthorityHealthPreflightRunner(profile.admission, doctorOptions, clock, boundProfileCredentials(profile.admission)) },
@@ -59,7 +62,7 @@ export async function runtimeFixture(capabilities: readonly RuntimeCapability[],
     const runners = createRuntimePreflightRunners(input);
     return createPreflightAuthority({...input.scope, runners: transform === undefined ? runners : transform(runners), clock, scheduler:createTimeoutDeadlineScheduler(clock)}).refresh(new AbortController().signal);
   };
-  return {root, duo, credentials: boundProfileCredentials(profile.admission), admission: profile.admission, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, async close() {
+  return {root, duo, credentials: boundProfileCredentials(profile.admission), admission: profile.admission, stateRoot, artifactRoot, databasePath, doctorOptions, clock, input, executable, report, setProtected(next: typeof record) {record=next;}, setProfileAvailable(available: boolean) {profileAvailable=available;}, async close() {
     if (profileFixture !== undefined) for (const name of ["package.json", "package-lock.json", "extension", "chromium"]) rmSync(join(root, name), { recursive: true });
     await profile.close();
   }};

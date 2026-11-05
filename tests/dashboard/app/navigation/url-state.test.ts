@@ -447,7 +447,7 @@ describe_m7("history push on re-press (unit F4b finding 2)", () => {
 describe_m7("the settings nav renders real navigation, not buttons (unit F4b finding 4)", () => {
   const markup = renderToStaticMarkup_m7(createElement_m7(DashboardClientProvider_m7, {
     client: STATIC_SETTINGS_CLIENT,
-    children: createElement_m7(SettingsPage_m7, { onClose: () => undefined,
+    children: createElement_m7(SettingsPage_m7, { profileName: "Synthetic Operator", onClose: () => undefined,
       storage: HEALTHY_STORAGE,
       sections: [STORAGE],
 
