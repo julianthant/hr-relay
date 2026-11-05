@@ -1,11 +1,8 @@
-import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { ReadApprovedOcrRecord } from "../../../../models/processing/ocr/read-approved-record.js";
 import { UcpathReadEmergencyContacts } from "../../../../models/systems/ucpath/read-emergency-contacts.js";
-import type { RuntimeScope } from "../../../../models/workflow/graph.js";
 import { EmergencyContactMemberInputSchema } from "../../../../models/workflows/emergency-contact-member/input.js";
 import { MapApprovedEmergencyContact } from "../../../../models/workflows/emergency-contact-member/read-approved-contact.js";
 import { PlanApprovedEmergencyContact } from "../../../../models/workflows/emergency-contact-member/read-contact-plan.js";
-import { TaskError } from "../../../../workflow-kit/errors.js";
 import { defineStep,inheritStepProof,type WorkflowAuthor,type WorkflowDefinition } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 
@@ -13,14 +10,8 @@ export const CONTACT_PLAN_STEP = Object.freeze({ ...defineWorkflowStep({ key: "c
   { label: "Existing primary change", sources: [{ nodeId: "contact-plan", kind: "output", fieldPath: "demotionLine" }] },
   { label: "Approved contact", sources: [{ nodeId: "contact-plan", kind: "output", fieldPath: "contactLine" }] },
 ] as const, system: "ucpath" as const });
-export function refuseUnavailableSave(dryRun: RuntimeScope["dryRun"]): void {
-  if (dryRun === undefined) throw new TaskError(MapApprovedEmergencyContact.id, "CONTACT_SAVE_UNAVAILABLE", ERROR_CATALOG.CONTACT_SAVE_UNAVAILABLE.text);
-}
 export function buildContactPlan(author: WorkflowAuthor<typeof EmergencyContactMemberInputSchema>) {
-  const approved = author.task({ id: "approved-record", label: "Authenticate OCR release", contract: ReadApprovedOcrRecord, replay: "always-rerun" }, [], scope => {
-    refuseUnavailableSave(scope.dryRun);
-    return scope.input;
-  });
+  const approved = author.task({ id: "approved-record", label: "Authenticate OCR release", contract: ReadApprovedOcrRecord, replay: "always-rerun" }, [], ({ input }) => input);
   const mapped = author.task({ id: "map-contact", label: "Map approved contact fields", contract: MapApprovedEmergencyContact, replay: "always-rerun" }, [approved], ({ input, outputs }) =>
     ({ ...input, record: outputs["approved-record"].record }));
   const contacts = author.task({ id: "read-contacts", label: "Read complete saved contact set", contract: UcpathReadEmergencyContacts, replay: "always-rerun" }, [mapped, approved], ({ outputs }) => ({ emplId: outputs["map-contact"].emplId, expectedName: outputs["map-contact"].expectedName }));

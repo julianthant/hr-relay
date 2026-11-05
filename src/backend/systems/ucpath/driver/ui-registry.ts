@@ -1512,6 +1512,7 @@ export const UCPATH_PENDING_CONTACT_RECIPES = deepFreeze({
   viewToggle: '[id="$ICField2$scrolli$0"] :is(a, span.PSHEADERHYPERLINKD)',
   counter: '[id="$ICField2$scrolli$0"] span.PSGRIDCOUNTER',
   busy: "#WAIT_win0",
+  save: '[id="#ICSave"]',
   rowFields: {
     name: "EMERGENCY_CNTCT_CONTACT_NAME",
     relationship: "EMERGENCY_CNTCT_RELATIONSHIP",
