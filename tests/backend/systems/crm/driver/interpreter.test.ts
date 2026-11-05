@@ -323,7 +323,7 @@ describe("CRM onboarding selector-backed driver", () => {
       const fullName = exact ? "Quillan, Petra" : "Quillanmore, Petral";
       const rows = [{ fullName, rawStage: "Completed", recordId: "fictional-record" }];
       const page = fixturePage({ searches: { Quillan: rows, Petra: rows }, records: {
-        "fictional-record": { eid: "81000992", firstName: exact ? "Petra" : "Petral", lastName: exact ? "Quillan" : "Quillanmore", firstDayOfService: "7/1/2026" },
+        "fictional-record": { eid: "10990992", firstName: exact ? "Petra" : "Petral", lastName: exact ? "Quillan" : "Quillanmore", firstDayOfService: "7/1/2026" },
       } });
       let recordReads = 0;
       const goto = page.goto.bind(page);
@@ -332,18 +332,18 @@ describe("CRM onboarding selector-backed driver", () => {
       const identity = resolvePersonLookupIdentity({ input, person: { results: [],
         selection: { status: "not-found", selected: null, candidateEids: [], searchName: requestedName } }, crm: { state: "checked", records } });
       assert.equal(identity.state, exact ? "crm-only" : "not-found");
-      assert.equal(identity.recoveryEid, exact ? "81000992" : null);
+      assert.equal(identity.recoveryEid, exact ? "10990992" : null);
       assert.equal(recordReads, exact ? 1 : 0);
     }
   });
 
   it("keeps supplied-EID discovery authoritative even when its optional name is a prefix", async () => {
     const rows = [{ fullName: "Quillanmore, Petral", rawStage: "Completed", recordId: "fictional-record" }];
-    const page = fixturePage({ searches: { "81000992": rows }, records: {
-      "fictional-record": { eid: "81000992", firstName: "Petral", lastName: "Quillanmore", firstDayOfService: "7/1/2026" },
+    const page = fixturePage({ searches: { "10990992": rows }, records: {
+      "fictional-record": { eid: "10990992", firstName: "Petral", lastName: "Quillanmore", firstDayOfService: "7/1/2026" },
     } });
-    const records = await createCrmOnboardingDriver(() => undefined, page).searchOnboardingRecords({ eid: "81000992", name: "Quillan, Petra" });
-    assert.equal(records[0]?.emplId, "81000992");
+    const records = await createCrmOnboardingDriver(() => undefined, page).searchOnboardingRecords({ eid: "10990992", name: "Quillan, Petra" });
+    assert.equal(records[0]?.emplId, "10990992");
     assert.equal(records[0]?.name, "Quillanmore, Petral");
   });
 

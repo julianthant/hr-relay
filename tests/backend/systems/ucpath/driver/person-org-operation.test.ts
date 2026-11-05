@@ -317,6 +317,20 @@ describe("strict UCPath Person Org operation", () => {
     assert.deepEqual(output.results, []);
   });
 
+  it("rejects several prefix-only grid results without drilling any record", async () => {
+    const rows = parsePersonOrgGridRows([
+      [EID_A, "0", "Active", "SDCMP", "004921", "Fictional analyst", "Quillanmore", "Petral Quillanmore"],
+      [EID_B, "0", "Active", "SDCMP", "004921", "Fictional analyst", "Quillanfar", "Petram Quillanfar"],
+    ]);
+    const harness = pageHarness({ outcomes: [{ kind: "grid", rows }] });
+    const output = await searchPersonOrgWithPagePort(() => undefined, harness.port, {
+      kind: "by-name", name: "Quillan, Petra", keepNonHdh: true,
+    });
+    assert.equal(output.selection.status, "not-found");
+    assert.deepEqual(output.results, []);
+    assert.deepEqual(harness.calls, ["name:Quillan,Petra"]);
+  });
+
   it("selects only the exact name among several prefix results and reopens its actual row", async () => {
     const rows = parsePersonOrgGridRows([
       [EID_B, "0", "Active", "SDCMP", "004921", "Fictional analyst", "Quillanmore", "Petral Quillanmore"],
