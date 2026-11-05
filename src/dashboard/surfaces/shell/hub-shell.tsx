@@ -25,7 +25,7 @@ function HubShellBody({ settingsOpen, onLogout, chatsPort, onRunWorkflow, source
   const panelPosition = useHubPanelPosition(4);
   const launcherPosition = useHubPanelPosition(8, true);
   const [logout, setLogout] = useState(false);
-  const [opened, setOpened] = useState(true);
+  const [opened, setOpened] = useState(source === "mock");
   const [list, setList] = useState(false);
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<{ kind: "rename" | "delete"; id: string }>();
