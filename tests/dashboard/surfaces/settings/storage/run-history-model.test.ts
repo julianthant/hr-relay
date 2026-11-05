@@ -1,13 +1,19 @@
+import type { DashboardCommandBinding } from "../../../../../src/dashboard/app/dashboard-app-model.js";
+import { CommandExecutor } from "../../../../../src/dashboard/app/commands/command-executor.js";
+import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
+import { DashboardDayWireSchema } from "../../../../../src/models/dashboard/projection.js";
+import { FIXTURE_BOOTSTRAP } from "../../../../support/fixtures/dashboard/fixture-bootstrap.js";
+import { FIXTURE_DAY_WIRE } from "../../../../support/fixtures/dashboard/fixture-queue.js";
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 import { clearSettingsReads } from "../../../../../src/dashboard/state/settings-read-model.js";
-import { ClearRunHistoryRequestSchema } from "../../../../../src/models/dashboard/run-history.js";
+import { ClearRunHistoryRequestSchema, type RunHistoryTarget } from "../../../../../src/models/dashboard/run-history.js";
 import { IsoInstantSchema } from "../../../../../src/rules/identity/ids.js";
 // @vitest-environment jsdom
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
-import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
+import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../../../src/dashboard/state/client-context.js";
 import { StorageSection } from "../../../../../src/dashboard/surfaces/settings/storage/storage-settings.js";
 import { MeasurementFreeResizeObserver } from "../../../../support/helpers/settings-storage-doctor-fixtures.js";
 
@@ -27,11 +33,14 @@ async function confirm() {
   await act(async () => element.click());
 }
 async function click(name: string) { await act(async () => { button(name).focus(); button(name).click(); }); }
-async function mount(options: { activeRuns?: number; finishedRuns?: number; unavailable?: boolean; reject?: boolean; mismatch?: boolean; unreceived?: boolean; statusResponse?: () => Promise<Response> } = {}) {
+const TARGET = { profileId: "00000000-0000-4000-8000-000000000001", epoch: 1 };
+async function mount(options: { target?: RunHistoryTarget | null; activeRuns?: number; finishedRuns?: number; unavailable?: boolean; reject?: boolean; mismatch?: boolean; unreceived?: boolean; statusResponse?: () => Promise<Response> } = {}) {
   let cleared = 0, fail = false;
+  let observed = TARGET;
   const commands: unknown[] = [], checks: unknown[] = [];
   const recorded = new Map<string, {state: "cleared"; commandId: string; deletedRuns: number}>();
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async (url, init) => {
+    if (url.endsWith("/profile/state")) return Response.json({ state: "active", ...observed, duoState: "ready" });
     if (url.endsWith("/storage/doctor/latest")) return Response.json({ state: "never-run" });
     if (url.endsWith("/storage/run-history")) return options.statusResponse?.() ?? Response.json(options.unavailable ? { state: "unavailable" } : { state: "available", finishedRuns: options.finishedRuns ?? 2, activeRuns: options.activeRuns ?? 0 });
     const checking = url.endsWith("/storage/run-history/result");
@@ -48,14 +57,26 @@ async function mount(options: { activeRuns?: number; finishedRuns?: number; unav
     if (fail) throw new Error("synthetic committed response lost");
     return Response.json(result);
   } });
+  const epoch = { client, bootstrap: FrontendBootstrapWireSchema.parse(FIXTURE_BOOTSTRAP) };
+  const day = DashboardDayWireSchema.parse(FIXTURE_DAY_WIRE);
+  const dayRequest = {};
+  const scope = { actorId: epoch.bootstrap.actor.id, client, authority: epoch, dayRequest };
+  const binding: DashboardCommandBinding = {
+    authority: { epoch, profileTarget: options.target === null ? undefined : options.target ?? TARGET, catalog: [],
+      nowIso: epoch.bootstrap.serverClock.now, today: day.day, day: day.day,
+      dayState: { request: dayRequest, day: { state: "loaded", value: day }, connection: { state: "connecting" }, refresh() {},
+        subscribePublications() { throw new Error("history fixture does not serve publications"); } },
+      selection: { route: { start: false }, workflowId: "" } },
+    executor: new CommandExecutor(() => scope), scope, feedback() {},
+  };
   const render = async () => {
     const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
-    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(StorageSection, {
+    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding, children: createElement(StorageSection, {
       storage: { authority: "healthy", checkedAt: IsoInstantSchema.parse("2026-11-04T12:00:00.000Z"), backup: "current", automaticRepair: { state: "none" } }, onHistoryCleared() { cleared++; },
-    }) })));
+    }) }) })));
   };
   await render();
-  return { client, commands, checks, get cleared() { return cleared; }, fail(value: boolean) { fail = value; }, render };
+  return { client, commands, checks, get cleared() { return cleared; }, observe(target: RunHistoryTarget) { observed = target; return client.readProfileSession(); }, fail(value: boolean) { fail = value; }, render };
 }
 
 it("requires destructive confirmation, defaults focus to Cancel, and acknowledges the exact command", async () => {
@@ -129,4 +150,30 @@ it("ignores a superseded status read after a replacement read has loaded", async
   await act(async () => { if (rejectFirst === undefined) throw new Error("missing deferred read"); rejectFirst(new Error("superseded history read")); });
   expect(button("Clear run history").disabled).toBe(false);
   expect(document.body.textContent).not.toContain(ERROR_CATALOG.STORAGE_AUTHORITY_READ_FAILED.text);
+});
+
+
+it("retains the displayed A confirmation when the client subsequently observes B", async () => {
+  const f = await mount();
+  await click("Clear run history");
+  await f.observe({ profileId: "00000000-0000-4000-8000-000000000002", epoch: 2 });
+  await confirm();
+  expect(f.commands).toEqual([expect.objectContaining({ target: TARGET })]);
+});
+
+it("retains the original profile and epoch for uncertain result lookup after a newer observation", async () => {
+  const f = await mount(); f.fail(true);
+  await click("Clear run history"); await confirm();
+  await f.observe({ ...TARGET, epoch: 2 });
+  f.fail(false); await click("Check clear result");
+  expect(f.commands).toHaveLength(1);
+  expect(f.checks).toEqual(f.commands);
+  expect(ClearRunHistoryRequestSchema.parse(f.checks[0]).target).toEqual(TARGET);
+});
+
+it("refuses to offer a confirmation without an observed profile and epoch", async () => {
+  const f = await mount({ target: null });
+  expect(button("Clear run history").disabled).toBe(true);
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(f.commands).toEqual([]);
 });

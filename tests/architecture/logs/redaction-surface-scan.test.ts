@@ -80,7 +80,7 @@ describe("redaction surface scan — the declaration audit", () => {
 
   it("audits the real history request/status/result as closed loopback surfaces", () => {
     const surfaces = [
-      ["request/clear-run-history", ClearRunHistoryRequestSchema, ["commandId"]],
+      ["request/clear-run-history", ClearRunHistoryRequestSchema, ["commandId", "target.epoch", "target.profileId"]],
       ["wire/run-history-status", RunHistoryStatusSchema, ["activeRuns", "finishedRuns", "state"]],
       ["wire/clear-run-history-result", ClearRunHistoryResultSchema, ["commandId", "deletedRuns", "reason", "state"]],
     ] as const;
@@ -93,7 +93,10 @@ describe("redaction surface scan — the declaration audit", () => {
       assert.deepEqual(decidableLeaves(schema), []);
       assert.deepEqual(SURFACE_LEAF_ORIGINS.filter(entry => entry.surface === id), []);
     }
-    assert.deepEqual(ClearRunHistoryRequestSchema.parse({commandId: UUID_1}), {commandId: UUID_1});
+    const confirmed = {commandId: UUID_1, target: {profileId: UUID_1, epoch: 1}};
+    assert.deepEqual(ClearRunHistoryRequestSchema.parse(confirmed), confirmed);
+    assert.equal(ClearRunHistoryRequestSchema.safeParse({commandId: UUID_1}).success, false);
+    for (const epoch of [0, -1, 0.5, Infinity]) assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, target: {...confirmed.target, epoch}}).success, false);
     for (const value of [{state: "unavailable"}, {state: "available", finishedRuns: 0, activeRuns: 3}]) assert.deepEqual(RunHistoryStatusSchema.parse(value), value);
     for (const value of [{state: "not-recorded", commandId: UUID_1}, {state: "cleared", commandId: UUID_1, deletedRuns: 3},
       ...["active-runs", "shared-checkpoint", "unresolved-write", "replay-divergent", "unavailable"].map(reason => ({state: "refused", commandId: UUID_1, reason}))]) {
@@ -105,8 +108,9 @@ describe("redaction surface scan — the declaration audit", () => {
       assert.equal(ClearRunHistoryResultSchema.safeParse({state: "cleared", commandId: UUID_1, deletedRuns: count}).success, false);
     }
     for (const canary of Object.values(REDACTION_CANARIES)) {
-      assert.equal(ClearRunHistoryRequestSchema.safeParse({commandId: canary}).success, false);
-      assert.equal(ClearRunHistoryRequestSchema.safeParse({commandId: UUID_1, note: canary}).success, false);
+      assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, commandId: canary}).success, false);
+      assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, note: canary}).success, false);
+      assert.equal(ClearRunHistoryRequestSchema.safeParse({...confirmed, target: {profileId: canary, epoch: 1}}).success, false);
       assert.equal(RunHistoryStatusSchema.safeParse({state: canary}).success, false);
       assert.equal(ClearRunHistoryResultSchema.safeParse({state: "refused", commandId: UUID_1, reason: canary}).success, false);
       assert.equal(ClearRunHistoryResultSchema.safeParse({state: "not-recorded", commandId: canary}).success, false);

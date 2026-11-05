@@ -1,6 +1,7 @@
 import { ShieldAlert } from "lucide-react";
 import { type ReactNode, useRef, useState } from "react";
 import type { StorageDoctorWire } from "../../../../models/dashboard/storage.js";
+import type { ClearRunHistoryRequest } from "../../../../models/dashboard/run-history.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { Badge,Banner,BodySection,Button,Dialog,DialogContent,DialogFooter,Disclosure,FormGroup,PageHeading,ResultRow,StatusDot,dsIcon } from "../../../ds/ui.js";
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
@@ -121,7 +122,7 @@ function credentialResult(report: StorageDoctorWire | undefined, key: typeof CRE
 export function StorageSection({ storage, onHistoryCleared }: { storage: StorageHealthSummary; onHistoryCleared?: () => void }) {
   const { doctor, runDoctor } = useStorageDoctor();
   const history = useRunHistory(onHistoryCleared);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<ClearRunHistoryRequest>();
   const historyTrigger = useRef<HTMLButtonElement>(null);
   const show = useDelayedLoading(doctor.state === "reading");
   const report = doctor.state === "reading" ? undefined : doctor.report;
@@ -172,14 +173,14 @@ export function StorageSection({ storage, onHistoryCleared }: { storage: Storage
         <div className="hub-settings-row">
           <div><div className="hub-row-label">Clear run history</div><span className="hub-row-note">{history.description}</span></div>
           <div className="hub-setting-control"><Button ref={historyTrigger} variant="dangerGhost" disabled={storage.authority !== "healthy" || history.disabled}
-            onClick={() => history.unknown ? void history.clear() : setConfirming(true)}>{history.checking ? "Checking…" : history.pending ? "Clearing…" : history.unknown ? "Check clear result" : "Clear run history"}</Button></div>
+            onClick={() => history.unknown ? void history.clear() : setConfirming(history.prepare())}>{history.checking ? "Checking…" : history.pending ? "Clearing…" : history.unknown ? "Check clear result" : "Clear run history"}</Button></div>
         </div>
         {history.message && <p role="status" className="px-[var(--ds-space-loose)] pb-[var(--ds-space-cozy)]">{history.message}</p>}
-        <Dialog open={confirming} onOpenChange={setConfirming}>
+        <Dialog open={confirming !== undefined} onOpenChange={open => { if (!open) setConfirming(undefined); }}>
           <DialogContent title="Clear run history?" description="All finished runs, logs, screenshots and run evidence will be removed. Spreadsheets, settings, credentials, your account and write-safety records are kept. This can’t be undone." size="sm"
             onCloseAutoFocus={event => { event.preventDefault(); historyTrigger.current?.focus(); }}>
-            <DialogFooter><Button variant="secondary" autoFocus onClick={() => setConfirming(false)}>Cancel</Button><Button variant="danger" disabled={history.disabled || storage.authority !== "healthy"}
-              onClick={() => { setConfirming(false); void history.clear(); }}>Clear run history</Button></DialogFooter>
+            <DialogFooter><Button variant="secondary" autoFocus onClick={() => setConfirming(undefined)}>Cancel</Button><Button variant="danger" disabled={history.disabled || storage.authority !== "healthy"}
+              onClick={() => { setConfirming(undefined); void history.clear(confirming); }}>Clear run history</Button></DialogFooter>
           </DialogContent>
         </Dialog>
       </FormGroup></BodySection>
