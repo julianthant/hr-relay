@@ -587,7 +587,7 @@ the displayed profile ID and session epoch; Clear and result lookup retain that 
 admits both fields against the current selected authority before lifecycle or cleanup effects. Settings, credentials,
 spreadsheets and retained write evidence stay protected. Authority availability differs
 from backup age. Storage updates show their status without an update-history disclosure. Recovery actions require their exact
-served admission. Startup completes automatic repair before ordinary runtime admission; Settings rendering performs no repair or backup. A read-only notice identifies restored person data and its backup time.
+served admission. Startup completes automatic repair before ordinary runtime admission; Settings rendering performs no repair or backup. Automatic backup and repair records remain on disk without dashboard notices.
 
 ### Keyboard
 
