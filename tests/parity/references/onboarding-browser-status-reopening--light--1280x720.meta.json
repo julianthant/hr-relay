@@ -1,6 +1,6 @@
 {
-  "stateId": "onboarding-browser-hold",
-  "theme": "dark",
+  "stateId": "onboarding-browser-status-reopening",
+  "theme": "light",
   "viewport": "1280x720",
   "adapter": "fixture",
   "fixtureId": "picked-onboarding",

@@ -1,5 +1,5 @@
 {
-  "stateId": "onboarding-browser-hold",
+  "stateId": "onboarding-browser-status-open-failed",
   "theme": "light",
   "viewport": "1280x720",
   "adapter": "fixture",
