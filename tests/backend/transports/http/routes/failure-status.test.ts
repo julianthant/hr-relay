@@ -2,6 +2,7 @@ import { StartupCrashRecoveryRefusedError } from "../../../../../src/backend/run
 import { ERROR_CATALOG } from "../../../../../src/models/failures/error-catalog.js";
 
 import assert from "node:assert/strict";
+import { CredentialMaintenanceHold } from "../../../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { describe,it } from "vitest";
 import { z } from "zod";
 import {
@@ -31,6 +32,13 @@ const RETIRED_MARKERS = [
 ] as const;
 
 describe("failureStatus", () => {
+  it("returns a clear conversion next step for a current-only credential reader", () => {
+    const result = failureStatus(new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_REQUIRED"));
+    assert.equal(result.status, 409);
+    assert.equal(result.body.code, "CREDENTIAL_CONVERSION_REQUIRED");
+    assert.equal(result.body.message, ERROR_CATALOG.CREDENTIAL_CONVERSION_REQUIRED.text);
+    assert.match(String(result.body.message), /Restart Relay/u);
+  });
   it('returns a known conflict when workbook history protects a type definition', () => {
     const result = failureStatus(new WorkbookLibraryError('WORKBOOK_TYPE_IN_USE'));
     assert.equal(result.status, 409);
