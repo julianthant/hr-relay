@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { runInNewContext } from "node:vm";
 import type { BrowserContext, Page } from "playwright";
 import { it } from "vitest";
 import { createDuoBrowserFocus, DuoBrowserFocusError, type FocusCommandRunner } from "../../../../src/backend/runtime/browser/native-browser-focus.js";
@@ -60,6 +61,33 @@ it("foregrounds the owned Windows process and preserves the original Relay windo
   assert.match(calls[2].args[3], /\$relayProcessId = 72/u);
   assert.ok(calls[2].args[3].includes("[IntPtr]::new([long]'8192')"));
   assert.deepEqual(owned.calls, ["SystemInfo.getProcessInfo", "detach"]);
+});
+
+it("uses the JXA property bridge for unhide before activating and verifying the owned app", async () => {
+  const calls: string[] = [];
+  let frontmost = 71;
+  const focus = createDuoBrowserFocus(5000, "darwin", async (_file, args) => {
+    const invoke: unknown = runInNewContext(`${args[3]}; run`, {
+      ObjC: { import: () => undefined },
+      $: {
+        NSRunningApplication: { runningApplicationWithProcessIdentifier(pid: number) {
+          assert.equal(pid, 421321);
+          return {
+            get unhide() { calls.push("unhide"); return true; },
+            activateWithOptions(option: number) { assert.equal(option, 1); calls.push("activate"); frontmost = pid; return true; },
+          };
+        } },
+        NSWorkspace: { sharedWorkspace: { get frontmostApplication() { calls.push("verify"); return { processIdentifier: frontmost }; } } },
+      },
+    });
+    assert.ok(typeof invoke === "function");
+    const result: unknown = Reflect.apply(invoke, undefined, [args.slice(4)]);
+    assert.equal(result, "focused");
+    return String(result);
+  });
+  const owned = browser();
+  await focus.show(owned.context, owned.page);
+  assert.deepEqual(calls, ["unhide", "activate", "verify"]);
 });
 
 for (const processes of [[], [{ type: "browser", id: 1 }, { type: "browser", id: 2 }], [{ type: "browser", id: -1 }]]) {

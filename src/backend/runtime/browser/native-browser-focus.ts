@@ -35,7 +35,7 @@ const ACTIVATE_APP = `function run(args) {
   ObjC.import('AppKit');
   var pid = Number(args[0]);
   var app = $.NSRunningApplication.runningApplicationWithProcessIdentifier(pid);
-  app.unhide();
+  app.unhide;
   app.activateWithOptions(1);
   var deadline = Date.now() + Number(args[1]);
   while (Number($.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier) !== pid) {
