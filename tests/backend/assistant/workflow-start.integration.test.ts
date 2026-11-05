@@ -23,7 +23,7 @@ import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-va
 import { JsonValueSchema } from "../../../src/rules/validation/canonical-json.js";
 import { admitProtectedInput } from "../../../src/backend/runs/start/protected-input.js";
 import { protectedSecretSource } from "../../support/helpers/protected-secret-source.js";
-import { ProtectedStoreRecordSchema } from "../../../src/models/config/protected-settings.js";
+import { RuntimeInputSnapshotSchema } from "../../../src/models/config/secrets.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -32,7 +32,7 @@ afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await 
 async function fixture(descriptor: AnyWorkflowDescriptor = personLookupDescriptor) {
   const f = await settingsFixture(); cleanups.push(f.close);
   const raw = descriptor.id === "separations" ? { documentNumber: "4502" } : { emplId: "10873698" }, planning = workflowPlanning(descriptor);
-  const protectedSecrets = protectedSecretSource({ timekeeperName: "Private synthetic timekeeper" });
+  const protectedSecrets = protectedSecretSource({ profileName: "Private synthetic timekeeper" });
   const admitted = admitProtectedInput(descriptor, [raw], protectedSecrets)[0]; assert.ok(admitted);
   const run = f.create({ workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
     dryRun: false, input: { raw: admitted.raw, ingressSchemaHash: deriveSchemaHash(descriptor.input, "input"),
@@ -196,8 +196,8 @@ it("refuses protected test subjects before inference or planning", async () => {
 });
 
 it("refuses a changed protected binding even when its private value is unchanged", async () => {
-  const f = await fixture(separationsDescriptor), record = ProtectedStoreRecordSchema.parse(f.protectedSecrets.read()), entry = record.entries.timekeeperName; assert.ok(entry);
-  f.protectedSecrets.read = () => ({ ...record, entries: { ...record.entries, timekeeperName: { ...entry, valueId: randomUUID() } } });
+  const f = await fixture(separationsDescriptor), record = RuntimeInputSnapshotSchema.parse(f.protectedSecrets.read()), identity = record.profileIdentity; assert.ok(identity);
+  f.protectedSecrets.read = () => ({ ...record, profileIdentity: { ...identity, sessionEpoch: identity.sessionEpoch + 1 } });
   await assert.rejects(f.propose(), /assistant-workflow-plan-refused/u);
   assert.equal(f.dispatches(), 0);
 });

@@ -1,3 +1,5 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
+import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
 import { containsDryRunSample, DryRunSampleSchema } from "../../../models/workflow/dry-run.js";
 import { acceptsRecheckTransactionId } from "../../../rules/write-safety/parked-resolution.js";
 import { UcpathTerminationTargetSchema } from "../../../models/ui/ucpath-smart-hr-termination.js";
@@ -206,6 +208,7 @@ export type WriteSequencerRepositories = Omit<AuthorityRepositories, "runs"> & {
 };
 
 export interface WriteSequencerAuthority {
+  readonly evidenceSchemaHash?: EvidenceSchemaReader;
   readonly authority: WriteSequencerRepositories;
   withAuthorityTransaction<Result>(work: (repositories: WriteSequencerRepositories) => Result): Result;
   commitWriteAttempt(input: unknown, checkpoint: unknown): AtomicWriteCommitReport;
@@ -1240,7 +1243,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     if (stored === undefined) {
       throw new Error(`write intent ${durable.writeIntentId} is ${durable.status}; there is no proof to reuse`);
     }
-    if (stored.schemaHash !== proofSchemaHash) {
+    if ((deps.authority.evidenceSchemaHash?.({ kind: "write-proof", id: durable.writeIntentId, generation: durable.generation }, durable, stored.schemaHash, proofSchemaHash) ?? stored.schemaHash) !== proofSchemaHash) {
       throw new Error(
         `write intent ${durable.writeIntentId} retains proof bound to schema ${stored.schemaHash.slice(0, 12)}…, `
         + `but ${commitContract.id} currently requires ${proofSchemaHash.slice(0, 12)}…; refusing to reuse drifted proof`,
@@ -1292,7 +1295,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         + "recovery-probe path under its own run and is never reused as this node's settlement",
       );
     }
-    if (canonicalJsonStringify(durableProof) !== canonicalJsonStringify(outcome.proof)) {
+    const expectedProofHash = deriveSchemaHash(commitContract.writeSafety.completion.proofSchema, "output");
+    const durableHash = deps.authority.evidenceSchemaHash?.({ kind: "write-proof", id: durable.writeIntentId, generation: durable.generation }, durable, durableProof.schemaHash, expectedProofHash) ?? durableProof.schemaHash;
+    const outcomeHash = deps.authority.evidenceSchemaHash?.({ kind: "checkpoint-proof", id: checkpointRecordKey(stored) }, stored, outcome.proof.schemaHash, expectedProofHash) ?? outcome.proof.schemaHash;
+    if (durableHash !== expectedProofHash || outcomeHash !== expectedProofHash
+      || canonicalJsonStringify({ ...durableProof, schemaHash: durableHash }) !== canonicalJsonStringify({ ...outcome.proof, schemaHash: outcomeHash })) {
       throw new Error(
         `transaction node "${context.node.id}" holds a completed settlement whose proof is not the proof of the `
         + `write the fresh facts address (${reference}); refusing to relabel a completed external write as the `
@@ -1328,12 +1335,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const outcome = TransactionOutcomeSchema.parse(stored.output.value);
     const completion = commitContract.writeSafety.completion;
     const proofSchemaHash = deriveSchemaHash(completion.proofSchema, "output");
-    if (outcome.proof.schemaHash !== proofSchemaHash) {
+    if ((deps.authority.evidenceSchemaHash?.({ kind: "checkpoint-proof", id: checkpointRecordKey(stored) }, stored, outcome.proof.schemaHash, proofSchemaHash) ?? outcome.proof.schemaHash) !== proofSchemaHash) {
       throw new Error(
         `transaction node "${context.node.id}" stored proof is bound to a different proof schema; refusing to replay`,
       );
     }
-    if (outcome.output.schemaHash !== deriveSchemaHash(commitContract.output, "output")) {
+    if ((deps.authority.evidenceSchemaHash?.({ kind: "checkpoint-output", id: checkpointRecordKey(stored) }, stored, outcome.output.schemaHash, deriveSchemaHash(commitContract.output, "output")) ?? outcome.output.schemaHash) !== deriveSchemaHash(commitContract.output, "output")) {
       throw new Error(`transaction node "${context.node.id}" stored output is bound to a different output schema; refusing to replay`);
     }
     const proof = completion.proofSchema.parse(outcome.proof.value);
@@ -2428,7 +2435,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
       if (source === undefined && (durable.status === "committed" || durable.status === "observed-present")) {
         const stored = durable.status === "committed" ? durable.completionProof : durable.observedProof;
-        if (stored.schemaHash !== proofSchemaHash) {
+        if ((deps.authority.evidenceSchemaHash?.({ kind: "write-proof", id: durable.writeIntentId, generation: durable.generation }, durable, stored.schemaHash, proofSchemaHash) ?? stored.schemaHash) !== proofSchemaHash) {
           throw new Error(
             `preview of "${node.id}": write intent ${durable.writeIntentId} retains proof bound to schema `
             + `${stored.schemaHash.slice(0, 12)}…, and ${commitContract.id} currently requires `

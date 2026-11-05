@@ -1,3 +1,4 @@
+import { profileInitials } from "../../../../models/profiles/profile-identity.js";
 import { SettingsSectionSkeleton } from "../settings-loading.js";
 import { useRef, useState } from "react";
 import { Server } from "lucide-react";
@@ -8,7 +9,7 @@ import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { ProtectedSettingField } from "../providers/settings-protected-field.js";
 import { formatSetting } from "./settings-draft-model.js";
-import { groupDeploymentFacts, settingsFactLabel } from "./ui-settings-records-labels.js";
+import { groupDeploymentFacts, settingsFactLabel, PROFILE_WORKFLOW_FACTS } from "./ui-settings-records-labels.js";
 import { useSettingsFormFocus } from "./settings-autosave-model.js";
 
 
@@ -16,13 +17,11 @@ type Editor = ReturnType<typeof useEditableSettings>;
 const PROTECTED_DESCRIPTION: Readonly<Record<string, string>> = {
   ucpathUserId: "Login name for UCPath access.",
   ucpathPassword: "Password for UCPath access.",
-  timekeeperName: "Name used in timekeeping workflows.",
-  activityPersonPseudonym: "Identifier used in historical Activity records.",
 };
 
 type Removal = { name: Parameters<Editor["protectedEditor"]["clear"]>[0]; label: string; hasSaved: boolean };
 
-function CredentialsSection({ editor }: { editor: Editor }) {
+function CredentialsSection({ editor, profileName }: { editor: Editor; profileName: string }) {
   const [removal, setRemoval] = useState<Removal | null>(null);
   const removeTrigger = useRef<HTMLElement | null>(null);
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
@@ -33,6 +32,7 @@ function CredentialsSection({ editor }: { editor: Editor }) {
   const settingsDocument = editor.editor.document;
   const authority = settingsDocument.protectedSettings;
   const credentials = editor.protectedEditor;
+  const profile = { displayName: profileName, initials: profileInitials(profileName) };
   const askRemove = (target: Removal): void => {
     removeTrigger.current = globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null;
     setRemoval(target);
@@ -49,14 +49,18 @@ function CredentialsSection({ editor }: { editor: Editor }) {
     {authority.state === "unknown" && <Banner tone="warning" title="Credentials unavailable">Saved credentials could not be read. <Button size="sm" onClick={editor.reload}>Retry read</Button></Banner>}
     <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />
     <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); credentials.submit(); }}>
-      {(["UCPath sign-in", "Workflow configuration"] as const).map((title, groupIndex) => <BodySection key={title} title={title}>
-        <FormGroup label={title}>
-          {authority.rows.slice(groupIndex === 0 ? 0 : 2, groupIndex === 0 ? 2 : undefined)
-            .filter(row => row.name !== "sharepointOnboardingRosterUrl").map(row => <ProtectedSettingField key={row.name}
-              editor={editor} name={row.name} description={PROTECTED_DESCRIPTION[row.name] ?? row.purpose}
-              onRemove={(hasSaved, label) => askRemove({ name: row.name, label, hasSaved })} />)}
+      <BodySection title="UCPath sign-in">
+        <FormGroup label="UCPath sign-in">
+          {authority.rows.filter(row => row.name === "ucpathUserId" || row.name === "ucpathPassword").map(row => <ProtectedSettingField key={row.name}
+            editor={editor} name={row.name} description={PROTECTED_DESCRIPTION[row.name] ?? row.purpose}
+            onRemove={(hasSaved, label) => askRemove({ name: row.name, label, hasSaved })} />)}
         </FormGroup>
-      </BodySection>)}
+      </BodySection>
+      <BodySection title="Workflow configuration">
+        <FormGroup label="Workflow configuration">
+          {PROFILE_WORKFLOW_FACTS.map(fact => <ResultRow key={fact.key} label={<span data-settings-path={fact.target}>{fact.label}</span>} value={profile[fact.key]} />)}
+        </FormGroup>
+      </BodySection>
     </Form>
     <Dialog open={removal !== null} onOpenChange={open => { if (!open) setRemoval(null); }}>
       <DialogContent size="sm" hideClose className="ds-body-overlay" title={`Remove ${removal?.label ?? "value"}?`}
@@ -69,8 +73,8 @@ function CredentialsSection({ editor }: { editor: Editor }) {
   </div>;
 }
 
-export function SettingsAuthoritySection({ editor, sectionId }: { editor: Editor; sectionId: string }) {
-  if (sectionId === "protected-store" || sectionId === "credentials") return <CredentialsSection editor={editor} />;
+export function SettingsAuthoritySection({ editor, sectionId, profileName }: { editor: Editor; sectionId: string; profileName: string }) {
+  if (sectionId === "protected-store" || sectionId === "credentials") return <CredentialsSection editor={editor} profileName={profileName} />;
   if (editor.editor.state !== "loaded") return <Spinner label="Reading settings authorities" />;
   if (sectionId !== "runtime-isolation") throw new Error("settings-authority-section-unknown");
   const document = editor.editor.document;

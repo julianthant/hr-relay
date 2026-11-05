@@ -279,13 +279,16 @@ the helper before releasing the dialog gate. Other platforms report `unsupported
 
 ## 6. Credential access and storage
 
-`SECRET_SPECS` has four protected-store entries: `ucpathUserId`, `ucpathPassword`, `timekeeperName`, and `sharepointOnboardingRosterUrl`. The protected store retains `activityPersonPseudonym` for historical records; its Activity consumers are absent. There is no plaintext Duo credential-file capability.
+`SECRET_SPECS` has three protected-store entries: `ucpathUserId`, `ucpathPassword`, and
+`sharepointOnboardingRosterUrl`. Their shared schemas admit an ID of 1–256 characters, a password
+of 1–4096 characters, and a roster URL up to 8192 characters, without trimming or coercion.
+There is no stored timekeeper setting, Activity pseudonym secret or plaintext Duo credential-file capability.
 
-The value schemas in `protected-settings.ts` are shared by persistence and access. They admit
-`ucpathUserId` and `timekeeperName` strings of 1 to 256 characters, `ucpathPassword` of 1 to 4096
-characters, an onboarding roster URL up to 8192 characters, and the closed pseudonym pair
-`{ keyHex, keyGeneration }`. The pseudonym key is 64 lowercase hex characters; generation names
-match `activity-person-[a-z0-9]+(?:-[a-z0-9]+)*`. The schemas do not trim or coerce values.
+The runtime input source adds the admitted profile identity to its private snapshot. Its full name
+comes from the registered first and last name; initials use the first letter of every word.
+Enqueue and Rerun capture the profile ID and session epoch with that name, reject caller overrides,
+and keep the private name out of public input and fingerprint projections. Kuali receives the full
+name and derives comment initials from it. The bootstrap actor label serves the same full name to Settings.
 
 `requireSecret(name, source)` and `optionalSecret(name, source)` read the supplied
 `ProtectedSecretSource` on every call. `createCredentialSecretSource` adapts the independent
@@ -311,7 +314,33 @@ ChatGPT `withLock()` uses one durable cross-process asynchronous operation lease
 
 Duo records hold pending/ready enrolled P256 material and exact browser scope. Backend validation requires canonical Base64, EC prime256v1 and matching public/private material. Same credential identity cannot change its key. Both onboarding and workflow use the single backend Fast Duo signer and public request/reply broker. Ready internal keys and their proved counter floors enter only the owned private CDP authenticator; they never enter the extension, HTTP or public state. Native replica signatures remain disabled, so the canonical signer retains assertion authority. Fresh platform enrollment initializes its pending key's canonical counter from the observed CDP count; an existing internal key without proved history refuses instead of adopting a floor. Every signature durably reserves a strictly advancing external counter first. Failed, crashed, cancelled and UNKNOWN attempts burn it; duplicate request IDs refuse rather than replay an allocation. The browser document token remains an exact 32-character hexadecimal `sender.documentId`, while account/operation/arm identities are UUIDs. Scope, account, origin, allowCredentials and current owner are checked before signing and after relevant awaits.
 
-Protected payload schema-4 authenticates current record, value-free history, retired identities and the latest exact request. Entries remain `{valueId,value,updatedAt}`. Only the latest apply/erase request retains plaintext inside ciphertext; history contains marked operations and receipts. Current reads never run old-format migration. Apply checks expectedRevision, schema hash and command/write identity; latest exact replay succeeds, divergent/reused identities refuse, and clear removes the entry while advancing revision. Retired history remains deny-only and cannot revive a value. Documents are bounded to 16 MiB and private requests to 64,000 bytes. Settings apply commits independently before the value-free SQLite audit; failed audit cannot roll back the private commit. Protected values never enter configuration fingerprints or snapshots. The local Settings editor deliberately serves authenticated protected values; unavailable authority is unknown, never an empty default.
+Protected payload schema-5 authenticates the schema-2 current record, value-free history, retired identities and the latest exact request. Entries remain `{valueId,value,updatedAt}`. Only the latest apply/erase request retains plaintext inside ciphertext; history contains marked operations and receipts. Current reads never run old-format migration. Apply checks expectedRevision, schema hash and command/write identity; latest exact replay succeeds, divergent/reused identities refuse, and clear removes the entry while advancing revision. Retired history remains deny-only and cannot revive a value. Documents are bounded to 16 MiB and private requests to 64,000 bytes. Settings apply commits independently before the value-free SQLite audit; failed audit cannot roll back the private commit. Protected values never enter configuration fingerprints or snapshots. The local Settings editor deliberately serves authenticated protected values; unavailable authority is unknown, never an empty default.
+
+`storage/maintenance/protected-settings-upgrade.ts` converts schema-4 protected payloads under
+stopped exclusive profile custody after a verified authority backup and browser/process closure.
+The conversion removes timekeeper and pseudonym plaintext, preserves marked receipt history and
+retired command/write/value identities, retires every removed value ID, and appends one migration
+receipt. The scoped writer computes the authenticated conversion before publishing it. Its canonical
+replacement uses the existing authenticated revision CAS, exact stage custody
+and readback. Current schema-5 records are authenticated without another backup or mutation.
+Startup settles pending onboarding before converting ready profiles. A stopped exclusive capture
+binds an explicit Finish to its exact operation, authenticated credential files, native identities and
+runtime lifetime. Finish publication rechecks that opaque proof, its original registration receipt,
+Duo evidence and verifier custody; it consumes the operation before conversion adds a receipt.
+Early storage initialization settles only explicit Finish operations. Other pending drafts and their
+owned browser roots remain for ordinary onboarding recovery, which retains its missing-root and
+owned-cleanup refusals. Startup defers profile activation until conversion completes. Ordinary
+publication and credential reads remain current-format only.
+
+Pending logout retains its captured credential source through crash reconciliation and native
+settlement. Its stopped command-identity lookup authenticates document 4 or 5 without granting
+ordinary reads or conversion authority; marked history and retired command IDs remain collision
+owners. Even a ready registry prefix is excluded from startup conversion while its logout operation
+is pending. Only after native settlement, ready publication and disposal of the stopped logout owner
+does the controller acquire a new backed settings-conversion admission. UNKNOWN writes keep the
+operation pending and the original credentials unchanged.
+Ordinary readers accept only the current schema. Stopped conversion and flat-source inspection own
+the previous grammar; retained value-free receipts keep the catalog used by their original write.
 
 Registry document 3 binds immutable installation ID and safe revision. Control 7 binds logical registry digest/revision/epoch and operation membership; marker 8 selects the current tuple and external browser-root registry. General persisted inode/device continuity and recertification are absent. Byte-identical closed replacement keeps logical ownership; a fresh open validates the current file. Exact operation sources, stages and open descriptors retain physical checks.
 
@@ -392,7 +421,9 @@ does not establish rename, journal-recovery or power-loss durability for Windows
 The secure bootstrap does not load `.env` or `.env.providers`. Provider families and their file
 writer are absent. `assertNoMigratedEnvironmentKeys` checks parent key membership and refuses
 migrated names without reading their values. It reports retired canary names with the remedy
-`config/test-data.local.json`. Other migrated names receive the Settings remedy.
+`config/test-data.local.json`. `TIMEKEEPER_NAME`, `HRAUTO_ACTIVITY_PERSON_PSEUDONYM_HMAC_KEY`
+and `HRAUTO_ACTIVITY_PERSON_PSEUDONYM_KEY_GENERATION` receive the exact retired protected-setting
+refusal with removal as the remedy. Other migrated names receive the Settings remedy.
 
 `workerBootstrapEnvironment` copies only `HRAUTO_HOST_PRIMARY_DISPLAY` and
 `WORKER_PROCESS_MECHANIC_KEYS`: `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`, `SystemRoot`, `WINDIR`,

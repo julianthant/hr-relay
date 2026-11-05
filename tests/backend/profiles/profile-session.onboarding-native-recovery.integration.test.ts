@@ -1,3 +1,10 @@
+import { captureProfileCredentialFixture, installPredecessorProfileCredentials } from "../../support/helpers/predecessor-profile-credentials.js";
+import { StartupCrashRecoveryRefusedError } from "../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
+import { ProfileRestoreBrowserCustodyUnprovedError } from "../../../src/backend/storage/maintenance/profile-inventory.js";
+import { StorageMaintenanceCustodyUnavailableError } from "../../../src/backend/storage/maintenance/custody-availability.js";
+import { authenticateDocument } from "../../../src/backend/storage/configuration/credential-store.js";
+import { STOPPED_PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/backend/storage/configuration/protected-settings-upgrade.js";
+import { createProfileRegistry } from "../../../src/backend/profiles/registry.js";
 import { BrowserProfileStillClosingError } from "../../../src/workflow-kit/session.js";
 import { testProcessImport } from "../../support/compiled-process.js";
 import assert from "node:assert/strict";
@@ -21,12 +28,12 @@ import { ProfileVerifierDocumentSchema, SignUpOperationSchema } from "../../../s
 import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { composeProfileRuntime, RuntimeCustodyUncertainError } from "../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime, initializeRegisteredPersonStores, RegisteredPersonUpgradeRefusedError, RuntimeCustodyUncertainError } from "../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { createDuoCredentialStore } from "../../../src/backend/storage/configuration/duo-credential-store.js";
 import type { DraftDuoBrowserOwner, DraftDuoCapability, ProfileOnboardingDuoProvider } from "../../../src/backend/profiles/onboarding-duo.js";
 import { ProfileOnboardingDuoProviderError } from "../../../src/backend/runtime/browser/onboarding-duo-provider.js";
-import { CanonicalCredentialHeadSchema } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
+import { CanonicalCredentialHeadSchema, createCanonicalCredentials } from "../../../src/backend/storage/configuration/canonical-credential-store.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { createBrowserRoots } from "../../../src/backend/storage/browser-roots.js";
 import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
@@ -112,7 +119,7 @@ async function privateDraftFixture(onboardingDuo?: ProfileOnboardingDuoProvider)
   const draft = profile.session.signUp({ firstName: "Recovery", lastName: "Fixture", email: "draft-recovery@ucsd.edu",
     password: "disposable-draft-recovery", createdAt: new Date().toISOString() });
   if (draft.state !== "onboarding") throw new Error("fixture genuine draft required");
-  return { root, lifetime, machine, profile, draft, processLockRoot };
+  return { root, lifetime, machine, machineRoot: machine.stateRoot, profile, draft, processLockRoot };
 }
 
 function retainDraftBrowserDirectory(f: Awaited<ReturnType<typeof privateDraftFixture>>, operationId = f.draft.operationId) {
@@ -284,26 +291,40 @@ async function readyFixture() {
   assert.equal(f.profile.session.readOnboarding(f.draft.token, f.draft.operationId).step, "ready");
   assert.equal(f.machine.readProfileRegistry().profiles.length, 0);
   assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "profile-verifiers.json"), "utf8"))).profiles.length, 0);
-  return { ...f, remoteEnrollments, providerCounts: () => ({ starts, cancels, browserCloses, active }) };
+  const owner = f.machine.admitProfile(f.draft.profileId);
+  let credentialFixture: ReturnType<typeof captureProfileCredentialFixture>;
+  try { credentialFixture = captureProfileCredentialFixture(owner); } finally { owner.release(); }
+  return { ...f, credentialFixture, remoteEnrollments, providerCounts: () => ({ starts, cancels, browserCloses, active }) };
 }
 
-for (const boundary of ["phase", "intent", "verifier", "registry", "continuity", "unlink", "operation-consume"] as const) {
-  it(`recovers exact explicit Finish across ${boundary} with a coupled verifier and registration`, async () => {
+function installPredecessorRegistration(f: Awaited<ReturnType<typeof readyFixture>>, draft = f.draft) {
+  const operation = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(f.machineRoot, "machine", "operations", `${draft.operationId}.json`), "utf8")));
+  let source = f.credentialFixture;
+  if (draft.profileId !== f.draft.profileId) {
+    const owner = f.machine.admitProfile(draft.profileId);
+    try { source = captureProfileCredentialFixture(owner); } finally { owner.release(); }
+  }
+  installPredecessorProfileCredentials(source, `${operation.firstName.charAt(0)}${operation.lastName.charAt(0)}`.toUpperCase());
+}
+
+async function recoverFinishBoundary(boundary: "phase" | "intent" | "verifier" | "registry" | "continuity" | "unlink" | "operation-consume", startup = false, predecessor = false) {
     const f = await readyFixture(), operationPath = join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`);
     const verifierPath = join(f.machine.stateRoot, "machine", "profile-verifiers.json"), registryPath = join(f.machine.stateRoot, "machine", "profiles.json");
     const intentPath = join(f.root, ".tracker", "control", "profile-publication.json"), continuityPath = join(f.root, ".tracker", "control", "profile-registry.json");
     const rename = nativeFs.renameSync, unlink = nativeFs.unlinkSync, failure = new Error("fixture Finish boundary");
     let fired = false, finishId: string | undefined;
-    const renameSpy = vi.spyOn(nativeFs, "renameSync").mockImplementation((source, destination) => {
+    let interruptedBoundary = predecessor ? "phase" : boundary;
+    const interruptRename: typeof nativeFs.renameSync = (source, destination) => {
       rename(source, destination);
       const target = String(destination), op = existsSync(operationPath) ? JSON.parse(readFileSync(operationPath, "utf8")) as { phase: string; onboarding?: { finish?: { finishId: string } } } : undefined;
       const intent = existsSync(intentPath) ? JSON.parse(readFileSync(intentPath, "utf8")) as { kind: string } : undefined;
       if (op?.onboarding?.finish !== undefined) finishId = op.onboarding.finish.finishId;
-      const hit = boundary === "phase" && target === operationPath && op?.phase === "publishing"
-        || boundary === "intent" && target === intentPath && intent?.kind === "onboarding-finish"
-        || intent?.kind === "onboarding-finish" && (boundary === "verifier" && target === verifierPath || boundary === "registry" && target === registryPath || boundary === "continuity" && target === continuityPath);
+      const hit = interruptedBoundary === "phase" && target === operationPath && op?.phase === "publishing"
+        || interruptedBoundary === "intent" && target === intentPath && intent?.kind === "onboarding-finish"
+        || intent?.kind === "onboarding-finish" && (interruptedBoundary === "verifier" && target === verifierPath || interruptedBoundary === "registry" && target === registryPath || interruptedBoundary === "continuity" && target === continuityPath);
       if (!fired && hit) { fired = true; throw failure; }
-    });
+    };
+    const renameSpy = vi.spyOn(nativeFs, "renameSync").mockImplementation(interruptRename);
     const unlinkSpy = vi.spyOn(nativeFs, "unlinkSync").mockImplementation(path => {
       const target = String(path), intent = existsSync(intentPath) ? JSON.parse(readFileSync(intentPath, "utf8")) as { kind: string } : undefined;
       if (!fired && boundary === "unlink" && target === intentPath && intent?.kind === "onboarding-finish") { fired = true; throw failure; }
@@ -315,22 +336,89 @@ for (const boundary of ["phase", "intent", "verifier", "registry", "continuity",
     finally { renameSpy.mockRestore(); unlinkSpy.mockRestore(); syncBuiltinESMExports(); }
     assert.equal(fired, true); assert.ok(finishId);
     await f.profile.close(); f.machine.release();
+    if (predecessor) {
+      installPredecessorRegistration(f);
+      if (boundary !== "phase") {
+        interruptedBoundary = boundary; fired = false;
+        const stopped = vi.spyOn(nativeFs, "renameSync").mockImplementation(interruptRename);
+        syncBuiltinESMExports();
+        try { await assert.rejects(initializeRegisteredPersonStores(f.root, f.lifetime, { primaryDisplay: null }, systemClock)); }
+        finally { stopped.mockRestore(); syncBuiltinESMExports(); }
+        assert.equal(fired, true, "startup must reach predecessor Finish publication before conversion");
+      }
+    }
+    if (startup) {
+      if (process.platform === "win32") {
+        await assert.rejects(initializeRegisteredPersonStores(f.root, f.lifetime, { primaryDisplay: null }, systemClock), (error: unknown) => {
+          if (predecessor) { assert.ok(error instanceof RegisteredPersonUpgradeRefusedError); assert.ok(error.cause instanceof StorageMaintenanceCustodyUnavailableError); }
+          else { assert.ok(error instanceof StartupCrashRecoveryRefusedError); assert.ok(error.cause instanceof ProfileRestoreBrowserCustodyUnprovedError); }
+          return true;
+        });
+        rmSync(f.root, { recursive: true }); return;
+      }
+      await initializeRegisteredPersonStores(f.root, f.lifetime, { primaryDisplay: null }, systemClock);
+      await initializeRegisteredPersonStores(f.root, f.lifetime, { primaryDisplay: null }, systemClock);
+    }
     const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime), profile = composeProfileRuntime({ admission: machine,
        hostFacts: { primaryDisplay: null }, clock: systemClock });
     const published = machine.readProfileRegistry().profiles.find(row => row.profileId === f.draft.profileId);
     if (published === undefined) {
-      assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, boundary === "verifier" ? 1 : 0);
+      assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, interruptedBoundary === "verifier" ? 1 : 0);
     }
     await profile.session.recoverOnboarding();
     const signedIn = profile.session.signIn({ email: "draft-recovery@ucsd.edu", password: "disposable-draft-recovery", at: new Date().toISOString() });
     assert.equal(signedIn.state, "active");
+    if (startup) {
+      const owner = machine.admitProfile(f.draft.profileId);
+      try {
+        const frame = createCanonicalCredentials(owner).readRecord("protected"); assert.ok(frame);
+        const upgraded = authenticateDocument(frame.value);
+        assert.equal(upgraded.history[0]?.receipt.protectedSchemaHash, predecessor ? STOPPED_PROTECTED_SETTINGS_SCHEMA_HASH : upgraded.record.protectedSchemaHash);
+        assert.equal(Object.hasOwn(upgraded.record.entries, "timekeeperName"), false);
+        assert.equal(upgraded.record.entries.ucpathUserId?.value, "draft-recovery@ucsd.edu");
+      } finally { owner.release(); }
+    }
     const row = machine.readProfileRegistry().profiles.find(entry => entry.profileId === f.draft.profileId);
     assert.equal(row?.registration.onboardingCompletion?.finishId, finishId);
     assert.equal(ProfileVerifierDocumentSchema.parse(JSON.parse(readFileSync(verifierPath, "utf8"))).profiles.length, 1);
     assert.equal(existsSync(operationPath), false); assert.equal(existsSync(intentPath), false);
     await profile.close(); machine.release(); rmSync(f.root, { recursive: true });
-  });
+
 }
+for (const boundary of ["phase", "intent", "verifier", "registry", "continuity", "unlink", "operation-consume"] as const) {
+  it(`recovers exact explicit Finish across ${boundary} with a coupled verifier and registration`, () => recoverFinishBoundary(boundary));
+}
+for (const predecessor of [false, true]) for (const boundary of ["phase", "continuity"] as const) {
+  it(`runs actual startup twice across ${boundary} Finish with predecessor credentials=${predecessor}`, () => recoverFinishBoundary(boundary, true, predecessor));
+}
+
+for (const predecessor of [false, true]) it(`retains pending onboarding alongside an existing ready profile, predecessor=${predecessor}`, async () => {
+  const f = await readyFixture();
+  const active = await f.profile.session.completeOnboarding(f.draft.token, f.draft.operationId); assert.equal(active.state, "active");
+  createProfileRegistry(f.machine).advanceSession(null);
+  const draft = f.profile.session.signUp({ firstName: "Pending", lastName: "Next", email: "pending-next@ucsd.edu",
+    password: "disposable-pending-next", createdAt: new Date().toISOString() });
+  assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("pending fixture required");
+  retainDraftBrowserDirectory(f, draft.operationId);
+  if (predecessor) installPredecessorRegistration(f, draft);
+  const peerPath = join(f.machine.stateRoot, "profiles", active.profileId, "credentials", "protected.json"), peer = readFileSync(peerPath);
+  const operationPath = join(f.machineRoot, "machine", "operations", `${draft.operationId}.json`), operation = readFileSync(operationPath);
+  const pendingProtected = join(f.machineRoot, "profiles", draft.profileId, "credentials", "protected.json"), protectedBytes = readFileSync(pendingProtected);
+  await f.profile.close(); f.machine.release();
+  if (process.platform === "win32") {
+    await assert.rejects(initializeRegisteredPersonStores(f.root, f.lifetime, { primaryDisplay: null }, systemClock), (error: unknown) => error instanceof StartupCrashRecoveryRefusedError);
+  } else {
+    await initializeRegisteredPersonStores(f.root, f.lifetime, { primaryDisplay: null }, systemClock);
+    await initializeRegisteredPersonStores(f.root, f.lifetime, { primaryDisplay: null }, systemClock);
+  }
+  assert.deepEqual(readFileSync(peerPath), peer);
+  const machine = acquireEntrypointAdmission(f.root, "exclusive", f.lifetime);
+  assert.deepEqual(machine.readProfileRegistry().profiles.map(row => row.profileId), [active.profileId]);
+  assert.deepEqual(readFileSync(operationPath), operation);
+  assert.deepEqual(readFileSync(pendingProtected), protectedBytes);
+  assert.equal(existsSync(join(machine.stateRoot, "profiles", draft.profileId)), true);
+  machine.release(); rmSync(f.root, { recursive: true });
+});
 
 it("holds tampered canonical abort source and preserves exact head and operation until its source is restored", async () => {
   const f = await privateDraftFixture();

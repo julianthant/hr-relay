@@ -1,3 +1,4 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { parseRunWorkbookReference } from "../../../models/dashboard/workbooks.js";
 import { z } from "zod";
 import { failureCorrectionSubmission } from "../start/failure-correction.js";
@@ -36,6 +37,7 @@ export interface StartPlanServiceDeps {
     withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
   };
   readonly authorityRead: StartPlannerDeps["authority"] & Readonly<{
+    evidenceSchemaHash?: EvidenceSchemaReader;
     authority: Readonly<{ runs: Pick<AuthorityRepositories["runs"], "admission"> }>;
   }>;
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
@@ -76,7 +78,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
       if (descriptor === undefined) throw new TargetNotFoundError("Rerun workflow is not registered.");
       return deps.authority.withAuthorityTransaction((repositories) => RerunWarningWireSchema.parse({
         workflowId: descriptor.id,
-        rerun: projectRerunPlanForOperator(previewRerunWarnings(repositories, descriptor, request.source)),
+        rerun: projectRerunPlanForOperator(previewRerunWarnings(repositories, descriptor, request.source, deps.authorityRead.evidenceSchemaHash?.bind(deps.authorityRead))),
       }));
     },
     async prepare(input: unknown, signal: AbortSignal): Promise<void> {
@@ -167,7 +169,7 @@ export function createStartPlanService(deps: StartPlanServiceDeps): StartPlanSer
         repositories.runtimeConfig.requireSettingsCurrent();
         deps.preflight?.assertReady(workflowPreflightScope(descriptor, { ...record, resolvedInstance: record.resolvedInstance }));
         if (ingress.rerunSource !== undefined) {
-          const rerun = buildRerunPlan(repositories, descriptor, ingress.rerunSource, record.planned, ingress.warningAcknowledgment, record.stepOmissions);
+          const rerun = buildRerunPlan(repositories, descriptor, ingress.rerunSource, record.planned, ingress.warningAcknowledgment, record.stepOmissions, deps.authorityRead.evidenceSchemaHash?.bind(deps.authorityRead));
           record = StartPlanRecordSchema.parse({ ...record, rerun, inputFingerprint: derivePlannedInputFingerprint(
             record.planned, record.ingressSchemaHash, record.canonicalInputSchemaHash, rerun, record.stepOmissions) });
         } else if (ingress.warningAcknowledgment !== undefined) {

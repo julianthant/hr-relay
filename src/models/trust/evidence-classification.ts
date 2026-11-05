@@ -265,7 +265,8 @@ function writePlanLeaves(scope: EvidenceValueScope, prefix: string): unknown[] {
   return [
     ...person(scope, at("document.timekeeperName")),
     ...open(scope, at("document.timekeeperName.kind"), at("document.timekeeperName.name"),
-      at("document.timekeeperName.inputPath"), at("document.timekeeperName.valueId")),
+      at("document.timekeeperName.inputPath"), at("document.timekeeperName.valueId"),
+      at("document.timekeeperName.profileId"), at("document.timekeeperName.sessionEpoch")),
     ...open(scope,
       at("state"), at("reason"),
       at("termination.terminationType"), at("termination.classification"),

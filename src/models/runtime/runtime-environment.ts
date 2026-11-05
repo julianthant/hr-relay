@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../config/catalog.js";
+import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../config/catalog.js";
 import { HOST_PRIMARY_DISPLAY_ENV } from "../config/host-display.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
 import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS, DEVELOPMENT_DEBUG_MIRROR_ENV } from "../config/secrets.js";
@@ -237,6 +237,8 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     disposition: "migrated-refused",
     reason: TEST_TARGET_SECRET_ENVIRONMENT_KEY_SET.has(key)
       ? "test-target input moved to ignored config/test-data.local.json; remove it"
+      : RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS.some(retired => retired === key)
+      ? "protected setting retired; remove it from the environment"
       : "setting moved to the settings authority; set it in Settings, then remove it",
     documented: false,
   })),

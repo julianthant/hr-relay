@@ -11,7 +11,7 @@ import { checkedSettingsResult, commandSaveState, settingsScopeRecoveryState, pr
 type ProtectedDraftOperation = { readonly kind: "set"; readonly raw: string } | { readonly kind: "clear" };
 type ProtectedDraft = Partial<Record<ProtectedSettingsName, ProtectedDraftOperation>>;
 function protectedValue(name: ProtectedSettingsName, raw: string): unknown {
-  return ProtectedValueSchemas[name].parse(name === "activityPersonPseudonym" ? JSON.parse(raw) as unknown : raw);
+  return ProtectedValueSchemas[name].parse(raw);
 }
 export function useProtectedSettings(input: {
   actorId: string; readReady: boolean; document: EditableSettingsWire | undefined; refresh: () => Promise<EditableSettingsWire>; readCurrent: () => Promise<EditableSettingsWire>; acceptReadback: (document: EditableSettingsWire) => void; onSaved?: SettingsSaveListener; onSaveProblem?: SettingsSaveProblemListener;
@@ -36,7 +36,7 @@ export function useProtectedSettings(input: {
   const update = (name: ProtectedSettingsName, raw: string): void => {
     if (!input.readReady || busy.current || pending.current !== undefined || available?.state !== "available" || !available.rows.some(row => row.name === name)) return;
     let error: string | undefined;
-    try { protectedValue(name, raw); } catch { error = name === "activityPersonPseudonym" ? "Enter JSON with keyHex (64 lowercase hex characters) and keyGeneration (activity-person-…)." : "Enter a valid value for this credential."; }
+    try { protectedValue(name, raw); } catch { error = "Enter a valid value for this credential."; }
     setDraft(previous => ({ ...previous, [name]: { kind: "set", raw } }));
     setErrors(previous => ({ ...previous, [name]: error })); setSave({ state: "idle" });
   };

@@ -24,7 +24,7 @@ import { separationsKualiFinalizationDescriptor } from "../registered-workflows.
 
 
 
-export function createFinalizationTerminalTestWorld() {
+export function createFinalizationTerminalTestWorld(retainedBinding?: import("../../../../src/models/write-safety/protected-input.js").ProtectedInputBinding) {
   const open: FinalizationHarness[] = [];
 
   const signal = new AbortController().signal;
@@ -136,7 +136,7 @@ export function createFinalizationTerminalTestWorld() {
       input: {
         ...raw.input,
         raw: canonical,
-        parsed: { ...raw.input.parsed, value: canonical },
+        parsed: { ...raw.input.parsed, value: canonical, ...(retainedBinding === undefined ? {} : { protectedBindings: [retainedBinding] }) },
       },
     });
     const inserted = value.database.authority.runs.enqueue(run);

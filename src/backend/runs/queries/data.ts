@@ -50,7 +50,7 @@ function scalarAtPath(output: JsonValue, fieldPath: string): ScalarLookup {
     if (!isJsonRecord(current) || !Object.hasOwn(current, part)) return { kind: "absent" };
     current = current[part]!;
   }
-  if (isJsonRecord(current) && (current.kind === "protected-store" || current.kind === "test-data-local"
+  if (isJsonRecord(current) && (current.kind === "profile" || current.kind === "protected-store" || current.kind === "test-data-local"
     || current.kind === "legacy-protected-input" || current.state === "withheld-protected-input")) {
     return { kind: "scalar", value: JSON.stringify(current) };
   }

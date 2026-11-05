@@ -13,7 +13,7 @@ if (actualEntry !== FakeKeyringEntry || process.env.RELAY_TEST_KEYCHAIN === unde
 if (!process.connected || process.send === undefined) throw new Error("retention-worker-ipc-required");
 const { z } = await import("zod");
 const [port, workspace, profileId, scenario, crashNonce] = z.tuple([z.coerce.number().int().positive().max(65535), z.string().min(1), z.uuid(),
-  z.enum(["readonly-native-close", "worker-native-open", "writer-close", "duo-read-first", "duo-read-second", "stopped-head-close", "protected-source", "chatgpt-source", "account-projection", "stopped-control-snapshot-disposal", "setup-protected-close", "startup-upgrade-key-close", "startup-upgrade-service-inspection", "startup-upgrade-binding-inspection", "startup-upgrade-unproved-close", "startup-upgrade-closed-publication-refusal", "protected-crash-before", "protected-crash-after", "logout-prepared", "logout-commit-intent", "logout-after-commit", "logout-done", "logout-ready", "logout-unlink", "logout-writer-close", "logout-third-image", "logout-resume", "logout-unknown-copy", "logout-live-process", "logout-browser-root", "logout-key-replacement", "logout-snapshot-disposal", "logout-process-observation", "logout-seed", "logout-seed-unknown", "logout-unknown", "logout-browser-busy", "logout-browser-unproved", "logout-process-root-copy", "logout-exited-process", "logout-exit-only", "browser-root-native-success", "browser-root-busy", "browser-root-close-unproved", "browser-root-stage-close", "browser-root-observed-publication", "browser-root-rm-refusal", "browser-root-unknown-seed", "browser-root-unknown-resume"]), z.uuid().optional()]).parse(process.argv.slice(2));
+  z.enum(["readonly-native-close", "worker-native-open", "writer-close", "duo-read-first", "duo-read-second", "stopped-head-close", "protected-source", "chatgpt-source", "account-projection", "stopped-control-snapshot-disposal", "setup-protected-close", "startup-upgrade-key-close", "startup-upgrade-service-inspection", "startup-upgrade-binding-inspection", "startup-upgrade-unproved-close", "startup-upgrade-closed-publication-refusal", "protected-crash-before", "protected-crash-after", "logout-prepared", "logout-commit-intent", "logout-after-commit", "logout-done", "logout-ready", "logout-unlink", "logout-writer-close", "logout-third-image", "logout-resume", "logout-unknown-copy", "logout-live-process", "logout-browser-root", "logout-key-replacement", "logout-snapshot-disposal", "logout-process-observation", "logout-seed", "logout-seed-unknown", "logout-seed-predecessor", "logout-seed-predecessor-unknown", "logout-seed-predecessor-collision", "logout-collision", "logout-predecessor-windows-refusal", "logout-unknown", "logout-browser-busy", "logout-browser-unproved", "logout-process-root-copy", "logout-exited-process", "logout-exit-only", "browser-root-native-success", "browser-root-busy", "browser-root-close-unproved", "browser-root-stage-close", "browser-root-observed-publication", "browser-root-rm-refusal", "browser-root-unknown-seed", "browser-root-unknown-resume"]), z.uuid().optional()]).parse(process.argv.slice(2));
 const { WorkerRuntimeLifetimeLock, isOfflineMaintenanceOperationActive } = await import("../../../src/backend/storage/admission/lifetime-lock.js");
 const { acquireSharedRuntimeAdmission, RuntimeAdmission } = await import("../../../src/backend/storage/admission/admission.js");
 const { createCanonicalCredentials, captureStoppedCanonicalCredentialHead } = await import("../../../src/backend/storage/configuration/canonical-credential-store.js");
@@ -393,7 +393,7 @@ async function runLogout(): Promise<void> {
   const { RuntimeLifetimeLock } = await import("../../../src/backend/storage/admission/lifetime-lock.js");
   const { acquireEntrypointAdmission } = await import("../../../src/backend/storage/admission/bootstrap-admission.js");
   const { OldBuildRuntimeArtifactsError } = await import("../../../src/backend/storage/admission/process-root.js");
-  const { composeProfileRuntime, composeSelectedProfileStorage } = await import("../../../src/backend/app/composition/storage-compose.js");
+  const { composeProfileRuntime, composeSelectedProfileStorage, initializeRegisteredPersonStores } = await import("../../../src/backend/app/composition/storage-compose.js");
   const { AuthorityDatabase } = await import("../../../src/backend/storage/sqlite/authority-database.js");
   const { LogoutOperationSchema, LogoutSettlementSchema } = await import("../../../src/models/profiles/profile.js");
   const { rebuildRuntimeIsolation } = await import("../../../src/backend/app/config/runtime-isolation.js");
@@ -413,10 +413,11 @@ async function runLogout(): Promise<void> {
     await new Promise<never>(() => { setInterval(() => {}, 1000); });
   }
   // The parent's released ephemeral port can already belong to another fixture.
-  const controller = await RuntimeLifetimeLock.acquire(0), machine = acquireEntrypointAdmission(workspace, "exclusive", controller);
+  const controller = await RuntimeLifetimeLock.acquire(0);
+  let machine = acquireEntrypointAdmission(workspace, "exclusive", controller);
   const wall = manualClock(new Date("2026-10-21T12:01:00.000Z"));
   const fields = { email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: wall.now().toISOString() };
-  if (scenario === "logout-seed" || scenario === "logout-seed-unknown") {
+  if (scenario.startsWith("logout-seed")) {
     const { createProfileSession } = await import("../../../src/backend/profiles/profile-session.js");
     const { registerBoundProfile } = await import("../helpers/admission-fixture.js");
     const { testAdmittedWorker } = await import("../fixtures/run-lifecycle-fixtures.js");
@@ -463,7 +464,7 @@ async function runLogout(): Promise<void> {
     const run = requireLifecycleApplied(lifecycle.workerTransition({ commandId: randomUUID(), runId: claimed.envelope.runId, claim,
       lifecycle: { state: "running", workerId: worker.workerId, claimedAt: fields.at, heartbeatAt: fields.at, currentNodeId: "crm-dates" } }));
     let intent: unknown;
-    if (scenario === "logout-seed-unknown") {
+    if (scenario.endsWith("-unknown")) {
       const { fenceWriteFixture } = await import("../helpers/write-fence-fixture.js");
       const { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } = await import("../fixtures/phase1c-contract-fixtures.js");
       const { deriveWriteBindingProofDigest } = await import("../../../src/rules/write-safety/write-safety.js");
@@ -480,14 +481,75 @@ async function runLogout(): Promise<void> {
         expectedVersion: attempting.version, code: "unknown", message: "Synthetic unresolved logout write", now: fields.at,
         authorityReason: deriveWriteAuthorityReason("post-click-verifier-unknown", "probe", "Synthetic unresolved logout write") });
     }
-    const pending = session.logOut(active.token, { at: fields.at }); assert.equal(pending.state, "cancelling");
+    const collisionOperationId = scenario === "logout-seed-predecessor-collision" ? randomUUID() : undefined;
+    let collisionCommandId: string | undefined;
+    if (scenario.startsWith("logout-seed-predecessor")) {
+      const { captureProfileCredentialFixture, installPredecessorProfileCredentials } = await import("../helpers/predecessor-profile-credentials.js");
+      const valueId = randomUUID();
+      if (collisionOperationId !== undefined) {
+        const { lifecycleCommandId } = await import("../../../src/rules/identity/identifiers.js");
+        collisionCommandId = lifecycleCommandId("logout-crash", { operationId: collisionOperationId, runId: run.envelope.runId, version: run.version, workerLifetime: worker.workerLifetime });
+      }
+      installPredecessorProfileCredentials(captureProfileCredentialFixture(admission), "Old Fixture Signer", valueId, collisionCommandId);
+      fs.writeFileSync(join(workspace, `.logout-predecessor-${nonce}.json`), JSON.stringify({ valueId, collisionCommandId }), { mode: 0o600, flag: "wx" });
+    }
+    const { default: crypto } = await import("node:crypto");
+    const uuid = crypto.randomUUID;
+    if (collisionOperationId !== undefined) { crypto.randomUUID = () => collisionOperationId; syncBuiltinESMExports(); }
+    try { assert.equal(session.logOut(active.token, { at: fields.at }).state, "cancelling"); }
+    finally { crypto.randomUUID = uuid; syncBuiltinESMExports(); }
     const operation = readOperation(); assert.equal(operation.sessionGeneration, active.epoch);
+    if (collisionOperationId !== undefined) assert.equal(operation.operationId, collisionOperationId);
     fs.writeFileSync(join(workspace, `.logout-source-${nonce}.json`), JSON.stringify({ nonce, operationId: operation.operationId,
       runId: run.envelope.runId, workerId: worker.workerId, processId: process.pid, intent, epoch: active.epoch,
       version: run.version, claimGeneration: run.claimGeneration, workerLifetime: worker.workerLifetime, member: workerPoolMember(worker.member) }), { mode: 0o600, flag: "wx", flush: true });
     process.kill(process.pid, "SIGKILL"); throw new Error("source crash did not terminate child");
   }
+  const predecessor = fs.existsSync(join(workspace, `.logout-predecessor-${nonce}.json`));
+  const protectedPath = join(root, "profiles", profileId, "credentials", "protected.json");
+  if (predecessor) {
+    const pending = fs.readdirSync(operations).some(name => name.endsWith(".json"));
+    const source = fs.readFileSync(protectedPath), operation = pending ? fs.readFileSync(operationPath()) : undefined;
+    machine.release();
+    await initializeRegisteredPersonStores(workspace, controller, { primaryDisplay: null }, wall);
+    machine = acquireEntrypointAdmission(workspace, "exclusive", controller);
+    if (pending) { assert.deepEqual(fs.readFileSync(protectedPath), source); assert.deepEqual(fs.readFileSync(operationPath()), operation); }
+  }
   const runtime = composeProfileRuntime({ admission: machine, clock: wall, hostFacts: { primaryDisplay: null } });
+  if (scenario === "logout-collision") {
+    const operation = readOperation(), before = fs.readFileSync(protectedPath);
+    const marker = z.strictObject({ valueId: z.uuid(), collisionCommandId: z.uuid() }).parse(JSON.parse(fs.readFileSync(join(workspace, `.logout-predecessor-${nonce}.json`), "utf8")));
+    const authorized = runtime.session.authorizeLogoutContinuation(fields);
+    assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("collision-logout-verifier-refused");
+    assert.equal(authorized.resume().state, "cancelling");
+    const { CommandIdentityConflictError } = await import("../../../src/rules/commands/commands.js");
+    const collision = (error: unknown): boolean => error instanceof CommandIdentityConflictError || error instanceof Error
+      && (collision(error.cause) || error instanceof AggregateError && error.errors.some(collision));
+    await assert.rejects(runtime.awaitClosurePreparation(profileId), collision);
+    assert.deepEqual(fs.readFileSync(protectedPath), before);
+    assert.equal(readOperation().operationId, operation.operationId); assert.deepEqual(readOperation().source, operation.source);
+    assert.equal(retainedRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "cancelling");
+    const database = new DatabaseSync(path, { readOnly: true });
+    try { assert.equal(database.prepare("SELECT COUNT(*) AS count FROM commands WHERE id=?").get(marker.collisionCommandId)?.count, 0); }
+    finally { database.close(); }
+    assert.throws(() => machine.release(), error => hasUnprovedSourceClosure(error));
+    process.send?.({ scenario, assertionsComplete: true }); return;
+  }
+  if (scenario === "logout-predecessor-windows-refusal") {
+    assert.equal(process.platform, "win32"); assert.equal(predecessor, true);
+    const source = fs.readFileSync(protectedPath), operation = readOperation();
+    const authorized = runtime.session.authorizeLogoutContinuation(fields);
+    assert.equal(authorized.state, "authorized"); if (authorized.state !== "authorized") throw new Error("predecessor-logout-verifier-refused");
+    assert.equal(authorized.resume().state, "cancelling");
+    const custodyUnavailable = (error: unknown): boolean => error instanceof Error
+      && (("code" in error && error.code === "STORAGE_MAINTENANCE_CUSTODY_UNAVAILABLE") || custodyUnavailable(error.cause)
+        || error instanceof AggregateError && error.errors.some(custodyUnavailable));
+    await assert.rejects(runtime.awaitClosurePreparation(profileId), custodyUnavailable);
+    assert.deepEqual(fs.readFileSync(protectedPath), source);
+    assert.equal(fs.existsSync(join(root, "machine", "erasures", `${profileId}.json`)), false);
+    assert.equal(operation.profileId, profileId);
+    process.send?.({ scenario, assertionsComplete: true }); return;
+  }
   if (scenario === "logout-resume") {
     const receipt = z.strictObject({ nonce: z.uuid(), scenario: z.string(), operationId: z.uuid(), profileId: z.uuid(), phase: z.string(), settlement: LogoutSettlementSchema })
       .parse(JSON.parse(fs.readFileSync(marker, "utf8")));
@@ -600,7 +662,31 @@ async function runLogout(): Promise<void> {
         assert.deepEqual(native.prepare("SELECT run_id FROM run_results WHERE run_id=?").all(source.runId).map(row => row.run_id), [source.runId]);
         assert.deepEqual(native.prepare("SELECT id FROM timeline_events WHERE run_id=? AND json_extract(payload_json,'$.payload.kind')='span' AND json_extract(payload_json,'$.payload.event.t')='span.ended' ORDER BY id").all(source.runId).map(row => row.id), [eventId]);
       });
+      if (predecessor) {
+        const { createCanonicalCredentials } = await import("../../../src/backend/storage/configuration/canonical-credential-store.js");
+        const { authenticateDocument } = await import("../../../src/backend/storage/configuration/credential-store.js");
+        const frame = createCanonicalCredentials(admission).readRecord("protected"); assert.ok(frame);
+        const document = authenticateDocument(frame.value);
+        const marker = z.strictObject({ valueId: z.uuid(), collisionCommandId: z.uuid().optional() }).parse(JSON.parse(fs.readFileSync(join(workspace, `.logout-predecessor-${nonce}.json`), "utf8")));
+        assert.equal(document.retiredLegacy.valueIds.includes(marker.valueId), true);
+        assert.equal(document.record.entries.ucpathUserId?.value, fields.email);
+        assert.equal(document.record.entries.ucpathPassword?.value, fields.password);
+      }
     } finally { database.close(); admission.release(); }
+    if (predecessor) {
+      const credentials = fs.readFileSync(protectedPath);
+      const journal = new DatabaseSync(path, { readOnly: true });
+      let commands: unknown;
+      try { commands = journal.prepare("SELECT * FROM commands ORDER BY id").all(); } finally { journal.close(); }
+      await runtime.close(); machine.release(); await controller.close();
+      const second = await RuntimeLifetimeLock.acquire(0);
+      try {
+        await initializeRegisteredPersonStores(workspace, second, { primaryDisplay: null }, wall);
+        assert.deepEqual(fs.readFileSync(protectedPath), credentials);
+        const readback = new DatabaseSync(path, { readOnly: true });
+        try { assert.deepEqual(readback.prepare("SELECT * FROM commands ORDER BY id").all(), commands); } finally { readback.close(); }
+      } finally { await second.close(); }
+    }
     process.send?.({ scenario, assertionsComplete: true }); return;
   }
   const cold = fs.readdirSync(operations).some(name => name.endsWith(".json"));

@@ -226,7 +226,7 @@ const SYNTHETIC_EID = "10873698";
 function recoverySource(harness: Awaited<ReturnType<typeof protectedFixtures.createHarness>>, protection: "subject" | "ordinary" | "timekeeper") {
   if (protection === "timekeeper") {
     const plan = planStart({ authority: harness.database, clock: harness.clock, ids: harness.plannerIds,
-      planTtlMs: 600_000, protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic signer" }) },
+      planTtlMs: 600_000, protectedSecrets: protectedSecretSource({ profileName: "Synthetic signer" }) },
     { descriptor: separationsDescriptor, submissions: [{ documentNumber: "12345678" }],
       dryRun: true, priority: "bulk", shape: "single", ...harness.configIdentity, plannedBy: "local-operator" });
     assert.deepEqual(plan.refused, []);

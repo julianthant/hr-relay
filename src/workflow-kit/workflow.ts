@@ -1,3 +1,5 @@
+import type { EvidenceSchemaReader } from "../models/storage/evidence-schema-admission.js";
+import { checkpointRecordKey, type RunCheckpointRecord } from "../models/workflow/checkpoint.js";
 import type { RunRecord } from "../models/run/record.js";
 import { WorkbookReferenceLookupSchema, type WorkbookReferenceLookup, type RunWorkbookReference } from "../models/dashboard/workbooks.js";
 import { PlannedRunOutputSchema, type PlannedRunOutput } from "../models/dashboard/run-outputs.js";
@@ -517,6 +519,7 @@ export interface WorkflowTerminalResultExecution<Input = never, Outputs = never,
     currentRun: WorkflowTerminalRun,
     evidence: unknown,
     clock: TerminalResultClock,
+    schemaReader?: EvidenceSchemaReader,
   ) => Readonly<{ record: RunResultRecord; authorization: object }>;
    // A preview shares the seal and identity checks but not the derive.
   readonly buildPreview: (
@@ -524,6 +527,7 @@ export interface WorkflowTerminalResultExecution<Input = never, Outputs = never,
     preview: unknown,
     evidence: unknown,
     clock: TerminalResultClock,
+    schemaReader?: EvidenceSchemaReader,
   ) => Readonly<{ record: RunResultRecord; authorization: object }>;
 }
 
@@ -680,7 +684,7 @@ type TerminalEvidenceBinding = Readonly<{
   /** The schema the durable checkpoint row is bound to. */
   checkpointSchema: z.ZodType;
   /** Durable value → the scope value handed to `derive`. Fails loud on drift. */
-  project: (storedValue: unknown, context: string) => unknown;
+  project: (storedValue: unknown, context: string, retained?: Readonly<{ checkpoint: RunCheckpointRecord; schemaReader?: EvidenceSchemaReader }>) => unknown;
 }>;
 
 function terminalEvidenceOf(node: RuntimeFlowNode): TerminalEvidenceBinding | undefined {
@@ -696,7 +700,7 @@ function terminalEvidenceOf(node: RuntimeFlowNode): TerminalEvidenceBinding | un
       const commit = node.commit.uses;
       return {
         checkpointSchema: TransactionOutcomeSchema,
-        project: (value, context) => projectTransactionOutcome(commit, value, context),
+        project: (value, context, retained) => projectTransactionOutcome(commit, value, context, retained),
       };
     }
     default: return undefined;
@@ -1343,7 +1347,7 @@ export function defineWorkflowDescriptor<
   const canonicalInputSchemaHash = deriveSchemaHash(spec.canonicalInput, "output");
   const terminalResultSchemaHash = deriveSchemaHash(spec.flow.result.schema, "output");
   /** The RUN identity checks shared by `build` and `buildPreview`, so the two never diverge on what "this run may settle against this descriptor" means. */
-  const assertTerminalRunBinding = (currentRun: WorkflowTerminalRun): z.output<typeof spec.canonicalInput> => {
+  const assertTerminalRunBinding = (currentRun: WorkflowTerminalRun, schemaReader?: EvidenceSchemaReader): z.output<typeof spec.canonicalInput> => {
     if (currentRun.lifecycle.state !== "running") {
       throw new Error(
         `run ${currentRun.envelope.runId} is ${currentRun.lifecycle.state}; `
@@ -1355,7 +1359,7 @@ export function defineWorkflowDescriptor<
       || currentRun.envelope.contractFingerprint !== descriptor.contractFingerprint) {
       throw new Error(`run ${currentRun.envelope.runId} is not bound to descriptor ${descriptor.id}`);
     }
-    if (currentRun.input.parsed.schemaHash !== canonicalInputSchemaHash) {
+    if ((schemaReader?.({ kind: "run-input", id: currentRun.envelope.runId }, currentRun.input, currentRun.input.parsed.schemaHash, canonicalInputSchemaHash) ?? currentRun.input.parsed.schemaHash) !== canonicalInputSchemaHash) {
       throw new Error(
         `run ${currentRun.envelope.runId} canonical input schema ${currentRun.input.parsed.schemaHash} `
         + `does not match descriptor schema ${canonicalInputSchemaHash}`,
@@ -1371,6 +1375,7 @@ export function defineWorkflowDescriptor<
     expectedDependencies: WorkflowTerminalResultExecution["dependencies"],
     purpose: string,
     allowChildPreviews = false,
+    schemaReader?: EvidenceSchemaReader,
   ): Readonly<{ outputs: Record<string, unknown>; dependencies: TerminalDependencyRecord[] }> => {
     const expectedIds = expectedDependencies.map(({ nodeId }) => nodeId);
     const evidence = z.array(TerminalDependencyEvidenceSchema).parse(evidenceInput);
@@ -1395,7 +1400,7 @@ export function defineWorkflowDescriptor<
       if (entry.state === "gate-resolved") {
         const node = nodeByIdOrThrow(id, nodes, entry.nodeId, purpose);
         const gate = entry.gate;
-        if (node.kind !== "gate" || gate.result.schemaHash !== dependencySchemaHashes.get(entry.nodeId)
+        if (node.kind !== "gate" || (schemaReader?.({ kind: "gate-result", id: canonicalJsonStringify([gate.runId, gate.gateId]) }, gate, gate.result.schemaHash, deriveSchemaHash(node.result, "output")) ?? gate.result.schemaHash) !== dependencySchemaHashes.get(entry.nodeId)
           || (node.resolvedBy === "operator" ? !("commandId" in gate) : !("source" in gate) || gate.source.kind !== node.resolvedBy)
           || gate.runId !== currentRun.envelope.runId && !currentRun.envelope.continuation?.gates.some(reference => reference.runId === gate.runId && reference.nodeId === entry.nodeId)) {
           throw new Error("terminal-gate-dependency-identity-mismatch");
@@ -1415,10 +1420,10 @@ export function defineWorkflowDescriptor<
           || entry.invocationCommandId !== delegationInvocationCommandId({ runId: sourceParent.runId, attempt: sourceParent.attempt, nodeId: node.id, revision: entry.manifest.revision })
           || entry.manifest.cardinality !== node.cardinality || entry.manifest.join !== node.join
           || canonicalJsonStringify(entry.manifest.policy) !== canonicalJsonStringify(node.policy)
-          || entry.manifest.inputSchemaHash !== deriveSchemaHash(node.target.input, "input")
-          || entry.manifest.resultSchemaHash !== deriveSchemaHash(node.target.result, "output")
+          || (schemaReader?.({ kind: "delegation-input", id: entry.manifest.manifestId }, entry.manifest, entry.manifest.inputSchemaHash, deriveSchemaHash(node.target.input, "input")) ?? entry.manifest.inputSchemaHash) !== deriveSchemaHash(node.target.input, "input")
+          || (schemaReader?.({ kind: "delegation-result", id: entry.manifest.manifestId }, entry.manifest, entry.manifest.resultSchemaHash, deriveSchemaHash(node.target.result, "output")) ?? entry.manifest.resultSchemaHash) !== deriveSchemaHash(node.target.result, "output")
           || entry.children.some(child => child.run.envelope.workflow !== node.target.id || child.run.envelope.dryRun !== currentRun.envelope.dryRun)) throw new Error("terminal-delegation-dependency-identity-mismatch");
-        const resolution = resolveDelegationEvidenceOutput(entry, node.target.result);
+        const resolution = resolveDelegationEvidenceOutput(entry, node.target.result, schemaReader);
         if (resolution.kind === "preview") {
           if (!allowChildPreviews || !currentRun.envelope.dryRun) throw new Error("terminal-preview-is-not-workflow-output");
         } else if (expectedIds.includes(entry.nodeId)) outputs[entry.nodeId] = resolution.output;
@@ -1433,7 +1438,7 @@ export function defineWorkflowDescriptor<
         if (sourceParent === undefined || entry.edgeId !== node.edgeId
           || child.workflowId !== node.target.id || result.runId !== child.runId || result.workflowId !== child.workflowId
           || result.attempt !== child.attempt || result.descriptorVersion !== child.descriptorVersion
-          || result.contractFingerprint !== child.contractFingerprint || result.resultSchemaHash !== deriveSchemaHash(node.target.result, "output")) throw new Error("terminal-child-dependency-identity-mismatch");
+          || result.contractFingerprint !== child.contractFingerprint || (schemaReader?.({ kind: "run-result", id: result.runId }, result, result.resultSchemaHash, deriveSchemaHash(node.target.result, "output")) ?? result.resultSchemaHash) !== deriveSchemaHash(node.target.result, "output")) throw new Error("terminal-child-dependency-identity-mismatch");
         const output = node.target.result.parse(result.result.value);
         outputs[entry.nodeId] = { state: "done", runId: child.runId, itemId: child.itemId, output };
         return { state: "child-resolved", nodeId: entry.nodeId, parentRunId: entry.parentRunId, edgeId: entry.edgeId,
@@ -1537,7 +1542,7 @@ export function defineWorkflowDescriptor<
           throw new Error(`${id}: ${purpose} dependency ${entry.nodeId} owns no output schema`);
         }
         const outputSchemaHash = dependencySchemaHashes.get(entry.nodeId);
-        if (checkpoint.output.schemaHash !== outputSchemaHash) {
+        if (outputSchemaHash === undefined || (schemaReader?.({ kind: "task-output", id: checkpointRecordKey(checkpoint) }, checkpoint, checkpoint.output.schemaHash, outputSchemaHash) ?? checkpoint.output.schemaHash) !== outputSchemaHash) {
           throw new Error(
             `${purpose} dependency ${entry.nodeId} checkpoint output schema `
             + `${checkpoint.output.schemaHash} does not match ${outputSchemaHash}`,
@@ -1546,6 +1551,7 @@ export function defineWorkflowDescriptor<
         outputs[entry.nodeId] = binding.project(
           checkpoint.output.value,
           `${purpose} dependency ${entry.nodeId}`,
+          { checkpoint, schemaReader },
         );
         return {
           state: "resolved",
@@ -1589,13 +1595,14 @@ export function defineWorkflowDescriptor<
     dependencies: terminalDependencies,
     parseResult: (candidate: unknown) => spec.flow.result.schema.parse(candidate),
     derive: spec.flow.result.derive,
-    build: (currentRun: WorkflowTerminalRun, evidenceInput: unknown, clock: TerminalResultClock) => {
-      const input = assertTerminalRunBinding(currentRun);
+    build: (currentRun: WorkflowTerminalRun, evidenceInput: unknown, clock: TerminalResultClock, schemaReader?: EvidenceSchemaReader) => {
+      const input = assertTerminalRunBinding(currentRun, schemaReader);
       const { outputs, dependencies } = resolveTerminalDependencies(
         currentRun,
         evidenceInput,
         terminalDependencies,
         "terminal",
+        false, schemaReader,
       );
 
       const scopeCandidate = Object.freeze({ input, outputs: Object.freeze(outputs) });
@@ -1686,8 +1693,9 @@ export function defineWorkflowDescriptor<
       previewInput: unknown,
       evidenceInput: unknown,
       clock: TerminalResultClock,
+      schemaReader?: EvidenceSchemaReader,
     ) => {
-      assertTerminalRunBinding(currentRun);
+      assertTerminalRunBinding(currentRun, schemaReader);
       // Preview requires a run the operator enqueued as a dry run.
       if (!currentRun.envelope.dryRun) {
         throw new Error(
@@ -1712,7 +1720,7 @@ export function defineWorkflowDescriptor<
         if (step.state === "delegation-preview" && (node.kind !== "child-run" || node.await !== "terminal")) throw new Error("dry-run preview delegation membership mismatch");
       }
       const { dependencies } = resolveTerminalDependencies(currentRun, evidenceInput,
-        dependencySpecFor(workflowPreviewDependencyIds(descriptor, steps), "dry-run preview"), "dry-run preview", true);
+        dependencySpecFor(workflowPreviewDependencyIds(descriptor, steps), "dry-run preview"), "dry-run preview", true, schemaReader);
       const previewNodes = new Set(dependencies.filter(dependency => dependency.state === "delegation-resolved"
         && dependency.members.some(member => isRunPreviewSchemaHash(member.resultSchemaHash))).map(dependency => dependency.nodeId));
       if (steps.some(step => (step.state === "delegation-preview") !== previewNodes.has(step.nodeId))) throw new Error("dry-run preview delegation accounting mismatch");

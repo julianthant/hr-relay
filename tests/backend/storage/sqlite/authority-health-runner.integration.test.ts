@@ -33,7 +33,7 @@ describe("credential presence doctor", () => {
 
   it("reports the same presence facts through authority.health and fails unreadable closed", async () => {
     const f = await fixture();
-    writeCredentials(f, { timekeeperName: { set: "Protected Doctor Canary" } });
+    writeCredentials(f, { ucpathUserId: { set: "Protected Doctor Canary" } });
     const runner = new AuthorityHealthPreflightRunner(f.admission,f.options, undefined, f.credentialStore);
     const context = {
       signal: new AbortController().signal,
@@ -47,7 +47,7 @@ describe("credential presence doctor", () => {
     assert.ok(isDeepStrictEqual(snapshot(join(f.workspace, ".tracker", "control")), controlBefore), "preflight changed control bytes");
     for (const name of ProtectedSettingsNameSchema.options) {
       assert.ok(observation.summary.includes(
-        `${name}=${name === "timekeeperName" ? "present" : "absent"}`,
+        `${name}=${name === "ucpathUserId" ? "present" : "absent"}`,
       ));
     }
     assert.equal(observation.summary.includes("Protected Doctor Canary"), false);

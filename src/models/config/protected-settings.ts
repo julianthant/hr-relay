@@ -7,12 +7,7 @@ import { deriveSchemaHash } from "../validation/schema-bound-value.js";
 export const ProtectedValueSchemas = Object.freeze({
   ucpathUserId: z.string().min(1).max(256),
   ucpathPassword: z.string().min(1).max(4096),
-  timekeeperName: z.string().min(1).max(256),
   sharepointOnboardingRosterUrl: z.url().max(8192),
-  activityPersonPseudonym: z.strictObject({
-    keyHex: z.string().regex(/^[0-9a-f]{64}$/u),
-    keyGeneration: z.string().regex(/^activity-person-[a-z0-9]+(?:-[a-z0-9]+)*$/u),
-  }),
 });
 
 export const ProtectedSettingsNameSchema = z.strictObject(ProtectedValueSchemas).keyof();
@@ -26,9 +21,7 @@ function entry<Value extends z.ZodType>(value: Value) {
 export const ProtectedStoreEntriesSchema = z.strictObject({
   ucpathUserId: entry(ProtectedValueSchemas.ucpathUserId).optional(),
   ucpathPassword: entry(ProtectedValueSchemas.ucpathPassword).optional(),
-  timekeeperName: entry(ProtectedValueSchemas.timekeeperName).optional(),
   sharepointOnboardingRosterUrl: entry(ProtectedValueSchemas.sharepointOnboardingRosterUrl).optional(),
-  activityPersonPseudonym: entry(ProtectedValueSchemas.activityPersonPseudonym).optional(),
 });
 
 function operation<Value extends z.ZodType>(value: Value) {
@@ -38,9 +31,7 @@ function operation<Value extends z.ZodType>(value: Value) {
 export const ProtectedSettingsPatchSchema = z.strictObject({
   ucpathUserId: operation(ProtectedValueSchemas.ucpathUserId),
   ucpathPassword: operation(ProtectedValueSchemas.ucpathPassword),
-  timekeeperName: operation(ProtectedValueSchemas.timekeeperName),
   sharepointOnboardingRosterUrl: operation(ProtectedValueSchemas.sharepointOnboardingRosterUrl),
-  activityPersonPseudonym: operation(ProtectedValueSchemas.activityPersonPseudonym),
 });
 export const CompleteProtectedSettingsPatchSchema = ProtectedSettingsPatchSchema.required();
 export type CompleteProtectedSettingsPatch = z.infer<typeof CompleteProtectedSettingsPatchSchema>;
@@ -60,9 +51,11 @@ export const MarkedProtectedSettingsPatchSchema = z.strictObject({
   ucpathUserId: markedOperation(),
   ucpathPassword: markedOperation(),
   timekeeperName: markedOperation(),
-  sharepointOnboardingRosterUrl: markedOperation(),
   activityPersonPseudonym: markedOperation(),
+  sharepointOnboardingRosterUrl: markedOperation(),
 });
+export const ProtectedSettingsHistoryNameSchema = MarkedProtectedSettingsPatchSchema.keyof();
+
 export type MarkedProtectedSettingsPatch = z.infer<typeof MarkedProtectedSettingsPatchSchema>;
 
 export function markProtectedSettingsPatch(input: unknown): MarkedProtectedSettingsPatch {
@@ -92,7 +85,7 @@ export const ProtectedSettingsApplyInputSchema = ProtectedSettingsLastAppliedSch
 export type ProtectedSettingsApplyInput = z.infer<typeof ProtectedSettingsApplyInputSchema>;
 
 export const ProtectedStoreRecordSchema = z.strictObject({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(2),
   revision: PositiveIntSchema.max(Number.MAX_SAFE_INTEGER),
   protectedSchemaHash: FingerprintSchema,
   entries: ProtectedStoreEntriesSchema,
@@ -127,6 +120,10 @@ export const ProtectedSettingsReadbackSchema = z.strictObject({
   revision: PositiveIntSchema,
   entries: z.record(ProtectedSettingsNameSchema, ProtectedSettingsPresenceSchema),
 });
+export const ProtectedSettingsReceiptEntriesSchema = z.union([
+  ProtectedSettingsReadbackSchema.shape.entries,
+  z.record(ProtectedSettingsHistoryNameSchema, ProtectedSettingsPresenceSchema),
+]);
 export type ProtectedSettingsReadback = z.infer<typeof ProtectedSettingsReadbackSchema>;
 
 export function protectedSettingsReadback(input: unknown): ProtectedSettingsReadback {
@@ -144,7 +141,7 @@ export function protectedSettingsReadback(input: unknown): ProtectedSettingsRead
 
 export function initialProtectedStoreRecord(): ProtectedStoreRecord {
   return deepFreeze(ProtectedStoreRecordSchema.parse({
-    schemaVersion: 1, revision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, entries: {},
+    schemaVersion: 2, revision: 1, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, entries: {},
   }));
 }
 

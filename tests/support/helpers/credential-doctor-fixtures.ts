@@ -26,8 +26,8 @@ async function fixture() {
   const credentialStore = boundProfileCredentials(admission);
   const cleared = credentialStore.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: randomUUID(), writeId: randomUUID(),
     commandFingerprint: "d".repeat(64), expectedRevision: credentialStore.read().revision, protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
-    updatedAt: "2026-10-22T12:00:00.000Z", entries: { ucpathUserId: { clear: true }, ucpathPassword: { clear: true }, timekeeperName: { clear: true },
-      sharepointOnboardingRosterUrl: { clear: true }, activityPersonPseudonym: { clear: true } } }));
+    updatedAt: "2026-10-22T12:00:00.000Z", entries: { ucpathUserId: { clear: true }, ucpathPassword: { clear: true },
+      sharepointOnboardingRosterUrl: { clear: true } } }));
   assert.equal(cleared.state, "applied");
   const authorityPath = join(root,"state.db");
   const database = AuthorityDatabase.open(admission,{path:authorityPath,busyTimeoutMs:100,migrationOwner:"credential-doctor-fixture"}, undefined, undefined, undefined, undefined, credentialStore);

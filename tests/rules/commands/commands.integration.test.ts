@@ -242,7 +242,7 @@ it("refuses an unavailable declared protected origin and rolls back the entire p
   assert.equal(result.state,"rejected");
   if (result.state !== "rejected") throw new Error("protected source refusal missing");
   assert.equal(result.code, "invalid-state");
-  assert.equal(result.message, "protected input timekeeperName source is unavailable");
+  assert.equal(result.message, "protected input timekeeperName profile is unavailable");
   noEffects(h,wire);
   assert.deepEqual(h.database.authority.runs.listByWorkflow(INTAKE_FIXTURE_WORKFLOW_ID),[]);
 });

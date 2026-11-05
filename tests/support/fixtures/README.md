@@ -18,6 +18,8 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 
 | Module | Concept |
 | --- | --- |
+| `helpers/predecessor-profile-credentials.ts` | Captures disposable profile credential custody and installs predecessor fixture bytes after closure; credential authentication runs only in the explicit installer callback. |
+| `helpers/backend/predecessor-separations-rerun.ts` | Owns a disposable persisted Separations parent and completed Kuali transaction for certified Rerun and stopped-upgrade proofs; caller owns cleanup. |
 | `helpers/dashboard/controls/ocr-records-served-preview.tsx` | shared Records editor driven by a typed native fixture API and command executor |
 | `helpers/exclusive-session-leases.ts` | deferred isolated SQLite authority for exclusive browser-session lease tests |
 | `helpers/browser/fake-onbase-page.ts` | synthetic OnBase import/retrieval page with exact filters and saved-PDF evidence |

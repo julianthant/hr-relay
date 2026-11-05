@@ -87,6 +87,7 @@ async function inject(f: Awaited<ReturnType<typeof runtimeFixture>>, entry: Case
   }
   if (id === "fiscal.current") {const previous=f.input.config.annualDates;f.input.config.annualDates={};return()=>{f.input.config.annualDates=previous;};}
   if (id.startsWith("secret.")) {f.setProtected(populatedProtectedRecord(entry.variant));return()=>{f.setProtected(populatedProtectedRecord());};}
+  if (id === "profile.timekeeper") {f.setProfileAvailable(false);return()=>{f.setProfileAvailable(true);};}
   const system=SYSTEM_RUNTIME_SPECS.find(candidate=>id.startsWith(`endpoint.${candidate.system}.`));
   if(system!==undefined) {
     const routes=f.input.config.urls[system.configKey].prod;assert.ok(routes);

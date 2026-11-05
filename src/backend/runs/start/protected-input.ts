@@ -1,5 +1,6 @@
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { ProtectedStoreRecordSchema, type ProtectedStoreRecord } from "../../../models/config/protected-settings.js";
+import { readProfileIdentity } from "../../../models/config/secrets.js";
+import type { ProfileIdentity } from "../../../models/profiles/profile-identity.js";
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { PositiveIntSchema } from "../../../rules/identity/ids.js";
 import { ProtectedInputBindingsSchema, protectedInputBindings, type ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
@@ -61,14 +62,10 @@ export function admitProtectedInput(
       }
     }
   }
-  let record: ProtectedStoreRecord | undefined;
-  if (declarations.length > 0 && retained === undefined) {
-    if (source === undefined) throw new Error("protected input timekeeperName source is unavailable");
-    try { record = ProtectedStoreRecordSchema.parse(source.read()); }
-    catch { throw new Error("protected input timekeeperName source is unreadable"); }
-    for (const declaration of declarations) {
-      if (record.entries[declaration.name] === undefined) throw new Error(`protected input ${declaration.name} is absent`);
-    }
+  let identity: ProfileIdentity | undefined;
+  if (declarations.length > 0) {
+    if (source === undefined) throw new Error("protected input timekeeperName profile is unavailable");
+    identity = readProfileIdentity(source);
   }
   if (retained !== undefined && retained.length !== submissions.length) throw new Error("retained input count mismatch");
   return submissions.map((submission, index) => {
@@ -95,21 +92,9 @@ export function admitProtectedInput(
     const bindings: ProtectedInputBinding[] = inputBindings.filter(({ inputPath }) =>
       !declarations.some((declaration) => declaration.inputPath === inputPath));
     for (const declaration of declarations) {
-      if (retained !== undefined) {
-        const prior = retained[index];
-        const value = prior?.value;
-        if (value === null || typeof value !== "object" || Array.isArray(value)
-          || !Object.hasOwn(value, declaration.inputPath)) throw new Error(`retained protected input ${declaration.name} is absent`);
-        admitted[declaration.inputPath] = JsonValueSchema.parse(Reflect.get(value, declaration.inputPath));
-        const binding = protectedInputBindings(value, prior?.protectedBindings).find(({ name }) => name === declaration.name);
-        if (binding === undefined) throw new Error(`retained protected input ${declaration.name} binding is absent`);
-        bindings.push(binding);
-      } else {
-        const entry = record?.entries[declaration.name];
-        if (entry === undefined) throw new Error(`protected input ${declaration.name} is absent`);
-        admitted[declaration.inputPath] = entry.value;
-        bindings.push({ ...declaration, kind: "protected-store", valueId: entry.valueId });
-      }
+      if (identity === undefined) throw new Error("protected input profile identity is absent");
+      admitted[declaration.inputPath] = identity.displayName;
+      bindings.push({ ...declaration, kind: "profile", profileId: identity.profileId, sessionEpoch: identity.sessionEpoch });
     }
     return { raw, admitted, bindings };
   });

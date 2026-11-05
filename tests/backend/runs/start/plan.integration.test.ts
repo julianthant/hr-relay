@@ -1,6 +1,9 @@
+import { deriveProfileNames } from "../../../../src/models/profiles/profile.js";
+import { KualiFinalizationVariablesSchema, KualiFinalizationTargetSchema, kualiFinalizationFields } from "../../../../src/models/ui/kuali-separation-finalization.js";
+import { kualiFinalizationVariablesInput } from "../../../support/helpers/kuali-finalization-input-fixtures.js";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
-import { ProtectedStoreRecordSchema } from "../../../../src/models/config/protected-settings.js";
+import { RuntimeInputSnapshotSchema } from "../../../../src/models/config/secrets.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 
 import assert from "node:assert/strict";
@@ -66,9 +69,28 @@ async function openDatabase(): Promise<AuthorityDatabase> {
 describe("separations — start planning through the existing service", () => {
 afterEach(_afterEachFixture0);
 
-  it("reads protected input once, retains it across rotation, and refuses override/absence before IDs", async () => {
+  for (const [first, last] of [["André", "José"], ["A".repeat(64), "B".repeat(64)]]) {
+    it(`plans the complete profile name through Separations and Kuali validation (${first.length}/${last.length})`, async () => {
+      const names = deriveProfileNames(first, last), authority = await openDatabase();
+      const result = planStart({ authority, clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000,
+        protectedSecrets: protectedSecretSource({ profileName: names.timekeeperName }) }, {
+        descriptor: separationsDescriptor, submissions: [{ documentNumber: "4511" }], dryRun: true, priority: "bulk", shape: "single",
+        configFingerprint: HASH_A, configSnapshotId: UUID_4, plannedBy: "local-operator" });
+      assert.deepEqual(result.refused, []); assert.equal(result.planned.length, 1);
+      const value = separationsDescriptor.canonicalInput.parse(result.planned[0].input.value);
+      assert.equal(value.timekeeperName, `${first} ${last}`);
+      const variables = KualiFinalizationVariablesSchema.parse({ ...kualiFinalizationVariablesInput(), timekeeperName: value.timekeeperName });
+      const target = KualiFinalizationTargetSchema.parse({ actionId: "a".repeat(24), documentNumber: "4511", emplId: "10873698", variables });
+      assert.equal(kualiFinalizationFields(target.variables).timekeeperName, names.timekeeperName);
+      for (const invalid of ["Injected\nSigner", "Injected\u0000Signer", "A".repeat(130), " padded "]) {
+        assert.equal(KualiFinalizationVariablesSchema.safeParse({ ...variables, timekeeperName: invalid }).success, false);
+      }
+    });
+  }
+
+  it("captures admitted profile identity for each plan and rerun, refusing override or missing authority before IDs", async () => {
     const authority = await openDatabase();
-    let current = ProtectedStoreRecordSchema.parse(protectedSecretSource({ timekeeperName: "Synthetic First Operator" }).read());
+    let current = RuntimeInputSnapshotSchema.parse(protectedSecretSource({ profileName: "Synthetic First Operator" }).read());
     let reads = 0;
     let ids = 0;
     const source = { read: () => { reads += 1; return current; } };
@@ -82,22 +104,22 @@ afterEach(_afterEachFixture0);
     const retained = first.planned[0]?.input;
     assert.ok(retained);
     assert.equal(Reflect.get(retained.value as object, "timekeeperName"), "Synthetic First Operator");
-    const changedBytes = ProtectedStoreRecordSchema.parse(protectedSecretSource({ timekeeperName: "Synthetic Second Operator" }).read());
+    const changedBytes = RuntimeInputSnapshotSchema.parse(protectedSecretSource({ profileName: "Synthetic Second Operator" }).read());
     current = changedBytes;
     const sameBinding = planStart(deps, request);
     assert.equal(sameBinding.inputFingerprint, first.inputFingerprint, "values cannot enter fingerprints");
-    current = { ...changedBytes, entries: { ...changedBytes.entries, timekeeperName: {
-      ...changedBytes.entries.timekeeperName!, valueId: uuidOf(90),
-    } } };
+    assert.ok(changedBytes.profileIdentity);
+    current = { ...changedBytes, profileIdentity: { ...changedBytes.profileIdentity, sessionEpoch: 2 } };
     const rotated = planStart(deps, request);
-    assert.notEqual(rotated.inputFingerprint, first.inputFingerprint, "the retained valueId is identity");
+    assert.notEqual(rotated.inputFingerprint, first.inputFingerprint, "the admitted profile session is identity");
     const beforeRetained = reads;
     const rerun = planStart(deps, { ...request, retainedInputs: [retained] });
-    assert.equal(reads, beforeRetained);
-    assert.deepEqual(rerun.planned[0]?.input, retained);
-    current = ProtectedStoreRecordSchema.parse(protectedSecretSource().read());
+    assert.equal(reads, beforeRetained + 1);
+    assert.equal(Reflect.get(rerun.planned[0].input.value as object, "timekeeperName"), "Synthetic Second Operator");
+    assert.notDeepEqual(rerun.planned[0]?.input.protectedBindings, retained.protectedBindings);
+    current = RuntimeInputSnapshotSchema.parse(protectedSecretSource().read());
     const beforeBlocked = ids;
-    assert.throws(() => planStart(deps, request), /protected input timekeeperName is absent/);
+    assert.throws(() => planStart(deps, request), /admitted profile identity is unavailable/);
     assert.equal(ids, beforeBlocked);
     const beforeOverride = reads;
     assert.throws(() => planStart(deps, { ...request, submissions: [{ ...SUBMISSION, timekeeperName: "Do Not Echo This" }] }),
@@ -105,13 +127,13 @@ afterEach(_afterEachFixture0);
     assert.equal(reads, beforeOverride);
     assert.equal(ids, beforeBlocked);
     assert.throws(() => planStart({ ...deps, protectedSecrets: { read: () => { throw new Error("Do Not Echo This"); } } }, request),
-      /^Error: protected input timekeeperName source is unreadable$/);
+      /^SecretSourceError: admitted profile identity is unreadable$/);
     assert.equal(ids, beforeBlocked);
   });
 
   it("binds protected canary plans without document-derived titles, match keys or fingerprints", async () => {
     const deps = { authority: await openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000,
-      protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }) };
+      protectedSecrets: protectedSecretSource({ profileName: "Synthetic Timekeeper" }) };
     const request = { descriptor: separationsDescriptor, submissions: [{ documentNumber: "4511" }],
       protectedSubmissionBindings: [{ kind: "test-data-local" as const, inputPath: "documentNumber" as const,
         name: "separationsKualiFinalizationCanaryDocumentNumber" as const, sourceId: uuidOf(88) }],
@@ -126,14 +148,14 @@ afterEach(_afterEachFixture0);
     assert.equal(first.planned[0].itemId, changed.planned[0].itemId);
     assert.throws(() => planStart(deps, { ...request, retainedInputs: [retained],
       submissions: [{ documentNumber: "4512" }] }), /retained protected input .* cannot change/);
-    const rereadRefusal = { read: () => { throw new Error("must not reread"); } };
-    assert.deepEqual(planStart({ ...deps, protectedSecrets: rereadRefusal }, { ...request, retainedInputs: [retained] })
-      .planned[0].input, retained);
+    const rereadRefusal = { read: () => { throw new Error("profile authority unavailable"); } };
+    assert.throws(() => planStart({ ...deps, protectedSecrets: rereadRefusal }, { ...request, retainedInputs: [retained] }), /admitted profile identity is unreadable/);
+
   });
 
   it("gives an explicit protected reread a stable new item without changing captured source identity", async () => {
     const deps = { authority: await openDatabase(), clock: CLOCK, ids: sequentialIdFactory(), planTtlMs: 600_000,
-      protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }) };
+      protectedSecrets: protectedSecretSource({ profileName: "Synthetic Timekeeper" }) };
     const request = { descriptor: separationsDescriptor, submissions: [{ documentNumber: "4511" }],
       protectedSubmissionBindings: [{ kind: "test-data-local" as const, inputPath: "documentNumber" as const,
         name: "separationsKualiFinalizationCanaryDocumentNumber" as const, sourceId: uuidOf(88) }],
@@ -166,11 +188,13 @@ afterEach(_afterEachFixture0);
     assert.equal(reread.matchKey.includes("Synthetic"), false);
     assert.equal(reread.matchKey.includes("4511"), false);
 
-    const retained = planStart({ ...deps, protectedSecrets: { read: () => { throw new Error("must not reread"); } } },
+    let profileReads = 0;
+    const retained = planStart({ ...deps, protectedSecrets: { read: () => { profileReads++; return deps.protectedSecrets.read(); } } },
       { ...request, submissions: [{ documentNumber: "4511", reRead: { ordinal: 1, reason: "Synthetic complete rehearsal" } }],
         retainedInputs: [reread.input] });
     assert.equal(retained.planned[0].itemId, reread.itemId);
     assert.deepEqual(retained.planned[0].input, reread.input);
+    assert.equal(profileReads, 1);
     const duplicate = planStart(deps, { ...request, submissions: [
       { documentNumber: "4511", reRead: { ordinal: 1, reason: "Synthetic first reason" } },
       { documentNumber: "4511", reRead: { ordinal: 1, reason: "Synthetic second reason" } },
@@ -217,13 +241,13 @@ afterEach(_afterEachFixture0);
     assert.deepEqual(database.authority.runs.listByWorkflow("person-lookup"), []);
     assert.equal(database.getMeta().authorityGeneration, generation);
   });
-  it("retains the actual protected-store origin admitted before canonical planning",async ()=>{
+  it("retains the admitted profile origin before canonical planning",async ()=>{
     const database=await openDatabase();
-    const plan=planStart({...plannerDeps(database),protectedSecrets:protectedSecretSource({timekeeperName:"Synthetic signer"})},
+    const plan=planStart({...plannerDeps(database),protectedSecrets:protectedSecretSource({profileName:"Synthetic signer"})},
       baseRequest([{documentNumber:"12345678"}],{descriptor:separationsDescriptor}));
     assert.equal(plan.refused.length,0);
     assert.equal(plan.planned.length,1);
-    assert.deepEqual(plan.planned[0].input.protectedBindings,[{kind:"protected-store",inputPath:"timekeeperName",name:"timekeeperName",valueId:"00000000-0000-4000-8000-000000000010"}]);
+    assert.deepEqual(plan.planned[0].input.protectedBindings,[{kind:"profile",inputPath:"timekeeperName",name:"timekeeperName",profileId:"00000000-0000-4000-8000-000000000003",sessionEpoch:1}]);
     const value=plan.planned[0].input.value;const raw=plan.planned[0].rawInput;
     assert.ok(value!==null && typeof value === "object" && !Array.isArray(value));
     assert.ok(raw!==null && typeof raw === "object" && !Array.isArray(raw));

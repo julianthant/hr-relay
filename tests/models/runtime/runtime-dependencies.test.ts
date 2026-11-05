@@ -20,12 +20,12 @@ describe("runtime dependency registry", () => {
   it("reverse-audits secrets, model settings, capabilities, consumers, and scenarios", () => {
     const missingSecret = {
       ...RUNTIME_DEPENDENCY_REGISTRY,
-      dependencies: RUNTIME_DEPENDENCY_REGISTRY.dependencies.map((dependency) => dependency.id === "secret.timekeeper"
+      dependencies: RUNTIME_DEPENDENCY_REGISTRY.dependencies.map((dependency) => dependency.id === "secret.ucpath-sso"
         ? { ...dependency, secretNames: [] }
         : dependency),
     };
     assert.equal(
-      auditRuntimeDependencyCoverage(missingSecret).some((violation) => violation.includes("secret timekeeperName has no runtime dependency consumer")),
+      auditRuntimeDependencyCoverage(missingSecret).some((violation) => violation.includes("secret ucpathUserId has no runtime dependency consumer")),
       true,
     );
 

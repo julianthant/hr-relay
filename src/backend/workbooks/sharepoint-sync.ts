@@ -1,6 +1,6 @@
+import { readProtectedCredentials } from "../../models/config/secrets.js";
 import { randomUUID } from "node:crypto";
 import type { Config } from "../../models/config/schema.js";
-import { ProtectedStoreRecordSchema } from "../../models/config/protected-settings.js";
 import { FingerprintSchema } from "../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../rules/validation/sha256.js";
@@ -23,11 +23,11 @@ export function createSharePointWorkbookSync(deps: Readonly<{
       const captured = deps.captureConfiguration();
       captured.assertCurrent();
       const target = parseSharePointWorkbookLink(command.link.url, captured.config.urls.sharepoint.prod.entry);
-      const revision = ProtectedStoreRecordSchema.parse(deps.protectedSecrets.read()).revision;
+      const revision = readProtectedCredentials(deps.protectedSecrets).revision;
       const readCapturedSecrets = () => {
         command.signal.throwIfAborted();
         captured.assertCurrent();
-        const record = ProtectedStoreRecordSchema.parse(deps.protectedSecrets.read());
+        const record = readProtectedCredentials(deps.protectedSecrets);
         if (record.revision !== revision)
           throw new WorkbookLibraryError("WORKBOOK_SYNC_CONTEXT_CHANGED");
         captured.assertCurrent();

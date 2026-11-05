@@ -66,7 +66,7 @@ import { probePrimaryDisplay } from "../host/primary-display.js";
 import { createContentAddressedArtifactWriter } from "../../storage/artifacts/content-addressed-artifact-writer.js";
 import { createDiagnosticCaptureService } from "../../logs/diagnostics/diagnostic-capture.js";
 import { createRunBrowserScreenshotCapture, createRunDiagnosticCapture } from "../../logs/diagnostics/run-diagnostic-capture.js";
-import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../../runtime/settings/settings-runtime.js";
+import { withCurrentSettings, readAdmittedProfileIdentity, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../../runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../../storage/events/timeline-emitter.js";
 import { createDebugEventWriter } from "../../logs/debug-events.js";
 import { createNoteTimelineWriter } from "../../storage/events/note-timeline-writer.js";
@@ -544,7 +544,7 @@ async function composeOwnedWorkerRuntime(input: WorkerComposeInput, closeDatabas
   try {
   importEmergencyFaults(stateRoot, database.authority.timelineEvents);
   const taskNotes = createNoteTimelineWriter({ repository: loggingRepository, clock });
-  const protectedSecrets = createCredentialSecretSource({ read: () => { assertCurrent(); return protectedAuthority.read(); } });
+  const protectedSecrets = createCredentialSecretSource({ read: () => { assertCurrent(); return protectedAuthority.read(); } }, () => { const identity = readAdmittedProfileIdentity(machine, admission); assertCurrent(); return identity; });
   const executionDescriptor = resolveDescriptor;
   const runRecordService = new RunRecordService({ database, clock, ids, buildManifest,
     resolveDescriptor: executionDescriptor,

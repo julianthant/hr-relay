@@ -1,3 +1,4 @@
+import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { ONBOARDING_ROSTER_GATE_ID,OnboardingRosterChoiceSchema } from "../../../models/workflows/onboarding/roster.js";
 import { publicTransactionKeyDigest,retainedRunProtectedBindings,valueFreeProtectedInput } from "../../../models/write-safety/protected-input.js";
 import { continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
@@ -47,7 +48,7 @@ gateDecisionFor,
 } from "../../../models/trust/gate-decisions.js";
 import { SchemaBoundCanonicalValueSchema,deriveSchemaHash,schemaBoundValueSchema } from "../../../models/validation/schema-bound-value.js";
 import {
-RunCheckpointRecordSchema,
+RunCheckpointRecordSchema,checkpointRecordKey,
 type FactProvenance,
 type RunCheckpointRecord,
 } from "../../../models/workflow/checkpoint.js";
@@ -92,6 +93,7 @@ export interface ReceiptWriteEvidence {
 }
 
 export interface ReceiptBuildInput {
+  readonly schemaReader?: EvidenceSchemaReader;
   readonly settlementVersion?: number;
   readonly descriptor: AnyWorkflowDescriptor;
   /** The TERMINAL run record. A non-terminal run has no settled verdict. */
@@ -248,6 +250,7 @@ export function deriveActionWriteProof(input: Readonly<{
   record: unknown;
   intent: WriteIntentRecord | undefined;
   composition?: ReceiptComposition;
+  schemaReader?: EvidenceSchemaReader;
 }>): ActionWriteProof {
   if(input.composition!==undefined)RunEvidenceReceiptSchema.shape.composition.parse(input.composition);
   const { commitContract, intent } = input;
@@ -269,7 +272,11 @@ export function deriveActionWriteProof(input: Readonly<{
     );
   }
   const declaredProofHash = deriveSchemaHash(commitContract.writeSafety.completion.proofSchema, "output");
-  if (outcome.proof.schemaHash !== declaredProofHash) {
+  const admittedProofHash = input.schemaReader?.({ kind: "checkpoint-proof", id: checkpointRecordKey(record) }, record, outcome.proof.schemaHash, declaredProofHash) ?? outcome.proof.schemaHash;
+  const durableProof = intent.status === "committed" ? intent.completionProof : intent.status === "observed-present" ? intent.observedProof : undefined;
+  const durableHash = input.schemaReader === undefined || durableProof === undefined ? declaredProofHash
+    : input.schemaReader({ kind: "write-proof", id: intent.writeIntentId, generation: intent.generation }, intent, durableProof.schemaHash, declaredProofHash);
+  if (admittedProofHash !== declaredProofHash || durableHash !== declaredProofHash) {
     throw new Error(
       `transaction checkpoint ${record.nodeId} stores a completion proof bound to schema `
       + `${outcome.proof.schemaHash}, and ${commitContract.id} now declares ${declaredProofHash}; `
@@ -389,6 +396,7 @@ export function deriveRunEvidenceReceipt(
 
 
   const binding = evaluateReceiptDerivationBinding({
+    ...(input.schemaReader === undefined ? {} : { schemaReader: input.schemaReader }),
     descriptor,
     run,
     ...(result === undefined ? {} : { result }),
@@ -685,6 +693,7 @@ export function deriveRunEvidenceReceipt(
         write,
       });
       commitAction.proved = deriveActionWriteProof({
+        ...(input.schemaReader === undefined ? {} : { schemaReader: input.schemaReader }),
         composition,
         commitContract: node.commit.uses,
         record,
@@ -1009,6 +1018,7 @@ export function assertEvidenceRefsResolve(receipt: RunEvidenceReceipt): void {
 
 /** What the ensure step needs from authority. Reads only, plus the one insert. */
 export interface EvidenceReceiptStore {
+  readonly schemaReader?: EvidenceSchemaReader;
   refreshedSettlementVersion?(runId: string): number | undefined;
   getRun(runId: string): unknown;
   getResult(runId: string): unknown;
@@ -1047,6 +1057,7 @@ export function ensureRunEvidenceReceipt(
     : RunEvidenceReceiptSchema.parse(existingRaw);
   const composition = LATEST_RECEIPT_COMPOSITION;
   const { receipt: derived, checks } = deriveRunEvidenceReceipt({
+    ...(store.schemaReader === undefined ? {} : { schemaReader: store.schemaReader }),
     descriptor,
     run,
     result: store.getResult(runId),

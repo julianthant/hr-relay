@@ -4,7 +4,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameS
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { it } from "vitest";
-import { initialProtectedStoreRecord } from "../../../../src/models/config/protected-settings.js";
+import { StoppedProtectedStoreRecordSchema, STOPPED_PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/backend/storage/configuration/protected-settings-upgrade.js";
+
+const initialPredecessorRecord = () => StoppedProtectedStoreRecordSchema.parse({ schemaVersion: 1, revision: 1, protectedSchemaHash: STOPPED_PROTECTED_SETTINGS_SCHEMA_HASH, entries: {} });
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { captureFlatArchiveSource, flatArchiveFiles, hash, StorageBackupSchema, writeFlatArchiveCopies } from "../../../../src/backend/storage/maintenance/existing-data-backup-files.js";
 import { assertFlatStartCleanCredentials, assertFlatStartCleanFiles, FlatStartCleanIntentSchema, flatStartCleanPlan, readFlatStartCleanSource } from "../../../../src/backend/storage/maintenance/flat-start-clean.js";
@@ -15,7 +17,7 @@ function fixture() {
   const installationId = randomUUID(), operationId = randomUUID(), archive = join(control, "storage-backups", installationId);
   const protectedPath = join(stateRoot, "credentials", "protected.json");
   for (const path of [dirname(protectedPath), join(stateRoot, "artifacts"), join(stateRoot, "locks"), archive]) mkdirSync(path, { recursive: true, mode: 0o700 });
-  writeFileSync(protectedPath, canonicalJsonStringify({ schemaVersion: 2, record: initialProtectedStoreRecord(), history: [] }), { mode: 0o600 });
+  writeFileSync(protectedPath, canonicalJsonStringify({ schemaVersion: 2, record: initialPredecessorRecord(), history: [] }), { mode: 0o600 });
   writeFileSync(join(stateRoot, "state.db"), "opaque bytes; no native qualification claimed", { mode: 0o600 });
   writeFileSync(join(stateRoot, "artifacts", `${"a".repeat(64)}.artifact`), "old managed artifact", { mode: 0o600 });
   writeFileSync(join(stateRoot, ".runtime-owner.json"), "fixed owner", { mode: 0o600 });
@@ -98,7 +100,7 @@ it("admits only the finite plaintext credential layout and refuses an encrypted 
   try {
     assertFlatStartCleanCredentials(f.source);
     for (const value of [{ schemaVersion: 4, algorithm: "aes-256-gcm", ciphertext: "unknown" },
-      { schemaVersion: 2, record: initialProtectedStoreRecord(), history: [], keyId: randomUUID() }]) {
+      { schemaVersion: 2, record: initialPredecessorRecord(), history: [], keyId: randomUUID() }]) {
       writeFileSync(f.protectedPath, canonicalJsonStringify(value), { mode: 0o600 });
       const source = captureFlatArchiveSource({ workspace: f.workspace, stateRoot: f.stateRoot, installationId: f.installationId, operationId: f.operationId }).document;
       assert.throws(() => assertFlatStartCleanCredentials(source), /credential-layout-unsupported/u);
@@ -127,6 +129,6 @@ it("refuses a symlinked credential ancestor before reading matching private cred
     renameSync(credentials, retained); symlinkSync(retained, credentials, "dir");
     assert.throws(() => assertFlatStartCleanCredentials(f.source), /symbolic link/u);
     assert.equal(existsSync(join(f.stateRoot, "state.db")), true);
-    assert.equal(readFileSync(join(retained, "protected.json"), "utf8"), canonicalJsonStringify({ schemaVersion: 2, record: initialProtectedStoreRecord(), history: [] }));
+    assert.equal(readFileSync(join(retained, "protected.json"), "utf8"), canonicalJsonStringify({ schemaVersion: 2, record: initialPredecessorRecord(), history: [] }));
   } finally { f.close(); }
 });

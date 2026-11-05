@@ -62,7 +62,7 @@ async function harnessFor(descriptor: AnyWorkflowDescriptor, recovery?: "restart
     configFingerprint: CONFIG_SNAPSHOT.fingerprint,
     configSnapshotId: UUID_4,
     plannedBy: "local-operator",
-    protectedSecrets: protectedSecretSource({ timekeeperName: "Synthetic Timekeeper" }),
+    protectedSecrets: protectedSecretSource({ profileName: "Synthetic Timekeeper" }),
   });
   return { database, service, ids, transactions: () => transactions, descriptor };
 }

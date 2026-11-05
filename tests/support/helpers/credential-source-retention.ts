@@ -150,9 +150,9 @@ export async function runCredentialPublicationCrashCase(boundary: "before" | "af
   if (primary !== undefined) throw primary instanceof Error ? primary : new Error("credential source child failed", { cause: primary });
 }
 
-export type LogoutSettlementCase = "prepared" | "commit-intent" | "after-commit" | "done" | "ready" | "unlink" | "writer-close" | "third-image" | "unknown-copy" | "live-process" | "browser-root" | "key-replacement" | "snapshot-disposal" | "process-observation" | "unknown" | "browser-busy" | "browser-unproved" | "process-root-copy" | "exited-process";
+export type LogoutSettlementCase = "collision" | "prepared" | "commit-intent" | "after-commit" | "done" | "ready" | "unlink" | "writer-close" | "third-image" | "unknown-copy" | "live-process" | "browser-root" | "key-replacement" | "snapshot-disposal" | "process-observation" | "unknown" | "browser-busy" | "browser-unproved" | "process-root-copy" | "exited-process";
 
-export async function runLogoutSettlementCase(boundary: LogoutSettlementCase): Promise<void> {
+export async function runLogoutSettlementCase(boundary: LogoutSettlementCase, predecessor = false): Promise<void> {
   const profile = await createBoundProfileFixture({ sharedMachine: true });
   const profileId = profile.admission.profileBinding.profileId, port = profile.lifetime.port, machineRoot = profile.machine.stateRoot;
   const retained = [join(profile.stateRoot, "credentials", "protected.json"), join(profile.stateRoot, "credentials", "chatgpt-account.json"),
@@ -207,14 +207,21 @@ export async function runLogoutSettlementCase(boundary: LogoutSettlementCase): P
     assert.ok(child.pid); return child.pid;
   }
   try {
-    const poison = ["writer-close", "unknown-copy", "live-process", "browser-root", "key-replacement", "snapshot-disposal", "process-observation", "browser-busy", "browser-unproved", "process-root-copy", "exited-process"].includes(boundary);
-    const prefix = !poison || boundary === "key-replacement";
+    const poison = ["collision", "writer-close", "unknown-copy", "live-process", "browser-root", "key-replacement", "snapshot-disposal", "process-observation", "browser-busy", "browser-unproved", "process-root-copy", "exited-process"].includes(boundary);
+    const prefix = !poison || boundary === "key-replacement" || boundary === "collision";
     let sourceOperationId: string | undefined;
     if (prefix) {
-      const sourcePid = await stage(boundary === "unknown" ? "logout-seed-unknown" : "logout-seed", true);
+      const sourcePid = await stage(predecessor ? boundary === "collision" ? "logout-seed-predecessor-collision" : boundary === "unknown" ? "logout-seed-predecessor-unknown" : "logout-seed-predecessor"
+        : boundary === "unknown" ? "logout-seed-unknown" : "logout-seed", true);
+      if (predecessor) retained[0].bytes = readFileSync(retained[0].path);
       const source = z.object({ nonce: z.uuid(), operationId: z.uuid(), runId: z.uuid(), workerId: z.string(), processId: z.number().int().positive() })
         .parse(JSON.parse(readFileSync(join(profile.workspace, `.logout-source-${nonce}.json`), "utf8")));
       assert.equal(source.nonce, nonce); assert.equal(source.processId, sourcePid); sourceOperationId = source.operationId;
+    }
+    if (predecessor && process.platform === "win32" && boundary !== "unknown" && boundary !== "key-replacement" && boundary !== "collision") {
+      await stage("logout-predecessor-windows-refusal", false);
+      for (const item of retained) assert.deepEqual(readFileSync(item.path), item.bytes);
+      await profile.close(); retainedChildren.delete(owned); return;
     }
     const faultPid = await stage(`logout-${boundary}`, !poison && boundary !== "unknown");
     assert.equal(existsSync(join(machineRoot, "machine", "erasures", `${profileId}.json`)), false);
@@ -229,7 +236,10 @@ export async function runLogoutSettlementCase(boundary: LogoutSettlementCase): P
         finally { database.close(); }
       }
       await stage("logout-resume", false);
-      for (const item of retained) assert.deepEqual(readFileSync(item.path), item.bytes);
+      for (const [index, item] of retained.entries()) {
+        if (predecessor && index === 0 && boundary !== "third-image") assert.notDeepEqual(readFileSync(item.path), item.bytes);
+        else assert.deepEqual(readFileSync(item.path), item.bytes);
+      }
     }
   } catch (error) {
     if (childClosureProved) { for (const path of ownedSnapshots) rmSync(path, { recursive: true }); await profile.close(); retainedChildren.delete(owned); }

@@ -7,7 +7,8 @@ import { createDecipheriv, createHash } from "node:crypto";
 import { join } from "node:path";
 import { sameDirectory, fileIdentityObservation, readPrivateFile, withOperationProof } from "./credential-safe-file.js";
 import { credentialKeyCustody, CredentialKeyCustodyError } from "./credential-key-custody.js";
-import { authenticateDocument, CredentialDocumentSchema, type CredentialDocument } from "./credential-store.js";
+import { inspectProtectedSettingsSource } from "./protected-settings-upgrade.js";
+type CredentialDocument = ReturnType<typeof inspectProtectedSettingsSource>;
 import { ChatGptCredentialRecordSchema } from "./chatgpt-credential-repository.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { encodePrivate } from "../../../rules/validation/private-equal.js";
@@ -194,9 +195,9 @@ export function inspectStoppedCredentialSource(admission: RuntimeAdmission, clai
     }
     const protectedFile = sourceFile(join(source.stateRoot, "credentials", "protected.json")), envelope = ProtectedEnvelope.parse(decodeSource(protectedFile.bytes));
     if (envelope.installationId !== source.binding.installationId || envelope.profileId !== source.binding.profileId || envelope.keyId !== identity.keyId) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-    const parsed = CredentialDocumentSchema.parse(decryptSource(envelope, key, Buffer.from(canonicalJsonStringify({ domain: "relay:protected-current:v4", schemaVersion: 4,
+    const parsed = inspectProtectedSettingsSource(decryptSource(envelope, key, Buffer.from(canonicalJsonStringify({ domain: "relay:protected-current:v4", schemaVersion: 4,
       algorithm: "aes-256-gcm", ...source.binding, keyId: identity.keyId }))));
-    const document = authenticateDocument({ ...parsed, retiredLegacy: { ...parsed.retiredLegacy,
+    const document = inspectProtectedSettingsSource({ ...parsed, retiredLegacy: { ...parsed.retiredLegacy,
       commandIds: [...new Set([...parsed.retiredLegacy.commandIds, ...retired])], valueIds: [...new Set([...parsed.retiredLegacy.valueIds, ...erased])] } });
     const duoRow = source.duo, duoPath = join(source.machineRoot, "machine", "duo-credentials", `${claim.profileId}.json`);
     const duoFile = readPrivateFile(duoPath, { label: "protected.json", maxBytes: maxSourceBytes });
@@ -215,7 +216,7 @@ export function inspectStoppedCredentialSource(admission: RuntimeAdmission, clai
     const copies = copyInspection(source, document, chatgpt, keyDocument, bytes => {
       const sealed = ProtectedEnvelope.parse(decodeSource(bytes));
       if (sealed.installationId !== source.binding.installationId || sealed.profileId !== source.binding.profileId || sealed.keyId !== identity.keyId) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-      return authenticateDocument(decryptSource(sealed, key, Buffer.from(canonicalJsonStringify({ domain: "relay:protected-current:v4", schemaVersion: 4,
+      return inspectProtectedSettingsSource(decryptSource(sealed, key, Buffer.from(canonicalJsonStringify({ domain: "relay:protected-current:v4", schemaVersion: 4,
         algorithm: "aes-256-gcm", ...source.binding, keyId: identity.keyId }))));
     });
     source.assertHeld();
@@ -249,7 +250,7 @@ function copyInspection(source: ReturnType<RuntimeAdmission["readStoppedControlC
 
 function inspectResumedCredentialSource(admission: RuntimeAdmission, claim: StoppedControlProfileInventory, plan: CanonicalCredentialConversionPlan) {
   const source = admission.readStoppedControlCredentialInventorySource(claim), records = inspectStoppedCanonicalConversion(admission, claim, plan);
-  const document = authenticateDocument(records.protected.value), chatgpt = records.chatgpt.value === null ? undefined : ChatGptCredentialRecordSchema.parse(records.chatgpt.value);
+  const document = inspectProtectedSettingsSource(records.protected.value), chatgpt = records.chatgpt.value === null ? undefined : ChatGptCredentialRecordSchema.parse(records.chatgpt.value);
   const paths = join(source.machineRoot, "machine", "credential-keys", `${claim.profileId}.json`), file = sourceFile(paths), inline = StoppedInlineKey.safeParse(decodeSource(file.bytes));
   const metadata = plan.operation.head.key;
   if (metadata.installationId !== source.binding.installationId || metadata.profileId !== source.binding.profileId) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
@@ -261,23 +262,23 @@ function inspectResumedCredentialSource(admission: RuntimeAdmission, claim: Stop
     if (ProtectedEnvelope.safeParse(value).success) {
       const sealed = ProtectedEnvelope.parse(value);
       if (sealed.installationId !== source.binding.installationId || sealed.profileId !== source.binding.profileId || sealed.keyId !== metadata.keyId) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-      return authenticateDocument(decryptSource(sealed, key, Buffer.from(canonicalJsonStringify({ domain: "relay:protected-current:v4", schemaVersion: 4,
+      return inspectProtectedSettingsSource(decryptSource(sealed, key, Buffer.from(canonicalJsonStringify({ domain: "relay:protected-current:v4", schemaVersion: 4,
         algorithm: "aes-256-gcm", ...source.binding, keyId: metadata.keyId }))));
     }
     const record = inspectStoppedCanonicalConversionCopy(admission, claim, plan, "protected", bytes);
     if (record === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-    return authenticateDocument(record.value);
+    return inspectProtectedSettingsSource(record.value);
   }) };
 }
 
 function inspectCurrentCredentialSource(admission: RuntimeAdmission, claim: StoppedControlProfileInventory) {
   const source = admission.readStoppedControlCredentialInventorySource(claim), captured = inspectStoppedCurrentCanonicalCredentials(admission, claim);
-  const document = authenticateDocument(captured.records.protected.value), chatgpt = captured.records.chatgpt.value === null ? undefined : ChatGptCredentialRecordSchema.parse(captured.records.chatgpt.value);
+  const document = inspectProtectedSettingsSource(captured.records.protected.value), chatgpt = captured.records.chatgpt.value === null ? undefined : ChatGptCredentialRecordSchema.parse(captured.records.chatgpt.value);
   return { records: captured.records, retired: captured.retired, copies: copyInspection(source, document, chatgpt, captured.keyDocument,
     bytes => {
       const record = captured.decryptProtected(bytes);
       if (record === undefined) throw new CredentialMaintenanceHold("CREDENTIAL_CONVERSION_UNSUPPORTED");
-      return authenticateDocument(record.value);
+      return inspectProtectedSettingsSource(record.value);
     }) };
 }
 

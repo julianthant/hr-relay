@@ -1,3 +1,4 @@
+import { PROFILE_WORKFLOW_FACTS } from "../editor/ui-settings-records-labels.js";
 import type { EditableSettingsWire } from "../../../../models/dashboard/settings-editor.js";
 import { resolveSettingsSection, type SettingsNavEntry, type SettingsNavGroup } from "../settings-model.js";
 import { settingNote, settingTitle } from "../settings-presentation.js";
@@ -33,6 +34,7 @@ export function settingsSearchIndex(groups: readonly SettingsNavGroup[], documen
     add("paths", "Evidence", "paths.artifactRoot", "Run evidence and generated artifacts; artifact folder");
   }
   if (document === undefined) return results;
+  for (const fact of PROFILE_WORKFLOW_FACTS) add("credentials", fact.label, fact.target, "Signed-in profile read-only workflow configuration");
   for (const section of document.sections) for (const leaf of section.leaves) {
     if (leaf.path === "features.debugScreenshots" || leaf.path === "features.duoWebAuthn" || leaf.path === "actor.label" || leaf.path.startsWith("display.") || leaf.path.startsWith("preferences.") || section.id === "providers") continue;
     if (section.id === "routes") {

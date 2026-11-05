@@ -75,7 +75,7 @@ function fixture(failAt?: "audit" | "insert") {
   } };
   const credentials = { apply: (input: unknown) => { privateCommits += 1;
     const applied = ProtectedSettingsApplyInputSchema.parse(input);
-    privateRecord = ProtectedStoreRecordSchema.parse({ schemaVersion: 1, revision: applied.expectedRevision + 1,
+    privateRecord = ProtectedStoreRecordSchema.parse({ schemaVersion: 2, revision: applied.expectedRevision + 1,
       protectedSchemaHash: applied.protectedSchemaHash, entries: {}, lastApplied: {
         commandId: applied.commandId, commandFingerprint: applied.commandFingerprint, expectedRevision: applied.expectedRevision,
         protectedSchemaHash: applied.protectedSchemaHash, writeId: applied.writeId,
