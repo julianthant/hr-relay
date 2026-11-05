@@ -1,3 +1,4 @@
+import { DashboardClientError } from "../../../../src/dashboard/client/errors.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { operatorFailureSentence } from "../../../../src/models/failures/error-catalog.js";
 import { OnboardingSetup } from "../../../../src/dashboard/surfaces/shell/onboarding-setup.js";
@@ -276,7 +277,7 @@ it("selects Fast Duo cards through the device selector and blocks selection whil
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
-it.each(["refusal", "transport"] as const)("shows the served catalog refusal and reserves generic text for %s failure", async failure => {
+it.each(["refusal", "transport"] as const)("shows the served catalog refusal and identifies %s failures", async failure => {
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async () => {
     if (failure === "transport") throw new Error("fixture offline");
@@ -294,7 +295,7 @@ it.each(["refusal", "transport"] as const)("shows the served catalog refusal and
       });
     }
     await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
-    assert.equal(host.querySelector(".form-error")?.textContent, operatorFailureSentence(failure === "refusal" ? "PROFILE_TRANSITION_BLOCKED" : "PROFILE_AUTHORITY_UNAVAILABLE"));
+    assert.equal(host.querySelector(".form-error")?.textContent, operatorFailureSentence(failure === "refusal" ? "PROFILE_TRANSITION_BLOCKED" : "PROFILE_CONNECTION_FAILED"));
     assert.doesNotMatch(host.textContent ?? "", /private server cause/);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
@@ -372,5 +373,25 @@ it("resumes the profile still signed in once and keeps the normal login form", a
     assert.equal([...host.querySelectorAll("a")].some(link => link.textContent === "Sign up"), true);
     await act(async () => root.render(createElement(Onboarding, { step: "login", onStep() {}, onDashboard() {}, port })));
     assert.equal(resumed, 1);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+for (const kind of ["network", "schema", "protocol"] as const) it(`describes a signup ${kind} failure without mislabeling its cause`, async () => {
+  const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const port: ServedOnboardingPort = { ...createServedOnboardingPort(createDashboardClient({ baseUrl: "http://localhost:3938" }), () => {}),
+    async submit() { throw new DashboardClientError({ kind, message: "private transport detail" }); } };
+  try {
+    await act(async () => root.render(createElement(Onboarding, { step: "signup", port, onStep() {}, onDashboard() {} })));
+    for (const [name, value] of [["firstName", "Alex"], ["lastName", "Rivera"], ["email", "fixture@ucsd.edu"], ["password", "synthetic-password"]]) {
+      await act(async () => {
+        const field = host.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(field, value);
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    await act(async () => { host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    assert.equal(host.querySelector('[role="alert"]')?.textContent,
+      operatorFailureSentence(kind === "network" ? "PROFILE_CONNECTION_FAILED" : "PROFILE_AUTHORITY_UNAVAILABLE"));
+    assert.doesNotMatch(host.textContent ?? "", /private transport detail/);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

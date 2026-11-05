@@ -444,7 +444,7 @@ Local profile credentials and Duo material are removed; devices already enrolled
 A stale or signed-out public session returns to login and does not reopen a retained draft.
 
 The typed profile client parses defined wire errors into public refusal codes. Login and sign-up
-render the refusal's catalog sentence; genuine transport failure uses the authority-unavailable text.
+render the refusal's catalog sentence; network reachability failures use the connection-failed catalog sentence. Other client exceptions retain the authority-unavailable sentence.
 Show setup browser may refresh unavailable public authority with the current cookie, then shows only
 that same operation and profile. Unknown method outcomes stay unknown while that draft is active.
 Show focuses the owned extension tab or recreates that tab once in the same live context. A closed
