@@ -105,7 +105,7 @@ async function startWorkbookRowsFixture(page: Page) {
           configFingerprint: command.payload.configFingerprint, actorId: command.requestedBy, title: entry.title, dryRun: plan!.dryRun,
           subtitle: { state: 'present', value: entry.subtitle }, pipeline: workflow.start.steps.map(step => ({ id: step.key, label: step.label, state: 'pending' })),
           lineage: { state: 'root' }, containment: 'root', rowRevision: 1,
-          session: { state: 'present', sessionId: uuidOf(9900), presentation: { groupInQueue: false, version: 1, startedAt: seed.startedAt },
+          session: { state: 'present', itemScope: workflow.id === 'person-lookup' ? 'session' : 'workflow', sessionId: uuidOf(9900), presentation: { layout: 'items', groupInQueue: false, version: 1, startedAt: seed.startedAt },
             origin: { kind: 'start-plan', startPlanId: command.target.startPlanId, actorId: command.requestedBy } } }));
       }
       server.publish(DashboardStreamEnvelopeSchema.parse({ type: 'snapshot', topic: 'dashboard-day', cursor: `pc:${commands.length + 1}`, payload: day() }));

@@ -70,8 +70,15 @@ export interface QueueItemGroup {
   readonly dayNumberByRunId: ReadonlyMap<string, number>;
 }
 
-function queueItemKey(surface: Pick<QueueSurfaceWire, "workflowId" | "itemId">): string {
-  return JSON.stringify([surface.workflowId, surface.itemId]);
+export function queueItemKey(surface: QueueSurfaceWire): string {
+  const sessionId = surface.session.state === "present" && surface.session.itemScope === "session" ? surface.session.sessionId : undefined;
+  return JSON.stringify([surface.workflowId, surface.itemId, sessionId]);
+}
+
+/** The served layout identifies presentation batches. */
+export function lookupBatchId(surface: QueueSurfaceWire): string | undefined {
+  return surface.session.state === "present" && surface.session.presentation?.layout === "batch"
+    ? surface.session.sessionId : undefined;
 }
 
 /** Keep served attempts under their served logical item identity. */
@@ -114,6 +121,13 @@ export function filterQueueSurfaces(
   const includedItems = new Set(
     groupQueueAttempts(surfaces.filter(matches)).map((group) => group.key),
   );
+
+  const batches = new Set(surfaces.filter(surface => includedItems.has(queueItemKey(surface)))
+    .map(lookupBatchId).filter(id => id !== undefined));
+  for (const surface of surfaces) {
+    const batchId = lookupBatchId(surface);
+    if (batchId !== undefined && batches.has(batchId)) includedItems.add(queueItemKey(surface));
+  }
 
   // An included operation retains its served child set. A child that matches
   // on its own remains visible and keeps all of its attempts too.
@@ -199,7 +213,9 @@ const SORT_STATUS_RANK: Record<ProposedStatus, number> = {
 };
 
 /** Unknown terminal duration sorts by elapsed-to-now; rendering still preserves its unknown end reason. */
-function elapsedMs(surface: QueueSurfaceWire, nowIso: string): number {
+type QueueSortRow = Pick<QueueSurfaceWire, "status" | "startedAt" | "endedAt">;
+
+function elapsedMs(surface: QueueSortRow, nowIso: string): number {
   const started = Date.parse(surface.startedAt);
   const ended = surface.endedAt.state === "present" ? Date.parse(surface.endedAt.value) : Date.parse(nowIso);
   return Math.max(0, ended - started);
@@ -235,13 +251,13 @@ export function queueRowAccessibleName(surface: QueueSurfaceWire, nowIso: string
   )).toLowerCase()}`;
 }
 
-export function sortQueueBand(
-  rows: readonly QueueSurfaceWire[],
+export function sortQueueBand<Row extends QueueSortRow>(
+  rows: readonly Row[],
   key: QueueSortKey,
   nowIso: string,
-): readonly QueueSurfaceWire[] {
-  const born = (surface: QueueSurfaceWire): number => Date.parse(surface.startedAt);
-  const rank = (surface: QueueSurfaceWire): number => SORT_STATUS_RANK[dsStatusOf(surface.status)];
+): readonly Row[] {
+  const born = (surface: Row): number => Date.parse(surface.startedAt);
+  const rank = (surface: Row): number => SORT_STATUS_RANK[dsStatusOf(surface.status)];
   return [...rows].sort((a, b) => {
     if (key === "newest") return born(b) - born(a);
     if (key === "oldest") return born(a) - born(b);
@@ -253,7 +269,7 @@ export function sortQueueBand(
 }
 
 /** The view and keyboard navigation share the same row order. */
-export function queueDisplayGroups(rows: readonly QueueSurfaceWire[], sort: QueueSortKey, nowIso: string): readonly { key: QueueBandKey | null; label: string; rows: readonly QueueSurfaceWire[] }[] {
+export function queueDisplayGroups<Row extends QueueSortRow>(rows: readonly Row[], sort: QueueSortKey, nowIso: string): readonly { key: QueueBandKey | null; label: string; rows: readonly Row[] }[] {
   if (sort !== "attention") return [{ key: null, label: "", rows: sortQueueBand(rows, sort, nowIso) }];
   return BAND_ORDER.map(key => ({ key, label: BAND_LABEL[key], rows: sortQueueBand(rows.filter(row => bandOf(dsStatusOf(row.status)) === key), sort, nowIso) }));
 }
@@ -334,7 +350,9 @@ export function queueMemberKey(selection: QueueMemberSelection): string {
 export type QueueMemberLine = Readonly<{ kind: "run"; key: string; item: QueueItemGroup }>
   | Readonly<{ kind: "record"; key: string; member: QueueRecordMember }>;
 
-export function queueMemberLines(surface: OperationSurfaceWire, members: readonly QueueSurfaceWire[]): readonly QueueMemberLine[] {
+export function queueMemberLines(surface: OperationSurfaceWire | QueueBatch, members: readonly QueueSurfaceWire[]): readonly QueueMemberLine[] {
+  if ("kind" in surface) return surface.items.map(item => ({ kind: "run" as const, key: item.key, item }))
+    .sort((a, b) => MEMBER_TIER[dsStatusOf(a.item.representative.status)] - MEMBER_TIER[dsStatusOf(b.item.representative.status)]);
   const covered = new Set(surface.recordMembers?.runIds ?? []);
   const runs: QueueMemberLine[] = groupQueueAttempts(members.filter(member => !covered.has(member.runId)))
     .map(item => ({ kind: "run", key: item.key, item }));
@@ -357,8 +375,8 @@ export function queueMemberPresentation(line: QueueMemberLine, selectedRunId?: s
     native: { surface, item } };
 }
 
-export function queueMemberRollup(surface: OperationSurfaceWire, members: readonly QueueSurfaceWire[]) {
-  if (surface.recordMembers === undefined) return surface.memberRollup;
+export function queueMemberRollup(surface: OperationSurfaceWire | QueueBatch, members: readonly QueueSurfaceWire[]) {
+  if (!("kind" in surface) && surface.recordMembers === undefined) return surface.memberRollup;
   const statuses = queueMemberLines(surface, members).map(line => line.kind === "run" ? line.item.representative.status : line.member.status);
   return { total: statuses.length, terminal: statuses.filter(status => ["done", "failed", "cancelled", "partial"].includes(status)).length,
     failed: statuses.filter(status => status === "failed").length };
@@ -425,6 +443,10 @@ export function queueKeyboardEntries(
     }
   };
   for (const group of queueDisplayGroups(displayTop, sort, nowIso)) for (const surface of group.rows) {
+    if ("kind" in surface) {
+      for (const line of queueMemberLines(surface, [])) if (line.kind === "run") append(line.item.representative, line.item);
+      continue;
+    }
     const item = itemByRunId.get(String(surface.runId));
     if (item === undefined) throw new Error(`queue keyboard order lost item ${String(surface.itemId)}`);
     append(surface, item);
@@ -441,18 +463,23 @@ export function attentionQueueKeys(surfaces: readonly QueueSurfaceWire[], sort: 
   return queueKeyboardEntries(surfaces, sort, nowIso).filter(entry => bandOf(dsStatusOf(entry.status)) === "attention").map(entry => entry.key);
 }
 
-export interface QueueBatch {
+export interface QueueBatch extends QueueSortRow {
+  readonly kind: "batch";
+  readonly key: string;
   readonly id: string;
   readonly version: number;
   readonly groupInQueue: boolean;
-  readonly startedAt: string;
+  readonly layout: "items" | "batch";
+  readonly workflowId: QueueSurfaceWire["workflowId"];
+  readonly origin: Extract<QueueSurfaceWire["session"], { state: "present" }>["origin"];
   readonly representative: QueueSurfaceWire;
+  readonly items: readonly QueueItemGroup[];
   readonly members: readonly QueueSurfaceWire[];
   readonly history: readonly QueueSurfaceWire[];
   readonly band: QueueBandKey;
 }
 
-/** Groups only the loaded scope. A batch is presentation, never a synthetic run. */
+/** A day-scoped presentation, never a synthetic run or a complete-session claim. */
 export function queueBatches(rows: readonly QueueSurfaceWire[]): readonly QueueBatch[] {
   const groups = new Map<string, QueueSurfaceWire[]>();
   for (const row of rows) {
@@ -465,29 +492,52 @@ export function queueBatches(rows: readonly QueueSurfaceWire[]): readonly QueueB
     const first = rows[0];
     if (first === undefined || first.session.state !== "present" || first.session.presentation === undefined) throw new Error("batch has no presentation");
     const presentation = first.session.presentation;
-    const latest = new Map<string, QueueSurfaceWire>();
+    const attempts = new Set<string>();
     for (const row of rows) {
       const session = row.session;
       if (session.state !== "present" || session.presentation === undefined) throw new Error("batch member lacks item identity");
-      if (row.workflowId !== first.workflowId || session.presentation.version !== presentation.version || session.presentation.groupInQueue !== presentation.groupInQueue || session.presentation.startedAt !== presentation.startedAt) throw new Error("batch members disagree about their presentation");
-      const previous = latest.get(row.itemId);
-      if (previous === undefined || previous.attempt < row.attempt) latest.set(row.itemId, row);
-      else if (previous.attempt === row.attempt) throw new Error("batch has duplicate item attempt");
+      if (row.workflowId !== first.workflowId || session.presentation.version !== presentation.version || session.presentation.layout !== presentation.layout || session.presentation.groupInQueue !== presentation.groupInQueue || session.presentation.startedAt !== presentation.startedAt
+        || JSON.stringify(session.origin) !== JSON.stringify(first.session.origin)) throw new Error("batch members disagree about their presentation");
+      const attempt = JSON.stringify([row.itemId, row.attempt]);
+      if (attempts.has(attempt)) throw new Error("batch has duplicate item attempt");
+      attempts.add(attempt);
     }
-    const members = [...latest.values()];
-    const latestIds = new Set(members.map((row) => row.runId));
-    const history = rows.filter((row) => !latestIds.has(row.runId));
-    const band = BAND_ORDER.find((key) => members.some((row) => bandOf(dsStatusOf(row.status)) === key));
+    const items = groupQueueAttempts(rows).map(item => ({ ...item,
+      representative: item.attempts.reduce((current, attempt) => attempt.attempt > current.attempt ? attempt : current, item.representative),
+    }));
+    const members = items.map(item => item.representative);
+    const latestIds = new Set(members.map(row => row.runId));
+    const history = rows.filter(row => !latestIds.has(row.runId));
+    const band = BAND_ORDER.find(key => members.some(row => bandOf(dsStatusOf(row.status)) === key));
     if (band === undefined) throw new Error("batch has no queue band");
-    return { id, ...presentation, representative: first, members, history, band };
+    const statuses = members.filter(row => bandOf(dsStatusOf(row.status)) === band).map(row => row.status);
+    let status = [...statuses].sort((a, b) => SORT_STATUS_RANK[dsStatusOf(a)] - SORT_STATUS_RANK[dsStatusOf(b)])[0];
+    if (status === undefined) throw new Error("batch has no status");
+    if (band === "finished" && statuses.includes("done") && statuses.includes("cancelled") && status === "done") status = "partial";
+    const absentEnd = { state: "absent" as const, reason: band === "finished"
+      ? "A person's recorded end time is unavailable." : "People on this day are still in progress." };
+    const endedAt = band === "finished" && members.every(row => row.endedAt.state === "present")
+      ? members.reduce<QueueSurfaceWire["endedAt"]>((latest, row) => row.endedAt.state === "present"
+        && (latest.state === "absent" || Date.parse(row.endedAt.value) > Date.parse(latest.value)) ? row.endedAt : latest, absentEnd)
+      : absentEnd;
+    return { kind: "batch", key: `batch:${id}`, id, ...presentation, workflowId: first.workflowId, origin: first.session.origin,
+      representative: first, items, members, history, band, status, endedAt };
   });
 }
 
-/** Logical items stay separate regardless of the served session's grouping preference. */
+/** Consume the served batch layout without choosing workflow eligibility. */
 export function queueItemLayout(top: readonly QueueSurfaceWire[]) {
   const itemGroups = groupQueueAttempts(top);
-  const itemByRunId = new Map(itemGroups.flatMap((group) =>
-    group.attempts.map((attempt) => [String(attempt.runId), group] as const)));
-  const displayTop = itemGroups.map((group) => group.representative);
+  const itemByRunId = new Map(itemGroups.flatMap(group =>
+    group.attempts.map(attempt => [String(attempt.runId), group] as const)));
+  const batches = queueBatches(top).filter(batch => batch.layout === "batch");
+  const batchByRunId = new Map(batches.flatMap(batch => [...batch.members, ...batch.history].map(row => [row.runId, batch] as const)));
+  const seen = new Set<string>();
+  const displayTop: (QueueSurfaceWire | QueueBatch)[] = [];
+  for (const item of itemGroups) {
+    const batch = batchByRunId.get(item.representative.runId);
+    if (batch === undefined) displayTop.push(item.representative);
+    else if (!seen.has(batch.id)) { seen.add(batch.id); displayTop.push(batch); }
+  }
   return { displayTop, itemGroups, itemByRunId };
 }

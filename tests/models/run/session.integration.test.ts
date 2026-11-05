@@ -6,6 +6,7 @@ import { describe } from "vitest";
 import { it } from "vitest";
 import { runSessionActorId } from "../../../src/models/run/session.js";
 import { RunSessionRecordSchema } from "../../../src/models/run/session.js";
+import { workflowQueueCapabilities } from "../../../src/backend/app/registries/workflow-registry.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
 import { CONFIG_SNAPSHOT } from "../../support/fixtures/phase1c-contract-fixtures.js";
 import { NOW } from "../../support/fixtures/phase1c-contract-fixtures.js";
@@ -115,8 +116,8 @@ const { queuedEventOf } = createSeededDashboardWorld();
 
 const worlds: DashboardWorld[] = [];
 
-async function world(...args: Parameters<typeof makeWorld>): Promise<DashboardWorld> {
-  const created = await makeWorld(...args);
+async function world(): Promise<DashboardWorld> {
+  const created = await makeWorld({ queueCapabilities: workflowQueueCapabilities });
   worlds.push(created);
   return created;
 }
@@ -145,8 +146,8 @@ afterEach(_afterEachFixture0);
     const rows = w.projection.buildDashboardDayWire(DAY).queueSurfaces;
 
 
-    assert.deepEqual(rows[0].session, { state: "present", sessionId: uuidOf(70), origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, presentation: { groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) } });
-    assert.deepEqual(rows[1].session, { state: "present", sessionId: uuidOf(70), origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, presentation: { groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) } });
+    assert.deepEqual(rows[0].session, { state: "present", itemScope: "session", sessionId: uuidOf(70), origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, presentation: { layout: "batch", groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) } });
+    assert.deepEqual(rows[1].session, { state: "present", itemScope: "session", sessionId: uuidOf(70), origin: { kind: "start-plan", startPlanId: uuidOf(71), actorId: "local-operator" }, presentation: { layout: "batch", groupInQueue: true, version: 1, startedAt: instantOffsetOf(0) } });
     assert.deepEqual(rows[2].session, {
       state: "absent",
       reason: "no session grouping was recorded for this run or its retry source",
@@ -167,7 +168,7 @@ afterEach(_afterEachFixture0);
     assert.equal(w.changes.filter((change) => change.kind === "snapshot").length, before + 1);
     for (const row of w.projection.buildDashboardDayWire(DAY).queueSurfaces) {
       assert.equal(row.session.state, "present");
-      if (row.session.state === "present") assert.deepEqual(row.session.presentation, { groupInQueue: false, version: 2, startedAt: batch.startedAt });
+      if (row.session.state === "present") assert.deepEqual(row.session.presentation, { layout: "items", groupInQueue: false, version: 2, startedAt: batch.startedAt });
     }
     w.projection.reconcileWorkerAuthority();
     assert.equal(w.changes.filter((change) => change.kind === "snapshot").length, before + 1);
