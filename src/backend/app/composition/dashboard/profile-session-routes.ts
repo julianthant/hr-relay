@@ -124,9 +124,28 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   };
   const publicFailure = (error: Error) => {
     const custodyUnproved = retainPublicFailureCustody(error, retainedCustodyFailures);
+    const mapped = failureStatus(error);
+    const causes: unknown[] = mapped.status === 500 || error.cause !== undefined || mapped.body.code === "CREDENTIAL_CONVERSION_REQUIRED" ? [error] : [], seen = new Set<unknown>();
+    while (causes.length > 0) {
+      const cause = causes.pop();
+      if (!(cause instanceof Error) || seen.has(cause)) continue;
+      seen.add(cause);
+      const name = /^[A-Za-z][A-Za-z0-9]{0,79}$/u.test(cause.name) ? cause.name : "Error";
+      const code = "code" in cause && typeof cause.code === "string" && /^[A-Z][A-Z0-9_]{0,127}$/u.test(cause.code) ? cause.code : "INTERNAL_FAILURE";
+      const diagnostic = new Error(name);
+      diagnostic.name = name;
+      diagnostic.stack = [name, ...(cause.stack?.split("\n").slice(1).flatMap(line => {
+        if (!/^\s+at /u.test(line)) return [];
+        const frame = /(?:^|\/)((?:src|scripts|node_modules)\/[A-Za-z0-9_./-]+\.[cm]?[jt]sx?:\d+:\d+)\)?$/u.exec(line)?.[1];
+        return frame === undefined ? [] : [`    at ${frame}`];
+      }) ?? [])].join("\n");
+      appendEmergencyFault({ stateRoot: machine.stateRoot, build: appVersion, code, error: diagnostic,
+        area: "profile-request", reason: "profile-request-cause", now: clock.now() });
+      causes.push(cause.cause);
+      if (cause instanceof AggregateError) { const nested: readonly unknown[] = cause.errors; causes.push(...nested); }
+    }
     if (error instanceof ProfileSessionRefusedError) return { status: 409 as const,
       body: PublicProfileStateSchema.parse({ state: "refused", code: error.code }) };
-    const mapped = failureStatus(error);
     return { status: mapped.status, body: PublicProfileStateSchema.parse({ state: "error",
       code: custodyUnproved ? "RUNTIME_CUSTODY_UNCERTAIN" : mapped.body.code }) };
   };
@@ -143,7 +162,8 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
     if (selection === undefined) {
       const registry = machine.readProfileRegistry();
       return c.json(PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: registry.profiles.length === 0,
-        ...registry.activeProfileId !== null && { resumable: true } }));
+        ...registry.activeProfileId !== null && { resumable: true },
+        ...(registry.profiles.some(row => row.lifecycle === "cancelling") || profileRuntime.session.logoutOperations().some(operation => operation.phase !== "complete")) && { logoutIncomplete: true } }));
     }
     const active = current(c.req.raw);
     return c.json(PublicProfileStateSchema.parse({ state: "active", profileId: active.profileId, epoch: active.epoch,

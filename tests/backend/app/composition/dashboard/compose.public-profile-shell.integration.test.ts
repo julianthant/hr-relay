@@ -13,6 +13,7 @@ import * as httpServer from "../../../../../src/backend/transports/http/http-ser
 import { AuthoritySourceClosureUnprovedError } from "../../../../../src/backend/storage/source-closure.js";
 import * as storageCompose from "../../../../../src/backend/app/composition/storage-compose.js";
 import * as dashboardRunners from "../../../../../src/backend/app/preflight/dashboard-runners.js";
+import * as debugEvents from "../../../../../src/backend/logs/debug-events.js";
 
 vi.mock("../../../../../src/backend/transports/http/http-server.js", { spy: true });
 vi.mock("../../../../../src/backend/app/composition/storage-compose.js", { spy: true });
@@ -57,11 +58,11 @@ async function finishPublicSignUp(base: string): Promise<Response> {
   return (await readyPublicSignUp(base)).finish();
 }
 
-async function fixture(lifetime?: Parameters<typeof acquireEntrypointAdmission>[2]) {
+async function fixture(lifetime?: Parameters<typeof acquireEntrypointAdmission>[2], mode: "exclusive" | "shared" = "exclusive") {
   const controller = lifetime ?? await runtimeLifetimeLock();
   const root = realpathSync(mkdtempSync(join(tmpdir(), "public-profile-shell-")));
   for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
-  const machine = acquireEntrypointAdmission(root, "exclusive", controller);
+  const machine = acquireEntrypointAdmission(root, mode, controller);
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   return { root, lifetime: controller, machine };
 }
@@ -133,7 +134,36 @@ it("serves public profile state without minting a selected profile, actor or aut
   } finally { await runtime?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
 });
 
-it("uses a real verifier and selected session cookie, rejects foreign browser captures and performs canonical logout", async () => {
+it("records unknown profile failure name, code and source frames without message values and stops cleanly", async () => {
+  const f = await fixture();
+  const actual = await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js");
+  const sensitive = "disposable-private-value fixture@example.edu";
+  const error = Object.assign(new TypeError(sensitive), { code: "SYNTHETIC_PROFILE_FAILURE" });
+  error.stack = `TypeError: ${sensitive}\n    at login (/repo/src/backend/profiles/profile-session.ts:454:3)\n    at ${sensitive}\n    at private (/private/${sensitive}:1:2)`;
+  error.cause = error;
+  const spy = vi.spyOn(storageCompose, "composeProfileRuntime").mockImplementation(input => {
+    const current = actual.composeProfileRuntime(input);
+    return { ...current, session: { ...current.session, signIn() { throw error; } } };
+  });
+  let app: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined;
+  try {
+    app = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation,
+      repoRoot: f.root, backendPortOverride: 0, frontendPortOverride: 0, env: {} });
+    const base = `http://127.0.0.1:${app.port}`;
+    const response = await fetch(`${base}/api/v1/profile/sign-in`, { method: "POST", headers: { origin: base, "content-type": "application/json" },
+      body: JSON.stringify({ email: "fixture@ucsd.edu", password: "disposable-fixture-password" }) });
+    assert.equal(response.status, 500);
+    assert.deepEqual(await response.json(), { state: "error", code: "INTERNAL_FAILURE" });
+    const log = readFileSync(join(f.machine.stateRoot, "logs", "boot.jsonl"), "utf8");
+    assert.ok(log.includes("TypeError")); assert.ok(log.includes("SYNTHETIC_PROFILE_FAILURE"));
+    assert.ok(log.includes("src/backend/profiles/profile-session.ts:454:3"));
+    assert.equal(log.includes(sensitive), false);
+    assert.equal(log.includes("disposable-fixture-password"), false);
+    await app.stop(); app = undefined;
+  } finally { spy.mockRestore(); await app?.stop(); f.machine.release(); rmSync(f.root, { recursive: true, force: true }); }
+});
+
+it("uses a real verifier and selected session cookie, rejects foreign browser captures and performs canonical logout with an open subscription", async () => {
   const temporary = mkdtempSync(join(realpathSync(tmpdir()), "public-profile-temp-alias-"));
   const priorEnvironment = { TMPDIR: process.env.TMPDIR, TMP: process.env.TMP, TEMP: process.env.TEMP };
   using _environment = { [Symbol.dispose]() {
@@ -239,8 +269,14 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     const credentialPaths = [join(profileRoot, "credentials", "protected.json"), join(profileRoot, "credentials", "chatgpt-account.json"),
       join(f.machine.stateRoot, "machine", "duo-credentials", `${active.profileId}.json`), join(f.machine.stateRoot, "machine", "credential-keys", `${active.profileId}.json`)];
     const retainedCredentials = credentialPaths.map(path => createHash("sha256").update(readFileSync(path)).digest("hex"));
+    const events = await fetch(`${base}/events/v1?topics=dashboard-day:2026-11-05`, { headers: { cookie } });
+    assert.equal(events.status, 200);
+    const eventReader = events.body?.getReader(); assert.ok(eventReader);
+    assert.equal((await eventReader.read()).done, false);
     const logout = PublicProfileStateSchema.parse(await (await post("/api/v1/profile/logout", {}, cookie)).json());
     assert.deepEqual(logout, { state: "signed-out", signUpRequired: false });
+    try { await eventReader.cancel(); }
+    catch (error) { assert.ok(error instanceof Error); assert.match(error.message, /terminated|aborted|closed/u); }
     assert.equal(f.machine.readProfileRegistry().activeProfileId, null);
     assert.equal(f.machine.readProfileRegistry().profiles.find(row => row.profileId === active.profileId)?.credentialState, "saved");
     assert.deepEqual(credentialPaths.map(path => createHash("sha256").update(readFileSync(path)).digest("hex")), retainedCredentials);
@@ -254,6 +290,76 @@ it("uses a real verifier and selected session cookie, rejects foreign browser ca
     f.machine.release();
     rmSync(f.root, { recursive: true, force: true });
     rmSync(temporary, { recursive: true });
+  }
+});
+
+it("drains two subscribed tabs before revocation and refuses subscription reconnects during and after logout", async () => {
+  const f = await fixture(undefined, "shared"), drained = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const composeProfile = (await vi.importActual<typeof storageCompose>("../../../../../src/backend/app/composition/storage-compose.js")).composeProfileRuntime;
+  let context: ReturnType<ReturnType<typeof composeProfile>["selectedContext"]> | undefined;
+  const profileFactory = vi.spyOn(storageCompose, "composeProfileRuntime").mockImplementation(input => {
+    const profile = composeProfile(input);
+    return { ...profile, selectedContext(token) { context = profile.selectedContext(token); return context; } };
+  });
+  const actualStart = (await vi.importActual<typeof httpServer>("../../../../../src/backend/transports/http/http-server.js")).startDashboardHttpServer;
+  const createWriter = debugEvents.createDebugEventWriter;
+  const finalDiagnostics: number[] = [];
+  const logging = vi.spyOn(debugEvents, "createDebugEventWriter").mockImplementation(input => {
+    const writer = createWriter(input);
+    return { emit(event, ...args) {
+      const result = writer.emit(event, ...args);
+      if (typeof event === "object" && event !== null && Reflect.get(event, "category") === "sse" && Reflect.get(event, "phase") === "settled") {
+        finalDiagnostics.push(f.machine.readProfileRegistry().sessionGeneration);
+      }
+      return result;
+    } };
+  });
+  const start = vi.spyOn(httpServer, "startDashboardHttpServer").mockImplementation(async input => {
+    const listener = await actualStart(input);
+    return { ...listener, mount(app, accepts) {
+      const mount = listener.mount(app, accepts);
+      return { async close() { await mount.close(); drained.resolve(); await release.promise; } };
+    } };
+  });
+  let runtime: Awaited<ReturnType<typeof composeDashboardApplication>> | undefined, logout: Promise<Response> | undefined;
+  const readers: ReadableStreamDefaultReader<Uint8Array>[] = [];
+  try {
+    runtime = await composeDashboardApplication({ lifetimeLock: f.lifetime, admission: f.machine, isolation: rebuildRuntimeIsolation, repoRoot: f.root,
+      backendPortOverride: 0, frontendPortOverride: 0, onboardingDuo: syntheticOnboardingDuo(), env: {}, preflightRunnerFactory: healthyRuntimePreflightRunners });
+    const base = `http://127.0.0.1:${runtime.port}`, signedUp = await finishPublicSignUp(base);
+    assert.equal(PublicProfileStateSchema.parse(await signedUp.json()).state, "active");
+    const cookie = signedUp.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+    assert.ok(context);
+    const custody = context.database.readProfileResourceCustody();
+    assert.deepEqual(custody.runs, []); assert.deepEqual(custody.slots, []); assert.deepEqual(custody.browsers, []);
+    const epoch = f.machine.readProfileRegistry().sessionGeneration;
+    const subscribe = () => fetch(`${base}/events/v1?topics=dashboard-day:2026-11-05`, { headers: { cookie } });
+    for (let tab = 0; tab < 2; tab++) {
+      const response = await subscribe(); assert.equal(response.status, 200);
+      const reader = response.body?.getReader(); assert.ok(reader); readers.push(reader);
+      assert.equal((await reader.read()).done, false);
+    }
+    logout = fetch(`${base}/api/v1/profile/logout`, { method: "POST", headers: { cookie, origin: base, "content-type": "application/json" }, body: "{}" });
+    await drained.promise;
+    assert.deepEqual(finalDiagnostics, [epoch, epoch]);
+    assert.equal(f.machine.readProfileRegistry().sessionGeneration, epoch);
+    const reconnect = await subscribe(); assert.equal(reconnect.status, 401);
+    assert.deepEqual(await reconnect.json(), { state: "refused", code: "PROFILE_SESSION_STALE" });
+    release.resolve();
+    const result = await logout; assert.equal(result.status, 200);
+    assert.deepEqual(await result.json(), { state: "signed-out", signUpRequired: false });
+    assert.equal(f.machine.readProfileRegistry().sessionGeneration, epoch + 1);
+    const after = await subscribe(); assert.equal(after.status, 401);
+    assert.deepEqual(await after.json(), { state: "refused", code: "PROFILE_SESSION_STALE" });
+    assert.deepEqual(finalDiagnostics, [epoch, epoch]);
+    await runtime.stop(); runtime = undefined;
+  } finally {
+    release.resolve(); await logout;
+    for (const reader of readers) {
+      try { await reader.cancel(); }
+      catch (error) { assert.ok(error instanceof Error); assert.match(error.message, /terminated|aborted|closed/u); }
+    }
+    await runtime?.stop(); start.mockRestore(); logging.mockRestore(); profileFactory.mockRestore(); f.machine.release(); rmSync(f.root, { recursive: true, force: true });
   }
 });
 

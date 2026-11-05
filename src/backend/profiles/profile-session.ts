@@ -369,8 +369,8 @@ export function createProfileSession(input: {
   }, names: ReturnType<typeof deriveProfileNames>): OnboardingProfileSession | ProfileRefusal {
     admission.assertWritable();
     const selection = registry.read();
+    if (selection.profiles.some(row => row.lifecycle === "cancelling") || readOperations().some(entry => entry.kind === "logout" && entry.phase !== "complete")) return refusal("PROFILE_LOGOUT_INCOMPLETE");
     if (selection.activeProfileId !== null) return refusal("PROFILE_SIGN_UP_OTHER_SIGNED_IN");
-    if (readOperations().some(entry => entry.kind === "logout" && entry.phase !== "complete")) return refusal("PROFILE_TRANSITION_BLOCKED");
     const emailKey = verifiers.emailKeyFor(fields.email);
     if (readOperations().some(entry => entry.kind === "sign-up")) return refusal("PROFILE_TRANSITION_BLOCKED");
     const identified = verifiers.identify(fields.email);

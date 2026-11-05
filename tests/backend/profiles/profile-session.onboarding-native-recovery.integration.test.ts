@@ -28,7 +28,7 @@ import { ProfileVerifierDocumentSchema, SignUpOperationSchema } from "../../../s
 import { observeProcessIdentity, ProcessStartIdentitySchema } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
-import { composeProfileRuntime, initializeRegisteredPersonStores, RegisteredPersonUpgradeRefusedError, RuntimeCustodyUncertainError } from "../../../src/backend/app/composition/storage-compose.js";
+import { composeProfileRuntime, initializeRegisteredPersonStores, RuntimeCustodyUncertainError } from "../../../src/backend/app/composition/storage-compose.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { createDuoCredentialStore } from "../../../src/backend/storage/configuration/duo-credential-store.js";
 import type { DraftDuoBrowserOwner, DraftDuoCapability, ProfileOnboardingDuoProvider } from "../../../src/backend/profiles/onboarding-duo.js";
@@ -349,10 +349,16 @@ async function recoverFinishBoundary(boundary: "phase" | "intent" | "verifier" |
     }
     if (startup) {
       if (process.platform === "win32") {
-        await assert.rejects(initializeRegisteredPersonStores(f.root, f.lifetime, { primaryDisplay: null }, systemClock), (error: unknown) => {
-          if (predecessor) { assert.ok(error instanceof RegisteredPersonUpgradeRefusedError); assert.ok(error.cause instanceof StorageMaintenanceCustodyUnavailableError); }
-          else { assert.ok(error instanceof StartupCrashRecoveryRefusedError); assert.ok(error.cause instanceof ProfileRestoreBrowserCustodyUnprovedError); }
-          return true;
+        if (predecessor) {
+          await initializeRegisteredPersonStores(f.root, f.lifetime, { primaryDisplay: null }, systemClock);
+          const machine = acquireEntrypointAdmission(f.root, "shared", f.lifetime);
+          const profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock });
+          try {
+            assert.throws(() => profile.session.signIn({ email: "draft-recovery@ucsd.edu", password: "disposable-draft-recovery", at: systemClock.now().toISOString() }),
+              (error: unknown) => error instanceof Error && "code" in error && error.code === "PROFILE_STARTUP_CONVERSION_REFUSED" && error.cause instanceof StorageMaintenanceCustodyUnavailableError);
+          } finally { await profile.close("shutdown"); machine.release(); }
+        } else await assert.rejects(initializeRegisteredPersonStores(f.root, f.lifetime, { primaryDisplay: null }, systemClock), (error: unknown) => {
+          assert.ok(error instanceof StartupCrashRecoveryRefusedError); assert.ok(error.cause instanceof ProfileRestoreBrowserCustodyUnprovedError); return true;
         });
         rmSync(f.root, { recursive: true }); return;
       }

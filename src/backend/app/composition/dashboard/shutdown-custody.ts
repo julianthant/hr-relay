@@ -29,12 +29,10 @@ export function retainPublicFailureCustody(error: Error, retainedCustodyFailures
 
 export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDashboardRuntime>, "profile" | "selected" | "requireProducerClosure" | "notificationObserver"> & { timelineTimer: ReturnType<typeof setInterval>; hub: ReturnType<typeof composeShell>["hub"]; runLogsHub: RunLogsStreamHub; stopWorkerControl: StartupCleanup; assistantAuthorization: NonNullable<DashboardRuntime["assistantAuthorization"]>; shutdownRequested: Promise<void>; noteWriter: DashboardRuntime["noteWriter"] } & { server: DashboardHttpServer; gateParkTimer: ReturnType<typeof setInterval>; custody: StartupCustody }): DashboardRuntime {
   const { profile, selected, requireProducerClosure, notificationObserver, timelineTimer, hub, runLogsHub, stopWorkerControl, assistantAuthorization, shutdownRequested, noteWriter, server, gateParkTimer, custody } = input;
-  let detaching: Promise<void> | undefined;
-  const detach = (): Promise<void> => {
-    detaching ??= (async () => {
+  let producerClosure: Promise<void> | undefined, producersClosed = false;
+  const closeProducers = (): Promise<void> => {
+    producerClosure ??= (async () => {
       const failures: unknown[] = [];
-      try { profile.runtime.beginClose("shutdown"); }
-      catch (error) { custody.failedClosures.push(error); failures.push(error); }
       const transportClosure = (async () => {
         try { await server.close(); custody.transportClosed = true; } catch (error) { failures.push(error); }
       })();
@@ -47,6 +45,23 @@ export function composeDashboardShutdown(input: Pick<ReturnType<typeof prepareDa
       try { hub.close(); } catch (error) { failures.push(error); }
       try { runLogsHub.close(); } catch (error) { failures.push(error); }
       await notificationClosure;
+      if (failures.length > 0) throw new RuntimeCustodyUncertainError(failures);
+      producersClosed = true;
+    })();
+    return producerClosure;
+  };
+  profile.runtime.registerCommandActivity(profile.token, {
+    hasUnquiescedWork: () => producerClosure !== undefined && !producersClosed,
+    requestCancellation() { void closeProducers(); },
+    awaitCancellation: closeProducers,
+  });
+  let detaching: Promise<void> | undefined;
+  const detach = (): Promise<void> => {
+    detaching ??= (async () => {
+      const failures: unknown[] = [];
+      try { profile.runtime.beginClose("shutdown"); }
+      catch (error) { custody.failedClosures.push(error); failures.push(error); }
+      try { await closeProducers(); } catch (error) { failures.push(error); }
       if (failures.length === 0) {
         try { requireProducerClosure(); await profile.runtime.awaitClosurePreparation(selected); } catch (error) { failures.push(error); }
       }
