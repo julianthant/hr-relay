@@ -1,11 +1,28 @@
 import { describe,expect,it } from "vitest";
-import { approveMockRun,mockQueueCounts,mockQueueView,mockRunLog,seedMockRuns } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { approveMockRun,mockQueueCounts,mockQueueView,mockRunLog,mockRunSubset,seedMockRuns } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-mock-model.js";
+import { WORKFLOW_SOURCES } from "../../../../../src/dashboard/app/workflow-sources.js";
 import { mockQueueId,mockQueueSurface,mockQueueSurfaces } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-queue-model.js";
 import { discardMockReview } from "../../../../../src/dashboard/surfaces/workflows/mocks/workflow-review-model.js";
 import { QueueSurfaceWireSchema } from "../../../../../src/models/dashboard/projection.js";
 
 const anchor = "2026-08-03T16:10:00.000Z";
 describe("canonical workflow mock queue presentations", () => {
+  it("keeps delegated previews connected when their intermediate workflow is served", () => {
+    const all = seedMockRuns();
+    const runs = mockRunSubset(all, run => WORKFLOW_SOURCES[run.workflowId] === "mock");
+    const rows = mockQueueSurfaces(runs, anchor);
+    expect(runs.some(run => WORKFLOW_SOURCES[run.workflowId] === "served")).toBe(false);
+    for (const id of ["i9-lookup", "sharepoint-download"]) {
+      const child = runs.find(run => run.workflowId === id)!;
+      const parent = runs.find(run => run.id === child.parentId)!;
+      expect(parent.workflowId).toBe("onbase");
+      expect(rows.find(row => row.runId === mockQueueId(child.id))?.parent?.runId).toBe(mockQueueId(parent.id));
+    }
+    expect(runs.every(run => run.ocrRunId === undefined || runs.some(target => target.id === run.ocrRunId))).toBe(true);
+    expect(mockRunSubset(all, () => true)).toEqual(all);
+    const child = all.find(run => run.workflowId === "i9-lookup")!;
+    expect(() => mockRunSubset([{ ...child, parentId: "missing" }], () => true)).toThrow("MOCK_QUEUE_PARENT_UNAVAILABLE");
+  });
   it("parses every workflow into the canonical wire without enabling commands", () => {
     const runs = seedMockRuns(), rows = mockQueueSurfaces(runs, anchor);
     expect(rows).toHaveLength(runs.length);

@@ -198,7 +198,7 @@ describe("bootstrap start-surface block", () => {
     }
   });
 });
-it('serves implemented saved-row starts while retaining missing workflow start restrictions', async () => {
+it('serves implemented saved-row and CRM starts without stale implementation refusals', async () => {
   const world = await makeWorld();
   try {
     const wire = buildBootstrap(depsOf(world));
@@ -211,10 +211,10 @@ it('serves implemented saved-row starts while retaining missing workflow start r
     expect(onboarding?.availability).toEqual({ state: 'available' });
     expect(onboarding?.start?.inputRun?.workbookRows).toEqual({ typeId: 'onboarding-roster', inputField: 'email' });
     expect(onboarding?.start?.inputRun?.typedInput?.initialMode).toBe(null);
-    const capability = wire.featureAvailability.find(feature => feature.feature === 'workflow-start:crm-doc-download')?.availability;
-    expect(capability?.state).toBe('unavailable');
-    if (capability?.state !== 'unavailable') throw new Error('missing workflow start refusal');
-    expect(capability.reason).toMatch(/not available|not implemented/);
+    expect(wire.featureAvailability.some(feature => feature.feature === 'workflow-start:crm-doc-download')).toBe(false);
+    const crm = wire.workflows.map(value => WorkflowBootstrapPrimitiveSchema.parse(value)).find(workflow => workflow.id === 'crm-doc-download');
+    expect(crm?.availability).toEqual({ state: 'available' });
+    expect(crm?.start?.inputRun?.parser).toBeDefined();
   } finally { await world.dispose(); }
 });
 
