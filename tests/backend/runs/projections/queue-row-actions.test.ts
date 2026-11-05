@@ -48,6 +48,21 @@ function factsFor(status: Status, over: Partial<QueueRowActionFacts> = {}): Queu
 const keysFor = (status: Status, over: Partial<QueueRowActionFacts> = {}): string[] =>
   queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status, over)).map(({ key }) => key);
 
+it("serves one header Retry only for a failed Lookup batch root and preserves Rerun", () => {
+  const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed", { lookupBatchMemberRetryAvailable: true }));
+  const retry = actions.filter(action => action.kind === "command" && action.command === "retry");
+  assert.equal(retry.length, 1);
+  assert.deepEqual(retry[0].placement, ["banner"]);
+  assert.ok(retry[0].kind === "command");
+  assert.equal(retry[0].expectedVersion, 7);
+  assert.ok(actions.some(action => action.key === "rerun"));
+  for (const status of QueueStatusSchema.options) if (status !== "failed") assert.ok(!keysFor(status, { lookupBatchMemberRetryAvailable: true }).includes("retry-batch-member"));
+  for (const over of [{ isChild: true }, { parkedWrite: true }, { lookupBatchMemberRetryAvailable: false }]) {
+    assert.ok(!keysFor("failed", { lookupBatchMemberRetryAvailable: true, ...over }).includes("retry-batch-member"));
+  }
+  assert.deepEqual(queueRowActions({ enabled: [] }, factsFor("failed", { lookupBatchMemberRetryAvailable: true })), []);
+});
+
 it("serves footer pause/resume only from the projected control with its exact CAS version", () => {
   assert.ok(!keysFor("running").includes("pause"));
   for (const command of ["pause", "resume"] as const) {

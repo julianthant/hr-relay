@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../src/models/dashboard/projection.js";
+import { queueParentFixture } from "../../support/helpers/dashboard/queue-parent-fixture.js";
+import { LogSample } from "../../../src/dashboard/surfaces/run-detail/logs/log-sample.js";
+import { DashboardClientProvider, DashboardCommandBindingProvider } from "../../../src/dashboard/state/client-context.js";
 import { FIXTURE_PARKED_WRITE } from "../../support/fixtures/dashboard/run-detail/gates-park.js";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -31,6 +35,86 @@ const RUN = "00000000-0000-4000-8000-000000000001";
 const NOTE = "00000000-0000-4000-8000-000000000003";
 const AT = "2026-08-03T12:00:00.000Z";
 const CONFIRM = { title: "Approve this identity", body: "Approving binds the rest of this separation to this person.", confirmLabel: "Approve", tone: "neutral" } as const;
+
+for (const outcome of ["applied", "lost", "refused", "mismatch"] as const) it(`retains one batch root Retry through ${outcome} without inventing child authority`, async () => {
+  const base = selectionAt(3);
+  const selected: LogSelection = { ...base, row: QueueSurfaceWireSchema.parse({ ...base.row, workflowId: "person-lookup", parent: null,
+    status: "failed", endedAt: { state: "present", value: AT },
+    session: { state: "present", sessionId: RunIdSchema.parse(NOTE), origin: { kind: "start-plan", startPlanId: RunIdSchema.parse(NOTE), actorId: ActorIdSchema.parse("local-operator") },
+      presentation: { groupInQueue: true, version: RowRevisionSchema.parse(1), startedAt: AT } },
+    actions: [{ key: "retry-batch-member", kind: "command", command: "retry", label: "Retry", icon: "retry", intent: "neutral", expectedVersion: 3, placement: ["banner"] }] }) };
+  const source = detailAt(selected, 3);
+  const replacementId = RunIdSchema.parse("00000000-0000-4000-8000-000000000004");
+  const next = RunDetailWireSchema.parse({ ...source, runId: replacementId, rowRevision: 1,
+    header: { ...source.header, runId: replacementId, retryOf: RUN, status: "queued", attempt: source.header.attempt + 1 } });
+  const sent: CommandRequest[] = [];
+  let release: (() => void) | undefined;
+  const waiting = new Promise<void>(resolve => { release = resolve; });
+  const client: DashboardClient = { ...createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => { throw new Error("unexpected root retry read"); } }),
+    runDetail: async id => id === replacementId ? next : source, runSection: async () => logs(),
+    dashboardDay: async () => DashboardDayWireSchema.parse({ ...FIXTURE_DAY_WIRE, queueSurfaces: [selected.row, { ...selected.row, runId: replacementId, attempt: next.header.attempt,
+      itemId: outcome === "mismatch" ? replacementId : selected.row.itemId, rowRevision: RowRevisionSchema.parse(1), status: "queued", endedAt: { state: "absent", reason: "queued" }, actions: [] }] }),
+    executeCommand: async raw => { const request = CommandRequestSchema.parse(raw); sent.push(request); await waiting;
+      if (outcome === "lost") throw new Error("synthetic lost retry reply");
+      return CommandResultSchema.parse(outcome === "refused" ? { state: "rejected", code: "policy-refused", message: "refused", commandId: request.commandId }
+        : { state: "applied", commandId: request.commandId, affectedTargets: [{ family: "run", runId: RUN }, { family: "run", runId: replacementId }] }); },
+  };
+  const h = await harness(client); await h.render(selected);
+  assert.equal(h.state?.onChildRetry, undefined); assert.ok(h.state?.onBatchMemberRetry);
+  const retainedRetry = h.state.onBatchMemberRetry;
+  h.day = { state: "loading" }; await h.render(selected);
+  assert.equal(h.state?.onBatchMemberRetry, undefined);
+  await act(async () => retainedRetry()); assert.equal(sent.length, 0);
+  h.day = { state: "loaded", value: FIXTURE_DAY_WIRE }; await h.render(selected);
+  const retry = retainedRetry;
+  await act(async () => { retry(); retry(); });
+  assert.equal(sent.length, 1); assert.equal(h.state?.command?.state, "pending"); assert.equal(h.state?.onBatchMemberRetry, undefined);
+  assert.deepEqual(sent[0].target, { runId: RUN, expectedVersion: 3 });
+  await act(async () => release?.());
+  assert.equal(h.state?.command?.state, outcome === "applied" ? "settled" : outcome === "refused" ? "refused" : "uncertain", JSON.stringify(h.outcomes));
+  assert.equal(h.refreshed, Number(outcome === "applied"));
+  if (outcome === "lost") {
+    assert.ok(h.state?.replay); await act(async () => h.state?.replay?.());
+    assert.equal(sent.length, 2); assert.deepEqual(sent[1], sent[0]);
+    await h.render({ ...selected, row: { ...selected.row, actions: [] } });
+    await act(async () => h.state?.replay?.()); assert.equal(sent.length, 3); assert.deepEqual(sent[2], sent[0]);
+    await h.render({ ...selected, row: { ...selected.row, rowRevision: RowRevisionSchema.parse(4), actions: [] } });
+    await act(async () => h.state?.replay?.()); assert.equal(sent.length, 3);
+  }
+});
+
+for (const outcome of ["lost", "refused"] as const) it(`disables mounted EC header Retry through stale, pending and ${outcome} authority, including retained callbacks`, async () => {
+  const base = selectionAt(3);
+  const selected: LogSelection = { ...base, row: QueueSurfaceWireSchema.parse({ ...base.row, workflowId: "emergency-contact-member", status: "failed",
+    endedAt: { state: "present", value: AT }, parent: queueParentFixture(NOTE, { visibility: "inline" }), actions: [] }) };
+  const source = detailAt(selected, 3, { header: { ...detailAt(selected, 3).header, parentRunId: NOTE }, childRetry: {
+    key: "retry-child", label: "Retry", kind: "command", command: "retry", expectedVersion: 3, intent: "neutral", icon: "retry", placement: ["banner"] } });
+  const sent: CommandRequest[] = [];
+  let release: (() => void) | undefined;
+  const waiting = new Promise<void>(resolve => { release = resolve; });
+  const client: DashboardClient = { ...createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async () => { throw new Error("unexpected EC retry read"); } }),
+    runDetail: async () => source, runSection: async () => logs(), executeCommand: async raw => {
+      const request = CommandRequestSchema.parse(raw); sent.push(request); await waiting;
+      if (outcome === "lost") throw new Error("synthetic EC retry lost reply");
+      return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId, code: "RUN_CONTINUATION_REFUSED", message: "Synthetic refusal" });
+    } };
+  const h = await harness(client, undefined, true); await h.render(selected);
+  const retry = document.querySelector<HTMLButtonElement>('header button[aria-label="Retry"]'); assert.ok(retry && !retry.disabled);
+  const retainedRetry = h.state?.onChildRetry; assert.ok(retainedRetry);
+  h.day = { state: "loading" }; await h.render(selected);
+  assert.equal(retry.disabled, true); assert.equal(h.state?.onChildRetry, undefined);
+  await act(async () => retainedRetry()); assert.equal(sent.length, 0);
+  h.day = { state: "loaded", value: FIXTURE_DAY_WIRE }; await h.render(selected);
+  assert.equal(retry.disabled, false);
+  await act(async () => { retry.click(); retry.click(); });
+  assert.equal(sent.length, 1); assert.equal(retry.disabled, true);
+  await act(async () => release?.());
+  assert.equal(retry.disabled, outcome === "lost");
+  const retainedReplay = h.state?.replay;
+  h.day = { state: "loading" }; await h.render(selected);
+  assert.equal(retry.disabled, true); assert.equal(h.state?.onChildRetry, undefined); assert.equal(h.state?.replay, undefined);
+  await act(async () => { retainedRetry(); retainedReplay?.(); }); assert.equal(sent.length, 1);
+});
 
 it("dispatches the served child retry once and checks its replacement before refreshing", async () => {
   const selected = selectionAt(3), sent: CommandRequest[] = [];
@@ -165,14 +249,19 @@ let root: Root | undefined;
 beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); });
 afterEach(async () => { await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren(); vi.unstubAllGlobals(); });
 
-type Harness = { state?: ReturnType<typeof useRunWiring>; outcomes: CommandOutcome[]; refreshed: number; render: (selected: LogSelection, key?: number) => Promise<void> };
-async function harness(client: DashboardClient, confirm?: RunWiringConfirm): Promise<Harness> {
+type Harness = { day?: DashboardCommandBinding["authority"]["dayState"]["day"]; state?: ReturnType<typeof useRunWiring>; outcomes: CommandOutcome[]; refreshed: number; render: (selected: LogSelection, key?: number) => Promise<void> };
+async function harness(client: DashboardClient, confirm?: RunWiringConfirm, renderLogs = false): Promise<Harness> {
   const h: Harness = { outcomes: [], refreshed: 0, render: async () => undefined };
   const scope = Object.freeze({ actorId: ActorIdSchema.parse("local-operator"), client, authority: {}, dayRequest: {} });
   const dayState = { subscribePublications: () => () => undefined, request: scope.dayRequest, day: { state: "loaded" as const, value: FIXTURE_DAY_WIRE }, connection: { state: "live" as const }, refresh: () => { h.refreshed++; } };
   const binding = { scope, executor: new CommandExecutor(() => scope), feedback: (outcome: CommandOutcome) => { h.outcomes.push(outcome); },
     authority: { epoch: scope.authority, catalog: [], nowIso: AT, today: "2026-08-03", day: "2026-08-03", dayState, selection: { route: { start: false }, workflowId: "separations" } } } as unknown as DashboardCommandBinding;
-  function Probe({ selected }: { selected: LogSelection }) { h.state = useRunWiring(client, selected, binding, confirm); return null; }
+  function Probe({ selected }: { selected: LogSelection }) {
+    const currentBinding = h.day === undefined ? binding : { ...binding, authority: { ...binding.authority, dayState: { ...binding.authority.dayState, day: h.day } } };
+    h.state = useRunWiring(client, selected, currentBinding, confirm);
+    return renderLogs ? createElement(DashboardClientProvider, { client, children: createElement(DashboardCommandBindingProvider, { binding: currentBinding,
+      children: createElement(LogSample, { selection: selected }) }) }) : null;
+  }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   h.render = async (selected, key = 0) => { await act(async () => { root?.render(createElement(Probe, { selected, key })); await new Promise(resolve => setTimeout(resolve, 0)); }); };
   return h;

@@ -21,6 +21,7 @@ import { LogSkeleton } from "../../shared/loading/loading.js";
 import { queueRunHeader } from "../run-header-model.js";
 import { RunReview } from "../review/review.js";
 import { UcpathFoundTransactions } from "./log-decision.js";
+import { batchMemberRetryAction } from "../../../app/commands/command-dispatch.js";
 
 type ServedNavigation = Readonly<{ reviewOpen?: boolean; reviewFocus?: DelegatedRecordRef; onReview?: () => void; onLogs?: () => void; onAction?: DashboardActionHandler }>;
 
@@ -46,6 +47,7 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
   const preview = resource.snapshot?.logs.dryRunPreview;
   const lastStepId = projection.steps.at(-1)?.id;
   const reviewAvailable = resource.snapshot?.detail.availableSections.includes("review") === true;
+  const batchRetry = batchMemberRetryAction(selection.row);
   const retry = selection.row.parent === null || resource.snapshot?.detail.childRetry !== undefined ? undefined : selection.row.actions.find(action => action.kind === "command" && action.command === "retry");
   const retryEnabled = resource.state === "loaded" && binding?.authority.dayState.day.state === "loaded"
     && (resource.command === undefined || resource.command.state === "refused") && onAction !== undefined;
@@ -71,7 +73,8 @@ function ServedLogSample({ selection, nowIso, initialStepId, confirm, reviewOpen
     {resource.snapshot.detail.ocrReviewChanges.map(change => <p key={`${change.revision}:${change.sourcePage}`}>Page {change.sourcePage}: OCR evidence changed in revision {change.revision}. Review the new values before approving.</p>)}
   </Banner>}{resource.snapshot?.detail.childRetry !== undefined && <IconButton label={resource.snapshot.detail.childRetry.label}
     icon={<RotateCcw aria-hidden className="size-3.5" />} disabled={resource.onChildRetry === undefined} onClick={resource.onChildRetry} />}{reviewAvailable && resource.snapshot?.detail.ocrRecordCount !== undefined && onReview !== undefined && <Button size="sm" variant={reviewOpen ? "secondary" : "outline"} aria-pressed={Boolean(reviewOpen)} icon={<ListChecks aria-hidden className="size-4" />} onClick={reviewOpen ? onLogs : onReview}>Records {resource.snapshot.detail.ocrRecordCount}</Button>}
-      {retry !== undefined && onAction !== undefined && <IconButton size="sm" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,reviewOpen,onLogs,reviewAvailable,onReview,retry,onAction,retryEnabled,retryRun,feedback]);
+      {batchRetry !== undefined && <IconButton size="sm" label={batchRetry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={resource.onBatchMemberRetry === undefined} onClick={resource.onBatchMemberRetry} />}
+      {retry !== undefined && onAction !== undefined && <IconButton size="sm" label={retry.label} icon={<RotateCcw aria-hidden className="size-4" />} disabled={!retryEnabled} onClick={retryRun} />}{feedback}</>, [resource.snapshot,resource.onChildRetry,resource.onBatchMemberRetry,batchRetry,reviewOpen,onLogs,reviewAvailable,onReview,retry,onAction,retryEnabled,retryRun,feedback]);
   return <LogPanel initialStepId={resource.snapshot !== undefined && !failureMissing ? initialStepId : undefined} title={resource.snapshot?.detail.header.title ?? selection.row.title} steps={projection.steps} timeline={projection.timeline} onDecision={resource.onDecision}
     onReview={reviewAvailable ? onReview : undefined}
     context={queueRunHeader(selection.row, selection.workflowLabel, nowIso ?? selection.row.updatedAt)}

@@ -1,3 +1,4 @@
+import { lookupBatchMemberRetryAvailable } from "../../../runs/queries/run-retry.js";
 import type { WorkerLeaseRecord } from "../../../../models/run/worker.js";
 import { RunRecordService } from "../../../runs/lifecycle/run-record-service.js";
 
@@ -20,6 +21,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
     ledger,
     reader: input.reader,
     authority: {
+      lookupBatchMemberRetryAvailable: run => lookupBatchMemberRetryAvailable(database.authority, run, descriptors.resolve(run.envelope.workflow)),
       queueParents: envelopes => database.authority.dependencies.parents(envelopes),
       recordMembers: (run, children) => database.withAuthorityReadSnapshot(() => readQueueRecordMembers(database.authority, input.reader,
         run, children, id => descriptors.resolve(id))),

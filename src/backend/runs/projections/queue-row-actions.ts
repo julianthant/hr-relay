@@ -25,7 +25,6 @@ export interface QueueRowActionFacts {
   readonly rowRevision: number;
   /** ref workflow-model's envelope flag — decides whether a re-run can touch a real system */
   readonly dryRun: boolean;
-  /** a delegated child; the kernel refuses generic retry for one */
   readonly isChild: boolean;
   /** the run is parked on a fenced write whose outcome is unknown (ref write-safety ) */
   readonly parkedWrite: boolean;
@@ -37,6 +36,7 @@ export interface QueueRowActionFacts {
   readonly named: boolean;
   /** ref dashboard-surfaces's `has-review-panel` condition input */
   readonly hasReviewPanel: boolean;
+  readonly lookupBatchMemberRetryAvailable?: boolean;
 }
 
 /** The verbs this projection may serve, each a member of `ActionCommandKeySchema`. */
@@ -155,6 +155,10 @@ export function queueRowActions(
   facts: QueueRowActionFacts,
 ): ActionDescriptorWire[] {
   if (policy === undefined) return [];
+  const retry = facts.lookupBatchMemberRetryAvailable === true && facts.status === "failed" && !facts.isChild && !facts.parkedWrite
+    && policyEnables(policy, "retry", facts)
+    ? [ActionDescriptorWireSchema.parse({ key: "retry-batch-member", label: "Retry", kind: "command", command: "retry",
+      expectedVersion: facts.rowRevision, intent: "neutral", icon: "retry", placement: ["banner"] })] : [];
   const recover = facts.recoverySource !== undefined && !facts.isChild && !facts.parkedWrite
     && policyEnables(policy, "recover-run", facts)
     ? [ActionDescriptorWireSchema.parse({ key: "recover-run", label: facts.crashed ? "Rerun" : "Recover completed steps", kind: "command",
@@ -172,7 +176,7 @@ export function queueRowActions(
     key: pause, kind: "command", command: pause, expectedVersion: facts.pauseControl?.expectedVersion,
     label: pause === "pause" ? "Pause after this step" : "Resume", intent: "neutral", icon: pause, placement: ["footer"],
   })];
-  return [...pauseActions, ...rerun, ...recover, ...SERVED_ORDER
+  return [...pauseActions, ...retry, ...rerun, ...recover, ...SERVED_ORDER
     .filter((command) => policyEnables(policy, command, facts) && KERNEL_ADMITS[command](facts))
     .map((command) => ActionDescriptorWireSchema.parse(describe(command, facts)))];
 }
