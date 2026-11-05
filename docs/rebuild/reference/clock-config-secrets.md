@@ -254,6 +254,9 @@ Relay requests. A diagnostic write failure is visible and never clears resource-
 The transport observation captures status, media-type classification and body presence before
 response wrapping, plus native/injected source, redirect state and expected/other/missing target
 classification. The delivered response separately retains body presence and media type. No URL is retained.
+Successful inference accepts `text/event-stream` or an absent Content-Type only after bounded SSE
+decoding, a valid `response.completed`, and operation-specific output validation. Explicit other
+media types, malformed bytes, incomplete streams and inconsistent output remain refused.
 
 ### Paths and validation
 

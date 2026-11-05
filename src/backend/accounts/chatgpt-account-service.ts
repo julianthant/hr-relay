@@ -816,7 +816,8 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         operation.assertCurrent();
         if (!response.ok) await rejectPlanResponse(response, operation, diagnostic);
         diagnostic.path = "content-type";
-        if (response.body === null || diagnostic.contentType !== "text/event-stream") { await response.body?.cancel(); throw fault("CHATGPT_OCR_FAILED"); }
+        // Headerless subscription replies still require validated SSE and completed output below.
+        if (response.body === null || diagnostic.contentType !== "text/event-stream" && diagnostic.contentType !== "missing") { await response.body?.cancel(); throw fault("CHATGPT_OCR_FAILED"); }
         const reader = response.body.getReader(), decoder = new TextDecoder("utf-8", { fatal: true });
         let buffer = "", output = "", completed = false, total = 0;
         let textOutputIndex: number | undefined;

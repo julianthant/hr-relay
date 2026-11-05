@@ -158,7 +158,7 @@ it("keeps successful inference quiet and the request contract unchanged", async 
 
 function sse(text: string): Response { return new Response(text, { headers: { "content-type": "text/event-stream; charset=utf-8" } }); }
 
-it("preserves native fetch headers and streamed bytes through the real request wrapper for OCR and assistant", async () => {
+it("preserves native headers and accepts validated headerless streams through the real wrapper for OCR and assistant", async () => {
   const f = await fixture(); let requests = 0, omitContentType = false;
   const server = createServer((request, response) => {
     requests++; request.resume();
@@ -188,15 +188,47 @@ it("preserves native fetch headers and streamed bytes through the real request w
     assert.equal(requests, 2);
     assert.equal(f.records.length, 0);
     omitContentType = true;
-    await assert.rejects(account.extractText(image), { code: "CHATGPT_OCR_FAILED" });
-    assert.equal(requests, 3); assert.equal(f.records.length, 1);
-    const payload = f.records[0].payload; assert.equal(payload.kind, "debug");
-    if (payload.kind !== "debug") throw new Error("inference diagnostic required");
-    assert.deepEqual(payload.event.chatGptInference, { operation: "ocr", path: "content-type", contentType: "missing", hasBody: true, providerCode: "none",
-      transport: { source: "injected", status: 200, contentType: "missing", hasBody: true, redirected: false, target: "other" } });
+    assert.deepEqual(await account.extractText(image), { text: "Synthetic streamed form", model: image.model, responseId: "resp_synthetic" });
+    assert.deepEqual((await account.inferAssistant(assistant)).output, result.output);
+    assert.equal(requests, 4); assert.equal(f.records.length, 0);
     assert.equal(JSON.stringify([f.records, f.mirrors]).includes("127.0.0.1"), false);
   } finally {
     try { await account.close(); await f.cleanup(); }
     finally { server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error === undefined ? resolve() : reject(error))); }
   }
 });
+
+for (const operation of ["ocr", "assistant"] as const) {
+  it.each([
+    ["empty body", ""],
+    ["HTML", "<!doctype html><title>PRIVATE_RESPONSE_CANARY</title>\n\n"],
+    ["plain text", "PRIVATE_RESPONSE_CANARY\n\n"],
+    ["JSON", JSON.stringify({ type: "response.completed", response: { status: "completed" } })],
+    ["invalid event JSON", "data: PRIVATE_RESPONSE_CANARY\n\n"],
+    ["invalid terminal", 'data: {"type":"response.completed","response":{"status":"completed"}}\n\n'],
+    ["partial output", 'data: {"type":"response.output_text.delta","delta":"PRIVATE_RESPONSE_CANARY"}\n\n'],
+    ["inconsistent output", completedOcrStream("PRIVATE_RESPONSE_CANARY").replace('"delta":"PRIVATE_RESPONSE_CANARY"', '"delta":"different"')],
+  ])(`${operation} refuses headerless %s instead of treating it as successful inference`, async (_name, body) => {
+    const f = await fixture();
+    try {
+      await f.connected();
+      f.setResponse(() => new Response(new TextEncoder().encode(body)));
+      await assert.rejects(operation === "ocr" ? f.service.extractText(image) : f.service.inferAssistant(assistant), { code: "CHATGPT_OCR_INCOMPLETE" });
+      assert.equal(f.records.length, 1);
+      const payload = f.records[0].payload; assert.equal(payload.kind, "debug");
+      if (payload.kind !== "debug") throw new Error("inference diagnostic required");
+      assert.equal(payload.event.chatGptInference?.operation, operation);
+      assert.equal(payload.event.chatGptInference?.contentType, "missing");
+      assert.equal(payload.event.chatGptInference?.transport?.contentType, "missing");
+      assert.equal(JSON.stringify([f.records, f.mirrors]).includes("CANARY"), false);
+    } finally { await f.cleanup(); }
+  });
+
+  it.each(["application/json", "text/html", "text/plain", "application/octet-stream"])(`${operation} rejects an explicit %s content type even with valid SSE bytes`, async contentType => {
+    const f = await fixture();
+    try {
+      await f.connected(); f.setResponse(() => new Response(completedOcrStream("Synthetic streamed form"), { headers: { "content-type": contentType } }));
+      await assert.rejects(operation === "ocr" ? f.service.extractText(image) : f.service.inferAssistant(assistant), { code: "CHATGPT_OCR_FAILED" });
+    } finally { await f.cleanup(); }
+  });
+}
