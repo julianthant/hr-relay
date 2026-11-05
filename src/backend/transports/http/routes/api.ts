@@ -21,7 +21,9 @@ import { registerTrustRoutes } from "./trust.js";
 import { composeDataQueries } from "../../../app/composition/dashboard/data.js";
 
 import { withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
-import { createDebugEventWriter } from "../../../logs/debug-events.js";
+import { createDebugEventWriter, valueFreeErrorCauses } from "../../../logs/debug-events.js";
+import { randomUUID } from "node:crypto";
+import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import { DashboardErrorReportSchema } from "../../../../models/events/debug-report.js";
 import { Hono } from "hono";
 
@@ -37,6 +39,15 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   let reportWindow = 0, reportCount = 0;
   app.onError((error, c) => {
     const { status, body } = failureStatus(error);
+    if (status >= 500) {
+      try {
+        for (const cause of valueFreeErrorCauses(error)) debugEvents.emit({ category: "http", phase: "failed",
+          correlationId: randomUUID(), area: "request", reason: "request-cause", status,
+          code: cause.code, message: cause.name, stack: cause.stack });
+      } catch {
+        return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
+      }
+    }
     return c.json(body, status);
   });
 
