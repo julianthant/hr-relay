@@ -91,6 +91,7 @@ try {
 
   const profile = await createBoundProfileFixture();
   const root = profile.workspace, profileId = profile.admission.profileBinding.profileId; roots.push(root);
+  const priorRegistry = profile.machine.readProfileRegistry();
   const port = profile.lifetime.port;
   await profile.closeController();
   const url = (path: string) => pathToFileURL(join(process.cwd(), path)).href;
@@ -156,9 +157,13 @@ try {
   await resumePendingAutomaticRestore(workspace, lifetime);
   assert.equal(existsSync(journalPath), false);
   const admission = acquireEntrypointAdmission(workspace, "shared", lifetime);
-  const signedOut = admission.admitProfile(message.profileId);
-  assert.throws(() => signedOut.assertReadable(), /profile-session-not-current/u); signedOut.release();
+  const restoredRegistry = admission.readProfileRegistry();
+  assert.equal(restoredRegistry.activeProfileId, profileId);
+  assert.equal(restoredRegistry.sessionGeneration, priorRegistry.sessionGeneration + 1);
+  const resumed = admission.admitProfile(message.profileId);
+  resumed.assertReadable();
   createProfileRegistry(admission).advanceSession(message.profileId);
+  assert.throws(() => resumed.assertReadable(), /profile-session-not-current/u); resumed.release();
   const childAdmission = admission.admitProfile(message.profileId);
   try { const db = AuthorityDatabase.open(childAdmission, { path: join(childAdmission.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "native-crash-reopen" });
     try { assert.equal(db.getMeta().schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION); } finally { db.close(); }

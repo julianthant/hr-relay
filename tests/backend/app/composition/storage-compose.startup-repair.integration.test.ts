@@ -66,7 +66,7 @@ for (const state of ["projection-corrupt", "critical-fence-unreadable", "foreign
     } else {
       await initializeRegisteredPersonStores(f.workspace, f.lifetime, { primaryDisplay: null }, clock);
       const after = JSON.parse(readFileSync(registryPath, "utf8")) as { activeProfileId: string | null; sessionGeneration: number };
-      assert.equal(after.activeProfileId, null); assert.equal(after.sessionGeneration, registry.sessionGeneration + 1);
+      assert.equal(after.activeProfileId, profileId); assert.equal(after.sessionGeneration, registry.sessionGeneration + 1);
       const notice = JSON.parse(readFileSync(join(f.workspace, ".tracker", "control", `automatic-repair-${profileId}.json`), "utf8")) as { profileId: string; backupTime: string };
       assert.equal(notice.profileId, profileId); assert.equal(notice.backupTime, manifest.createdAt);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
