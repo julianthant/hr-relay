@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ClearRunHistoryRequestSchema, type ClearRunHistoryResult, type RunHistoryStatus } from "../../../models/dashboard/run-history.js";
+import { RunHistoryCommandSchema, type ClearRunHistoryResult, type RunHistoryStatus } from "../../../models/dashboard/run-history.js";
 import {
 RunExistenceSchema,
 type RunExistence,
@@ -1296,7 +1296,7 @@ export class RunRecordService {
   }
 
   clearHistory(input: unknown): ClearRunHistoryResult {
-    const request = ClearRunHistoryRequestSchema.parse(input);
+    const request = RunHistoryCommandSchema.parse(input);
     try {
       return this.dependencies.database.withAuthorityTransaction((repositories): ClearRunHistoryResult => {
         const journal = this.inspectJournal(repositories, "clear-history", request, { kind: "none" });
@@ -1332,7 +1332,7 @@ export class RunRecordService {
   }
 
   clearHistoryResult(input: unknown): ClearRunHistoryResult {
-    const request = ClearRunHistoryRequestSchema.parse(input);
+    const request = RunHistoryCommandSchema.parse(input);
     return this.dependencies.database.withAuthorityReadSnapshot(() => {
       const repositories = this.dependencies.database.authority;
       const journal = this.inspectJournal(repositories, "clear-history", request, { kind: "none" });

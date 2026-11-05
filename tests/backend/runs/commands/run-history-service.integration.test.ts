@@ -16,7 +16,7 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { createRunHistoryService } from "../../../../src/backend/runs/commands/run-history-service.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createContentAddressedArtifactWriter, removeArtifactDeletionFile } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { ClearRunHistoryRequestSchema } from "../../../../src/models/dashboard/run-history.js";
+import { RunHistoryCommandSchema } from "../../../../src/models/dashboard/run-history.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { capturedInstantClock } from "../../../../src/rules/time/clock.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
@@ -29,7 +29,7 @@ const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanups.splice(0)) await close(); });
-const request = () => ClearRunHistoryRequestSchema.parse({ commandId: randomUUID() });
+const request = () => RunHistoryCommandSchema.parse({ commandId: randomUUID() });
 
 async function fixture() {
   const profile = await profiles.create();
