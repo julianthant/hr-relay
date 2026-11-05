@@ -9,6 +9,7 @@ import { ActivityView } from '../../../../src/dashboard/surfaces/activity/activi
 import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_TODAY, activitySample } from '../../../../src/dashboard/surfaces/activity/activity-fixture.js';
 import { SpreadsheetEditor } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor.js';
 import { newEditableWorkbook, type SpreadsheetSaveResult } from '../../../../src/dashboard/surfaces/spreadsheets/spreadsheet-editor-model.js';
+import { SessionsView } from '../../../../src/dashboard/surfaces/sessions/sessions-view.js';
 import './style.css';
 const query = new URLSearchParams(location.search);
 const surface = query.get('surface') ?? 'save';
@@ -19,6 +20,11 @@ let calls = 0;
 function countCall() { document.body.setAttribute('data-action-calls', String(++calls)); }
 function Fixture() {
   const [book, setBook] = useState(newEditableWorkbook), [dirty, setDirty] = useState(true);
+  if (surface === 'sessions') return <SessionsView open onOpenChange={() => {}} onControl={() => {}} onAdd={() => {}} workflows={[]} data={{ state: 'ready', workers:
+    (['unopened', 'starting', 'active', 'ready', 'closed', 'unavailable'] as const).map((state, index) => ({
+      id: `label-worker-${index}`, label: `Worker ${index + 1}`, workflowId: 'person-lookup', workflow: 'Person Lookup', state: 'idle', action: 'Ready for the next run',
+      browsers: [{ id: 'ucpath', label: 'UCPATH', state }, { id: 'crm', label: 'CRM', state }],
+    })) }} />;
   if (surface === 'queue') {
     const runs = seedMockRuns().filter(run => run.workflowId === 'person-lookup');
     if (runs.length !== 8) throw new Error('lookup-fixture-missing');
