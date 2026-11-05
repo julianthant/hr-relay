@@ -18,7 +18,7 @@
     - listitem:
       - button "Ready" [disabled]
   - heading "Set up Duo" [level=1]
-  - paragraph: Finish adding Touch ID in the setup browser. Relay moves on when Duo shows it was added.
+  - paragraph: Finish adding Touch ID in the setup browser. Relay moves on when Duo shows it was added. If the browser stays behind, select the Chromium window named Fast Duo · Relay sign-in setup.
   - list "Duo methods":
     - listitem: Security key Not started
     - listitem: Touch ID Pending

@@ -1,0 +1,28 @@
+# onboarding-browser-hold--dark--1280x720
+# adapter: fixture
+# fixture: picked-onboarding
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
+# appVersion: 0.1.0
+# viewport: 1280x720  theme: dark  variant: default
+# capturedAt: 2026-08-03
+
+- link "Skip to content":
+  - /url: "#onboarding-main"
+- text: Relay
+- main:
+  - list "Profile setup progress":
+    - listitem:
+      - button "Your details" [disabled]
+    - listitem:
+      - button "Duo setup" [disabled]
+    - listitem:
+      - button "Ready" [disabled]
+  - heading "Sign-up on hold" [level=1]
+  - alert: Relay could not confirm the Duo setup browser closed. Sign-up is on hold. Close and reopen Relay to continue.
+  - list "Duo methods":
+    - listitem: Security key Not started
+    - listitem: Touch ID Not started
+  - status: "Security key: Not started · Touch ID: Not started"
+  - button "Cancel sign-up" [disabled]
+  - button "Reopen browser" [disabled]
+- region "Notifications"
