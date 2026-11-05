@@ -14,6 +14,7 @@ import {
   ProfileRegistryRowSchema,
   type ProfileRegistryDocument,
   type ProfileRegistryRow,
+  type ProfileSelectionChangeReason,
 } from "../../models/profiles/profile.js";
 import { SignUpOperationSchema, type SignUpOperation } from "../../models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
@@ -48,7 +49,7 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
     catch (error) { throw new ProfileRegistryAuthorityError(error); }
   };
   read();
-  const write = (document: ProfileRegistryDocument) => admission.publishProfileRegistry(read(), document);
+  const write = (document: ProfileRegistryDocument, reason?: ProfileSelectionChangeReason) => admission.publishProfileRegistry(read(), document, reason);
   return Object.freeze({
     read(): ProfileRegistryDocument {
       return read();
@@ -83,12 +84,12 @@ export function createProfileRegistry(admission: RuntimeAdmission) {
         return row;
       }, ".profile-registry.lock");
     },
-    advanceSession(profileId: string | null): number {
+    advanceSession(profileId: string | null, reason?: ProfileSelectionChangeReason): number {
       return withProfileLock(root, () => {
         const current = read();
         if (profileId !== null && !current.profiles.some(row => row.profileId === profileId)) throw new Error("profile selection is unavailable");
         const next = advanceProfileRegistryDocument(current, { activeProfileId: profileId, sessionGeneration: current.sessionGeneration + 1 });
-        write(next);
+        write(next, reason);
         return next.sessionGeneration;
       }, ".profile-registry.lock");
     },
