@@ -2,7 +2,7 @@ import { testProcessImport } from "../../../support/compiled-process.js";
 import { advanceProfileRegistryDocument } from "../../../../src/models/profiles/profile.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
-import { deriveProfileNames, SignUpOperationSchema, LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
+import { SignUpOperationSchema, LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { finishProfileOnboarding, readyProfileOnboarding } from "../../../support/helpers/admission-fixture.js";
 import { boundProfileCredentials } from "../../../support/helpers/admission-fixture.js";
 import fs from "node:fs";
@@ -306,14 +306,29 @@ it("publishes ready only through genuine canonical Finish custody and rechecks d
     const request = ProtectedSettingsApplyInputSchema.parse({ commandId: operation.commandId, writeId: operation.writeId,
       commandFingerprint: operation.commandFingerprint, expectedRevision: operation.expectedRevision,
       protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: operation.createdAt,
-      entries: { ucpathUserId: { set: f.fields.email }, ucpathPassword: { set: f.fields.password },
-        timekeeperName: { set: deriveProfileNames(f.fields.firstName, f.fields.lastName).timekeeperName } } });
+      entries: { ucpathUserId: { set: f.fields.email }, ucpathPassword: { set: f.fields.password } } });
     const publication = f.machine.admitProfilePublication(operation.operationId);
     const publicationStore = createCredentialStore({ admission: publication, stateRoot: publication.stateRoot });
     assert.throws(() => publicationStore.verifyReplay(request), /profile-setup-operation-not-current/u);
     const publish = () => f.machine.publishProfileRegistration(publication, operation);
     assert.throws(() => Reflect.apply(f.machine.publishProfileRegistration.bind(f.machine), f.machine, [{ ...publication }, operation]), TypeError);
     assert.throws(() => f.machine.publishProfileRegistration(publication, SignUpOperationSchema.parse({ ...operation, writeId: randomUUID() })));
+    const protectedPath = join(publication.stateRoot, "credentials", "protected.json");
+    const source = readFileSync(protectedPath), operationBefore = readFileSync(operationPath), registryBefore = f.registry.read();
+    await assert.rejects(f.machine.captureStartupRegistrationProofs());
+    const maintenance = f.machine.acquireOfflineMaintenance();
+    let proofs: Awaited<ReturnType<RuntimeAdmission["captureStartupRegistrationProofs"]>>;
+    try { proofs = await f.machine.captureStartupRegistrationProofs(); }
+    finally { maintenance.release(); }
+    const proof = proofs.find(proof => proof.operationId === operation.operationId); assert.ok(proof);
+    assert.throws(() => f.machine.publishProfileRegistration(publication, operation, { ...proof }), /profile-startup-registration-proof-changed/u);
+    const heldProtected = join(f.workspace, "held-protected-source");
+    renameSync(protectedPath, heldProtected); copyFileSync(heldProtected, protectedPath);
+    try { assert.throws(() => f.machine.publishProfileRegistration(publication, operation, proof), /profile-startup-registration-proof-changed/u); }
+    finally { rmSync(protectedPath); renameSync(heldProtected, protectedPath); }
+    assert.deepEqual(readFileSync(protectedPath), source);
+    assert.deepEqual(readFileSync(operationPath), operationBefore);
+    assert.deepEqual(f.registry.read(), registryBefore);
     const priorDatabase = readFileSync(path), changedBinding = new DatabaseSync(path);
     try {
       changedBinding.exec("DROP TRIGGER database_states_binding_immutable");

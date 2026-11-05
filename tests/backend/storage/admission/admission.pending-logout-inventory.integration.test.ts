@@ -1,3 +1,4 @@
+import { stoppedProfileOwnsCredentialCommand } from "../../../../src/backend/storage/configuration/protected-settings-upgrade.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFileSync, chmodSync, existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
@@ -8,11 +9,11 @@ import { createProfileRegistry } from "../../../../src/backend/profiles/registry
 import { LogoutOperationSchema } from "../../../../src/models/profiles/profile.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { withAuthorityDatabaseReadOnly } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
-import { createCredentialStore, stoppedProfileOwnsCredentialCommand } from "../../../../src/backend/storage/configuration/credential-store.js";
+import { createCredentialStore } from "../../../../src/backend/storage/configuration/credential-store.js";
 import { createChatGptCredentialRepository } from "../../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { createBoundProfileFixture } from "../../../support/helpers/admission-fixture.js";
 
-async function pending() {
+async function pending(predecessor = false) {
   const f = await createBoundProfileFixture();
   const protectedCommandId = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot }).read().lastApplied?.commandId;
   assert.ok(protectedCommandId);
@@ -26,6 +27,11 @@ async function pending() {
     }, activity: { hasUnquiescedWork: () => true } });
   const active = session.signIn({ email: "fixture@ucsd.edu", password: "disposable-fixture-password", at: "2026-10-21T12:00:00.000Z" });
   assert.ok(active.state === "active");
+  if (predecessor) {
+    const { captureProfileCredentialFixture, installPredecessorProfileCredentials } = await import("../../../support/helpers/predecessor-profile-credentials.js");
+    const owner = f.machine.admitProfile(active.profileId);
+    try { installPredecessorProfileCredentials(captureProfileCredentialFixture(owner), "Old Fixture Signer"); } finally { owner.release(); }
+  }
   const result = session.logOut(active.token, { at: "2026-10-21T12:01:00.000Z" });
   assert.ok(result.state === "cancelling" && result.operationId !== undefined);
   const operationPath = join(f.machine.stateRoot, "machine", "operations", `${result.operationId}.json`);
@@ -174,3 +180,17 @@ for (const suffix of ["", "-wal", "-shm", "-journal"] as const)
       assert.deepEqual(readFileSync(path), retained); assert.deepEqual(readFileSync(w.operationPath), operationBytes);
     } finally { inspection.dispose(); await w.close(); }
   });
+
+it("authenticates predecessor logout command identities only through captured stopped custody, without converting the source", async () => {
+  const w = await pending(true);
+  try {
+    const path = join(w.f.stateRoot, "credentials", "protected.json"), before = readFileSync(path), operation = readFileSync(w.operationPath);
+    assert.equal(stoppedProfileOwnsCredentialCommand(w.stopped, "logout", w.protectedCommandId), true);
+    assert.equal(stoppedProfileOwnsCredentialCommand(w.stopped, "logout", randomUUID()), false);
+    assert.throws(() => stoppedProfileOwnsCredentialCommand(w.owner, "logout", w.protectedCommandId), /settlement-required/u);
+    assert.deepEqual(readFileSync(path), before); assert.deepEqual(readFileSync(w.operationPath), operation);
+    w.restore.release();
+    assert.throws(() => stoppedProfileOwnsCredentialCommand(w.stopped, "logout", w.protectedCommandId));
+    assert.deepEqual(readFileSync(path), before); assert.deepEqual(readFileSync(w.operationPath), operation);
+  } finally { await w.close(); }
+});

@@ -60,7 +60,7 @@ async function mountFailedRead(section: string): Promise<HTMLElement> {
   } as unknown as DashboardClient_m0;
   const element = createElement_m0(DashboardClientProvider_m0, {
     client,
-    children: createElement_m0(SettingsPage_m0, { onClose: () => undefined,
+    children: createElement_m0(SettingsPage_m0, { profileName: "Synthetic Operator", onClose: () => undefined,
       storage: STORAGE,
       sections: servedStatusSections,
       workflowLabels: new Map(),
@@ -268,7 +268,7 @@ describe_m2("focus on close (unit F4b finding 1)", () => {
 describe_m2("the settings nav renders real navigation, not buttons (unit F4b finding 4)", () => {
   const markup = renderToStaticMarkup_m2(createElement_m2(DashboardClientProvider_m2, {
     client: STATIC_SETTINGS_CLIENT,
-    children: createElement_m2(SettingsPage_m2, { onClose: () => undefined,
+    children: createElement_m2(SettingsPage_m2, { profileName: "Synthetic Operator", onClose: () => undefined,
       storage: HEALTHY_STORAGE,
       sections: [STORAGE],
 

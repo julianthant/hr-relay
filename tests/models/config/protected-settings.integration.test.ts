@@ -42,17 +42,17 @@ afterEach(_afterEachFixture0);
     const secondValue = "second-distinct-value";
     const first = markProtectedSettingsPatch({
       ucpathPassword: { set: firstValue },
-      timekeeperName: { clear: true },
+      ucpathUserId: { clear: true },
     });
     const second = markProtectedSettingsPatch({
       ucpathPassword: { set: secondValue },
-      timekeeperName: { clear: true },
+      ucpathUserId: { clear: true },
     });
 
     assert.deepEqual(first, second);
     assert.deepEqual(first, {
       ucpathPassword: { set: PROTECTED_SETTINGS_SET_MARKER },
-      timekeeperName: { clear: true },
+      ucpathUserId: { clear: true },
     });
     const journalBytes = canonicalJsonStringify(first);
     assert.equal(journalBytes.includes(firstValue), false);
@@ -94,7 +94,7 @@ afterEach(_afterEachFixture0);
   it("reports every name and presence without a credential value or identity", async () => {
     const f = await fixture();
     const record = writeCredentials(f, {
-      timekeeperName: { set: "Protected Doctor Canary" },
+      ucpathUserId: { set: "Protected Doctor Canary" },
       ucpathPassword: { set: "doctor-private-password" },
     });
 
@@ -104,7 +104,7 @@ afterEach(_afterEachFixture0);
       state: "available",
       entries: ProtectedSettingsNameSchema.options.map((name) => ({
         name,
-        present: name === "timekeeperName" || name === "ucpathPassword",
+        present: name === "ucpathUserId" || name === "ucpathPassword",
       })),
     });
     const serialized = JSON.stringify(report);
@@ -186,7 +186,7 @@ afterEach(_afterEachFixture0);
       commandId: COMMAND_1,
       writeId: WRITE_1,
       expectedRevision: revision,
-      entries: { timekeeperName: { set: "private-seed" } },
+      entries: { ucpathUserId: { set: "private-seed" } },
     }));
     writeFileSync(f.path, `malformed ${PRIVATE_VALUE_1}`, { mode: 0o600 });
     const before = readFileSync(f.path);

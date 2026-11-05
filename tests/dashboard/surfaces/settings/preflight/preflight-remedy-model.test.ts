@@ -5,7 +5,7 @@ import { preflightRemedy,preflightRemedyLabel } from '../../../../../src/dashboa
 it('maps known checks to available Settings sections and preserves a general destination for new checks', () => {
   for (const [id, destination, label] of [
     ['secrets.ucpath-sso', 'credentials', 'Configure credentials'],
-    ['secrets.timekeeper', 'credentials', 'Configure credentials'],
+    ['profile.identity', 'settings', 'Open Settings'],
     ['secrets.sharepoint-roster', 'routes', 'Configure SharePoint route'],
     ['authority.health', 'storage', 'Open Storage'],
     ['filesystem.health', 'storage', 'Open Storage'],

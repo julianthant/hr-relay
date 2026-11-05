@@ -104,7 +104,7 @@ export interface RunDetailQueryDeps {
   /** Explicit canonical backing for consumers that require retained authority reads. */
   readonly canonical?: {
     readonly reader: Pick<RunRecordService, "read" | "list">;
-    readonly database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot">;
+    readonly database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot"> & Partial<Pick<AuthorityDatabase, "evidenceSchemaHash">>;
     readonly descriptors: {
       resolve(workflowId: string): AnyWorkflowDescriptor | undefined;
     };

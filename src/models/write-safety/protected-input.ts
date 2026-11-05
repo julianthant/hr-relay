@@ -10,7 +10,7 @@ export const ProtectedInputDeclarationSchema = z.strictObject({
 const ProtectedInputPathSchema = z.enum(["timekeeperName", "documentNumber", "emplId"]);
 const ProtectedInputNameSchema = z.enum(["timekeeperName", "separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]);
 /** Where a protected input's VALUE came from; no member ever carries a value or a value-derived surrogate. */
-export const ProtectedInputBindingSchema = z.discriminatedUnion("kind", [
+export const EvidenceProtectedInputBindingSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("protected-store"), inputPath: z.literal("timekeeperName"),
     name: z.literal("timekeeperName"), valueId: z.uuid() }),
   z.strictObject({ kind: z.literal("test-data-local"), inputPath: z.enum(["documentNumber", "emplId"]),
@@ -20,10 +20,22 @@ export const ProtectedInputBindingSchema = z.discriminatedUnion("kind", [
     emplId: "personLookupCanaryEid" };
   if (expected[binding.inputPath] !== binding.name) ctx.addIssue({ code: "custom", message: "protected input path/name mismatch" });
 });
+export const EvidenceProtectedInputBindingsSchema = z.array(EvidenceProtectedInputBindingSchema).max(3).superRefine((bindings, ctx) => {
+  if (new Set(bindings.map(({ inputPath }) => inputPath)).size !== bindings.length)
+    ctx.addIssue({ code: "custom", message: "duplicate protected input binding" });
+});
+export const ProtectedInputBindingSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("profile"), inputPath: z.literal("timekeeperName"), name: z.literal("timekeeperName"), profileId: z.uuid(), sessionEpoch: z.number().int().safe().positive() }),
+  ...EvidenceProtectedInputBindingSchema.options,
+]).superRefine((binding, ctx) => {
+  if (binding.kind !== "profile" && !EvidenceProtectedInputBindingSchema.safeParse(binding).success)
+    ctx.addIssue({ code: "custom", message: "protected input path/name mismatch" });
+});
 export const ProtectedInputBindingsSchema = z.array(ProtectedInputBindingSchema).max(3).superRefine((bindings, ctx) => {
   if (new Set(bindings.map(({ inputPath }) => inputPath)).size !== bindings.length)
     ctx.addIssue({ code: "custom", message: "duplicate protected input binding" });
 });
+
 export type ProtectedInputDeclaration = z.infer<typeof ProtectedInputDeclarationSchema>;
 export type ProtectedInputBinding = z.infer<typeof ProtectedInputBindingSchema>;
 

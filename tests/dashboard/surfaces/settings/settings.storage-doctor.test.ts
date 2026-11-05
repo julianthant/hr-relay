@@ -42,7 +42,7 @@ async function mountDoctor(report: StorageDoctorWire): Promise<HTMLElement> {
     root = createRoot(host as HTMLElement);
     root.render(createElement(DashboardClientProvider, {
       client,
-      children: createElement(PreflightActionsProvider, { actions: {actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings() {}, showSessions() {}}, children: createElement(SettingsPage, { onClose: () => undefined,
+      children: createElement(PreflightActionsProvider, { actions: {actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings() {}, showSessions() {}}, children: createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: () => undefined,
         storage: STORAGE,
         sections: SECTIONS,
         workflowLabels: new Map<string, string>(),
@@ -72,7 +72,8 @@ async function expandChecks(dom: HTMLElement): Promise<void> {
 }
 
 function assertRunHistoryAbsent(dom: HTMLElement): void {
-  assert.equal(dom.querySelectorAll(".diagnostic-check-entry").length, 13);
+  assert.equal(dom.querySelectorAll(".diagnostic-check-entry").length, 11);
+  assert.doesNotMatch(dom.textContent ?? "", /Timekeeper name|Historical Activity pseudonym/u);
   assert.equal(dom.querySelector('[aria-label="Storage health checks"] [role="list"]')?.children.length, 3);
   assert.ok(dom.textContent?.includes("Clear run history"));
   assert.doesNotMatch(dom.textContent ?? "", /run record issues|stream runs|Current runs|Archived|Deleted|span_stream|record-digest|00000000|possible external write/iu);

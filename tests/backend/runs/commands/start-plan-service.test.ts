@@ -78,7 +78,7 @@ it("blocks the real protected input source while held and reaches it when admiss
   assert.deepEqual(held.effects, { transactions: 0, secrets: 0, preflight: 0, identity: 0 });
   assert.deepEqual(held.ids.minted(), []);
   const open = harness(false, false, separationsDescriptor);
-  assert.throws(() => open.plain.plan(input), /protected input timekeeperName source is unreadable/u);
+  assert.throws(() => open.plain.plan(input), /^SecretSourceError: admitted profile identity is unreadable$/u);
   assert.deepEqual(open.effects, { transactions: 0, secrets: 1, preflight: 0, identity: 0 });
   assert.deepEqual(open.ids.minted(), []);
 });

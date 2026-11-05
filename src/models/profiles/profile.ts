@@ -3,7 +3,7 @@ import { FileIdentitySchema } from "../storage/file-identity.js";
 import { WorkerPoolMemberSchema } from "../run/worker-slot.js";
 import { z } from "zod";
 import { IsoInstantSchema } from "../../rules/identity/ids.js";
-import { KualiTimekeeperNameSchema } from "../ui/kuali-document-identity.js";
+import { ProfileDisplayNameSchema, ProfileIdentitySchema, profileInitials } from "./profile-identity.js";
 import { DuoEnrollmentScopeSchema } from "../config/duo-credential-store.js";
 
 const NameSchema = z.string().min(1).max(64).refine((value) => value === value.trim(), "profile name may not be whitespace-padded");
@@ -28,8 +28,8 @@ export const ProfileRegistryRowSchema = z.strictObject({
     onboardingCompletion: ProfileOnboardingCompletionSchema.optional() }),
   firstName: NameSchema,
   lastName: NameSchema,
-  initials: z.string().regex(/^[A-Z]{2}$/u),
-  timekeeperName: KualiTimekeeperNameSchema,
+  initials: ProfileIdentitySchema.shape.initials,
+  timekeeperName: ProfileDisplayNameSchema,
   createdAt: IsoInstantSchema,
   lastSignedInAt: IsoInstantSchema,
   credentialState: z.enum(["saved", "wiped"]),
@@ -69,7 +69,7 @@ export const ProfileAuthoritySnapshotSchema = z.strictObject({
 });
 export type ProfileAuthoritySnapshot = z.infer<typeof ProfileAuthoritySnapshotSchema>;
 
-function initialLetter(name: string): string {
+function assertNameInitial(name: string): void {
   const raw = [...name][0];
   const characters = [...name.normalize("NFC")];
   const letter = characters[0];
@@ -77,7 +77,6 @@ function initialLetter(name: string): string {
     || (characters[1] !== undefined && /\p{M}/u.test(characters[1]))) {
     throw new ProfileNameValidationError();
   }
-  return letter.toUpperCase();
 }
 
 export function deriveProfileNames(firstName: string, lastName: string): {
@@ -89,11 +88,11 @@ export function deriveProfileNames(firstName: string, lastName: string): {
   const first = NameSchema.safeParse(firstName);
   const last = NameSchema.safeParse(lastName);
   if (!first.success || !last.success) throw new ProfileNameValidationError();
-  const initials = `${initialLetter(first.data)}${initialLetter(last.data)}`;
-  if (!/^[A-Z]{2}$/u.test(initials) || !KualiTimekeeperNameSchema.safeParse(initials).success) {
-    throw new ProfileNameValidationError();
-  }
-  return { firstName: first.data, lastName: last.data, initials, timekeeperName: initials };
+  assertNameInitial(first.data);
+  assertNameInitial(last.data);
+  const timekeeperName = `${first.data} ${last.data}`;
+  if (!ProfileDisplayNameSchema.safeParse(timekeeperName).success) throw new ProfileNameValidationError();
+  return { firstName: first.data, lastName: last.data, initials: profileInitials(timekeeperName), timekeeperName };
 }
 
 export const ProfileDatabaseBindingSchema = z.strictObject({ installationId: z.uuid(), profileId: ProfileIdSchema });

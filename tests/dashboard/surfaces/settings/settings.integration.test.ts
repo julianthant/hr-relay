@@ -50,19 +50,19 @@ describe("independent protected Settings surface", () => {
     await h.render("credentials");
     assert.doesNotMatch(h.host.textContent ?? "", /SharePoint onboarding roster URL/u);
   });
-  it("starts empty, validates all five names, and shows saved values after save", async () => {
+  it("starts empty, validates every editable credential, and shows saved values after save", async () => {
     const h = await setup(); const ordinary = h.authority.read();
     const before = h.authority.credentials.read();
     assert.equal(h.authority.protectedApply({
-      ucpathUserId: { clear: true }, ucpathPassword: { clear: true }, timekeeperName: { clear: true },
+      ucpathUserId: { clear: true }, ucpathPassword: { clear: true },
     }, before.revision).state, "applied");
     await settingsAction(() => h.controller().reload());
     const emptied = h.authority.credentials.read();
     assert.equal(emptied.revision, before.revision + 1);
     assert.equal(emptied.entries.ucpathUserId, undefined);
     assert.equal(emptied.entries.ucpathPassword, undefined);
-    assert.equal(emptied.entries.timekeeperName, undefined);
-    assert.equal(h.host.querySelectorAll('input[type="password"]').length, 2);
+    assert.equal(emptied.entries.ucpathUserId, undefined);
+    assert.equal(h.host.querySelectorAll('input[type="password"]').length, 1);
     assert.doesNotMatch(h.host.textContent ?? "", /SharePoint onboarding roster URL/u);
     assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.value === ""));
     const username = h.host.querySelector<HTMLInputElement>('input[name="ucpathUserId"]');
@@ -71,7 +71,7 @@ describe("independent protected Settings surface", () => {
     assert.equal(password?.autocomplete, "section-ucpath new-password");
     assert.ok(password?.closest("form"));
     assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.name));
-    const values = { ucpathUserId: "synthetic-user-sentinel", ucpathPassword: "synthetic-password-sentinel", timekeeperName: "synthetic-timekeeper-sentinel", sharepointOnboardingRosterUrl: "https://example.test/synthetic-url-sentinel", activityPersonPseudonym: JSON.stringify({ keyHex: "a".repeat(64), keyGeneration: "activity-person-synthetic-sentinel" }) };
+    const values = { ucpathUserId: "synthetic-user-sentinel", ucpathPassword: "synthetic-password-sentinel", sharepointOnboardingRosterUrl: "https://example.test/synthetic-url-sentinel" };
     for (const name of ProtectedSettingsNameSchema.options) {
       await settingsAction(() => h.controller().protectedEditor.update(name, "")); assert.ok(h.controller().protectedEditor.errors[name]);
       await settingsAction(() => h.controller().protectedEditor.update(name, values[name])); assert.equal(h.controller().protectedEditor.errors[name], undefined);
@@ -80,7 +80,7 @@ describe("independent protected Settings surface", () => {
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "applied"); assert.equal(h.controller().protectedEditor.dirtyCount, 0);
     assert.equal(h.authority.credentials.read().revision, emptied.revision + 1);
-    for (const [name, expected] of [["UCPath username", values.ucpathUserId], ["Timekeeper name", values.timekeeperName]] as const) {
+    for (const [name, expected] of [["UCPath username", values.ucpathUserId]] as const) {
       const label = [...h.host.querySelectorAll<HTMLLabelElement>("label")].find(node => node.textContent === name);
       assert.ok(label);
       const input = h.host.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`);
@@ -89,7 +89,7 @@ describe("independent protected Settings surface", () => {
       assert.equal(h.host.querySelector(`button[aria-label="Show ${name}"]`), null);
     }
     assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]')[0]?.value, values.ucpathPassword);
-    assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]').length, 2);
+    assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]').length, 1);
     const after = h.authority.read(); assert.equal(after.revision, ordinary.revision); assert.deepEqual(after.sections, ordinary.sections);
     assert.match(JSON.stringify(after), /synthetic-password-sentinel/u);
     const request = ProtectedSettingsCommandRequestSchema.parse(h.commands[0]);
@@ -116,7 +116,7 @@ describe("independent protected Settings surface", () => {
   it("refreshes protected conflict presence while retaining the draft for deliberate resubmission", async () => {
     const h = await setup(); const credentialRevision = h.authority.credentials.read().revision;
     await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "retained-secret-sentinel"));
-    assert.equal(h.authority.protectedApply({ timekeeperName: { set: "competing-name-sentinel" } }).state, "applied");
+    assert.equal(h.authority.protectedApply({ ucpathUserId: { set: "competing-name-sentinel" } }).state, "applied");
     const before = structuredClone(h.controller().protectedEditor.draft);
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "conflict"); assert.deepEqual(h.controller().protectedEditor.draft, before); assert.equal(h.commands.length, 1);
@@ -125,7 +125,7 @@ describe("independent protected Settings surface", () => {
     assert.equal(current.state, "loaded");
     if (current.state !== "loaded" || current.document.protectedSettings.state !== "available") throw new Error("protected-conflict-readback-unavailable");
     assert.equal(current.document.protectedSettings.readback.revision, credentialRevision + 1);
-    assert.equal(current.document.protectedSettings.entries.timekeeperName?.value, "competing-name-sentinel");
+    assert.equal(current.document.protectedSettings.entries.ucpathUserId?.value, "competing-name-sentinel");
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(ProtectedSettingsCommandRequestSchema.parse(h.commands[1]).target.expectedRevision, credentialRevision + 1);
     assert.equal(h.controller().protectedEditor.save.state, "applied");

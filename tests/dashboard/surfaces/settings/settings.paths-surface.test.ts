@@ -27,7 +27,7 @@ describe("ordinary output Paths controls", () => {
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", automaticRepair: { state: "none" }, backup: "current", checkedAt: "2026-09-26T12:00:00.000Z" });
-    await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(SettingsPage, { onClose: () => undefined,
+    await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: () => undefined,
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
       preflight: [], onSection: () => undefined, onExitGuardChange: next => { guard = next; },
     }) }) })); });
@@ -57,7 +57,7 @@ describe("ordinary output Paths controls", () => {
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", automaticRepair: { state: "none" }, backup: "current", checkedAt: "2026-09-26T12:00:00.000Z" });
-    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(SettingsPage, { onClose: () => undefined,
+    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", children: createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: () => undefined,
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
       preflight: [], onSection: () => undefined, onExitGuardChange: () => undefined,
     }) }) })));

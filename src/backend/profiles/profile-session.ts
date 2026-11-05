@@ -14,7 +14,7 @@ import { resolveConfigWithProvenance } from "../app/config/resolve.js";
 import { ProfileOnboardingDuoProviderError } from "../runtime/browser/onboarding-duo-provider.js";
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import { requireRuntimeAdmission } from "../storage/admission/admission-identity.js";
-import { type RuntimeAdmission } from "../storage/admission/admission.js";
+import { type RuntimeAdmission, type StartupRegistrationProof } from "../storage/admission/admission.js";
 import { assertPrivateProfilePath,createBrowserRoots } from "../storage/browser-roots.js";
 import { assertCredentialStoreOwner,createCredentialStore,CredentialStoreCommitUncertainError,initialDocument,type CredentialStoreHooks } from "../storage/configuration/credential-store.js";
 import { hasUnprovedSourceClosure } from '../storage/source-closure.js';
@@ -307,17 +307,19 @@ export function createProfileSession(input: {
     }
   }
 
-  function publishSignUp(operation: SignUpOperation): ActiveProfileSession {
+  function settleSignUp(operation: SignUpOperation, proof?: StartupRegistrationProof): string {
     admission.assertWritable();
     assertFinishedProfileOnboarding(operation);
     if (operation.phase !== "publishing") { operation = { ...operation, phase: "publishing" }; writeOperation(operation); }
     const profile = admission.admitProfilePublication(operation.operationId);
-    try { registry.publishSignUp(operation, profile); }
+    try { registry.publishSignUp(operation, profile, proof); }
     finally { profile.release(); }
     releaseOrdinary(operation.profileId);
     deleteOperation(operation.operationId);
-    return activate(operation.profileId);
+    return operation.profileId;
   }
+
+  function publishSignUp(operation: SignUpOperation): ActiveProfileSession { return activate(settleSignUp(operation)); }
 
   function onboardingState(operation: SignUpOperation): ProfileOnboardingState {
     const draft = operation.onboarding;
@@ -408,7 +410,6 @@ export function createProfileSession(input: {
           entries: {
             ucpathUserId: { set: fields.email },
             ucpathPassword: { set: fields.password },
-            timekeeperName: { set: names.timekeeperName },
           },
         }));
         if (applied.state !== "applied" && !store.ownsCommandId(operation.commandId)) {
@@ -424,8 +425,7 @@ export function createProfileSession(input: {
     if (store.ownsCommandId(operation.commandId)) {
       const current = store.read().entries;
       const same = current.ucpathUserId?.value === fields.email
-        && current.ucpathPassword?.value === fields.password
-        && current.timekeeperName?.value === names.timekeeperName;
+        && current.ucpathPassword?.value === fields.password;
       if (!same) return refusal("PROFILE_SIGN_IN_REFUSED");
     }
     return issueOnboardingSession(operation);
@@ -659,9 +659,11 @@ export function createProfileSession(input: {
       });
     },
     cancelOnboarding,
-    async recoverOnboarding(): Promise<void> {
+    async recoverOnboarding(options: Readonly<{ deferActivation?: boolean; finishOnly?: boolean; registrationProofs?: readonly StartupRegistrationProof[] }> = {}): Promise<void> {
       const operations = readOperations().filter((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.onboarding !== undefined);
-      if (operations.length === 0) return;
+      const selected = options.finishOnly === true ? operations.filter(operation => operation.onboarding?.finish !== undefined) : operations;
+      if (selected.length === 0) return;
+      const selectedIds = new Set(selected.map(operation => operation.operationId));
       const browserRoot = join(machineRoot, "browsers", "onboarding");
       const browserRoots = createBrowserRoots(admission);
       const bound=operations.map(operation=>{
@@ -679,7 +681,7 @@ export function createProfileSession(input: {
       }
       const clock=input.clock??systemClock;
       const config=resolveConfigWithProvenance({},{primaryDisplay:null},clock,{stateRoot:machineRoot,artifactRoot:admission.artifactRoot}).config;
-      const present=bound.flatMap(entry=>{
+      const present=bound.filter(entry => selectedIds.has(entry.operation.operationId)).flatMap(entry=>{
         if(entry.rootInput !== undefined && lstatSync(entry.rootInput.profileDirectory,{throwIfNoEntry:false})!==undefined)return [{ ...entry, rootInput: entry.rootInput }];
         if(entry.operation.onboarding?.finish===undefined&&entry.operation.onboarding?.abort===undefined) {
           throw new NativeBrowserClosureUnprovedError([new Error("abandoned-onboarding-browser-missing-without-owned-cleanup")]);
@@ -701,13 +703,14 @@ export function createProfileSession(input: {
         assertBound();
       }
       assertBound();
-      for (const operation of operations) {
+      for (const operation of selected) {
         if (operation.onboarding?.finish !== undefined) {
           if (operation.phase !== "publishing") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
           const published = registry.read().profiles.find(row => row.profileId === operation.profileId);
           if (published !== undefined) assertPublishedFinish(operation, published.registration);
           else assertFinishedProfileOnboarding(operation);
-          publishSignUp(operation);
+          const profileId = settleSignUp(operation, options.registrationProofs?.find(proof => proof.operationId === operation.operationId));
+          if (options.deferActivation !== true) activate(profileId);
         } else {
           if (operation.onboarding?.abort === undefined) onboarding.recoverClosed(operation.operationId);
           const draft = readOperations().find((entry): entry is SignUpOperation => entry.kind === "sign-up" && entry.operationId === operation.operationId);

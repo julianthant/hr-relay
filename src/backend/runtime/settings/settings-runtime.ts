@@ -1,3 +1,6 @@
+import { deriveProfileNames } from "../../../models/profiles/profile.js";
+import { ProfileIdentitySchema, type ProfileIdentity } from "../../../models/profiles/profile-identity.js";
+import type { RuntimeAdmission } from "../../storage/admission/admission.js";
 import { authenticateSavedSettings } from "../../storage/sqlite/settings-storage.js";
 import { selectActiveRunSettings } from "../../runs/settings/run-settings.js";
 import { StoredConfigSchema } from "../../../models/config/snapshot.js";
@@ -56,9 +59,19 @@ export function requireCurrentSettings(record: SettingsFileRecord, repositories:
   }
 }
 
+export function readAdmittedProfileIdentity(machine: RuntimeAdmission, admission: RuntimeAdmission): ProfileIdentity {
+  admission.assertProfileRuntime();
+  const registry = machine.readProfileRegistry(), profileId = admission.profileBinding.profileId;
+  const person = registry.profiles.find(row => row.profileId === profileId);
+  if (person === undefined || registry.activeProfileId !== profileId) throw new Error("PROFILE_AUTHORITY_UNAVAILABLE");
+  const names = deriveProfileNames(person.firstName, person.lastName);
+  admission.assertProfileRuntime();
+  return ProfileIdentitySchema.parse({ profileId, sessionEpoch: registry.sessionGeneration, displayName: names.timekeeperName, initials: names.initials });
+}
+
 /** Credentials are read at next use; SQLite history never gates availability. */
-export function createCredentialSecretSource(store: Pick<CredentialStore, "read">): Pick<CredentialStore, "read"> {
-  return Object.freeze({ read: () => store.read() });
+export function createCredentialSecretSource(store: Pick<CredentialStore, "read">, identity?: () => ProfileIdentity) {
+  return Object.freeze({ read: () => ({ ...store.read(), ...(identity === undefined ? {} : { profileIdentity: identity() }) }) });
 }
 
 export interface ProtectedSettingsRuntimeSnapshot {

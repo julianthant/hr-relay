@@ -77,9 +77,7 @@ const COUNT_CHECKS = [
 const CREDENTIAL_CHECKS = [
   { key: "ucpathUserId", name: "UCPath user ID", description: "Login name for UCPath access." },
   { key: "ucpathPassword", name: "UCPath password", description: "Password for UCPath access." },
-  { key: "timekeeperName", name: "Timekeeper name", description: "Name used for timekeeping workflows." },
   { key: "sharepointOnboardingRosterUrl", name: "SharePoint roster", description: "Link to the onboarding roster." },
-  { key: "activityPersonPseudonym", name: "Activity identity", description: "Identifier used in activity records." },
 ] as const;
 
 function authorityResult(report?: StorageDoctorWire): CheckResult {

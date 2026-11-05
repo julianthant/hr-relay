@@ -49,7 +49,7 @@ for (const content of ["valid", "changed", "malformed", "foreign", "plaintext"] 
       const path = join(f.machine.stateRoot, "machine", "duo-credentials", `${current.profileId}.json`), bytes = readFileSync(path);
       assert.ok(bytes.includes("FE")); assert.equal(bytes.includes(input.privateKeyPkcs8), false);
       const protectedStore = createCredentialStore({ admission: f.admission, stateRoot: f.stateRoot });
-      assert.equal(protectedStore.read().entries.timekeeperName?.value, "FE");
+      assert.equal(Object.hasOwn(protectedStore.read().entries, "timekeeperName"), false);
       const headPath = join(f.machine.stateRoot, "machine", "credential-keys", `${current.profileId}.json`), head = readFileSync(headPath), keys = FakeKeyringEntry.snapshot();
       if (content !== "valid") {
         const envelope = z.record(z.string(), z.unknown()).parse(JSON.parse(bytes.toString("utf8")));
@@ -61,7 +61,7 @@ for (const content of ["valid", "changed", "malformed", "foreign", "plaintext"] 
       if (content === "valid") {
         const record = owner.readRecord("duo"); assert.ok(record);
         assert.equal(DuoCredentialRecordSchema.parse(record.value).credentials[0]?.credentialId, input.credentialId);
-        assert.equal(protectedStore.read().entries.timekeeperName?.value, "FE");
+        assert.equal(Object.hasOwn(protectedStore.read().entries, "timekeeperName"), false);
       } else assert.throws(() => owner.readRecord("duo"), { code: "CREDENTIAL_UNAVAILABLE" });
       assert.deepEqual(readFileSync(path), source); assert.deepEqual(readFileSync(headPath), head);
       assert.equal(JSON.stringify(FakeKeyringEntry.snapshot()) === JSON.stringify(keys), true);

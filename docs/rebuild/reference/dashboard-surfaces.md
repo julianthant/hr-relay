@@ -494,6 +494,9 @@ persistence require the backend account adapter. A displayed preview identity ne
 The typed editor carries effective/default/override values, field metadata, validation, and
 persisted/active revisions. Names follow field paths. Credentials uses protected presence authority
 and UCPath-scoped autocomplete; tokens and secrets never enter logs or URL state.
+Workflow configuration shows read-only Timekeeper name and Timekeeper initials from bootstrap
+`actor.label`, with one initial per word and no removal action. Credentials has no historical
+pseudonym field. Storage credential checks list only the three current protected settings.
 
 Ordinary typing saves after 700 ms and credential typing after 1200 ms, or when focus leaves the
 whole field. Moving between segments of a composite does not flush. Invalid drafts keep inline

@@ -214,6 +214,13 @@ when probe, note drain or activity-end persistence also fails. It cannot become 
 
 A settled prior transaction returns an `already-present` preview without staging or observing a subject. Otherwise it stages the page and observes the subject, then returns `TransactionDryRunPreview`. It does not mint a mutation capability, fence an intent, create a write attempt, invoke commit, invoke the post-commit verifier, or write a transaction checkpoint or confirmed-operation history.
 
+`SchemaBoundEvidenceValueSchema` owns the durable transaction proof/output envelope. It retains
+the protected-store and local test-data evidence grammar; admitted profile provenance belongs to
+the run input and outer checkpoint. Transaction producers bind their parsed proof/output values
+without copying run-input metadata into those nested envelopes. This keeps transaction-outcome,
+local-preview and delegated-preview schema identities stable when a new run-input origin is
+introduced. Existing result bytes, completion/dependency digests and receipt links remain intact.
+
 `run-executor.ts` records each transaction preview and continues through the declared graph. A later form can consume a separately declared, labelled preview-only sample; dependent receipt/confirmation reads stay unavailable. Samples never become ordinary outputs, real transaction checkpoints or submit receipts. A live sequencer rejects preview scope, preview bindings and reserved sample values before probing, staging or fencing. Upstream task checkpoints, gate records, preview events, and terminal rehearsal evidence can still exist. A dry run is not a verified real write. Dry-run evidence accounting uses `writeIntents.countDryRunEvidenceByRun`, scoped to the run rather than global table counts.
 
 The shared preview contract reserves `DRY_RUN_TRANSACTION_NUMBER` and the numeric
@@ -306,7 +313,7 @@ Confirmed-action publication is separate from settlement. `run-executor.ts` publ
 
 The post-gate task verifies the packet digest, approved EID membership, and `chosenFrom` label. It refuses an EID the packet never showed. A document-EID or independently supplied canonical-EID packet cannot consume an operator result. An operator-entered EID cannot proceed without one. Failure correction provenance retains the source run, version, failure ID and input field in the rerun plan and consumed run authorization. The entered EID is classified as a direct identifier; its identity origin and approval requirement are decision facts in receipts and evidence. Rejection is a failed identity verification and cannot reach a write.
 
-`identity-evidence.ts` produces the decision packet, disagreements-first comparisons, and persisted risk `approvalShape`, including `type-the-eid`. The gate projection separately derives its presentation `approvalShape`: `choose-a-candidate` when it shows several approvable EIDs, otherwise `one-click`. Disagreeing fields make the served approval confirmation destructive. This presentation does not change the canonical packet, approved subject, schema bindings or evidence digest, and requires a fresh operator confirmation. The packet includes the write plan from `write-plan.ts`; its digest binds the planned values as well as identity. Protected timekeeper values use retained protected-input binding identity in this packet and its digest.
+`identity-evidence.ts` produces the decision packet, disagreements-first comparisons, and persisted risk `approvalShape`, including `type-the-eid`. The gate projection separately derives its presentation `approvalShape`: `choose-a-candidate` when it shows several approvable EIDs, otherwise `one-click`. Disagreeing fields make the served approval confirmation destructive. This presentation does not change the canonical packet, approved subject, schema bindings or evidence digest, and requires a fresh operator confirmation. The packet includes the write plan from `write-plan.ts`; its digest binds the planned values as well as identity. New timekeeper inputs bind the admitted profile ID and session epoch in this packet and its digest; caller-supplied names are refused. Kuali receives the exact full display name, including interior accented letters and the combined 129-character profile limit. The shared name validator rejects controls, line separators and padding; it never truncates or transliterates. Staging and save payload checks retain exact readback equality, so an external rejection cannot substitute a different name. Historical protected-store bindings remain immutable evidence. Rerun captures the currently admitted profile identity, while continuation of an existing run preserves its original write evidence.
 
 The actual `IdentityApprovalResultSchema` carries the decision, selected EID, choice origin, and evidence digest, or a rejection reason. Actor and instant come from the durable `GateResultRecord` written by the command kernel. Approval cannot be inferred from a browser observation. Fresh staged-page binding remains required in both identity branches.
 
@@ -406,3 +413,26 @@ UCPath hire filing proofs bind the independently read transaction, legal identit
 Hire event keys retain the verified hire email, date and position across EID assignment or reviewed mode changes. Before master fills, a fresh complete read must prove the exact retained T-number and current filing status. New-hire receipt reuse also checks the independently read Tracker Profile ID against the verified I-9 profile.
 
 Completion-proof descriptions preserve nullable scalar fields explicitly. Email syntax and refinements remain marked for server validation; the completion proof schema still decides acceptance.
+
+
+Retained schema evidence keeps its original selectors and linked digests. A stopped profile-name
+domain conversion validates the supported source grammar and the current registered contracts,
+after exact browser/process closure and a verified same-profile authority backup. One settled
+`database_upgrades` record certifies each affected frozen owner, source selector, current selector
+and canonical source digest. The source includes the entire canonical input, checkpoint, result,
+gate, delegation manifest or permanent write intent, preserving signer bindings and command facts.
+The conversion does not rewrite those records, completion/dependency links or receipts.
+
+The admission facade seals the complete conversion statement with domain-separated HMAC-SHA256
+using the installation's existing profile pepper. Signing requires the exact stopped backed source;
+verification binds the installation and profile before reading that key. Credential erasure or key
+rotation does not discard the evidence seal. Restart validates the original backup and sealed
+certificate, then resumes credential conversion without duplicating the evidence record.
+
+Ordinary receipt, delegation and write-proof consumers use only this current certificate format.
+They verify the seal and exact owner/source/target digest, then parse the original value with the
+current contract. Missing certificates preserve the original mismatch refusal; changed, foreign,
+unknown or future evidence refuses. No historical value parser or historical hash list runs in an
+ordinary reader. Execution's descriptor, implementation, claim, gate, UNKNOWN and write-binding
+checks remain independent requirements. Source ingress selectors, command requests and immutable
+nested transaction envelopes remain original evidence rather than fresh admission authority.

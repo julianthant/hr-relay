@@ -153,11 +153,12 @@ describe("profile session", () => {
     assert.equal(restored.includes("alex@ucsd.edu"), false);
     assert.equal(restored.includes("\"AR\""), false);
     const retained = readAuthenticatedCredentialFixture(root, alex.profileId) as { record: { entries: { timekeeperName?: { value: string } } } };
-    assert.equal(retained.record.entries.timekeeperName?.value, "AR");
-    const currentRecord = readAuthenticatedCredentialFixture(root, returned.profileId) as { record: { entries: { ucpathUserId: { value: string }; ucpathPassword: { value: string }; timekeeperName: { value: string } } } };
+    assert.equal(Object.hasOwn(retained.record.entries, "timekeeperName"), false);
+    assert.equal(Object.hasOwn(retained.record.entries, "activityPersonPseudonym"), false);
+    const currentRecord = readAuthenticatedCredentialFixture(root, returned.profileId) as { record: { entries: { ucpathUserId: { value: string }; ucpathPassword: { value: string } } } };
     assert.equal(currentRecord.record.entries.ucpathUserId.value, "alex@ucsd.edu");
     assert.equal(currentRecord.record.entries.ucpathPassword.value, "secret-one");
-    assert.equal(currentRecord.record.entries.timekeeperName.value, "AR");
+    assert.equal(Object.hasOwn(currentRecord.record.entries, "timekeeperName"), false);
     assert.equal((await settleLogout(session, session.logOut(returned.token, { at: "2026-09-06T12:09:00.000Z" }))).state, "signed-out");
     const sam = await finishProfileOnboarding(session, session.signUp({
       firstName: "Sam", lastName: "Ortiz", email: "sam@ucsd.edu", password: "secret-two", createdAt: "2026-09-06T12:08:00.000Z",
@@ -680,7 +681,7 @@ it("captures and freshly revalidates each independent authority constituent on t
       const child = machine.admitProfile(active.profileId);
       const store = createCredentialStore({ admission: child, stateRoot: child.stateRoot,  });
       assert.equal(store.apply(ProtectedSettingsApplyInputSchema.parse({ commandId: "23232323-2323-4323-8323-232323232323", writeId: "24242424-2424-4424-8424-242424242424", commandFingerprint: "d".repeat(64), expectedRevision: store.read().revision,
-        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-09-06T12:02:00.000Z", entries: { timekeeperName: { set: "ZZ" } } })).state, "applied");
+        protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, updatedAt: "2026-09-06T12:02:00.000Z", entries: { sharepointOnboardingRosterUrl: { set: "https://example.test/changed-roster" } } })).state, "applied");
     },
   ];
   for (const mutate of mutations) {

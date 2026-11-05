@@ -26,7 +26,6 @@ const CHECK_COPY: Record<string, { name: string; description: string }> = {
   "ports.available": { name: "Network ports", description: "Checks the dashboard's reserved ports." },
   "fiscal.current": { name: "Current fiscal year", description: "Checks the workflow's fiscal year configuration." },
   "secrets.ucpath-sso": { name: "UCPath sign-in", description: "Checks the username and password required for UCPath sign-in." },
-  "secrets.timekeeper": { name: "Timekeeper name", description: "Checks the timekeeper name needed by this workflow." },
   "secrets.sharepoint-roster": { name: "SharePoint roster", description: "Checks the onboarding roster location used by this workflow." },
 };
 
@@ -49,7 +48,6 @@ export function PreflightScopeSelect() {
 
 const SECRET_FIELDS = {
   "secrets.ucpath-sso": [{ name: "ucpathUserId", label: "UCPath username" }, { name: "ucpathPassword", label: "UCPath password" }],
-  "secrets.timekeeper": [{ name: "timekeeperName", label: "Timekeeper name" }],
   "secrets.sharepoint-roster": [{ name: "sharepointOnboardingRosterUrl", label: "SharePoint onboarding roster URL" }],
 } as const;
 

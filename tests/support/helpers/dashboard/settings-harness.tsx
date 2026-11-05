@@ -71,7 +71,7 @@ export async function mountSettingsHarness(authority: Awaited<ReturnType<typeof 
     editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64), onSaved: notice => notices.push(notice), onSaveProblem: notice => problems.push(notice) });
     if (sectionId === "routes") return createElement(RoutesSection, { editor });
     return ["credentials", "protected-store", "provider-env", "runtime-isolation"].includes(sectionId)
-      ? createElement(SettingsAuthoritySection, { editor, sectionId }) : createElement(EditableSettingsSection, { editor, sectionId });
+      ? createElement(SettingsAuthoritySection, { profileName: "Synthetic Operator", editor, sectionId }) : createElement(EditableSettingsSection, { editor, sectionId });
   }
   const render = async (sectionId: string, show = true, requestKey = 0): Promise<void> => { await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(FixtureCommandBinding, { actorId: "local-operator", requestKey, children: show ? createElement(Harness, { sectionId }) : null }) })); }); };
   await render(section);

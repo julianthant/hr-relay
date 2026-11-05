@@ -18,7 +18,6 @@ export function workflowPreflightScope(descriptor: AnyWorkflowDescriptor, input:
   for (const system of projection.systems) capabilities.add(RuntimeCapabilitySchema.parse(`system.${system}.${instances[system as keyof InstanceSelection]}`));
   if ((descriptor.protectedInputs ?? []).some(declaration => declaration.name === "timekeeperName")) capabilities.add("workflow.kuali-fill");
   for (const contract of projection.contracts) {
-    if (contract.id.startsWith("kuali/") && (contract.requires ?? []).includes("timekeeperName")) capabilities.add("workflow.kuali-fill");
     if (contract.id.startsWith("sharepoint/")) capabilities.add("workflow.sharepoint-download");
     for (const provider of contract.providers ?? []) {
       switch (provider) {

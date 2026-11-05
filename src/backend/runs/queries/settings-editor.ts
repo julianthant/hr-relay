@@ -19,8 +19,8 @@ const LABELS: Readonly<Record<string, string>> = {
   "actor.label": "Operator label", "display.screenWidth": "Screen width", "display.screenHeight": "Screen height",
   "ocr.pageConcurrency": "OCR page concurrency", "ocr.maxValidationRetries": "OCR validation retries",
   "timeouts.duoApprovalSeconds": "Duo approval timeout", "concurrency.defaultWorkers": "Default workers", "paths.reportsDir": "Reports directory",
-  ucpathUserId: "UCPath user ID", ucpathPassword: "UCPath password", timekeeperName: "Timekeeper name",
-  sharepointOnboardingRosterUrl: "SharePoint onboarding roster URL", activityPersonPseudonym: "Historical Activity pseudonym",
+  ucpathUserId: "UCPath user ID", ucpathPassword: "UCPath password",
+  sharepointOnboardingRosterUrl: "SharePoint onboarding roster URL",
 };
 function settingsLabel(key: string): string {
   return LABELS[key] ?? key.split(".").map(part => part.replace(/([a-z])([A-Z])/gu, "$1 $2")).join(" · ");
@@ -87,7 +87,7 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
     ? row.key.endsWith(".jobEndDate") ? [leaf(row.key, row.key.replaceAll("*", currentFiscalYearKey))] : []
     : [leaf(row.key)]);
   const protectedRows = ProtectedSettingsNameSchema.options.map(name => ({ name, label: settingsLabel(name), activationScope: "next-use",
-    purpose: name === "activityPersonPseudonym" ? "Historical records only; Activity pseudonym consumers remain retired." : `Used at the next ${name.startsWith("ucpath") ? "login" : "use"}.` }));
+    purpose: `Used at the next ${name.startsWith("ucpath") ? "login" : "use"}.` }));
   let protectedSettings: unknown;
   try {
     const read = deps.protectedSettings.read();

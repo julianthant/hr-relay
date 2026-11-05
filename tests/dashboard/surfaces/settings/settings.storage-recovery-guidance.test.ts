@@ -52,7 +52,7 @@ async function mountDoctor(report: StorageDoctorWire, fetchReport: () => Promise
       client,
       children: createElement(PreflightActionsProvider, {
         actions: { actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings: () => undefined, showSessions: () => undefined },
-        children: createElement(SettingsPage, { onClose: () => undefined,
+        children: createElement(SettingsPage, { profileName: "Synthetic Operator", onClose: () => undefined,
         storage,
         sections: SECTIONS,
         workflowLabels: new Map<string, string>(),
@@ -192,8 +192,9 @@ for (const state of ["current", "stale", "missing", "invalid"] as const) it(`kee
 it("shows every useful check before running and keeps Preflight separate", async () => {
   let doctorCalls = 0;
   const dom = await mountDoctor(HEALTHY, () => {doctorCalls++; return Promise.resolve(HEALTHY);}, false);
-  assert.equal(dom.querySelectorAll('.diagnostic-check-entry').length, 13);
-  assert.equal([...dom.querySelectorAll('.diagnostic-check-entry')].filter((row) => row.textContent?.includes("Not checked")).length, 13);
+  assert.equal(dom.querySelectorAll('.diagnostic-check-entry').length, 11);
+  assert.equal([...dom.querySelectorAll('.diagnostic-check-entry')].filter((row) => row.textContent?.includes("Not checked")).length, 11);
+  assert.doesNotMatch(dom.textContent ?? "", /Timekeeper name|Historical Activity pseudonym/u);
   assert.match(dom.textContent ?? "", /Storage updates/u);
   assert.match(dom.textContent ?? "", /Work in progress/u);
   assert.doesNotMatch(dom.textContent ?? "", /Check readiness for|Rerun preflight/iu);
