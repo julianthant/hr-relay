@@ -35,7 +35,7 @@ const profile = composeProfileRuntime({ admission: machine, hostFacts: { primary
 const draft = profile.session.signUp({ firstName: "Closure", lastName: "Fixture", email: "closure-fixture@ucsd.edu", password: "disposable-closure-fixture", createdAt: systemClock.now().toISOString() });
 if (draft.state !== "onboarding") throw new Error("closure-hold-fixture-draft");
 await assert.rejects(profile.session.showOnboardingBrowser(draft.token, draft.operationId), hasUnprovedSourceClosure);
-assert.throws(() => profile.session.readOnboarding(draft.token, draft.operationId), { code: "BROWSER_CLOSURE_UNPROVED" });
+assert.equal(profile.session.readOnboarding(draft.token, draft.operationId).operationId, draft.operationId);
 await assert.rejects(profile.session.cancelOnboarding(draft.token, draft.operationId), error => error instanceof ProfileSessionRefusedError && error.code === "BROWSER_CLOSURE_UNPROVED");
 process.on("message", (message: unknown) => { if (message === "stop") process.exit(97); });
 process.send({ type: "held", profileId: draft.profileId, operationId: draft.operationId, keychain: FakeKeyringEntry.snapshot() });

@@ -51,12 +51,7 @@ export async function mountRelayOptions(initial) {
       const identity = element('span', 'relay-method-identity'); identity.append(element('strong', '', label), element('span', '', kinds[method]));
       const pill = element('span', 'relay-method-pill'); pill.append(svg(tone), document.createTextNode(states[state]));
       head.append(tile, identity, pill);
-      const track = element('ol', 'relay-method-track'); track.setAttribute('aria-label', `${label} progress`);
-      const tones = state === 'idle' ? ['off', 'off', 'off'] : state === 'complete' ? ['complete', 'complete', 'complete'] : ['complete', failed ? 'failed' : 'pending', 'off'];
-      for (const [index, text] of ['Started', failed ? 'Not confirmed' : 'Added in Duo', 'Confirmed by Relay'].entries()) {
-        const step = element('li', '', text); step.dataset.state = tones[index]; track.append(step);
-      }
-      item.append(head, track); list.append(item);
+      item.append(head); list.append(item);
     }
     if (focusedMethod) list.querySelector(`[data-method="${focusedMethod}"]`).focus({ preventScroll: true });
     $('accountCount').textContent = `${Object.values(methods).filter(method => method.state === 'complete').length} of 2 completed`;

@@ -144,7 +144,7 @@ it("never carries selected public-session authority into a replacement client", 
 
 const draftMethod = (state: "idle" | "pending" | "complete" | "unknown" = "idle") => ({ state,
   ceremonyObserved: state === "complete", portalAccepted: state === "complete", operatorConfirmed: state === "complete", exactCredentialRequestObserved: false });
-const onboardingDraft = () => ({ state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
+const onboardingDraft = () => ({ browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
   profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: draftMethod(), touch: draftMethod() } });
 
 it("served Open Duo dispatches the owned portal command without opening a local demo", async () => {
@@ -393,13 +393,17 @@ for (const recovery of ["same", "foreign-operation", "foreign-profile", "signed-
   } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); }
 });
 
-for (const source of ["action", "poll"] as const) it(`holds the onboarding draft after an unproved browser closure from ${source} until reopen`, async () => {
+for (const source of ["action", "poll"] as const) it(`keeps polling and permits exact Reopen after a closure failure from ${source}`, async () => {
   vi.useFakeTimers();
   const draft = onboardingDraft(), paths: string[] = [];
-  const refused = { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" };
-  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async url => {
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async (url, options) => {
     const path = new URL(url).pathname; paths.push(path);
-    return Response.json(paths.length === 1 ? draft : refused);
+    if (path.endsWith("/reopen")) {
+      const body = options?.body; assert.ok(typeof body === "string");
+      assert.deepEqual(JSON.parse(body), { operationId: draft.operationId, generation: 1 });
+      return Response.json({ ...draft, browser: { state: "open", generation: 2 } });
+    }
+    return Response.json(paths.length === 1 ? draft : { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
   } });
   const host = document.createElement("div"), root = createRoot(host);
   let session!: ReturnType<typeof usePublicProfileSession>;
@@ -407,21 +411,18 @@ for (const source of ["action", "poll"] as const) it(`holds the onboarding draft
   try {
     await act(async () => root.render(createElement(Probe)));
     const previousShow = session.port.showBrowser.bind(session.port);
-    await act(async () => {
-      if (source === "action") await session.port.showBrowser();
-      else await vi.advanceTimersByTimeAsync(1000);
-    });
+    await act(async () => { if (source === "action") await session.port.showBrowser(); else await vi.advanceTimersByTimeAsync(1000); });
     assert.deepEqual(session.state, draft);
-    assert.equal(session.browserClosureUnproved, true);
     assert.equal(session.port.unavailable, true);
-    assert.equal(session.port.browserClosureUnproved, true);
     await assert.rejects(previousShow(), /ONBOARDING_SCOPE_REPLACED/);
-    for (const action of [() => session.port.showBrowser(), () => session.port.openPortal(), () => session.port.complete(), () => session.port.cancel(),
-      () => session.port.start("key"), () => session.port.cancelDuo("key", "00000000-0000-4000-8000-000000000003")]) {
+    for (const action of [() => session.port.openPortal(), () => session.port.complete(), () => session.port.cancel(), () => session.port.start("key")]) {
       await assert.rejects(action(), /ONBOARDING_SCOPE_REPLACED/);
     }
-    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
-    assert.equal(paths.length, 2, "held sign-up must not poll or retry");
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    assert.equal(paths.length, 3, "closure failure must not suspend status reads");
+    await act(async () => { await session.port.reopenBrowser(); });
+    assert.equal(session.port.unavailable, false);
+    assert.equal(session.port.onboarding?.browser.generation, 2);
   } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); }
 });
 

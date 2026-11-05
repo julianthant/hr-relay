@@ -47,7 +47,7 @@ it("keeps onboarding commands in the canonical transport with validated scoped b
 
 it("accepts an explicitly confirmed software ceremony without inventing portal acceptance", async () => {
   const method = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: false };
-  const draft = { state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
+  const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
     profileId: "00000000-0000-4000-8000-000000000002", step: "ready",
     methods: { key: { ...method, portalAccepted: false }, touch: method } };
   let value = draft;

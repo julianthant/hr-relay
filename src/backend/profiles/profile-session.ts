@@ -127,13 +127,9 @@ export function createProfileSession(input: {
   const verifiers = createProfileVerifiers(machineRoot);
   const sessions = new Map<string, { readonly profileId: string; readonly epoch: number; readonly admission: RuntimeAdmission }>();
   const onboardingSessions = new Map<string, { readonly operationId: string; readonly epoch: number }>();
-  let onboardingBrowserHold: ProfileSessionRefusedError | undefined;
   function retainOnboardingBrowserFailure(error: unknown): never {
     if (!hasUnprovedSourceClosure(error) && !(error instanceof ProfileSessionRefusedError && error.code === "BROWSER_CLOSURE_UNPROVED")) throw error;
-    onboardingBrowserHold = new ProfileSessionRefusedError("BROWSER_CLOSURE_UNPROVED", {
-      cause: onboardingBrowserHold === undefined ? error : new AggregateError([onboardingBrowserHold, error]),
-    });
-    throw onboardingBrowserHold;
+    throw new ProfileSessionRefusedError("BROWSER_CLOSURE_UNPROVED", { cause: error });
   }
   const completedOnboarding = new Map<string, { operationId: string; session: ActiveProfileSession }>();
   const storageAdmissions = new Map<string, { ordinary?: RuntimeAdmission; settlement?: RuntimeAdmission }>();
@@ -347,13 +343,12 @@ export function createProfileSession(input: {
     };
     const methods = { key: method("key"), touch: method("touch") };
     return ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: operation.operationId, profileId: operation.profileId,
-      step: methods.key.state === "complete" && methods.touch.state === "complete" ? "ready" : "duo", methods });
+      step: methods.key.state === "complete" && methods.touch.state === "complete" ? "ready" : "duo", methods, browser: onboarding.browserState(operation.operationId) });
   }
 
   function requireOnboardingSession(token: string, operationId: string) {
     const session = onboardingSessions.get(token);
     if (session?.operationId !== operationId) throw new ProfileSessionRefusedError("PROFILE_SESSION_STALE");
-    if (onboardingBrowserHold !== undefined) throw onboardingBrowserHold;
     return session;
   }
 
@@ -562,12 +557,18 @@ export function createProfileSession(input: {
   async function cancelOnboarding(token: string, operationId: string): Promise<{ readonly state: "signed-out" }> {
     requireOnboardingSession(token, operationId);
     withProfileLock(machineRoot, () => {
+      const operation = requireOnboarding(token, operationId, true);
+      if (operation.onboarding?.finish !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
+      onboarding.beginTransition(operationId);
+    });
+    try { await onboarding.drain(operationId).catch(retainOnboardingBrowserFailure); }
+    finally { onboarding.endTransition(operationId); }
+    withProfileLock(machineRoot, () => {
       const operation = requireOnboarding(token, operationId, true), draft = operation.onboarding;
       if (draft === undefined || draft.finish !== undefined) throw new ProfileSessionRefusedError("PROFILE_TRANSITION_BLOCKED");
       if (draft.abort === undefined) writeOperation({ ...operation, onboarding: { ...draft,
         abort: { operationId: randomUUID(), generation: operation.credentials.generation + 1 } } });
     });
-    await onboarding.drain(operationId).catch(retainOnboardingBrowserFailure);
     return withProfileLock(machineRoot, () => {
       const operation = requireOnboarding(token, operationId, true);
       onboarding.assertAbortable(operationId);
@@ -632,6 +633,11 @@ export function createProfileSession(input: {
       await onboarding.showBrowser(operationId).catch(retainOnboardingBrowserFailure);
       return onboardingState(requireOnboarding(token, operationId));
     },
+    async reopenOnboardingBrowser(token: string, operationId: string, generation: number): Promise<ProfileOnboardingState> {
+      requireOnboarding(token, operationId);
+      await onboarding.reopenBrowser(operationId, generation);
+      return onboardingState(requireOnboarding(token, operationId));
+    },
     async openOnboardingPortal(token: string, operationId: string): Promise<ProfileOnboardingState> {
       requireOnboarding(token, operationId);
       await onboarding.openPortal(operationId).catch(retainOnboardingBrowserFailure);
@@ -663,7 +669,11 @@ export function createProfileSession(input: {
       }
       const initial = requireOnboarding(token, operationId);
       if (onboardingState(initial).step !== "ready") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
-      if (!registry.read().profiles.some(row => row.profileId === initial.profileId)) await onboarding.drain(operationId).catch(retainOnboardingBrowserFailure);
+      if (!registry.read().profiles.some(row => row.profileId === initial.profileId)) {
+        onboarding.beginTransition(operationId);
+        try { await onboarding.drain(operationId).catch(retainOnboardingBrowserFailure); }
+        finally { onboarding.endTransition(operationId); }
+      }
       return withProfileLock(machineRoot, () => {
         const pending = requireOnboarding(token, operationId);
         if (pending.onboarding === undefined) throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");

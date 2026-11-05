@@ -35,17 +35,20 @@ it("renders the approved extension states and keeps card selection, guards and f
     assert.ok(release); release(); await Promise.resolve(); await Promise.resolve();
     await vi.advanceTimersByTimeAsync(0);
     assert.ok(cards().every(card => !card.disabled));
-    for (const [state, label, tones] of [
-      ["idle", "Not started", ["off", "off", "off"]],
-      ["pending", "Pending", ["complete", "pending", "off"]],
-      ["complete", "Completed", ["complete", "complete", "complete"]],
-      ["unknown", "Not confirmed", ["complete", "failed", "off"]],
-      ["unavailable", "Unavailable", ["complete", "failed", "off"]],
+    for (const [state, label] of [
+      ["idle", "Not started"],
+      ["pending", "Pending"],
+      ["complete", "Completed"],
+      ["unknown", "Not confirmed"],
+      ["unavailable", "Unavailable"],
     ] as const) {
       profile = { ...profile, methods: { key: { state }, touch: { state: "idle" } } };
       await vi.advanceTimersByTimeAsync(1000);
       assert.equal(cards()[0].querySelector(".relay-method-pill")?.textContent, label);
-      assert.deepEqual([...cards()[0].querySelectorAll<HTMLElement>("ol li")].map(step => step.dataset.state), tones);
+      assert.equal(cards()[0].querySelector(".relay-method-track"), null);
+      assert.doesNotMatch(cards()[0].textContent ?? "", /Started|Added in Duo|Confirmed by Relay/);
+      assert.equal(cards()[0].querySelector(".relay-method-identity strong")?.textContent, "Security key");
+      assert.equal(cards()[0].querySelector(".relay-method-identity > span")?.textContent, "Fast Duo in this browser");
       assert.equal(document.getElementById("accountCount")?.textContent, `${state === "complete" ? 1 : 0} of 2 completed`);
       assert.ok(cards().every(card => !card.disabled));
       assert.equal(cards()[0].querySelectorAll("svg").length, 2);

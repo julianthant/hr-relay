@@ -1,7 +1,10 @@
 import type { BrowserProfileProbeFactory, BrowserProfileProbeOptions } from "../../storage/browser-roots.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { z } from "zod";
-import { chromium, type BrowserContext } from "playwright";
+import { spawn } from "node:child_process";
+import { Readable, Writable } from "node:stream";
+import { StringDecoder } from "node:string_decoder";
+import { chromium, type BrowserContext, type ConnectOverCDPTransport } from "playwright";
 import type { Clock } from "../../../rules/time/clock.js";
 import { BrowserSessionClosureUnprovedError, BrowserProfileStillClosingError, type BrowserSessionCloseReason } from "../../../workflow-kit/session.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
@@ -45,12 +48,87 @@ export interface PersistentContextLauncher {
     nativeOnly?: true;
     disablePasswordManager?: true;
     defaultContextOptions?: true;
+    ownedProcess?: (process: OwnedBrowserProcess) => void;
   }>): Promise<BrowserContext>;
+}
+
+export interface OwnedBrowserProcess {
+  exited(): boolean;
+  onExit(callback: () => void): void;
+  stop(timeoutMs: number): Promise<void>;
+}
+
+async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["launch"]>[0]): Promise<BrowserContext> {
+  const timeoutMs = z.number().positive().parse(input.timeoutMs);
+  const child = spawn(chromium.executablePath(), ["--remote-debugging-pipe",
+    `--user-data-dir=${input.profileDirectory}`, "--no-first-run", "--no-default-browser-check",
+    "--enable-automation", "--enable-unsafe-extension-debugging", "--disable-dev-shm-usage",
+    "--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled",
+    `--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`, "--no-startup-window"],
+  { stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"], windowsHide: false });
+  let exited = false, spawned = false;
+  let birthFailure: Error | undefined, processFailure: Error | undefined;
+  child.once("spawn", () => { spawned = true; });
+  const startup: { connecting?: Promise<BrowserContext> } = {};
+  const exit = new Promise<void>(resolve => {
+    child.on("error", error => { if (!spawned && child.pid === undefined) { birthFailure = error; resolve(); } else processFailure = error; });
+    child.once("exit", () => { exited = true; resolve(); });
+  });
+  // The child handle is the process-birth capability; no PID lookup or name-based kill.
+  input.ownedProcess?.(Object.freeze({ exited: () => exited,
+    onExit(callback: () => void) { if (exited) queueMicrotask(callback); else child.once("exit", callback); },
+    async stop(deadlineMs: number) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (!exited && birthFailure === undefined && !child.kill("SIGKILL")) throw new Error("DUO_SETUP_STOP_FAILED", processFailure === undefined ? undefined : { cause: processFailure });
+      await Promise.race([(async () => { await exit; await Promise.allSettled([startup.connecting]); })(), new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error("DUO_SETUP_STOP_FAILED")), deadlineMs);
+      })]);
+    } finally { clearTimeout(timer); }
+  } }));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const writePipe = child.stdio[3], readPipe = child.stdio[4];
+  if (!(writePipe instanceof Writable) || !(readPipe instanceof Readable)) throw new Error("DUO_SETUP_OPEN_FAILED");
+  const transport: ConnectOverCDPTransport = {
+    send(message) { writePipe.write(JSON.stringify(message) + "\0"); },
+    close() { writePipe.end(); readPipe.destroy(); },
+  };
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
+  const disconnect = () => { transport.onclose?.("DUO_SETUP_TRANSPORT_CLOSED"); };
+  writePipe.on("error", disconnect); readPipe.on("error", disconnect); readPipe.on("close", disconnect);
+  readPipe.on("data", (data: Buffer) => {
+    pending += decoder.write(data);
+    for (let end = pending.indexOf("\0"); end !== -1; end = pending.indexOf("\0")) {
+      const raw = pending.slice(0, end); pending = pending.slice(end + 1);
+      let value: unknown;
+      try { value = JSON.parse(raw); }
+      catch { transport.close(); disconnect(); return; }
+      if (typeof value !== "object" || value === null || Array.isArray(value)) { transport.close(); disconnect(); return; }
+      transport.onmessage?.(value);
+    }
+  });
+  const stopped = exit.then(() => { throw new Error("DUO_SETUP_OPEN_FAILED", birthFailure === undefined ? undefined : { cause: birthFailure }); });
+  startup.connecting = (async () => {
+    const browser = await chromium.connectOverCDP(transport, { timeout: timeoutMs, noDefaults: true });
+    const context = browser.contexts()[0];
+    if (!context || browser.contexts().length !== 1) throw new Error("DUO_SETUP_OPEN_FAILED");
+    const pipe = await browser.newBrowserCDPSession();
+    await pipe.send("Browser.setDownloadBehavior", { behavior: "deny" });
+    await pipe.detach();
+    return context;
+  })();
+  try {
+    return await Promise.race([startup.connecting, stopped, new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error("DUO_SETUP_OPEN_FAILED")), timeoutMs);
+    })]);
+  } finally { clearTimeout(timer); }
 }
 
 
 export const DEFAULT_BROWSER_LAUNCHER: PersistentContextLauncher = {
   async launch(input) {
+    if (input.ownedProcess !== undefined) return launchOwnedChromium(input);
     return chromium.launchPersistentContext(input.profileDirectory, {
       channel: "chromium",
       headless: input.headless,

@@ -56,6 +56,15 @@ The identity is stored as a hash. A held lease has no expiry or worker-death tak
 bounded and cancellation-aware. Exact generation/session release follows proved page/context
 closure. Uncertain launch or closure retains the lease, and worker close proof requires its release.
 
+Duo sign-up owns one full Chromium popup and its genuine child-process stop capability.
+Window creation/removal is projected separately from process and file closure. Explicit Reopen
+serializes by draft and window generation, positively stops the owned process, settles callbacks,
+and performs native profile exclusion/removal before launching again. The browser-root owner
+may recover only its exact retained signup closure failures inside that proof; new or unrelated
+source failures stay fenced, and expired callbacks cannot remove files. Cancel writes its durable
+abort intent only after the reversible closure phase succeeds. Confirmed methods and UNKNOWN
+attempts survive window recovery without an automatic enrollment retry.
+
 ### 2.1 Gates and parks
 
 `src/backend/runtime/execution/run-executor.ts` closes sessions through `closeAll("parked")`

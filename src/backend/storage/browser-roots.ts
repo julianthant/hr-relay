@@ -24,7 +24,7 @@ import { RuntimeLifetimeLock } from "./admission/lifetime-lock.js";
 import { AuthorityDatabase } from "./sqlite/authority-database.js";
 import { sameDirectory, fileIdentityObservation, noSymlinkAncestry, readPrivateFile, withPrivateFileLock, type DirectoryIdentity } from "./configuration/credential-safe-file.js";
 import { fsyncPath, privatePathRejects, replacePrivateFile, writePrivateStage } from "./private-path.js";
-import { hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "./source-closure.js";
+import { AuthoritySourceClosureUnprovedError, createBrowserSourceRecovery, hasUnprovedSourceClosure, retainAuthoritySourceClosure, retainUnprovedSourceOwners } from "./source-closure.js";
 
 export const PROFILE_CUSTODY_UNAVAILABLE_TEXT = "Browser profile custody is unavailable. The browser cannot open until its current profile revision is admitted.";
 export class ProfileCustodyUnavailableError extends Error {
@@ -122,6 +122,7 @@ export interface BrowserRootLaunch {
   closing(): void;
   closed(): void;
   uncertain(error: unknown): never;
+  recover(proof: () => Promise<void>): Promise<void>;
 }
 export class BrowserRootUnavailableError extends Error {
   readonly code = "BROWSER_ROOT_UNAVAILABLE";
@@ -141,6 +142,7 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
   const directory = join(binding.machineRoot, "machine"), path = join(directory, "browser-roots.json");
   const ancestry = new Map<string, DirectoryIdentity>();
   const stages = new Set<string>();
+  const signupRecoveries = new Map<string, ReturnType<typeof createBrowserSourceRecovery>>();
   let format: 1 | 2 | undefined = recovery ? undefined : 2;
   function parseDocument(value: unknown): StoppedBrowserRootsDocument {
     if (format === undefined) {
@@ -269,6 +271,8 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
         ? [...document.roots, row] : document.roots.map(entry => entry === prior ? row : entry) }, result: { row, input } };
     }, assertCurrent);
     let captured = allocated.row;
+    const recovery = createBrowserSourceRecovery();
+    if (captured.owner.kind === "signup") signupRecoveries.set(captured.launch.launchId, recovery);
     function transition(state: BrowserRoot["launch"]["state"], requireCurrent: boolean): void {
       if (requireCurrent) assertCurrent(); else assertHeld();
       captured = mutate(document => {
@@ -284,10 +288,23 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
         try { transition("unknown", false); }
         catch (publication) {
           const failure = retainAuthoritySourceClosure([error, publication], { admission, directory: { path, captured, lifetime } });
+          recovery.retain(failure);
           admission.retainSourceClosure(failure); lifetime.retainSourceClosure(failure); throw failure;
         }
         const failure = retainAuthoritySourceClosure([error], { admission, directory: { path, captured, lifetime } });
+        recovery.retain(failure);
         admission.retainSourceClosure(failure); lifetime.retainSourceClosure(failure); throw failure;
+      },
+      async recover(proof: () => Promise<void>): Promise<void> {
+        if (captured.owner.kind !== "signup") throw new BrowserRootUnavailableError();
+        await recovery.prove(async () => {
+          assertHeld();
+          const rows = read().roots;
+          const row = rows.find(row => row.directory === captured.directory);
+          if (row !== undefined && (row.launch.launchId !== captured.launch.launchId || !same(row.owner, captured.owner))) throw new BrowserRootUnavailableError();
+          await proof();
+          if (read().roots.some(row => row.directory === captured.directory)) throw new BrowserRootUnavailableError();
+        });
       } });
   }
   function beginLaunch(input: BrowserRootLaunchInput): BrowserRootLaunch { return allocateLaunch(input); }
@@ -388,10 +405,12 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
         if (expectedOwner !== undefined) { row.owner = expectedOwner; row.sessionGeneration = binding.sessionGeneration; }
         return { document: replaceRow(document, captured, row), result: undefined };
       }, assertOwner);
+      if (removed && captured.owner.kind === "signup") signupRecoveries.delete(captured.launch.launchId);
       return result;
     } catch (error) {
       if (error instanceof BrowserProfileStillClosingError) throw error;
       const failure = hasUnprovedSourceClosure(error) ? error : retainAuthoritySourceClosure([error], { admission, directory: { path, captured, lifetime } });
+      if (failure !== error && failure instanceof AuthoritySourceClosureUnprovedError && captured.owner.kind === "signup") signupRecoveries.get(captured.launch.launchId)?.retain(failure);
       admission.retainSourceClosure(failure); lifetime.retainSourceClosure(failure);
       retainUnprovedSourceOwners(failure, { admission, directory: { path, captured, lifetime } });
       throw failure;

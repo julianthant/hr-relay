@@ -18,7 +18,7 @@ it("binds Duo account names only to the verified UCSD email or its exact usernam
 
 it("requires distinct served completion facts for both methods before Ready", () => {
   const complete = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: false };
-  const ready = { state: "onboarding", operationId: "2d3b9a81-ec67-4e68-af2e-ad378a97dc00", profileId: "b5a72f23-c2e8-4252-9227-f4de440cedd9",
+  const ready = { browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: "2d3b9a81-ec67-4e68-af2e-ad378a97dc00", profileId: "b5a72f23-c2e8-4252-9227-f4de440cedd9",
     step: "ready", methods: { key: complete, touch: complete } };
   assert.equal(ProfileOnboardingStateSchema.safeParse(ready).success, true);
   assert.equal(ProfileOnboardingStateSchema.safeParse({ ...ready, methods: { ...ready.methods, key: { ...complete, portalAccepted: false } } }).success, true);
@@ -103,4 +103,45 @@ it("starting the other method closes an unfinished attempt instead of refusing",
     await owner.start(operationId, "key");
     assert.deepEqual(operation.onboarding?.attempts.map(entry => [entry.method, entry.state]), [["key", "closed"], ["touch", "closed"], ["key", "pending"]]);
   } finally { await owner.close(); }
+});
+
+it("reopens the exact browser generation after a drain failure without aborting the draft", async () => {
+  const operationId = randomUUID(), profileId = randomUUID();
+  let operation = SignUpOperationSchema.parse({ schemaVersion: 2, kind: "sign-up", operationId, profileId,
+    commandId: randomUUID(), writeId: randomUUID(), emailKey: "a".repeat(64), firstName: "Synthetic", lastName: "Operator",
+    createdAt: "2026-11-03T08:00:00.000Z", commandFingerprint: "b".repeat(64), phase: "applying",
+    credentials: { operationId: randomUUID(), keyId: randomUUID(), generation: 1, phase: "ready" },
+    onboarding: { accountId: randomUUID(), generation: 1, attempts: [] } });
+  const cause = new Error("synthetic first close failure");
+  const calls: number[] = [];
+  let recovered = false;
+  const release = Promise.withResolvers<void>();
+  const unused = (): never => { throw new Error("unexpected credential access"); };
+  const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)), onEvent() {}, onFailure() {},
+    failureDiagnostic: () => ({ kind: "unknown", causeTag: "browser-lifetime" }),
+    read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
+    email: unused, credentials: unused, store: unused, publicState: unused,
+    provider: {
+      async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { unused(); }, async start() { unused(); },
+      async cancel() { return { state: "closed" }; },
+      async closeBrowser() { return recovered ? { state: "closed" } : { state: "uncertain", cause }; },
+      async reopenBrowser(browser, generation) { browser.assertCurrent(); calls.push(generation); await release.promise; recovered = true; },
+      browserState() { return { state: "closed", generation: 4 }; },
+    },
+  });
+  await owner.showBrowser(operationId);
+  await assert.rejects(owner.drain(operationId), error => error instanceof Error && error.cause === cause);
+  assert.equal(operation.onboarding?.abort, undefined);
+  assert.equal(operation.onboarding?.finish, undefined);
+  const first = owner.reopenBrowser(operationId, 4), joined = owner.reopenBrowser(operationId, 4);
+  await assert.rejects(owner.reopenBrowser(operationId, 5));
+  assert.throws(() => owner.beginTransition(operationId));
+  await assert.rejects(owner.start(operationId, "touch"));
+  assert.deepEqual(operation.onboarding?.attempts, []);
+  release.resolve();
+  await Promise.all([first, joined]);
+  assert.deepEqual(calls, [4]);
+  assert.deepEqual(operation.onboarding?.attempts, []);
+  await owner.drain(operationId);
+  owner.assertClosed();
 });

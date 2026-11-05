@@ -16,7 +16,7 @@ const complete = { state: "complete", ceremonyObserved: true, portalAccepted: tr
 async function optionsFixture(page: Page, unavailable = false) {
   const commands: z.infer<typeof CommandSchema>[] = [], closed: number[] = [];
   const fixture: { profile: ProfileOnboardingState; confirmReply?: ProfileOnboardingState; returnRefused: boolean } = {
-    profile: ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
+    profile: ProfileOnboardingStateSchema.parse({ browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
       profileId: "00000000-0000-4000-8000-000000000002", step: "duo", methods: { key: idle, touch: idle } }), returnRefused: false,
   };
   const files = ["options.html", "options.js", "relay-options.js", "styles.css", "icons/autopilot.svg", "icons/shield-check.svg"];
@@ -43,7 +43,7 @@ async function optionsFixture(page: Page, unavailable = false) {
       const result: unknown = await response.json(); return result;
     }
     Reflect.set(window, "chrome", { runtime: { sendMessage: (message: unknown) => send("/bridge", message) },
-      tabs: { async getCurrent() { return { id: 9 }; }, async remove(id: number) { await send("/close", { id }); } } });
+      tabs: { async getCurrent() { return { id: 9, windowId: 9 }; } }, windows: { async remove(id: number) { await send("/close", { id }); } } });
   });
   return { fixture, commands, closed };
 }
@@ -53,20 +53,21 @@ for (const theme of ["light", "dark"] as const) test(`Fast Duo setup cards choos
 }, async ({ page }, info) => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 640, height: 720 });
   await page.emulateMedia({ colorScheme: theme });
   await optionsFixture(page);
   await page.goto("https://extension-fixture.invalid/options.html");
   const key = page.locator('.relay-method-card[data-method="key"]'), touch = page.locator('.relay-method-card[data-method="touch"]');
   await expect(key).toBeEnabled(); await expect(key).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("select")).toHaveCount(0); await expect(page.locator("#transport")).toHaveCount(0);
+  await expect(page.locator(".relay-method-track")).toHaveCount(0);
   await expect(page.locator("button.primary:visible")).toHaveCount(1);
   await touch.focus(); await page.keyboard.press("Enter");
   await expect(touch).toHaveAttribute("aria-pressed", "true"); await expect(page.locator("#editorTitle")).toHaveText("Set up Touch ID");
   await key.focus(); await page.keyboard.press("Space");
   await expect(key).toHaveAttribute("aria-pressed", "true"); await expect(page.locator("#editorTitle")).toHaveText("Set up Security key");
   await key.blur();
-  await captureParityPair(page, resolve("tests/parity/references"), { stateId: "fast-duo-options", theme, viewport: "1440x900",
+  await captureParityPair(page, resolve("tests/parity/references"), { stateId: "fast-duo-options", theme, viewport: "640x720",
     adapter: "fixture", fixtureId: "fast-duo-options", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
     appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default" });
   await attachShellA11y(page, info, `fast-duo-options-${theme}.a11y.yml`);

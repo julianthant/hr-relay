@@ -7,7 +7,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "vitest";
-import type { BrowserContext, Worker } from "playwright";
+import type { BrowserContext, Page, Worker } from "playwright";
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../../../src/backend/profiles/onboarding-duo.js";
@@ -66,7 +66,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     async evaluate(_callback: unknown, input: { method: string; args: unknown[] }) {
       workerCalls.push(input.method);
       if (input.method === "install") { clock.advanceMonotonic(installDurationMs); if (installFailure) throw installFailure; startupEntered?.(); await startupHold; if (failInstall) throw new Error("synthetic arm initialization failed"); return; }
-      if (input.method === "browserInstall") { clock.advanceMonotonic(browserSetupDurationMs); if (browserSetupFailure) throw browserSetupFailure; return; }
+      if (input.method === "browserInstall") { clock.advanceMonotonic(browserSetupDurationMs); if (browserSetupFailure) throw browserSetupFailure; const page = makePage("chrome-extension://owned-extension/src/options.html"); pages.push(page); for (const resolve of pageWaiters.splice(0)) resolve(page as unknown as Page); return; }
+      if (input.method === "browserPage") { const page = makePage(String(input.args[0])); pages.push(page); for (const resolve of pageWaiters.splice(0)) resolve(page as unknown as Page); return 1; }
       if (input.method === "browserFocus") { windowFocusCount++; return; }
       if (input.method === "browserNext") {
         if (browserRequests.length) return browserRequests.shift();
@@ -94,7 +95,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     const frame = { url: () => url, evaluate: async () => true };
     return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : [frame], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
       goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; if (portalLanding === undefined) throw portalFailure; url = portalLanding; } else url = destination; },
-      waitForURL: async (matches: (candidate: URL) => boolean) => { assert.ok(matches(new URL(url))); },
+      waitForURL: async (matches: string | ((candidate: URL) => boolean)) => { assert.ok(typeof matches === "string" ? url === matches : matches(new URL(url))); },
+      waitForLoadState: async () => undefined, on: () => undefined,
       waitForFunction: async () => ({ dispose: async () => undefined }),
       locator: () => ({ count: async () => 1, elementHandle: async () => ({
         isVisible: async () => true, isEditable: async () => true, isEnabled: async () => true,
@@ -104,7 +106,8 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
       close: async () => { pageClosed = true; }, isClosed: () => closed || pageClosed };
   }
   let pages = [makePage()];
-  const context = { serviceWorkers: () => [worker], pages: () => pages.filter(page => !page.isClosed()), isClosed: () => closing || closed, on: (_event: string, callback: () => void) => { listeners.push(callback); },
+  const pageWaiters: ((page: Page) => void)[] = [];
+  const context = { waitForEvent: () => new Promise<Page>(resolve => pageWaiters.push(resolve)), serviceWorkers: () => [worker], pages: () => pages.filter(page => !page.isClosed()), isClosed: () => closing || closed, on: (_event: string, callback: () => void) => { listeners.push(callback); },
     newCDPSession: async () => ({ async send(name: string, input?: { credentialId: string }) {
       if (["WebAuthn.enable", "WebAuthn.setResponseOverrideBits", "WebAuthn.setUserVerified", "WebAuthn.setAutomaticPresenceSimulation"].includes(name)) return {};
       if (name === "WebAuthn.addVirtualAuthenticator") return { authenticatorId: "synthetic-platform" };
@@ -132,6 +135,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
         closed=false;closing=false;pages=[makePage()];listeners.length=0;
         return context;
       }
+      input.ownedProcess?.({ exited: () => closed, onExit: callback => listeners.push(callback), stop: async () => { await context.close(); } });
       launchCount++; closed = false; closing = false; pages = [makePage(), ...(method === "touch" ? [makePage("https://test.duosecurity.com")] : [])]; listeners.length = 0; profile = input.profileDirectory;
       assert.equal(existsSync(join(input.extensionDirectory, "unlisted.txt")), false);
       assert.equal(readFileSync(join(input.extensionDirectory, "LICENSE"), "utf8"), "synthetic license fixture");
@@ -527,7 +531,7 @@ describe("draft Duo provider", () => {
   for (const platform of ["darwin", "win32"] as const) it(`activates each ${platform} show and returns to the original Relay target without starting an attempt`, async () => {
     const w = world("key", platform);
     const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-    const state = ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
+    const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
       step: "duo", methods: { key: idle, touch: idle } });
     w.owner.readState = () => state;
     try {
@@ -556,7 +560,7 @@ describe("draft Duo provider", () => {
   it("logs an unverified macOS return without failing the finished Duo state", async () => {
     const w = world();
     const complete = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: false, exactCredentialRequestObserved: false };
-    const state = ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
+    const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
       step: "ready", methods: { key: complete, touch: complete } });
     w.owner.readState = () => state;
     w.refuseReturn(new Error("synthetic return verification failure"));
@@ -937,7 +941,7 @@ it("reports backend failures with exception type and measures processing without
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(w.events.some(event => event.stage === "slow-operation"), false);
     const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-    const state = ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
+    const state = ProfileOnboardingStateSchema.parse({ browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId,
       step: "duo", methods: { key: idle, touch: idle } });
     w.owner.readState = () => { w.clock.advanceMonotonic(1500); return state; };
     await w.sendBrowser("state");

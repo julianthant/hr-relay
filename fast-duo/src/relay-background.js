@@ -241,6 +241,7 @@ if (typeof chrome !== 'undefined') {
   let relay;
   let browserInstalled = false;
   let browserStopped = false;
+  let setupWindowId;
   let waiter;
   const requests = [];
   const replies = new Map();
@@ -284,6 +285,17 @@ if (typeof chrome !== 'undefined') {
       if (browserInstalled || browserStopped) throw new Error('ONBOARDING_DUO_REVOKED');
       await chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
       browserInstalled = true;
+      const window = await chrome.windows.create({ type: 'popup', url: chrome.runtime.getURL('src/options.html'), width: 640, height: 752, focused: true });
+      if (!Number.isInteger(window.id)) throw new Error('ONBOARDING_DUO_SCOPE');
+      setupWindowId = window.id;
+    },
+    async browserPage(url) {
+      requireBrowser();
+      const window = await chrome.windows.get(setupWindowId);
+      if (window.id !== setupWindowId) throw new Error('ONBOARDING_DUO_SCOPE');
+      const tab = await chrome.tabs.create({ windowId: setupWindowId, url, active: false });
+      if (!Number.isInteger(tab.id)) throw new Error('ONBOARDING_DUO_SCOPE');
+      return tab.id;
     },
     async browserFocus() {
       requireBrowser();
@@ -291,6 +303,7 @@ if (typeof chrome !== 'undefined') {
       requireBrowser();
       if (contexts.length !== 1) throw new Error('ONBOARDING_DUO_SCOPE');
       const window = await chrome.windows.get(contexts[0].windowId);
+      if (window.id !== setupWindowId) throw new Error('ONBOARDING_DUO_SCOPE');
       requireBrowser();
       await chrome.windows.update(window.id, { focused: true, ...(window.state === 'minimized' ? { state: 'normal' } : {}) });
       requireBrowser();
@@ -321,6 +334,12 @@ if (typeof chrome !== 'undefined') {
     reply(...args) { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); return relay.reply(...args); },
     assertContext() { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); return relay.assertContext(); },
     async stop() { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); const arm = relay; await arm.stop(); relay = undefined; },
+  });
+  chrome.windows.onRemoved.addListener(windowId => {
+    if (windowId !== setupWindowId || !browserInstalled || browserStopped) return;
+    const event = { id: crypto.randomUUID(), kind: 'window-closed' };
+    if (waiter) { const receive = waiter; waiter = undefined; receive(event); }
+    else requests.push(event);
   });
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const started = performance.now();
