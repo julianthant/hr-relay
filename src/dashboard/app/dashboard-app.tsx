@@ -227,7 +227,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       ) : boot === undefined ? (
         <BootGate bootstrap={bootstrap} />
       ) : (
-        <ViewNavigationProvider route={route} setRoute={setRoute}><DashboardPageBoundary resetKey={canonicalJsonStringify(route)} onRecover={() => setRoute({ start: false }, "replace")}><LoadedApp
+        <ViewNavigationProvider route={route} setRoute={setRoute}><DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}><LoadedApp
           preferences={preferences}
           boot={boot}
           onProfileLogout={profileSource === "served" ? publicProfile.logout : undefined}
@@ -1106,7 +1106,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         tabIndex={-1}
         className="flex min-h-0 min-w-0 flex-1 flex-col"
       >
-        <DashboardPageBoundary resetKey={canonicalJsonStringify(route)} onRecover={() => setRoute({ start: false }, "replace")}>
+        <DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}>
         {/* Show unreachable authority on every view; backup warnings do not stop work. */}
         {}
         <StorageBanner
