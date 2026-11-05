@@ -12,9 +12,11 @@ const active = (epoch = 1) => PublicProfileStateSchema.parse({ state: "active", 
 
 async function fixture(response: () => Response | Promise<Response> = () => Response.json({ state: "refused", code: "PROFILE_SESSION_STALE" }, { status: 401 })) {
   let reads = 0, resumes = 0;
+  const requests: string[] = [];
   let current: () => Promise<PublicProfileState> = async () => active();
   const client = createDashboardClient({ baseUrl: "http://fixture.test", fetchImpl: async url => {
     const path = new URL(url).pathname;
+    requests.push(path);
     if (path === "/api/v1/profile/state") { reads++; return Response.json(await current()); }
     if (path === "/api/v1/profile/resume") { resumes++; return Response.json(active(2)); }
     if (path === "/api/v1/profile/sign-in") return Response.json(active(3));
@@ -25,7 +27,7 @@ async function fixture(response: () => Response | Promise<Response> = () => Resp
   let session!: ReturnType<typeof usePublicProfileSession>;
   function Probe() { session = usePublicProfileSession(client, true); return createElement("output", null, session.state?.state); }
   await act(async () => root.render(createElement(Probe)));
-  return { client, session: () => session, reads: () => reads, resumes: () => resumes,
+  return { client, session: () => session, reads: () => reads, resumes: () => resumes, requests: () => requests,
     next(read: () => Promise<PublicProfileState>) { current = read; },
     reject: () => act(async () => { await assert.rejects(client.bootstrap()); }),
     async close() { await act(async () => root.unmount()); host.remove(); } };
@@ -38,9 +40,13 @@ it("reconciles an open tab's revoked cookie through public session state and the
     await f.reject();
     assert.deepEqual(f.session().state, { state: "signed-out", resumable: true });
     assert.equal(f.reads(), 2); assert.equal(f.resumes(), 0);
+    assert.deepEqual(f.requests(), ["/api/v1/profile/state", "/api/v1/bootstrap", "/api/v1/profile/state"]);
     await act(async () => { await f.session().port.resume(); });
     assert.deepEqual(f.session().state, active(2)); assert.equal(f.resumes(), 1);
-  } finally { await f.close(); }
+  } finally {
+    await f.close();
+    assert.equal(f.requests().some(path => path === "/api/v1/profile/sign-in" || path === "/api/v1/profile/logout"), false);
+  }
 });
 
 for (const [status, body] of [
