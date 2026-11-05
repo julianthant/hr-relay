@@ -8,7 +8,7 @@ import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
 import { separationsDescriptor, separationsIdentityCheckDescriptor, separationsUcpathTerminationDescriptor, separationsKualiFinalizationDescriptor } from "../../support/helpers/registered-workflows.js";
 
 const employeeName = "Quillan, Petra";
-const eid = EidSchema.parse("10990991");
+const eid = EidSchema.parse("10873698");
 
 describe("Separations shared name-search safety", () => {
   for (const descriptor of [separationsDescriptor, separationsIdentityCheckDescriptor, separationsUcpathTerminationDescriptor, separationsKualiFinalizationDescriptor]) {

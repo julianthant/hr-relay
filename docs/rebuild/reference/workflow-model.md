@@ -772,8 +772,10 @@ Every start surface publishes the committed run through `runQueuedSpanEvent` bef
 Search mode accepts an EID or name. Match mode accepts a name plus a date of birth, an SSN, or both. The input schema owns the defaults for `crmCheck`, `keepNonHdh`, and `includeCrmDates`.
 
 The shared Person Org driver compares names against the original normalized full request before
-drilling grid candidates or accepting an automatic detail. Shortened name-query attempts do not
-change that identity. Prefix-only results are not-found; distinct exact EIDs remain ambiguous.
+drilling grid candidates or accepting an automatic detail. Comma-free names use given-name then
+family-name order; `Family, Given` is the explicit alternative. Shortened or reordered search queries
+do not authorize another identity. Prefix-only or reversed-person results are not-found; distinct
+exact EIDs remain ambiguous.
 Separations and I-9 Check use this same driver rule.
 Name-only CRM discovery independently requires the exact full requested name on the search row
 and opened record, so CRM-only recovery cannot introduce a prefix employee. A supplied EID keeps
