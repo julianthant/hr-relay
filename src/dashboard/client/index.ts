@@ -65,7 +65,7 @@ export function createDashboardClient(input: Readonly<{
   let profileAuthority: Readonly<Pick<Extract<PublicProfileState, { state: "active" }>, "profileId" | "epoch">> | undefined;
   let activation = { pending: false };
   const reportFailure = (failure: NonNullable<ReturnType<typeof debugFailureOutcome>> & { route: string }): void => {
-    if (surface === undefined) return;
+    if (surface === undefined || profileAuthority === undefined) return;
     void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard",
       route: failure.route, surface: surface(), code: failure.code, reason: failure.reason,
       message: "Dashboard request did not complete successfully" })
@@ -75,6 +75,7 @@ export function createDashboardClient(input: Readonly<{
     const dispatchedAuthority = profileAuthority, recipients = [...profileSessionListeners];
     return () => {
       if (dispatchedAuthority !== profileAuthority) return;
+      profileAuthority = undefined;
       for (const recipient of recipients) if (profileSessionListeners.has(recipient)) recipient.listener();
     };
   },
@@ -83,7 +84,7 @@ export function createDashboardClient(input: Readonly<{
     const request = { pending: true }; activation = request;
     try {
       const state = parseProfileState((await transport.requestJsonResponse(path, init)).body);
-      if (activation === request && state.state === "active") profileAuthority = { profileId: state.profileId, epoch: state.epoch };
+      if (activation === request) profileAuthority = state.state === "active" ? { profileId: state.profileId, epoch: state.epoch } : undefined;
       return state;
     } finally { request.pending = false; }
   };
@@ -117,8 +118,10 @@ export function createDashboardClient(input: Readonly<{
     async readProfileSession() {
       const dispatchedAuthority = profileAuthority, requestedActivation = activation;
       const state = parseProfileState((await transport.requestJsonResponse("/api/v1/profile/state")).body);
-      if (dispatchedAuthority === profileAuthority && requestedActivation === activation && !activation.pending && state.state === "active"
-        && (state.profileId !== profileAuthority?.profileId || state.epoch !== profileAuthority.epoch)) profileAuthority = { profileId: state.profileId, epoch: state.epoch };
+      if (dispatchedAuthority === profileAuthority && requestedActivation === activation && !activation.pending) {
+        if (state.state !== "active") profileAuthority = undefined;
+        else if (state.profileId !== profileAuthority?.profileId || state.epoch !== profileAuthority.epoch) profileAuthority = { profileId: state.profileId, epoch: state.epoch };
+      }
       return state;
     },
     async signInProfile(request: ProfileLoginRequest) {
@@ -135,11 +138,13 @@ export function createDashboardClient(input: Readonly<{
       });
     },
     async deleteProfileAccount(request) {
+      profileAuthority = undefined;
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/delete-account", {
         method: "POST", body: JSON.stringify(DeleteProfileAccountRequestSchema.parse(request)),
       })).body);
     },
     async logOutProfile() {
+      profileAuthority = undefined;
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/logout", { method: "POST", body: "{}" })).body);
     },
     async completeProfileOnboarding(request) {
@@ -178,6 +183,7 @@ export function createDashboardClient(input: Readonly<{
       })).body);
     },
     async reportError(report: DashboardErrorReport) {
+      if (profileAuthority === undefined) return;
       await transport.requestJson("/api/v1/debug/errors", { method: "POST", body: JSON.stringify(DashboardErrorReportSchema.parse(report)) });
     },
     ...queries,
