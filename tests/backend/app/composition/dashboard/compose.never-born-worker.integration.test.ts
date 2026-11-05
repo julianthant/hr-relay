@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { rmSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { it, vi } from "vitest";
 import { z } from "zod";
 import { neverBornFixture, refusedStart, nativeWorkerBytes } from "../../../../support/helpers/backend/never-born-worker-world.js";
@@ -269,7 +270,7 @@ it("loses positive proof across an actual controller crash and refuses the unfin
   await positiveControl();
   const message = z.object({ workspace: z.string(), profileId: z.string(), path: z.string(), keychain: z.array(z.tuple([z.string(), z.string()])) });
   const launch = (args: string[], env: NodeJS.ProcessEnv) => spawn(process.execPath,
-    ["--import", testProcessImport(), new URL("../../../../support/processes/never-born-worker-controller.ts", import.meta.url).pathname, ...args],
+    ["--import", testProcessImport(), fileURLToPath(new URL("../../../../support/processes/never-born-worker-controller.ts", import.meta.url)), ...args],
     { env, stdio: ["ignore", "ignore", "pipe", "ipc"] });
   const child = launch([], credentialKeychainTestEnvironment(process.env));
   let workspace: string | undefined;
