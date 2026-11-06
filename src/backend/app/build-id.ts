@@ -4,10 +4,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
 import { join, resolve } from "node:path";
 import { z } from "zod";
+import { PARENT_BUILD_ID_ENV, parentBuildId } from "../../models/config/secrets.js";
 import { FingerprintSchema, type Fingerprint } from "../../rules/identity/ids.js";
 import { digestFiles, filesUnder } from "./source-digest.js";
 
-export const PARENT_BUILD_ID_ENV = "RELAY_PARENT_BUILD_ID";
+export { PARENT_BUILD_ID_ENV };
 const WORKER_SOURCE_ROOTS = ["src/backend", "src/workflow-kit", "src/workflows", "src/models", "src/rules"] as const;
 const WORKER_SOURCE_FILES = ["src/cli.ts"] as const;
 const RUNTIME_LOADER_PACKAGES = ["tsx"] as const;
@@ -126,9 +127,9 @@ const REPO_ROOT = resolve(import.meta.dirname, "..", "..", "..");
 let captured: Fingerprint | undefined;
 
 /** Freeze this process's build id before the application graph loads; a worker must match its parent. */
-export function captureBuildId(env: NodeJS.ProcessEnv = process.env): Fingerprint {
+export function captureBuildId(env?: NodeJS.ProcessEnv): Fingerprint {
   captured ??= computeBuildId(REPO_ROOT);
-  const parent = env[PARENT_BUILD_ID_ENV];
+  const parent = parentBuildId(env);
   if (parent !== undefined && parent !== captured) {
     throw new BuildIdError("relay-build-changed-under-running-app", `worker build ${captured} differs from parent build ${parent}`);
   }
