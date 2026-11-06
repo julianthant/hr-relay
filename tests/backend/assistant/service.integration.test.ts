@@ -25,7 +25,7 @@ import { chatGptFixture } from "../../support/helpers/chatgpt-account-fixtures.j
 const PUBLIC_ASSISTANT_SOURCE = { repositoryId: PUBLIC_ASSISTANT_REPOSITORY_ID, revision: "9af76694409eeff5e0ac954fc9501bc69991643a" };
 const file = { path: "docs/reference/assistant.md", mode: "100644", text: "Synthetic public reference.\nDry runs stop before writes." };
 const bytes = Buffer.from(JSON.stringify({ ...PUBLIC_ASSISTANT_SOURCE, files: [file] }));
-const context = createAssistantContext(bytes, { ...PUBLIC_ASSISTANT_SOURCE, exportSha256: "13b64308f627d12991b2c68f1ee59211763f37393b93fc01f4d5b59a561bab26" });
+const context = createAssistantContext(bytes, { ...PUBLIC_ASSISTANT_SOURCE, exportSha256: "250ee6f34224e2f8324ceb6e2def7360146fb1043bed5fcf8af61a978ec828c3" });
 const selected = { subjectRef: "subject-one", displayName: "Synthetic Person", employeeId: "10812345" };
 const answer = { action: "answer", text: "Dry run explanation", citations: [{ path: file.path, revision: PUBLIC_ASSISTANT_SOURCE.revision, startLine: 2, endLine: 2, quote: "Dry runs stop before writes." }] };
 const propose = { action: "propose", workflowId: "write-fixture", intent: "dry-run" };

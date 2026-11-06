@@ -8,7 +8,7 @@ import { AssistantKnowledgeCitationSchema } from "../../models/dashboard/assista
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 
 export const PUBLIC_ASSISTANT_REPOSITORY_ID = "R_kgDOVOf3Cg";
-const PathSchema = z.string().max(200).regex(/^(?:src\/(?:models|workflow-kit|workflows)\/|docs\/rebuild\/)[A-Za-z0-9_/-]+\.(?:ts|md)$/u)
+const PathSchema = z.string().max(200).regex(/^(?:src\/(?:models|workflow-kit|workflows)\/|docs\/reference\/)[A-Za-z0-9_/-]+\.(?:ts|md)$/u)
   .refine(path => !path.split("/").some(part => part === ".." || part === "." || part === "") && !/(?:credential|secret|private|fixture|artifact)/iu.test(path));
 const ExportSchema = z.strictObject({ repositoryId: z.string(), revision: z.string(), files: z.array(z.strictObject({
   path: PathSchema, mode: z.literal("100644"), text: z.string().min(1).max(40_000).refine(text => !Array.from(text).some(char => { const code = char.charCodeAt(0); return code >= 127 && code <= 159 || code < 32 && ![9, 10, 13].includes(code); })),
