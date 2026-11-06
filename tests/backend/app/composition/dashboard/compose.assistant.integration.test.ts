@@ -621,12 +621,24 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
     publicCapabilityResponses(transport);
     assert.equal((await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
     let next: (outbound: string) => readonly [string, unknown] = () => { throw new Error("no proposal scripted"); };
+    const outputs: unknown[] = [];
     transport.setResponse(init => {
       if (typeof init.body !== 'string') throw Error('synthetic request body required');
-      const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), [name, args] = next(JSON.stringify(request));
+      const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), last = request.input.at(-1);
+      // After a tool output the scripted model answers in prose; the turn's disposition comes from the tool outcome.
+      if (last !== undefined && 'type' in last && last.type === 'function_call_output') {
+        outputs.push(JSON.parse(last.output));
+        return new Response(completedResponseStream([{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'Done.' }] }],
+          request.model, `resp_${randomUUID()}`), { headers: { 'Content-Type': 'text/event-stream' } });
+      }
+      const [name, args] = next(JSON.stringify(request));
       return new Response(completedResponseStream([{ type: 'function_call', namespace: 'relay', name, call_id: `call_${randomUUID()}`, arguments: JSON.stringify(args), status: 'completed' }],
         request.model, `resp_${randomUUID()}`), { headers: { 'Content-Type': 'text/event-stream' } });
     });
+    const refusedTurn = async (message: string, script: (outbound: string) => readonly [string, unknown], selection?: string) => {
+      next = script;
+      return client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message, ...(selection === undefined ? {} : { subjectRef: selection }) });
+    };
     const selected = (outbound: string) => { const token = /selected the run (\[\[R1\.g\d+\]\])/u.exec(outbound)?.[1]; assert.ok(token); return token; };
     const propose = async (message: string, script: (outbound: string) => readonly [string, unknown], selection?: string) => {
       next = script;
@@ -655,9 +667,33 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
     assert.deepEqual(stale, { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
 
     const current = `run_${run.envelope.runId}_${cancelled.version}`;
-    const rerun = await propose('Rerun this run', outbound => ['propose_rerun', { run: selected(outbound) }], current);
-    assert.equal(rerun.effect === 'workflow-start' ? rerun.source : 'none', 'rerun');
-    assert.equal(database.authority.assistantAuthorization.action(rerun.actionId)?.command.family, 'start');
+    assert.deepEqual(await refusedTurn('Rerun this run', outbound => ['propose_rerun', { run: selected(outbound) }], current),
+      { state: 'refused', code: 'ASSISTANT_PROPOSAL_REFUSED', message: ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED }, 'a cancelled source is not rerun-eligible');
+    const durableCounts = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), raw => ({
+      actions: raw.prepare('SELECT id FROM assistant_actions').all().length, plans: raw.prepare('SELECT id FROM run_requests').all().length }));
+    const countsBefore = durableCounts();
+    assert.deepEqual(await refusedTurn('Run Person Lookup again for this run', outbound => ['propose_workflow_start', { workflow: 'person-lookup', entries: [selected(outbound)] }], subjectRef),
+      { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE }, 'a moved selected run cannot be reused');
+    assert.deepEqual(durableCounts(), countsBefore);
+
+    const second = seedAssistantReadRun(fixture);
+    const rowOf = async (runId: string) => {
+      const day = (await client.searchRuns({ q: runId, scope: 'run', limit: 1 })).results[0]?.partitionDay; assert.ok(day);
+      const row = (await client.dashboardDay(day)).queueSurfaces.find(surface => surface.runId === runId); assert.ok(row); return row;
+    };
+    await vi.waitFor(async () => assert.ok(await rowOf(second.run.envelope.runId)));
+    const pause = await propose('Pause this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'pause' }], second.subjectRef);
+    assert.equal((await confirm(pause)).state, 'applied');
+    const paused = database.authority.runs.get(second.run.envelope.runId); assert.ok(paused?.pause !== undefined);
+    const pausedRow = await rowOf(second.run.envelope.runId);
+    assert.equal(pausedRow.rowRevision, paused.version, 'the queue row publishes the paused revision without another command');
+    assert.equal(pausedRow.pauseControl?.state, 'paused');
+    const resume = await propose('Resume this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'resume' }], `run_${paused.envelope.runId}_${paused.version}`);
+    assert.equal((await confirm(resume)).state, 'applied');
+    const resumed = database.authority.runs.get(second.run.envelope.runId); assert.ok(resumed && resumed.pause === undefined);
+    const resumedRow = await rowOf(second.run.envelope.runId);
+    assert.equal(resumedRow.rowRevision, resumed.version);
+    assert.notEqual(resumedRow.pauseControl?.state, 'paused');
 
     const listed = await propose('Look up 10812345 and Jordan Lee', outbound => {
       const eid = /\[\[E1\.g\d+\]\]/u.exec(outbound)?.[0]; assert.ok(eid);

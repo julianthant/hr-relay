@@ -25,7 +25,7 @@ export interface AssistantProposalDeps {
   readonly database: AuthorityDatabase;
   readonly authorization: ReturnType<typeof createAssistantAuthorization>;
   readonly plans: StartPlanService;
-  readonly commands: Pick<DashboardCommandService, "submit">;
+  readonly commands: Pick<DashboardCommandService, "submit" | "publish">;
   readonly runs: Pick<RunRecordService, "read">;
   readonly descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   readonly rerunValues: (request: unknown) => RerunValuesResponse;
@@ -166,7 +166,8 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
         const runs: { runId: string; version: number }[] = [];
         const submissions = entries.map(entry => {
           if (/^\s*\[\[R/u.test(entry)) {
-            const run = reusableRun(context.references.resolve(entry, ["R"]).target, workflow);
+            const reference = context.references.resolve(entry, ["R"]), run = reusableRun(reference.target, workflow);
+            if (reference.version !== undefined && reference.version !== run.version) throw new AssistantToolRefusal("ASSISTANT_READ_STALE");
             runs.push({ runId: run.envelope.runId, version: run.version });
             return JsonValueSchema.parse(run.input.raw);
           }
@@ -258,10 +259,14 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
       if (decision.reviewedDigest !== issued.digest) throw new Error("assistant-reviewed-proposal-mismatch");
       pending.delete(decision.actionId);
       deps.authorization.approve(issued.chat, decision.actionId, decision.revision);
+      // After the claim every failure, including this Confirm's own abort, is UNKNOWN: the action is spent and never retried.
       try {
+        const current = () => { signal.throwIfAborted(); issued.assertCurrent(); };
         const result = issued.start
-          ? await deps.authorization.consumeStart(issued.chat, decision.actionId, () => issued.assertCurrent(), command => deps.commands.submit(command))
+          ? await deps.authorization.consumeStart(issued.chat, decision.actionId, current, command => deps.commands.submit(command))
           : deps.authorization.consume(issued.chat, decision.actionId);
+        if (!issued.start && result !== null) deps.commands.publish(issued.record.command, result);
+        signal.throwIfAborted();
         if (result?.state !== "applied") return { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
         issued.assertApplied();
         return { state: "applied", actionId: decision.actionId };
