@@ -20,15 +20,15 @@ function excludedDashboard(repoRelativePath: string): string | undefined {
 
 function valueSpecifiers(text: string): string[] {
   const found: string[] = [];
+  for (const match of text.matchAll(/(?<![.\w$])import\(\s*["'](\.[^"']+)["']\s*\)|(?<![.\w$])require\(\s*["'](\.[^"']+)["']\s*\)/gu)) {
+    const specifier = match[1] ?? match[2];
+    if (specifier !== undefined) found.push(specifier);
+  }
   const lines = text.split("\n");
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
     const sideEffect = /^\s*import\s+["'](\.[^"']+)["']/u.exec(line);
     if (sideEffect?.[1] !== undefined) found.push(sideEffect[1]);
-    for (const match of line.matchAll(/(?<![.\w$])import\(\s*["'](\.[^"']+)["']\s*\)|(?<![.\w$])require\(\s*["'](\.[^"']+)["']\s*\)/gu)) {
-      const specifier = match[1] ?? match[2];
-      if (specifier !== undefined) found.push(specifier);
-    }
     const from = /\bfrom\s+["'](\.[^"']+)["']/u.exec(line);
     if (from?.[1] === undefined) continue;
     let start = index;
@@ -53,6 +53,8 @@ it("keeps worker code, including the CLI, from importing the dashboard tree the 
   assert.deepEqual(dashboardViolations(cli, 'import "./dashboard/panel.js";'), ["src/cli.ts -> src/dashboard/panel.js"]);
   assert.deepEqual(dashboardViolations(cli, 'require("./dashboard/panel.js");'), ["src/cli.ts -> src/dashboard/panel.js"]);
   assert.deepEqual(dashboardViolations(cli, 'void import("./dashboard/panel.js");'), ["src/cli.ts -> src/dashboard/panel.js"]);
+  assert.deepEqual(dashboardViolations(cli, "void import(\n  \"./dashboard/panel.js\"\n)"), ["src/cli.ts -> src/dashboard/panel.js"]);
+  assert.deepEqual(dashboardViolations(cli, "require(\n  \"./dashboard/panel.js\"\n)"), ["src/cli.ts -> src/dashboard/panel.js"]);
   assert.deepEqual(dashboardViolations(cli, 'import type { Panel } from "./dashboard/panel.js";'), []);
   assert.equal("src\\dashboard\\panel.tsx".startsWith("src/dashboard/"), false);
   assert.equal(excludedDashboard("src\\dashboard\\panel.tsx"), "src/dashboard/panel.tsx");
