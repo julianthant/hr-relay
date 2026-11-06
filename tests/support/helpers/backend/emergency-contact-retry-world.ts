@@ -7,6 +7,8 @@ import { createDeterministicContactPersistence } from "../../../../src/backend/s
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { UCPATH_CONTACT_DISPLAYED_NAME, UcpathContactPageSnapshotSchema } from "../../../../src/models/ui/ucpath-emergency-contact.js";
 import { SearchPersonOrgOutputSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
+import { EmergencyContactMemberInputSchema } from "../../../../src/models/workflows/emergency-contact-member/input.js";
+import { approvedEmergencyContact, contactEffect } from "../../../../src/rules/ucpath/emergency-contact.js";
 import { composeWorkflowModule, compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import { defineWorkflowStore } from "../../../../src/workflow-kit/task-registry.js";
@@ -20,8 +22,8 @@ export const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow)
 
 export function createEmergencyContactRetryWorld() {
   const world = createOcrReviewWorld();
-  return { cleanup: world.cleanup, async fixture(options: Readonly<{ failures?: number; onFencedSave?: () => void }> = {}) {
-    const control = { failuresRemaining: options.failures ?? 1, unknownAfterSave: false, failAfterSave: false, failAccounting: false };
+  return { cleanup: world.cleanup, async fixture(options: Readonly<{ failures?: number; onFencedSave?: () => void; secondMemberAlreadyPresent?: boolean }> = {}) {
+    const control = { failuresRemaining: options.failures ?? 1, unknownAfterSave: false, failAfterSave: options.secondMemberAlreadyPresent === true, failAccounting: false };
     const hooks: { onSpan?: (event: Parameters<SpanEmitter["emit"]>[0]) => void; onTransactionSettled?: () => void } = {};
     const accountingStore = defineWorkflowStore("emergency-contact", { readResult: defineTask(readEmergencyContactResultTask.contract, {
       sessions: [], async run(args) {
@@ -75,9 +77,12 @@ export function createEmergencyContactRetryWorld() {
     }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
     const member = composeWorkflowModule(contactSaveMember, taskStoreRegistry.stores);
     const f = await world.fixture({ coordinator: true, member, approvedStore: accountingStore, onSpan: event => hooks.onSpan?.(event),
-      onTransactionSettled: () => {
+      onTransactionSettled: run => {
         hooks.onTransactionSettled?.();
-        if (control.failAfterSave) { control.failAfterSave = false; throw new Error("fixture-local-failure-after-committed-save"); }
+        if (control.failAfterSave && (options.secondMemberAlreadyPresent !== true
+          || EmergencyContactMemberInputSchema.parse(run.input.parsed.value).record.assertedEid === "10800001")) {
+          control.failAfterSave = false; throw new Error("fixture-local-failure-after-transaction-settlement");
+        }
     }, record: true, release: true, pageCount: 2, reviewedPages: facts, operatorEvidence: true, sessions, screenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } } });
     assert.equal(persistence.size, 0);
     for (let index = 0; index < facts.length; index++) {
@@ -85,6 +90,17 @@ export function createEmergencyContactRetryWorld() {
       assert.equal(f.canonical.kernel.execute({ ...command, payload: { ...command.payload, assertedEid: String(10800000 + index) } }).state, "applied");
     }
     assert.equal(f.canonical.kernel.execute(f.approval()).state, "applied");
+    if (options.secondMemberAlreadyPresent) {
+      const review = f.database.authority.ocrReviews.latest(f.run.envelope.runId); assert.ok(review);
+      const record = review.records.find(record => record.assertedEid === "10800001"); assert.ok(record);
+      const input = approvedEmergencyContact(record), desired = contactEffect(input);
+      const rows = UcpathContactPageSnapshotSchema.parse(fixture.page).rows;
+      rows[0] = { ...rows[0], primary: false };
+      rows[1] = { rowIndex: 1, name: desired.name, relationship: desired.relationship, primary: true, phone: desired.phone ?? "",
+        sameAddressAsEmployee: false, address: desired.address.kind === "explicit" ? desired.address.fields : null };
+      persistence.set(input.emplId, createDeterministicContactPersistence(UcpathContactPageSnapshotSchema.parse({ ...fixture.page,
+        displayedEid: input.emplId, displayedName: input.expectedName, rows }), () => new Date(++ticks).toISOString()));
+    }
     const interrupted = await f.canonical.execute(f.parentRun, new AbortController().signal);
     assert.equal(interrupted.run?.lifecycle.state, "queued", "a terminal failed sibling requeues the allow-partial parent");
     const current = (runId = f.parentRun.envelope.runId) => { const run = f.database.authority.runs.get(runId); assert.ok(run); return run; };

@@ -3,15 +3,20 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, it, vi } from "vitest";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
-import { RunContinuationRefusedError } from "../../../src/backend/storage/sqlite/run-continuation.js";
+import { readRunCheckpoint, RunContinuationRefusedError } from "../../../src/backend/storage/sqlite/run-continuation.js";
 import type { RunRecord } from "../../../src/models/run/record.js";
+import { UcpathSaveEmergencyContact } from "../../../src/models/systems/ucpath/save-emergency-contact.js";
+import { PlanApprovedEmergencyContact } from "../../../src/models/workflows/emergency-contact-member/read-contact-plan.js";
+import { deriveIdempotencyKeyDigest } from "../../../src/rules/write-safety/write-safety.js";
 import { TransactionOutcomeSchema } from "../../../src/rules/write-safety/write-safety-primitives.js";
 import { createEmergencyContactRetryWorld, contactSaveMember } from "../../support/helpers/backend/emergency-contact-retry-world.js";
 
 const world = createEmergencyContactRetryWorld();
 type Fixture = Awaited<ReturnType<typeof world.fixture>>;
 let fixture: Fixture;
-beforeEach(async () => { fixture = await world.fixture(); });
+beforeEach(async context => {
+  fixture = await world.fixture({ secondMemberAlreadyPresent: context.task.name.startsWith("refuses direct Recover of already-present") });
+});
 afterEach(world.cleanup);
 const signal = () => new AbortController().signal;
 const saves = (f: Fixture) => ["10800000", "10800001"].map(eid => {
@@ -32,9 +37,23 @@ function parentBytes(f: Fixture) {
   } finally { raw.close(); }
 }
 
+function memberIntents(f: Fixture, run: RunRecord) {
+  const checkpoint = readRunCheckpoint(f.database.authority, run.envelope, "contact-plan", true); assert.ok(checkpoint);
+  const plan = PlanApprovedEmergencyContact.output.parse(checkpoint.output.value);
+  const key = UcpathSaveEmergencyContact.writeSafety.idempotency.key(plan.target);
+  const intents = f.database.authority.writeIntents.listByBusinessKey("ucpath", deriveIdempotencyKeyDigest("ucpath", key));
+  for (const intent of intents) {
+    assert.equal(intent.workflowId, run.envelope.workflow);
+    assert.equal(intent.itemId, run.envelope.itemId);
+    assert.equal(intent.idempotencyKey, key);
+  }
+  return intents;
+}
+
 function unchangedState(f: Fixture) {
   const children = f.database.authority.runs.listChildren(f.parentRun.envelope.runId);
-  const intents = children.flatMap(child => f.database.authority.writeIntents.listByRun(child.envelope.runId));
+  const intents = [...new Map([...children.flatMap(child => f.database.authority.writeIntents.listByRun(child.envelope.runId)),
+    ...f.children().flatMap(child => memberIntents(f, child))].map(intent => [intent.writeIntentId, intent])).values()];
   return { parent: f.current(), children, dependencies: f.database.authority.dependencies.listByParentRun(f.parentRun.envelope.runId),
     intents, attempts: intents.flatMap(intent => f.database.authority.writeAttempts.listByIntent(intent.writeIntentId)),
     bytes: parentBytes(f), saves: saves(f), generation: f.database.getMeta().authorityGeneration };
@@ -110,28 +129,29 @@ it("refuses direct Recover before Save under a settled parent with no receipt, t
 for (const effect of ["committed", "already-present", "UNKNOWN"] as const)
 it(`refuses direct Recover of ${effect} member evidence without a replacement, parent/dependency mutation or repeated Save`, async () => {
   const f = fixture, original = failed(f);
-  if (effect === "already-present") {
-    const saved = f.persistence.get("10800000"), target = f.persistence.get("10800001"); assert.ok(saved && target);
-    const first = f.facts[0], second = f.facts[1]; assert.ok(first && second);
-    const snapshot = saved.snapshot();
-    assert.equal(snapshot.rows.filter(row => row.name === first.correctedContactName).length, 1);
-    target.replacePersisted({ ...snapshot, displayedEid: "10800001", displayedName: second.employeeName,
-      rows: snapshot.rows.map(row => row.name === first.correctedContactName ? { ...row, name: second.correctedContactName } : row) });
+  let target = original;
+  if (effect !== "already-present") {
+    assert.equal(f.canonical.kernel.execute(f.runCommand("retry", original)).state, "applied");
+    f.control.unknownAfterSave = effect === "UNKNOWN";
+    f.control.failAfterSave = effect !== "UNKNOWN";
+    const executed = await f.canonical.step(f.parentRun, signal());
+    assert.equal(executed.outcome.state, effect === "UNKNOWN" ? "parked-write" : "failed");
+    target = f.current(executed.run.envelope.runId);
+  } else {
+    assert.equal(target.envelope.retryOf, undefined, "presence is observed on the first attempt, before any failed-write intent");
+    assert.equal(target.envelope.sourceBound, undefined);
+    assert.equal(f.control.failAfterSave, false, "the controlled failure ran after real transaction settlement");
   }
-  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", original)).state, "applied");
-  f.control.unknownAfterSave = effect === "UNKNOWN";
-  f.control.failAfterSave = effect !== "UNKNOWN";
-  const executed = await f.canonical.step(f.parentRun, signal());
-  assert.equal(executed.outcome.state, effect === "UNKNOWN" ? "parked-write" : "failed");
-  const target = f.current(executed.run.envelope.runId);
-  const intents = f.database.authority.writeIntents.listByRun(target.envelope.runId);
+  const intents = memberIntents(f, target);
   assert.equal(intents.length, 1);
   assert.equal(intents[0]?.status, effect === "UNKNOWN" ? "parked" : effect === "committed" ? "committed" : "observed-present");
   if (effect !== "UNKNOWN") {
     const checkpoint = f.database.authority.runCheckpoints.listByItem(target.envelope.workflow, target.envelope.itemId)
       .find(row => row.runId === target.envelope.runId && row.nodeId === "contact-preview"); assert.ok(checkpoint);
-    assert.equal(TransactionOutcomeSchema.parse(checkpoint.output.value).disposition, effect);
-    assert.equal(f.canonical.kernel.execute(f.runCommand("resume", f.current())).state, "applied");
+    const outcome = TransactionOutcomeSchema.parse(checkpoint.output.value);
+    assert.equal(outcome.disposition, effect);
+    if (effect === "already-present") assert.equal(outcome.proofSource, "live-probe");
+    if (effect !== "already-present") assert.equal(f.canonical.kernel.execute(f.runCommand("resume", f.current())).state, "applied");
     assert.equal((await f.canonical.step(f.parentRun, signal())).outcome.state, "done");
     assert.equal(f.database.authority.evidenceReceipts.findByRun(f.parentRun.envelope.runId), undefined);
   }

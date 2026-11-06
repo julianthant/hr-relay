@@ -37,6 +37,7 @@ import { retainedOcrModule, retainedOcrStore, retainedOcrCheckpointPublication }
 import { ocrWorkflowStore } from "../../../../src/workflows/ocr/task-registry.js";
 import { ocrForm, type OcrFormType } from "../../../../src/models/ocr/form-registry.js";
 import { createWriteSequencer } from "../../../../src/backend/runtime/writes/write-sequencer.js";
+import type { RunRecord } from "../../../../src/models/run/record.js";
 import { testRunLifecycle } from "../../fixtures/run-lifecycle-fixtures.js";
 import type { SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import type { WorkflowModule } from "../../../../src/workflow-kit/workflow-definition.js";
@@ -72,7 +73,7 @@ export function createOcrReviewWorld() {
       approvedStore?: RegisteredTaskStore;
       manualPageFailure?: (sourcePage: number) => boolean;
       onSpan?: (event: Parameters<SpanEmitter["emit"]>[0]) => void;
-      onTransactionSettled?: () => void;
+      onTransactionSettled?: (run: RunRecord) => void;
       onHarness?: (harness: Awaited<ReturnType<typeof world.executorHarness>>) => void }> = {}) {
       const actorId = options.actorId ?? "local-operator";
       if (options.reviewedPages !== undefined) assert.equal(options.reviewedPages.length, options.pageCount);
@@ -144,7 +145,7 @@ export function createOcrReviewWorld() {
         taskDeadlineMs: 60_000, operator: "local-operator", log: harness.deps.log }) : undefined;
       const writeSequencer = sequencer === undefined ? undefined : { ...sequencer, async executeTransaction(...args: Parameters<typeof sequencer.executeTransaction>) {
         const settled = await sequencer.executeTransaction(...args);
-        options.onTransactionSettled?.();
+        options.onTransactionSettled?.(args[0].run);
         return settled;
       } };
       const notes = options.operatorEvidence === true ? createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }) : undefined;
