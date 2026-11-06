@@ -6,27 +6,7 @@ import { DebugEventSchema, type TimelineRepository, type TimelineAppend } from "
 import type { Clock } from "../../rules/time/clock.js";
 import { localDatePart } from "../../rules/time/clock.js";
 import { mirrorDebugEvent } from "../storage/events/local-debug-log.js";
-
-export function valueFreeErrorCauses(error: Error): readonly Readonly<{ name: string; code: string; stack: string }>[] {
-  const pending: unknown[] = [error], seen = new Set<unknown>();
-  const details: { name: string; code: string; stack: string }[] = [];
-  while (pending.length > 0 && details.length < 16) {
-    const cause = pending.pop();
-    if (!(cause instanceof Error) || seen.has(cause)) continue;
-    seen.add(cause);
-    const name = /^[A-Za-z][A-Za-z0-9]{0,79}$/u.test(cause.name) ? cause.name : "Error";
-    const code = "code" in cause && typeof cause.code === "string" && /^[A-Z][A-Z0-9_]{0,127}$/u.test(cause.code) ? cause.code : "INTERNAL_FAILURE";
-    const frames = cause.stack?.split("\n").slice(1).flatMap(line => {
-      if (!/^\s+at /u.test(line)) return [];
-      const frame = /(?:^|\/)((?:src|scripts|node_modules)\/[A-Za-z0-9_./-]+\.[cm]?[jt]sx?:\d+:\d+)\)?$/u.exec(line)?.[1];
-      return frame === undefined ? [] : [`    at ${frame}`];
-    }).slice(0, 40) ?? [];
-    details.push({ name, code, stack: [name, ...frames].join("\n") });
-    pending.push(cause.cause);
-    if (cause instanceof AggregateError) { const nested: readonly unknown[] = cause.errors; pending.push(...nested); }
-  }
-  return details;
-}
+import { serializeErrorCauses } from "../../models/failures/error-origins.js";
 
 export function createDebugEventWriter(deps: { repository: TimelineRepository; clock: Clock; build: string;
   development?: boolean; writeStderr?: (line: string) => void }) {
@@ -60,4 +40,15 @@ export function createDebugEventWriter(deps: { repository: TimelineRepository; c
       return result;
     },
   });
+}
+
+/** Emits one fault event plus one closed cause row per cause, sharing its correlation; stderr gets the same value-free rows. */
+export function emitFaultWithCauses(debugEvents: Readonly<{ emit(input: unknown): unknown }>, faultSink: ((line: string) => void) | undefined, error: unknown,
+  fault: Readonly<{ category: "worker" | "http"; area: string; code: string; reason: string }>): void {
+  const correlationId = randomUUID(), causes = serializeErrorCauses(error);
+  const event = { ...fault, phase: "failed", correlationId };
+  debugEvents.emit(event);
+  for (const cause of causes) debugEvents.emit({ category: fault.category, phase: "failed", correlationId, area: fault.area,
+    reason: `${fault.area}-cause`, code: cause.code, message: cause.name, stack: cause.stack });
+  faultSink?.(JSON.stringify({ ...event, causes: causes.map(({ name, code, reason }) => ({ name, code, reason })) }));
 }

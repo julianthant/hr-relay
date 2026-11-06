@@ -32,6 +32,7 @@ import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-
 import { ConfirmationPublicationSchema,confirmationPublicationFromRow,confirmedOperationTimeline,reconstructConfirmedOperation,type ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
 import { TimelinePageRequestSchema,timelineAppendContent,timelineCheckpointReference,type TimelineAppend,type TimelineRepository } from "../../../models/events/timeline.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../models/intake/session.js";
 import { NotificationFoldRequestSchema,NotificationRecordOutcomeSchema,NotificationRecordSchema,NotificationStateRequestSchema,notificationCollectionTarget,requireMutableNotification,type NotificationCollectionOperation,type NotificationCollectionTarget,type NotificationRecord,type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
@@ -143,6 +144,16 @@ export class AuthoritySchemaVersionError extends Error {
     this.name = "AuthoritySchemaVersionError";
   }
 }
+bindErrorOrigin(AuthoritySchemaVersionError, error => error.schemaVersion > CURRENT_AUTHORITY_SCHEMA_VERSION ? "profile-newer" : "unknown-error");
+
+/** A registered person database this build must not read or repair: newer, or an unsupported format. */
+export class AuthorityFormatUnsupportedError extends Error {
+  constructor(readonly code: "STORAGE_PROFILE_NEWER_VERSION" | "STORAGE_PROFILE_FORMAT_UNSUPPORTED", options?: ErrorOptions) {
+    super(ERROR_CATALOG[code].text, options);
+    this.name = "AuthorityFormatUnsupportedError";
+  }
+}
+bindErrorOrigin(AuthorityFormatUnsupportedError, error => error.code === "STORAGE_PROFILE_NEWER_VERSION" ? "profile-newer" : "profile-format-unsupported");
 
 export const AuthorityDatabaseOpenModeSchema = z.enum([
   "read-write",
@@ -1493,36 +1504,76 @@ function pendingCounts(database: DatabaseSync) {
   };
 }
 
-const expectedNativeSchemas = new Map<number, string>();
+const expectedNativeSchemas = new Map<string, string>();
 function normalizedNativeSchema(database: DatabaseSync): string {
   const schema = z.strictObject({type:z.string(),name:z.string(),table:z.string(),sql:z.string()});
   return canonicalJsonStringify(database.prepare("SELECT type,name,tbl_name AS 'table',sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all()
     .map(raw => { const row = schema.parse(raw); return {...row,sql:row.sql.trim().replace(/\s+/gu," ")}; }));
 }
-function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUTHORITY_SCHEMA_VERSION): void {
-  if (!expectedNativeSchemas.has(version)) {
-    const expected = new DatabaseSync(":memory:");
-    try {
-      for (const migration of SQLITE_MIGRATIONS) if (migration.version <= version) for (const statement of migration.statements) expected.exec(statement);
-      expectedNativeSchemas.set(version, normalizedNativeSchema(expected));
-    } finally { expected.close(); }
+function expectedNativeSchema(version: number, withoutRunSearch: boolean): string {
+  const key = `${String(version)}:${String(withoutRunSearch)}`;
+  const cached = expectedNativeSchemas.get(key);
+  if (cached !== undefined) return cached;
+  const expected = new DatabaseSync(":memory:");
+  try {
+    for (const migration of SQLITE_MIGRATIONS) if (migration.version <= version) for (const statement of migration.statements) expected.exec(statement);
+    if (withoutRunSearch) expected.exec("DROP TABLE run_search");
+    const schema = normalizedNativeSchema(expected);
+    expectedNativeSchemas.set(key, schema);
+    return schema;
+  } finally { expected.close(); }
+}
+export type StartupFailureClassification = Readonly<{ kind: "damaged" }> | Readonly<{ kind: "missing-run-search-projection" }>
+  | Readonly<{ kind: "version-skew"; error: AuthorityFormatUnsupportedError }> | Readonly<{ kind: "intact" }>;
+
+/** SQLite's own verdict: SQLITE_CORRUPT (11) or SQLITE_NOTADB (26), on the error or its direct cause. */
+function isSqliteDamage(error: unknown): boolean {
+  for (const value of [error, error instanceof Error ? error.cause : undefined]) {
+    if (value instanceof Error && "errcode" in value && (value.errcode === 11 || value.errcode === 26)) return true;
   }
-  if (normalizedNativeSchema(database) !== expectedNativeSchemas.get(version)) throw new Error("authority-native-schema-shape-mismatch");
+  return false;
 }
 
-export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas = false) {
+function runSearchDefinitions(): readonly string[] {
+  const expected = new DatabaseSync(":memory:");
+  try {
+    for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) expected.exec(statement);
+    return z.array(z.strictObject({ sql: z.string() })).parse(expected.prepare("SELECT sql FROM sqlite_schema WHERE tbl_name='run_search' AND sql IS NOT NULL ORDER BY type DESC,name").all()).map(row => row.sql);
+  } finally { expected.close(); }
+}
+
+function nonProjectionFingerprint(database: DatabaseSync): string {
+  const hash = createHash("sha256");
+  for (const table of migrationTableNames(readIntPragma(database, "user_version"))) {
+    if (table === "run_search") continue;
+    hash.update(canonicalJsonStringify(table));
+    for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
+      const record = z.record(z.string(), z.union([z.string(), z.number(), z.null()])).parse(row);
+      if (table === "database_states") { delete record.search_generation; delete record.search_state; }
+      hash.update(canonicalJsonStringify(record));
+    }
+  }
+  return hash.digest("hex");
+}
+
+function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUTHORITY_SCHEMA_VERSION, withoutRunSearch = false): void {
+  if (normalizedNativeSchema(database) !== expectedNativeSchema(version, withoutRunSearch)) throw new Error("authority-native-schema-shape-mismatch");
+}
+
+export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas = false,
+  missingRunSearch = false) {
   const applicationId = readIntPragma(database, "application_id");
   if (applicationId !== AUTHORITY_APPLICATION_ID) {
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
   }
   const schemaVersion = readIntPragma(database, "user_version");
   if ((!isSupportedStoppedAuthoritySchemaVersion(expectedSchemaVersion) && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
-  assertNativeSchema(database, schemaVersion);
+  assertNativeSchema(database, schemaVersion, missingRunSearch);
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
   const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
   if (foreignKeyFailures.length > 0) throw new Error(`authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`);
   const names = inspectionTableNames(database);
-  const expected = [...migrationTableNames(expectedSchemaVersion)].sort();
+  const expected = [...migrationTableNames(expectedSchemaVersion)].filter(name => !missingRunSearch || name !== "run_search").sort();
   if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
     throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
   }
@@ -1530,12 +1581,12 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   if (meta.schema_version !== schemaVersion) {
     throw new Error(`authority schema metadata ${String(meta.schema_version)} disagrees with user_version ${String(schemaVersion)}`);
   }
-  validateAuthorityRecordSchemas(database, true, expectedSchemaVersion);
+  validateAuthorityRecordSchemas(database, !missingRunSearch, expectedSchemaVersion);
   validateNotificationMetadata(database);
   validateWorkerControls(database);
   const violations = invariantViolations(database);
   if (violations.length > 0) throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
-  createRunSearchIndex(database).validateCoverage(inspectionRunReader(expectedSchemaVersion));
+  if (!missingRunSearch) createRunSearchIndex(database).validateCoverage(inspectionRunReader(expectedSchemaVersion));
   if (readIntPragma(database, "foreign_keys") !== 1) throw new Error("authority database foreign keys are disabled");
   if (requireOperationalPragmas) {
     if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
@@ -1552,7 +1603,8 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
     profileId: meta.profile_id,
     pageCount: PageCountRowSchema.parse(database.prepare("PRAGMA page_count").get()).page_count,
     authorityGeneration: meta.authority_generation,
-    authorityContentFingerprint: authorityContentFingerprint(database),
+    // Without run_search the full fingerprint cannot be read; only startup classification asks for this shape.
+    authorityContentFingerprint: missingRunSearch ? nonProjectionFingerprint(database) : authorityContentFingerprint(database),
     quickCheck: "ok",
     foreignKeyViolations: 0,
     invariants: { state: "valid", violations: [] },
@@ -2518,19 +2570,92 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  static inspectRegisteredPersonAtStartup(machine: RuntimeAdmission, profileId: string) {
+  static #registeredPersonPath(machine: RuntimeAdmission, profileId: string): string {
     machine.assertExclusive(); machine.assertOfflineMaintenance(machine.maintenanceOperation());
     const id = z.uuid().parse(profileId);
     if (!machine.readStartupProfileIds().includes(id)) throw new Error("profile-startup-registration-required");
     const path = join(machine.stateRoot, "profiles", id, "state.db");
     machine.assertStateRoot(path);
-    if (!existsSync(path)) throw new Error("profile-startup-database-missing");
+    return path;
+  }
+
+  static #withRegisteredPersonSnapshot<T>(machine: RuntimeAdmission, path: string, work: (database: DatabaseSync, version: number) => T): T {
     try {
       return withReadonlyAuthoritySnapshot(path, database => {
         const version = readIntPragma(database, "user_version");
         if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("profile-startup-foreign-application");
-        if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup schema is newer than supported");
-        if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) throw new Error("profile-startup-unsupported-schema");
+        if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_NEWER_VERSION", { cause: new AuthoritySchemaVersionError(version) });
+        if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) {
+          throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_FORMAT_UNSUPPORTED", { cause: new AuthoritySchemaVersionError(version) });
+        }
+        return work(database, version);
+      });
+    } catch (error) {
+      if (hasUnprovedSourceClosure(error)) { machine.retainSourceClosure(error); throw retainAuthoritySourceClosure([error], { admission: machine }); }
+      throw error;
+    }
+  }
+
+  /**
+   * Classifies a person database that failed startup inspection. Only SQLite's own damage verdict admits a restore;
+   * a missing run-search projection is rebuilt in place; strict-parse or layout failures over intact SQLite are version skew.
+   */
+  static classifyStartupFailure(machine: RuntimeAdmission, profileId: string): StartupFailureClassification {
+    const path = AuthorityDatabase.#registeredPersonPath(machine, profileId);
+    if (!existsSync(path)) throw new Error("profile-startup-database-missing");
+    try {
+      return AuthorityDatabase.#withRegisteredPersonSnapshot(machine, path, (database, version): StartupFailureClassification => {
+        const integrity = z.array(z.strictObject({ integrity_check: z.string() })).parse(database.prepare("PRAGMA integrity_check").all());
+        if (integrity.length !== 1 || integrity[0]?.integrity_check !== "ok") return { kind: "damaged" };
+        const meta = readMetaRow(database);
+        if (meta.installation_id !== machine.locator.installationId || meta.profile_id !== profileId) throw new Error("profile-startup-foreign-binding");
+        const missingRunSearch = normalizedNativeSchema(database) === expectedNativeSchema(version, true);
+        try { inspectNativeAuthority(database, version, false, missingRunSearch); }
+        catch (error) {
+          if (hasUnprovedSourceClosure(error)) throw error;
+          return { kind: "version-skew", error: new AuthorityFormatUnsupportedError("STORAGE_PROFILE_FORMAT_UNSUPPORTED", { cause: error }) };
+        }
+        return missingRunSearch ? { kind: "missing-run-search-projection" } : { kind: "intact" };
+      });
+    } catch (error) {
+      if (isSqliteDamage(error)) return { kind: "damaged" };
+      throw error;
+    }
+  }
+
+  /** Recreates the exact current run_search table and rebuilds it in one stopped transaction; nothing else may change. */
+  static repairMissingRunSearchProjection(admission: RuntimeAdmission, operation: OfflineMaintenanceOperation, clock: Clock): void {
+    admission.assertStoppedProfile(operation);
+    const path = join(admission.stateRoot, "state.db");
+    requireDatabaseSourcePath(path);
+    const database = new DatabaseSync(path, { enableForeignKeyConstraints: true, enableDoubleQuotedStringLiterals: false, allowExtension: false,
+      timeout: 250, readBigInts: false, returnArrays: false, allowBareNamedParameters: false, allowUnknownNamedParameters: false, defensive: true });
+    let open = false;
+    try {
+      database.exec("PRAGMA synchronous=FULL; BEGIN IMMEDIATE"); open = true;
+      const version = readIntPragma(database, "user_version");
+      if (version !== CURRENT_AUTHORITY_SCHEMA_VERSION || normalizedNativeSchema(database) !== expectedNativeSchema(version, true)) throw new Error("run-search-projection-repair-shape-changed");
+      const before = nonProjectionFingerprint(database);
+      for (const statement of runSearchDefinitions()) database.exec(statement);
+      database.exec("UPDATE database_states SET search_generation=NULL,search_state='invalid' WHERE id=1");
+      const index = createRunSearchIndex(database), generation = readMetaRow(database).authority_generation, now = clock.now().toISOString();
+      let published = index.rebuild({ restart: true, limit: 500 }, generation, now);
+      while (published.state === "building") published = index.rebuild({ limit: 500 }, generation, now);
+      if (normalizedNativeSchema(database) !== expectedNativeSchema(version, false) || nonProjectionFingerprint(database) !== before
+        || readMetaRow(database).authority_generation !== generation) throw new Error("run-search-projection-repair-mutated-authority");
+      database.exec("COMMIT"); open = false;
+    } catch (error) {
+      if (open) database.exec("ROLLBACK");
+      throw error;
+    } finally { database.close(); }
+  }
+
+  static inspectRegisteredPersonAtStartup(machine: RuntimeAdmission, profileId: string) {
+    const id = z.uuid().parse(profileId);
+    const path = AuthorityDatabase.#registeredPersonPath(machine, id);
+    if (!existsSync(path)) throw new Error("profile-startup-database-missing");
+    {
+      return AuthorityDatabase.#withRegisteredPersonSnapshot(machine, path, (database, version) => {
         const inspection = inspectNativeAuthority(database, version);
         machine.assertOfflineMaintenance(machine.maintenanceOperation());
         if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");
@@ -2546,9 +2671,6 @@ export class AuthorityDatabase implements Disposable {
         const layoutContinuation = layoutFile !== undefined && canonicalJsonStringify(LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(layoutFile.bytes)))) === canonicalJsonStringify(layoutLogout);
         return { ...inspection, requiresContinuation: nativeContinuation || layoutContinuation };
       });
-    } catch (error) {
-      if (hasUnprovedSourceClosure(error)) { machine.retainSourceClosure(error); throw retainAuthoritySourceClosure([error], { admission: machine }); }
-      throw error;
     }
   }
 

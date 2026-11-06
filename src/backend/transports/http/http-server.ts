@@ -2,6 +2,7 @@ import { getRequestListener, type HttpBindings, type Http2Bindings } from "@hono
 import { createServer, ServerResponse } from "node:http";
 import { z } from "zod";
 import type { DashboardApp } from "./routes/api.js";
+import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 
 export interface DashboardHttpServerDeps {
   readonly app: DashboardApp;
@@ -37,6 +38,14 @@ type Transfer = { mount?: Mount; response: ServerResponse; done: Promise<void>; 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
+
+export class DashboardClientDisconnectedError extends Error {
+  constructor(phase: string) {
+    super(`dashboard client disconnected ${phase}`);
+    this.name = "DashboardClientDisconnectedError";
+  }
+}
+bindErrorOrigin(DashboardClientDisconnectedError, "request-disconnected");
 
 function primaryFirstAggregate(primary: unknown, cleanup: unknown, message: string): AggregateError {
   return new AggregateError([primary, cleanup], message, { cause: primary });
@@ -142,8 +151,8 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
     const abort = new AbortController();
     let handedOff = false;
     request.signal.addEventListener("abort", () => {
-      abort.abort(new Error(transfer.reason === "shutdown" ? "dashboard server is shutting down"
-        : `dashboard client disconnected ${handedOff ? "during response transfer" : "before response handoff"}`));
+      abort.abort(transfer.reason === "shutdown" ? new Error("dashboard server is shutting down")
+        : new DashboardClientDisconnectedError(handedOff ? "during response transfer" : "before response handoff"));
     }, { once: true });
     const routed = new Request(request.url, {
       method: request.method, headers: request.headers, signal: abort.signal,

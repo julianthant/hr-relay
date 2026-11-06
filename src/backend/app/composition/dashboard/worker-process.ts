@@ -81,7 +81,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
         await input.preflight.admission.prepare(scope, new AbortController().signal);
         input.preflight.admission.assertReady(input.preflight.currentScope());
       } catch (error) {
-        if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message);
+        if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message, { cause: error });
         throw error;
       }
     },
@@ -90,7 +90,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
       input.assertAssistantEffect?.(request.commandId);
       if (request.command === "spawn-worker" && input.preflight !== undefined) {
         try { input.preflight.admission.assertReady(input.preflight.currentScope()); }
-        catch (error) { if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message); throw error; }
+        catch (error) { if (error instanceof PreflightAdmissionRefusal) throw new WorkerControlRefusal(error.message, { cause: error }); throw error; }
       }
       const standing = "member" in request ? repositories.workerSlots.recovery(request.member.workerId) : undefined;
       if (standing !== undefined && request.command === "spawn-worker") {
