@@ -71,7 +71,7 @@ it("accepts one turn per message identity, reads repeats without the revision an
   const accepted = w.accept(id, "Explain", { messageId, subjectRef: "run_a_1" });
   assert.deepEqual(accepted, { state: "accepted", ordinal: 1, revision: 2, createdAt: NOW });
   assert.deepEqual(w.history.apply({ operation: "rename", conversationId: id, expectedRevision: 2, title: "Renamed" }, NOW), { state: "saved", conversationId: id, revision: 3 });
-  assert.equal(w.history.sending(id, NOW, messageId), true, "a rename does not invalidate the attempt");
+  assert.equal(w.history.sending(id, NOW, messageId, NOW), true, "a rename does not invalidate the attempt");
   assert.deepEqual(w.accept(id, "Explain", { messageId, subjectRef: "run_a_1", expectedRevision: 1 }), { state: "repeat", ordinal: 1, revision: 3, delivery: "sending" });
   assert.throws(() => w.accept(id, "Explain", { messageId, subjectRef: "run_b_1" }), refusedWith("ASSISTANT_CONVERSATION_STALE"));
   assert.throws(() => w.accept(id, "Changed", { messageId, subjectRef: "run_a_1" }), refusedWith("ASSISTANT_CONVERSATION_STALE"));
@@ -102,7 +102,7 @@ it("stores exactly one outcome per result arm and settles interrupted sends as d
   const before = w.revision(id);
   assert.equal(w.history.settleInterrupted(LATER), 1);
   assert.equal(w.revision(id), before + 1);
-  assert.equal(w.history.sending(id, NOW, interrupted), false);
+  assert.equal(w.history.sending(id, NOW, interrupted, NOW), false);
   const rows = w.history.conversation(id, LATER)?.messages ?? [];
   assert.deepEqual(rows.map(row => [row.kind, row.delivery, row.code, row.actionId]), [
     ["turn", "answered", null, null], ["proposal", "settled", null, action],
@@ -137,7 +137,7 @@ it("clears a chat during a send so the attempt is no longer current and its sett
   const w = await world(), id = w.create(), messageId = randomUUID();
   assert.equal(w.accept(id, "Explain", { messageId }).state, "accepted");
   assert.deepEqual(w.history.apply({ operation: "clear", conversationId: id, expectedRevision: 2 }, NOW), { state: "cleared", conversationId: id, transmissionMayHaveStarted: true });
-  assert.equal(w.history.sending(id, NOW, messageId), false);
+  assert.equal(w.history.sending(id, NOW, messageId, NOW), false);
   const before = w.generation();
   assert.equal(w.history.settle(id, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: "Late", modelText: "Late" } }, LATER), undefined);
   assert.equal(w.generation(), before);
@@ -192,4 +192,58 @@ it("imports positional batches once, repeats a finished batch unchanged and refu
   assert.deepEqual(w.history.replay(id, 99), []);
   const empty = randomUUID();
   assert.deepEqual(w.history.apply({ ...base, conversationId: empty, total: 0, start: 1, messages: [] }, NOW), { state: "saved", conversationId: empty, revision: 1 });
+});
+
+it("fences an accepted attempt and its settlement at the chat's expiry without cleanup", async () => {
+  const w = await world(), id = w.create(), messageId = randomUUID();
+  assert.equal(w.accept(id, "Explain", { messageId }).state, "accepted");
+  const expiry = w.history.list(NOW).chats.find(chat => chat.id === id)?.expiresAt; assert.ok(expiry);
+  const justBefore = new Date(Date.parse(expiry) - 1).toISOString();
+  assert.equal(w.history.sending(id, NOW, messageId, justBefore), true);
+  assert.equal(w.history.sending(id, NOW, messageId, expiry), false);
+  const generation = w.generation();
+  assert.equal(w.history.settle(id, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: "Late", modelText: "Late" } }, expiry), undefined);
+  assert.equal(w.generation(), generation, "a late settlement writes nothing");
+  assert.deepEqual(w.history.conversation(id, justBefore)?.messages.map(row => [row.kind, row.delivery]), [["turn", "sending"]], "the expired row is left as stored, not reclaimed");
+});
+
+it("keeps an accepted turn's reply slot and refuses a decision caption in a full chat", async () => {
+  const w = await world(), id = w.create(), action = randomUUID();
+  let revision = 1;
+  const local = (text: string) => w.history.apply({ operation: "local", conversationId: id, expectedRevision: revision, messageId: randomUUID(), text }, NOW);
+  for (let index = 0; index < ASSISTANT_MESSAGES_MAX - 2; index++) { const result = local(`Local ${String(index)}`); if (result.state === "saved") revision = result.revision; }
+  const messageId = randomUUID(), accepted = w.accept(id, "Card", { messageId }); assert.equal(accepted.state, "accepted"); revision = accepted.revision;
+  assert.equal(accepted.ordinal, ASSISTANT_MESSAGES_MAX - 1);
+  const generation = w.generation();
+  assert.throws(() => local("Takes the reply slot"), refusedWith("ASSISTANT_CHAT_FULL"));
+  assert.throws(() => w.history.appendDecision({ conversationId: id, actionId: randomUUID(), messageId: randomUUID(), text: "Done: x.", now: NOW }), refusedWith("ASSISTANT_CHAT_FULL"));
+  assert.equal(w.generation(), generation);
+  assert.equal(typeof w.history.settle(id, messageId, { delivery: "answered", reply: { id: randomUUID(), kind: "proposal", actionId: action,
+    text: "Review this proposal. No action has been applied.", modelText: "I prepared a confirmation card: Start Person Lookup. The operator has not decided yet." } }, NOW), "number");
+  assert.throws(() => w.history.appendDecision({ conversationId: id, actionId: action, messageId: randomUUID(), text: "Done: Start Person Lookup.", now: NOW }), refusedWith("ASSISTANT_CHAT_FULL"),
+    "a full chat refuses the caption instead of dropping it");
+  const view = w.history.conversation(id, NOW); assert.ok(view);
+  assert.equal(view.messages.length, ASSISTANT_MESSAGES_MAX);
+  assert.deepEqual(view.messages.slice(-2).map(row => [row.ordinal, row.kind]), [[ASSISTANT_MESSAGES_MAX - 1, "turn"], [ASSISTANT_MESSAGES_MAX, "proposal"]]);
+});
+
+it("bounds the profile's stored titles, drafts and display text in UTF-16 units across chats and batches and rolls a refused write back", async () => {
+  const w = await world(), wide = "😀".repeat(4000), a = randomUUID(), b = randomUUID();
+  assert.equal(wide.length, 8000);
+  const rows = (count: number) => Array.from({ length: count }, () => ({ messageId: randomUUID(), role: "assistant" as const, text: wide }));
+  const base = { operation: "import" as const, draft: "", composer: "", notice: null };
+  assert.equal(w.history.apply({ ...base, conversationId: a, title: "A", total: 200, start: 1, messages: rows(200) }, NOW).state, "saved");
+  assert.equal(w.history.apply({ ...base, conversationId: b, title: "B", total: 49, start: 1, messages: rows(25) }, NOW).state, "saved");
+  assert.equal(w.history.apply({ ...base, conversationId: b, title: "B", total: 49, start: 26, messages: rows(24) }, NOW).state, "saved");
+  // 1 + 200 × 8000 + 1 + 49 × 8000 = 1,992,002 units; the next 7,998 still fit.
+  assert.equal(w.history.apply({ operation: "draft", conversationId: b, draft: "é".repeat(4000), composer: "é".repeat(3998) }, NOW).state, "saved");
+  const generation = w.generation(), revision = w.revision(b);
+  assert.throws(() => w.history.apply({ operation: "local", conversationId: b, expectedRevision: revision, messageId: randomUUID(), text: "x" }, NOW), refusedWith("ASSISTANT_HISTORY_FULL"));
+  assert.throws(() => w.history.apply({ operation: "draft", conversationId: b, draft: "é".repeat(4000), composer: "é".repeat(3999) }, NOW), refusedWith("ASSISTANT_HISTORY_FULL"));
+  assert.throws(() => w.history.apply({ operation: "create", conversationId: randomUUID(), title: "C" }, NOW), refusedWith("ASSISTANT_HISTORY_FULL"));
+  assert.throws(() => w.accept(b, "y"), refusedWith("ASSISTANT_HISTORY_FULL"));
+  assert.equal(w.generation(), generation, "every refused write rolled back");
+  const view = w.history.conversation(b, NOW); assert.ok(view);
+  assert.deepEqual([view.messages.length, view.draft.length, view.composer.length, view.revision], [49, 4000, 3998, revision]);
+  assert.equal(w.history.apply({ operation: "draft", conversationId: b, draft: "", composer: "" }, NOW).state, "saved", "a shrinking write still saves");
 });

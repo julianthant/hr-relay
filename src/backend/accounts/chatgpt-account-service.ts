@@ -25,6 +25,10 @@ export class ChatGptAccountError extends Error {
 export class ChatGptResourceClosureUnprovedError extends ChatGptAccountError {
   constructor(cause: unknown) { super("CHATGPT_RESOURCE_CLOSURE_UNPROVED"); this.name = "ChatGptResourceClosureUnprovedError"; this.cause = cause; }
 }
+/** The Responses POST may have reached the provider, and neither a complete answer nor a provider refusal came back. */
+export class ChatGptDeliveryUncertainError extends ChatGptAccountError {
+  constructor(code: ChatGptAccountCode) { super(code); }
+}
 const fault = (code: ChatGptAccountCode) => new ChatGptAccountError(code);
 export interface ChatGptAuthorization {
   readonly authorizationUrl: string;
@@ -911,18 +915,21 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     active(); if (cancelled()) throw fault("CHATGPT_OCR_CANCELLED");
     const operation = capturedOperation ?? await beginInference(signal, undefined, assistant === undefined ? "ocr" : "assistant");
     const diagnostic: ChatGptInferenceDiagnostic = { operation: assistant === undefined ? "ocr" : "assistant", path: "transport", contentType: "missing", providerCode: "none" };
+    // After the POST only a provider refusal or terminal event is a definite outcome; any other failure leaves delivery uncertain.
+    let posted = false, definite = false;
     try {
       operation.assertCurrent();
       const { credentials, epoch } = operation, session = credentials.session;
       if (session === null) throw fault("CHATGPT_PLAN_DISABLED");
       const persistUsage = (usage: "available" | "limit-reached" | "unavailable") => persistPlanUsage(operation, usage);
+      posted = true;
       const response = await request(`${RESOURCE}/responses`, { method: "POST", headers: { Authorization: `Bearer ${session.accessToken}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model, store: false, stream: true, input, ...assistant }) }, signal, diagnostic);
       diagnostic.contentType = inferenceContentType(response.headers);
       diagnostic.hasBody = response.body !== null;
       return await consumeInferenceResponse(response, async () => {
         operation.assertCurrent();
-        if (!response.ok) await rejectPlanResponse(response, operation, diagnostic);
+        if (!response.ok) { definite = true; await rejectPlanResponse(response, operation, diagnostic); }
         diagnostic.path = "content-type";
         // Headerless subscription replies still require validated SSE and completed output below.
         if (response.body === null || diagnostic.contentType !== "text/event-stream" && diagnostic.contentType !== "missing") { await response.body?.cancel(); throw fault("CHATGPT_OCR_FAILED"); }
@@ -977,6 +984,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                 if (completed) throw fault("CHATGPT_OCR_INCOMPLETE");
                 const failureCode = event.response?.error?.code ?? event.error?.code ?? event.code ?? undefined;
                 if (event.type === "error" || event.type === "response.failed" || event.type === "response.incomplete") {
+                  definite = true;
                   diagnostic.path = event.type === "error" ? "stream-error" : event.type === "response.failed" ? "response-failed" : "response-incomplete";
                   recordProviderCode(diagnostic, failureCode);
                   await rejectProviderCode(failureCode, operation);
@@ -1053,6 +1061,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
                   doneItems.set(done.output_index, done.item);
                 }
                 if (event.type === "response.completed") {
+                  definite = true;
                   diagnostic.path = "terminal-schema";
                   const parsedTerminal = z.object({ id: z.string().min(1).max(256), model: ChatGptOcrRequestSchema.shape.model,
                     status: z.literal("completed").optional(), error: z.null().optional(), incomplete_details: z.null().optional(), output: z.array(z.unknown()).max(32),
@@ -1135,6 +1144,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
     } catch (error) {
       if (error instanceof ChatGptResourceClosureUnprovedError) diagnostic.path = "resource-closure";
       recordFailure(error, diagnostic, { method: "POST", route: "/v1/responses" });
+      if (posted && !definite && error instanceof ChatGptAccountError && !(error instanceof ChatGptResourceClosureUnprovedError)) throw new ChatGptDeliveryUncertainError(error.code);
       throw error;
     } finally { if (capturedOperation === undefined) operation.close(); }
   }

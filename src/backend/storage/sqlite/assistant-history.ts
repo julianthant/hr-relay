@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import {
-  ASSISTANT_CHATS_MAX, ASSISTANT_CHAT_TTL_MS, ASSISTANT_MESSAGES_MAX, AssistantConversationRecordSchema, AssistantMessageRecordSchema,
+  ASSISTANT_CHATS_MAX, ASSISTANT_CHAT_TTL_MS, ASSISTANT_HISTORY_METADATA_MAX_UNITS, ASSISTANT_MESSAGES_MAX, AssistantConversationRecordSchema, AssistantMessageRecordSchema,
   type AssistantConversationRecord, type AssistantConversationView, type AssistantDeliverySchema, type AssistantFailureCode, type AssistantHistoryOperation,
   type AssistantHistoryResult, type AssistantHistoryView, type AssistantMessageRecord,
 } from "../../../models/dashboard/assistant.js";
@@ -118,10 +118,21 @@ export function createAssistantHistoryRepository(ports: Ports) {
       message.kind, message.modelText, message.subjectRef, message.actionId, message.delivery, message.code, canonicalJsonStringify({ text: message.text }),
       message.createdAt, message.updatedAt);
   };
+  const hasSending = (conversationId: string) => database.prepare("SELECT 1 FROM assistant_messages WHERE conversation_id=? AND delivery='sending'").get(conversationId) !== undefined;
+  /** The next ordinal for `count` rows; an accepted turn keeps one slot for its reply. */
   const appendable = (conversationId: string, count = 1) => {
     const ordinal = nextOrdinal(conversationId);
-    if (ordinal + count - 1 > ASSISTANT_MESSAGES_MAX) refuse("ASSISTANT_CHAT_FULL");
+    if (ordinal + count - 1 + (hasSending(conversationId) ? 1 : 0) > ASSISTANT_MESSAGES_MAX) refuse("ASSISTANT_CHAT_FULL");
     return ordinal;
+  };
+  const textUnits = (sql: string, now: string) => database.prepare(sql).all(ports.profileId(), now)
+    .reduce<number>((sum, row) => sum + Object.values(row).reduce<number>((units, value) => units + String(value).length, 0), 0);
+  /** Refuses a write that leaves the profile's unexpired titles, drafts and display text above the metadata budget. */
+  const withinBudget = <T>(now: string, write: Readonly<{ result: T; changes: number }>) => {
+    const units = textUnits("SELECT json_extract(payload_json,'$.title') AS title,draft,composer FROM assistant_conversations WHERE profile_id=? AND expires_at>?", now)
+      + textUnits("SELECT json_extract(m.payload_json,'$.text') AS text FROM assistant_messages m JOIN assistant_conversations c ON c.id=m.conversation_id WHERE c.profile_id=? AND c.expires_at>?", now);
+    if (units > ASSISTANT_HISTORY_METADATA_MAX_UNITS) refuse("ASSISTANT_HISTORY_FULL");
+    return write;
   };
   const insertConversation = (record: AssistantConversationRecord) => {
     if (z.object({ count: z.number() }).parse(database.prepare("SELECT COUNT(*) AS count FROM assistant_conversations WHERE profile_id=? AND expires_at>?")
@@ -148,12 +159,12 @@ export function createAssistantHistoryRepository(ports: Ports) {
           return { result: saved(existing.id, existing.revision), changes: 0 };
         }
         insertConversation(newConversation(operation.conversationId, operation.title, now, { selectedAt: now }));
-        return { result: saved(operation.conversationId, 1), changes: 1 };
+        return withinBudget(now, { result: saved(operation.conversationId, 1), changes: 1 });
       });
       case "rename": return ports.mutate("assistant_conversations", () => {
         requireRevision(operation.conversationId, operation.expectedRevision, now);
         database.prepare("UPDATE assistant_conversations SET payload_json=? WHERE id=?").run(canonicalJsonStringify({ title: operation.title }), operation.conversationId);
-        return { result: saved(operation.conversationId, bump(operation.conversationId)), changes: 1 };
+        return withinBudget(now, { result: saved(operation.conversationId, bump(operation.conversationId)), changes: 1 });
       });
       case "select": return ports.mutate("assistant_conversations", () => {
         requireRevision(operation.conversationId, operation.expectedRevision, now);
@@ -169,14 +180,14 @@ export function createAssistantHistoryRepository(ports: Ports) {
       case "draft": return ports.mutate("assistant_conversations", () => {
         const record = requireOwned(operation.conversationId, now);
         database.prepare("UPDATE assistant_conversations SET draft=?,composer=? WHERE id=?").run(operation.draft, operation.composer, operation.conversationId);
-        return { result: saved(record.id, record.revision), changes: 1 };
+        return withinBudget(now, { result: saved(record.id, record.revision), changes: 1 });
       });
       case "local": return ports.mutate("assistant_messages", () => {
         requireRevision(operation.conversationId, operation.expectedRevision, now);
         if (messageRow(operation.messageId) !== undefined) refuse("ASSISTANT_CONVERSATION_STALE");
         insertMessage({ id: operation.messageId, conversationId: operation.conversationId, ordinal: appendable(operation.conversationId), role: "assistant", kind: "inert",
           modelText: null, subjectRef: null, actionId: null, delivery: "settled", code: null, text: operation.text, createdAt: now, updatedAt: now });
-        return { result: saved(operation.conversationId, bump(operation.conversationId)), changes: 1 };
+        return withinBudget(now, { result: saved(operation.conversationId, bump(operation.conversationId)), changes: 1 });
       });
       case "import": return ports.mutate("assistant_messages", () => {
         const expected = { title: operation.title, draft: operation.draft, composer: operation.composer, importTotal: operation.total, importNotice: operation.notice };
@@ -193,13 +204,13 @@ export function createAssistantHistoryRepository(ports: Ports) {
           if (!sameRows(existing, operation.messages, operation.start)) refuse("ASSISTANT_CONVERSATION_STALE");
           return { result: saved(record.id, record.revision), changes: 0 };
         }
-        if (nextOrdinal(operation.conversationId) !== operation.start) refuse("ASSISTANT_CONVERSATION_STALE");
+        if (appendable(operation.conversationId, operation.messages.length) !== operation.start) refuse("ASSISTANT_CONVERSATION_STALE");
         operation.messages.forEach((message, index) => {
           if (messageRow(message.messageId) !== undefined) refuse("ASSISTANT_CONVERSATION_STALE");
           insertMessage({ id: message.messageId, conversationId: operation.conversationId, ordinal: operation.start + index, role: message.role, kind: "inert",
             modelText: null, subjectRef: null, actionId: null, delivery: "settled", code: null, text: message.text, createdAt: now, updatedAt: now });
         });
-        return { result: saved(record.id, operation.messages.length === 0 ? record.revision : bump(operation.conversationId)), changes: 1 };
+        return withinBudget(now, { result: saved(record.id, operation.messages.length === 0 ? record.revision : bump(operation.conversationId)), changes: 1 });
       });
     }
   }
@@ -233,18 +244,19 @@ export function createAssistantHistoryRepository(ports: Ports) {
           return { result: { state: "repeat", ordinal: prior.ordinal, revision: record.revision, delivery: prior.delivery as Exclude<Delivery, "settled"> }, changes: 0 };
         }
         if (record.revision !== input.expectedRevision) refuse("ASSISTANT_CONVERSATION_STALE");
-        if (database.prepare("SELECT 1 FROM assistant_messages WHERE conversation_id=? AND delivery='sending'").get(input.conversationId) !== undefined) refuse("ASSISTANT_CONVERSATION_BUSY");
+        if (hasSending(input.conversationId)) refuse("ASSISTANT_CONVERSATION_BUSY");
         const ordinal = appendable(input.conversationId, 2);
         insertMessage({ id: input.messageId, conversationId: input.conversationId, ordinal, role: "operator", kind: "turn", modelText: input.modelText,
           subjectRef: input.subjectRef, actionId: null, delivery: "sending", code: null, text: input.text, createdAt: input.now, updatedAt: input.now });
-        return { result: { state: "accepted", ordinal, revision: bump(input.conversationId), createdAt: record.createdAt }, changes: 1 };
+        return withinBudget(input.now, { result: { state: "accepted", ordinal, revision: bump(input.conversationId), createdAt: record.createdAt }, changes: 1 });
       });
     },
     nextOrdinal: (conversationId: string) => ports.read(() => nextOrdinal(conversationId)),
-    /** The attempt is current while its conversation (same creation) exists and the turn is still `sending`. */
-    sending(conversationId: string, createdAt: string, messageId: string): boolean {
-      const row = database.prepare("SELECT 1 FROM assistant_messages m JOIN assistant_conversations c ON c.id=m.conversation_id WHERE m.id=? AND c.id=? AND c.created_at=? AND m.delivery='sending'")
-        .get(messageId, conversationId, createdAt);
+    /** The attempt is current while its conversation (same creation) is owned and unexpired and the turn is still `sending`. */
+    sending(conversationId: string, createdAt: string, messageId: string, now: string): boolean {
+      const row = database.prepare(`SELECT 1 FROM assistant_messages m JOIN assistant_conversations c ON c.id=m.conversation_id
+        WHERE m.id=? AND c.id=? AND c.created_at=? AND c.profile_id=? AND c.expires_at>? AND m.delivery='sending'`)
+        .get(messageId, conversationId, createdAt, ports.profileId(), now);
       return row !== undefined;
     },
     /** Earlier rows with replay text, in order; never `inert` rows or the current turn. */
@@ -252,27 +264,28 @@ export function createAssistantHistoryRepository(ports: Ports) {
       return ports.read(() => messages(conversationId).filter(row => row.ordinal < beforeOrdinal && row.modelText !== null && row.delivery !== "sending")
         .map(row => ({ role: row.role, modelText: row.modelText ?? "" })));
     },
-    /** One guarded settlement; returns the new revision, or undefined when the turn is gone or already settled. */
+    /** One guarded settlement; returns the new revision, or undefined when the turn is gone, expired or already settled. */
     settle(conversationId: string, messageId: string, settlement: AssistantSettlement, now: string): number | undefined {
       return ports.mutate("assistant_messages", () => {
+        if (owned(conversationId, now) === undefined) return { result: undefined, changes: 0 };
         const changed = database.prepare("UPDATE assistant_messages SET delivery=?,code=?,updated_at=? WHERE id=? AND conversation_id=? AND delivery='sending'")
           .run(settlement.delivery, settlement.code ?? null, now, messageId, conversationId).changes;
         if (changed === 0) return { result: undefined, changes: 0 };
         const reply = settlement.reply;
-        if (reply !== undefined) insertMessage({ id: reply.id, conversationId, ordinal: nextOrdinal(conversationId), role: "assistant", kind: reply.kind,
+        if (reply !== undefined) insertMessage({ id: reply.id, conversationId, ordinal: appendable(conversationId), role: "assistant", kind: reply.kind,
           modelText: reply.modelText, subjectRef: null, actionId: reply.actionId ?? null, delivery: "settled", code: null, text: reply.text, createdAt: now, updatedAt: now });
-        return { result: bump(conversationId), changes: 1 };
+        return withinBudget(now, { result: bump(conversationId), changes: 1 });
       });
     },
-    /** At most one caption per action; nothing when the conversation was cleared or expired. */
+    /** At most one caption per action; nothing when the conversation was cleared or expired; a full chat or budget refuses. */
     appendDecision(input: Readonly<{ conversationId: string; actionId: string; messageId: string; text: string; now: string }>): void {
       ports.mutate("assistant_messages", () => {
-        if (owned(input.conversationId, input.now) === undefined || nextOrdinal(input.conversationId) > ASSISTANT_MESSAGES_MAX) return { result: undefined, changes: 0 };
-        const changed = database.prepare(`INSERT INTO assistant_messages VALUES(?,?,?,'assistant','decision',?,NULL,?,'settled',NULL,?,?,?)
-          ON CONFLICT (action_id) WHERE kind='decision' DO NOTHING`).run(input.messageId, input.conversationId, nextOrdinal(input.conversationId), input.text,
-          input.actionId, canonicalJsonStringify({ text: input.text }), input.now, input.now).changes;
-        if (changed > 0) bump(input.conversationId);
-        return { result: undefined, changes: Number(changed) };
+        if (owned(input.conversationId, input.now) === undefined
+          || database.prepare("SELECT 1 FROM assistant_messages WHERE action_id=? AND kind='decision'").get(input.actionId) !== undefined) return { result: undefined, changes: 0 };
+        insertMessage({ id: input.messageId, conversationId: input.conversationId, ordinal: appendable(input.conversationId), role: "assistant", kind: "decision",
+          modelText: input.text, subjectRef: null, actionId: input.actionId, delivery: "settled", code: null, text: input.text, createdAt: input.now, updatedAt: input.now });
+        bump(input.conversationId);
+        return withinBudget(input.now, { result: undefined, changes: 1 });
       });
     },
     /** Startup: every unfinished send becomes `delivery-unknown`; it is never resumed. */

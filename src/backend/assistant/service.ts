@@ -5,7 +5,7 @@ import { canonicalJsonStringify, JsonValueSchema } from "../../rules/validation/
 import { z } from "zod";
 import { AssistantHistoryOperationSchema, type AssistantHistoryResult, type AssistantReceipt, type AssistantRespondEnvelope, type AssistantRequest, ASSISTANT_DEFAULT_MODEL, ASSISTANT_DEFAULT_EFFORT, ASSISTANT_VERIFY_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView, ASSISTANT_FAILURES, AssistantRequestSchema, AssistantResultSchema, AssistantInferenceResultSchema, AssistantActionDecisionSchema, AssistantActionResultSchema,
   type AssistantActionDecision, type AssistantActionResult, type AssistantFailureCode, type AssistantResult, type AssistantInputItem, AssistantPermissionViewSchema, type AssistantPermissionView } from "../../models/dashboard/assistant.js";
-import { ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
+import { ChatGptDeliveryUncertainError, ChatGptResourceClosureUnprovedError, ChatGptAccountError, type ChatGptAccountService } from "../accounts/chatgpt-account-service.js";
 import type { Clock } from "../../rules/time/clock.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../runs/commands/refusals.js";
 import { AssistantReferenceError, createAssistantReferences, maskOperatorText } from "./references.js";
@@ -138,31 +138,38 @@ export function createAssistantService(options: AssistantServiceOptions) {
       if (!request.success) return { kind: "result", result: refused("ASSISTANT_INVALID") };
       const { conversationId, messageId } = request.data, history = options.history();
       const controller = new AbortController(), signal = AbortSignal.any([requestSignal, controller.signal]);
-      let accepted: Readonly<{ ordinal: number; createdAt: string }> | undefined;
+      let accepted: Accepted | undefined;
       const turn = await runTurn(request.data, signal, history, (value) => { accepted = value; live.set(conversationId, controller); });
       if (live.get(conversationId) === controller) live.delete(conversationId);
       if ("repeat" in turn) return { kind: "delivery", receipt: turn.repeat };
-      if (accepted === undefined) return { kind: "result", result: turn.result };
-      const receipt = (revision: number, delivery: AssistantReceipt["delivery"]): AssistantReceipt => ({ conversationId, messageId, ordinal: accepted?.ordinal ?? 1, revision, delivery });
-      const settlement = settlementOf(turn);
-      try {
+      if (accepted === undefined) return { kind: "result", result: "uncertain" in turn ? refused("ASSISTANT_UNAVAILABLE") : turn.result };
+      const { ordinal, revision: acceptedRevision } = accepted;
+      const receipt = (revision: number, delivery: AssistantReceipt["delivery"]): AssistantReceipt => ({ conversationId, messageId, ordinal, revision, delivery });
+      const settle = (settlement: AssistantSettlement, result: AssistantResult): AssistantRespondEnvelope => {
         const revision = history.settle(conversationId, messageId, settlement, now());
-        return revision === undefined ? { kind: "result", result: turn.result } : { kind: "result", result: turn.result, receipt: receipt(revision, settlement.delivery) };
-      } catch (error) {
-        if (closure(error)) return { kind: "result", result: refused("CHATGPT_RESOURCE_CLOSURE_UNPROVED") };
-        let revision: number | undefined;
-        try { revision = history.settle(conversationId, messageId, { delivery: "delivery-unknown" }, now()); } catch { revision = undefined; }
-        // Startup settles the turn when even this write fails.
-        return { kind: "delivery", receipt: receipt(revision ?? 1, "delivery-unknown") };
+        return revision === undefined ? { kind: "result", result: refused("ASSISTANT_CONVERSATION_STALE") } : { kind: "result", result, receipt: receipt(revision, settlement.delivery) };
+      };
+      if (!("uncertain" in turn)) {
+        try {
+          try { return settle(settlementOf(turn), turn.result); }
+          // A full chat or history budget refuses the reply: it is definitely not delivered.
+          catch (error) { if (!(error instanceof AssistantHistoryRefusal)) throw error; return settle({ delivery: "refused", code: error.code }, refused(error.code)); }
+        } catch (error) { if (closure(error)) return { kind: "result", result: refused("CHATGPT_RESOURCE_CLOSURE_UNPROVED") }; }
       }
+      let revision = acceptedRevision;
+      try { revision = history.settle(conversationId, messageId, { delivery: "delivery-unknown" }, now()) ?? revision; }
+      catch { /* Startup settles the turn when even this write fails. */ }
+      return { kind: "delivery", receipt: receipt(revision, "delivery-unknown") };
     },
   });
 
-  type Turn = Readonly<{ repeat: AssistantReceipt }> | Readonly<{ result: AssistantResult; modelText?: string }>;
+  type Accepted = Readonly<{ ordinal: number; revision: number; createdAt: string }>;
+  /** `uncertain`: the request may have reached the provider without a definite answer or refusal. */
+  type Turn = Readonly<{ repeat: AssistantReceipt }> | Readonly<{ uncertain: true }> | Readonly<{ result: AssistantResult; modelText?: string }>;
   async function runTurn(request: AssistantRequest, signal: AbortSignal, history: AssistantHistoryRepository,
-    onAccepted: (value: Readonly<{ ordinal: number; createdAt: string }>) => void): Promise<Turn> {
+    onAccepted: (value: Accepted) => void): Promise<Turn> {
       let verifying = false;
-      let current: Readonly<{ ordinal: number; createdAt: string }> | undefined;
+      let current: Accepted | undefined;
       try {
         if (request.message.trim() === ASSISTANT_VERIFY_COMMAND) {
           verifying = true;
@@ -178,7 +185,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           if (signal.aborted) throw new ChatGptAccountError("CHATGPT_OCR_CANCELLED");
           options.assertComposition?.();
           if (!modelPolicyCurrent()) throw new AssistantModelPolicyError("ASSISTANT_MODEL_UNVERIFIED");
-          if (current !== undefined && !history.sending(request.conversationId, current.createdAt, request.messageId)) throw new AssistantHistoryRefusal("ASSISTANT_CONVERSATION_STALE");
+          if (current !== undefined && !history.sending(request.conversationId, current.createdAt, request.messageId, now())) throw new AssistantHistoryRefusal("ASSISTANT_CONVERSATION_STALE");
         };
         assertCurrent();
         // The table's generation is the turn's ordinal: above every ordinal an earlier process issued tokens for.
@@ -188,7 +195,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           text: request.message, modelText: masked, subjectRef: request.subjectRef ?? null, now: options.clock.now().toISOString() });
         if (acceptance.state === "repeat") return { repeat: { conversationId: request.conversationId, messageId: request.messageId, ordinal: acceptance.ordinal,
           revision: acceptance.revision, delivery: acceptance.delivery } };
-        current = { ordinal: acceptance.ordinal, createdAt: acceptance.createdAt };
+        current = { ordinal: acceptance.ordinal, revision: acceptance.revision, createdAt: acceptance.createdAt };
         onAccepted(current);
         if (options.plugins === undefined) return stop("ASSISTANT_UNAVAILABLE");
         let facts: AssistantWorkflowFacts;
@@ -268,6 +275,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         return stop("ASSISTANT_LIMIT");
       } catch (error) {
         if (closure(error)) return stop("CHATGPT_RESOURCE_CLOSURE_UNPROVED");
+        if (current !== undefined && error instanceof ChatGptDeliveryUncertainError) return { uncertain: true };
         if (signal.aborted) return stop("ASSISTANT_CANCELLED");
         if (error instanceof AssistantHistoryRefusal) return stop(error.code);
         if (error instanceof AssistantModelPolicyError) return stop("ASSISTANT_MODEL_UNVERIFIED");
@@ -300,7 +308,10 @@ function replayed(row: Readonly<{ role: "operator" | "assistant"; modelText: str
 function settlementOf(turn: Readonly<{ result: AssistantResult; modelText?: string }>): AssistantSettlement {
   const { result } = turn;
   switch (result.state) {
-    case "answered": return { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: result.text, modelText: turn.modelText ?? result.text } };
+    case "answered": {
+      if (turn.modelText === undefined) throw new AssistantProtocolError("assistant-answer-model-text-missing");
+      return { delivery: "answered", reply: { id: randomUUID(), kind: "answer", text: result.text, modelText: turn.modelText } };
+    }
     case "action-proposal": return { delivery: "answered", reply: { id: randomUUID(), kind: "proposal", actionId: result.proposal.actionId,
       text: "Review this proposal. No action has been applied.", modelText: `I prepared a confirmation card: ${result.proposal.label}. The operator has not decided yet.` } };
     case "unknown": {

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, it } from "vitest";
 import { z } from "zod";
 import { createProfileFixtureSet, openBoundDatabaseFixture } from "../../support/helpers/admission-fixture.js";
-import { systemClock } from "../../../src/rules/time/clock.js";
+import { manualClock, systemClock } from "../../../src/rules/time/clock.js";
 import { chatGptFixture } from "../../support/helpers/chatgpt-account-fixtures.js";
 import { assistantMessageStream, completedAssistantStream } from "../../support/helpers/assistant-function-fixtures.js";
 import { createAssistantService, type AssistantServiceOptions } from "../../../src/backend/assistant/service.js";
@@ -206,7 +206,9 @@ it("fences the provider POST: invalidated policy or abort during the turn sends 
     const controller = new AbortController();
     a.script.push(call("echo", { value: "a" }));
     a.onPost(() => controller.abort());
-    assert.deepEqual(await a.ask("Go", controller.signal), { state: "refused", code: "ASSISTANT_CANCELLED", message: ASSISTANT_FAILURES.ASSISTANT_CANCELLED });
+    const envelope = await a.send("Go", controller.signal);
+    assert.equal(envelope.kind, "delivery", "an abort after the POST leaves delivery unknown");
+    assert.equal(envelope.receipt?.delivery, "delivery-unknown");
     assert.equal(a.posts(), 1);
   } finally { await a.f.cleanup(); }
 });
@@ -316,4 +318,64 @@ it("makes no stale POST or late row after Clear before the POST or startup settl
     assert.equal(late.kind, "result"); assert.equal(late.receipt, undefined); assert.equal(w.posts(), 1);
     assert.deepEqual(w.service.conversation(restarted)?.messages.map(row => [row.kind, row.delivery]), [["turn", "delivery-unknown"]]);
   } finally { await w.f.cleanup(); }
+});
+
+const deliveryUnknown = async (w: Awaited<ReturnType<typeof world>>, prepare: (signal: AbortController) => void) => {
+  const id = randomUUID(), messageId = randomUUID(), controller = new AbortController();
+  prepare(controller);
+  const envelope = await w.send("Explain", controller.signal, id, { messageId });
+  assert.deepEqual(envelope, { kind: "delivery", receipt: { conversationId: id, messageId, ordinal: 1, revision: 3, delivery: "delivery-unknown" } });
+  assert.deepEqual(w.service.conversation(id)?.messages.map(row => [row.kind, row.delivery]), [["turn", "delivery-unknown"]]);
+  const posts = w.posts();
+  assert.deepEqual(await w.service.respond({ conversationId: id, expectedRevision: 1, messageId, message: "Explain" }, new AbortController().signal),
+    { kind: "delivery", receipt: { conversationId: id, messageId, ordinal: 1, revision: 3, delivery: "delivery-unknown" } });
+  assert.equal(w.posts(), posts, "an exact repeat never sends again");
+};
+
+it("stores a lost stream or an abort after the POST as delivery-unknown and reads it back without another POST", async () => {
+  const w = await world();
+  try {
+    const partial = assistantMessageStream("Half an answer").split("\n\n").slice(0, 3).join("\n\n") + "\n\n";
+    await deliveryUnknown(w, () => { w.script.push(partial); });
+    await deliveryUnknown(w, controller => { w.script.push(call("echo", { value: "a" })); w.onPost(() => { controller.abort(); }); });
+    w.onPost(() => {});
+    assert.equal(w.posts(), 2);
+  } finally { await w.f.cleanup(); }
+});
+
+it("keeps a complete but invalid provider response a definite refusal", async () => {
+  const w = await world();
+  try {
+    const id = randomUUID();
+    w.script.push(completedAssistantStream({ action: "unoffered", value: "a" }, "gpt-6.1-sol", "relay"));
+    const envelope = await w.send("Go", undefined, id);
+    assert.equal(envelope.kind, "result"); assert.equal(envelope.kind === "result" && envelope.result.state, "refused");
+    assert.deepEqual(w.service.conversation(id)?.messages.map(row => [row.kind, row.delivery]), [["turn", "refused"]]);
+  } finally { await w.f.cleanup(); }
+});
+
+it("sends nothing and stores nothing new once the chat expires while the credentials are awaited or the stream is held", async () => {
+  for (const moment of ["credentials", "stream"] as const) {
+    const historyClock = manualClock(new Date("2026-10-12T12:00:00.000Z"));
+    const w = await world({ options: { clock: historyClock,
+      modelPolicy: () => ({ policy: { model: "gpt-6.1-sol", eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: "2099-01-01T00:00:00Z" }, isCurrent: () => true }) } });
+    try {
+      const id = randomUUID(), messageId = randomUUID();
+      w.revision(id);
+      const expiry = w.service.historyView().chats.find(chat => chat.id === id)?.expiresAt; assert.ok(expiry);
+      const expire = () => { historyClock.setWall(new Date(expiry)); };
+      if (moment === "credentials") {
+        // An expired access token makes the turn's first credential read refresh, and the refresh is held until the chat expires.
+        w.f.clock.advanceWall(3_600_000);
+        let held = false;
+        w.f.setTokenHook(async () => { if (!held) { held = true; expire(); } });
+      } else w.onPost(expire);
+      w.script.push(() => assistantMessageStream("Late."));
+      const envelope = await w.send("Explain", undefined, id, { messageId });
+      assert.equal(envelope.kind, "result"); assert.equal(envelope.kind === "result" && envelope.result.state, "refused"); assert.equal(envelope.receipt, undefined);
+      assert.equal(w.posts(), moment === "credentials" ? 0 : 1);
+      const raw = w.db.database.authority.assistantHistory.conversation(id, new Date(Date.parse(expiry) - 1).toISOString());
+      assert.deepEqual(raw?.messages.map(row => [row.kind, row.delivery]), [["turn", "sending"]], "no reply or settlement after expiry; cleanup never ran");
+    } finally { await w.f.cleanup(); }
+  }
 });

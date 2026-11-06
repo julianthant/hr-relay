@@ -130,6 +130,7 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_HISTORY_UNSAVED: catalogEntry("Chat history could not be saved. Sending is paused until it is saved.", EmptyParametersSchema),
   ASSISTANT_CHAT_FULL: catalogEntry("This chat is too long. Start a new chat.", EmptyParametersSchema),
   ASSISTANT_CHAT_LIMIT: catalogEntry("Delete an old chat before starting another.", EmptyParametersSchema),
+  ASSISTANT_HISTORY_FULL: catalogEntry("Chat history is full. Delete an old chat to keep saving.", EmptyParametersSchema),
   ASSISTANT_CONVERSATION_STALE: catalogEntry("This chat changed elsewhere. It has been reloaded.", EmptyParametersSchema),
   ASSISTANT_CONVERSATION_BUSY: catalogEntry("This chat is still waiting for a reply.", EmptyParametersSchema),
   ASSISTANT_CANCELLED: catalogEntry("The assistant request was cancelled.", EmptyParametersSchema),

@@ -11,7 +11,7 @@ import { DESCRIPTORS } from "../../../src/backend/app/registries/workflow-regist
 import { createCommandKernel, executeSettingsCommand } from "../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../src/backend/runs/commands/settings-service.js";
 import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
-import { AssistantActionDecisionSchema, type AssistantActionProposal } from "../../../src/models/dashboard/assistant.js";
+import { ASSISTANT_MESSAGES_MAX, AssistantActionDecisionSchema, type AssistantActionProposal } from "../../../src/models/dashboard/assistant.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint, deriveSettingsPatchFingerprint } from "../../../src/models/config/settings.js";
 import { parseInputRunText, toRawSubmission } from "../../../src/models/workflow/ingress.js";
 import { deriveSchemaHash } from "../../../src/models/validation/schema-bound-value.js";
@@ -111,6 +111,20 @@ it("issues and confirms an eligible rerun once and refuses its replay", async ()
   await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u);
   assert.equal(o.runCount(), before + 1);
   assert.deepEqual(o.captions(), [`Done: ${card.label}.`], "one caption; a refused replay adds none");
+});
+
+it("keeps a Confirm whose caption cannot be stored in a full chat UNKNOWN after its single effect", async () => {
+  const o = await owners(), source = await o.done(), before = o.runCount(), history = o.database.authority.assistantHistory, now = () => o.clock.now().toISOString();
+  for (let index = 0; index < ASSISTANT_MESSAGES_MAX; index++) {
+    const revision = history.conversation(o.context.conversationId, now())?.revision; assert.ok(revision !== undefined);
+    assert.equal(history.apply({ operation: "local", conversationId: o.context.conversationId, expectedRevision: revision, messageId: randomUUID(), text: `Local ${String(index)}` }, now()).state, "saved");
+  }
+  const card = await rerunCard(o, source);
+  assert.deepEqual(await o.decide(card, "confirm"), { state: "unknown", actionId: card.actionId });
+  assert.equal(o.runCount(), before + 1, "the claimed effect ran once");
+  assert.deepEqual(o.captions(), [], "the full chat refused the caption instead of storing a silent success");
+  await assert.rejects(o.decide(card, "confirm"), /assistant-action-not-current/u);
+  assert.equal(o.runCount(), before + 1);
 });
 
 it("refuses reruns of cancelled, moved, parked and attempting sources through the proposal owner", async () => {
