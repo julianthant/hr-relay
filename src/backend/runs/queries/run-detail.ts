@@ -4,6 +4,7 @@ import type { NativeRunEventWire } from "../../../models/dashboard/run-detail.js
 import { availableSections, buildRunGate } from "./run-trust.js";
 import { readRunCaptureAvailability } from "./run-captures.js";
 import { ocrChildRetryAvailable,readOcrReviewAuthority } from "../lifecycle/ocr-review-authority.js";
+import { aggregateMemberRetryAvailable } from "./run-retry.js";
 import {
   RunDetailWireSchema,
   TimelineStepWireSchema,
@@ -357,8 +358,9 @@ export function buildRunDetail(
     rowRevision: authority.version,
     ...(review === undefined ? {} : { ocrRecordCount: review.revision.records.length }),
     ...(review === undefined || review.invalidatedCorrections.length === 0 ? {} : { ocrReviewChanges: review.invalidatedCorrections }),
-    ...(canonical === undefined || !ocrChildRetryAvailable(canonical.database.authority, canonical.reader, authority,
-      workflowId => canonical.descriptors.resolve(workflowId)) ? {} : {
+    ...(canonical === undefined || !(ocrChildRetryAvailable(canonical.database.authority, canonical.reader, authority,
+      workflowId => canonical.descriptors.resolve(workflowId)) || aggregateMemberRetryAvailable(canonical.database.authority, canonical.reader, authority,
+      workflowId => canonical.descriptors.resolve(workflowId))) ? {} : {
       childRetry: { key: "retry-child", label: "Retry", kind: "command", command: "retry", expectedVersion: authority.version,
         intent: "neutral", icon: "retry", placement: ["banner"] },
     }),

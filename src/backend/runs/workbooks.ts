@@ -23,14 +23,13 @@ import { OnboardingCanonicalInput, OnboardingCanonicalValueSchema, OnboardingInp
 import { ONBOARDING_ROSTER_GATE_ID, ONBOARDING_ROSTER_TYPE_ID, OnboardingRosterChoiceSchema } from "../../models/workflows/onboarding/roster.js";
 import { bindOnboardingRoster, onboardingRosterRow } from "../../rules/onboarding/roster.js";
 import { deriveGateResultCheckpointFingerprint, type GateResultRecord } from "../../models/workflow/gates.js";
-import { readContinuationGate, validateRunContinuation } from "../storage/sqlite/run-continuation.js";
+import { readRunCheckpoint, readContinuationGate, validateRunContinuation } from "../storage/sqlite/run-continuation.js";
 import { rejectCommandRequest } from "./commands/command-refusal.js";
 import { OcrCanonicalInput } from "../../models/workflows/ocr/input.js";
 import { EmergencyContactCanonicalInput } from "../../models/workflows/emergency-contact/input.js";
 import { bindOcrRoster } from "../../models/workflows/ocr/roster.js";
 import { CrmDocDownloadCanonicalInput } from "../../models/workflows/crm-doc-download/input.js";
 import { ReadCrmDocumentRows, CrmDocumentRowCandidateSchema, CrmDocumentRowChoiceSchema, CRM_DOCUMENT_ROW_CHOICE_GATE_ID } from "../../models/workflows/crm-doc-download/read-document-rows.js";
-import { readRunCheckpoint } from "../runtime/checkpoints/run-checkpoint-reader.js";
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../workflow-kit/validation/build-manifest.js";
 
 

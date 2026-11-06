@@ -10,9 +10,9 @@ import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableNameSchema, type AuthorityTableName, type TableName, type TableSpec } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 20;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 21;
 
-export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] as const;
+export const SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20] as const;
 export function isSupportedStoppedAuthoritySchemaVersion(version: number): version is typeof SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS[number] {
   return SUPPORTED_STOPPED_AUTHORITY_SCHEMA_VERSIONS.some(supported => supported === version);
 }
@@ -904,11 +904,45 @@ BEGIN SELECT RAISE(ABORT,'assistant-action-state-conflict'); END;`] },
             OR json_extract(NEW.lifecycle_json, '$.updatedAt') IS NOT json_extract(NEW.lifecycle_json, '$.completion.authorizedAt')))
          ) BEGIN SELECT RAISE(ABORT,'runs-completion-immutable'); END;`,
   ] },
+  { version: 21, statements: [
+    "DROP TRIGGER runs_completion_immutable",
+    `CREATE TRIGGER runs_completion_immutable BEFORE UPDATE ON runs
+        WHEN NOT (OLD.state='terminal' AND OLD.outcome IN ('done','failed') AND NEW.state='queued'
+          AND NEW.version=OLD.version+1 AND NEW.claim_generation=OLD.claim_generation
+          AND json_type(NEW.lifecycle_json,'$.completion') IS NULL
+          AND json_extract(NEW.lifecycle_json,'$.delegationRefresh.phase')='waiting'
+          AND EXISTS(SELECT 1 FROM commands command JOIN run_results result ON result.run_id=OLD.id
+            WHERE command.id=json_extract(NEW.lifecycle_json,'$.delegationRefresh.commandId')
+              AND command.family='run-lifecycle'
+              AND json_extract(command.request_json,'$.operation')='delegation-refresh'
+              AND json_extract(command.request_json,'$.request.phase')='admit'
+              AND json_extract(command.request_json,'$.request.runId')=OLD.id
+              AND json_extract(command.request_json,'$.request.expectedVersion')=OLD.version
+              AND json_extract(command.request_json,'$.request.previous.kind')='terminal'
+              AND json_extract(command.request_json,'$.request.previous.appliedVersion')=result.settlement_version
+              AND result.settlement_version=json_extract(OLD.lifecycle_json,'$.completion.expectedVersion')+1
+              AND (OLD.outcome='done' OR (
+                json_extract(result.payload_json,'$.result.value.kind')='failed-evidence'
+                AND json_extract(result.payload_json,'$.result.value.authorization.failureId')=json_extract(OLD.lifecycle_json,'$.completion.failureId')
+                AND json_extract(OLD.lifecycle_json,'$.completion.failureId')=json_extract(OLD.lifecycle_json,'$.lifecycle.failureId')))))
+        AND ((json_type(OLD.lifecycle_json, '$.completion') IS 'object' AND (
+            json_extract(NEW.lifecycle_json, '$.completion') IS NOT json_extract(OLD.lifecycle_json, '$.completion')
+            OR json_extract(NEW.lifecycle_json, '$.lifecycle') IS NOT json_extract(OLD.lifecycle_json, '$.lifecycle')
+            OR NEW.claim_generation IS NOT OLD.claim_generation))
+          OR (json_type(OLD.lifecycle_json, '$.completion') IS NULL AND json_type(NEW.lifecycle_json, '$.completion') IS 'object' AND (
+            OLD.state NOT IN ('claimed','validating','running')
+            OR json_extract(NEW.lifecycle_json, '$.completion.claim.workerId') IS NOT OLD.owner_worker_id
+            OR json_extract(NEW.lifecycle_json, '$.completion.claim.claimGeneration') IS NOT OLD.claim_generation
+            OR json_extract(NEW.lifecycle_json, '$.completion.expectedVersion') IS NOT OLD.version
+            OR NEW.version IS NOT OLD.version + 1
+            OR json_extract(NEW.lifecycle_json, '$.updatedAt') IS NOT json_extract(NEW.lifecycle_json, '$.completion.authorizedAt')))
+         ) BEGIN SELECT RAISE(ABORT,'runs-completion-immutable'); END;`,
+  ] },
 ]);
 
 export function deriveAuthorityUpgradePlanDigest(fromSchemaVersion: number, sourceContentFingerprint: string,
-  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
-  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19)
+  toSchemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | typeof CURRENT_AUTHORITY_SCHEMA_VERSION = CURRENT_AUTHORITY_SCHEMA_VERSION): string {
+  if (toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && ((toSchemaVersion !== 8 && toSchemaVersion !== 9 && toSchemaVersion !== 10 && toSchemaVersion !== 11 && toSchemaVersion !== 12 && toSchemaVersion !== 13 && toSchemaVersion !== 14 && toSchemaVersion !== 15 && toSchemaVersion !== 16 && toSchemaVersion !== 17 && toSchemaVersion !== 18 && toSchemaVersion !== 19 && toSchemaVersion !== 20)
     || !isSupportedStoppedAuthoritySchemaVersion(fromSchemaVersion) || fromSchemaVersion < 7 || fromSchemaVersion >= toSchemaVersion)) throw new Error('authority-upgrade-plan-target-unsupported');
   const statements = SQLITE_MIGRATIONS.filter(migration => migration.version > fromSchemaVersion && migration.version <= toSchemaVersion).flatMap(migration => migration.statements);
   return createHash("sha256").update(canonicalJsonStringify({ fromSchemaVersion,
