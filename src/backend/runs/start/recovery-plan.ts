@@ -5,10 +5,9 @@ import { authenticateRootRun } from "../../storage/sqlite/delegation-root-author
 import { prepareDelegationRetry } from "../../storage/sqlite/delegation-authority.js";
 import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { CanonicalRecoverRunRequestSchema, CanonicalRetrySourceRequestSchema } from "../../storage/sqlite/run-store-contracts.js";
-import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
 import { delegationEvidenceOutput } from "../../../models/run/result.js";
-import { readContinuationGate, validateRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
+import { readRunCheckpoint, readContinuationGate, validateRunContinuation, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { captureRunContinuation, continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
 import { evaluateNodeCondition } from "../../../models/workflow/node-condition.js";
 import { RerunRefusedError, validateRerunSourcePlan } from "./rerun.js";

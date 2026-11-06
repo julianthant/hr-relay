@@ -1,6 +1,5 @@
 import { createOnboardingRunWorld } from "../../support/helpers/backend/onboarding-run-world.js";
-import { readRunCheckpoint } from "../../../src/backend/runtime/checkpoints/run-checkpoint-reader.js";
-import { continuationEvidenceDigest, validateRunContinuation } from "../../../src/backend/storage/sqlite/run-continuation.js";
+import { readRunCheckpoint, continuationEvidenceDigest, validateRunContinuation } from "../../../src/backend/storage/sqlite/run-continuation.js";
 import { RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { readDelegationEvidence } from "../../../src/backend/storage/sqlite/delegation-authority.js";
 import { TimelineEventRecordSchema, type TimelineEventRecord } from "../../../src/models/events/timeline.js";

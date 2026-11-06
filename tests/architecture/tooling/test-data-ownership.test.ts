@@ -94,6 +94,7 @@ const DEFERRED_CAPABILITIES = [
 const RETENTION_CASES_MODULES = ["tests/support/processes/startup-upgrade-retention-cases.js", "tests/support/processes/browser-root-retention.js"];
 const RETENTION_CASES_OWNER = "tests/support/processes/credential-source-retention-worker.ts";
 const PROCESS_ENTRYPOINTS = [
+  { file: "ec-member-retry-controller.ts", consumers: ["tests/workflows/emergency-contact/workflow.member-retry.crash.integration.test.ts"] },
   { file: "never-born-worker-controller.ts", consumers: ["tests/backend/app/composition/dashboard/compose.never-born-worker.integration.test.ts"] },
   { file: "relay-launcher-parent.ts", consumers: ["tests/scripts/dev/relay.windows-native.integration.test.ts"] },
   { file: "relay-drain-child.ts", consumers: ["tests/scripts/dev/relay.integration.test.ts"] },

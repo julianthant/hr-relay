@@ -7,7 +7,17 @@ import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/a
 import { runRecordColumns, runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 
+export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 21);
+  const trigger = SQLITE_MIGRATIONS.find(migration => migration.version === 20)?.statements
+    .find(statement => statement.startsWith("CREATE TRIGGER runs_completion_immutable"));
+  assert.ok(trigger);
+  database.exec(`DROP TRIGGER runs_completion_immutable; ${trigger}`);
+  database.exec("UPDATE database_states SET schema_version=20; PRAGMA user_version=20");
+}
+
 export function restoreSchema19RunSettlementFixture(database: DatabaseSync): void {
+  if (database.prepare("PRAGMA user_version").get()?.user_version === 21) restoreSchema20CompletionFixture(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 20);
   assert.equal(database.prepare("SELECT count(*) AS count FROM (SELECT run_id FROM run_results GROUP BY run_id HAVING count(*)>1)").get()?.count, 0);
   database.exec("DROP TRIGGER runs_completion_immutable");
