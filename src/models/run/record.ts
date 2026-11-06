@@ -23,7 +23,7 @@ import {
 import { AppVersionSchema } from "../dashboard/primitives.js";
 import { SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-value.js";
 import { VerdictKeySchema } from "../workflow/presentation.js";
-import { RunEnvelopeSchema } from "./envelope.js";
+import { PredecessorRunEnvelopeSchema, RunEnvelopeSchema } from "./envelope.js";
 
 /** The outcome union; `cancelled`, `discarded`, `interrupted` and `superseded` are first-class outcomes. */
 export const RunOutcomeSchema = z.enum([
@@ -258,9 +258,7 @@ const RunRecordBaseSchema = z.strictObject({
     });
   }
 });
-export const RunRecordSchema = RunRecordBaseSchema.safeExtend({
-  completion: RunCompletionSchema.optional(),
-}).superRefine((run, context) => {
+function refineRunRecord(run: Omit<z.infer<typeof RunRecordShapeSchema>, "envelope">, context: z.RefinementCtx): void {
   if (run.delegationRefresh?.phase === "waiting" && run.lifecycle.state !== "queued"
     && !(run.lifecycle.state === "terminal" && !["done", "failed"].includes(run.lifecycle.outcome))) {
     context.addIssue({ code: "custom", path: ["delegationRefresh"], message: "a waiting delegation refresh cannot execute or complete" });
@@ -280,7 +278,14 @@ export const RunRecordSchema = RunRecordBaseSchema.safeExtend({
     context.addIssue({ code: "custom", path: ["completion"], message: "completion does not bind the exact terminal consequence" });
   }
 
-});
+}
+
+const RunRecordShapeSchema = RunRecordBaseSchema.safeExtend({ completion: RunCompletionSchema.optional() });
+export const RunRecordSchema = RunRecordShapeSchema.superRefine(refineRunRecord);
+/** A pre-22 run. A build id already stored is kept; the upgrade does not insert one. */
+export const PredecessorRunRecordSchema = RunRecordShapeSchema.extend({ envelope: PredecessorRunEnvelopeSchema })
+  .superRefine(refineRunRecord);
+export type PredecessorRunRecord = z.infer<typeof PredecessorRunRecordSchema>;
 export type RunRecord = z.infer<typeof RunRecordSchema>;
 
 export const RunClaimSchema = z.strictObject({
@@ -292,7 +297,7 @@ export const RunClaimSchema = z.strictObject({
 export type RunClaim = z.infer<typeof RunClaimSchema>;
 
 /** No claim is explicit absence; callers must branch. */
-export function runClaim(record: RunRecord): RunClaim | undefined {
+export function runClaim(record: Pick<RunRecord, "lifecycle" | "claimGeneration">): RunClaim | undefined {
   const { lifecycle } = record;
   if (!isClaimedRunState(lifecycle.state)) return undefined;
   if (!("workerId" in lifecycle)) return undefined;

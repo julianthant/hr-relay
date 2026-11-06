@@ -2257,7 +2257,7 @@ export interface StoppedControlProfileInventory { readonly profileId: string }
 
 const stoppedControlInventories = new WeakMap<StoppedControlProfileInventory, Readonly<{
   binding: z.infer<typeof ProfileDatabaseBindingSchema>; stateRoot: string; artifactRoot: string; machineRoot: string; locator: RuntimeLocator;
-  schemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21; conversionOperationId: string; backupDirectory: string;
+  schemaVersion: 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22; conversionOperationId: string; backupDirectory: string;
   pendingPlan(): CanonicalCredentialConversionPlan | undefined;
   assertCanonicalConversion(operationId: string, digest: string): void;
   assertCanonicalPublication(operationId: string, digest: string): void;
@@ -2790,9 +2790,9 @@ export function acquireStoppedProfileControlUpgrade(workspacePath: string, resto
       };
       const binding = ProfileDatabaseBindingSchema.parse({ installationId: locator.installationId, profileId });
       const databaseBinding = readProfileDatabaseBinding(join(locator.stateRoot, "profiles", profileId, "state.db"));
-      if (databaseBinding.state !== "bound" || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(databaseBinding.schemaVersion)
+      if (databaseBinding.state !== "bound" || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22].includes(databaseBinding.schemaVersion)
         || canonicalJsonStringify(databaseBinding.binding) !== canonicalJsonStringify(binding)) fail("profile-control-upgrade-database-schema-unsupported");
-      const schemaVersion = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21)]).parse(databaseBinding.schemaVersion);
+      const schemaVersion = z.union([z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22)]).parse(databaseBinding.schemaVersion);
       const pendingPlan = () => {
         held();
         const receipt = lstatMaybe(intentPath) ? readControlUpgradeReceipt(intentPath) : undefined;

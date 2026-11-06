@@ -53,7 +53,7 @@ export const RunParentSchema = z.strictObject({
 });
 export type RunParent = z.infer<typeof RunParentSchema>;
 
-export const RunEnvelopeSchema = z.strictObject({
+const RUN_ENVELOPE_SHAPE = {
   runId: RunIdSchema,
   workflow: WorkflowIdSchema,
   /** The logical-item key half: `(workflow, itemId)` — ref workflow-model. */
@@ -95,7 +95,9 @@ export const RunEnvelopeSchema = z.strictObject({
     /* The attempt at the ITEM, not at this run: every component of the `(workflow, itemId)` checkpoint key is item-scoped, so a new run for an item takes the item's NEXT attempt. */
   attempt: PositiveIntSchema,
   enqueuedAt: IsoInstantSchema,
-}).superRefine((envelope, context) => {
+};
+
+function refineRunEnvelope(envelope: z.infer<z.ZodObject<Omit<typeof RUN_ENVELOPE_SHAPE, "buildId">>>, context: z.RefinementCtx): void {
   if (envelope.operationDisplayCapability === "complete" && envelope.operationDisplaySnapshot === undefined) {
     context.addIssue({
       code: "custom",
@@ -179,7 +181,15 @@ export const RunEnvelopeSchema = z.strictObject({
       }
     }
   }
-});
+}
+
+export const RunEnvelopeSchema = z.strictObject(RUN_ENVELOPE_SHAPE).superRefine(refineRunEnvelope);
+const { buildId: _buildId, ...PREDECESSOR_ENVELOPE_SHAPE } = RUN_ENVELOPE_SHAPE;
+/** A pre-22 envelope. A build id already stored is kept; the upgrade does not insert one. */
+export const PredecessorRunEnvelopeSchema = z.union([
+  z.strictObject(PREDECESSOR_ENVELOPE_SHAPE).superRefine(refineRunEnvelope),
+  RunEnvelopeSchema,
+]);
 export type RunEnvelope = z.infer<typeof RunEnvelopeSchema>;
 
 /** The envelope for the next attempt with every single-resume affordance gone, and with `nextAttempt` supplied by authority, never computed. */

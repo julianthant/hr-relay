@@ -1,4 +1,5 @@
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { PredecessorRunRecordSchema } from "../../../models/run/record.js";
 import { runSettlementContext } from "./run-settlement-row.js";
 import { confirmationPublicationFromRow } from "../../../models/events/confirmed-operation.js";
 import { WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
@@ -52,6 +53,23 @@ function valueAt(record: unknown, path: string): string | number | null {
   if (typeof value === "boolean") return Number(value);
   return z.union([z.string(),z.number()]).parse(value);
 }
+function readEmbeddedPredecessorRuns(value: unknown, seen = new Set<unknown>()): void {
+  if (typeof value !== "object" || value === null || seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    for (const entry of value) readEmbeddedPredecessorRuns(entry, seen);
+    return;
+  }
+  const record = z.record(z.string(), z.unknown()).parse(value);
+  if (record.state === "delegation-resolved" && Array.isArray(record.children)) {
+    for (const child of record.children) {
+      const member = z.record(z.string(), z.unknown()).safeParse(child);
+      if (member.success && "run" in member.data) PredecessorRunRecordSchema.parse(member.data.run);
+    }
+  }
+  for (const entry of Object.values(record)) readEmbeddedPredecessorRuns(entry, seen);
+}
+
 export function isNativeOrdinaryTable(table: AuthorityTableName): table is NativeOrdinaryTable { return Object.hasOwn(fields,table); }
 export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: unknown, schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION): unknown {
   const row = RowSchema.parse(input);
@@ -66,7 +84,8 @@ export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: u
   const object = z.record(z.string(),z.unknown()).parse(record);
   const extras: Record<string,string | number | null> = {};
   if (schemaVersion >= 20 && table === "run_results") {
-    const terminal = runSettlementContext(row);
+    if (schemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION) readEmbeddedPredecessorRuns(record);
+    const terminal = schemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION ? runSettlementContext(row, PredecessorRunRecordSchema) : runSettlementContext(row);
     if (terminal.lifecycle.state !== "terminal"
       || ([["runId","runId"],["workflow","workflowId"],["attempt","attempt"],["descriptorVersion","descriptorVersion"],
         ["contractFingerprint","contractFingerprint"],["configSnapshotId","configSnapshotId"],["configFingerprint","configFingerprint"]] as const).some(
