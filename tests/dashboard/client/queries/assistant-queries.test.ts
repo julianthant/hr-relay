@@ -67,7 +67,7 @@ it("refuses a successful-looking decision for a different action without retry",
 
 it("preserves the exact issued automatic unknown identity and refuses a mismatched readback identity", async () => {
   const action = { chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1,
-    expiresAt: "2099-01-01T00:00:00Z", label: "Mark 25 current notifications read", targetLabel: "25 current notifications", subject: "none", effect: "local-write" };
+    expiresAt: "2099-01-01T00:00:00Z", label: "Mark 25 current notifications read", targetLabel: "25 current notifications", effect: "local-write" };
   let mismatch = false, calls = 0;
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:3938", fetchImpl: async () => {
     calls++; return Response.json({ state: "unknown", actionId: mismatch ? "00000000-0000-4000-8000-000000000003" : action.actionId, action });

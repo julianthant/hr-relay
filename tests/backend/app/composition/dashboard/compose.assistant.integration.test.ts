@@ -25,7 +25,6 @@ import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/r
 import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND,  AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionResultSchema, AssistantActionDecisionSchema } from "../../../../../src/models/dashboard/assistant.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../../src/models/config/protected-settings.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
 import { chatGptFixture , publicCapabilityResponses } from "../../../../support/helpers/chatgpt-account-fixtures.js";
 import { completedResponseStream } from "../../../../support/helpers/chatgpt-response-stream.js";
@@ -709,10 +708,6 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
         assert.equal(database.authority.commandAudits.findByCommand(commandId)?.result.state, 'applied', 'one canonical execution per confirmed card');
       }
 
-      const timekeeper = await client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: 'local-operator', source: 'settings-surface',
-        family: 'settings', type: 'apply-protected-settings', target: { expectedRevision: context.settings.read().record.revision },
-        payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { timekeeperName: { set: 'Synthetic Timekeeper' } } } });
-      assert.equal(timekeeper.state, 'applied');
       const documents = await propose('Separate documents 4502 and 4510', () => ['propose_workflow_start', { workflow: 'separations', entries: ['4502', '4510'] }]);
       assert.ok(documents.effect === 'workflow-start' && documents.dryRun);
       assert.deepEqual(documents.startPlan.planned.map(row => row.display), [{ kind: 'document', documentNumber: '4502' }, { kind: 'document', documentNumber: '4510' }]);

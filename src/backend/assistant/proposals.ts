@@ -191,8 +191,10 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
         const values = deps.rerunValues({ runId: run.envelope.runId, expectedVersion: run.version });
         if (values.state !== "available") refuse();
         const snapshot = values.snapshot, steps = snapshot.steps.map(step => step.key);
+        // The rerun carries the source's own retained input, as the Rerun dialog does; partial or protected sources stay in the dialog.
+        if (snapshot.sourceInput.state !== "available") refuse();
         const rerunSource = { runId: snapshot.source.runId, expectedVersion: snapshot.source.version, intent: "rerun", selectedStepKeys: steps, copiedFrom: [] };
-        return planStart(context, { workflowId: snapshot.source.workflow, submissions: [{}], rerunSource, selectedStepKeys: steps, source: "rerun",
+        return planStart(context, { workflowId: snapshot.source.workflow, submissions: [snapshot.sourceInput.value], rerunSource, selectedStepKeys: steps, source: "rerun",
           assertSource: () => { if (requireTrustRun(deps.runs, run.envelope.runId).version !== run.version) refuse(); },
           accepts: planned => planned.length === 1 });
       } },

@@ -148,11 +148,14 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     pendingDecision = request;
     const current = () => !retired && pendingDecision === request && binding === request.binding;
     publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'confirming' }));
+    const stale = () => { publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'stale' })); pendingDecision = undefined; };
     let reviewedDigest: string | undefined;
     if (decision === 'confirm') {
-      try { reviewedDigest = proposal.issued === undefined ? undefined : await assistantProposalDigest(proposal.issued); } catch { reviewedDigest = undefined; }
+      // No digest means nothing was sent: the card cannot be confirmed as reviewed.
+      if (proposal.issued === undefined) { stale(); return; }
+      try { reviewedDigest = await assistantProposalDigest(proposal.issued); }
+      catch { if (current()) stale(); return; }
       if (!current()) return;
-      if (reviewedDigest === undefined) { publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'stale' })); pendingDecision = undefined; return; }
     }
     try {
       const result = await client.assistantDecide(AssistantActionDecisionSchema.parse({ ...identity, decision, ...(reviewedDigest === undefined ? {} : { reviewedDigest }) }), request.abort.signal);

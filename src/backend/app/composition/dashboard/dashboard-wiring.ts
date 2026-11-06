@@ -15,7 +15,7 @@ import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.
 import { createAssistantService } from "../../../assistant/service.js";
 import { createAssistantPlugins } from "../../../assistant/plugins/registry.js";
 import { createAssistantProposals } from "../../../assistant/proposals.js";
-import { loadAssistantWorkflowFacts, type AssistantWorkflowFacts } from "../../../assistant/plugins/workflows/facts.js";
+import { assistantWorkflowFacts, loadAssistantWorkflowFacts, type AssistantWorkflowFacts } from "../../../assistant/plugins/workflows/facts.js";
 import { assistantSurfaceCoverage, createAssistantPluginDeps } from "./assistant.js";
 import { CHATGPT_OCR_MODEL,createChatGptOcrPageReader } from "../../../processing/providers/chatgpt-ocr-adapter.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
@@ -148,8 +148,11 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const explorerBoundary = composeExplorer({ clock, descriptorSetHash: setHash });
 
   const workflowSources = z.record(z.string(), z.enum(["mock", "served"])).parse(configuredWorkflowSources);
+  const servedDescriptors = DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served");
+  // The manifest identity hashes the facts from the running definitions; the on-disk pin is checked only when the assistant runs.
+  const factsSha256 = assistantWorkflowFacts(servedDescriptors).sha256;
   let pinnedFacts: AssistantWorkflowFacts | undefined;
-  const assistantFacts = () => pinnedFacts ??= loadAssistantWorkflowFacts(repoRoot, DESCRIPTORS.filter(descriptor => workflowSources[descriptor.id] === "served"));
+  const assistantFacts = () => pinnedFacts ??= loadAssistantWorkflowFacts(repoRoot, servedDescriptors);
 
   let resolveQuit: () => void = () => undefined;
   const shutdownRequested = new Promise<void>(resolve => { resolveQuit = resolve; });
@@ -166,7 +169,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     preflight: runtimePreflight.admission,
     assistantSurface: () => { if (assistantSurface === undefined) throw new Error("assistant-surface-unavailable"); return assistantSurface; },
     workflowSources,
-    assistantFactsSha256: () => assistantFacts().sha256,
+    assistantFactsSha256: () => factsSha256,
     failureResolution: composeFailureResolution(database.authority).commands,
     lifecycle,
     authority: { evidenceSchemaHash: database.evidenceSchemaHash.bind(database), withAuthorityTransaction: (work) => database.withAuthorityTransaction(repositories => { assertCurrent(); const result = work(repositories); assertCurrent(); return result; }) },

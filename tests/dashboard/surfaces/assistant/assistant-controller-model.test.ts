@@ -5,7 +5,7 @@ import { AssistantModelPreferenceCommandRequestSchema, CommandResultSchema, type
 import { LOCAL_OPERATOR_ACTOR_ID } from '../../../../src/rules/identity/ids.js';
 import assert from 'node:assert/strict';
 import { it, vi } from 'vitest';
-import { createAssistantController, ASSISTANT_CONFIRM_HOLD } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
+import { assistantProposalDigest, createAssistantController, ASSISTANT_CONFIRM_HOLD } from '../../../../src/dashboard/surfaces/assistant/assistant-controller-model.js';
 import { ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
 
 
@@ -64,14 +64,14 @@ it('confirms the actual issued action identity once and keeps a lost response un
   for (const lost of [false, true]) {
     let calls = 0;
     const c = createAssistantController({ assistantRespond: async () => actionProposal,
-      assistantDecide: async identity => { calls++; assert.deepEqual(identity, { chatId: actionProposal.proposal.chatId, actionId: actionProposal.proposal.actionId, revision: 1, decision: 'confirm' });
+      assistantDecide: async identity => { calls++; assert.deepEqual(identity, { chatId: actionProposal.proposal.chatId, actionId: actionProposal.proposal.actionId, revision: 1, decision: 'confirm',
+        reviewedDigest: await assistantProposalDigest(actionProposal.proposal) });
         if (lost) throw new Error('synthetic transport lost'); return { state: 'applied', actionId: identity.actionId }; } }, { authority: 'current' });
     c.action({ type: 'edit', value: 'mark notifications read' }); c.action({ type: 'send' }); await Promise.resolve(); await Promise.resolve();
     const initial = c.snapshot().turn; assert.equal(initial.state, 'proposal');
     if (initial.state === 'proposal') { assert.equal(initial.proposal.mode, 'local-change'); assert.deepEqual(initial.proposal.subjects, []); }
-    c.action({ type: 'confirm' }); c.action({ type: 'confirm' }); await Promise.resolve(); await Promise.resolve();
-    const settled = c.snapshot().turn; assert.equal(settled.state, 'proposal');
-    if (settled.state === 'proposal') assert.equal(settled.disposition, lost ? 'unknown' : 'confirmed');
+    c.action({ type: 'confirm' }); c.action({ type: 'confirm' });
+    await vi.waitFor(() => { const settled = c.snapshot().turn; assert.ok(settled.state === 'proposal' && settled.disposition === (lost ? 'unknown' : 'confirmed')); });
     c.action({ type: 'confirm' }); c.action({ type: 'retry' }); assert.equal(calls, 1);
   }
 });
