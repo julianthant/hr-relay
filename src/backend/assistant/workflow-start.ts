@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { PersonLookupInput } from "../../models/workflows/person-lookup/input.js";
 import { z } from "zod";
 import { AssistantActionProposalSchema, type AssistantActionDecision, type AssistantActionResult, type AssistantRequest } from "../../models/dashboard/assistant.js";
 import { StartCommandRequestSchema } from "../../rules/commands/commands.js";
@@ -17,6 +18,15 @@ import { AssistantLocalIntentError, type AssistantFunctionContext, type Assistan
 
 const Selection = z.string().regex(/^run_[a-f0-9-]{36}_[1-9][0-9]*$/u);
 const Parameters = z.strictObject({ reference: z.string().regex(/^ref_[a-f0-9]{32}$/u) });
+/** Typed identity fields of the one planned input; only Person Lookup serves them today. */
+function plannedPerson(workflowId: string, input: unknown): { person?: { name?: string; employeeId?: string } } {
+  if (workflowId !== "person-lookup") return {};
+  const parsed = PersonLookupInput.safeParse(input);
+  if (!parsed.success) return {};
+  const value = parsed.data, name = value.mode === "match" ? `${value.firstName} ${value.lastName}` : value.name;
+  const person = { ...(name === undefined ? {} : { name }), ...("emplId" in value ? { employeeId: value.emplId } : {}) };
+  return Object.keys(person).length === 0 ? {} : { person };
+}
 export const ASSISTANT_START_SELECTED_WORKFLOW = "start selected workflow";
 
 export function createAssistantWorkflowStarts(input: Readonly<{
@@ -93,7 +103,7 @@ export function createAssistantWorkflowStarts(input: Readonly<{
           const expiresAt = new Date(Math.min(Date.parse(record.expiresAt), Date.parse(plan.expiresAt))).toISOString();
           const action = AssistantActionProposalSchema.parse({ chatId: chat.chatId, actionId: proposal.id, revision: proposal.revision,
             expiresAt, label: `Start ${descriptor.label}`, targetLabel: plan.planned[0].title,
-            subject: "selected-run", effect: "workflow-start", workflowId: descriptor.id, dryRun, startPlan: {
+            subject: "selected-run", effect: "workflow-start", workflowId: descriptor.id, dryRun, ...plannedPerson(plan.workflowId, plan.planned[0].input), startPlan: {
               startPlanId: planned.startPlanId, workflowId: planned.workflowId, expectedVersion: planned.expectedVersion,
               expiresAt: planned.expiresAt, dryRun: planned.dryRun, browserMode: planned.browserMode,
               captureBrowserScreenshots: planned.captureBrowserScreenshots, fingerprints: planned.fingerprints,

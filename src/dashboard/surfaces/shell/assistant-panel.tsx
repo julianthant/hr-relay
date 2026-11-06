@@ -1,6 +1,6 @@
 import { ASSISTANT_UNKNOWN_NOTICE, assistantConfirmRefusal, type AssistantMockProposal } from "../assistant/assistant-model.js";
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
-import { Fragment, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
+import { useLayoutEffect, useRef, type HTMLAttributes } from 'react';
 import { ArrowDown, Check, History, Paperclip, Plus, Sparkles, X } from 'lucide-react';
 import type { DashboardClient } from '../../client/index.js';
 import { Dialog, DialogContent, DialogClose, Button } from '../../ds/ui.js';
@@ -33,8 +33,8 @@ export function AssistantActionCard({ conversation, onAction, onView, onSignIn, 
 }
 const HIDDEN_PROPOSAL_FACTS = new Set(['Input', 'Runs', 'Expires', 'Browser', 'Captures', 'Configuration', 'Options', 'Mode']);
 const MODE_LABEL = { 'dry-run': 'Dry run', 'read-only': 'Read only', 'local-change': 'Local change' } as const;
-export function proposalPeople(proposal: AssistantMockProposal): readonly { name: string; id?: string }[] {
-  if (proposal.startPlan) return proposal.startPlan.planned.map(run => ({ name: run.title }));
+function proposalPeople(proposal: AssistantMockProposal): readonly { name: string; id?: string }[] {
+  if (proposal.startPlan) return [{ name: proposal.person?.name ?? proposal.startPlan.planned[0]?.title ?? '', ...(proposal.person?.employeeId ? { id: proposal.person.employeeId } : {}) }];
   return proposal.subjects.map(subject => ({ name: subject.name, id: subject.id }));
 }
 function ProposalCard({ proposal, disposition, refusal, onCancel, onConfirm }: { proposal: AssistantMockProposal; disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown'; refusal?: string; onCancel: () => void; onConfirm: () => void }) {
@@ -48,7 +48,8 @@ function ProposalCard({ proposal, disposition, refusal, onCancel, onConfirm }: {
   const busy = disposition === 'confirming', unknown = disposition === 'unknown';
   return <article className="hub-card hub-proposal" aria-label={`Proposed ${proposal.workflow.label}`}>
     <div className="hub-card-body"><h3>{proposal.workflow.label}</h3><dl className="hub-facts">
-      {proposal.startPlan ? proposal.startPlan.planned.map(run => <Fragment key={run.title}><dt>Request</dt><dd>{run.title}</dd></Fragment>)
+      {proposal.person ? <><dt>Name</dt><dd>{proposal.person.name ?? 'Not provided'}</dd><dt>EID</dt><dd>{proposal.person.employeeId ?? 'Not provided'}</dd></>
+        : proposal.startPlan ? <><dt>Request</dt><dd>{proposal.startPlan.planned[0]?.title}</dd></>
         : people.length > 0 && <><dt>Name</dt><dd>{people.map(person => <div key={`${person.name}:${person.id ?? ''}`}>{person.name}</div>)}</dd><dt>EID</dt><dd>{people.map(person => <div key={`${person.name}:${person.id ?? ''}`}>{person.id}</div>)}</dd></>}
       <dt>Options</dt><dd>{options.join(' · ')}</dd>
     </dl></div>

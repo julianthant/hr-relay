@@ -35,7 +35,7 @@ function presentResult(result: AssistantResult, requestId: number, prompt: strin
       return { ...(unknown ? { disposition: 'unknown' as const } : {}), message: { id, role: 'assistant', text: unknown ? 'Action outcome is unknown. Do not retry this action.' : 'Review this proposal. No action has been applied.' }, proposal: {
         id: p.actionId, revision: String(p.revision), prompt, action: { chatId: p.chatId, actionId: p.actionId, revision: p.revision }, expiresAt: p.expiresAt,
         workflow: { id: p.effect === 'workflow-start' ? p.workflowId : 'notification', label: p.label, version: String(p.revision) }, subjects: [], mode: p.effect === 'workflow-start' ? p.dryRun ? 'dry-run' : 'read-only' : 'local-change',
-        ...(p.effect === 'workflow-start' ? { startPlan: p.startPlan } : {}),
+        ...(p.effect === 'workflow-start' ? { startPlan: p.startPlan, ...(p.person === undefined ? {} : { person: p.person }) } : {}),
         values: p.effect === 'workflow-start' ? [
           { label: 'Input', value: p.startPlan.planned.map(run => [run.title, run.subtitle].filter(Boolean).join(' · ')).join(', ') },
           { label: 'Runs', value: String(p.startPlan.planned.length) },

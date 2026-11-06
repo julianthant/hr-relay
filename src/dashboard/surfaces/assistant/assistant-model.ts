@@ -22,6 +22,7 @@ export interface AssistantMessage {
 export interface AssistantMockProposal {
   readonly action?: AssistantActionIdentity;
   readonly startPlan?: Extract<AssistantActionProposal, { effect: 'workflow-start' }>['startPlan'];
+  readonly person?: { readonly name?: string; readonly employeeId?: string };
   readonly expiresAt?: string;
   readonly id: string;
   readonly revision: string;

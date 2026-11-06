@@ -43,41 +43,36 @@ for (const theme of ["light", "dark"]) for (const outcome of ["applied", "cancel
       return outcome === "unknown" ? route.abort("failed") : route.fulfill({ json: { state: outcome, actionId: ASSISTANT_START_PROPOSAL.actionId } });
     });
     await page.goto(`${server.baseUrl}/?fixture=hub-served&day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}`);
+    await page.getByRole("button", { name: "Assistant", exact: true }).click();
     const panel = page.locator("#hub-panel-assistant"), field = panel.getByRole("textbox", { name: "Message Relay", exact: true });
     await expect(field).toBeEnabled(); await field.fill("start selected workflow"); await field.press("Enter");
-    const card = panel.getByRole("article", { name: "Start Person Lookup", exact: true });
-    await expect(card).toContainText("EID 10101010 · Person Lookup");
-    await expect(card).toContainText("Live read"); await expect(card).toContainText("Run results in Logs");
-    await expect(card).not.toContainText("None");
-    const start = card.getByRole("button", { name: "Start run", exact: true });
+    const card = panel.getByRole("article", { name: "Proposed Start Person Lookup", exact: true });
+    await expect(card.getByText("Name", { exact: true })).toBeVisible(); await expect(card.getByText("Avery Sample", { exact: true })).toBeVisible();
+    await expect(card.getByText("EID", { exact: true })).toBeVisible(); await expect(card.getByText("10101010", { exact: true })).toBeVisible();
+    await expect(card).toContainText("Read only");
+    for (const hidden of ["Effects and stop points", "Fingerprint", "Headed", "Captures", "None", "Person Lookup ·"]) await expect(card).not.toContainText(hidden);
+    const start = card.getByRole("button", { name: "Confirm", exact: true });
     await expect(start).toBeEnabled(); expect(decisions).toEqual([]);
     const selected = FIXTURE_DAY_WIRE.queueSurfaces.find(row => row.runId === FIXTURE_IDS.doneRun); expect(selected).toBeDefined();
     expect(requests).toEqual([{ message: "start selected workflow", subjectRef: `run_${FIXTURE_IDS.doneRun}_${selected!.rowRevision}` }]);
     const contrast = await start.evaluate(element => ({ background: getComputedStyle(element).backgroundColor, color: getComputedStyle(element).color }));
     expect(contrast.background).not.toBe(contrast.color);
     if (outcome === "applied") await capture(page, info, "proposal", theme);
-    if (outcome === "applied") {
-      const disclosure = card.getByRole("button", { name: "Effects and stop points", exact: true });
-      await disclosure.click();
-      await expect(card.getByText(`inputFingerprint: ${"e".repeat(64)}`, { exact: true })).toBeVisible();
-      await page.setViewportSize({ width: 1024, height: 720 });
-      expect(await card.locator("p").evaluateAll(nodes => nodes.every(node => node.scrollWidth <= node.clientWidth))).toBe(true);
-      await disclosure.click(); await page.setViewportSize({ width: 1440, height: 900 });
-    }
-    const action = outcome === "cancelled" ? card.getByRole("button", { name: "Not now", exact: true }) : start;
+    const action = outcome === "cancelled" ? card.getByRole("button", { name: "Cancel", exact: true }) : start;
     await action.focus(); await page.keyboard.press("Enter");
     await expect.poll(() => decisions.length).toBe(1);
     expect(decisions[0]).toEqual({ chatId: ASSISTANT_START_PROPOSAL.chatId, actionId: ASSISTANT_START_PROPOSAL.actionId,
       revision: ASSISTANT_START_PROPOSAL.revision, decision: outcome === "cancelled" ? "cancel" : "confirm" });
     if (outcome === "unknown") {
       await expect(card).toContainText("Action outcome is unknown. Do not retry this action.");
-      await expect(start).toBeDisabled(); await expect(card.getByRole("button", { name: "Not now", exact: true })).toBeDisabled();
+      await expect(start).toBeDisabled(); await expect(card.getByRole("button", { name: "Cancel", exact: true })).toBeDisabled();
       await expect(field).toBeDisabled(); await expect(panel.getByRole("button", { name: "Retry reply", exact: true })).toHaveCount(0);
       await page.keyboard.press("Enter"); expect(decisions).toHaveLength(1);
     } else {
-      await expect(panel.getByLabel("Resolved start", { exact: true })).toContainText(outcome === "applied" ? "Started · 1 run" : "Not started");
+      await expect(panel.getByLabel("Resolved proposal", { exact: true })).toContainText(outcome === "applied" ? "Started" : "Not started");
+      await expect(panel.getByLabel("Resolved proposal", { exact: true })).toContainText("Avery Sample");
       await expect(card).toHaveCount(0); await expect(field).toBeFocused();
-      await expect(panel.getByRole("button", { name: "Start run", exact: true })).toHaveCount(0);
+      await expect(panel.getByRole("button", { name: "Confirm", exact: true })).toHaveCount(0);
     }
     await capture(page, info, outcome, theme);
     await page.setViewportSize({ width: 1024, height: 720 });
