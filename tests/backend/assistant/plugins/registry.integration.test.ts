@@ -50,7 +50,7 @@ async function seededOwners() {
   const w = await makeWorld({ descriptors: { resolve: () => subjectDescriptor } }); worlds.push(w);
   const { database, clock } = w;
   if (database.authority.runtimeConfig.get() === undefined) seedInitialSettingsRuntimeConfig(database, clock);
-  const run = runRecordOf({ seed: 41, descriptor: subjectDescriptor });
+  const run = runRecordOf({ seed: 41, descriptor: subjectDescriptor, claimGeneration: 1 });
   database.authority.runs.enqueue(run);
   database.registerRunSearchDeclarations([{ workflow: run.envelope.workflow, version: run.envelope.descriptorVersion,
     contractFingerprint: run.envelope.contractFingerprint, subjectProjection: subjectDescriptor.subjectProjection ?? null }]);
@@ -67,8 +67,8 @@ async function seededOwners() {
       summary: CANARIES.notificationSummary, links: [{ kind: "storage", diagnosticFingerprint: "b".repeat(64) }], count: 1, version: 1, lastSeenAt: now, createdAt: now, updatedAt: now }));
     // A run-linked notification whose display context resolves the run's subject.
     notifications.create(NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: "local-operator",
-      dedupeFingerprint: "c".repeat(64), trigger: "failed", channel: "inbox", status: "unread", snooze: { state: "not-snoozed" }, title: CANARIES.notificationTitle,
-      links: [{ kind: "run", runId: run.envelope.runId }], count: 1, version: 1, lastSeenAt: now, createdAt: now, updatedAt: now }));
+      dedupeFingerprint: "c".repeat(64), trigger: "failed", channel: "ping", status: "unread", snooze: { state: "not-snoozed" }, title: CANARIES.notificationTitle,
+      summary: CANARIES.notificationSummary, links: [{ kind: "run", runId: run.envelope.runId }], count: 1, version: 1, lastSeenAt: now, createdAt: now, updatedAt: now }));
   });
   const patch = { "actor.label": { set: CANARIES.setting } };
   const saved = executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID },
