@@ -28,7 +28,7 @@ import {
 import { IdentityEidSourceSchema } from "../../../../rules/separations/identity-evidence.js";
 import { JobSummaryClassificationSchema } from "../../../../rules/separations/job-summary-classification.js";
 import { noSeparationWritePlan } from "../../../../rules/separations/write-plan.js";
-import type { StepProofSpec, WorkflowAuthor } from "../../../../workflow-kit/workflow-definition.js";
+import type { StepProofSpec, WorkflowAuthor, WorkflowGroupOptions } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep } from "../../../../workflow-kit/workflow.js";
 import type { SeparationsInput } from "../../workflow.js";
@@ -44,6 +44,18 @@ export const IDENTITY_CHECK_STEP = defineWorkflowStep({
   key: "identity-check",
   label: "Identity check",
 });
+
+/** Operator text and fields for this group in Explorer and Logs. */
+const IDENTITY_CHECK_DISPLAY = {
+  description: "Search UCPath for the employee named on the document, compare the two and wait for your approval when they do not agree.",
+  system: "ucpath",
+  operatorFields: [
+    { label: "Searched name", example: "Quillan, Petra A.", sources: [{ nodeId: "subject", kind: "output", fieldPath: "searchedName" }] },
+    { label: "Employee ID", example: "10000001", sources: [{ nodeId: "subject", kind: "output", fieldPath: "emplId" }] },
+    { label: "UCPath name", example: "Quillan, Petra A.", sources: [{ nodeId: "comparison", kind: "output", fieldPath: "packet.ucpathName" }] },
+    { label: "Document name", example: "Quillan, Petra A.", sources: [{ nodeId: "comparison", kind: "output", fieldPath: "packet.documentName" }] },
+  ],
+} satisfies WorkflowGroupOptions;
 
 export const NAME_SEARCH_NODE = "name-search";
 export const SUBJECT_NODE = "subject";
@@ -85,6 +97,18 @@ export const JOB_SUMMARY_STEP = defineWorkflowStep({
   key: "job-summary",
   label: "Job summary",
 });
+
+/** Operator text and fields for this group in Explorer and Logs. */
+const JOB_SUMMARY_DISPLAY = {
+  description: "Read Workforce Job Summary, choose the active job and match its department to the Kuali option.",
+  system: "ucpath",
+  operatorFields: [
+    { label: "HR status", example: "Active", sources: [{ nodeId: "employment", kind: "output", fieldPath: "hrStatus" }] },
+    { label: "Department", example: "CAMPUS DINING OPERATIONS", sources: [{ nodeId: "employment", kind: "output", fieldPath: "department" }] },
+    { label: "Payroll title", example: "Fictional analyst", sources: [{ nodeId: "employment", kind: "output", fieldPath: "payrollTitle" }] },
+    { label: "Kuali department option", example: "Campus Dining", sources: [{ nodeId: "department-option", kind: "output", fieldPath: "option" }] },
+  ],
+} satisfies WorkflowGroupOptions;
 
 export const JOB_SUMMARY_NODE = "job-summary";
 export const EMPLOYMENT_NODE = "employment";
@@ -221,7 +245,7 @@ export function readJobs({ task }: Author, extraction: Extraction, resolved: Sub
   );
   return { jobSummary, employment, departmentOption };
 }
-export function buildIdentity({ task, gate }: Author, extraction: Extraction, resolved: Subject, jobs: Jobs, timecard: Timecard) {
+export function buildIdentity({ task, gate, group }: Author, extraction: Extraction, resolved: Subject, jobs: Jobs, timecard: Timecard) {
   const { document, plan, terminationType } = extraction, { nameSearch, subject } = resolved;
   const { jobSummary, employment, departmentOption } = jobs, { dates } = timecard;
   const comparison = task(
@@ -283,8 +307,8 @@ export function buildIdentity({ task, gate }: Author, extraction: Extraction, re
     approval: outputs[GATE_NODE],
   }));
   return {
-    approval, steps: [[IDENTITY_CHECK_STEP, [nameSearch, subject, comparison, identityGate, approval]],
-    [JOB_SUMMARY_STEP, [jobSummary, employment, departmentOption]]] as const
+    approval, steps: [[group(IDENTITY_CHECK_STEP, IDENTITY_CHECK_DISPLAY), [nameSearch, subject, comparison, identityGate, approval]],
+    [group(JOB_SUMMARY_STEP, JOB_SUMMARY_DISPLAY), [jobSummary, employment, departmentOption]]] as const
   };
 }
 

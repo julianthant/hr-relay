@@ -26,7 +26,7 @@ import {
   assertSeparationDates
 } from "../../../../rules/separations/separation-dates.js";
 import type { JsonObject, JsonValue } from "../../../../rules/validation/canonical-json.js";
-import type { StepProofSpec, WorkflowAuthor } from "../../../../workflow-kit/workflow-definition.js";
+import type { StepProofSpec, WorkflowAuthor, WorkflowGroupOptions } from "../../../../workflow-kit/workflow-definition.js";
 import { defineStep, defineStepEntries } from "../../../../workflow-kit/workflow-definition.js";
 import { defineWorkflowStep, requireFact } from "../../../../workflow-kit/workflow.js";
 import type { SeparationsInput } from "../../workflow.js";
@@ -40,6 +40,18 @@ export const KRONOS_TIMECARD_STEP = defineWorkflowStep({
   key: "kronos-timecard",
   label: "Kronos timecard",
 });
+
+/** Operator text and fields for this group in Explorer and Logs. */
+const KRONOS_TIMECARD_DISPLAY = {
+  description: "Find the employee's Kronos timecard, read the punches and reconcile the separation dates.",
+  system: "new-kronos",
+  operatorFields: [
+    { label: "Kronos employee", example: "Quillan, Petra A.", sources: [{ nodeId: "timecard-search", kind: "output", fieldPath: "matched.displayName" }] },
+    { label: "Last day worked", example: "4/25/2031", sources: [{ nodeId: "dates", kind: "output", fieldPath: "lastDayWorked" }] },
+    { label: "Separation date", example: "4/26/2031", sources: [{ nodeId: "dates", kind: "output", fieldPath: "separationDate" }] },
+    { label: "Termination effective date", example: "4/26/2031", sources: [{ nodeId: "dates", kind: "output", fieldPath: "terminationEffectiveDate" }] },
+  ],
+} satisfies WorkflowGroupOptions;
 
 export const TIMECARD_SEARCH_NODE = "timecard-search";
 export const TIMECARD_NODE = "timecard";
@@ -218,7 +230,7 @@ export function buildTimecard({ task, group }: Author, extraction: Extraction, r
       end: outputs[TIMECARD_NODE].range.observedEnd,
     },
   }));
-  return { dates, steps: [[group(KRONOS_TIMECARD_STEP, { omission: KRONOS_TIMECARD_OMISSION }), [timecardSearch, timecard, dates]]] as const };
+  return { dates, steps: [[group(KRONOS_TIMECARD_STEP, { ...KRONOS_TIMECARD_DISPLAY, omission: KRONOS_TIMECARD_OMISSION }), [timecardSearch, timecard, dates]]] as const };
 }
 
 export const separationsKronosTimecardDefinition = defineStep({

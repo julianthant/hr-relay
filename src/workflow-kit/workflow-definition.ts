@@ -68,6 +68,8 @@ export interface WorkflowTimelineGroup {
   readonly [GROUP_OWNER]?: WorkflowTimelineGroup;
 }
 
+export type WorkflowGroupOptions = Readonly<Partial<Pick<WorkflowTimelineGroup, "omission" | "description" | "system" | "operatorFields">>>;
+
 /** One timeline-tuple entry: a typed reusable value over an existing contract (or gate/transaction/parallel/delegate declaration), in exactly one tuple. */
 export interface WorkflowEntry<
   Id extends string = string,
@@ -299,11 +301,11 @@ export interface WorkflowResultDeclaration<
 /* ── the author ──────────────────────────────────────────────────────────── */
 
 export interface WorkflowAuthor<InputSchema extends z.ZodType> {
-  /** Declare a group omittable, beside its own entries. */
+  /** Add a composition's own group facts (omission, operator text and fields) to a step, beside its own entries. */
   group(
     this: void,
     step: WorkflowTimelineGroup,
-    options: Readonly<{ omission: StepOmissionDeclaration }>,
+    options: WorkflowGroupOptions,
   ): WorkflowTimelineGroup;
 
   branch<
@@ -395,16 +397,8 @@ function withStep(identity: StepOwned): { step?: WorkflowTimelineGroup } {
 
 function workflowAuthor<InputSchema extends z.ZodType>(delegationDisplay: ChildVisibility = "inline"): WorkflowAuthor<InputSchema> {
   const author = {
-    group(
-      step: WorkflowTimelineGroup,
-      options: Readonly<{ omission: StepOmissionDeclaration }>,
-    ) {
-      return Object.freeze({
-        key: step.key,
-        label: step.label,
-        omission: options.omission,
-        [GROUP_OWNER]: step,
-      });
+    group(step: WorkflowTimelineGroup, options: WorkflowGroupOptions) {
+      return Object.freeze({ ...step, ...options, key: step.key, label: step.label, [GROUP_OWNER]: step });
     },
     branch(
       identity: BranchEntryIdentity,
