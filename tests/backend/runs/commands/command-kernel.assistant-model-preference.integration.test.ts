@@ -10,6 +10,9 @@ import { NOW } from '../../../support/fixtures/phase1c-contract-fixtures.js';
 import { retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { AssistantStoredCommandSchema } from "../../../../src/models/profiles/assistant-authorization.js";
 import { DatabaseSync } from "node:sqlite";
+import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { ASSISTANT_EFFORT_SCALE_VERSION, convertAssistantEffortRow, migrateAssistantEffortScale } from "../../../../src/backend/storage/sqlite/assistant-effort-migration.js";
+import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
@@ -154,6 +157,32 @@ describe("operator assistant model preference", () => {
     await assert.rejects(h.kernel.executeAssistantModelPreference(first));
   });
 
+  it("converts a schema-23 stored low effort to light in the preference, its commands and audits, byte for byte", async () => {
+    const h = await harness(async () => () => true as const), first = { ...request(h.profile.admission.profileBinding.profileId), payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: "light" as const } };
+    assert.equal((await h.kernel.executeAssistantModelPreference(first)).state, "applied");
+    assert.equal((await h.kernel.executeAssistantModelPreference({ ...request(first.target.profileId, 1), payload: { slug: ASSISTANT_DEFAULT_MODEL, effort: "max" as const } })).state, "applied");
+    const migration = SQLITE_MIGRATIONS.find(value => value.version === ASSISTANT_EFFORT_SCALE_VERSION); assert.ok(migration);
+    const raw = new DatabaseSync(h.profile.path);
+    const snapshot = () => ["assistant_model_preference", "commands", "command_audits"].map(table => raw.prepare(`SELECT * FROM ${table} ORDER BY id`).all());
+    try {
+      const current = snapshot();
+      // Rewrite the stored rows to the schema-23 form: effort "low" and request digests over that request.
+      raw.exec("DROP TRIGGER command_audits_immutable; DROP TRIGGER assistant_model_preference_monotonic");
+      const low = (json: string) => json.replaceAll('"effort":"light"', '"effort":"low"');
+      for (const row of raw.prepare("SELECT id,request_json,outcome_json FROM commands WHERE family='assistant-model-preference'").all()) {
+        const requestJson = low(String(row.request_json));
+        raw.prepare("UPDATE commands SET request_json=?,request_digest=?,outcome_json=? WHERE id=?").run(requestJson, sha256Hex(requestJson), row.outcome_json === null ? null : low(String(row.outcome_json)), String(row.id));
+      }
+      for (const table of ["command_audits", "assistant_model_preference"]) raw.exec(`UPDATE ${table} SET payload_json=replace(payload_json,'"effort":"light"','"effort":"low"')`);
+      assert.notDeepEqual(snapshot(), current);
+      for (const statement of migration.statements.slice(3)) raw.exec(statement);
+      for (const [index, statement] of migration.statements.entries()) { raw.exec(statement); if (index === 2) migrateAssistantEffortScale(raw); }
+      assert.deepEqual(snapshot(), current);
+    } finally { raw.close(); }
+    assert.equal(h.database.authority.assistantModelPreference.get()?.preference.effort, "max");
+    assert.equal(convertAssistantEffortRow("command_audits", { id: "x", payload_json: '{"request":{"family":"settings"}}' }).payload_json, '{"request":{"family":"settings"}}');
+  });
+
   it("independently refuses assistant-origin commands even with a prepared trusted dependency", async () => {
     let preparations = 0;
     const h = await harness(async () => { preparations += 1; return () => true as const; });
@@ -232,7 +261,7 @@ describe("operator assistant model preference", () => {
       raw.exec("DROP TRIGGER assistant_model_preference_no_delete; DROP TRIGGER assistant_model_preference_monotonic");
       if (mutation === "deleted-current") raw.exec("DELETE FROM assistant_model_preference");
       else raw.prepare("UPDATE assistant_model_preference SET payload_json=? WHERE id=?").run(JSON.stringify({ ...record,
-        preference: { ...record.preference, effort: record.preference.effort === "high" ? "low" : "high" } }), record.id);
+        preference: { ...record.preference, effort: record.preference.effort === "high" ? "light" : "high" } }), record.id);
     } catch (error) { mutationFailure = { error }; }
     try { raw.close(); }
     catch (error) {

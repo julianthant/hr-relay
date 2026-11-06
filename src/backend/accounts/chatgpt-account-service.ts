@@ -1,4 +1,4 @@
-import { AssistantModelPreferenceSchema, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
+import { ASSISTANT_PROVIDER_EFFORTS, AssistantModelPreferenceSchema, type AssistantModelPreference } from "../../models/config/assistant-model-preference.js";
 import { AssistantInferenceRequestSchema, AssistantInferenceResultSchema, AssistantModelCatalogSchema, type AssistantInferenceRequest } from "../../models/dashboard/assistant.js";
 import { type ChatGptAccountState, type ChatGptSignInRequest, type ChatGptSignedOut } from "../../models/dashboard/chatgpt-account.js";
 import { createHash, createPublicKey, randomBytes, randomUUID, verify } from "node:crypto";
@@ -852,14 +852,14 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
       const history: AssistantInferenceRequest['input'] = [{ role: 'developer',
         content: 'Call relay_capability.echo once with value relay-public-capability. After its public output, answer Relay public capability verified. Do nothing else.' },
         { role: 'user', content: 'Verify this model using the fixed public function only.' }];
-      const first = await inferBoundAssistant({ model: preference.slug, reasoning: { effort: preference.effort }, input: history, tools }, signal, operation);
+      const first = await inferBoundAssistant({ model: preference.slug, reasoning: { effort: ASSISTANT_PROVIDER_EFFORTS[preference.effort] }, input: history, tools }, signal, operation);
       operation.assertCurrent();
       const calls = first.output.filter(item => item.type === 'function_call'), call = calls[0];
       if (calls.length !== 1 || call?.namespace !== 'relay_capability' || call.name !== 'echo') throw fault('CHATGPT_ASSISTANT_REFUSED');
       let argumentsValue: unknown;
       try { argumentsValue = JSON.parse(call.arguments); } catch { throw fault('CHATGPT_ASSISTANT_REFUSED'); }
       if (!z.strictObject({ value: z.literal('relay-public-capability') }).safeParse(argumentsValue).success) throw fault('CHATGPT_ASSISTANT_REFUSED');
-      const terminal = await inferBoundAssistant({ model: preference.slug, reasoning: { effort: preference.effort }, tools,
+      const terminal = await inferBoundAssistant({ model: preference.slug, reasoning: { effort: ASSISTANT_PROVIDER_EFFORTS[preference.effort] }, tools,
         input: [...history, ...first.output, { type: 'function_call_output', call_id: call.call_id, namespace: call.namespace, name: call.name,
           ...(call.caller === undefined ? {} : { caller: call.caller }), output: JSON.stringify({ value: 'relay-public-capability' }) }] }, signal, operation);
       operation.assertCurrent();

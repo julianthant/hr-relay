@@ -81,7 +81,7 @@ export const AssistantFunctionNamespaceSchema = z.strictObject({ type: z.literal
 });
 export type AssistantFunctionNamespace = z.infer<typeof AssistantFunctionNamespaceSchema>;
 export const AssistantInferenceRequestSchema = z.strictObject({ model: AssistantModelSlugSchema,
-  reasoning: z.strictObject({ effort: AssistantModelPreferenceSchema.shape.effort }),
+  reasoning: z.strictObject({ effort: z.enum(["low", "medium", "high", "xhigh", "max"]) }),
   input: z.array(AssistantInputItemSchema).min(1).max(128), tools: z.array(AssistantFunctionNamespaceSchema).max(8),
 }).superRefine((value, context) => {
   const namespaces = new Set<string>(), calls = new Map<string, { namespace: string; name: string; settled: boolean }>();

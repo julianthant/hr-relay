@@ -269,7 +269,7 @@ it.each(["every-action"] as const)('serves preference CAS, replay and verificati
       const command = { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator",
         source: 'dashboard-assistant-model-preference', family: "assistant-model-preference", type: "set-assistant-model-preference",
         target: { profileId: view.profileId, epoch: view.epoch, expectedRevision: view.revision },
-        payload: { ...view.preference, effort: view.preference.effort === 'low' ? 'medium' : 'low' } };
+        payload: { ...view.preference, effort: view.preference.effort === 'light' ? 'medium' : 'light' } };
       const selected = CommandResultSchema.parse(await post('commands', command));
       assert.equal(selected.state, 'applied');
       const changed = AssistantModelPreferenceViewSchema.parse(await (await originalFetch(`${origin}/api/v1/assistant/model-preference`)).json());
