@@ -56,6 +56,12 @@ it("runs one control at a time and never beside a claimed run, while pause and r
   assert.equal(c.child.beginRun(), true);
 });
 
+it("replies with the refusal when a pause or resume handler throws", () => {
+  const c = channel({ pause: () => { throw new WorkerPoolError("WORKER_BUSY"); }, resume: () => { throw new Error("boom"); } });
+  assert.equal(c.refusal(c.directive("worker-pause")), "WORKER_BUSY");
+  assert.equal(c.refusal(c.directive("worker-resume")), "INTERNAL_FAILURE");
+});
+
 it("refuses a duplicate request id and an expired request without running it", async () => {
   let checks = 0;
   const c = channel({ checkParkedWrite: async () => { checks += 1; return null; } });

@@ -53,7 +53,10 @@ export function createWorkerChildChannel(input: Readonly<{
       if (seen.has(message.requestId)) { reply(refused("WORKER_IPC_PROTOCOL_INVALID")); return; }
       seen.add(message.requestId);
       if (message.kind === "worker-pause" || message.kind === "worker-resume") {
-        reply({ state: "done", result: message.kind === "worker-pause" ? input.handlers.pause() : input.handlers.resume() });
+        let outcome: WorkerReplyOutcome;
+        try { outcome = { state: "done", result: message.kind === "worker-pause" ? input.handlers.pause() : input.handlers.resume() }; }
+        catch (error) { outcome = outcomeOf(error); }
+        reply(outcome);
         return;
       }
       if (input.clock.nowMs() >= Date.parse(message.sentAt) + message.deadlineMs) { reply(refused("WORKER_REQUEST_EXPIRED")); return; }

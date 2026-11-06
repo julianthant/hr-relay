@@ -255,10 +255,13 @@ export function createWorkerPool(deps: WorkerPoolDependencies) {
       if (prior !== undefined && (prior.state !== "exited" || prior.settling)) throw new WorkerPoolError(prior.held === undefined ? "WORKER_ALREADY_RUNNING" : "WORKER_EXIT_UNOBSERVED");
       if (prior?.exit?.settlement === "failed") {
         prior.settling = true;
-        try { await deps.settleExit(prior.member, prior.exit); prior.exit = { ...prior.exit, settlement: "settled" }; prior.settlementFailure = undefined; prior.settling = false; changed(prior); }
+        try { await deps.settleExit(prior.member, prior.exit); prior.exit = { ...prior.exit, settlement: "settled" }; prior.settlementFailure = undefined; changed(prior); }
         catch (error) { prior.settlementFailure = error; prior.settling = false; throw new WorkerPoolError("WORKER_EXIT_SETTLEMENT_FAILED", { cause: error }); }
       }
-      const port = deps.spawn(member);
+      // A settled prior stays reserved until its replacement is published, so a start from onChange cannot spawn twice.
+      let port: WorkerProcessPort;
+      try { port = deps.spawn(member); }
+      catch (error) { if (prior !== undefined) prior.settling = false; throw error; }
       let resolveExited!: () => void;
       const exited = new Promise<void>(resolve => { resolveExited = resolve; });
       const record: MemberRecord = { member, lifetimeId: deps.ids.uuid(), port, startedAt: at(), version: 0, state: "starting", directive: "run", settling: false,

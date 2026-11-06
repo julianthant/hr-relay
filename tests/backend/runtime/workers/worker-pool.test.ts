@@ -38,7 +38,7 @@ function fakePort(pid: number | undefined = 4242) {
     } };
 }
 
-function world(options: Partial<Pick<WorkerPoolDependencies, "platform">> & { settle?: (exit: WorkerExitFact) => void | Promise<void> } = {}) {
+function world(options: Partial<Pick<WorkerPoolDependencies, "platform" | "onChange">> & { settle?: (exit: WorkerExitFact) => void | Promise<void> } = {}) {
   const clock = manualClock(new Date("2026-11-06T12:00:00.000Z"));
   const timers: { at: number; run: () => void; cancelled: boolean }[] = [];
   const ports: ReturnType<typeof fakePort>[] = [];
@@ -50,7 +50,7 @@ function world(options: Partial<Pick<WorkerPoolDependencies, "platform">> & { se
     scheduler: { schedule(at, run) { const timer = { at, run, cancelled: false }; timers.push(timer); return { cancel() { timer.cancelled = true; } }; } },
     spawn: () => { const port = fakePort(nextPid); ports.push(port); return port.port; },
     settleExit: async (_member, exit) => { settled.push(exit); await options.settle?.(exit); },
-    onFault: (_member, error) => { faults.push(error); } });
+    onFault: (_member, error) => { faults.push(error); }, onChange: view => { options.onChange?.(view); } });
   return { pool, ports, settled, faults, clock,
     set nextPid(value: number | undefined) { nextPid = value; },
     async advance(ms: number) {
@@ -246,6 +246,22 @@ describe("worker pool", () => {
     settle(new Error("still refused"));
     await assert.rejects(first, { code: "WORKER_EXIT_SETTLEMENT_FAILED" });
     assert.equal(w.ports.length, 1);
+  });
+
+  it("keeps the settled prior reserved until its replacement is published", async () => {
+    let fail = true;
+    const nested: Promise<unknown>[] = [];
+    const w = world({ settle: () => { if (fail) throw new Error("settlement refused"); },
+      onChange: view => { if (view.state === "exited" && view.exit?.settlement === "settled") nested.push(w.pool.start(member).catch((error: unknown) => error)); } });
+    const { port } = await running(w);
+    port.exit(1, null); await flush();
+    fail = false;
+    const again = w.pool.start(member); await flush();
+    assert.equal(nested.length, 1);
+    assert.equal((await nested[0] as { code?: string }).code, "WORKER_ALREADY_RUNNING");
+    assert.equal(w.ports.length, 2);
+    w.ports[1]?.ready();
+    assert.equal((await again).state, "running");
   });
 
   it("records pause as its own message and keeps directive apart from a busy run", async () => {
