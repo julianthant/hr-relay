@@ -63,7 +63,7 @@ type WriteShape = { intentId: string; attemptId: string; runId: string; key: str
 function insertWrite(database: DatabaseSync, write: WriteShape): void {
   const identity = { writeIntentId: write.intentId, currentAttemptId: write.attemptId, runId: write.runId, idempotencyKey: write.key,
     idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", write.key) };
-  const { currentAttemptId: _attempt, runAttempt: _runAttempt, bindingProof: _proof, bindingProofDigest: _digest, fencedAt: _fenced, status: _status, ...observed } = { ...WRITE_INTENT_ATTEMPTING, ...identity };
+  const { currentAttemptId: _attempt, runAttempt: _runAttempt, bindingProof: _proof, bindingProofDigest: _digest, fencedAt: _fenced, status: _status, runId: _runId, ...observed } = { ...WRITE_INTENT_ATTEMPTING, ...identity };
   const resolution = write.resolution === undefined ? {} : { resolution: { commandId: write.resolution, auditId: write.resolution, writeIntentId: write.intentId,
     writeAttemptId: write.attemptId, generation: 1, bindingProofDigest: WRITE_INTENT_ATTEMPTING.bindingProofDigest, idempotencyKeyDigest: identity.idempotencyKeyDigest,
     runId: write.runId, runAttempt: 1, expectedRunVersion: 1, decision: "present", resolvedAt: NOW } };
@@ -72,7 +72,7 @@ function insertWrite(database: DatabaseSync, write: WriteShape): void {
     : write.status === "parked" ? { ...WRITE_INTENT_ATTEMPTING, ...identity, status: "parked", parkedCode: "unknown", message: "Outcome unknown.", authorityReason: "outcome-unknown" }
     : { ...WRITE_INTENT_ATTEMPTING, ...identity });
   database.prepare("INSERT INTO write_intents VALUES(?,?,?,?,?,?,?,?,NULL,?,?)").run(write.intentId, "ucpath", write.key, identity.idempotencyKeyDigest,
-    intent.status, 1, write.runId, canonicalJsonStringify(intent), NOW, NOW);
+    intent.status, 1, intent.status === "observed-present" ? null : write.runId, canonicalJsonStringify(intent), NOW, NOW);
   const state = write.attempt ?? (write.status === "observed-present" ? "none" : write.status === "committed" ? "committed" : write.status);
   if (state === "none") return;
   const outcome = state === "committed" ? { state, completionProof: PROOF, confirmedAt: NOW }

@@ -135,13 +135,13 @@ function workerLifetimeClosure(database: DatabaseSync): { runs: Set<string>; see
 
 /**
  * A closure run may go only when each write it touched is committed with authenticated proof: a committed attempt, or the
- * original parked attempt settled by its authenticated recheck. Every durable fence must match one such write by run, attempt
- * and task. Missing, inconsistent or unsettled evidence refuses.
+ * original parked attempt settled by its authenticated recheck. Every durable fence must bind to its own settled attempt by
+ * run, attempt, task and fence time. Missing, inconsistent or unsettled evidence refuses.
  */
 function refuseUnresolvedWrites(database: DatabaseSync, closure: ReadonlySet<string>): void {
   const refuse = (): never => { throw new Error("authority-upgrade-unresolved-writes"); };
   try { readRestoreWriteFences(database); } catch { refuse(); }
-  const settled = new Map<string, CommittedIntent>();
+  const settled = new Map<string, SettledWrite>();
   for (const row of rows(database, "SELECT * FROM write_intents")) {
     const runId = z.string().nullable().parse(row.run_id);
     if (runId === null && row.status !== "committed") refuse();
@@ -156,24 +156,31 @@ function refuseUnresolvedWrites(database: DatabaseSync, closure: ReadonlySet<str
     for (const event of rows(database, "SELECT operation_id, payload_json FROM timeline_events WHERE run_id=?", id)) {
       if (event.operation_id !== null && !settled.has(text(event, "operation_id"))) refuse();
       const fence = TransactionFenceSchema.safeParse(json(event.payload_json));
-      if (fence.success && ![...settled.values()].some(intent => intent.runId === fence.data.event.runId
-        && intent.runAttempt === fence.data.event.attempt && intent.taskId === fence.data.event.taskId)) refuse();
+      if (!fence.success) continue;
+      const { runId, attempt, taskId, ts } = fence.data.event;
+      const owner = [...settled.values()].find(write => write.intent.runId === runId && write.intent.runAttempt === attempt
+        && write.intent.taskId === taskId && write.unmatchedFences.has(ts));
+      if (owner === undefined) refuse();
+      else owner.unmatchedFences.delete(ts);
     }
   }
 }
 
 /** The durable pre-click fence; `transaction.previewed` is a dry run and never a possible submit. */
 const TransactionFenceSchema = z.object({ kind: z.literal("span"),
-  event: z.object({ t: z.literal("transaction.fenced"), runId: z.string(), attempt: z.number(), taskId: z.string() }) });
+  event: z.object({ t: z.literal("transaction.fenced"), runId: z.string(), attempt: z.number(), taskId: z.string(), ts: z.string() }) });
 
-type CommittedIntent = Extract<WriteIntentRecord, { status: "committed" }>;
+/** A committed intent and the fence times of its attempts that no span has claimed yet; each span binds to one attempt. */
+type SettledWrite = Readonly<{ intent: Extract<WriteIntentRecord, { status: "committed" }>; unmatchedFences: Set<string> }>;
 
-function settledIntent(database: DatabaseSync, row: Row): CommittedIntent {
+function settledIntent(database: DatabaseSync, row: Row): SettledWrite {
   const intent = WriteIntentRecordSchema.parse(json(row.payload_json));
   if (intent.status !== "committed") throw new Error("write-intent-unsettled");
+  const unmatchedFences = new Set<string>();
   for (const raw of rows(database, "SELECT payload_json FROM write_attempts WHERE intent_id=?", intent.writeIntentId)) {
     const attempt = WriteAttemptRecordSchema.parse(json(raw.payload_json));
     if (attempt.runId !== intent.runId) throw new Error("write-attempt-run-mismatch");
+    unmatchedFences.add(attempt.fencedAt);
     if (attempt.outcome.state === "committed") continue;
     const resolution = intent.resolution;
     if (attempt.outcome.state !== "parked" || resolution?.writeAttemptId !== attempt.writeAttemptId) throw new Error("write-attempt-unsettled");
@@ -181,7 +188,7 @@ function settledIntent(database: DatabaseSync, row: Row): CommittedIntent {
       nativeOrdinaryRecordFromRow("command_audits", database.prepare("SELECT * FROM command_audits WHERE id=?").get(resolution.auditId)));
   }
   confirmationPublicationFromRow(intent, row.publication_json);
-  return intent;
+  return { intent, unmatchedFences };
 }
 
 /** Resolution journals that authenticate kept write intents; they stay with the write evidence. */

@@ -69,3 +69,14 @@ it("refuses a fence for another task that no committed write settles, beside a c
     assert.deepEqual(dump(), before);
   } finally { raw.close(); }
 });
+
+it("refuses a later fence for the same task that the earlier committed write cannot settle", async () => {
+  const { raw, fence, emit, migrate } = await recovered();
+  try {
+    emit({ ...fence, ts: new Date(Date.parse(fence.ts) + 1_000).toISOString() });
+    const dump = () => ["runs", "commands", "command_audits", "write_intents", "write_attempts", "timeline_events", "deleted_runs"].map(table => raw.prepare(`SELECT * FROM ${table}`).all());
+    const before = dump();
+    assert.throws(migrate, /authority-upgrade-unresolved-writes/u);
+    assert.deepEqual(dump(), before);
+  } finally { raw.close(); }
+});
