@@ -3,14 +3,14 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, it } from "vitest";
 import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/run-start-dialog-harness.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { StartPlanRequestSchema } from "../../../../src/models/dashboard/start-plan.js";
 import { PersonLookupInput, parsePersonLookupRequest } from "../../../../src/models/workflows/person-lookup/input.js";
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
-const descriptor = WORKFLOW_DESCRIPTORS.find(flow => flow.id === "person-lookup");
+const descriptor = DESCRIPTORS.find(flow => flow.id === "person-lookup");
 assert.ok(descriptor?.surfaces.inputRun);
 const workflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, version: descriptor.version,
   steps: projectStartSteps(descriptor), inputRun: { state: "present" as const, surface: descriptor.surfaces.inputRun } };

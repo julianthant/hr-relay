@@ -1,3 +1,4 @@
+import { separationsModule } from "../../../../support/helpers/registered-workflows.js";
 import { afterAll, afterEach, describe, it, vi } from "vitest";
 import { createProfileFixtureSet } from "../../../../support/helpers/admission-fixture.js";
 import assert from "node:assert/strict";
@@ -15,7 +16,6 @@ import { ActorIdSchema,DiagnosticBundleIdSchema,FailureIdSchema } from "../../..
 import { canonicalJsonStringify } from "../../../../../src/rules/validation/canonical-json.js";
 import { HASH_A,HASH_B,NOW } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 import { trustWorld } from "../../../../support/helpers/backend/trust-authority-fixture.js";
-import { separationsModule } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { FailureRecordSchema } from "../../../../../src/models/trust/failure.js";
 

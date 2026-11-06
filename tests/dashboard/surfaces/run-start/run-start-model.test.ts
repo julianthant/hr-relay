@@ -24,10 +24,10 @@ type StepOmissionStepView,
 } from "../../../../src/dashboard/surfaces/run-start/run-start-model.js";
 import { StepOmissionFormSchema,type StepOmissionForm } from "../../../../src/models/workflow/step-omission.js";
 import { parsePersonLookupRequest } from "../../../../src/models/workflows/person-lookup/input.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 
 describe("canonical Person Lookup launch input", () => {
-  const surface = WORKFLOW_DESCRIPTORS.find(workflow => workflow.id === "person-lookup")?.surfaces.inputRun;
+  const surface = DESCRIPTORS.find(workflow => workflow.id === "person-lookup")?.surfaces.inputRun;
   assert.ok(surface);
   it("merges duplicate Search people and retains selected CRM options", () => {
     const preview = previewRunInput(surface, "10000001; 10000001\nExample, Person", { mode: "search", crmCheck: true, includeCrmDates: true });
@@ -370,7 +370,7 @@ describe("the cascade locks exactly what the planner would refuse", () => {
 
 
 describe("explicit unchosen typed mode", () => {
-  const surface = WORKFLOW_DESCRIPTORS.find(workflow => workflow.id === "onboarding")?.surfaces.inputRun;
+  const surface = DESCRIPTORS.find(workflow => workflow.id === "onboarding")?.surfaces.inputRun;
   assert.ok(surface?.typedInput);
   const declaration = surface.typedInput;
   it("keeps null unchosen while preserving existing string defaults", () => {
@@ -379,7 +379,7 @@ describe("explicit unchosen typed mode", () => {
     assert.equal(typedInputMode(declaration, {}), undefined);
     assert.equal(typedControlAvailable(declaration, {}, "unavailable"), false);
     assert.match(previewRunInput(surface, "hire@example.test").problem ?? "", /Choose Hire mode/u);
-    const ordinary = WORKFLOW_DESCRIPTORS.find(workflow => workflow.id === "person-lookup")?.surfaces.inputRun?.typedInput;
+    const ordinary = DESCRIPTORS.find(workflow => workflow.id === "person-lookup")?.surfaces.inputRun?.typedInput;
     assert.ok(ordinary);
     assert.equal(typedInputDefaults(ordinary).mode, "search");
     assert.equal(typedInputMode(ordinary, {})?.value, "search");

@@ -6,6 +6,6 @@ import { onbaseWorkflowStore } from "./task-registry.js";
 import { onbaseWorkflow } from "./workflow.js";
 
 export const registration = deepFreeze({
-  definition: onbaseWorkflow, exposure: { kind: "child-only" }, store: onbaseWorkflowStore,
+  definition: onbaseWorkflow, store: onbaseWorkflowStore,
   proofs: [defineStepProof(onbaseWorkflow, onbaseSourcePageDefinition), defineStepProof(onbaseWorkflow, onbaseImportDocumentDefinition)],
 } as const);

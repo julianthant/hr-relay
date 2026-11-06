@@ -11,7 +11,7 @@ import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
 import { descriptorRuntimeNodes, authorizeWorkflowDelegationRefresh, assertWorkflowDelegationRefreshAuthorization, workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
-import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/descriptor-registry.js";
+import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/registry.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";

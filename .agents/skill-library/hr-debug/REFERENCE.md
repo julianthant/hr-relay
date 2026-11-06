@@ -59,7 +59,7 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 - Run status joins authority; logs re-read notes JSONL — the surfaces BESIDE a broken one are what hide it.
 
 ## 7 · Guards / build
-- `build:registries` after adding or moving a workflow; `build:registries:check` is the freshness check.
+- Adding or moving a workflow changes its line in `src/workflows/registry.ts`.
 - New guard = file + `docs/guard-inventory.json` entry, same commit; retire only with a `retired` entry.
 - A browser-reachable module importing `node:*` crashes dev and only warns in prod — never alias/stub; move the Node half to a server module (`dashboard-wire-boundary` prints the chain).
 - `npm run typecheck && npm run lint && npm run test:coverage` is the gate; `--max-warnings 0`, no debt manifest.
