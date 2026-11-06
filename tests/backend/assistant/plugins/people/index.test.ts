@@ -9,7 +9,7 @@ import type { CrossDateSearchPage, CrossDateSearchQueryInput } from "../../../..
 const unused = () => { throw new Error("not read by find_people"); };
 function tool() {
   const queries: CrossDateSearchQueryInput[] = [];
-  const deps: AssistantPluginDeps = { runDetail: unused, notifications: unused, workbookCatalog: unused, settings: unused, facts: unused,
+  const deps: AssistantPluginDeps = { runDetail: unused, notifications: unused, workbooks: unused, attachment: unused, settings: unused, facts: unused,
     search(query) { queries.push(query); return { wireVersion: 1, generatedAt: "2026-11-06T00:00:00.000Z", snapshot: { authorityGeneration: 1, order: "match-strength/enqueued-desc/run-id-asc:v2", token: "t" },
       totalMatches: 0, coverage: { matched: 0, subjectUnavailable: 0, actorUnavailable: 0, candidateLimit: 10000 }, results: [], nextCursor: { state: "absent", reason: "end" } } as unknown as CrossDateSearchPage; } };
   const [findPeople] = peoplePlugin(deps, id => id).tools; assert.ok(findPeople?.kind === "read");

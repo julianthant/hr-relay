@@ -275,6 +275,8 @@ export function createAssistantHistoryRepository(ports: Ports) {
     },
     /** One turn's accepted attachments in send order, with authenticated bytes. */
     turnAttachments: (messageId: string) => ports.read(() => files.ofMessage(messageId)),
+    /** An accepted attachment of an owned, unexpired chat; undefined when gone, foreign or expired. */
+    attachment: (conversationId: string, id: string, now: string) => ports.read(() => owned(conversationId, now) === undefined ? undefined : files.accepted(conversationId, id, now)),
     /** Earlier rows with replay text, in order; never `inert` rows or the current turn. Operator turns carry their id for their attachments. */
     replay(conversationId: string, beforeOrdinal: number): readonly Readonly<{ role: "operator" | "assistant"; modelText: string; messageId?: string }>[] {
       return ports.read(() => messages(conversationId).flatMap(row => row.ordinal < beforeOrdinal && row.modelText !== null && row.delivery !== "sending"

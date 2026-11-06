@@ -89,12 +89,13 @@ async function seededOwners() {
       authorityGeneration: database.getMeta().authorityGeneration, searchRuns: input => database.authority.runs.search(input) })) } });
   const runDetail = createRunDetailTestWorld().depsOf(w);
   const lifecycle = new RunRecordService({ database, clock, ids: { uuid: randomUUID }, publishQueued: () => undefined });
-  const notifications = composeNotificationRoutes({ database, clock, lifecycle, descriptors: { resolve: () => subjectDescriptor as never }, runDetailDeps: runDetail, assertCurrent() {},
+  const notifications = composeNotificationRoutes({ database, clock, lifecycle, descriptors: { resolve: () => subjectDescriptor }, runDetailDeps: runDetail, assertCurrent() {},
     notificationObserver: { status: () => { throw new Error("observer unused by the snapshot"); } } as never,
     notificationTarget: createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get }) });
   const facts = assistantWorkflowFacts(DESCRIPTORS.filter(descriptor => descriptor.id === "person-lookup"));
   return { w, run, plugins: () => createAssistantPlugins(createAssistantPluginDeps({ database, runDetail, assertCurrent() {}, facts: () => facts,
-    search: () => search, notifications: () => notifications, workbooks: () => library })), facts, settings: () => readSettings(database.authority).settings,
+    search: () => search, notifications: () => notifications, workbooks: () => library,
+    attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) })), facts, settings: () => readSettings(database.authority).settings,
     notificationSubjects: () => notifications.snapshot("local-operator").flatMap(row => row.kind === "notification" && row.context.state === "available" ? [row.context.subject] : []) };
 }
 
@@ -105,7 +106,7 @@ it("keeps every seeded personal value out of the provider requests across all pr
     await f.connected();
     const bodies: string[] = [], outputs: unknown[] = [];
     let step = 0;
-    const tokens: { person?: string; run?: string } = {};
+    const tokens: { person?: string; run?: string; sheet?: string } = {};
     f.setResponse(init => {
       if (typeof init.body !== "string") throw new Error("synthetic JSON request body required");
       bodies.push(init.body);
@@ -115,9 +116,11 @@ it("keeps every seeded personal value out of the provider requests across all pr
         const found = z.object({ runs: z.array(z.object({ run: z.string(), person: z.string().nullable() })).min(1) }).parse(outputs[0]).runs[0]; assert.ok(found);
         tokens.run = found.run; tokens.person = found.person ?? undefined;
       }
+      if (step === 6) tokens.sheet = z.object({ sheets: z.array(z.object({ sheet: z.string() })).min(1) }).parse(outputs[5]).sheets[0]?.sheet;
       const calls: readonly (readonly [string, unknown])[] = [["find_runs", { workflow: null, status: null, day: null, limit: 5 }], ["find_people", { query: tokens.person }],
         ["read_run", { run: tokens.run }], ["read_run_logs", { run: tokens.run, last: 5 }], ["list_notifications", { unreadOnly: false }],
-        ["list_spreadsheets", { limit: 10 }], ["read_settings", { key: null }]];
+        ["read_spreadsheets", { view: "list", sheet: null, limit: 10 }], ["read_spreadsheets", { view: "open", sheet: tokens.sheet, limit: 10 }],
+        ["read_spreadsheets", { view: "versions", sheet: tokens.sheet, limit: 10 }], ["read_spreadsheets", { view: "types", sheet: null, limit: 10 }], ["read_settings", { key: null }]];
       const next = calls[step++];
       const output = next === undefined ? [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: `Found ${String(tokens.person)} in ${String(tokens.run)}.` }] }]
         : [{ type: "function_call", namespace: "relay", name: next[0], call_id: `call_${String(step)}`, arguments: JSON.stringify(next[1]), status: "completed" }];
@@ -134,16 +137,20 @@ it("keeps every seeded personal value out of the provider requests across all pr
     const { result } = envelope;
     assert.equal(result.state, "answered"); if (result.state !== "answered") throw new Error("answer required");
     assert.match(result.text, new RegExp(`^Found ${CANARIES.subject} in Person Lookup run, \\d{4}-\\d{2}-\\d{2}\\.$`, "u"));
-    assert.equal(bodies.length, 8);
+    assert.equal(bodies.length, 11);
     for (const [index, body] of bodies.entries()) for (const [name, value] of Object.entries(CANARIES)) assert.equal(body.includes(value), false, `request ${String(index + 1)} carried ${name}`);
     for (const value of [owners.run.envelope.runId, owners.run.envelope.traceId]) assert.ok(bodies.every(body => !body.includes(value)));
-    const [runs, people, read, logs, notifications, sheets, settings] = outputs;
+    const [runs, people, read, logs, notifications, sheets, opened, versions, types, settings] = outputs;
     assert.equal(z.object({ runs: z.array(z.object({ person: z.string() })).length(1) }).parse(runs).runs.length, 1);
     assert.deepEqual(z.object({ people: z.array(z.object({ person: z.string() })) }).parse(people).people.map(entry => entry.person), [tokens.person]);
     assert.equal(z.object({ person: z.string(), workflow: z.literal("person-lookup") }).parse(read).person, tokens.person);
     z.object({ steps: z.array(z.unknown()) }).parse(logs);
     assert.deepEqual(z.object({ items: z.array(z.object({ trigger: z.string() })) }).parse(notifications).items.map(item => item.trigger).sort(), ["failed", "storage"]);
-    assert.deepEqual(z.strictObject({ sheets: z.array(z.strictObject({ sheet: z.string(), version: z.number(), worksheets: z.literal(1), rows: z.literal(1) })), more: z.literal(false) }).parse(sheets).sheets.length, 1);
+    const Library = { sheet: z.string(), type: z.string(), version: z.number(), sharePointLinked: z.boolean(), formulas: z.literal(false), unsupportedMetadata: z.literal(false) };
+    assert.equal(z.strictObject({ view: z.literal("list"), sheets: z.array(z.strictObject({ ...Library, worksheets: z.literal(1), rows: z.literal(1) })), more: z.literal(false) }).parse(sheets).sheets.length, 1);
+    assert.deepEqual(z.strictObject({ view: z.literal("open"), ...Library, worksheets: z.array(z.unknown()) }).parse(opened).worksheets, [{ position: 1, rows: 1, columns: 1, hiddenColumns: 0 }]);
+    assert.equal(z.object({ versions: z.array(z.object({ version: z.string().regex(/^\[\[V1\.g\d+\]\]$/u), inUse: z.literal(true) })).length(1) }).parse(versions).versions.length, 1);
+    assert.ok(z.object({ types: z.array(z.object({ type: z.string(), workbooks: z.number() })) }).parse(types).types.some(entry => entry.workbooks === 1));
     const served = z.object({ settings: z.array(z.object({ key: z.string(), value: z.unknown() })) }).parse(settings).settings;
     for (const entry of served) assert.ok(typeof entry.value === "boolean" || typeof entry.value === "number" || entry.value === "set" || entry.value === "unset", entry.key);
     assert.deepEqual(served.find(entry => entry.key === "actor.label"), { key: "actor.label", value: "set" });

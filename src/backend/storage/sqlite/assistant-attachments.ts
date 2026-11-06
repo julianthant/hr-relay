@@ -74,6 +74,9 @@ export function createAssistantAttachmentStore(database: DatabaseSync, profileId
         if (changed !== 1) refuse("ASSISTANT_ATTACHMENT_UNAVAILABLE");
       });
     },
+    /** One accepted, unexpired attachment of the chat, with authenticated bytes. */
+    accepted: (conversationId: string, id: string, now: string) =>
+      read("SELECT * FROM assistant_attachments WHERE id=? AND conversation_id=? AND message_id IS NOT NULL AND expires_at>?", id, conversationId, now).at(0),
     /** The accepted attachments of one turn, in send order, with authenticated bytes. */
     ofMessage: (messageId: string) => read("SELECT * FROM assistant_attachments WHERE message_id=? ORDER BY ordinal", messageId),
     /** Stages and expired rows that no live send can claim. */

@@ -249,7 +249,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     actorId: resolved.config.actor.id, clock, assertCurrent });
   const assistantPluginDeps = createAssistantPluginDeps({ database, runDetail: runDetailDeps, assertCurrent, facts: assistantFacts,
     search: () => shell.search, notifications: () => notifications,
-    workbooks: () => workbookLibrary });
+    workbooks: () => workbookLibrary, attachment: (conversationId, id) => database.authority.assistantHistory.attachment(conversationId, id, clock.now().toISOString()) });
   const assistant = createAssistantService({ debugEvents, account: { ...chatGptAccount, ...context.accountAuthority },
     assertComposition: assertCurrent, actorId: resolved.config.actor.id, facts: assistantFacts,
     owner: () => { assertCurrent(); return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch }; },

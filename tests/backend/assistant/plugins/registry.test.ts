@@ -4,12 +4,12 @@ import { ASSISTANT_TOOL_NAMESPACE, assistantToolRegistry, createAssistantPlugins
 import { surfaceLeaves } from "../../../architecture/logs/helpers/redaction-surface-audit.js";
 
 const unused = () => { throw new Error("registry test reads declarations only"); };
-const plugins = () => createAssistantPlugins({ search: unused, runDetail: unused, notifications: unused, workbookCatalog: unused, settings: unused, facts: unused });
+const plugins = () => createAssistantPlugins({ search: unused, runDetail: unused, notifications: unused, workbooks: unused, attachment: unused, settings: unused, facts: unused });
 
 it("offers every plugin's tools in one strict namespace with unique names", () => {
   const registry = assistantToolRegistry(plugins());
   assert.equal(registry.namespace.name, ASSISTANT_TOOL_NAMESPACE);
-  assert.deepEqual(registry.tools.map(tool => tool.name), ["describe_workflow", "find_runs", "read_run", "read_run_logs", "find_people", "list_notifications", "list_spreadsheets", "read_settings"]);
+  assert.deepEqual(registry.tools.map(tool => tool.name), ["describe_workflow", "find_runs", "read_run", "read_run_logs", "find_people", "list_notifications", "read_spreadsheets", "inspect_attachment", "read_settings"]);
   assert.deepEqual(registry.namespace.tools.map(tool => tool.name), registry.tools.map(tool => tool.name));
   for (const tool of registry.tools) assert.ok(tool.description.length > 40, tool.name);
   const [first] = plugins(); assert.ok(first);
