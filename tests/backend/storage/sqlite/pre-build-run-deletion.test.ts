@@ -114,6 +114,7 @@ it("settles each non-terminal predecessor by its own door, including an independ
     [paused],
     [parent, child(parent)],
     [predecessor(), child(predecessor())],
+    [predecessor({}, { ...parent, cancelRequested: true })],
   ];
   for (const runs of cases) {
     const database = store();
@@ -125,6 +126,7 @@ it("settles each non-terminal predecessor by its own door, including an independ
         const own = settled.filter(door => door.runId === run.envelope.runId);
         const door = run.lifecycle.state === "claimed" || run.lifecycle.state === "validating" || run.lifecycle.state === "running" ? "terminalize" : "transition";
         assert.equal(own.some(row => row.operation === door), true);
+        if (run.cancelRequested === true) assert.deepEqual(own.map(row => row.operation), ["terminalize"]);
       }
       assert.equal(database.prepare("SELECT count(*) AS count FROM deleted_runs").get()?.count, runs.length);
     } finally { database.close(); }
@@ -144,6 +146,20 @@ it("throws a returned refusal inside the upgrade transaction and leaves the vers
     assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, SHAPE_VERSION);
     assert.equal(database.prepare("SELECT count(*) AS count FROM runs").get()?.count, 2);
     assert.equal(database.prepare("SELECT count(*) AS count FROM commands").get()?.count, before);
+    assert.equal(database.prepare("SELECT count(*) AS count FROM deleted_runs").get()?.count, 0);
+  } finally { database.close(); }
+});
+
+it("refuses a claimed run that already asked to cancel while its child is open, before terminalize", () => {
+  const database = store();
+  try {
+    const parent = predecessor({}, { lifecycle: { state: "running", workerId: "worker-1", claimedAt: NOW, heartbeatAt: NOW }, claimGeneration: 1, cancelRequested: true });
+    insertRuns(database, [parent, child(parent)]);
+    database.exec("BEGIN EXCLUSIVE");
+    assert.equal(settlePreBuildRun(database, RUN_ID, NOW, owner(database)).state, "refused");
+    database.exec("ROLLBACK");
+    assert.equal(doors(database).length, 0);
+    assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, SHAPE_VERSION);
     assert.equal(database.prepare("SELECT count(*) AS count FROM deleted_runs").get()?.count, 0);
   } finally { database.close(); }
 });

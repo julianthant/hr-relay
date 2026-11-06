@@ -112,7 +112,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
         const owner=database.prepare("SELECT * FROM commands WHERE id=?").get(command_id);
         if(owner===undefined)throw new Error("run-deletion-audit-command-missing");
         const command=commandFromRow(owner);
-        const audit=nativeOrdinaryRecordFromRow(table,raw);
+        const audit=nativeOrdinaryRecordFromRow(table,raw,schemaVersion);
         if(canonicalJsonStringify(z.object({request:z.unknown()}).parse(audit).request)!==canonicalJsonStringify(command))throw new Error("run-deletion-audit-command-mismatch");
         if(!isSettledCascadeTerminalization(database,command,owner,cascade))retained.push(audit);
         continue;
@@ -122,7 +122,7 @@ export function prepareNativeRunDeletion(database: DatabaseSync, run: Predecesso
         retained.push(kind === "imported" ? importedArtifactFromRow(raw) : kind === "generated" ? generatedArtifactFromRow(raw) : extractedArtifactFromRow(raw));
         continue;
       }
-      const record = nativeOrdinaryRecordFromRow(table,raw);
+      const record = nativeOrdinaryRecordFromRow(table,raw,schemaVersion);
       const identity = z.object({runId:z.string().optional()}).parse(record);
       if (table === "write_intents" || table === "write_attempts" || identity.runId === undefined || !cascade.has(identity.runId)) retained.push(record);
       if (table === "write_intents" && identity.runId === runId) {

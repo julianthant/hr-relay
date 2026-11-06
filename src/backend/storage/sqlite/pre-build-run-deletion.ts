@@ -87,18 +87,10 @@ function settleUnclaimed(database: DatabaseSync, current: PredecessorRunRecord, 
 
 function settleClaimed(database: DatabaseSync, current: PredecessorRunRecord, now: string,
   assertOwner: (record: RunResultRecord, run: PredecessorRunRecord) => void): PredecessorRunRecord {
-  const claim = runClaim(current);
-  if (claim === undefined || current.cancelRequested === true) return refuseClaim(current);
-  const requested = PredecessorRunRecordSchema.parse({ ...current, cancelRequested: true });
-  const marked = transitionStoredRun(current, requested, now, PredecessorRunRecordSchema);
-  updateRunRecord(database, marked, PredecessorRunRecordSchema);
-  const cancelRequest = CanonicalTransitionRequestSchema.parse({
-    commandId: randomUUID(), runId: current.envelope.runId, expectedVersion: current.version,
-    lifecycle: { state: "terminal", outcome: "cancelled", endedAt: now },
-  });
-  recordAudit(database, lifecycleCommand("transition", cancelRequest, { kind: "version", expectedVersion: current.version }, now), journalRun(marked), now);
+  if (runClaim(current) === undefined) throw new Error("authority-upgrade-run-settlement-refused");
+  const marked = current.cancelRequested === true ? current : requestCancellation(database, current, now);
   const held = runClaim(marked);
-  if (held === undefined) return refuseClaim(current);
+  if (held === undefined) throw new Error("authority-upgrade-run-settlement-refused");
   const terminalRequest = CanonicalCancellationTerminalizeRequestSchema.parse({
     kind: "cancelled", commandId: randomUUID(), runId: marked.envelope.runId, expectedVersion: marked.version,
     claim: { workerId: held.workerId, claimGeneration: held.claimGeneration }, endedAt: now,
@@ -116,9 +108,16 @@ function settleClaimed(database: DatabaseSync, current: PredecessorRunRecord, no
   return updated;
 }
 
-function refuseClaim(current: PredecessorRunRecord): never {
-  void current;
-  throw new Error("authority-upgrade-run-settlement-refused");
+function requestCancellation(database: DatabaseSync, current: PredecessorRunRecord, now: string): PredecessorRunRecord {
+  const requested = PredecessorRunRecordSchema.parse({ ...current, cancelRequested: true });
+  const marked = transitionStoredRun(current, requested, now, PredecessorRunRecordSchema);
+  updateRunRecord(database, marked, PredecessorRunRecordSchema);
+  const request = CanonicalTransitionRequestSchema.parse({
+    commandId: randomUUID(), runId: current.envelope.runId, expectedVersion: current.version,
+    lifecycle: { state: "terminal", outcome: "cancelled", endedAt: now },
+  });
+  recordAudit(database, lifecycleCommand("transition", request, { kind: "version", expectedVersion: current.version }, now), journalRun(marked), now);
+  return marked;
 }
 
 function writeEvidence(database: DatabaseSync, run: PredecessorRunRecord, command: z.infer<typeof RunLifecycleCommandRecordSchema>,
