@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { completedResponseStream } from "./chatgpt-response-stream.js";
 import { z } from 'zod';
 import { generateKeyPairSync, sign } from "node:crypto";
 import type { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
@@ -76,11 +77,11 @@ export async function chatGptFixture(ownedAdmission?: RuntimeAdmission, profileF
 }
 
 export function completedOcrStream(text: string, model = "gpt-6.1-sol"): string {
-  return `data: ${JSON.stringify({ type: "response.output_text.delta", delta: text, output_index: 0, content_index: 0 })}\n\ndata: ${JSON.stringify({ type: "response.completed", response: { id: "resp_synthetic", model, status: "completed", output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text }] }] } })}\n\n`;
+  return completedResponseStream([{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text }] }], model);
 }
 
-function completedCapabilityStream(output: unknown, model: string) {
-  return `data: ${JSON.stringify({ type: "response.completed", response: { id: "resp_synthetic", model, status: "completed", output } })}\n\n`;
+function completedCapabilityStream(output: readonly unknown[], model: string) {
+  return completedResponseStream(output, model);
 }
 
 export function publicCapabilityResponses(f: Awaited<ReturnType<typeof chatGptFixture>>, value = 'relay-public-capability') {

@@ -8,6 +8,25 @@ import { manualClock } from "../../../src/rules/time/clock.js";
 import { debugEventLevel } from "../../../src/models/events/timeline.js";
 const AT = new Date("2026-10-10T12:00:00.000Z");
 describe("bounded native debug events", () => {
+  it("accepts only closed ChatGPT inference metadata before persistence", () => {
+    const { records, repository } = fixture();
+    const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
+    const chatGptInference = { operation: "ocr", path: "http-error", contentType: "application/json", providerCode: "model_not_found" };
+    const event = { category: "http", phase: "failed", correlationId: "inference" };
+    for (const field of ["operation", "path", "contentType", "providerCode", "headers"])
+      assert.throws(() => writer.emit({ ...event, chatGptInference: { ...chatGptInference, [field]: "PRIVATE_CANARY" } }));
+    assert.equal(records.length, 0);
+    for (const metadata of [
+      { jsonFailure: "PRIVATE_CANARY" },
+      { events: { types: ["PRIVATE_EVENT_CANARY"], truncated: false } },
+      { terminalShape: { fields: [{ path: ["response", "PRIVATE_KEY_CANARY"], type: "string" }], truncated: false } },
+      { terminalShape: { fields: [{ path: ["response", "id"], type: "PRIVATE_VALUE_CANARY" }], truncated: false } },
+      { terminalIssues: { issues: [{ path: ["response", "id"], code: "PRIVATE_VALUE_CANARY" }], truncated: false } },
+    ]) assert.throws(() => writer.emit({ ...event, chatGptInference: { ...chatGptInference, ...metadata } }));
+    assert.equal(records.length, 0);
+    writer.emit({ ...event, chatGptInference });
+    assert.equal(records.length, 1);
+  });
   it("retains only names, codes and source locations from cyclic aggregate causes", () => {
     const cause = new TypeError("Quillan, Petra; fictional record contents");
     cause.stack = "TypeError: fictional private message\n    at privateFunction (/Users/private/project/src/backend/runs/queries/run-detail.ts:42:7)\n    at /private/profiles/record.txt:1:2\nprivate continuation";

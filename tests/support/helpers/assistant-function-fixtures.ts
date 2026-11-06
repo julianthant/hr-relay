@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { completedResponseStream } from "./chatgpt-response-stream.js";
 import { z } from "zod";
 import { AssistantCitationSchema, AssistantSubjectSchema, AssistantFunctionNamespaceSchema, ASSISTANT_FAILURES, type AssistantInferenceResult, type AssistantResult, type AssistantSubject } from "../../../src/models/dashboard/assistant.js";
 import type { AssistantServiceOptions, AssistantFunctionSet, AssistantFunctionContext } from "../../../src/backend/assistant/service.js";
@@ -53,12 +54,12 @@ export const syntheticAssistantTools = syntheticAssistantFunctions().map(set => 
 
 export function syntheticAssistantResponse(turn: unknown, model = "gpt-6.1-sol", callId: string = randomUUID()): AssistantInferenceResult {
   const value = z.object({ action: z.string() }).passthrough().parse(turn), { action, ...argumentsValue } = value;
-  return { model, responseId: `resp_${callId}`, output: [{ type: "function_call", namespace: "synthetic",
+  return { model, responseId: `resp_${callId}`, output: [{ type: "function_call", id: `item_${callId}`, namespace: "synthetic",
     name: action === "read-subjects" ? "read_subjects" : action, call_id: callId, arguments: JSON.stringify(argumentsValue), status: "completed" }] };
 }
 export function completedAssistantStream(turn: unknown, model = "gpt-6.1-sol"): string {
   const response = syntheticAssistantResponse(turn, model);
-  return `data: ${JSON.stringify({ type: "response.completed", response: { id: response.responseId, model, status: "completed", output: response.output } })}\n\n`;
+  return completedResponseStream(response.output, model, response.responseId);
 }
 
 export const projectSyntheticAssistantInput: NonNullable<AssistantServiceOptions["projectInput"]> = () => ({

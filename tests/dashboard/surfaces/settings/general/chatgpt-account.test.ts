@@ -73,7 +73,7 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
   const completion = Promise.withResolvers<ChatGptSignInCompletion>();
   let starts = 0, reads = 0;
   const queries: ChatGptAccountQueries = {
-    chatGptAccount: async () => { reads++; if (scenario === "initial read failure") throw new Error("synthetic failed read"); return account; },
+    chatGptAccount: async () => { reads++; if (scenario === "initial read failure" && reads === 1) throw new Error("synthetic failed read"); return account; },
     startChatGptSignIn: async () => { starts++; return started; },
     completeChatGptSignIn: () => completion.promise,
     cancelChatGptSignIn: async () => ({ state: "cancelled", attemptId: started.attemptId }),
@@ -102,7 +102,7 @@ for (const scenario of ["initial read failure", "unconfirmed remote revocation"]
     assert.equal(starts, 1);
     await act(async () => { completion.resolve({ state: "completed", attemptId: started.attemptId, account }); });
     assert.match(host.textContent ?? "", /Exact held operator.*exact@example.com/u);
-    assert.equal(host.textContent?.includes(message), false); assert.equal(reads, 1); assert.equal(starts, 1);
+    assert.equal(host.textContent?.includes(message), false); assert.equal(reads, 2); assert.equal(starts, 1);
   } finally { port.dispose(); }
 });
 
