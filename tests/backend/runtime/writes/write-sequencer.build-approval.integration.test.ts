@@ -151,12 +151,10 @@ describe("write sequencer — a write is approved under one build", () => {
     assert.equal(created.state, "applied");
     if (created.state !== "applied") throw new Error("child create refused");
     assert.equal(created.run.envelope.buildId, BUILD_X);
-    const first = await claimQueued(h);
-    h.admitWorker(2);
-    const second = await claimQueued(h, 2);
-    const child = first.run.envelope.runId === created.run.envelope.runId ? first : second;
+    const child = await claimQueued(h);
     assert.equal(child.run.envelope.runId, created.run.envelope.runId);
-    assert.equal((child === first ? second : first).run.envelope.runId, parent.envelope.runId);
+    assert.deepEqual(h.database.authority.dependencies.readiness(parent.envelope.runId, "join"),
+      { state: "waiting", childRunId: created.run.envelope.runId });
     await assert.rejects(h.execute(contextFor(child.run, child.claim)), (error: unknown) => error instanceof TaskError && error.code === "WRITE_BUILD_CHANGED");
     assert.deepEqual(effects(h.world.events), []);
     assert.equal(intentByKey(h.database), undefined);
@@ -165,9 +163,9 @@ describe("write sequencer — a write is approved under one build", () => {
 
 type WriteHarness = Awaited<ReturnType<typeof harness>>;
 
-async function claimQueued(h: WriteHarness, poolIndex = 1) {
+async function claimQueued(h: WriteHarness) {
   const now = h.clock.now().toISOString();
-  const member = h.database.authority.workerSlots.list(WRITE_FIXTURE_WORKFLOW_ID).find(slot => slot.poolIndex === poolIndex && slot.retiredAt === null);
+  const member = h.database.authority.workerSlots.list(WRITE_FIXTURE_WORKFLOW_ID).find(slot => slot.poolIndex === 1 && slot.retiredAt === null);
   assert.ok(member);
   const lease = h.database.authority.workerLeases.get(member.workerId);
   if (lease === undefined) throw new Error("fixture claim authority unavailable");
