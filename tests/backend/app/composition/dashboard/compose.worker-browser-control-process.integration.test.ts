@@ -12,7 +12,6 @@ import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/r
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
 import type { WorkerProcessSpawner } from "../../../../../src/backend/runtime/workers/worker-supervisor.js";
 import { createTimelineEmitter } from "../../../../../src/backend/storage/events/timeline-emitter.js";
-import { WorkerProcessLockFileSchema } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
@@ -361,10 +360,8 @@ it("real ingress, two real workers and Chromium: read-only claims, exact control
     try {await runtime?.stop();}catch(error){failures.push(error);}
     try {await profile?.close();}catch(error){failures.push(error);}
     try {machine?.release();}catch(error){failures.push(error);}
-    const lockDirectory=join(root,rebuildRuntimeIsolation.processLockRoot,"workers");
-    try {if(existsSync(lockDirectory))for(const name of readdirSync(lockDirectory))if(name.endsWith(".lock.json"))assert.notEqual(WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(join(lockDirectory,name),"utf8"))).releasedAt,null);}catch(error){failures.push(error);}
     try {fixture.admission.release(); fixture.machine.release();}catch(error){failures.push(error);}
-    if(failures.length===0) {process.stdout.write(`[sessions-process-cleanup] ${JSON.stringify({processGroups:children.map(child=>child.pid),survivors:0,openContexts:0,workerLocks:"released"})}\n`);
+    if(failures.length===0) {process.stdout.write(`[sessions-process-cleanup] ${JSON.stringify({processGroups:children.map(child=>child.pid),survivors:0,openContexts:0})}\n`);
       phase = 'fixture-close';
       const closingAt = systemClock.monotonicMs();
       elapsedBeforeFixtureClose = Math.max(0, Math.round(closingAt - diagnosticStartedAt));

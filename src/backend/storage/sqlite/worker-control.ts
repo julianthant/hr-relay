@@ -1,5 +1,5 @@
 import type { WorkerPoolMember } from "../../../models/run/worker-slot.js";
-import { observePid } from "./runtime-process-locks.js";
+import { observePid } from "../admission/process-identity.js";
 import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { RunRecordSchema, runClaim, type RunRecord } from "../../../models/run/record.js";

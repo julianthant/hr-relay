@@ -26,7 +26,6 @@ import { completedResponseStream } from "../../../../support/helpers/chatgpt-res
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { createDashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { workerPoolMember, type WorkerPoolMember } from "../../../../../src/models/run/worker-slot.js";
-import { bindWorkerProcessAdmission } from "../../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { runCapacityCommandId } from "../../../../../src/backend/runs/commands/run-worker-capacity.js";
 import { personLookupQueuedRun } from "../../../../support/helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../../../../src/models/run/record.js";
@@ -432,7 +431,6 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
   await withServedAssistant(async ({ profile, context, transport, clock, origin }) => {
     const database = context.database, client = createDashboardClient({ baseUrl: origin });
     const pending: Promise<{ result: unknown } | { error: unknown }>[] = [], failures: unknown[] = [];
-    let processLock: ReturnType<typeof bindWorkerProcessAdmission>["processLock"] | undefined;
     try {
       const grant = await client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(),
         requestedBy: "local-operator", source: "settings-surface", family: "settings", type: "apply-settings",
@@ -540,20 +538,16 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
       const workerDatabase = AuthorityDatabase.open(context.admission,
         { path: profile.path, busyTimeoutMs: 250, migrationOwner: "assistant-capacity-birth" }, clock,
         undefined, undefined, undefined, context.credentials);
-      let binderCloseAttempted = false;
       try {
-        const bound = bindWorkerProcessAdmission({ authorityPath: profile.path, processLockRoot: join(profile.workspace, rebuildRuntimeIsolation.processLockRoot),
-          clock, pid, workerId: owned.member.workerId, open: () => workerDatabase, close: value => { binderCloseAttempted = true; value.close(); },
-          admit: value => value.withAuthorityReadSnapshot(() => {
-            const slot = value.authority.workerSlots.get(owned.member.workerId); assert.ok(slot);
-            assert.deepEqual(workerPoolMember(slot), owned.member); return owned.member.workerId;
-          }) });
-        processLock = bound.processLock;
+        workerDatabase.withAuthorityReadSnapshot(() => {
+          const slot = workerDatabase.authority.workerSlots.get(owned.member.workerId); assert.ok(slot);
+          assert.deepEqual(workerPoolMember(slot), owned.member);
+        });
         const spawnCommandId = runCapacityCommandId(firstCommandId, "spawn-worker", owned.member.poolIndex);
         assert.equal(workerDatabase.authority.workerControls.get(spawnCommandId)?.request.type, "spawn-worker");
-        assert.equal(workerDatabase.authority.workerLeases.start({ commandId: spawnCommandId, workerId: bound.workerId, workflow: "person-lookup",
+        assert.equal(workerDatabase.authority.workerLeases.start({ commandId: spawnCommandId, workerId: owned.member.workerId, workflow: "person-lookup",
           browserSystems: ["crm", "ucpath"], processId: pid, requestedBy: "local-operator", now: clock.now().toISOString() }).state, "started");
-      } finally { if (!binderCloseAttempted) workerDatabase.close(); }
+      } finally { workerDatabase.close(); }
       const firstOutcome = await first;
       if ("error" in firstOutcome) throw firstOutcome.error;
       assert.equal(firstOutcome.result.state, "applied");
@@ -606,7 +600,7 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
     }
     if (failures.length === 0) {
       try {
-        assert.equal(children.length, 1); assert.ok(processLock);
+        assert.equal(children.length, 1);
         const owned = children[0]; assert.ok(owned);
         const member = owned.member, lease = database.authority.workerLeases.get(member.workerId); assert.ok(lease);
         assert.equal(lease.processId, owned.child.pid);
@@ -615,7 +609,6 @@ it.each(["current", "deleted"] as const)("rechecks the %s selected source after 
         assert.equal(database.authority.workerLeases.get(member.workerId)?.lifecycle.state, "stopped");
         database.assertWorkerLifecycleRelease(member.workerId);
         assert.ok(database.authority.workerControls.browsers(member.workerId).every(browser => browser.health === "closed"));
-        processLock.release();
         database.assertStoppedWorkerLifetime(member, lifetime);
       } catch (error) { failures.push(error); }
     }

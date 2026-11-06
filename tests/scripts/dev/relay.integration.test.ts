@@ -11,7 +11,7 @@ import { it, vi } from "vitest";
 import { runRelayCommand, startRelay, stopRelay } from "../../../scripts/dev/relay.js";
 import { testProcessImport } from "../../support/compiled-process.js";
 import { createPrivateDirectory, writePrivateStage } from "../../../src/backend/storage/private-path.js";
-import { observeProcessIdentity } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { observeProcessIdentity } from "../../../src/backend/storage/admission/process-identity.js";
 
 async function fixture(mode = "clean") {
   const root = mkdtempSync(join(tmpdir(), "relay-launcher-"));
@@ -27,6 +27,12 @@ async function fixture(mode = "clean") {
     old.stdin.end(); await new Promise<void>(resolve => { old.once("close", () => { resolve(); }); });
     writePrivateStage(join(directory, "broker.json"), Buffer.from(JSON.stringify({ port: 1, token: randomBytes(32).toString("hex"), pid: old.pid, identity: identity.identity })));
     writeFileSync(join(directory, "keep"), "unrelated");
+  }
+  if (mode === "reused-pid") {
+    createPrivateDirectory(directory, { mode: 0o700 });
+    const live = observeProcessIdentity(process.pid); assert.ok(live.state === "alive");
+    writePrivateStage(join(directory, "broker.json"), Buffer.from(JSON.stringify({ port: 1, token: randomBytes(32).toString("hex"), pid: process.pid,
+      identity: { ...live.identity, startToken: `${live.identity.startToken}0` } })));
   }
   if (mode === "partial-stage") {
     createPrivateDirectory(directory, { mode: 0o700 });
@@ -174,11 +180,11 @@ it.each(["proof", "nonce"])("rejects a forged stop receipt with the wrong %s", a
   }
 });
 
-it.each(["stale", "partial-stage"])("starts past an owned %s publication without touching other files", async mode => {
+it.each(["stale", "reused-pid", "partial-stage"])("starts past an owned %s publication without touching other files", async mode => {
   const run = await fixture(mode);
   try {
     if (mode === "stale") assert.equal(readFileSync(join(run.directory, "keep"), "utf8"), "unrelated");
-    else assert.equal(readFileSync(join(run.directory, "broker.interrupted.stage"), "utf8"), "{");
+    else if (mode === "partial-stage") assert.equal(readFileSync(join(run.directory, "broker.interrupted.stage"), "utf8"), "{");
     const stopping = stopRelay(run.directory);
     await vi.waitFor(() => { assert.ok(existsSync(join(run.root, "draining"))); });
     run.release(); await stopping;

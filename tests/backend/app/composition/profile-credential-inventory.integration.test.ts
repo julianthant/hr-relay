@@ -18,7 +18,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { AuthoritySchemaVersionError } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
-import { bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { workerProfileDirectory } from "../../../../src/backend/runtime/browser/browser-session-factory.js";
 import { join } from "node:path";
 import { it, vi } from "vitest";
@@ -304,17 +303,11 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
   const f = await fixture();
   const native=createBrowserSessionFactoryFixtures(f.clock,randomUUID(),{schedule:()=>({cancel(){}})}).fakeLauncher();
   const launch=vi.spyOn(DEFAULT_BROWSER_LAUNCHER,"launch").mockImplementation(input=>native.launcher.launch(input));
-  let worker: ReturnType<typeof bindWorkerProcessAdmission> | undefined;
   let primary:{error:unknown}|undefined;
   try {
-    const processLockRoot = join(f.workspace, "inventory-process-locks");
-    worker = bindWorkerProcessAdmission({ processLockRoot, authorityPath: f.path, pid: process.pid, clock: f.clock,
-      open: () => f.context.database, close: () => undefined,
-      admit: () => f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
-    commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
-    now: f.clock.now().toISOString()
-}, randomUUID()).workerId),
-    });
+    const worker = { workerId: f.context.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, {
+      commandId: randomUUID(), workflow: "person-lookup", poolIndex: 1, expectedPoolVersion: 0, processId: process.pid,
+      now: f.clock.now().toISOString() }, randomUUID()).workerId) };
     const started = f.context.database.authority.workerLeases.start({ workerId: worker.workerId, workflow: "person-lookup", browserSystems: ["crm"],
       processId: process.pid, requestedBy: "local-operator", now: f.clock.now().toISOString() });
     assert.equal(started.state, "started");
@@ -340,12 +333,11 @@ for (const content of ["clean", "escaped-key", "escaped-shadowed", "key-material
       lifecycle:{state:"stopped",startedAt:lease.lifecycle.startedAt,stoppedAt:f.clock.now().toISOString(),reason:"shutdown"},now:f.clock.now().toISOString()});
     assert.equal(stopped.state,"applied");
     assert.equal(f.context.database.authority.workerLeases.get(worker.workerId)?.lifecycle.state,"stopped");
-    worker.processLock.release();worker=undefined;
     await f.inventory.prepare();
     assert.equal(native.contextClosed(),true);assert.equal(native.launches().length,1);
     assert.equal(readFileSync(path,"utf8"),text);
   } catch(error){primary={error};}
-  try{launch.mockRestore();worker?.processLock.release();await f.cleanup();}
+  try{launch.mockRestore();await f.cleanup();}
   catch(error){throw new AggregateError(primary===undefined?[error]:[primary.error,error],"browser-json-fixture-cleanup-failed",{cause:error});}
   if(primary!==undefined)throw primary.error;
 });

@@ -52,7 +52,6 @@ export const NATIVE_FILES: readonly string[] = [
   "tests/backend/storage/sqlite/offline-restore.profile-continuity.integration.test.ts",
   "tests/backend/storage/sqlite/profile-local-databases.readonly-binding.integration.test.ts",
   "tests/backend/storage/sqlite/readonly-authority-snapshot.integration.test.ts",
-  "tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts",
   "tests/backend/app/composition/storage-compose.fixed-layout.integration.test.ts",
   "tests/backend/storage/maintenance/fixed-layout.test.ts",
 ];

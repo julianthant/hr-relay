@@ -32,7 +32,7 @@ import { AuthorityDatabase,inspectNativeAuthority } from "../../../../src/backen
 import { inspectAuthorityBackupReadOnly } from "../../../../src/backend/storage/sqlite/backup-inspection.js";
 import { verifyStoppedBackupManifestAtPath } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,migrationTableNames } from "../../../../src/backend/storage/sqlite/migrations.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { SETTINGS_SCHEMA_HASH,deriveSettingsPatchFingerprint } from "../../../../src/models/config/settings.js";
 import { InstanceSelectionSchema } from "../../../../src/models/run/envelope.js";
 import { SettingsCommandRequestSchema } from "../../../../src/rules/commands/commands.js";
@@ -277,13 +277,13 @@ it("refuses malformed or foreign profile selectors and copied, foreign or releas
 
 it("refuses a genuine live server role and leaves every profile byte unchanged", async () => {
   const f = await readyBoundEight();
-  const server = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "server", pid: process.pid }, systemClock);
+  plantOldBuildArtifact(f.processLockRoot);
   try {
     const before = storageTree(f.stateRoot);
     await assert.rejects(upgradeReadyProfileStorage(profileBrowserClosure, f.machine, f.claim, { plan: false, hostFacts }, systemClock),
       { code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
     assert.deepEqual(storageTree(f.stateRoot), before);
-  } finally { server.release(); await f.close(); }
+  } finally { await f.close(); }
 });
 
 it("refuses a genuine canonical queued run despite stopped global process roles", async () => {

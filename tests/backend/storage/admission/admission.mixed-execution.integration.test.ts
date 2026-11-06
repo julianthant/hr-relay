@@ -10,7 +10,6 @@ import { findProfileFixtureAdmission } from "../../../support/helpers/admission-
 import { rebuildRuntimeIsolation } from "../../../../src/backend/app/config/runtime-isolation.js";
 import { createTimeoutDeadlineScheduler } from "../../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { assertWorkerProcessCustody,bindWorkerProcessAdmission } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { admitDirectWorker } from "../../../../src/backend/storage/sqlite/worker-slots.js";
 import { WorkerIdSchema,WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
@@ -31,18 +30,13 @@ it("browser launch forwards retained display and mode through a headless custody
     "browser.headless": { set: false }, "timeouts.taskMs": { set: 90_000 }, "timeouts.sessionAcquireMs": { set: 180_000 } }).state, "applied");
   const next = f.create();
   const artifacts = createContentAddressedArtifactWriter({ admission }); await artifacts.ready;
-  const held = bindWorkerProcessAdmission({ processLockRoot:join(f.root,"locks"), authorityPath: f.path, pid: process.pid, clock: f.clock,
-    open: () => f.database, close: () => {}, admit: (database) => database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, { commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1,
+  const held = { workerId: f.database.withAuthorityTransaction(repositories => admitDirectWorker(repositories, { commandId: randomUUID(), workflow: personLookupDescriptor.id, poolIndex: 1,
     expectedPoolVersion: repositories.workerPools.get(personLookupDescriptor.id)?.version ?? 0, processId: process.pid,
-    now: f.clock.now().toISOString() }, randomUUID()).workerId) });
-  cleanups.push(() => held.processLock.release());
-  assert.ok(held.processLock.acquisitionId);
-  const acquisitionId = held.processLock.acquisitionId;
+    now: f.clock.now().toISOString() }, randomUUID()).workerId) };
   const account=await chatGptFixture(admission);cleanups.push(()=>account.cleanup());
   const ocr=createChatGptOcrAdapter({account:account.service,artifacts,clock:f.clock,model:CHATGPT_OCR_MODEL,assertCurrent:()=>admission.assertProfileRuntime()});
   const factory = createRunResourcesFactory({admission,database:f.database,nominatim:createNominatimWorkerAdapter(systemClock), ocr,assertBrowserRoot: root=>assertProfileBrowserRoot(admission,root), assertProfileOwner: workerId => {
     assert.equal(workerId, held.workerId);
-    assertWorkerProcessCustody({ processLockRoot:join(f.root,"locks"), acquisitionId, pid: process.pid, workerId, authorityPath: f.path });
   },  authority: f.database.authority, artifacts, clock: systemClock,
     ids: { uuid: randomUUID }, isolation: rebuildRuntimeIsolation, protectedSecrets: createCredentialStore({ stateRoot: f.root }),
     scheduler: createTimeoutDeadlineScheduler(systemClock), environment: {} });

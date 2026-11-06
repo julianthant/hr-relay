@@ -23,7 +23,6 @@ import { AuthoritySourceClosureUnprovedError,hasUnprovedSourceClosure,retainAuth
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { verifyStoppedBackupManifestAtPath } from "../sqlite/backup-service.js";
 import { countProfileCredentialLoginRows } from "../sqlite/profile-local-databases.js";
-import { inspectRuntimeProcessOrphans,observeRuntimeLockSnapshot } from "../sqlite/runtime-process-locks.js";
 import { proveProfileRootsUnused } from "./process-closure.js";
 import { assertCredentialCopyResourcesClosed,configuredBrowserRoots,retainedBrowserProfiles,type BrowserProfileCustody,type BrowserRegistryMembership } from "./profile-custody.js";
 
@@ -494,24 +493,6 @@ function enumerateCredentialMembership<Custody extends CredentialMembershipCusto
       if (!identities.some(entry => entry.path === join(root, "artifacts", `${ref.sha256}.artifact`))) throw new Error("profile-inventory-artifact-missing");
     }
     return { custody, savedBrowserRoot, identities, copies, loginDataPaths, unsupported, backupPaths, manifests, suspects };
-}
-
-export function credentialCopyProcessCustody(input: Readonly<{ machine: RuntimeAdmission; admission: RuntimeAdmission; clock: Clock }>) {
-  const { machine, admission } = input;
-  machine.assertLive(); admission.assertLive();
-  const installation = machine.readInstallationContext();
-  if (installation === undefined) throw new Error("credential-maintenance-installation-required");
-  const binding = admission.profileBinding, profileRoot = admission.stateRoot;
-  if (binding.installationId !== installation.locator.installationId
-    || profileRoot !== join(machine.stateRoot, "profiles", binding.profileId)) throw new Error("profile-inventory-owner-mismatch");
-  const processLockRoot = join(installation.workspace, rebuildRuntimeIsolation.processLockRoot);
-  machine.assertFixedProcessLockRoot(installation.workspace, processLockRoot);
-  const locks = observeRuntimeLockSnapshot({ processLockRoot,
-    sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(admission.authorityBackupExpectedSource()) }, input.clock);
-  const orphans = inspectRuntimeProcessOrphans(processLockRoot);
-  if (Object.entries(locks.processLocks).some(([name, state]) => name !== "server" && state.state !== "stopped")
-    || orphans.staleWorkerRecords > 0) throw new Error("credential-maintenance-process-custody-unproved");
-  return { processLocks: locks.processLocks, runtimeGeneration: locks.runtimeGeneration, orphans };
 }
 
 export function readStoppedProfileUpgradeInventory(input: Readonly<{

@@ -116,7 +116,6 @@ const PROCESS_ENTRYPOINTS = [
   { file: "worker-stub-cli.ts", consumers: ["tests/support/helpers/backend/dashboard-child-world.ts", 'tests/backend/app/composition/dashboard/compose.worker-pool-capacity.integration.test.ts'] },
   { file: "write-fence-owner.ts", consumers: ["tests/support/helpers/backend/worker-lifetime-world.ts"] },
   { file: "run-record-race-worker.ts", consumers: ["tests/support/helpers/backend/run-record-service-world.ts"] },
-  { file: "runtime-lock-contender.ts", consumers: ["tests/backend/storage/sqlite/runtime-process-locks.storage-restore-drill.integration.test.ts"] },
   { file: "workbook-queue-peer.ts", consumers: ["tests/backend/workbooks/workbook-library-service.master.integration.test.ts"] },
 ] as const;
 

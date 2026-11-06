@@ -32,7 +32,7 @@ import { AuthorityUpgradeRecordSchema } from "../../../../src/models/config/auth
 import { AuthorityHealthPreflightRunner } from "../../../../src/backend/storage/sqlite/authority-health-runner.js";
 import { buildStorageDoctor } from "../../../../src/backend/runs/queries/storage.js";
 import { StorageDoctorWireSchema } from "../../../../src/models/dashboard/storage.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { OfflineAuthorityRestoreService } from "../../../../src/backend/storage/sqlite/offline-restore.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
@@ -590,13 +590,12 @@ describe("stopped native upgrade admission",()=>{
   const f=await liveFixture();initialize(f);const raw=new DatabaseSync(f.path);try{raw.exec("CREATE TABLE divergent_authority(id TEXT PRIMARY KEY) STRICT");}finally{raw.close();}
   const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),/schema/u);assert.deepEqual(storageTree(f.root),before);
  });
- it("refuses an active runtime lock before backup or upgrade effects",async()=>{
-  const f=await liveFixture();initialize(f);const server=acquireRuntimeProcessLock({processLockRoot:f.input.processLockRoot,name:"server",pid:process.pid},clock);
-  try{const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
+ it("refuses an old-build process record before backup or upgrade effects",async()=>{
+  const f=await liveFixture();initialize(f);plantOldBuildArtifact(f.input.processLockRoot);
+  const before=storageTree(f.root);for(const plan of [true,false])await assert.rejects(f.run(plan),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
    assert.throws(()=>withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.inspectStoppedUpgrade(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } }),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
    assert.throws(()=>withOfflineMaintenanceSync(f.admission, operation => { const stopped=f.admission.forStoppedMaintenance(operation); try { return AuthorityDatabase.upgradeStopped(stopped,f.path,f.input.processLockRoot,clock); } finally { if(stopped!==f.admission)stopped.release(); } }),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });
    await assert.rejects(withOfflineMaintenance(f.admission, operation => prepareStoppedBackupClosure(profileBrowserClosure, f.admission, operation, clock, f.input.processLockRoot).then(closure => backupStoppedAuthority(closure, f.admission, f.root, clock, f.input.processLockRoot, operation))),{ code: "RUNTIME_OLD_BUILD_ARTIFACTS" });assert.deepEqual(storageTree(f.root),before);
-  }finally{server.release();}
  });
  it("verifies an explicit native backup without changing authority or credentials",async()=>{
   const f=await liveFixture();initialize(f);const bytes=readFileSync(f.path);

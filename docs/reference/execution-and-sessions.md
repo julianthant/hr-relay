@@ -412,37 +412,15 @@ updates while run, worker, browser, write, Duo, control or artifact owners remai
 installation primitive holds admission before awaiting an injected host and retains the hold on
 failure. There is no production idle/quit installer dispatch or native installer integration.
 
-`src/backend/storage/sqlite/runtime-process-locks.ts` owns acquisition-specific process records
-and OS process-birth checks. Database closure precedes their release.
+`src/backend/storage/admission/process-identity.ts` owns OS process-birth checks: a platform start
+token per pid, so a reused pid with a different start token is a different process. No current
+process writes records to the fixed lock root; any file there is an old build's and refuses startup
+and stopped maintenance with `RUNTIME_OLD_BUILD_ARTIFACTS`.
 
 The Darwin OS census in `src/backend/storage/maintenance/process-closure.ts` observes a filesystem
 descriptor only when its name is a non-NUL absolute path equal to its normalized resolution. A
 snapshot with an unresolved filesystem descriptor proves nothing; up to five descriptor snapshots
 are taken, and only a fully resolved one proves the roots unused. A root match in any snapshot refuses.
-
-An abandoned bound-worker process record can also be settled by explicit offline
-`storage recover-worker-process --acquisition <uuid> --plan --json`, followed by
-`--acquisition <uuid> --capture <digest> --apply --json`. Plan reads existing custody without
-acquiring admission, opening SQLite or creating files. Apply requires the exact capture under fixed
-restore admission and exclusive installation custody. This finite path supports an established
-canonical flat native6 installation without profile-registry evidence; it does not authenticate an
-owner or initialize a registry.
-
-Recovery preserves the original bytes, physical file identity and nullable `releasedAt`. Its separate
-immutable receipt binds the entire original record, canonical root and owner/locator witnesses,
-fresh gone-owner and process/open-file/cwd observations, and independently closed native
-lease/browser/Duo/control/run/write custody. Unresolved HR writes remain held. Changed sources,
-unknown observations or failed resource closure refuse. Existing backup and claim consumers retain
-their current native and owner proofs. Device recertification is unavailable; an existing recertification journal blocks admission.
-
-Receipts live in the fixed lock root's `worker-process-recovery/` directory. Publication uses a
-private staged file, no-overwrite link, stage removal and directory fsync. A crash before the sole
-final name is durable, partial bytes, an extra stage or multiple links refuses; it is never cleaned
-up automatically. A complete sole final receipt is independently authenticated on fresh reads,
-including exact original bytes/inode and current owning witnesses; no private flag or claimed prior
-readback grants authority. A publisher that fails readback or custody release reports failure even
-if a complete receipt remains available for independent verification. Receipt proof describes the
-historical process closure event; it never replaces a consumer's current database/resource guards.
 
 ### Offline cancellation of never-claimed queued runs
 
@@ -452,8 +430,7 @@ without changing source files or acquiring admission. `storage cancel-queued-run
 installation custody, proves process/open-file/cwd absence, then cancels all eligible queued runs
 in one transaction. Plan or apply refuses any other nonterminal run, prior claim, requeue,
 checkpoint, write intent, delegation, active native resource, live owner or uncertain custody.
-A stale dead worker process record can remain for subsequent `recover-worker-process`; this command
-neither releases nor rewrites process records. Changes to captured database files, native inventory,
+An old-build process record in the fixed lock root refuses plan and apply. Changes to captured database files, native inventory,
 installation witnesses or process custody require a new plan.
 
 The finite native6 path shares the ordinary lifecycle transition validator and version-fenced row

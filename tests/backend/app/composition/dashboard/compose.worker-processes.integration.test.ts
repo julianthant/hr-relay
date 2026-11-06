@@ -25,7 +25,7 @@ import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { AuthorityDatabase } from '../../../../../src/backend/storage/sqlite/authority-database.js';
 import { scaledMs } from "../../../../support/time-scale.js";
 
-const { stubLaunch, PL, STUB_CLI_PATH, required, nextCommandId, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), root => releaseAdmissionFixture(root));
+const { stubLaunch, PL, STUB_CLI_PATH, required, nextCommandId, envelope, realStubSpawner, pidAlive, waitFor, reportW5Phase } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), root => releaseAdmissionFixture(root));
 
 
 /** One pool-effect boundary crossing, in door order. */
@@ -316,12 +316,7 @@ describe("real processes: two children supervised concurrently through the compo
           });
           assert.equal(lease.lifecycle.state, "stopped");
         }
-        // The real children released their process locks on the way out, and no
-        // process outlives the proof: PID liveness says both are gone.
         await waitFor(() => !pidAlive(pid1) && !pidAlive(pid2), "both child pids to die", childOutput);
-        const locks = workerLockRecords(harness.lockRoot);
-        assert.notEqual(required(locks.get(PL_1.workerId), "PL-1 worker lock").releasedAt, null);
-        assert.notEqual(required(locks.get(PL_2.workerId), "PL-2 worker lock").releasedAt, null);
         reportW5Phase("two-child-door", "graceful-stop", "complete");
         reportW5Phase("two-child-door", "teardown", "begin");
         harness.supervisorClosed = true;

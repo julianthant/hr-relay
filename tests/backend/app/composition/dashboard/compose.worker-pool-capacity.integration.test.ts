@@ -599,7 +599,6 @@ describe("dashboard shutdown drains owned workers between ingress and the proces
           'src/backend/storage/sqlite/authority-database.ts',
           'src/backend/storage/sqlite/worker-slots.ts',
           'src/backend/storage/sqlite/profile-local-databases.ts',
-          'src/backend/storage/sqlite/runtime-process-locks.ts',
         ];
         const frames = [...seedStderr.matchAll(/((?:src|tests)\/[a-z0-9/.-]+\.ts):(\d+):(\d+)/g)]
           .filter(match => frameOwners.includes(match[1] ?? ''))

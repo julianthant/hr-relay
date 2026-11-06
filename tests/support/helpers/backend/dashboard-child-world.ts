@@ -3,11 +3,10 @@ import type { RuntimeLifetimeLock } from "../../../../src/backend/storage/admiss
 import { AuthorityDatabase } from "../admission-fixture.js";
 import assert from "node:assert/strict";
 import { spawn as spawnChildProcess, type ChildProcess } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { type WorkerPoolMember } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { type WorkerProcessSpawner } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
-import { WorkerProcessLockFileSchema } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
 import { systemClock, type Clock } from "../../../../src/rules/time/clock.js";
 import { scaledMs } from "../../time-scale.js";
@@ -143,22 +142,6 @@ export function createDashboardChildTestWorld(releaseAdmissionFixtures: () => vo
     }
   }
 
-  function workerLockRecords(lockRoot: string): Map<string, { releasedAt: string | null }> {
-    const directory = join(lockRoot, "workers");
-    const records = new Map<string, { releasedAt: string | null }>();
-    if (!existsSync(directory)) return records;
-    for (const name of readdirSync(directory)) {
-      if (!name.endsWith(".lock.json") || name.startsWith(".")) continue;
-      const parsed = WorkerProcessLockFileSchema.parse(
-        JSON.parse(readFileSync(join(directory, name), "utf8")),
-      );
-      assert.equal(parsed.name, "workers");
-      if (!("workerId" in parsed)) throw new Error("unbound-worker-process-lock");
-      records.set(parsed.workerId, { releasedAt: parsed.releasedAt });
-    }
-    return records;
-  }
-
   function reportW5Phase(
     proof: "two-child-door" | "runtime-shutdown",
     phase: "startup" | "spawn-and-birth" | "graceful-stop" | "shutdown" | "teardown",
@@ -208,5 +191,5 @@ export function createDashboardChildTestWorld(releaseAdmissionFixtures: () => vo
       throw new AggregateError(errors, `afterEach cleanup failed (${String(errors.length)} error(s))`);
     }
   };
-  return { stubLaunch, servedControlBasis, PL, plMember, STUB_CLI_PATH, REPO_ROOT, required, roots, openDatabases, cleanups, liveRealChildren, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase, nextCommandId, cleanup };
+  return { stubLaunch, servedControlBasis, PL, plMember, STUB_CLI_PATH, REPO_ROOT, required, roots, openDatabases, cleanups, liveRealChildren, envelope, realStubSpawner, pidAlive, waitFor, reportW5Phase, nextCommandId, cleanup };
 }

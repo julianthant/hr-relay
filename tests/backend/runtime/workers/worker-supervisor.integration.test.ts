@@ -26,7 +26,6 @@ import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-qu
 import { type WorkerProcessSpawner } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
 import { createDashboardWorkerProcessSupervisor } from "../../../../src/backend/runtime/workers/worker-supervisor.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
-import { assertWorkerProcessStopped } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
 import { workerPoolMember, WorkerPoolMemberSchema } from "../../../../src/models/run/worker-slot.js";
@@ -246,7 +245,6 @@ it("retires a real worker only after its opened Chromium profile closes, custody
     await resizing;
     assert.ok(children.every(child => child.exitCode !== null || child.signalCode !== null));
     assert.ok(db.authority.workerControls.browsers(slot.workerId).every(browser => browser.health === "closed"));
-    assertWorkerProcessStopped(join_m1(root, rebuildRuntimeIsolation.processLockRoot), slot.workerId);
     assert.equal(existsSync(slotDirectory), false, "retirement acknowledgement requires deletion of the opened slot profile");
     assert.ok(db.authority.workerSlots.get(slot.workerId)?.retiredAt);
     const childErrorNames = [...new Set(output.join("").match(/\b[A-Z][A-Za-z]*Error\b/gu))].join(", ");
@@ -277,7 +275,6 @@ it("retires a real worker only after its opened Chromium profile closes, custody
         const activeSlots = database.authority.workerSlots.list().filter(slot => slot.retiredAt === null);
         for (const slot of activeSlots) {
           assert.equal(database.authority.workerLeases.get(slot.workerId)?.lifecycle.state, 'stopped');
-          assertWorkerProcessStopped(join_m1(root, rebuildRuntimeIsolation.processLockRoot), slot.workerId);
         }
       }
       for (const child of children) {

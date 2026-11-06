@@ -14,7 +14,6 @@ import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime
 import { join, resolve } from "node:path";
 import { captureSelectedProfileStorage } from "../../../src/backend/app/composition/storage-compose.js";
 import { createCredentialStore } from "../../../src/backend/storage/configuration/credential-store.js";
-import { bindWorkerProcessAdmission } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 const [runtimePortRaw, dbPath, lockRoot, fixtureKind, subcommand, workflowRaw, poolIndexFlag, poolIndexRaw, ...launchArgs] = process.argv.slice(2);
 if (
@@ -66,23 +65,14 @@ else {
   selected.assertCurrent();
 }
 
-const bound = bindWorkerProcessAdmission({
-  processLockRoot: lockRoot, authorityPath: dbPath, pid: process.pid, clock: systemClock,
-  ...(launch === undefined ? {} : { workerId: launch.member.workerId }),
-  open: () => AuthorityDatabase.open(admission, { path: dbPath, busyTimeoutMs: 5_000,
-    migrationOwner: "worker-stub-cli" }, systemClock, undefined, undefined, undefined, credentials),
-  close: database => database.close(),
-  admit: (database) => database.withAuthorityTransaction(repositories => {
-    const now = systemClock.now().toISOString();
-    if (launch !== undefined)
-        return admitSupervisedWorker(repositories, { ...launch, now });
-    return admitDirectWorker(repositories, { commandId: randomUUID(), workflow: workflowId, poolIndex,
-        expectedPoolVersion: repositories.workerPools.get(workflowId)?.version ?? 0,
-        processId: process.pid,
-        now }, randomUUID()).workerId;
-}),
+const database = AuthorityDatabase.open(admission, { path: dbPath, busyTimeoutMs: 5_000,
+  migrationOwner: "worker-stub-cli" }, systemClock, undefined, undefined, undefined, credentials);
+const workerId = database.withAuthorityTransaction(repositories => {
+  const now = systemClock.now().toISOString();
+  if (launch !== undefined) return admitSupervisedWorker(repositories, { ...launch, now });
+  return admitDirectWorker(repositories, { commandId: randomUUID(), workflow: workflowId, poolIndex,
+    expectedPoolVersion: repositories.workerPools.get(workflowId)?.version ?? 0, processId: process.pid, now }, randomUUID()).workerId;
 });
-const { value: database, workerId, processLock: lock } = bound;
 
 const descriptor = DESCRIPTORS.find(value => value.id === workflowId);
 if (descriptor === undefined) throw new Error("worker-stub-workflow-unavailable");
@@ -121,7 +111,6 @@ const shutdown = (reason: "operator" | "shutdown"): void => {
     );
   }
   process.stdout.write(`WORKER-STUB STOPPED ${workerId} ${reason}\n`);
-  lock.release();
   database.close();
   admission.release();
   if (machine !== admission) machine?.release();

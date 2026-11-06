@@ -820,7 +820,7 @@ async function runLogout(): Promise<void> {
     const { testProcessImport } = await import("../compiled-process.js");
     const { scaledMs } = await import("../time-scale.js");
     const { credentialKeychainTestEnvironment } = await import("../helpers/credential-keychain-fake.js");
-    const { acquireRuntimeProcessLock } = await import("../../../src/backend/storage/sqlite/runtime-process-locks.js");
+    const { plantOldBuildArtifact } = await import("../helpers/storage/old-build-artifact.js");
     const child = fork(import.meta.filename, [String(controller.port), workspace, profileId, "logout-exit-only", nonce], {
       execArgv: ["--import", testProcessImport()], env: credentialKeychainTestEnvironment(process.env), stdio: ["ignore", "ignore", "pipe", "ipc"] });
     const closed = once(child, "close");
@@ -829,8 +829,7 @@ async function runLogout(): Promise<void> {
     try {
       const ready = await Promise.race([once(child, "message", { signal: AbortSignal.timeout(scaledMs(15_000)) }), closed.then(() => { throw new Error("logout nested child closed before birth proof"); })]);
       assert.deepEqual(ready[0], { scenario: "logout-exit-only", assertionsComplete: true }); assert.ok(child.pid);
-      acquireRuntimeProcessLock({ processLockRoot: join(workspace, rebuildRuntimeIsolation.processLockRoot), name: "workers", pid: child.pid,
-        admission: { kind: "unbound-worker", authorityPath: path } }, wall);
+      plantOldBuildArtifact(join(workspace, rebuildRuntimeIsolation.processLockRoot), "workers");
       if (scenario === "logout-exited-process") { assert.equal(child.kill("SIGTERM"), true); assert.deepEqual(await closed, [null, "SIGTERM"]); }
       else liveProcess = { child, closed, diagnostics };
     } finally {

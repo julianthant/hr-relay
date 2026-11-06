@@ -204,7 +204,6 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/write-fence-fixture.ts` | claimed write-fence setup and caller-supplied corrupt SQLite seeding |
 | `helpers/trust/trust-wire-fixtures.ts` | trust wire fixtures |
 | `processes/run-record-race-worker.ts` | run record race worker |
-| `processes/runtime-lock-contender.ts` | runtime lock contender |
 | `processes/worker-browser-control-cli.ts` | worker browser control cli |
 | `processes/worker-composition-child.ts` | real worker composition concurrency fixture |
 | `processes/verification-reservation-owner.ts` | standalone verification reservation crash fixture |
@@ -265,5 +264,5 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/backend/person-lookup-start-fixtures.ts` | createPersonLookupStartFixtures shared fixtures |
 | `helpers/backend/person-lookup-provenance-checkpoint.ts` | createPersonLookupProvenanceCheckpoint shared fixtures |
 | `helpers/storage/confirmed-retention-fixtures.ts` | openConfirmedRetentionDatabase shared fixtures |
-| `helpers/storage/first-install-custody-fixtures.ts` | createFirstInstallCustodyFixture shared fixtures |
+| `helpers/storage/old-build-artifact.ts` | plantOldBuildArtifact old-build lock-root record |
 | `helpers/backend/person-lookup-receipt-database.ts` | openPersonLookupReceiptDatabase shared fixtures |

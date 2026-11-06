@@ -42,7 +42,7 @@ import { TimelineEventRecordSchema } from "../../../src/models/events/timeline.j
 import { RUN_RECORD_JSON_SQL } from "../../../src/backend/storage/sqlite/run-record-row.js";
 import { AuthorityDatabase as RealAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService, AuthorityBootStore, AuthorityDatabase, AuthorityHealthPreflightRunner, AuthorityMutationUnavailableError, OfflineAuthorityRestoreService, OfflineRestoreFailure, SpanAuthorityRunRootSchema, doctorAuthorityStorage, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/index.js";
-import { acquireRuntimeProcessLock } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { plantOldBuildArtifact } from "../../support/helpers/storage/old-build-artifact.js";
 import {
   QUEUED_RUN,
 } from "../../support/fixtures/phase1f-run-fixtures.js";
@@ -1973,23 +1973,14 @@ describe("offline exact-backup restore", () => {
     const { manifestPath } = await createBackup(database, directory);
     database.close();
     const proof = maintenanceOperation(root);
-    const worker = acquireRuntimeProcessLock({
-      processLockRoot: processLockRoot(root),
-      name: "workers",
-      workerId: "person-lookup-worker-2",
-      pid: process.pid,
-    }, CLOCK);
-    try {
-      const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
-      await assert.rejects(
-        restore.restore({ manifestPath }, proof),
-        OldBuildRuntimeArtifactsError,
-      );
-      assert.equal(existsSync(suspects), false);
-      assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, baselineGeneration(root) + 0);
-    } finally {
-      worker.release();
-    }
+    plantOldBuildArtifact(processLockRoot(root), "workers");
+    const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
+    await assert.rejects(
+      restore.restore({ manifestPath }, proof),
+      OldBuildRuntimeArtifactsError,
+    );
+    assert.equal(existsSync(suspects), false);
+    assert.equal(AuthorityDatabase.inspectExistingReadOnly(admissionFor(authorityPath), authorityPath).authorityGeneration, baselineGeneration(root) + 0);
   });
 
   it("refuses released old-build singleton evidence without interpreting its generations", async () => {
@@ -2002,13 +1993,7 @@ describe("offline exact-backup restore", () => {
     database.close();
     const authorityBytes = readFileSync(authorityPath);
     const proof = maintenanceOperation(root);
-    const server = acquireRuntimeProcessLock({
-      processLockRoot: processLockRoot(root),
-      name: "server",
-      pid: process.pid,
-    }, CLOCK);
-    assert.equal(server.generation, 2);
-    server.release();
+    plantOldBuildArtifact(processLockRoot(root));
 
     const restore = new OfflineAuthorityRestoreService(profileBrowserClosure, admissionFor(root), restoreOptions(root, authorityPath, suspects), async () => undefined, CLOCK, undefined, boundProfileCredentials(admissionFor(root)));
     await assert.rejects(

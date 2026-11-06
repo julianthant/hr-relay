@@ -399,25 +399,6 @@ export const StorageDoctorReportSchema = z.strictObject({
   previousLocationBackups: z.array(PreviousLocationBackupSchema).optional(),
 });
 
-export const RecoveryProcessLockStateSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("stopped"), generation: PositiveIntSchema }),
-  z.strictObject({ state: z.literal("active"), generation: PositiveIntSchema, pid: PositiveIntSchema }),
-]);
-
-export const RecoveryRuntimeLockSnapshotSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  runtimeNamespace: z.literal("hrauto-rebuild"),
-  runtimeGeneration: PositiveIntSchema,
-  sourceDatabaseIdentity: FingerprintSchema,
-  recordedAt: IsoInstantSchema,
-  processLocks: z.strictObject({
-    server: RecoveryProcessLockStateSchema,
-    workers: RecoveryProcessLockStateSchema,
-    geocode: RecoveryProcessLockStateSchema,
-    "live-smoke": RecoveryProcessLockStateSchema,
-  }),
-});
-
 export const OfflineRestoreRequestSchema = z.strictObject({
   manifestPath: z.string().min(1),
 });
@@ -449,5 +430,4 @@ export type SpanAuthorityReconciliation = z.infer<typeof SpanAuthorityReconcilia
 export type AuthorityBootReport = z.infer<typeof AuthorityBootReportSchema>;
 export type RestoreCandidate = z.infer<typeof RestoreCandidateSchema>;
 export type StorageDoctorReport = z.infer<typeof StorageDoctorReportSchema>;
-export type RecoveryRuntimeLockSnapshot = z.infer<typeof RecoveryRuntimeLockSnapshotSchema>;
 export type OfflineRestoreReport = z.infer<typeof OfflineRestoreReportSchema>;

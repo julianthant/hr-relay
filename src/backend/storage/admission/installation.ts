@@ -1,6 +1,6 @@
 import { appendProfileSelectionChange } from "../events/local-debug-log.js";
 import { FileIdentitySchema } from "../../../models/storage/file-identity.js";
-import { fileStatus, descriptorStatus, privateFileNumber, fileModified, fileTimestampMilliseconds } from "../file-identity.js";
+import { fileStatus, descriptorStatus, privateFileNumber, fileModified, fileChanged, fileTimestampMilliseconds } from "../file-identity.js";
 import { assertMaintenanceCustodyAvailable } from "../maintenance/custody-availability.js";
 import { assertAccountDeletionRetainedBackups, AccountDeletionRefusedError, captureAccountDeletion, publishAccountDeletion, resumeAccountDeletion } from "../maintenance/account-deletion.js";
 import { createHash,randomBytes,randomUUID } from "node:crypto";
@@ -42,7 +42,6 @@ import type { BrowserProfileProbeFactory } from "../browser-roots.js";
 import { StoppedCredentialErasureHeadSchema as CredentialErasureHeadSchema,StoppedCredentialKeyWitnessSchema as CredentialKeyWitnessSchema,StoppedDuoContinuityRowSchema as DuoContinuityRowSchema,readStoppedCredentialConversion,releaseStoppedCredentialConversion,type StoppedDuoContinuityRow as DuoContinuityRow,type StoppedControlCredentialAttestation } from "../configuration/credential-conversion.js";
 import { captureCanonicalProfileBinding } from "../sqlite/profile-local-databases.js";
 import { createReadonlyAuthoritySnapshot } from "../sqlite/readonly-authority-snapshot.js";
-import { readProcessCustodyFile } from "../sqlite/runtime-process-locks.js";
 
 import { FixedLayoutIntentSchema,assertFixedLayoutConfiguring,assertFixedLayoutEntries,assertFixedLayoutMove,fixedLayoutBindingEntries,fixedLayoutEntries,fixedLayoutSourceFence,publishFixedLayoutIntent,readFixedLayoutIntent,type FixedLayoutIntent } from "../maintenance/fixed-layout.js";
 import { restoreRetainedFilesDigest, assertRestoreRootMembership } from "../maintenance/automatic-restore-files.js";
@@ -2439,6 +2438,29 @@ function priorControlUpgradeEvidence(locator: RuntimeLocator, prior: z.infer<typ
       size: privateFileNumber(metadata.size), ...fileTimestampMilliseconds(metadata) } };
   });
   return canonicalJsonStringify({ prior, profiles, verifiers: controlUpgradeFile(join(machine, "profile-verifiers.json")), pepper: controlUpgradeFile(join(machine, "profile-pepper")) });
+}
+
+function readProcessCustodyFile(path: string, maxBytes = 1_048_576) {
+  const parent = dirname(path), before = fileStatus(path);
+  if (realpathSync(parent) !== parent || !fileStatus(parent).isDirectory() || !before.isFile() || before.isSymbolicLink()
+    || (before.nlink !== 1 && before.nlink !== 1n) || before.size > maxBytes || privatePathRejects(path, before, "private")) throw new Error("worker-process-recovery-file-unsafe");
+  const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  let bytes: Buffer | undefined, primary: { error: unknown } | undefined;
+  try {
+    const opened = descriptorStatus(descriptor);
+    if (opened.dev !== before.dev || opened.ino !== before.ino) throw new Error("worker-process-recovery-source-changed");
+    bytes = readFileSync(descriptor);
+    const after = descriptorStatus(descriptor);
+    const live = fileStatus(path);
+    const identity = (stat: typeof before) => [stat.dev, stat.ino, stat.mode, stat.uid, stat.nlink, stat.size, fileModified(stat), fileChanged(stat)].map(value => typeof value === "bigint" ? value.toString() : value);
+    if (canonicalJsonStringify(identity(before)) !== canonicalJsonStringify(identity(after))
+      || canonicalJsonStringify(identity(before)) !== canonicalJsonStringify(identity(live)) || bytes.length !== privateFileNumber(before.size)) throw new Error("worker-process-recovery-source-changed");
+  } catch (error) { primary = { error }; }
+  try { closeSync(descriptor); }
+  catch (error) { throw retainAuthoritySourceClosure(primary === undefined ? [error] : [primary.error, error], { descriptor: { descriptor, identity: before } }); }
+  if (primary !== undefined) throw primary.error;
+  if (bytes === undefined) throw new Error("worker-process-recovery-read-unproved");
+  return { bytes, witness: { path, ...fileIdentityObservation({ device: before.dev, inode: before.ino }), digest: createHash("sha256").update(bytes).digest("hex") } };
 }
 
 export function inspectFlatOfflineRunMaintenance(workspacePath: string) {

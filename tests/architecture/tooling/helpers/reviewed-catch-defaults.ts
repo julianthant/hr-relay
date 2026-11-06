@@ -299,22 +299,6 @@ export const REVIEWED_CATCH_DEFAULTS = [
     ]
   },
   {
-    "path": "src/backend/storage/sqlite/runtime-process-locks.ts",
-    "reason": "Unproved startup proof source closure retains the original opened resource, admission and process handles before any dependent cleanup. Failed admission releases custody only after the opened resource closes successfully; close and release failures retain custody and original errors. Descriptor-bound worker/recovery reads aggregate any read and close failures, then rethrow; receipt absence alone preserves ordinary stale-owner refusal. Restore-publication cleanup preserves primary failures and refuses uncertain closure; failed worker handoff marks custody uncertain before any replacement release.",
-    "statements": [
-      {
-        "kind": "try",
-        "sha256": "5f9be7f73224bc3bad9a0b7c99b2eb3dc733b5b325210feabe645b396bf4ecd9",
-        "occurrences": 1
-      },
-      {
-        "kind": "try",
-        "sha256": "7171cec0346fb52c845e0ffe4623f447d911616976b3a0ac530568557f88a32f",
-        "occurrences": 1
-      }
-    ]
-  },
-  {
     "path": "src/backend/systems/browser-shared/ucsd-sso.ts",
     "reason": "The navigation rejection observer preserves the original promise raced by the training-reminder wait; the landing wait owns timeout and diagnosis. An empty diagnostic title accompanies LANDING_PROBE_UNAVAILABLE and a thrown BrowserLandingStallError with the original landing cause, never authenticated success. Probe uncertainty stays explicit; initiated clicks drain before settlement, and compound click, disposal and landing failures retain their causes. Pinned credential submission attempts every handle disposal and rethrows the primary error or aggregates all cleanup failures.",
     "statements": [

@@ -16,7 +16,7 @@ import { systemClock } from "../../../../../src/rules/time/clock.js";
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { AuthorityDatabase } from "../../../../../src/backend/storage/sqlite/authority-database.js";
 
-const {stubLaunch, PL, plMember, required, cleanups, envelope, realStubSpawner, pidAlive, waitFor, workerLockRecords, reportW5Phase, cleanup } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
+const {stubLaunch, PL, plMember, required, cleanups, envelope, realStubSpawner, pidAlive, waitFor, reportW5Phase, cleanup } = createDashboardChildTestWorld(() => releaseAdmissionFixtures(), (root) => releaseAdmissionFixture(root));
 
 const SEP = WorkflowIdSchema.parse("separations");
 const _PL_1 = plMember(1);
@@ -118,10 +118,6 @@ describe("real runtime: dashboard shutdown drains children before parent kernel 
       reportW5Phase("runtime-shutdown", "graceful-stop", "begin");
       assert.equal(plRecord.child.kill("SIGTERM"), true);
       await waitFor(() => !pidAlive(plPid), "the stopped child's pid to die", childOutput);
-      assert.notEqual(
-        required(workerLockRecords(lockRoot).get(PL_1.workerId), "PL-1 worker lock").releasedAt,
-        null,
-      );
       reportW5Phase("runtime-shutdown", "graceful-stop", "complete");
 
       // Composition drains children while its caller retains the kernel listener.
@@ -133,10 +129,6 @@ describe("real runtime: dashboard shutdown drains children before parent kernel 
       assert.equal(pidAlive(sepPid), false, "dashboard shutdown must drain its owned child");
       reportW5Phase("runtime-shutdown", "shutdown", "complete");
       reportW5Phase("runtime-shutdown", "teardown", "begin");
-      assert.notEqual(
-        required(workerLockRecords(lockRoot).get(SEP_1.workerId), "SEP-1 worker lock").releasedAt,
-        null,
-      );
       assert.deepEqual(
         records.map((record) => ({ workerId: record.member.workerId, alive: pidAlive(required(record.pid, "pid")) })),
         [

@@ -1,5 +1,3 @@
-import { readStartupProcessRecords } from "../../../storage/sqlite/runtime-process-locks.js";
-import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 import { ConfigSchema } from "../../../../models/config/schema.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { assertPrivateProfilePath,createBrowserRoots } from "../../../storage/browser-roots.js";
@@ -268,10 +266,7 @@ export function composeWorkerProcessControl(input: WorkerProcessControlInput): R
     const roots = createBrowserRoots(input.admission).inventory().roots;
     const installation = input.admission.readInstallationContext();
     if (installation === undefined) throw new WorkerControlRefusal("worker-non-birth-installation-unavailable");
-    const processes = readStartupProcessRecords(join(installation.workspace, rebuildRuntimeIsolation.processLockRoot));
-    if (processes.some(record => record.name === "workers" && ("workerId" in record ? record.workerId === slot.workerId
-      : record.admission.authorityPath === join(input.admission.stateRoot, "state.db")))
-      || roots.some(row => row.profileId === input.admission.profileBinding.profileId && row.owner.kind === "worker" && row.owner.workerId === slot.workerId)
+    if (roots.some(row => row.profileId === input.admission.profileBinding.profileId && row.owner.kind === "worker" && row.owner.workerId === slot.workerId)
       || lstatSync(join(input.profileRoot, `w${String(slot.ordinal)}`), { throwIfNoEntry: false }) !== undefined) throw new WorkerControlRefusal("worker-non-birth-retained-profile");
   });
   return Object.freeze({

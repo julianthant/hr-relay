@@ -34,7 +34,7 @@ import { createCredentialStore } from "../../../../src/backend/storage/configura
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { AuthorityBackupService } from "../../../../src/backend/storage/sqlite/backup-service.js";
 import { OfflineAuthorityRestoreService,OfflineRestoreFailure,resumeAutomaticAuthorityRestore } from "../../../../src/backend/storage/sqlite/offline-restore.js";
-import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { plantOldBuildArtifact } from "../../../support/helpers/storage/old-build-artifact.js";
 import { DuoCredentialRecordSchema } from "../../../../src/models/config/duo-credential-store.js";
 import { deriveSettingsPatchFingerprint,initialSettingsFileRecord,SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
@@ -454,14 +454,13 @@ describe("profile restore continuity", () => {
 
   it("refuses old-build worker evidence during a held operation", async () => {
     const f = await world();
-    let worker: ReturnType<typeof acquireRuntimeProcessLock> | undefined;
     try {
       const manifestPath = await f.backup(), operation = f.operation(), bytes = readFileSync(f.path);
-      worker = acquireRuntimeProcessLock({ processLockRoot: f.processLockRoot, name: "workers", workerId: "synthetic-restore-worker", pid: process.pid });
+      plantOldBuildArtifact(f.processLockRoot, "workers");
       await assert.rejects(f.restore().restore({ manifestPath }, operation));
       assert.deepEqual(readFileSync(f.path), bytes);
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", "journal.json")), false);
-    } finally { worker?.release(); await f.close(); }
+    } finally { await f.close(); }
   });
 
   it("retains suspect and exact restore intent when replacement outcome is unobservable", async () => {
@@ -613,7 +612,6 @@ describe("profile restore continuity", () => {
         import { profileBrowserClosure } from './src/backend/runtime/browser/profile-browser-closure.ts';
         import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
         import { reconcileStoppedLogout } from './src/backend/runs/lifecycle/startup-crash-recovery.ts';
-                import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot } from "./src/backend/storage/sqlite/runtime-process-locks.ts";
         const port=${String(port)},workspace=${JSON.stringify(f.workspace)},profileId=${JSON.stringify(f.profileId)},manifestPath=${JSON.stringify(manifestPath)};
         const ready=${JSON.stringify(ready)},release=${JSON.stringify(release)},processLockRoot=${JSON.stringify(f.processLockRoot)};
       `;
