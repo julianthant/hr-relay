@@ -1,3 +1,4 @@
+import type { InputParserSpec } from "../../models/workflow/ingress.js";
 import type { AuthoredExplorerPart as Part, WorkflowExplorerPreview } from "../../models/workflow/explorer-preview.js";
 import { CANONICAL_FIELDS } from "../../models/fields/registry.js";
 import { defineIntakeProjection } from "../../models/intake/projection.js";
@@ -59,6 +60,9 @@ const personLookupExplorer: WorkflowExplorerPreview = {
   sources: { "search-criteria": { origin: "UCPath · Search criteria", detail: searchPurpose } },
 };
 
+/** One entry grammar for the typed Search mode and the plain input box. */
+const SEARCH_ENTRIES = { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }] } satisfies InputParserSpec;
+
 export const personLookupWorkflow = defineWorkflow({
   id: "person-lookup",
   explorerPreview: personLookupExplorer,
@@ -106,7 +110,7 @@ export const personLookupWorkflow = defineWorkflow({
           {
             value: "search", label: "Search", inputLabel: "Employee IDs or names", hint: "Separate people with a semicolon or a new line.", placeholder: "10000001; Lee, Jordan",
             defaults: [{ field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
-            parser: { kind: "entries", spec: { split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }] } },
+            parser: { kind: "entries", spec: SEARCH_ENTRIES },
             display: { kind: "first-present", fields: ["emplId", "name"] }, identityFields: ["emplId", "name"],
           },
           {
@@ -122,7 +126,7 @@ export const personLookupWorkflow = defineWorkflow({
           { field: "includeCrmDates", label: "Read CRM dates", placement: "step", modes: ["search"], requires: ["crmCheck"] },
         ],
       }, placeholder: "Enter employee IDs or names separated by semicolons or new lines", parser: {
-        split: { kind: "delimited", delimiters: [";", "\n"] }, rules: [{ when: { kind: "pattern", pattern: "eid" }, emit: "emplId" }, { when: { kind: "otherwise" }, emit: "name" }],
+        ...SEARCH_ENTRIES,
         constants: [{ field: "mode", value: { kind: "text", text: "search" } }, { field: "crmCheck", value: { kind: "boolean", value: true } }, { field: "keepNonHdh", value: { kind: "boolean", value: false } }, { field: "includeCrmDates", value: { kind: "boolean", value: false } }],
       }, examples: [{ key: "one-eid", label: "One employee ID", text: "10000001", note: "Search one employee ID" }]
     }
