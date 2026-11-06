@@ -587,6 +587,54 @@ afterEach(_afterEachFixture0);
     }
   });
 
+  it("does not finish a body when the read fails before the first byte", async () => {
+    const transferFailure = new Error("owned response body failed before the first byte");
+    const observed: Error[] = [];
+    const app = new Hono<TestDashboardEnv>();
+    app.get("/body-read-error", () => new Response(new ReadableStream<Uint8Array>({
+      pull() {
+        throw transferFailure;
+      },
+    }), { status: 200, headers: { "content-type": "application/octet-stream" } }));
+    const server = await startServer(app, (error) => {
+      observed.push(error);
+    });
+
+    const received: Buffer[] = [];
+    const completed: string[] = [];
+    const clientErrors: NodeJS.ErrnoException[] = [];
+    const settled = Promise.withResolvers<void>();
+    const client = request({
+      hostname: "127.0.0.1",
+      port: server.port,
+      method: "GET",
+      path: "/body-read-error",
+    });
+    client.on("response", (response) => {
+      response.on("data", (chunk: Buffer) => received.push(chunk));
+      response.on("end", () => {
+        if (response.complete) completed.push(Buffer.concat(received).toString("utf8"));
+        settled.resolve();
+      });
+      response.on("aborted", () => settled.resolve());
+      response.resume();
+    });
+    client.on("error", (error: NodeJS.ErrnoException) => {
+      clientErrors.push(error);
+      settled.resolve();
+    });
+    client.end();
+
+    await settled.promise;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.deepEqual(completed, [], "a body read error must not complete a response");
+    assert.equal(Buffer.concat(received).includes(transferFailure.message), false);
+    assert.equal(clientErrors.length, 1);
+    assert.equal(clientErrors[0]?.code, "ECONNRESET");
+    assert.deepEqual(observed, [transferFailure]);
+    await closeServer(server);
+  });
+
   it("streams ordinary success bytes exactly and closes without a transfer error", async () => {
     const expected = Buffer.from([0x00, 0x01, 0x7f, 0x80, 0xfe, 0xff, 0x44]);
     const transferErrors: Error[] = [];

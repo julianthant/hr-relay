@@ -116,6 +116,8 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
           if (cancelling === undefined) {
             settleFailure(transfer, asError(error), false);
             finish();
+            // @hono/node-server ends a rejected pre-headers read as a finished body.
+            if (!transfer.response.headersSent) transfer.response.destroy();
             controller.error(error);
             return;
           }
