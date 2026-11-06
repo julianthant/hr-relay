@@ -3,12 +3,10 @@ import { createWorkbookLibraryService } from "../../../../src/backend/workbooks/
 import { createWorkbookIntakeBridge } from "../../../../src/backend/runs/commands/workbook-intake-service.js";
 import { createIntakeCommandResultQuery } from "../../../../src/backend/runs/queries/intake-command-result.js";
 import { composeActivity } from "../../../../src/backend/app/composition/dashboard/activity.js";
-import { createRunLogStreamStore } from "../../../../src/backend/logs/run-log-stream.js";
 import { runQueuedSpanEvent } from "../../../../src/backend/runs/commands/run-queued-span.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createProtectedSettingsRuntimeReader } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { createBoundProfileFixture, boundProfileCredentials, type BoundProfileStorageFixture } from "../admission-fixture.js";
-import { RunLogsStreamHub } from "../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/rules/identity/ids.js";
 import { seedInitialSettingsRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
@@ -348,12 +346,6 @@ export async function harness(options: {
     ...(options.maxPending === undefined ? {} : { maxPending: options.maxPending }),
   });
   cleanups.push(() => hub.close());
-  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(database.authority.timelineEvents),
-    readRun: runId => {
-      const result = runDetailDeps.runReader.read(runId);
-      return result.state === "present" ? { disposition: result.disposition, run: result.run } : undefined;
-    } });
-  cleanups.push(() => runLogsHub.close());
   const preflight = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun, options.preflightScheduler);
 
 
@@ -432,7 +424,6 @@ export async function harness(options: {
     commands,
     startPlans,
     hub,
-    runLogsHub,
 
     settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [fixtureDescriptor] },
     settingsEditor: { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials),

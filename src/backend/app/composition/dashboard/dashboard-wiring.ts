@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { emitFaultWithCauses } from "../../../logs/debug-events.js";
 import { join } from "node:path";
 import { z } from "zod";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
@@ -92,19 +93,15 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   let ownsWorker: (lease: import("../../../../models/run/worker.js").WorkerLeaseRecord) => boolean = () => false;
   const projection = createOperatorProjection({ ownsWorker: lease => ownsWorker(lease), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader });
 
-  const { noteWriter, runLogsHub, timelineTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, lifecycle, startupCleanups, requiredClosure });
+  const { noteWriter, timelineTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups });
 
   const reportSupervisorFault = (error: Error): void => {
-    const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "supervisor",
-      code: "WORKER_SUPERVISOR_FAILED", reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "supervisor-failed" };
-    debugEvents.emit(event);
-    input.workerProcess?.faultSink?.(JSON.stringify(event));
+    emitFaultWithCauses(debugEvents, input.workerProcess?.faultSink, error, { category: "worker", area: "supervisor", code: "WORKER_SUPERVISOR_FAILED",
+      reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "supervisor-failed" });
   };
   const reportDashboardTransferFault = (error: Error): void => {
-    const event = { category: "http", phase: "failed", correlationId: randomUUID(), area: "response-transfer",
-      code: "DASHBOARD_TRANSFER_FAILED", reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "transfer-failed" };
-    debugEvents.emit(event);
-    input.workerProcess?.faultSink?.(JSON.stringify(event));
+    emitFaultWithCauses(debugEvents, input.workerProcess?.faultSink, error, { category: "http", area: "response-transfer", code: "DASHBOARD_TRANSFER_FAILED",
+      reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "transfer-failed" });
   };
   const assertAssistantEffect = (commandId: string): void => {
     if (database.authority.assistantAuthorization.actionByCommand(commandId) === undefined) return;
@@ -286,7 +283,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     } });
   const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync });
 
-  const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors, runLogsHub,
+  const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors,
     actorLabel: () => {
       assertCurrent();
       const person = machineAdmission.readProfileRegistry().profiles.find(row => row.profileId === admission.profileBinding.profileId);
@@ -377,5 +374,5 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   gateParkTimer.unref();
   startupCleanups.push(() => clearInterval(gateParkTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, runLogsHub, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, custody });
 }

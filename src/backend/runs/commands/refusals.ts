@@ -1,4 +1,5 @@
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 
 export class LogDisplayRefusedError extends Error {
   readonly code = "RUN_LOG_DISPLAY_VALUE_UNMAPPED";
@@ -70,3 +71,4 @@ export class DashboardReadFailedError extends Error {
     this.name = "DashboardReadFailedError";
   }
 }
+bindErrorOrigin(DashboardReadFailedError, "dashboard-read-failed");

@@ -30,7 +30,7 @@ import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/boots
 import { DiagnosticBundleWireSchema } from "../../../src/models/dashboard/diagnostic-bundle.js";
 import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
 import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
-import { DashboardStreamEnvelopeSchema, DashboardTopicPatchSchema, DashboardTopicSnapshotSchema } from "../../../src/models/dashboard/subscription.js";
+import { DashboardStreamEnvelopeSchema } from "../../../src/models/dashboard/subscription.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../src/rules/workflow/dependencies.js";
 import { GateResultRecordSchema } from "../../../src/models/workflow/gates.js";
 import { LedgerEntryPayloadSchema, LedgerEntrySchema, LedgerOutboxPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../src/rules/runs/ledger.js";
@@ -48,8 +48,6 @@ import { GraphCoveragePointSchema, ScenarioCoverageClaimSchema } from "../../../
 import { ApproveContextSchema, ApprovedDocumentSchema, CompletionConsumptionSpecSchema, CompletionProgramSampleSchema, ExtractedFieldSchema, MemberPlanEntrySchema, PreviewRecordSchema } from "../../../src/models/workflow/completion.js";
 import { FileAcceptSpecSchema, InputParserSpecSchema, ParsedInputEntrySchema, SurfaceFieldSchema, TextTemplateSchema, UploadFieldSpecSchema, UploadedFileSchema, WorkflowSurfacesSchema } from "../../../src/models/workflow/ingress.js";
 import { ResultTitleProjectionSchema, DetailProjectionSpecRuntimeSchema, DurableArtifactProjectionSpecRuntimeSchema, GateProjectionDefinitionSchema, StepProjectionSchema, SurfaceShapeSchema, VerdictDefinitionSchema, WorkflowActionPolicySchema, WorkflowCapabilitiesSchema } from "../../../src/models/workflow/presentation.js";
-import { BUILD_MANIFEST } from "../../../src/workflow-kit/validation/build-manifest.js";
-import { BuildManifestSchema, SourceHashSchema } from "../../../src/models/workflow/build-manifest.js";
 import { CheckpointExpectationSchema, CheckpointMissReasonSchema, FactProvenanceSchema, FreshnessOverrideSchema, RunCheckpointRecordSchema } from "../../../src/models/workflow/checkpoint.js";
 import { ChildVisibilitySchema, DelegationManifestRefSchema, DelegationPolicySchema, GraphNodeKindSchema, ParallelBranchSpecSchema, childRunOutcomeSchema } from "../../../src/models/workflow/graph.js";
 import { TimecardDateRangeSchema, TimecardMonthDaySchema, VisibleTimecardMonthDaysSchema } from "../../../src/rules/time/timecard-period.js";
@@ -337,7 +335,7 @@ const BULK_RUN_COMMAND = {
   family: "run",
   type: "bump",
   targets: [{ runId: UUID_3, expectedVersion: 1 }],
-  mode: "all-or-none",
+  mode: "best-effort",
 };
 const PRESENT_PROOF_REFERENCE = {
   proofSchemaHash: HASH_A,
@@ -764,8 +762,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "FreshnessOverride", schema: FreshnessOverrideSchema, fixtures: [
     { nodeId: "searching", fieldPaths: ["selection.selected"], confirmedAt: NOW, reason: "confirmed with the operator", validForAttempt: 2 },
   ] },
-  { name: "SourceHash", schema: SourceHashSchema, fixtures: [{ path: "src/rules/identity/ids.ts", sha256: HASH_A }] },
-  { name: "BuildManifest", schema: BuildManifestSchema, fixtures: [BUILD_MANIFEST] },
   { name: "GraphNodeKind", schema: GraphNodeKindSchema, fixtures: ["task", "transaction", "branch", "parallel", "child-run", "gate"] },
   { name: "ChildVisibility", schema: ChildVisibilitySchema, fixtures: ["inline", "linked", "hidden-unless-failed"] },
   { name: "ParallelBranchSpec", schema: ParallelBranchSpecSchema, fixtures: [{ id: "org", nodes: ["search-person"] }] },
@@ -1012,8 +1008,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ArtifactRef", schema: ArtifactRefWireSchema, fixtures: [ARTIFACT_REF] },
   { name: "CapturePointer", schema: CapturePointerWireSchema, fixtures: [{ artifactId: UUID_1, dimensions: { state: "missing", reason: "not captured" } }] },
   { name: "ArtifactResource", schema: ArtifactResourceWireSchema, fixtures: [ARTIFACT] },
-  { name: "DashboardTopicSnapshot", schema: DashboardTopicSnapshotSchema, fixtures: [{ topic: "artifact", payload: ARTIFACT }] },
-  { name: "DashboardTopicPatch", schema: DashboardTopicPatchSchema, fixtures: [{ topic: "artifact", payload: { operation: "replace-artifact-resource", target: { artifactId: UUID_1 }, replacement: ARTIFACT } }] },
   { name: "DashboardStreamEnvelope", schema: DashboardStreamEnvelopeSchema, fixtures: [{ type: "health", state: "live" }] },
 ];
 
@@ -1334,23 +1328,13 @@ describe("strict boundary schemas", () => {
       const text = pathText(path);
       return !entry.openFixturePaths?.some(open => text === open || text.startsWith(`${open}.`));
     });
-    const groups = new Map<string, (readonly Segment[])[]>();
-    for (const path of paths) {
-      const group = entry.schema === BuildManifestSchema && typeof path[1] === "number"
-        ? pathText(path.slice(0, 2)) : "$";
-      const members = groups.get(group) ?? [];
-      members.push(path); groups.set(group, members);
-    }
-    assert.deepEqual([...groups.values()].flat(), paths, `${entry.name} must retain every mutation in order`);
-    for (const [group, members] of groups) {
-      it(`rejects unknown keys: ${entry.name} fixture ${String(index)} ${group}`, () => {
-        for (const path of members) {
-          const text = pathText(path);
-          assert.equal(entry.schema.safeParse(addUnknown(parsed, path)).success, false,
-            `${entry.name} accepted unknown key at ${text || "$"}`);
-        }
-      });
-    }
+    it(`rejects unknown keys: ${entry.name} fixture ${String(index)} $`, () => {
+      for (const path of paths) {
+        const text = pathText(path);
+        assert.equal(entry.schema.safeParse(addUnknown(parsed, path)).success, false,
+          `${entry.name} accepted unknown key at ${text || "$"}`);
+      }
+    });
   }
 
   it("walks every object arm nested under arrays, unions, lazies, and wrappers", () => {

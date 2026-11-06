@@ -1,4 +1,3 @@
-import { prepareBuildManifest } from "../../../scripts/build/workflow-build-manifest.js";
 import { resolve, join } from "node:path";
 import { PARITY_BUILD_COMMAND, computeDashboardBuildInputDigest } from "../../../src/backend/app/composition/dashboard/build-identity.js";
 import { createBundleSetup } from "../../support/helpers/dashboard/profiles/bundle-setup.js";
@@ -6,8 +5,6 @@ import { createBundleSetup } from "../../support/helpers/dashboard/profiles/bund
 export type { ParityBundleStamp, ParityBundleState, ParityBundleInput, ParityBundleProof } from "../../support/helpers/dashboard/profiles/bundle-setup.js";
 
 export const PARITY_REPO_ROOT = resolve(import.meta.dirname, "../../..");
-
-prepareBuildManifest(PARITY_REPO_ROOT);
 
 export const PARITY_DIST_DIR = join(PARITY_REPO_ROOT, "dist", "parity-dashboard");
 

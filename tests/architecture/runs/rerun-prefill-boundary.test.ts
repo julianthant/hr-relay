@@ -11,7 +11,6 @@ import { flow } from "../../../src/workflow-kit/flow.js";
 import { defineWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import {
   PHASE1_ACTIVE_COMMAND_ARMS,
-  PHASE1_DEFERRED_COMMAND_ARMS,
 } from "../../../src/backend/runs/commands/command-kernel.js";
 import { EidSchema } from "../../../src/rules/identity/ids.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
@@ -121,9 +120,8 @@ describe("edit data field policy", () => {
     }
   });
 
-  it("keeps the retired save outside the active and deferred partitions", () => {
+  it("keeps the retired save outside the active arms", () => {
     assert.ok(!PHASE1_ACTIVE_COMMAND_ARMS.run.includes("edit-checkpoint" as never));
-    assert.ok(!PHASE1_DEFERRED_COMMAND_ARMS.run.includes("edit-checkpoint" as never));
   });
 });
 

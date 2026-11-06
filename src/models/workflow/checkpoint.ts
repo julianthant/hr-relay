@@ -1,4 +1,3 @@
-import type { EvidenceSchemaReader } from "../storage/evidence-schema-admission.js";
 import { DeclaredActionIdentitySchema } from "./operation-action-identity.js";
 /** The checkpoint record, its loader, and the freshness walk: a union loader with no defaultable shape, mandatory fingerprints, and a walk that keeps a stale read out of a live write. */
 import { z } from "zod";
@@ -112,7 +111,6 @@ export function loadCheckpoint<OutputSchema extends z.ZodType>(
   stored: RunCheckpointRecord | undefined,
   expectation: CheckpointExpectation,
   outputSchema: OutputSchema,
-  schemaReader?: EvidenceSchemaReader,
 ): CheckpointLoad<z.output<OutputSchema>> {
   if (stored === undefined) {
     return { found: false, reason: "no-checkpoint", detail: "no checkpoint row exists for this node" };
@@ -132,7 +130,7 @@ export function loadCheckpoint<OutputSchema extends z.ZodType>(
         + `and this build binds ${expectation.implFingerprint}`,
     };
   }
-  if ((schemaReader?.({ kind: "task-output", id: checkpointRecordKey(record) }, record, record.output.schemaHash, expectation.outputSchemaHash) ?? record.output.schemaHash) !== expectation.outputSchemaHash) {
+  if (record.output.schemaHash !== expectation.outputSchemaHash) {
     return {
       found: false,
       reason: "output-schema-mismatch",

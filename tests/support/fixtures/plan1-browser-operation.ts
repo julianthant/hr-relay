@@ -11,7 +11,6 @@ import { UCPATH_PERSON_ORG_SEARCH_SCREEN, UCPATH_PERSON_ORG_EID_INPUT, UCPATH_PE
 import { ucpathSession } from "../../../src/backend/systems/ucpath/session-provider.js";
 import { runDeclaredAction } from "../../../src/backend/systems/browser-shared/action-notes.js";
 import { Plan1Input, Plan1CanonicalInput, Plan1Output, plan1Stores } from "./plan1-operation-workflows.js";
-import { fixtureBuildManifest } from "./workflow-definition-fixtures.js";
 
 export interface FictionalFormDriver extends BrowserDriver {
   readonly system: "ucpath";
@@ -62,7 +61,7 @@ export const plan1BrowserWorkflow = compileWorkflow(defineWorkflow({ id: "fixtur
   presentation: { title: () => "Fictional employee search" }, scenarios: ["fixture-plan1-browser/happy"] as const, role: defineWorkflowRole({ kind: "standalone" }),
   operationDisplay: { capability: "complete", version: 1, invocations: [{ id: "search-operation", entryId: "search", contractRole: "task", occurrencePath: ["search"], bindings: [{ slot: "employee", value: { kind: "run-input", path: "emplId" } }] }], presentation: [{ id: "search-node", kind: "operation", invocationId: "search-operation" }] },
   steps: ({ task: node, result }) => { const search = node({ id: "search", label: "Find employee", contract, replay: "checkpoint" }, [], ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId })); return { steps: [[{ key: "search", label: "Find employee" }, [search]]], result: result(Plan1Output, [search], ({ input, outputs }) => ({ eid: input.emplId, disposition: outputs.search.selection.status, providerState: outputs.search.selection.status })) }; },
-}), { manifest: fixtureBuildManifest(["fixture-plan1-browser"]) });
+}));
 
 /** Mutable fictional page; readback observes the driver's actual field/result state. */
 export function fictionalFormDriver(): FictionalFormDriver {

@@ -241,6 +241,8 @@ if (typeof chrome !== 'undefined') {
   let relay;
   let browserInstalled = false;
   let browserStopped = false;
+  let setupWindowId;
+  let setupTabId;
   let waiter;
   const requests = [];
   const replies = new Map();
@@ -268,10 +270,10 @@ if (typeof chrome !== 'undefined') {
       || sender.frameId !== undefined && sender.frameId !== 0
       || sender.documentLifecycle !== 'active' || typeof sender.documentId !== 'string' || sender.documentId.length !== 32 || !/^[0-9a-f]{32}$/i.test(sender.documentId)
       || sender.origin !== chrome.runtime.getURL('').slice(0, -1)) throw new Error('ONBOARDING_DUO_SCOPE');
-    const kinds = { STATE: 'state', RELAY_OPEN_PORTAL: 'portal', RELAY_RETURN: 'return', RELAY_START: 'start', RELAY_CANCEL: 'cancel', RELAY_CONFIRM: 'confirm' };
+    const kinds = { STATE: 'state', RELAY_OPEN_PORTAL: 'portal', RELAY_SHOW_PORTAL: 'portal-show', RELAY_RETURN: 'return', RELAY_START: 'start', RELAY_CANCEL: 'cancel', RELAY_CONFIRM: 'confirm' };
     if (!Object.hasOwn(kinds, message.type) || Object.keys(message).some(key => !['type', 'method', 'attemptId'].includes(key))) throw new Error('ONBOARDING_DUO_REQUEST');
     const kind = kinds[message.type];
-    if (['state', 'portal', 'return'].includes(kind) && (message.method !== undefined || message.attemptId !== undefined)
+    if (['state', 'portal', 'portal-show', 'return'].includes(kind) && (message.method !== undefined || message.attemptId !== undefined)
       || ['start', 'cancel', 'confirm'].includes(kind) && !['key', 'touch'].includes(message.method)
       || kind === 'start' && message.attemptId !== undefined
       || ['cancel', 'confirm'].includes(kind) && (typeof message.attemptId !== 'string' || !/^[0-9a-f-]{36}$/i.test(message.attemptId))) throw new Error('ONBOARDING_DUO_REQUEST');
@@ -280,19 +282,62 @@ if (typeof chrome !== 'undefined') {
         ...(message.attemptId === undefined ? {} : { attemptId: message.attemptId }) }).then(value => ({ relaySetup: true, profile: value }));
   }
   globalThis.relayOnboarding = Object.freeze({
-    async browserInstall() {
-      if (browserInstalled || browserStopped) throw new Error('ONBOARDING_DUO_REVOKED');
+    async browserInstall(token) {
+      if (browserInstalled || browserStopped || !/^[0-9a-f-]{36}$/i.test(token)) throw new Error('ONBOARDING_DUO_REVOKED');
       await chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
       browserInstalled = true;
+      const url = 'about:blank#relay-target=' + token;
+      const window = await chrome.windows.create({ type: 'normal', url, width: 640, height: 752, focused: true });
+      if (!Number.isInteger(window.id) || window.tabs?.length !== 1 || !Number.isInteger(window.tabs[0].id)) throw new Error('ONBOARDING_DUO_SCOPE');
+      setupWindowId = window.id; setupTabId = window.tabs[0].id;
+      return { tabId: setupTabId, windowId: setupWindowId, url };
+    },
+    async browserPage(url) {
+      requireBrowser();
+      const window = await chrome.windows.get(setupWindowId);
+      if (window.id !== setupWindowId) throw new Error('ONBOARDING_DUO_SCOPE');
+      const tab = await chrome.tabs.create({ windowId: setupWindowId, url, active: false });
+      if (!Number.isInteger(tab.id) || tab.windowId !== setupWindowId) throw new Error('ONBOARDING_DUO_SCOPE');
+      return { tabId: tab.id, windowId: tab.windowId, url };
+    },
+    async browserSelect(tabId, windowId) {
+      requireBrowser();
+      if (windowId !== setupWindowId) throw new Error('ONBOARDING_DUO_SCOPE');
+      const tab = await chrome.tabs.get(tabId);
+      if (tab.id !== tabId || tab.windowId !== setupWindowId) throw new Error('ONBOARDING_DUO_SCOPE');
+      await chrome.tabs.update(tabId, { active: true });
+      requireBrowser();
+      const after = await chrome.tabs.get(tabId);
+      if (after.id !== tabId || after.windowId !== setupWindowId || !after.active) throw new Error('ONBOARDING_DUO_SCOPE');
+    },
+    async browserBounds(workArea, frame) {
+      requireBrowser();
+      for (const value of [workArea.left, workArea.top, workArea.width, workArea.height, frame.width, frame.height]) if (!Number.isSafeInteger(value)) throw new Error('ONBOARDING_DUO_SCOPE');
+      if (workArea.width <= 0 || workArea.height <= 0 || frame.width < 0 || frame.height < 0) throw new Error('ONBOARDING_DUO_SCOPE');
+      const right = workArea.left + workArea.width, bottom = workArea.top + workArea.height;
+      if (!Number.isSafeInteger(right) || !Number.isSafeInteger(bottom)) throw new Error('ONBOARDING_DUO_SCOPE');
+      const actualBounds = window => {
+        requireBrowser();
+        if (window?.id !== setupWindowId || ![window.left, window.top, window.width, window.height, window.left + window.width, window.top + window.height].every(Number.isSafeInteger)
+          || window.width <= frame.width || window.height <= frame.height
+          || window.width > workArea.width || window.height > workArea.height) throw new Error('ONBOARDING_DUO_SCOPE');
+        return { left: window.left, top: window.top, width: window.width, height: window.height };
+      };
+      const width = Math.min(640 + frame.width, workArea.width), height = Math.min(720 + frame.height, workArea.height);
+      const left = workArea.left + Math.floor((workArea.width - width) / 2), top = workArea.top + Math.floor((workArea.height - height) / 2);
+      const actual = actualBounds(await chrome.windows.update(setupWindowId, { left, top, width, height }));
+      const centeredLeft = workArea.left + Math.floor((workArea.width - actual.width) / 2), centeredTop = workArea.top + Math.floor((workArea.height - actual.height) / 2);
+      if (actual.left !== centeredLeft || actual.top !== centeredTop) actualBounds(await chrome.windows.update(setupWindowId, { left: centeredLeft, top: centeredTop }));
+      const final = actualBounds(await chrome.windows.get(setupWindowId));
+      if (final.left < workArea.left || final.top < workArea.top || final.left + final.width > right || final.top + final.height > bottom) throw new Error('ONBOARDING_DUO_SCOPE');
+      return final;
     },
     async browserFocus() {
       requireBrowser();
-      const contexts = await chrome.runtime.getContexts({ contextTypes: ['TAB'], documentUrls: [chrome.runtime.getURL('src/options.html')], frameIds: [0] });
+      const window = await chrome.windows.get(setupWindowId);
+      if (window.id !== setupWindowId) throw new Error('ONBOARDING_DUO_SCOPE');
       requireBrowser();
-      if (contexts.length !== 1) throw new Error('ONBOARDING_DUO_SCOPE');
-      const window = await chrome.windows.get(contexts[0].windowId);
-      requireBrowser();
-      await chrome.windows.update(window.id, { focused: true, ...(window.state === 'minimized' ? { state: 'normal' } : {}) });
+      await chrome.windows.update(setupWindowId, { focused: true, ...(window.state === 'minimized' ? { state: 'normal' } : {}) });
       requireBrowser();
     },
     browserNext() {
@@ -306,7 +351,7 @@ if (typeof chrome !== 'undefined') {
       if (!reply) throw new Error('ONBOARDING_DUO_REQUEST');
       replies.delete(id);
       if (result.ok) reply.resolve(result.value);
-      else reply.reject(new Error('ONBOARDING_DUO_REFUSED'));
+      else reply.reject(new Error('ONBOARDING_DUO_REFUSED', { cause: ['untrusted', 'sign-in'].includes(result.portalFailure) ? result.portalFailure : undefined }));
     },
     async browserStop() {
       browserStopped = true;
@@ -321,6 +366,12 @@ if (typeof chrome !== 'undefined') {
     reply(...args) { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); return relay.reply(...args); },
     assertContext() { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); return relay.assertContext(); },
     async stop() { if (!relay) throw new Error('ONBOARDING_DUO_REVOKED'); const arm = relay; await arm.stop(); relay = undefined; },
+  });
+  chrome.windows.onRemoved.addListener(windowId => {
+    if (windowId !== setupWindowId || !browserInstalled || browserStopped) return;
+    const event = { id: crypto.randomUUID(), kind: 'window-closed' };
+    if (waiter) { const receive = waiter; waiter = undefined; receive(event); }
+    else requests.push(event);
   });
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const started = performance.now();
@@ -370,7 +421,9 @@ if (typeof chrome !== 'undefined') {
         try { await browserCall({ kind: 'event', event: relayFailureEvent(error, Math.max(0, performance.now() - started)) }); }
         catch { sendResponse({ success: false, error: 'ONBOARDING_DUO_EVENT_UNRECORDED' }); return; }
       }
-      sendResponse({ success: false, error: 'ONBOARDING_DUO_REFUSED' });
+      sendResponse({ success: false, error: 'ONBOARDING_DUO_REFUSED',
+        ...(['RELAY_OPEN_PORTAL', 'RELAY_SHOW_PORTAL'].includes(message.type) && sender.url === chrome.runtime.getURL('src/options.html')
+          && ['untrusted', 'sign-in'].includes(error?.cause) ? { portalFailure: error.cause } : {}) });
     });
     return true;
   });

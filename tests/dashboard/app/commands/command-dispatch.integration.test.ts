@@ -1,3 +1,4 @@
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 import { randomUUID } from "node:crypto";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";
@@ -485,7 +486,7 @@ afterEach_m0(_afterEachFixture0);
         itemId: deriveItemId_m0("person-lookup", "child:delete"),
         traceId: "pl-170000-4444",
         descriptorVersion: 1,
-        contractFingerprint: parent.envelope.contractFingerprint,
+        contractFingerprint: parent.envelope.contractFingerprint, buildId: currentBuildId(),
         resolvedInstance: { ucpath: "prod" },
         configFingerprint: parent.envelope.configFingerprint,
         configSnapshotId: parent.envelope.configSnapshotId,

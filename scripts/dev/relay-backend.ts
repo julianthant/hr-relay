@@ -8,7 +8,7 @@ import { hasUnprovedSourceClosure } from "../../src/backend/storage/source-closu
 const publicReasons = new Map([
   ["relay-microsoft-edge-not-found", "Microsoft Edge was not found in the Windows Program Files folders."],
   ["relay-program-files-root-invalid", "A Windows Program Files location is invalid."],
-  ["relay-build-preparation-failed", "Relay could not prepare its build. Run npm run build:manifest:prepare and retain the error."],
+  ["relay-build-preparation-failed", "Relay could not prepare its build. Run npm run build:observer-policy and retain the error."],
   ["relay-backend-ipc-disconnected", "The backend control channel disconnected."],
   ["relay-backend-stopped-before-readiness", "The backend reported a stop before it was ready."],
   ["relay-backend-duplicate-stop-report", "The backend sent conflicting shutdown receipts."],

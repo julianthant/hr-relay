@@ -249,7 +249,7 @@ function recoverySource(harness: Awaited<ReturnType<typeof protectedFixtures.cre
 }
 
 describe("protected subject recovery publication", () => {
-  for (const type of ["retry", "restart"] as const) {
+  for (const type of ["retry"] as const) {
     for (const protection of ["subject", "ordinary", "timekeeper"] as const) {
       it(`${type} retains safe queue display for ${protection} input`, async () => {
         const harness = await protectedFixtures.createHarness({ publishQueued: (run, publication) => {

@@ -23,6 +23,9 @@
     - listitem: Security key Not started
     - listitem: Touch ID Pending
   - status: "Security key: Not started · Touch ID: Pending"
+  - status:
+    - strong: Setup window is open
+    - paragraph: Add your security key and Touch ID in the setup window.
   - button "Cancel sign-up"
-  - button "Show setup browser"
+  - button "Show window"
 - region "Notifications"

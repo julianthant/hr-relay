@@ -11,16 +11,13 @@ import { readQueueRecordMembers } from "../../../../src/backend/runs/queries/ocr
 import { requireCurrentOcrSnapshot } from "../../../../src/backend/runs/lifecycle/ocr-review-authority.js";
 import { createDeterministicContactPersistence } from "../../../../src/backend/systems/ucpath/driver/contact-fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
-import { parseBuildManifest } from "../../../../src/models/workflow/build-manifest.js";
 import { FingerprintSchema, IsoInstantSchema, PositiveIntSchema, StableRecordIdSchema } from "../../../../src/rules/identity/ids.js";
-import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { EmergencyContactMemberInputSchema } from "../../../../src/models/workflows/emergency-contact-member/input.js";
 import { UcpathContactPageSnapshotSchema } from "../../../../src/models/ui/ucpath-emergency-contact.js";
 import { PersonLookupInput } from "../../../../src/models/workflows/person-lookup/input.js";
 import { SearchPersonOrgOutputSchema, UcpathCandidateSchema } from "../../../../src/models/systems/ucpath/search-person-org.js";
 import { composeWorkflowModule, compileWorkflow, defineWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 import { bindWorkflowDelegationTargets } from "../../../../src/workflow-kit/workflow.js";
-import { BUILD_MANIFEST } from "../../../../src/workflow-kit/validation/build-manifest.js";
 import { buildEmergencyContactRecords } from "../../../../src/workflows/emergency-contact/steps/read-document/step.js";
 import { buildEmergencyContactMembers } from "../../../../src/workflows/emergency-contact/steps/members/step.js";
 import { emergencyContactWorkflow } from "../../../../src/workflows/emergency-contact/workflow.js";
@@ -38,9 +35,8 @@ const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
-const historicalIds = new Set(["emergency-contact", "ocr", "emergency-contact-member"]);
-const manifest = parseBuildManifest({ ...BUILD_MANIFEST, workflows: BUILD_MANIFEST.workflows.map(entry => historicalIds.has(entry.id)
-  ? { ...entry, fingerprint: sha256Hex(`retained-approved-records:${entry.id}`) } : entry) });
+// Both the historical and the current OCR definitions are compiled here; only the registered current one authorizes.
+const currentRegistry = (id: string) => id === "ocr" ? ocrModule.descriptor : undefined;
 const historicalParent = composeWorkflowModule(compileWorkflow(defineWorkflow({ ...emergencyContactWorkflow,
   steps: author => {
     const records = buildEmergencyContactRecords({ ...author,
@@ -53,9 +49,9 @@ const historicalParent = composeWorkflowModule(compileWorkflow(defineWorkflow({ 
     const members = buildEmergencyContactMembers(author, records);
     return { steps: [...records.steps, ...members.steps], result: members.result };
   },
-}), { manifest }), taskStoreRegistry.stores.map(store => store.namespace === "ocr" ? retainedSnapshotStore : store));
-const historicalOcr = composeWorkflowModule(compileWorkflow({ ...ocrWorkflow }, { manifest }), ocrModule.stores);
-const historicalMember = composeWorkflowModule(compileWorkflow({ ...contactSaveMember.definition }, { manifest }), taskStoreRegistry.stores);
+})), taskStoreRegistry.stores.map(store => store.namespace === "ocr" ? retainedSnapshotStore : store));
+const historicalOcr = composeWorkflowModule(compileWorkflow({ ...ocrWorkflow, version: ocrWorkflow.version + 1 }), ocrModule.stores);
+const historicalMember = composeWorkflowModule(compileWorkflow({ ...contactSaveMember.definition, version: contactSaveMember.definition.version + 1 }), taskStoreRegistry.stores);
 bindWorkflowDelegationTargets([historicalParent.descriptor, historicalOcr.descriptor, historicalMember.descriptor,
   ...["ocr-page", "person-lookup", "i9-lookup"].map(id => childWorkflowModuleOf("ocr", id).descriptor)]);
 
@@ -74,7 +70,7 @@ for (const dryRun of [false, true]) {
       return createDeterministicUcpathPersonOrgDriver(lookup, undefined, session.port, session.save);
     }, crm: () => ({ ...healthyCrmDriver(), async searchOnboardingRecords() { return []; } }) });
     const f = await world.fixture({ coordinator: true, parent: historicalParent, ocr: historicalOcr, member: historicalMember,
-      buildManifest: manifest, approvedStore: retainedSnapshotStore,
+      approvedStore: retainedSnapshotStore,
       approvedReader: deps => createRetainedApprovedRecordReader({ ...deps, snapshotContract: retainedSnapshotContract }),
       record: true, pageCount: 1, dryRun, operatorEvidence: true, sessions,
       reviewedPages: [{ employeeName: employee.name, contactName: "Original Contact", correctedContactName: "Released Contact" }],
@@ -101,7 +97,6 @@ for (const dryRun of [false, true]) {
     assert.equal(input.approval.sourceRunId, f.run.envelope.runId);
     assert.equal(input.record.assertedEid, employee.emplId);
     for (const run of [f.parentRun, f.run, member.child]) {
-      assert.equal(run.envelope.contractFingerprint, manifest.workflows.find(entry => entry.id === run.envelope.workflow)?.fingerprint);
       assert.notEqual(run.envelope.contractFingerprint, currentResolve(run.envelope.workflow)?.contractFingerprint);
     }
     const authorityBefore = { generation: f.database.getMeta().authorityGeneration,
@@ -129,7 +124,7 @@ for (const dryRun of [false, true]) {
     assert.deepEqual(exactRows?.members.map(member => member.statusLabel), [dryRun ? "Previewed" : "Saved"]);
     assert.deepEqual(exactRows?.members.map(member => member.childRunIds), records.members.map(member => member.childRunIds));
     assert.deepEqual(projection.buildDashboardDayWire(f.clock.todayLocal()), wire);
-    assert.throws(() => f.database.withAuthorityReadSnapshot(() => requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, input.approval)), /OCR_REVIEW_REFUSED/u);
+    assert.throws(() => f.database.withAuthorityReadSnapshot(() => requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, input.approval, currentRegistry)), /OCR_REVIEW_REFUSED/u);
     const readQuery = (repositories: AuthorityRepositories) => f.database.withAuthorityReadSnapshot(() => readQueueRecordMembers(repositories,
       f.canonical.lifecycle, settledParent, f.database.authority.runs.listChildren(f.parentRun.envelope.runId), currentResolve));
     const readWith = (groups: typeof authorityBefore.groups) => readQuery({ ...f.database.authority,
@@ -211,6 +206,6 @@ for (const dryRun of [false, true]) {
     assert.deepEqual(reopened.authority.runResults.get(member.child.envelope.runId), authorityBefore.result);
     assert.equal(reopened.getMeta().authorityGeneration, generation);
     assert.throws(() => reopened.withAuthorityReadSnapshot(() => requireCurrentOcrSnapshot(reopened.authority,
-      currentReader, input.approval)), /OCR_REVIEW_REFUSED/u);
+      currentReader, input.approval, currentRegistry)), /OCR_REVIEW_REFUSED/u);
   });
 }

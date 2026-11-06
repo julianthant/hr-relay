@@ -1,7 +1,7 @@
 ---
 name: hr-manage
 description: >-
-  The shared operations skill every workflow-specific HR skill is built on — Codex managing the Relay workflows and dashboard: bring the BFF + worker up correctly, start runs (dryRun default) for one subject or a whole cohort with N parallel workers, monitor (timeline, explain run, spans, storage doctor), take gate approvals, retry only real failures, refuse re-runs after an UNKNOWN submit, and close with a per-subject status table. Also covers dashboard/runtime housekeeping (ports, locks, orphan browsers, fingerprint check, notifications, archive). Invoke on `/hr-manage`, "run X for these people", "N parallel sessions", "start/restart the dashboard", "what's the status of the runs", "approve the gate", "monitor the batch".
+  The shared operations skill every workflow-specific HR skill is built on — managing the Relay dashboard and its workflow runs: start and stop the dashboard runtime, start runs (dryRun default) for one subject or a cohort through the signed-in dashboard, monitor (Logs, explain run, Settings storage section), take gate approvals, retry only real failures, refuse re-runs after an UNKNOWN submit, and close with a per-subject status table. Also covers runtime housekeeping (ports, locks, orphan browsers). Invoke on `/hr-manage`, "run X for these people", "start/restart the dashboard", "what's the status of the runs", "approve the gate", "monitor the batch".
 ---
 
 # /hr-manage — run, batch, monitor, approve, report
@@ -14,59 +14,77 @@ resource by recency or fuzzy name; when the exact resource is absent, read the d
 Browser operations read `~/.agents/skill-library/playwright-cli/REFERENCE.md`. Platform defects read
 `.agents/skill-library/hr-debug/REFERENCE.md` before forming a theory.
 
-## 1 · Bring the stack up (and know it is the right stack)
+## 1 · Runtime commands
+
+Every command runs from the checkout that owns the store and ports. `npm run cli` is the only CLI entry point; `npm run cli -- help` lists it.
+
+| Purpose | Command |
+|---|---|
+| Dashboard: backend + Vite, one terminal | `npm run dashboard` (Ctrl+C stops both) |
+| Backend alone / Vite alone | `npm run backend` / `npm run web` (start the backend first) |
+| Production bundle | `npm run web:build`, then `npm run dashboard:prod` |
+| Active isolation (state root, ports, namespace) | `npm run cli -- phase` |
+| Authority and storage health | Settings, signed in: the served storage section |
+| Explain a run from authority | `npm run cli -- explain run <traceId\|runId> [--json]` |
+| Persisted diagnostics | `npm run cli -- explain diagnostics [--run <runId>] [--json]` |
+| Subject readiness by label | `npm run cli -- test-data check --json --subject <label> [--workflow <id>]` |
+| Transaction history | `npm run cli -- storage transactions --from YYYY-MM-DD --to YYYY-MM-DD [--system SYSTEM] --output PATH` |
+
+`dashboard`, `backend` and `cli` prepare the ignored workflow manifest first. Ports, state roots and the session namespace come from `config/runtime-isolation.json` (backend 3938, Vite 5174, namespace `hrauto-rebuild`); never use legacy's.
+
+## 2 · Bring the stack up (and know it is the right stack)
 
 ```bash
-playwright-cli list                                           # identify sessions; close only sessions owned by this task
-ls .tracker/locks/                                    # D181 role locks: server / worker — a stale pid here explains "already running"
-npm run dashboard                                              # ONE terminal: BFF :3938 + vite :5174 (Ctrl+C stops both); BFF alone: npm run cli -- dashboard
-npm run build:manifest && git diff --quiet src/workflow-kit/validation/generated-build-manifest.ts || echo "TREE MOVED — restart the BFF"
-npm run cli -- worker <workflow-id> --pool-index 1 [--drain]   # one worker; batch pool indices must be admitted and distinct (1–3), see §3
-npm run cli -- storage doctor                                  # authority + span reconciliation (+ backup report) before a batch
-npm run cli -- storage backup                                  # the ONLY way a verified SQLite backup is written (D322)
+playwright-cli list                       # identify sessions; close only sessions this task owns
+LOCKS="$HOME/Library/Application Support/Relay/.tracker/data/locks"   # Windows: %LOCALAPPDATA%\Relay\.tracker\data\locks
+ls "$LOCKS"; lsof -nP -iTCP:3938 -iTCP:3939 -iTCP:5174 -sTCP:LISTEN   # a stale pid or busy port explains "already running"
+npm run dashboard                         # ONE terminal; wait for "dashboard BFF listening on 127.0.0.1:3938"
 ```
-The BFF is a singleton (pinned port + lock). A BFF started before a descriptor edit serves the OLD fingerprint and `run-executor` refuses every run it plans — restart it (hr-debug §stale-bff). Isolation: `.tracker/`, ports 3938/5174, session namespace `hrauto-rebuild` — never legacy's.
 
-## 2 · Start a run (one subject)
+The backend is a singleton (pinned port + lock). A backend started before a workflow-definition edit serves the old fingerprint and refuses every run it plans: restart it (`hr-debug` §Runtime). Dashboard boot never launches a worker; Run, Rerun and Sessions › Add workers do.
 
-- **Dashboard**: `playwright-cli -s=mgr open http://localhost:5174` → run modal → the descriptor's declared entry shape (`surfaces.inputRun`; examples are shown in the modal) → confirm with `dryRun` checked. Screenshot the confirmation.
+Settings › Preflight shows the served capability checks. Run it from the signed-in dashboard before live work; it runs no OCR and starts no run.
+
+## 3 · Start a run (one subject)
+
+- **Dashboard**: `playwright-cli -s=mgr open http://localhost:5174` → sign in → Run → the workflow's declared entry shape (the modal shows examples) → Confirm shows the exact input, options and step plan → Start with `dryRun` checked. Screenshot the confirmation.
+- Run and Rerun offer no worker choice: they use the workflow's live workers and start one when none is live.
 - Start and confirm through the signed-in dashboard. Do not call backend HTTP endpoints directly.
-- Subjects by LABEL (`config/test-data.json` → `subjects`), private values from ignored `config/test-data.local.json` via `src/backend/app/registries/test-data.ts` (D341); check with `npm run cli -- test-data check --json --subject <label>`; missing → `blocked: needs <label>`.
+- Subjects by LABEL (`config/test-data.json` → `subjects`); private values live in the ignored `config/test-data.local.json` and are read only through the typed reader. Check with the `test-data check` command above; an unavailable label → `blocked: needs <label>`.
 - A REAL write (`dryRun=false`): only under `ref write-safety` with the operator's explicit authorization for that run/subject/document, stated in the conversation; say it back before you send it.
 
-## 3 · Batch / cohort (the "do these N" request)
+## 4 · Batch / cohort (the "do these N" request)
 
-1. **Worklist first.** Build it once from what the operator gave (names/EIDs/doc numbers) or from an intake artifact (hr-scan). Do not re-download a roster you already have. Print the worklist as a table with a row id per subject.
+1. **Worklist first.** Build it once from what the operator gave (names/EIDs/doc numbers) or from an intake artifact (`hr-scan`). Do not re-download a roster you already have. Print the worklist as a table with a row id per subject.
 2. **One first.** Run subject #1 alone, read its result, fix the systemic error if there is one. Then fan out.
-3. **Fan out.** Use at most three worker processes for the workflow. Give each a distinct admitted `--pool-index` from 1 to 3 (`npm run cli -- worker <id> --pool-index <index>`). Queue all items; or use N dashboard sessions when the operator says "sessions". Keep N to what the operator said; default 3 if they said "parallel" without a number.
-4. **Monitor** (§4) until every row is terminal or parked.
-5. **Retry only genuine failures**: a `failed` with a cause you fixed → `retry` (new attempt, same item — D221). `parked-write` / `unknown` → NOT a retry: resolve via the parked-write panel or `ref write-safety` §4.1 after the source system is checked. A subject whose submit state is UNKNOWN is frozen until you (or the operator) confirm existence in the source system.
-6. **Close** with the table in §5.
+3. **Fan out.** Queue all items through the dashboard Run surface (or its spreadsheet intake). For more parallel workers, use Sessions › Add workers with the count the operator named; default 3 if they said "parallel" without a number.
+4. **Monitor** (§5) until every row is terminal or parked.
+5. **Retry only genuine failures**: a `failed` row with a cause you fixed → the dashboard's Retry (new attempt, same item). A parked write or `unknown` is NOT a retry: resolve it through the dashboard after the source system is checked (`ref write-safety`). A subject whose submit state is UNKNOWN is frozen until you or the operator confirm existence in the source system.
+6. **Close** with the table in §6.
 
-## 4 · Monitor
+## 5 · Monitor
 
 | Question | Where |
 |---|---|
 | What happened in run X | `npm run cli -- explain run <traceId\|runId> [--json]` — authority, not logs |
-| Live timeline / queue / gate | dashboard (playwright-cli snapshot + screenshot); the run-detail panel holds the failure record + evidence receipt |
-| Raw events | `.tracker/spans/*.jsonl` (grep run id); a torn last line is an in-flight append, not corruption |
-| Durable truth | `run_checkpoints`, `gate_results`, `write_intents`, `write_attempts`, `durable_outbox` — what a dry run must leave at 0 |
+| Live timeline / queue / gate | dashboard (playwright-cli snapshot + screenshot); Logs holds the failure record and evidence receipt |
+| Failure details | `npm run cli -- explain diagnostics --run <runId> --json`; stopped boot faults: `explain diagnostics --boot` |
 | Alerts | the notification bell / inbox (storage-degraded, needs-you); the storage banner for authority-unavailable |
-| Health | `npm run cli -- storage doctor [--json]`; worker log lines; locks dir |
+| Health | Settings' storage section; worker log lines; the lock directory above |
 
 A gated run parks: approve only through the dashboard ceremony. The approval shape is computed server-side; the packet leads with disconfirming evidence — read it, don't rubber-stamp.
 
-## 5 · The status table (always, at the end — and on request mid-batch)
+## 6 · The status table (always, at the end — and on request mid-batch)
 
 | # | subject (label) | run / trace | attempt | state | gate | write intent | result / txn id | next action |
 |---|---|---|---|---|---|---|---|---|
 
-States from authority (`queued · claimed · running · parked · done · failed · cancelled`), never from memory. "Done" rows cite the receipt / read-back; "failed" rows cite the failure record's `code`; parked rows name the human decision required. Nothing is summarized as "all good" without this table.
+States come from authority (`explain run` and the dashboard), never from memory. "Done" rows cite the receipt / read-back; "failed" rows cite the failure record's `code`; parked rows name the human decision required. Nothing is summarized as "all good" without this table.
 
-## 6 · Housekeeping
+## 7 · Housekeeping
 
-- Stop: Ctrl+C the dashboard terminal; `--drain` a worker; close only task-owned browser sessions; confirm `.tracker/locks/` is empty of live pids (`kill -0`).
-- Archive / activity: the archive model is append-only (v13 tables abort UPDATE/DELETE) — apply re-derives blockers in its own transaction; a refused apply is normal when a run went queued in between.
-- Backups are written only on command (`storage backup`, D322) — take one before a real write; `storage doctor` reports the latest but no longer gates on it; `storage restore --from <manifest>` only stopped-system and only when the operator says so.
+- Stop: Ctrl+C the dashboard terminal (a clean shutdown drains workers and writes the shutdown backups); close only task-owned browser sessions; confirm the lock directory (§2) holds no live pid (`kill -0`) and ports 3938/3939/5174 are free.
+- Backups are automatic at clean shutdown and before an upgrade; there is no backup command. `storage upgrade` runs only stopped and only when the operator says so.
+- Orphan browsers: `playwright-cli list`, close your own sessions by name; never close another task's.
 - Anything that smells like a platform defect → `.agents/skill-library/hr-debug/REFERENCE.md`; a
   repeatable gotcha → keep its lasting rule in the owning reference and nearest module `AGENTS.md`; system drivers use `src/backend/systems/<system>/AGENTS.md`.

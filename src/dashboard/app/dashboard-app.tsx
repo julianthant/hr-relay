@@ -216,7 +216,7 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
       ) : route.onboardingSetup !== undefined && profileSource === "served" && session?.state === PROFILE_ONBOARDING_STATE ? (
         <OnboardingSetup page="fast" port={publicProfile.port} />
       ) : profileSource === "served" && (publicProfile.failure || session !== undefined && (session.state !== "active" || session.duoState !== "ready")) ? (
-        <Onboarding step={session?.state === PROFILE_ONBOARDING_STATE ? session.step : session?.state === "active" ? "duo" : session?.state === "signed-out" && session.resumable ? "login" : route.onboarding === "signup" && profileCreationChosen || route.onboarding !== "login" && session?.state === "signed-out" && session.signUpRequired ? "signup" : "login"}
+        <Onboarding step={session?.state === PROFILE_ONBOARDING_STATE ? "duo" : session?.state === "active" ? "duo" : session?.state === "signed-out" && session.resumable ? "login" : route.onboarding === "signup" && profileCreationChosen || route.onboarding !== "login" && session?.state === "signed-out" && session.signUpRequired ? "signup" : "login"}
           authenticated={session?.state === "active"} port={publicProfile.port} resumable={session?.state === "signed-out" && session.resumable === true}
           problem={publicProfile.failure ? operatorFailureSentence("PROFILE_AUTHORITY_UNAVAILABLE")
             : session?.state === "refused" || session?.state === "error" ? operatorFailureSentence(session.code)

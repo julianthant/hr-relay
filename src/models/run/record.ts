@@ -23,7 +23,7 @@ import {
 import { AppVersionSchema } from "../dashboard/primitives.js";
 import { SchemaBoundCanonicalValueSchema } from "../validation/schema-bound-value.js";
 import { VerdictKeySchema } from "../workflow/presentation.js";
-import { RunEnvelopeSchema } from "./envelope.js";
+import { PredecessorRunEnvelopeSchema, RunEnvelopeSchema } from "./envelope.js";
 
 /** The outcome union; `cancelled`, `discarded`, `interrupted` and `superseded` are first-class outcomes. */
 export const RunOutcomeSchema = z.enum([
@@ -230,7 +230,9 @@ const RunRecordBaseSchema = z.strictObject({
   version: PositiveIntSchema,
   createdAt: IsoInstantSchema,
   updatedAt: IsoInstantSchema,
-}).superRefine((record, context) => {
+});
+type RefinedRunRecord = Omit<z.infer<typeof RunRecordShapeSchema>, "envelope"> & { envelope: { enqueuedAt: string } };
+function refineRunRecord(record: RefinedRunRecord, context: z.RefinementCtx): void {
   if (Date.parse(record.updatedAt) < Date.parse(record.createdAt)) {
     context.addIssue({ code: "custom", path: ["updatedAt"], message: "run record updatedAt precedes createdAt" });
   }
@@ -242,6 +244,7 @@ const RunRecordBaseSchema = z.strictObject({
       message: "a newly enqueued run record is created at the moment it is enqueued",
     });
   }
+  refineRunCompletion(record, context);
   if (!isClaimedRunState(record.lifecycle.state) || !("heartbeatAt" in record.lifecycle)) return;
   if (record.claimGeneration === 0) {
     context.addIssue({
@@ -257,10 +260,8 @@ const RunRecordBaseSchema = z.strictObject({
       message: "a claim heartbeat cannot predate the run's enqueue",
     });
   }
-});
-export const RunRecordSchema = RunRecordBaseSchema.safeExtend({
-  completion: RunCompletionSchema.optional(),
-}).superRefine((run, context) => {
+}
+function refineRunCompletion(run: RefinedRunRecord, context: z.RefinementCtx): void {
   if (run.delegationRefresh?.phase === "waiting" && run.lifecycle.state !== "queued"
     && !(run.lifecycle.state === "terminal" && !["done", "failed"].includes(run.lifecycle.outcome))) {
     context.addIssue({ code: "custom", path: ["delegationRefresh"], message: "a waiting delegation refresh cannot execute or complete" });
@@ -280,7 +281,14 @@ export const RunRecordSchema = RunRecordBaseSchema.safeExtend({
     context.addIssue({ code: "custom", path: ["completion"], message: "completion does not bind the exact terminal consequence" });
   }
 
-});
+}
+
+const RunRecordShapeSchema = RunRecordBaseSchema.extend({ completion: RunCompletionSchema.optional() });
+export const RunRecordSchema = RunRecordShapeSchema.superRefine(refineRunRecord);
+/** A pre-22 run. A build id already stored is kept; the upgrade does not insert one. */
+export const PredecessorRunRecordSchema = RunRecordShapeSchema.extend({ envelope: PredecessorRunEnvelopeSchema })
+  .superRefine(refineRunRecord);
+export type PredecessorRunRecord = z.infer<typeof PredecessorRunRecordSchema>;
 export type RunRecord = z.infer<typeof RunRecordSchema>;
 
 export const RunClaimSchema = z.strictObject({
@@ -292,7 +300,7 @@ export const RunClaimSchema = z.strictObject({
 export type RunClaim = z.infer<typeof RunClaimSchema>;
 
 /** No claim is explicit absence; callers must branch. */
-export function runClaim(record: RunRecord): RunClaim | undefined {
+export function runClaim(record: Pick<RunRecord, "lifecycle" | "claimGeneration">): RunClaim | undefined {
   const { lifecycle } = record;
   if (!isClaimedRunState(lifecycle.state)) return undefined;
   if (!("workerId" in lifecycle)) return undefined;

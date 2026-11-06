@@ -131,7 +131,6 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - run: npm run build:manifest:prepare
       - run: npm run typecheck
       - run: npm run lint
       - run: npm ci
@@ -140,7 +139,9 @@ jobs:
         working-directory: fast-duo
       - run: npm run lint
         working-directory: fast-duo
-      - run: npm run build:manifest:check
+      - run: npm run build:registries:check
+      - run: npm run build:observer-policy
+      - run: npm run build:observer-policy -- --check
       - run: npm run stores:catalog:check
       - run: npm run roadmap:check
 
@@ -172,7 +173,7 @@ jobs:
           node-version-file: package.json
           cache: npm
       - run: npm ci
-      - run: npm run build:manifest:prepare
+      - run: npm run build:observer-policy
       - uses: actions/download-artifact@v8
         with:
           name: ci-balancing
@@ -182,9 +183,10 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
-      - name: Install Chromium and its system libraries
+      # ubuntu-24.04 already has Chromium's libraries. --with-deps only apt-installs extra fonts, and azure.archive.ubuntu.com stalls those debs.
+      - name: Install Chromium
         if: matrix.suite == 'integration'
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - run: npm run web:build
         if: matrix.suite == 'integration'
       - name: Put test temp on tmpfs

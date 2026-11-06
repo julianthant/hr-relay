@@ -113,8 +113,9 @@ const definition = defineWorkflow({
 });
 export const retainedOcrModule = compileWorkflow(definition);
 
-export function retainedOcrCheckpointPublication(reader: Pick<RunRecordService, "read">, captured: RunRecord) {
-  const current = createOcrCheckpointPublication(reader, captured);
+export function retainedOcrCheckpointPublication(reader: Pick<RunRecordService, "read">, captured: RunRecord,
+  resolve: Parameters<typeof createOcrCheckpointPublication>[2]) {
+  const current = createOcrCheckpointPublication(reader, captured, resolve);
   return (repositories: Parameters<ReturnType<typeof createOcrCheckpointPublication>>[0], checkpoint: Parameters<ReturnType<typeof createOcrCheckpointPublication>>[1]) => {
     if (captured.envelope.workflow !== "ocr" || checkpoint.nodeId !== "read-result") return current(repositories, checkpoint);
     if (checkpoint.output.schemaHash !== deriveSchemaHash(RetainedOcrResultSchema, "output")) throw new Error("retained-producer-schema-mismatch");

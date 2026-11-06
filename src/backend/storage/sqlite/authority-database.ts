@@ -32,6 +32,7 @@ import { RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-
 import { ConfirmationPublicationSchema,confirmationPublicationFromRow,confirmedOperationTimeline,reconstructConfirmedOperation,type ConfirmationPublication } from "../../../models/events/confirmed-operation.js";
 import { TimelinePageRequestSchema,timelineAppendContent,timelineCheckpointReference,type TimelineAppend,type TimelineRepository } from "../../../models/events/timeline.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
 import { IntakeSessionSchema } from "../../../models/intake/session.js";
 import { NotificationFoldRequestSchema,NotificationRecordOutcomeSchema,NotificationRecordSchema,NotificationStateRequestSchema,notificationCollectionTarget,requireMutableNotification,type NotificationCollectionOperation,type NotificationCollectionTarget,type NotificationRecord,type NotificationRecordOutcome } from "../../../models/notifications/notifications.js";
@@ -41,7 +42,7 @@ import { AssistantActionRecordSchema,AssistantChatRecordSchema,AssistantGrantRec
 import { LogoutOperationSchema,ProfileDatabaseBindingSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
 import { completionFromAuthorization } from "../../../models/run/completion.js";
 import { DeletedRunRecordSchema,RunDeleteInputSchema,type DeletedRunRecord } from "../../../models/run/deleted-run.js";
-import { RunRecordSchema,runClaim,runTransitionViolation,type RunRecord } from "../../../models/run/record.js";
+import { PredecessorRunRecordSchema,RunRecordSchema,runClaim,runTransitionViolation,type PredecessorRunRecord,type RunRecord } from "../../../models/run/record.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
 import { RunResultRecordSchema, readRunPreviewResult,createRunTerminalEvidenceResult,deriveCheckpointOutputDigest,deriveCheckpointProvenanceDigest,deriveTerminalFailureDigest,terminalDelegationDependencyRecord,terminalGateDependencyRecord,refreshedRunSettlement,terminalEvidenceResult,type RunResultRecord } from "../../../models/run/result.js";
 import { RunSessionRecordSchema,type RunSessionRecord } from "../../../models/run/session.js";
@@ -92,7 +93,8 @@ import { deletionArtifactValues,executeNativeRunDeletion,prepareNativeRunDeletio
 import { createNotificationMetadataRepositories,validateNotificationMetadata } from "./notification-publications.js";
 import { createReadonlyAuthoritySnapshot,withAuthorityDatabaseReadOnly,withReadonlyAuthoritySnapshot } from "./readonly-authority-snapshot.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
-import { runRecordColumns,runRecordFromRow,transitionRunRecord,updateRunRecord } from "./run-record-row.js";
+import { deletePreBuildRuns } from "./pre-build-run-deletion.js";
+import { predecessorRunRecordFromRow,runRecordColumns,runRecordFromRow,transitionRunRecord,transitionStoredRun,updateRunRecord } from "./run-record-row.js";
 import { createRunSearchIndex,runSearchIndexFromRow } from "./run-search-index.js";
 import { continuationDelegationGroups } from "./run-continuation-delegation.js";
 import { ApplicationAdmissionRequestSchema, CanonicalPauseRequestSchema, CanonicalClaimNextRequestSchema,RunClaimOutcomeSchema,RunClaimRequestSchema,RunHeartbeatOutcomeSchema,RunHeartbeatRequestSchema,RunInjectPatchesRequestSchema,RunItemQuerySchema,RunPresentationRequestSchema,RunPriorityBumpRequestSchema,RunRequeueRequestSchema,RunResumeRequestSchema,RunTransitionRequestSchema,RunUpdateOutcomeSchema,StartPlanConsumeOutcomeSchema,StartPlanConsumeRequestSchema,WorkerControlRequestSchema,WorkerLifecycleRequestSchema,WorkerPoolPlanOutcomeSchema,WorkerPoolPlanRequestSchema,WorkerStandingRecoveryRequestSchema,WorkerStartOutcomeSchema,WorkerStartRequestSchema,WorkerUpdateOutcomeSchema,WorkerVerificationAdmissionRequestSchema,WorkerVerificationRetirementRequestSchema,type RunClaimOutcome,type RunHeartbeatOutcome,type RunUpdateOutcome,type StartPlanConsumeOutcome,type WorkerPoolPlanOutcome,type WorkerStartOutcome,type WorkerUpdateOutcome } from "./run-store-contracts.js";
@@ -126,7 +128,7 @@ import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegation
 import { currentDelegationManifests,assertDelegationReplacement,authenticateCancellationSource,authenticateDelegationDependency,authenticateDelegationGroup,authenticateDescendantHome,childTerminalSettlement,delegationEdgeForChild,lifecycleChildEdge,prepareDelegationRetry,readDelegationCancellation,readDelegationEvidence,readDelegationInvocationEvidence,readDelegationReadiness,readQueueParents,readDelegationWait,readDelegationWaitState,resetDependencySnapshot,retainedDelegationManifests } from "./delegation-authority.js";
 import { DelegationRetryRequestSchema,DelegationSettlementRequestSchema } from "./delegation-contracts.js";
 import { createExclusiveSessionLeaseRepository, exclusiveSessionLeaseFromRow } from "./exclusive-session-leases.js";
-import { AUTHORITY_APPLICATION_ID,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
+import { AUTHORITY_APPLICATION_ID,BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,SQLITE_MIGRATIONS,auditMigrationTableCoverage,deriveAuthorityUpgradePlanDigest,isCurrentAuthoritySchemaVersion,isSupportedStoppedAuthoritySchemaVersion,migrationTableNames,tableClassification } from "./migrations.js";
 import { AuthorityCopyInspectionSchema,SpanAuthorityReadSnapshotSchema,SpanAuthorityRunResolutionSchema,SpanAuthorityRunRootSchema,type AuthorityCopyInspection,type SpanAuthorityReadSnapshot,type SpanAuthorityRunRoot } from "./recovery-contracts.js";
 import { FailureTerminalizationReportSchema,FailureTerminalizationRequestSchema,SuccessTerminalizationReportSchema,SuccessTerminalizationRequestSchema,type FailureTerminalizationReport,type FailureTerminalizationStorageStep,type SuccessTerminalizationReport,type SuccessTerminalizationStorageStep } from "./run-terminal-contracts.js";
 import { DiagnosticAttachmentStorageRecordSchema,type ArtifactOutboxStorageRecord,type ArtifactSinkHeadRecord,type DiagnosticAttachmentStorageRecord } from "./storage-records.js";
@@ -141,6 +143,16 @@ export class AuthoritySchemaVersionError extends Error {
     this.name = "AuthoritySchemaVersionError";
   }
 }
+bindErrorOrigin(AuthoritySchemaVersionError, error => error.schemaVersion > CURRENT_AUTHORITY_SCHEMA_VERSION ? "profile-newer" : "unknown-error");
+
+/** A registered person database this build must not read or repair: newer, or an unsupported format. */
+export class AuthorityFormatUnsupportedError extends Error {
+  constructor(readonly code: "STORAGE_PROFILE_NEWER_VERSION" | "STORAGE_PROFILE_FORMAT_UNSUPPORTED", options?: ErrorOptions) {
+    super(ERROR_CATALOG[code].text, options);
+    this.name = "AuthorityFormatUnsupportedError";
+  }
+}
+bindErrorOrigin(AuthorityFormatUnsupportedError, error => error.code === "STORAGE_PROFILE_NEWER_VERSION" ? "profile-newer" : "profile-format-unsupported");
 
 export const AuthorityDatabaseOpenModeSchema = z.enum([
   "read-write",
@@ -890,7 +902,7 @@ function commandGroupLinkViolations(database: DatabaseSync): readonly string[] {
     ? [] : ["command-group child linkage mismatch"]);
 }
 
-function readTimelineRun(database: DatabaseSync, runId: string, readRun = runRecordFromRow): RunRecord | undefined {
+function readTimelineRun(database: DatabaseSync, runId: string, readRun: (raw: unknown) => PredecessorRunRecord = runRecordFromRow): PredecessorRunRecord | undefined {
   const row = database.prepare("SELECT * FROM runs WHERE id = ?").get(runId);
   return row === undefined ? undefined : readRun(row);
 }
@@ -924,7 +936,7 @@ function readConfirmationPublication(database: DatabaseSync,id:string): Confirma
   return confirmationPublicationFromRow(intent,Reflect.get(row,"publication_json"));
 }
 
-function assertConfirmationPublication(database:DatabaseSync,id:string,readRun = runRecordFromRow): void {
+function assertConfirmationPublication(database:DatabaseSync,id:string,readRun: (raw: unknown) => PredecessorRunRecord = runRecordFromRow): void {
   const publication = readConfirmationPublication(database,id);
   if (publication === undefined) return;
   const owner = readTimelineRun(database,publication.ledger.runId,readRun);
@@ -974,7 +986,7 @@ function timelineEvidenceRepositories(database: DatabaseSync) {
   };
 }
 
-function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, appending = false, readRun = runRecordFromRow): void {
+function assertTimelineOwner(database: DatabaseSync, record: TimelineAppend, appending = false, readRun: (raw: unknown) => PredecessorRunRecord = runRecordFromRow): void {
     if (record.scope.kind !== "run") return;
     const run = readTimelineRun(database, record.scope.runId, readRun);
     if (run === undefined) throw new Error("timeline-event-owner-missing");
@@ -1143,19 +1155,19 @@ function readDelegationRefreshCommands(database: DatabaseSync, runId: string) {
     .map(row => RunLifecycleCommandRecordSchema.parse(commandFromRow(row)));
 }
 
-function assertRefreshedReceiptSettlement(database: DatabaseSync, record: RunEvidenceReceipt, row: unknown): void {
+function assertRefreshedReceiptSettlement(database: DatabaseSync, record: RunEvidenceReceipt, row: unknown, schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION): void {
   const { settlement_version: version } = z.object({ settlement_version: PositiveIntSchema }).parse(row);
   if (database.prepare("SELECT 1 FROM run_results WHERE run_id=? AND settlement_version<? LIMIT 1").get(record.runId,version) === undefined) return;
   const raw = readRunSettlementRow(database,record.runId,version);
   if (raw === undefined) throw new Error("receipt-settlement-unavailable");
-  const run = runSettlementContext(raw);
+  const run = schemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION ? runSettlementContext(raw, PredecessorRunRecordSchema) : runSettlementContext(raw);
   if (record.receiptId !== deriveEvidenceReceiptId(record.runId,record.attempt,version)
     || record.workflowId !== run.envelope.workflow || record.traceId !== run.envelope.traceId || record.attempt !== run.envelope.attempt
     || record.descriptorFingerprint !== run.envelope.contractFingerprint || record.configFingerprint !== run.envelope.configFingerprint
     || run.lifecycle.state !== "terminal" || record.generatedAt !== run.lifecycle.endedAt) throw new Error("receipt-settlement-binding-mismatch");
 }
 
-function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRecord, readRun = runRecordFromRow, retainedRun?: RunRecord, refreshPath = new Set<string>()): void {
+export function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRecord, readRun: (raw: unknown) => PredecessorRunRecord = runRecordFromRow, retainedRun?: PredecessorRunRecord, refreshPath = new Set<string>(), schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION): void {
   const evidence = terminalEvidenceResult(record);
   const rawRun = database.prepare("SELECT * FROM runs WHERE id=?").get(record.runId);
   if (rawRun === undefined) throw new Error("terminal-evidence-run-missing");
@@ -1176,8 +1188,8 @@ function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRe
       runResults: { getSettlement: (runId, version) => {
         const row = readRunSettlementRow(database,runId,version);
         if (row === undefined) return undefined;
-        const result = RunResultRecordSchema.parse(nativeOrdinaryRecordFromRow("run_results",row)), terminal = runSettlementContext(row);
-        assertTerminalEvidenceOwner(database,result,readRun,terminal,path);
+        const result = RunResultRecordSchema.parse(nativeOrdinaryRecordFromRow("run_results",row,schemaVersion)), terminal = schemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION ? runSettlementContext(row, PredecessorRunRecordSchema) : runSettlementContext(row);
+        assertTerminalEvidenceOwner(database,result,readRun,terminal,path,schemaVersion);
         return { run: terminal, result };
       } },
     },run);
@@ -1252,11 +1264,13 @@ function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRe
   if (canonicalJsonStringify(createRunTerminalEvidenceResult(run,evidence)) !== canonicalJsonStringify(record)) throw new Error("terminal-evidence-result-mismatch");
 }
 
-function inspectionRunReader(expectedSchemaVersion: number): typeof runRecordFromRow {
-  return expectedSchemaVersion >= 15 ? runRecordFromRow : (raw: unknown) => {
+/** Reads runs at a stopped store's own schema; envelopes before 22 carry no build id and are never given one. */
+function inspectionRunReader(expectedSchemaVersion: number): (raw: unknown) => PredecessorRunRecord {
+  const read = expectedSchemaVersion >= BUILD_ID_ENVELOPE_SCHEMA_VERSION ? runRecordFromRow : predecessorRunRecordFromRow;
+  return expectedSchemaVersion >= 15 ? read : (raw: unknown) => {
     const row = z.record(z.string(), z.unknown()).parse(raw);
     if (Object.hasOwn(row, "pause_state")) throw new Error("stopped-run-schema-columns-mismatch");
-    return runRecordFromRow({ ...row, pause_state: null });
+    return read({ ...row, pause_state: null });
   };
 }
 
@@ -1332,8 +1346,8 @@ function validateAuthorityRecordSchemas(database: DatabaseSync, validateSearch =
             const chat = AssistantChatRecordSchema.parse(nativeOrdinaryRecordFromRow("assistant_chats", rawChat));
             if (chat.profileId !== action.binding.profileId || chat.epoch !== action.binding.accountSessionEpoch) throw new Error("assistant-action-chat-mismatch");
           }
-          if (table === "run_results") assertTerminalEvidenceOwner(database,RunResultRecordSchema.parse(record),readRun,expectedSchemaVersion >= 20 ? runSettlementContext(raw) : undefined);
-          if (table === "run_receipts" && expectedSchemaVersion >= 20) assertRefreshedReceiptSettlement(database,RunEvidenceReceiptSchema.parse(record),raw);
+          if (table === "run_results") assertTerminalEvidenceOwner(database,RunResultRecordSchema.parse(record),readRun,expectedSchemaVersion >= 20 ? expectedSchemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION ? runSettlementContext(raw, PredecessorRunRecordSchema) : runSettlementContext(raw) : undefined, new Set(), expectedSchemaVersion);
+          if (table === "run_receipts" && expectedSchemaVersion >= 20) assertRefreshedReceiptSettlement(database,RunEvidenceReceiptSchema.parse(record),raw,expectedSchemaVersion);
           if (table === "write_intents") { authenticateStoredWriteResolution(database,record); assertConfirmationPublication(database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId,readRun); }
           if (table === "command_audits") {
             const audit = NativeCommandAuditSchema.parse(record);
@@ -1486,36 +1500,76 @@ function pendingCounts(database: DatabaseSync) {
   };
 }
 
-const expectedNativeSchemas = new Map<number, string>();
+const expectedNativeSchemas = new Map<string, string>();
 function normalizedNativeSchema(database: DatabaseSync): string {
   const schema = z.strictObject({type:z.string(),name:z.string(),table:z.string(),sql:z.string()});
   return canonicalJsonStringify(database.prepare("SELECT type,name,tbl_name AS 'table',sql FROM sqlite_schema WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all()
     .map(raw => { const row = schema.parse(raw); return {...row,sql:row.sql.trim().replace(/\s+/gu," ")}; }));
 }
-function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUTHORITY_SCHEMA_VERSION): void {
-  if (!expectedNativeSchemas.has(version)) {
-    const expected = new DatabaseSync(":memory:");
-    try {
-      for (const migration of SQLITE_MIGRATIONS) if (migration.version <= version) for (const statement of migration.statements) expected.exec(statement);
-      expectedNativeSchemas.set(version, normalizedNativeSchema(expected));
-    } finally { expected.close(); }
+function expectedNativeSchema(version: number, withoutRunSearch: boolean): string {
+  const key = `${String(version)}:${String(withoutRunSearch)}`;
+  const cached = expectedNativeSchemas.get(key);
+  if (cached !== undefined) return cached;
+  const expected = new DatabaseSync(":memory:");
+  try {
+    for (const migration of SQLITE_MIGRATIONS) if (migration.version <= version) for (const statement of migration.statements) expected.exec(statement);
+    if (withoutRunSearch) expected.exec("DROP TABLE run_search");
+    const schema = normalizedNativeSchema(expected);
+    expectedNativeSchemas.set(key, schema);
+    return schema;
+  } finally { expected.close(); }
+}
+export type StartupFailureClassification = Readonly<{ kind: "damaged" }> | Readonly<{ kind: "missing-run-search-projection" }>
+  | Readonly<{ kind: "version-skew"; error: AuthorityFormatUnsupportedError }> | Readonly<{ kind: "intact" }>;
+
+/** SQLite's own verdict: SQLITE_CORRUPT (11) or SQLITE_NOTADB (26), on the error or its direct cause. */
+function isSqliteDamage(error: unknown): boolean {
+  for (const value of [error, error instanceof Error ? error.cause : undefined]) {
+    if (value instanceof Error && "errcode" in value && (value.errcode === 11 || value.errcode === 26)) return true;
   }
-  if (normalizedNativeSchema(database) !== expectedNativeSchemas.get(version)) throw new Error("authority-native-schema-shape-mismatch");
+  return false;
 }
 
-export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas = false) {
+function runSearchDefinitions(): readonly string[] {
+  const expected = new DatabaseSync(":memory:");
+  try {
+    for (const migration of SQLITE_MIGRATIONS) for (const statement of migration.statements) expected.exec(statement);
+    return z.array(z.strictObject({ sql: z.string() })).parse(expected.prepare("SELECT sql FROM sqlite_schema WHERE tbl_name='run_search' AND sql IS NOT NULL ORDER BY type DESC,name").all()).map(row => row.sql);
+  } finally { expected.close(); }
+}
+
+function nonProjectionFingerprint(database: DatabaseSync): string {
+  const hash = createHash("sha256");
+  for (const table of migrationTableNames(readIntPragma(database, "user_version"))) {
+    if (table === "run_search") continue;
+    hash.update(canonicalJsonStringify(table));
+    for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY ${nativeTableKey(table, database)}`).iterate()) {
+      const record = z.record(z.string(), z.union([z.string(), z.number(), z.null()])).parse(row);
+      if (table === "database_states") { delete record.search_generation; delete record.search_state; }
+      hash.update(canonicalJsonStringify(record));
+    }
+  }
+  return hash.digest("hex");
+}
+
+function assertNativeSchema(database: DatabaseSync, version = CURRENT_AUTHORITY_SCHEMA_VERSION, withoutRunSearch = false): void {
+  if (normalizedNativeSchema(database) !== expectedNativeSchema(version, withoutRunSearch)) throw new Error("authority-native-schema-shape-mismatch");
+}
+
+export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVersion: number = CURRENT_AUTHORITY_SCHEMA_VERSION, requireOperationalPragmas = false,
+  missingRunSearch = false) {
   const applicationId = readIntPragma(database, "application_id");
   if (applicationId !== AUTHORITY_APPLICATION_ID) {
     throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
   }
   const schemaVersion = readIntPragma(database, "user_version");
   if ((!isSupportedStoppedAuthoritySchemaVersion(expectedSchemaVersion) && expectedSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION) || schemaVersion !== expectedSchemaVersion) throw new AuthoritySchemaVersionError(schemaVersion);
-  assertNativeSchema(database, schemaVersion);
+  assertNativeSchema(database, schemaVersion, missingRunSearch);
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
   const foreignKeyFailures = database.prepare("PRAGMA foreign_key_check").all();
   if (foreignKeyFailures.length > 0) throw new Error(`authority database foreign-key validation failed for ${String(foreignKeyFailures.length)} row(s)`);
   const names = inspectionTableNames(database);
-  const expected = [...migrationTableNames(expectedSchemaVersion)].sort();
+  const expected = [...migrationTableNames(expectedSchemaVersion)].filter(name => !missingRunSearch || name !== "run_search").sort();
   if (names.length !== expected.length || expected.some((name, index) => names[index] !== name)) {
     throw new Error(`authority database tables do not match registry: actual=${names.join(",")} expected=${expected.join(",")}`);
   }
@@ -1523,12 +1577,12 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   if (meta.schema_version !== schemaVersion) {
     throw new Error(`authority schema metadata ${String(meta.schema_version)} disagrees with user_version ${String(schemaVersion)}`);
   }
-  validateAuthorityRecordSchemas(database, true, expectedSchemaVersion);
+  validateAuthorityRecordSchemas(database, !missingRunSearch, expectedSchemaVersion);
   validateNotificationMetadata(database);
   validateWorkerControls(database);
   const violations = invariantViolations(database);
   if (violations.length > 0) throw new Error(`authority database invariant validation failed: ${violations.join("; ")}`);
-  createRunSearchIndex(database).validateCoverage(inspectionRunReader(expectedSchemaVersion));
+  if (!missingRunSearch) createRunSearchIndex(database).validateCoverage(inspectionRunReader(expectedSchemaVersion));
   if (readIntPragma(database, "foreign_keys") !== 1) throw new Error("authority database foreign keys are disabled");
   if (requireOperationalPragmas) {
     if (readTextPragma(database, "journal_mode") !== "wal") throw new Error("authority database is not using WAL mode");
@@ -1538,14 +1592,15 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = expectedSchemaVersion < 10 ? z.array(z.union([currentTables.element,
     z.strictObject({ name: z.literal("explorer_overrides"), classification: z.literal("authority") }),
   ])) : currentTables;
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
     profileId: meta.profile_id,
     pageCount: PageCountRowSchema.parse(database.prepare("PRAGMA page_count").get()).page_count,
     authorityGeneration: meta.authority_generation,
-    authorityContentFingerprint: authorityContentFingerprint(database),
+    // Without run_search the full fingerprint cannot be read; only startup classification asks for this shape.
+    authorityContentFingerprint: missingRunSearch ? nonProjectionFingerprint(database) : authorityContentFingerprint(database),
     quickCheck: "ok",
     foreignKeyViolations: 0,
     invariants: { state: "valid", violations: [] },
@@ -1621,6 +1676,10 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
           database.prepare("INSERT INTO database_states_bound SELECT id,schema_version,authority_generation,updated_at,search_generation,search_state,?,? FROM database_states")
             .run(binding.installationId, binding.profileId);
         }
+        if (migration.version === BUILD_ID_ENVELOPE_SCHEMA_VERSION && index === 0) {
+          deletePreBuildRuns(database, clock.now().toISOString(), ref => inspectArtifactDeletionFile(admission, ref),
+            (record, run) => settlePredecessorRunEvidence(database, record, run));
+        }
         database.exec(statement);
         if (migration.version === 16 && index === 2) migratePersonPreferences(database);
       }
@@ -1660,6 +1719,13 @@ function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion:
     return authenticated;
   });
   return { settingsAuthority, configSnapshots, slots, browsers, controls, verificationProfiles: readWorkerVerificationProfiles(database, slots) };
+}
+
+export function settlePredecessorRunEvidence(database: DatabaseSync, record: RunResultRecord, run: PredecessorRunRecord): void {
+  const columns = runSettlementColumns(run, record, PredecessorRunRecordSchema);
+  database.prepare(`INSERT INTO run_results (${Object.keys(columns).join(",")}) VALUES (${Object.keys(columns).map(() => "?").join(",")})`)
+    .run(...Object.values(columns));
+  assertTerminalEvidenceOwner(database, record, predecessorRunRecordFromRow, run, new Set(), BUILD_ID_ENVELOPE_SCHEMA_VERSION - 1);
 }
 
 function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>, artifactRoot: string) {
@@ -2257,7 +2323,7 @@ export class AuthorityDatabase implements Disposable {
     owner.assertStoppedProfile(operation); copy.assertReadOnlyAuthorityDatabase(path);
     return withAuthorityDatabaseReadOnly(copy, path, database => {
       const version = readIntPragma(database, "user_version"), meta = readMetaRow(database), binding = owner.profileBinding;
-      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)
+      if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)
         || meta.schema_version !== version || meta.installation_id !== binding.installationId || meta.profile_id !== binding.profileId) throw new Error("restore-candidate-binding-mismatch");
       const facts = Object.freeze(browserProfileInventory(database, version));
       owner.assertStoppedProfile(operation); return facts;
@@ -2318,9 +2384,9 @@ export class AuthorityDatabase implements Disposable {
           const command = RunLifecycleCommandRecordSchema.parse({ kind: "run-lifecycle", commandId, operation: "transition", request,
             requestFingerprint: sha256Hex(`hrauto:run-lifecycle-command:v1\0transition\0${canonicalJsonStringify(request)}`),
             fence: { kind: "version", expectedVersion: current.version }, recordedAt: now });
-          const updated = transitionRunRecord(current, RunRecordSchema.parse({ ...current, lifecycle }), now);
+          const updated = transitionStoredRun(current, PredecessorRunRecordSchema.parse({ ...current, lifecycle }), now, PredecessorRunRecordSchema);
           if (Object.hasOwn(updated, "pause")) throw new Error("queued-run-cancellation-pause-refused");
-          const entries = Object.entries(runRecordColumns(updated)).filter(([key]) => key !== "id" && key !== "pause_state");
+          const entries = Object.entries(runRecordColumns(updated, PredecessorRunRecordSchema)).filter(([key]) => key !== "id" && key !== "pause_state");
           const changes = Number(database.prepare(`UPDATE runs SET ${entries.map(([key]) => `${key} = ?`).join(",")} WHERE id = ? AND version = ?`)
             .run(...entries.map(([, value]) => value), updated.envelope.runId, current.version).changes);
           if (changes !== 1) throw new Error("run-version-fence-lost");
@@ -2500,19 +2566,92 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
-  static inspectRegisteredPersonAtStartup(machine: RuntimeAdmission, profileId: string) {
+  static #registeredPersonPath(machine: RuntimeAdmission, profileId: string): string {
     machine.assertExclusive(); machine.assertOfflineMaintenance(machine.maintenanceOperation());
     const id = z.uuid().parse(profileId);
     if (!machine.readStartupProfileIds().includes(id)) throw new Error("profile-startup-registration-required");
     const path = join(machine.stateRoot, "profiles", id, "state.db");
     machine.assertStateRoot(path);
-    if (!existsSync(path)) throw new Error("profile-startup-database-missing");
+    return path;
+  }
+
+  static #withRegisteredPersonSnapshot<T>(machine: RuntimeAdmission, path: string, work: (database: DatabaseSync, version: number) => T): T {
     try {
       return withReadonlyAuthoritySnapshot(path, database => {
         const version = readIntPragma(database, "user_version");
         if (readIntPragma(database, "application_id") !== AUTHORITY_APPLICATION_ID) throw new Error("profile-startup-foreign-application");
-        if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("profile-startup schema is newer than supported");
-        if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) throw new Error("profile-startup-unsupported-schema");
+        if (version > CURRENT_AUTHORITY_SCHEMA_VERSION) throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_NEWER_VERSION", { cause: new AuthoritySchemaVersionError(version) });
+        if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, CURRENT_AUTHORITY_SCHEMA_VERSION].includes(version)) {
+          throw new AuthorityFormatUnsupportedError("STORAGE_PROFILE_FORMAT_UNSUPPORTED", { cause: new AuthoritySchemaVersionError(version) });
+        }
+        return work(database, version);
+      });
+    } catch (error) {
+      if (hasUnprovedSourceClosure(error)) { machine.retainSourceClosure(error); throw retainAuthoritySourceClosure([error], { admission: machine }); }
+      throw error;
+    }
+  }
+
+  /**
+   * Classifies a person database that failed startup inspection. Only SQLite's own damage verdict admits a restore;
+   * a missing run-search projection is rebuilt in place; strict-parse or layout failures over intact SQLite are version skew.
+   */
+  static classifyStartupFailure(machine: RuntimeAdmission, profileId: string): StartupFailureClassification {
+    const path = AuthorityDatabase.#registeredPersonPath(machine, profileId);
+    if (!existsSync(path)) throw new Error("profile-startup-database-missing");
+    try {
+      return AuthorityDatabase.#withRegisteredPersonSnapshot(machine, path, (database, version): StartupFailureClassification => {
+        const integrity = z.array(z.strictObject({ integrity_check: z.string() })).parse(database.prepare("PRAGMA integrity_check").all());
+        if (integrity.length !== 1 || integrity[0]?.integrity_check !== "ok") return { kind: "damaged" };
+        const meta = readMetaRow(database);
+        if (meta.installation_id !== machine.locator.installationId || meta.profile_id !== profileId) throw new Error("profile-startup-foreign-binding");
+        const missingRunSearch = normalizedNativeSchema(database) === expectedNativeSchema(version, true);
+        try { inspectNativeAuthority(database, version, false, missingRunSearch); }
+        catch (error) {
+          if (hasUnprovedSourceClosure(error)) throw error;
+          return { kind: "version-skew", error: new AuthorityFormatUnsupportedError("STORAGE_PROFILE_FORMAT_UNSUPPORTED", { cause: error }) };
+        }
+        return missingRunSearch ? { kind: "missing-run-search-projection" } : { kind: "intact" };
+      });
+    } catch (error) {
+      if (isSqliteDamage(error)) return { kind: "damaged" };
+      throw error;
+    }
+  }
+
+  /** Recreates the exact current run_search table and rebuilds it in one stopped transaction; nothing else may change. */
+  static repairMissingRunSearchProjection(admission: RuntimeAdmission, operation: OfflineMaintenanceOperation, clock: Clock): void {
+    admission.assertStoppedProfile(operation);
+    const path = join(admission.stateRoot, "state.db");
+    requireDatabaseSourcePath(path);
+    const database = new DatabaseSync(path, { enableForeignKeyConstraints: true, enableDoubleQuotedStringLiterals: false, allowExtension: false,
+      timeout: 250, readBigInts: false, returnArrays: false, allowBareNamedParameters: false, allowUnknownNamedParameters: false, defensive: true });
+    let open = false;
+    try {
+      database.exec("PRAGMA synchronous=FULL; BEGIN IMMEDIATE"); open = true;
+      const version = readIntPragma(database, "user_version");
+      if (version !== CURRENT_AUTHORITY_SCHEMA_VERSION || normalizedNativeSchema(database) !== expectedNativeSchema(version, true)) throw new Error("run-search-projection-repair-shape-changed");
+      const before = nonProjectionFingerprint(database);
+      for (const statement of runSearchDefinitions()) database.exec(statement);
+      database.exec("UPDATE database_states SET search_generation=NULL,search_state='invalid' WHERE id=1");
+      const index = createRunSearchIndex(database), generation = readMetaRow(database).authority_generation, now = clock.now().toISOString();
+      let published = index.rebuild({ restart: true, limit: 500 }, generation, now);
+      while (published.state === "building") published = index.rebuild({ limit: 500 }, generation, now);
+      if (normalizedNativeSchema(database) !== expectedNativeSchema(version, false) || nonProjectionFingerprint(database) !== before
+        || readMetaRow(database).authority_generation !== generation) throw new Error("run-search-projection-repair-mutated-authority");
+      database.exec("COMMIT"); open = false;
+    } catch (error) {
+      if (open) database.exec("ROLLBACK");
+      throw error;
+    } finally { database.close(); }
+  }
+
+  static inspectRegisteredPersonAtStartup(machine: RuntimeAdmission, profileId: string) {
+    const id = z.uuid().parse(profileId);
+    const path = AuthorityDatabase.#registeredPersonPath(machine, id);
+    if (!existsSync(path)) throw new Error("profile-startup-database-missing");
+    {
+      return AuthorityDatabase.#withRegisteredPersonSnapshot(machine, path, (database, version) => {
         const inspection = inspectNativeAuthority(database, version);
         machine.assertOfflineMaintenance(machine.maintenanceOperation());
         if (inspection.installationId !== machine.locator.installationId || inspection.profileId !== id) throw new Error("profile-startup-foreign-binding");
@@ -2528,9 +2667,6 @@ export class AuthorityDatabase implements Disposable {
         const layoutContinuation = layoutFile !== undefined && canonicalJsonStringify(LogoutOperationSchema.parse(JSON.parse(new TextDecoder("utf8", { fatal: true }).decode(layoutFile.bytes)))) === canonicalJsonStringify(layoutLogout);
         return { ...inspection, requiresContinuation: nativeContinuation || layoutContinuation };
       });
-    } catch (error) {
-      if (hasUnprovedSourceClosure(error)) { machine.retainSourceClosure(error); throw retainAuthoritySourceClosure([error], { admission: machine }); }
-      throw error;
     }
   }
 
@@ -2580,7 +2716,7 @@ export class AuthorityDatabase implements Disposable {
       if (record === undefined || !("startupLogout" in record) || record.startupLogout === undefined
         || canonicalJsonStringify(record.startupLogout.operation) !== canonicalJsonStringify(operation)) return undefined;
       const settlement = operation.settlement;
-      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].includes(record.fromSchemaVersion)
+      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21].includes(record.fromSchemaVersion)
         || settlement === undefined || record.startupLogout.postimage !== authorityContentFingerprint(database, record.recordKey)) throw new Error("profile-startup-logout-postimage-changed");
       const backup = verifyBackup(admission, record.backup.manifestPath);
       if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId
@@ -3175,7 +3311,7 @@ export class AuthorityDatabase implements Disposable {
           .map(row => this.#parseNativeRow("worker_leases", row, WorkerLeaseRecordSchema)),
         controls,
         browsers: this.#database.prepare("SELECT * FROM browser_sessions ORDER BY id").all().map(workerBrowserFromRow),
-        runs: this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map(runRecordFromRow),
+        runs: this.#database.prepare("SELECT * FROM runs ORDER BY id").all().map((raw): PredecessorRunRecord => runRecordFromRow(raw)),
         writeIntents: this.#database.prepare("SELECT * FROM write_intents ORDER BY id").all()
           .map(row => this.#parseNativeRow("write_intents", row, WriteIntentRecordSchema)),
         duoLeases: this.#database.prepare("SELECT * FROM auth_leases ORDER BY credential_key").all()
@@ -5473,7 +5609,7 @@ export class AuthorityDatabase implements Disposable {
         },
         findRunOrigin: (runId: string) => {
           const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
-            AND json_extract(request_json,'$.operation') IN ('create','retry','restart','recover')
+            AND json_extract(request_json,'$.operation') IN ('create','retry','recover')
             AND json_extract(outcome_json,'$.result.kind')='run'
             AND json_extract(outcome_json,'$.result.runId')=? ORDER BY id`).all(RunIdSchema.parse(runId));
           if (rows.length > 1) throw new Error("delegation-root-origin-ambiguous");

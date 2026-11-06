@@ -17,9 +17,17 @@ function world() {
   let localReads = 0;
   let cleared = false;
   const scope = { documentId: DOCUMENT, url: `${ORIGIN}/setup`, accountNames: ['alex@example.edu'], accountRevision: 0 };
+  const tabs = new Map(), windows = new Map(), removed = [];
   const api = {
+    windows: {
+      onRemoved: { addListener: listener => removed.push(listener) },
+      async create(options) { const tab = { id: 9, windowId: 1, url: options.url, active: true }; tabs.set(9, tab); const window = { ...options, id: 1, tabs: [tab] }; windows.set(1, window); return window; },
+      async get(id) { assert.ok(windows.has(id)); return windows.get(id); },
+      async update(id, options) { const window = { ...await this.get(id), ...options }; windows.set(id, window); return window; },
+      async remove(id) { windows.delete(id); for (const listener of removed) listener(id); },
+    },
     runtime: { id: 'owned-extension' },
-    tabs: { get: async id => ({ id, url: scope.url }), sendMessage: async (_id, request, target) => {
+    tabs: { get: async id => tabs.get(id) ?? ({ id, url: scope.url }), update: async (id, values) => { assert.ok(tabs.has(id)); const tab = { ...tabs.get(id), ...values }; tabs.set(id, tab); return tab; }, create: async values => { const tab = { ...values, id: 10 }; tabs.set(10, tab); return tab; }, sendMessage: async (_id, request, target) => {
       if (target.documentId !== scope.documentId) throw new Error('document replaced');
       assert.equal(request.type, 'RELAY_OBSERVE');
       return { url: scope.url, origin: new URL(scope.url).origin, documentActive: true, accountNames: [...scope.accountNames], accountRevision: scope.accountRevision };
@@ -70,7 +78,9 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
   t.after(() => { delete globalThis.chrome; delete globalThis.relayOnboarding; });
   await import('../src/relay-background.js?browser-ui-test');
   const owner = globalThis.relayOnboarding;
-  await owner.browserInstall();
+  await owner.browserInstall(crypto.randomUUID());
+  assert.equal((await w.api.windows.get(1)).type, 'normal');
+  await w.api.tabs.update(9, { url: root + 'src/options.html' });
   const sender = { id: w.api.runtime.id, url: root + 'src/options.html', origin: root.slice(0, -1),
     tab: { id: 9, url: root + 'src/options.html' }, frameId: 0, documentId: DOCUMENT, documentLifecycle: 'active' };
   const send = (message, source) => new Promise(resolve => { receive(message, source, resolve); });
@@ -87,6 +97,13 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
     const request = await owner.browserNext(); assert.equal(request.kind, kind);
     owner.browserReply(request.id, { ok: true, value: { state: 'onboarding' } });
     assert.deepEqual(await response, { success: true, result: { relaySetup: true, profile: { state: 'onboarding' } } });
+  }
+  for (const portalFailure of ['untrusted', 'sign-in', 'synthetic-private-message']) {
+    const response = send({ type: 'RELAY_OPEN_PORTAL' }, sender);
+    const request = await owner.browserNext(); assert.equal(request.kind, 'portal');
+    owner.browserReply(request.id, { ok: false, portalFailure });
+    assert.deepEqual(await response, { success: false, error: 'ONBOARDING_DUO_REFUSED',
+      ...(['untrusted', 'sign-in'].includes(portalFailure) ? { portalFailure } : {}) });
   }
   for (const source of [
     { ...sender, id: 'another-extension' }, { ...sender, frameId: 1 },
@@ -117,8 +134,84 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
   }
   await denied(enrollment(), SENDER);
   assert.deepEqual(w.state(), {}); assert.equal(w.localReads(), 0);
+  await owner.browserFocus(); assert.equal((await w.api.windows.get(1)).focused, true);
+  const getWindow = w.api.windows.get.bind(w.api.windows);
+  w.api.windows.get = async id => ({ ...await getWindow(id), id: 2 });
+  await assert.rejects(owner.browserFocus(), /ONBOARDING_DUO_SCOPE/);
+  w.api.windows.get = getWindow;
+  await owner.browserSelect(9, 1);
+  await assert.rejects(owner.browserSelect(7, 1), /ONBOARDING_DUO_SCOPE/);
+  await assert.rejects(owner.browserSelect(9, 2), /ONBOARDING_DUO_SCOPE/);
+  await owner.browserBounds({ left: 20, top: 30, width: 600, height: 700 }, { width: 0, height: 32 });
+  assert.deepEqual(await w.api.windows.get(1), { ...(await w.api.windows.get(1)), left: 20, top: 30, width: 600, height: 700 });
+  await w.api.windows.remove(999);
+  const pending = owner.browserNext();
+  await w.api.windows.remove(1);
+  assert.equal((await pending).kind, 'window-closed');
   await owner.browserStop(); assert.equal((await send({ type: 'STATE' }, sender)).success, false);
 });
+
+for (const scenario of [
+  { name: 'expanded native size', actual: { width: 660, height: 804 } },
+  { name: 'expanded size temporarily overflows', area: { left: 0, top: 0, width: 800, height: 900 }, frame: { width: 0, height: 80 }, actual: { width: 760 } },
+  { name: 'reduced native size', actual: { width: 630, height: 780 } },
+  { name: 'adjusted native position', actual: { left: -620, top: 126 } },
+  { name: 'safe actual readback', readback: { left: -625, top: 123 } },
+  { name: 'foreign update', actual: { id: 2 }, refused: true },
+  { name: 'foreign readback', readback: { id: 2 }, refused: true },
+  { name: 'missing geometry', actual: { width: undefined }, refused: true },
+  { name: 'nonfinite geometry', actual: { width: NaN }, refused: true },
+  { name: 'fractional geometry', actual: { left: -625.5 }, refused: true },
+  { name: 'empty content', actual: { height: 80 }, refused: true },
+  { name: 'negative size', actual: { width: -1 }, refused: true },
+  { name: 'oversized geometry', actual: { width: 1401 }, refused: true },
+  { name: 'recentered off-screen origin', actual: { left: -1001 } },
+  { name: 'off-screen correction', actual: { width: 660 }, correction: { left: -1001 }, refused: true },
+  { name: 'off-screen readback', readback: { top: 19 }, refused: true },
+  { name: 'refused update', failUpdate: 1, refused: true },
+  { name: 'refused correction', actual: { width: 660 }, failUpdate: 2, refused: true },
+  { name: 'refused readback', failReadback: true, refused: true },
+]) test(`browser bounds validates actual owned geometry: ${scenario.name}`, async t => {
+  const w = world();
+  w.api.runtime.getURL = path => 'chrome-extension://owned-extension/' + path;
+  w.api.runtime.onMessage = { addListener() {} };
+  globalThis.chrome = w.api;
+  t.after(() => { delete globalThis.chrome; delete globalThis.relayOnboarding; });
+  await import('../src/relay-background.js?geometry-' + encodeURIComponent(scenario.name));
+  const owner = globalThis.relayOnboarding;
+  await owner.browserInstall(crypto.randomUUID());
+  let actual = await w.api.windows.get(1), reads = 0;
+  const updates = [], failure = new Error('controlled geometry API refusal');
+  w.api.windows.update = async (id, requested) => {
+    assert.equal(id, 1); updates.push(requested);
+    if (updates.length === scenario.failUpdate) throw failure;
+    actual = { ...actual, ...requested, ...(updates.length === 1 ? scenario.actual : scenario.correction) };
+    return { ...actual };
+  };
+  w.api.windows.get = async id => {
+    assert.equal(id, 1); reads++;
+    if (scenario.failReadback) throw failure;
+    return { ...actual, ...scenario.readback };
+  };
+  const area = scenario.area ?? { left: -1000, top: 20, width: 1400, height: 1000 }, frame = scenario.frame ?? { width: 12, height: 80 };
+  if (scenario.refused) await assert.rejects(owner.browserBounds(area, frame), error =>
+    scenario.failUpdate || scenario.failReadback ? error === failure : error.message === 'ONBOARDING_DUO_SCOPE');
+  else {
+    const result = await owner.browserBounds(area, frame), expected = { ...actual, ...scenario.readback };
+    assert.deepEqual(result, { left: expected.left, top: expected.top, width: expected.width, height: expected.height });
+    assert.equal(reads, 1);
+    if (scenario.actual) assert.deepEqual(updates[1], {
+      left: area.left + Math.floor((area.width - actual.width) / 2), top: area.top + Math.floor((area.height - actual.height) / 2),
+    });
+    if (scenario.name === 'expanded size temporarily overflows') {
+      assert.equal(updates[0].left, 80); assert.ok(updates[0].left + scenario.actual.width > area.left + area.width); assert.equal(updates[1].left, 20);
+    }
+  }
+  if (scenario.refused && scenario.actual && !scenario.correction && !scenario.failUpdate) { assert.equal(updates.length, 1); assert.equal(reads, 0); }
+  if (scenario.readback || scenario.failReadback || scenario.correction) assert.equal(reads, 1);
+  assert.ok(updates.length <= 2); assert.ok(reads <= 1);
+});
+
 async function acknowledge(worker, kind, value) {
   const request = await worker.next();
   assert.equal(request.kind, kind);
@@ -663,7 +756,7 @@ test('the browser listener records exact scope failures and safe unknown errors'
   t.after(() => { delete globalThis.chrome; delete globalThis.relayOnboarding; });
   await import('../src/relay-background.js?diagnostic-listener-test');
   const owner = globalThis.relayOnboarding;
-  await owner.browserInstall();
+  await owner.browserInstall(crypto.randomUUID());
   for (const error of [new Error('ONBOARDING_DUO_SCOPE'), new TypeError('secret-password', { cause: new Error('private-key') })]) {
     w.api.tabs.get = async () => { throw error; };
     const response = new Promise(resolve => receive({ type: 'RELAY_CAPABILITIES', request: { origin: ORIGIN, rpId: 'duosecurity.com' } }, SENDER, resolve));

@@ -154,8 +154,8 @@ li div, .intro { overflow-wrap: anywhere; }
 <section>
 <h2>Dashboard ready on the Mac</h2>
 <p class="intro">Complete these in order. A workflow is ready after its live dry run and operator sign-off.</p>
-<div class="counts" aria-label="Status counts"><span class="count done">done <strong>1</strong></span>
-<span class="count now">now <strong>4</strong></span>
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>2</strong></span>
+<span class="count now">now <strong>5</strong></span>
 <span class="count next">next <strong>9</strong></span>
 <span class="count later">later <strong>0</strong></span></div>
 <ul><li>
@@ -164,15 +164,23 @@ li div, .intro { overflow-wrap: anywhere; }
 </li>
 <li>
 <span class="pill now">now</span>
-<div><strong class="name">Finish in-flight work</strong><p class="description">merge the Duo setup window (#142), restored worker custody (Secure Enclave key across a reboot; blocks live runs) and the macOS-native test baseline.</p></div>
+<div><strong class="name">Finish in-flight work</strong><p class="description">merge the macOS-native test baseline.</p></div>
 </li>
 <li>
 <span class="pill now">now</span>
+<div><strong class="name">Worker custody by construction</strong><p class="description">the parent owns workers in memory, stops them over IPC, learns of exits from the OS and fences claims by generation; delete leases, stored heartbeats, stop journals and the polled browser control channel. Keep automatic backup and restore; after a restore show one dismiss-only toast with the backup time. Live sign-offs start after this merges.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
 <div><strong class="name">Docs and dev tooling</strong><p class="description">dissolve `docs/rebuild/`, add the AGENTS.md glossary, refresh the repo skills, link `.claude/skills` and add the `verify` skill for live dry runs.</p></div>
 </li>
 <li>
 <span class="pill now">now</span>
 <div><strong class="name">Assistant agent</strong><p class="description">replace the phrase matcher with a tool-calling agent: free text to ChatGPT, tool plugins under `src/backend/assistant/plugins/`, Employee IDs as references and other typed identifiers masked, confirmed proposals for workflow starts (one or several people, or an attached PDF into OCR), rerun, pause, resume, cancel, notifications and Spreadsheets library setup, chat history with attachments, then a model check and a live dry run.</p></div>
+</li>
+<li>
+<span class="pill now">now</span>
+<div><strong class="name">Warnings as toasts</strong><p class="description">show warnings and failures as short toasts, sticky with one action when they need acting on; only dialog content, field validation, empty states and the run-log failure card stay inline.</p></div>
 </li>
 <li>
 <span class="pill now">now</span>
@@ -213,6 +221,62 @@ li div, .intro { overflow-wrap: anywhere; }
 <li>
 <span class="pill next">next</span>
 <div><strong class="name">Operator preview</strong><p class="description">complete the full test pass and verify automatic backup and self-repair.</p></div>
+</li></ul>
+</section>
+<section>
+<h2>Simplify the core</h2>
+<p class="intro">Each item deletes its own tests and guards. Worker custody (above) comes first.</p>
+<div class="counts" aria-label="Status counts"><span class="count done">done <strong>2</strong></span>
+<span class="count now">now <strong>0</strong></span>
+<span class="count next">next <strong>9</strong></span>
+<span class="count later">later <strong>1</strong></span></div>
+<ul><li>
+<span class="pill done">done</span>
+<div><strong class="name">Contract fingerprints</strong><p class="description">fingerprint each workflow from its own folder, schemas and kit version, bind writes to one app build id and delete the generated manifest; merge before the assistant agent.</p></div>
+</li>
+<li>
+<span class="pill done">done</span>
+<div><strong class="name">Dead code</strong><p class="description">remove the restart command, duplicate retry and recover blocks, empty arms, bulk mode, unused stream topics, the parity verifier and browser-roots v1, move step-proof workflows and the scenario registry into tests, and serve HTTP through @hono/node-server.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Lean run journal</strong><p class="description">journal only operator commands, write heartbeats as a plain update and derive receipts once.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Login mutex</strong><p class="description">hold Duo and OnBase logins with an in-memory parent mutex.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">One schema baseline</strong><p class="description">squash migrations into one baseline, delete old-format conversions and relocation, and store artifacts as raw bytes.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Credentials file</strong><p class="description">keep one encrypted credentials file per person, written atomically, with the keychain key.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Write-time checks only</strong><p class="description">drop read-time re-proving and split the authority database, command kernel and claimed-run executor by move.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Install control</strong><p class="description">replace installation, admission, registry and continuity proofs with one install-control module and a person-store handle.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Workflow facts once</strong><p class="description">declare workflow facts once in a hand-kept registry that replaces the generators; guards stop listing workflows by name.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Dashboard mocks</strong><p class="description">delete each workflow&#39;s mock at its activation, split LoadedApp before the next activation and drop parity-only mock arms after the assistant agent.</p></div>
+</li>
+<li>
+<span class="pill next">next</span>
+<div><strong class="name">Tests and guards</strong><p class="description">keep one line per guard, move behaviour tests out of the architecture suite, scan instead of listing boundary schemas, un-alias merged test files and share one reusable CI workflow.</p></div>
+</li>
+<li>
+<span class="pill later">later</span>
+<div><strong class="name">UI cleanup</strong><p class="description">right-size parity to 150-200 states, then move to one UI library in a single UI-only PR.</p></div>
 </li></ul>
 </section>
 <section>

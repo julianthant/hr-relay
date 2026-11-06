@@ -22,6 +22,7 @@ import { ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, Wo
 import { manualClock, systemClock } from "../../../../../src/rules/time/clock.js";
 import { settingsSetOperations } from "../../../../support/fixtures/settings-operation-fixtures.js";
 import { scaledMs } from "../../../../support/time-scale.js";
+import { currentBuildId, PARENT_BUILD_ID_ENV } from "../../../../../src/backend/runtime/build-id.js";
 
 const { cleanups, composeDashboardRuntime, readRuntimeSettingsRevision, readPersistedSettings, createProfileFixture, cleanup } = createDashboardPortTestWorld(() => {
       vi.mocked(fsyncSync).mockReset();
@@ -115,7 +116,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       return Reflect.get(target, key, receiver) as string | undefined;
     } });
     assert.deepEqual(productionWorkerLaunch("/repo", hostile).environment, {
-      PATH: "/synthetic/bin", HOME: "/synthetic/home", HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080",
+      PATH: "/synthetic/bin", HOME: "/synthetic/home", HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080", [PARENT_BUILD_ID_ENV]: currentBuildId(),
     });
     assert.throws(() => productionWorkerLaunch("/repo", { UCPATH_PASSWORD: "synthetic-private" }),
       /migrated environment key UCPATH_PASSWORD is refused/u);

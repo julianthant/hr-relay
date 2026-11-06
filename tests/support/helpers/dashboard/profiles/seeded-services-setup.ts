@@ -19,7 +19,6 @@ import { join } from "node:path";
 import { composeActivity } from "../../../../../src/backend/app/composition/dashboard/activity.js";
 import { descriptorSetHash } from "../../../../../src/backend/app/registries/workflow-registry.js";
 import { resolveConfigWithProvenance } from "../../../../../src/backend/app/config/resolve.js";
-import { createRunLogStreamStore } from "../../../../../src/backend/logs/run-log-stream.js";
 import { createCommandKernel } from "../../../../../src/backend/runs/commands/command-kernel.js";
 import { createDashboardCommandService } from "../../../../../src/backend/runs/commands/command-service.js";
 import { runQueuedSpanEvent } from "../../../../../src/backend/runs/commands/run-queued-span.js";
@@ -39,7 +38,6 @@ import { createSoloRequestIdentityCheckpoint } from "../../../../../src/backend/
 import type { DashboardAppDeps } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import { createDashboardApp } from "../../../../../src/backend/transports/http/routes/api.js";
 import { createDashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
-import { RunLogsStreamHub } from "../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import { hostConfigFacts } from "../../../../../src/models/config/host-display.js";
 import { initialProtectedStoreRecord } from "../../../../../src/models/config/protected-settings.js";
 import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../../../src/models/config/settings.js";
@@ -47,9 +45,8 @@ import { ActorIdSchema as PublicationActorIdSchema } from "../../../../../src/ru
 import type { Clock } from "../../../../../src/rules/time/clock.js";
 import { defineWorkflowRole } from "../../../../../src/workflow-kit/validation/module-role.js";
 
-export function createSeededServicesSetup({ readFixtureRun, createFixtureDashboardApp }: {
-readFixtureRun: (runReader: ReturnType<typeof sqliteRunReader>, runId: string) => Pick<Extract<ReturnType<ReturnType<typeof sqliteRunReader>["read"]>, { state: "present" }>, "disposition" | "run"> | undefined;
-createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<DashboardAppDeps, "runLogsHub" | "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
+export function createSeededServicesSetup({ createFixtureDashboardApp }: {
+createFixtureDashboardApp: (before: Omit<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">, after: Pick<DashboardAppDeps, "settings" | "settingsEditor" | "storage" | "explorer">) => ReturnType<typeof createDashboardApp>;
 }) {
   function composeSeededServices({ database, clock, stateRoot, root, projection, spans, descriptors, runIds, selectionServices }: {
    selectionServices?: Pick<DashboardAppDeps,"activity"|"search"|"xlsxExports"|"searchMetadataExports">;
@@ -133,12 +130,7 @@ createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<Dashboard
       plannedBy: "local-operator",
     });
     const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
-    const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(database.authority.timelineEvents),
-      readRun: runId => {
-        return readFixtureRun(runReader, runId);
-      } });
-
-    const app = createFixtureDashboardApp(runLogsHub, {
+    const app = createFixtureDashboardApp({
       requestIdentity: createSoloRequestIdentityCheckpoint({
         id: "local-operator",
         label: "Local operator",
@@ -223,7 +215,7 @@ createFixtureDashboardApp: (runLogsHub: RunLogsStreamHub, before: Omit<Dashboard
     });
 
 
-  return { app, hub, runLogsHub };
+  return { app, hub };
   }
 
   return { composeSeededServices };

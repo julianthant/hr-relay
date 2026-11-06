@@ -1,5 +1,5 @@
-import { DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
-import { debugFailureOutcome, DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
+import { ReopenProfileOnboardingBrowserRequestSchema, type ReopenProfileOnboardingBrowserRequest, DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
+import { DASHBOARD_REQUEST_REPORT_MESSAGE, debugFailureOutcome, DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
 /** The ONE typed dashboard client (ref frontend-backend-integration) */
 import { createDashboardCommands, type DashboardCommands } from "./commands.js";
@@ -45,6 +45,7 @@ export interface DashboardClient extends DashboardQueries, DashboardCommands {
   cancelProfileOnboardingDuo(request: CancelProfileOnboardingDuoRequest): Promise<PublicProfileState>;
   cancelProfileOnboarding(request: CancelProfileOnboardingRequest): Promise<PublicProfileState>;
   showProfileOnboardingBrowser(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
+  reopenProfileOnboardingBrowser(request: ReopenProfileOnboardingBrowserRequest): Promise<PublicProfileState>;
   openProfileOnboardingPortal(request: CompleteProfileOnboardingRequest): Promise<PublicProfileState>;
   startProfileOnboardingDuo(request: StartProfileOnboardingDuoRequest): Promise<PublicProfileState>;
   confirmProfileOnboardingDuo(request: ConfirmProfileOnboardingDuoRequest): Promise<PublicProfileState>;
@@ -68,7 +69,7 @@ export function createDashboardClient(input: Readonly<{
     if (surface === undefined || profileAuthority === undefined) return;
     void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard",
       route: failure.route, surface: surface(), code: failure.code, reason: failure.reason,
-      message: "Dashboard request did not complete successfully" })
+      message: DASHBOARD_REQUEST_REPORT_MESSAGE })
       .catch(() => { window.reportError(new DashboardReportDeliveryError()); });
   };
   const transport = createDashboardTransport({ ...input, captureProfileSessionStale: () => {
@@ -165,6 +166,11 @@ export function createDashboardClient(input: Readonly<{
     async showProfileOnboardingBrowser(request) {
       return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/browser", {
         method: "POST", body: JSON.stringify(CompleteProfileOnboardingRequestSchema.parse(request)),
+      })).body);
+    },
+    async reopenProfileOnboardingBrowser(request) {
+      return parseProfileState((await transport.requestJsonResponse("/api/v1/profile/onboarding/duo/reopen", {
+        method: "POST", body: JSON.stringify(ReopenProfileOnboardingBrowserRequestSchema.parse(request)),
       })).body);
     },
     async openProfileOnboardingPortal(request) {

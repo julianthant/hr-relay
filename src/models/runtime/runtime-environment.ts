@@ -2,7 +2,7 @@ import { z } from "zod";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_PROTECTED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../config/catalog.js";
 import { HOST_PRIMARY_DISPLAY_ENV } from "../config/host-display.js";
 import { deepFreeze } from "../../rules/validation/immutability.js";
-import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS, DEVELOPMENT_DEBUG_MIRROR_ENV } from "../config/secrets.js";
+import { WORKER_PROCESS_MECHANIC_KEYS, SECRET_SPECS, DEVELOPMENT_DEBUG_MIRROR_ENV, PARENT_BUILD_ID_ENV } from "../config/secrets.js";
 
 const EnvironmentKeySchema = z.union([z.string().regex(/^[A-Z_][A-Z0-9_]*$/), z.enum(["SystemRoot", "ProgramFiles", "ProgramFiles(x86)"])]);
 const PROCESS_MECHANICS_ENVIRONMENT_OWNER = "src/models/config/secrets.ts";
@@ -212,6 +212,14 @@ export const RUNTIME_ENVIRONMENT_EXACT = deepFreeze(RuntimeEnvironmentExactSpecS
     documented: true,
   },
   {
+    key: PARENT_BUILD_ID_ENV,
+    classification: "non-secret-config",
+    disposition: "active",
+    channel: "process-mechanics",
+    owner: PROCESS_MECHANICS_ENVIRONMENT_OWNER,
+    documented: false,
+  },
+  {
     key: "HRAUTO_DASHBOARD_LAUNCH_NONCE",
     classification: "direct-identifier",
     disposition: "active",
@@ -266,6 +274,7 @@ export const EXACT_ENVIRONMENT_READER_OWNERS = deepFreeze(ExactEnvironmentReader
   { key: "LOCALAPPDATA", paths: ["src/models/config/secrets.ts"] },
   { key: DEVELOPMENT_DEBUG_MIRROR_ENV, paths: ["src/models/config/secrets.ts"] },
   { key: "SystemRoot", paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
+  { key: PARENT_BUILD_ID_ENV, paths: [PROCESS_MECHANICS_ENVIRONMENT_OWNER] },
   { key: "NODE_OPTIONS", paths: ["playwright.parity.config.ts"] },
   { key: "RELAY_TEST_HOST", paths: ["scripts/test/pc.ts"] },
 ]));
@@ -311,7 +320,6 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-process-mechanics", exact: WORKER_PROCESS_MECHANIC_KEYS } }),
   computedReader({ path: "src/models/config/secrets.ts", enclosingSymbol: "hostAwareResolutionEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
   computedReader({ path: "scripts/dev/dashboard.ts", enclosingSymbol: "runDevDashboard", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "target-bootstrap", targets: { kind: "bulk-pass-through", boundary: "dashboard-child-processes", reason: "the dashboard launcher forwards its inherited environment plus one owned nonce to the two same-runtime child processes" } }),
-  computedReader({ path: "scripts/verify-parity-json.ts", enclosingSymbol: "main", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "e4db44daa6ead5a1e592c02fa32cfe50b23a07fb388949c32664a0ea298f82ea", classification: "test-only", targets: { kind: "bulk-pass-through", boundary: "test-command-child", reason: "the parity wrapper forwards its inherited environment to its same-checkout Playwright child" } }),
   computedReader({ path: "vite.dashboard.config.ts", enclosingSymbol: "<module>", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "5c77e74cb49d532097f685ae27e9a8029afb783349dbaff9f709b90a7cece316", classification: "target-bootstrap", targets: { kind: "closed-targets", exact: ["HRAUTO_DASHBOARD_LAUNCH_NONCE"], families: [] } }),
 ]));
 
@@ -367,9 +375,18 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
   if (systemRootReader?.paths.length !== 1 || systemRootReader.paths[0] !== PROCESS_MECHANICS_ENVIRONMENT_OWNER) {
     violations.push("SystemRoot exact reader must be solely the canonical environment accessor");
   }
+  const parentBuild = exact.get(PARENT_BUILD_ID_ENV);
+  if (parentBuild?.disposition !== "active" || parentBuild.classification !== "non-secret-config"
+    || parentBuild.channel !== "process-mechanics" || parentBuild.owner !== PROCESS_MECHANICS_ENVIRONMENT_OWNER) {
+    violations.push("RELAY_PARENT_BUILD_ID must retain the canonical accessor's non-secret process-mechanics ownership");
+  }
+  const parentBuildReader = registry.exactReaderOwners.find(reader => reader.key === PARENT_BUILD_ID_ENV);
+  if (parentBuildReader?.paths.length !== 1 || parentBuildReader.paths[0] !== PROCESS_MECHANICS_ENVIRONMENT_OWNER) {
+    violations.push("RELAY_PARENT_BUILD_ID exact reader must be solely the canonical environment accessor");
+  }
   for (const spec of registry.exact) {
     if (spec.disposition !== "active") continue;
-    if (spec.channel === "process-mechanics" && spec.key === "SystemRoot") continue;
+    if (spec.channel === "process-mechanics" && (spec.key === "SystemRoot" || spec.key === PARENT_BUILD_ID_ENV)) continue;
     const expectedOwner = spec.channel === "host-programs" && ["ProgramFiles", "ProgramFiles(x86)"].includes(spec.key) && spec.classification === "non-secret-config"
       ? PROCESS_MECHANICS_ENVIRONMENT_OWNER
       : spec.channel === "host-storage" && spec.key === "LOCALAPPDATA" && spec.classification === "direct-identifier"

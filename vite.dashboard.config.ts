@@ -1,6 +1,5 @@
 import { prepareWindowsObserverPolicy } from "./scripts/build/windows-observer-policy.js";
 /** Development proxies keep the typed client on the BFF's same origin. */
-import { prepareBuildManifest } from "./scripts/build/workflow-build-manifest.js";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -13,7 +12,6 @@ import {
 } from "./src/backend/transports/http/frontend-owner.js";
 
 prepareWindowsObserverPolicy(import.meta.dirname);
-prepareBuildManifest(import.meta.dirname);
 
 const BACKEND = "http://127.0.0.1:3938";
 const ownerNonceInput = process.env[DASHBOARD_LAUNCH_NONCE_ENV];
