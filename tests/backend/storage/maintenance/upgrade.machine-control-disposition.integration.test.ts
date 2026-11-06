@@ -7,6 +7,7 @@ import { BrowserRootsSchema, StoppedBrowserRootsV1Schema } from "../../../../src
 import { acquireStoppedProfileControlUpgrade } from "../../../../src/backend/storage/admission/installation.js";
 import { retainAuthoritySourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { runCredentialSourceRetentionCase } from "../../../support/helpers/credential-source-retention.js";
 import { FakeKeyringEntry } from "../../../support/helpers/credential-keychain-fake.js";
 import { acquireRuntimeProcessLock } from "../../../../src/backend/storage/sqlite/runtime-process-locks.js";
@@ -56,6 +57,7 @@ async function priorFormatFixture(version: 1 | 2 | 3 | 4 = 1, keyFormat: "metada
   releaseStoppedMachineControlUpgrade(control, restore, false, { primary, admission: maintenance });
   maintenance.release();
   assert.ok(sourceInspection);
+  assert.equal(sourceInspection.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
   const settingsPath = join(f.profileRoot, "config", "settings.json");
   return { ...f, sourceInspection, originalTokens: chatgpt?.session === null || chatgpt?.session === undefined ? [] : [chatgpt.session.accessToken, chatgpt.session.refreshToken, chatgpt.session.idToken].filter((value): value is string => value !== null), originalKeyId: key.keyId, originalKey,
     settingsPath, settingsBefore: existsSync(settingsPath) ? readFileSync(settingsPath) : undefined,
@@ -508,6 +510,7 @@ it("issues only finite read-only stopped-control inventory and preserves databas
     const otherClaim = f.upgrade.profileInventory(f.profileId);
     assert.throws(() => admission?.readStoppedControlCredentialInventorySource(otherClaim), error => error instanceof Error && error.message === "stopped-control-inventory-unissued");
     const source = admission.readStoppedControlCredentialInventorySource(issued);
+    assert.equal(source.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
     assert.equal(source.binding.profileId, f.profileId);
     source.assertHeld();
     const facts = AuthorityDatabase.readProfileMaintenanceInventory(admission);

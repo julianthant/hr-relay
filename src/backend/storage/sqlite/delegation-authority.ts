@@ -530,7 +530,7 @@ function readAppliedDelegationResume(repositories: AuthorityRepositories, parent
   const sources = repositories.commands.listRunResumes(request.runId, request.expectedVersion)
     .filter(source => delegationResumeCommandId(source.commandId, evidence) === request.commandId);
   const source = sources.length === 1 ? sources[0] : undefined;
-  if (source === undefined || repositories.commandAudits.findByCommand(source.commandId)?.result.state !== "applied")
+  if (source === undefined || authenticateOperatorSource(repositories, source) === undefined)
     throw new RunContinuationRefusedError("delegation-resume-source-audit-unavailable");
   return { commandId: request.commandId, evidence };
 }
