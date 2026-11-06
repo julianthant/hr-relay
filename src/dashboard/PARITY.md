@@ -139,4 +139,4 @@ contracts are replaced with inclusion/exclusion, geometry, keyboard and interact
 - Verify output counts, search, copy, selection, and cleanup when optimizing offscreen rendering; layout deferral does not bound memory.
 
 See [DESIGN.md](DESIGN.md) for composition rules and
-[the wiring contract](../../docs/rebuild/reference/frontend-backend-integration.md) for producer acceptance.
+[the wiring contract](../../docs/reference/frontend-backend-integration.md) for producer acceptance.

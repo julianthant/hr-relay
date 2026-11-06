@@ -54,7 +54,7 @@ live under `src/rules/commands/`. Browser imports never reach backend compositio
 Bootstrap, Settings, Preflight, storage, and the served intake workspace use the typed client.
 Current Logs, worker cards, Analytics, Explorer, notifications, and workflow runs have local
 producers. Retained client methods do not prove those consumers are wired. The
-[current frontend mock wiring checklist](../../docs/rebuild/reference/frontend-backend-integration.md#current-frontend-mock-wiring-checklist)
+[current frontend mock wiring checklist](../../docs/reference/frontend-backend-integration.md#current-frontend-mock-wiring-checklist)
 names each replacement seam and its acceptance contract.
 
 ## Navigation
@@ -75,5 +75,5 @@ running BFF for dashboard data. `npm run web:build` builds dashboard and specime
 `http://localhost:5174/kit.html` shows the primitives.
 
 Read [AGENTS.md](AGENTS.md) before edits, [DESIGN.md](DESIGN.md) for tokens and layout,
-[PARITY.md](PARITY.md) for visual verification, and [dashboard surfaces](../../docs/rebuild/reference/dashboard-surfaces.md)
+[PARITY.md](PARITY.md) for visual verification, and [dashboard surfaces](../../docs/reference/dashboard-surfaces.md)
 for mounted behavior. `tests/perf/frontend/` contains the isolated Queue/Logs performance fixture.

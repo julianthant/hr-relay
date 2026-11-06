@@ -99,7 +99,7 @@ it('canonical client validates inputs/results and production app exposes named u
 it('coupled citations are bounded, policy/config authority changes cancel settlement, and cancellation/New Chat cannot admit a late response', async () => {
   const f = await assistantCoupledWorld();
   try {
-    f.reply({ action: 'answer', text: 'Explanation', citations: [{ path: 'docs/rebuild/assistant.md', revision: SYNTHETIC_ASSISTANT_SOURCE.revision, startLine: 2, endLine: 3, quote: 'Dry runs stop before writes.' }] });
+    f.reply({ action: 'answer', text: 'Explanation', citations: [{ path: 'docs/reference/assistant.md', revision: SYNTHETIC_ASSISTANT_SOURCE.revision, startLine: 2, endLine: 3, quote: 'Dry runs stop before writes.' }] });
     const forged = await f.client.assistantRespond({ message: 'Explain' }); assert.equal(forged.state, 'refused');
     f.reply({ action: 'answer', text: 'Late answer', citations: [] });
     for (const action of ['new-chat', 'cancel', 'authority'] as const) {
