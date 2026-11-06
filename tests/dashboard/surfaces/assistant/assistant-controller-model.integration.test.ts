@@ -337,7 +337,7 @@ it.each([
   const client = { ...server.client, async assistantRespond(input: AssistantRequest) {
     sends++;
     const accepted = server.repository.accept({ conversationId: input.conversationId, expectedRevision: input.expectedRevision, messageId: input.messageId,
-      text: input.message, modelText: input.message, subjectRef: null, now: server.now() });
+      text: input.message, modelText: input.message, subjectRef: null, attachments: [], now: server.now() });
     assert.equal(accepted.state, 'accepted');
     const revision = server.repository.settle(input.conversationId, input.messageId, { delivery: 'answered', reply: reply === 'answer'
       ? { id: crypto.randomUUID(), kind: 'answer', text: 'Stored answer.', modelText: 'Stored answer.' }

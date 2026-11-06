@@ -86,7 +86,7 @@ export type AssistantSettlement = Readonly<{ delivery: "answered" | "refused" | 
 
 export function createAssistantHistoryRepository(ports: Ports) {
   const { database } = ports;
-  const files = createAssistantAttachmentStore(database, ports.profileId, refuse);
+  const files = createAssistantAttachmentStore(database, () => ports.profileId(), refuse);
   const fileNames = (messageId: string) => database.prepare("SELECT id,json_extract(payload_json,'$.name') AS name FROM assistant_attachments WHERE message_id=? ORDER BY ordinal")
     .all(messageId).map(row => z.object({ id: z.uuid(), name: z.string() }).parse(row));
   const conversationRow = (id: string) => {

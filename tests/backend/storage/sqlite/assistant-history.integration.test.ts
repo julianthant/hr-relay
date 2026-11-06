@@ -20,7 +20,7 @@ async function world() {
   const revision = (id: string, now = NOW) => history.conversation(id, now)?.revision ?? 0;
   const accept = (conversationId: string, text = "Explain", extra: { messageId?: string; subjectRef?: string | null; expectedRevision?: number } = {}) =>
     history.accept({ conversationId, expectedRevision: extra.expectedRevision ?? revision(conversationId), messageId: extra.messageId ?? randomUUID(), text,
-      modelText: `masked ${text}`, subjectRef: extra.subjectRef ?? null, now: NOW });
+      modelText: `masked ${text}`, subjectRef: extra.subjectRef ?? null, attachments: [], now: NOW });
   const generation = () => fixture.database.getMeta().authorityGeneration;
   return { ...fixture, history, create, revision, accept, generation };
 }

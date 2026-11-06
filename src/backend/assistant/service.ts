@@ -193,7 +193,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
         const table = references.table(request.conversationId, options.owner(), history.nextOrdinal(request.conversationId));
         const masked = maskOperatorText(request.message, table);
         const acceptance = history.accept({ conversationId: request.conversationId, expectedRevision: request.expectedRevision, messageId: request.messageId,
-          text: request.message, modelText: masked, subjectRef: request.subjectRef ?? null, now: options.clock.now().toISOString() });
+          text: request.message, modelText: masked, subjectRef: request.subjectRef ?? null, attachments: [], now: options.clock.now().toISOString() });
         if (acceptance.state === "repeat") return { repeat: { conversationId: request.conversationId, messageId: request.messageId, ordinal: acceptance.ordinal,
           revision: acceptance.revision, delivery: acceptance.delivery } };
         current = { ordinal: acceptance.ordinal, revision: acceptance.revision, createdAt: acceptance.createdAt };
