@@ -80,7 +80,7 @@ it("regenerates a generated file deleted by the PR and modified by staging", () 
 it("refuses a deleted catalog rather than restoring its authored sections", () => {
   fixture(false, (root, _head, staging) => {
     const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-    const catalog = "docs/rebuild/reference/stores.md";
+    const catalog = "docs/reference/stores.md";
     git("rm", "--", catalog);
     git("commit", "-m", "delete catalog");
     git("checkout", "--detach", staging);

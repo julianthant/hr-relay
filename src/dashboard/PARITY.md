@@ -1,7 +1,6 @@
 # Dashboard parity suite
 
-`npm run test:parity` runs `scripts/verify-parity-json.ts assert`, which launches Playwright with
-`playwright.parity.config.ts` and validates the resulting JSON evidence. The suite checks the
+`npm run test:parity` runs Playwright with `playwright.parity.config.ts`; its exit code is the result. A reporter fails the run when a test that declares `required-a11y-evidence` lacks its attached tree or matching sha256 annotation. The suite checks the
 presentation contract with mock values, plus keyboard, focus, loading, and interaction behavior.
 It does not prove live workflow or service readiness.
 
@@ -15,7 +14,7 @@ npm run test:parity -- --grep "keyboard-only"
 
 Use the matching surface spec for a focused check. Shared shell, tokens, primitives, and models
 need the full suite at the assigned gate. Filters are forwarded to Playwright. Keep the configured
-JSON reporter: the wrapper refuses `--reporter` overrides and JSON-output environment overrides.
+reporters; the a11y evidence reporter is part of the gate.
 
 `npm run test:parity:update` is the deliberate reference-update command. Use it only for an
 operator-approved UI change, or a workflow's served-data switch after operator screen sign-off,
@@ -63,11 +62,6 @@ includes the expected, actual, and diff images. Accessibility/metadata drift nam
 theme, viewport, variant, reference path, and differing lines. Inspect both visual and semantic
 halves before changing source.
 CI uploads the output directory, including failure images and error contexts alongside the JSON report.
-
-The wrapper rejects stale or malformed JSON, unsafe report paths, missing required accessibility
-attachments, duplicate evidence names, wrong digests, and non-passing required evidence producers.
-The process exit and current report are both evidence; an old successful report cannot certify a
-new run. Missing static `required-a11y-evidence` declarations or body-backed attachments fail.
 
 ## Current presentation choices
 
@@ -139,4 +133,4 @@ contracts are replaced with inclusion/exclusion, geometry, keyboard and interact
 - Verify output counts, search, copy, selection, and cleanup when optimizing offscreen rendering; layout deferral does not bound memory.
 
 See [DESIGN.md](DESIGN.md) for composition rules and
-[the wiring contract](../../docs/rebuild/reference/frontend-backend-integration.md) for producer acceptance.
+[the wiring contract](../../docs/reference/frontend-backend-integration.md) for producer acceptance.

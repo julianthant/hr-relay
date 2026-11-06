@@ -240,8 +240,8 @@ function projectedRowCommands(): ReadonlySet<string> {
   return commands;
 }
 
-// Generic run Retry and Restart require the Rerun surface.
-const RETAINED_UNPROJECTED_ACTIONS = new Set(["retry", "restart"]);
+// Generic run Retry requires the Rerun surface.
+const RETAINED_UNPROJECTED_ACTIONS = new Set(["retry"]);
 
 const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "pause-all": "application toolbar targets exact global membership, not a run row",

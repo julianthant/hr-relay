@@ -296,7 +296,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal((await json(soloCancel)).state, "applied");
 
     // Whole-request refusals reach NO target: an empty batch, a duplicated
-    // target, and the all-or-none mode this runtime deliberately refuses.
+    // target.
     const envelope = {
       commandId: "1a000000-0000-4000-8000-00000000000b",
       requestedAt: "2020-01-01T00:00:00.000Z",
@@ -329,17 +329,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     });
     assert.equal(duplicated.payload.state, "refused");
     assert.match(String(duplicated.payload.message), /more than once/);
-
-    const allOrNone = await postBulk({
-      ...envelope,
-      commandId: "1a000000-0000-4000-8000-00000000000d",
-      bulkCommandId: "1a000000-0000-4000-8000-00000000000d",
-      mode: "all-or-none",
-      targets: [{ runId: runA, expectedVersion: 1 }],
-    });
-    assert.equal(allOrNone.payload.state, "refused");
-    assert.equal(allOrNone.payload.code, "capability-unavailable");
-    assert.match(String(allOrNone.payload.message), /Nothing was\s+attempted/);
 
     // The mixed vector: one applied, one conflict (stale version, with the
     // server's currentVersion), one refused by the kernel's own precondition.
@@ -434,7 +423,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assertHttpFaultOnly(h, concurrentFaultBefore, 3);
     const divergentReplays = [
       { label: "changes operation", body: { ...bulkBody, type: "retry" } },
-      { label: "changes mode", body: { ...bulkBody, mode: "all-or-none" } },
       { label: "changes reason", body: { ...bulkBody, reason: "different selection reason" } },
       {
         label: "adds an old+new target",

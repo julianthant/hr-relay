@@ -30,6 +30,6 @@ task starts at the repository root.
   unprovable authority holds only that person's admission. Ordinary readers accept only the current schema.
 
 Before changing a seam, read the relevant
-`docs/rebuild/reference/frontend-backend-integration.md`, `dashboard-surfaces.md`, and
+`docs/reference/frontend-backend-integration.md`, `dashboard-surfaces.md`, and
 `clock-config-secrets.md` contract before changing behavior. Exact routes and composition order
 belong in source and their tests.

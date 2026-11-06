@@ -128,3 +128,5 @@
 .duo-method-pill[data-state=complete] { --method-color:var(--ui-positive); }
 .duo-method-pill[data-state=unknown],.duo-method-pill[data-state=unavailable] { --method-color:var(--ui-danger); }
 .duo-method-pill:not([data-state=idle]) { border:1px solid color-mix(in srgb,var(--method-color) 45%,transparent); background:color-mix(in srgb,var(--method-color) 12%,transparent); color:var(--method-color); }
+
+.hub-onboarding .duo-window-actions{display:block}.hub-onboarding .duo-window-status{display:flex;gap:12px;margin-bottom:20px}.hub-onboarding .duo-window-status>.icon{flex-shrink:0;margin-top:2px}.hub-onboarding .duo-window-status strong{font-weight:500}.hub-onboarding .duo-window-status p{margin-top:4px;color:var(--ui-secondary);font-size:13px}

@@ -135,16 +135,6 @@ describe("canonical run-record service", () => {
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
     });
     if (settledRetry.state !== "applied") throw new Error("coverage retry setup refused");
-    const restart = measure("restart", 1, () => service.restart({
-      commandId: commandId(), runId: source.envelope.runId,
-      expectedVersion: terminal.run.version, runtimeConfig,
-    }, personLookupDescriptor));
-    if (restart.state !== "applied") throw new Error("coverage restart refused");
-    const settledRestart = service.transition({
-      commandId: commandId(), runId: restart.run.envelope.runId, expectedVersion: restart.run.version,
-      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW },
-    });
-    if (settledRestart.state !== "applied") throw new Error("coverage restart setup refused");
 
     const workerRun = created(service, {
       ...request,
@@ -501,7 +491,7 @@ it("competing connections cannot accept conflicting failure settlements", async 
 
 
 describe("current settings selection",()=>{
-  for(const operation of ["retry","restart"] as const)it(`${operation} selects active settings and preserves source and journal replay`,async ()=>{
+  it("retry selects active settings and preserves source and journal replay",async ()=>{
     const f=await settingsFixture();
     try{
       const source=f.create(),terminal=requireLifecycleApplied(f.service.transition({commandId:UUID_5,
@@ -510,7 +500,7 @@ describe("current settings selection",()=>{
       const selected=f.database.authority.runtimeConfig.get();assert.ok(selected);
       const request={commandId:"83000000-0000-4000-8000-000000000091",runId:terminal.envelope.runId,
         expectedVersion:terminal.version,runtimeConfig:selectRunRuntime(f.database.authority)};
-      const next=requireLifecycleApplied(f.service[operation](request,personLookupDescriptor));
+      const next=requireLifecycleApplied(f.service.retry(request,personLookupDescriptor));
       assert.equal(next.envelope.configSnapshotId,selected.configSnapshotId);
       assert.equal(next.envelope.configFingerprint,selected.configFingerprint);
       assert.notEqual(next.envelope.configSnapshotId,terminal.envelope.configSnapshotId);
@@ -518,7 +508,7 @@ describe("current settings selection",()=>{
       assert.deepEqual(f.database.authority.runs.get(terminal.envelope.runId),terminal);
       assert.equal(f.save({"timeouts.taskMs":{clear:true}}).state,"applied");
       const generation=f.database.getMeta().authorityGeneration;
-      assert.deepEqual(requireLifecycleApplied(f.service[operation](request,personLookupDescriptor)),next);
+      assert.deepEqual(requireLifecycleApplied(f.service.retry(request,personLookupDescriptor)),next);
       assert.equal(f.database.getMeta().authorityGeneration,generation);
     }finally{await f.close();}
   });

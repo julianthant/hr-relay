@@ -9,7 +9,7 @@ import { assertNoMigratedEnvironmentKeys,hostAwareResolutionEnvironment } from "
 import {
 CancelProfileOnboardingDuoRequestSchema,
 CancelProfileOnboardingRequestSchema,
-CompleteProfileOnboardingRequestSchema,
+CompleteProfileOnboardingRequestSchema, ReopenProfileOnboardingBrowserRequestSchema,
 ConfirmProfileOnboardingDuoRequestSchema,DeleteProfileAccountRequestSchema,PROFILE_ONBOARDING_STATE,
 ProfileLoginRequestSchema,
 ProfileOnboardingStateSchema,
@@ -249,6 +249,10 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   app.post("/api/v1/profile/onboarding/duo/browser", async c => {
     const request = CompleteProfileOnboardingRequestSchema.parse(await c.req.json()), draft = currentOnboarding(c.req.raw, request.operationId);
     return c.json(await profileRuntime.session.showOnboardingBrowser(draft.token, request.operationId));
+  });
+  app.post("/api/v1/profile/onboarding/duo/reopen", async c => {
+    const request = ReopenProfileOnboardingBrowserRequestSchema.parse(await c.req.json()), draft = currentOnboarding(c.req.raw, request.operationId);
+    return c.json(await profileRuntime.session.reopenOnboardingBrowser(draft.token, request.operationId, request.generation));
   });
   app.post("/api/v1/profile/onboarding/duo/portal", async c => {
     const request = CompleteProfileOnboardingRequestSchema.parse(await c.req.json()), draft = currentOnboarding(c.req.raw, request.operationId);

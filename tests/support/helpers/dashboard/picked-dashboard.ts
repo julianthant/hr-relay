@@ -22,7 +22,7 @@ export function pickedSignupState(state: (typeof PICKED_SIGNUP_STATES)[number]) 
   if (state === "details") return PublicProfileStateSchema.parse({ state: "signed-out", signUpRequired: true });
   const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
   const complete = { state: "complete", ceremonyObserved: true, portalAccepted: true, operatorConfirmed: true, exactCredentialRequestObserved: true };
-  return PublicProfileStateSchema.parse({ state: "onboarding", operationId: uuidOf(960), profileId: uuidOf(961), step: state === "both-added" ? "ready" : "duo",
+  return PublicProfileStateSchema.parse({ browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: uuidOf(960), profileId: uuidOf(961), step: state === "both-added" ? "ready" : "duo",
     methods: { key: state === "both-added" ? complete : idle,
       touch: state === "both-added" || state === "key-next" ? complete : state === "touch-pending" ? { ...idle, state: "pending", attemptId: uuidOf(962) }
         : state === "virtual" ? { ...idle, platformAuthenticator: "chromium-platform" } : idle } });

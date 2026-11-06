@@ -1,12 +1,14 @@
+import { randomUUID } from "node:crypto";
 import { prepareDuoPlatformAuthenticator, type DuoPlatformAuthenticator } from "./duo-platform-authenticator.js";
 import { createDuoBrowserFocus, type DuoBrowserFocus, type NativeFocusTarget } from "./native-browser-focus.js";
-import { createNativeBrowserProbe, DEFAULT_BROWSER_LAUNCHER, type PersistentContextLauncher } from "./native-browser.js";
+import { createNativeBrowserProbe, DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess, type PersistentContextLauncher } from "./native-browser.js";
+import type { ProfileOnboardingBrowser } from "../../../models/profiles/public-profile.js";
 import { privatePathRejects } from "../../storage/private-path.js";
 import { DuoAssertionRequestSchema } from "../../storage/configuration/duo-signing.js";
 import { stageFastDuoExtension } from "./fast-duo-extension.js";
 import { lstatSync, mkdirSync, realpathSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join } from "node:path";
-import { submitPinnedUcsdSsoCredentials } from "../../systems/browser-shared/ucsd-sso.js";
+import { submitPinnedUcsdSsoCredentials, waitForUcsdDuoSignIn } from "../../systems/browser-shared/ucsd-sso.js";
 import type { BrowserContext, Page, Worker } from "playwright";
 import { z } from "zod";
 import { BrowserDocumentIdSchema, PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../models/config/duo-credential-store.js";
@@ -15,7 +17,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 import { type BrowserRoots, type BrowserRootLaunch, type BrowserRootLaunchInput, type SignupBrowserRootInput } from "../../storage/browser-roots.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import type { DraftDuoAttempt, DraftDuoBrowserOwner, DraftDuoCapability, DraftDuoObservedContext, ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
-import { DuoDiagnosticExceptionTypeSchema, ProfileOnboardingDuoEventSchema, type ProfileOnboardingDuoEvent, type ProfileOnboardingDuoFailure } from "../../../models/profiles/profile.js";
+import { DuoDiagnosticExceptionTypeSchema, DuoPortalDiagnosticCodeSchema, ProfileOnboardingDuoEventSchema, type ProfileOnboardingDuoEvent, type ProfileOnboardingDuoFailure } from "../../../models/profiles/profile.js";
 
 export class ProfileOnboardingDuoProviderError extends Error {
   constructor(readonly kind: "unavailable" | "refused" | "unknown",
@@ -58,6 +60,13 @@ const BrokerRequestSchema = z.discriminatedUnion("kind", [
 ]);
 type BrokerRequest = z.infer<typeof BrokerRequestSchema>;
 
+function trustedPortalUrl(value: string): boolean {
+  const url = URL.parse(value);
+  return url !== null && url.protocol === "https:" && !url.port && !url.username && !url.password
+    && (url.hostname === "a5.ucsd.edu" && url.pathname.startsWith("/tritON/")
+      || url.hostname === "duo.ucsd.edu" || url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com"));
+}
+
 export interface OnboardingDuoProviderOptions {
   readonly browserRoots: BrowserRoots;
   readonly browserRoot: string;
@@ -70,7 +79,7 @@ export interface OnboardingDuoProviderOptions {
 }
 
 
-async function workerCall(worker: Worker, method: "install" | "next" | "reply" | "stop" | "assertContext" | "browserInstall" | "browserFocus" | "browserNext" | "browserReply" | "browserStop", args: readonly unknown[] = []): Promise<unknown> {
+async function workerCall(worker: Worker, method: "install" | "next" | "reply" | "stop" | "assertContext" | "browserInstall" | "browserFocus" | "browserPage" | "browserSelect" | "browserBounds" | "browserNext" | "browserReply" | "browserStop", args: readonly unknown[] = []): Promise<unknown> {
   try { return await worker.evaluate(async input => {
     const owner: unknown = Reflect.get(globalThis, "relayOnboarding");
     if (typeof owner !== "object" || owner === null) throw new Error("ONBOARDING_DUO_WORKER_UNAVAILABLE");
@@ -85,11 +94,18 @@ async function workerCall(worker: Worker, method: "install" | "next" | "reply" |
   }
 }
 
-
 export function createProfileOnboardingDuoProvider(options: OnboardingDuoProviderOptions): ProfileOnboardingDuoProvider {
+  const workersClosedBeforeContext = new WeakSet<Worker>();
+  function closingPollFailure(error: unknown, context: BrowserContext | undefined, worker: Worker | undefined): boolean {
+    // Playwright's bundled target-close subtype inherits Error.name.
+    return error instanceof ProfileOnboardingDuoProviderError && error.reason === "browser-lifetime"
+      && error.cause instanceof Error && /^TargetClosedError\d*$/u.test(error.cause.constructor.name)
+      && worker !== undefined && !workersClosedBeforeContext.has(worker) && context?.isClosed() === true;
+  }
   function failureEvent(error: unknown, operation?: ProfileOnboardingDuoEvent["operation"], durationMs?: number): ProfileOnboardingDuoEvent {
     const exceptionType = DuoDiagnosticExceptionTypeSchema.safeParse(error instanceof Error ? error.name : undefined);
-    return { stage: "refused", detail: error instanceof ProfileOnboardingDuoProviderError ? error.reason : "backend", code: error instanceof Error && error.message === "ONBOARDING_DUO_WORKER_UNAVAILABLE" ? "ONBOARDING_DUO_WORKER_UNAVAILABLE" : "ONBOARDING_DUO_PROVIDER_FAILED",
+    const portalCode = DuoPortalDiagnosticCodeSchema.safeParse(error instanceof Error ? error.message : undefined);
+    return { stage: "refused", detail: error instanceof ProfileOnboardingDuoProviderError ? error.reason : "backend", code: portalCode.success ? portalCode.data : error instanceof Error && error.message === "ONBOARDING_DUO_WORKER_UNAVAILABLE" ? "ONBOARDING_DUO_WORKER_UNAVAILABLE" : "ONBOARDING_DUO_PROVIDER_FAILED",
       ...(exceptionType.success ? { exceptionType: exceptionType.data } : {}),
       ...(operation === undefined ? {} : { operation }), ...(durationMs === undefined ? {} : { durationMs }) };
   }
@@ -107,6 +123,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     attempt: DraftDuoAttempt; profileDirectory: string; context?: BrowserContext; launching?: Promise<BrowserContext>; worker?: Worker;
     capability?: DraftDuoCapability; platform?: DuoPlatformAuthenticator; credentialId?: string; requestId?: string; keyRequested?: boolean; accepted: boolean; revoked: boolean;
     startup?: Promise<void>; pump?: Promise<void>;
+    pollFailures: Set<ProfileOnboardingDuoProviderError>;
     reportFailure: (error: Error) => Promise<void>; reporting?: Promise<void>; failure?: ProfileOnboardingDuoProviderError; retentionFailed?: boolean; stopFailureAfterSettlement?: ProfileOnboardingDuoProviderError; expiry?: ReturnType<typeof setTimeout>; close?: Promise<Readonly<{ state: "closed" | "uncertain" }>>;
     enrollmentRequestId?: string;
   };
@@ -115,9 +132,19 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     owner: DraftDuoBrowserOwner; profileDirectory: string; launch: BrowserRootLaunch; rootInput: BrowserRootLaunchInput; context?: BrowserContext; worker?: Worker;
     launching?: Promise<BrowserContext>; startup?: Promise<void>; pump?: Promise<void>; setup?: Page; setupOpening?: Promise<Page>; portal?: Page; portalOpening?: Promise<void>;
     revoked: boolean; contextClosed: boolean; launchStarted: boolean; closureFailure?: unknown; pumpFailure?: unknown; close?: Promise<Readonly<{ state: "closed" | "uncertain" }>>;
-    platforms: Map<Page, Promise<DuoPlatformAuthenticator>>; relayTarget?: NativeFocusTarget;
+    targets: Map<Page, { tabId: number; windowId: number }>; platforms: Map<Page, Promise<DuoPlatformAuthenticator>>; relayTarget?: NativeFocusTarget;
+    process?: OwnedBrowserProcess; draining?: Promise<void>; profileRemovalProved?: true;
   };
   let browser: OwnedBrowser | undefined;
+  let windowState: ProfileOnboardingBrowser = { state: "closed", generation: 0 };
+  let reopening: Promise<void> | undefined;
+  let reopeningGeneration: number | undefined;
+  let reopeningOwner: DraftDuoBrowserOwner | undefined;
+  function browserState(operationId: string): ProfileOnboardingBrowser {
+    if (browser && browser.owner.operationId !== operationId) return { state: "checking", generation: 0 };
+    return windowState;
+  }
+  const closedWindow = () => { if (windowState.state !== "reopening") windowState = { state: "closed", generation: windowState.generation }; };
   let active: ProviderSession | undefined;
   function browserCurrent(session: OwnedBrowser): void {
     if (browser !== session || session.revoked) throw new ProfileOnboardingDuoProviderError("refused", "revoked");
@@ -200,6 +227,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       session.accepted = true;
     });
     current(session);
+    await selectSetup(session);
     return { observed: true };
   }
 
@@ -238,6 +266,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         session.retentionFailed = true;
         session.failure = new ProfileOnboardingDuoProviderError("unknown", "provider", new AggregateError([error, retentionError]));
       }
+      try { await selectSetup(session); }
+      catch (selectionError) { session.failure = new ProfileOnboardingDuoProviderError(session.failure?.kind ?? failure.kind, session.failure?.reason ?? failure.reason,
+        new AggregateError([session.failure ?? failure, selectionError], "onboarding-setup-selection-failed")); }
       if (browser && !(error instanceof DuoDiagnosticReportError)
         && !(error instanceof ProfileOnboardingDuoProviderError && error.cause instanceof DuoDiagnosticReportError)) {
         try { reportDuoEvent(browser.owner, failureEvent(error, operation, durationMs)); }
@@ -246,6 +277,13 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       }
     })();
     return session.reporting;
+  }
+
+  function retainPollFailure(session: ProviderSession, error: ProfileOnboardingDuoProviderError): void {
+    session.pollFailures.add(error);
+    if (session.failure !== error) session.failure = new ProfileOnboardingDuoProviderError(
+      session.failure?.kind ?? "unknown", session.failure?.reason ?? "browser-lifetime",
+      session.failure === undefined ? error : new AggregateError([session.failure, ...session.pollFailures]));
   }
 
   async function close(session: ProviderSession): Promise<Readonly<{ state: "closed" | "uncertain" }>> {
@@ -278,8 +316,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         })(), new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { expired = true; reject(new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime")); }, options.closeProofMs); })]);
         return { state: "closed" as const };
       } catch (error) {
-        session.failure = new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime", stopFailure === undefined || stopFailure === error
-          ? error : new AggregateError([stopFailure, error], "onboarding attempt closure unproved"));
+        const causes = [...new Set([session.failure, ...session.pollFailures, stopFailure, error].filter(value => value !== undefined))];
+        session.failure = new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime", causes.length === 1
+          ? causes[0] : new AggregateError(causes, "onboarding attempt closure unproved"));
         return { state: "uncertain" as const };
       } finally { clearTimeout(timer); }
     })();
@@ -292,8 +331,10 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       let timer: ReturnType<typeof setTimeout> | undefined;
       let expired = false;
       let workerStopFailure: unknown;
+      const started = options.clock.monotonicMs();
+      const progress: { operation: NonNullable<ProfileOnboardingDuoEvent["operation"]> } = { operation: "close-attempt" };
       try {
-        await Promise.race([(async () => {
+        session.draining = (async () => {
           const attempt = active;
           if (attempt) {
             if (!sameOwner(session.owner, attempt.attempt) || attempt.profileDirectory !== session.profileDirectory
@@ -303,70 +344,203 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
               workerStopFailure = attempt.stopFailureAfterSettlement;
             }
           }
+          progress.operation = "close-launch";
           await session.launching;
           session.launch.closing();
           if (session.launchStarted) {
             if (!session.context) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
             if (session.worker && !session.contextClosed) {
+              progress.operation = "close-worker";
               try { await workerCall(session.worker, "browserStop"); }
               catch (error) { workerStopFailure = workerStopFailure === undefined ? error : new AggregateError([workerStopFailure, error]); }
             }
             const pages = [...new Set([...session.context.pages(), ...(session.setup ? [session.setup] : []), ...(session.portal ? [session.portal] : [])])];
+            progress.operation = "close-pages";
             for (const page of pages) if (!page.isClosed()) await page.close({ runBeforeUnload: false });
+            progress.operation = "close-context";
+            if (session.process) await session.process.stop(options.closeProofMs, true);
             await session.context.close();
             if (!session.contextClosed || session.context.pages().length || pages.some(page => !page.isClosed())) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
           }
+          progress.operation = "close-callbacks";
           await Promise.allSettled([session.startup, session.setupOpening, session.portalOpening]);
+          progress.operation = "close-pump";
           await session.pump;
           if (expired) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
           if (browser !== session || active !== undefined && active !== attempt) throw new ProfileOnboardingDuoProviderError("unknown", "scope");
           session.launch.closed();
-          await options.browserRoots.withUnused(session.profileDirectory, probeOptions, async ({ remove }) => { remove(); }, session.rootInput);
+          progress.operation = "close-native-proof";
+          await options.browserRoots.withUnused(session.profileDirectory, probeOptions, async ({ remove }) => {
+            if (expired) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
+            remove();
+          }, session.rootInput);
+          session.profileRemovalProved = true;
+          if (expired) throw new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime");
           if (active === attempt) active = undefined;
           if (browser === session) browser = undefined;
-        })(), new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { expired = true; reject(new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime")); }, options.closeProofMs * 2); })]);
+          closedWindow();
+        })();
+        await Promise.race([session.draining, new Promise<never>((_resolve, reject) => { timer = setTimeout(() => { expired = true; reject(new ProfileOnboardingDuoProviderError("unknown", "browser-lifetime")); }, options.closeProofMs * 2); })]);
         return { state: "closed" as const };
       } catch (error) {
         let closureFailure = error;
-        try { session.launch.uncertain(error); } catch (failure) { closureFailure = failure; }
+        try { reportDuoEvent(session.owner, failureEvent(error, progress.operation, Math.max(0, options.clock.monotonicMs() - started))); }
+        catch (diagnostic) { closureFailure = new DuoDiagnosticReportError(diagnostic, error); }
+        try { session.launch.uncertain(closureFailure); } catch (failure) { closureFailure = failure; }
+        windowState = { state: "failed", generation: windowState.generation, code: progress.operation === "close-native-proof" ? "DUO_SETUP_FILES_BUSY" : "DUO_SETUP_STOP_FAILED" };
         session.closureFailure = workerStopFailure === undefined ? closureFailure : new AggregateError([workerStopFailure, closureFailure], "onboarding browser closure unproved"); return { state: "uncertain" as const }; }
       finally { clearTimeout(timer); }
     })();
     return session.close;
   }
+  async function ownedPage(session: OwnedBrowser, url: string, install = false): Promise<Page> {
+    const { context, worker } = session;
+    if (!context || !worker) throw new ProfileOnboardingDuoProviderError("unavailable", "worker");
+    const token = randomUUID(), marker = `${install ? "about:blank" : url}#relay-target=${token}`;
+    const opened = context.waitForEvent("page", { predicate: page => page.waitForURL(marker, { waitUntil: "commit", timeout: options.closeProofMs }).then(() => true, () => false), timeout: options.closeProofMs });
+    const [page, raw] = await Promise.all([opened, workerCall(worker, install ? "browserInstall" : "browserPage", [install ? token : marker])]);
+    const target = z.strictObject({ tabId: z.number().int().nonnegative(), windowId: z.number().int().nonnegative(), url: z.literal(marker) }).parse(raw);
+    browserCurrent(session);
+    if (page.url() !== target.url) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+    session.targets.set(page, target);
+    if (!install) await page.goto(url, { waitUntil: "domcontentloaded", timeout: options.closeProofMs });
+    browserCurrent(session);
+    return page;
+  }
+  async function selectPage(session: OwnedBrowser, page: Page): Promise<void> {
+    browserCurrent(session);
+    const target = session.targets.get(page);
+    if (!target || !session.worker || page.isClosed()) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+    const url = page.url();
+    await workerCall(session.worker, "browserSelect", [target.tabId, target.windowId]);
+    browserCurrent(session);
+    if (page.url() !== url) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+  }
+  async function selectSetup(resource: ProviderSession): Promise<void> {
+    const session = browser;
+    if (!session || session.revoked || !session.setup || session.setup.isClosed()) return;
+    if (session.context !== resource.context || session.worker !== resource.worker || session.profileDirectory !== resource.profileDirectory || !sameOwner(session.owner, resource.attempt)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+    if (!session.worker || session.setup.url() !== new URL("options.html", session.worker.url()).href) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+    await selectPage(session, session.setup);
+  }
+  async function recoverBrowser(owner: DraftDuoBrowserOwner, generation: number): Promise<void> {
+    if (reopening) {
+      if (reopeningGeneration !== generation || reopeningOwner === undefined || !sameOwner(reopeningOwner, owner)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+      return reopening;
+    }
+    owner.assertCurrent();
+    if (generation !== windowState.generation || browser && !sameOwner(browser.owner, owner)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+    reopeningGeneration = generation;
+    reopeningOwner = owner;
+    const previous = browser;
+    windowState = { state: "reopening", generation };
+    reopening = (async () => {
+      if (previous) {
+        previous.revoked = true;
+        let expired = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let code: "DUO_SETUP_STOP_FAILED" | "DUO_SETUP_FILES_BUSY" = "DUO_SETUP_STOP_FAILED";
+        try {
+          const check = () => { if (expired || browser !== previous) throw new Error("DUO_SETUP_STOP_FAILED"); };
+          await Promise.race([(async () => {
+            if (!previous.process) throw new Error("DUO_SETUP_STOP_FAILED");
+            await previous.process.stop(options.closeProofMs); check();
+            await Promise.allSettled([previous.launching, previous.draining, previous.startup, previous.setupOpening, previous.portalOpening, previous.pump]); check();
+            const attempt = active;
+            if (attempt) {
+              if (!sameOwner(owner, attempt.attempt)) throw new Error("DUO_SETUP_STOP_FAILED");
+              await Promise.allSettled([attempt.startup, attempt.pump, attempt.reporting]); check();
+              if (attempt.retentionFailed) throw attempt.failure ?? new Error("DUO_SETUP_STOP_FAILED");
+              if (!attempt.accepted && attempt.capability && keyMayExist(attempt)) await attempt.capability.retainUnknown({ kind: "unknown", causeTag: "browser-lifetime" });
+              check(); clearTimeout(attempt.expiry);
+            }
+            if (previous.context && (!previous.contextClosed || previous.context.pages().some(page => !page.isClosed()))) throw new Error("DUO_SETUP_STOP_FAILED");
+            code = "DUO_SETUP_FILES_BUSY";
+            await previous.launch.recover(probeOptions, check, async () => {
+              check();
+              if (previous.profileRemovalProved) {
+                if (lstatSync(previous.profileDirectory, { throwIfNoEntry: false }) !== undefined) throw new Error("DUO_SETUP_FILES_BUSY");
+              } else {
+                await options.browserRoots.withUnused(previous.profileDirectory, probeOptions, async ({ remove }) => { check(); remove(); }, previous.rootInput);
+                previous.profileRemovalProved = true;
+              }
+              check();
+            });
+            check();
+            if (active === attempt) active = undefined;
+            browser = undefined;
+          })(), new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(() => { expired = true; reject(new Error(code)); }, options.closeProofMs * 2);
+          })]);
+        } catch (cause) {
+          windowState = { state: "failed", generation, code };
+          throw new Error(code, { cause });
+        } finally { clearTimeout(timer); }
+      }
+      owner.assertCurrent();
+      windowState = { state: "closed", generation };
+    })();
+    try { await reopening; }
+    finally { reopening = undefined; reopeningGeneration = undefined; reopeningOwner = undefined; }
+  }
   async function openPortal(session: OwnedBrowser): Promise<void> {
     browserCurrent(session);
     const context = session.context;
     if (!context) throw new ProfileOnboardingDuoProviderError("unavailable", "provider");
+    if (session.portal?.isClosed()) { session.portal = undefined; session.portalOpening = undefined; }
     if (!session.portalOpening) session.portalOpening = (async () => {
-      const page = await context.newPage();
-      session.portal = page; browserCurrent(session);
+      const started = options.clock.monotonicMs();
       try {
-        await page.goto("https://duo.ucsd.edu", { waitUntil: "domcontentloaded" });
+        const page = session.portal ?? await ownedPage(session, "about:blank");
+        session.portal = page; browserCurrent(session);
+        await selectPage(session, page);
+        await page.goto("https://duo.ucsd.edu", { waitUntil: "domcontentloaded", timeout: options.closeProofMs }).catch((cause: unknown) => {
+          if (cause instanceof Error && cause.name === "TimeoutError") throw new Error("UCSD_DUO_NAVIGATION_TIMEOUT", { cause });
+          throw cause;
+        });
         browserCurrent(session);
-        await submitPinnedUcsdSsoCredentials(page, () => session.owner.acquireCredentials(), () => browserCurrent(session), options.closeProofMs, "/tritON/profile/SAML2/Redirect/SSO");
+        const landing = await waitForUcsdDuoSignIn(page, () => browserCurrent(session), options.closeProofMs);
         browserCurrent(session);
-      } catch { throw new ProfileOnboardingDuoProviderError("refused", "scope"); }
+        if (landing === "sso-form") await submitPinnedUcsdSsoCredentials(page, () => session.owner.acquireCredentials(), () => browserCurrent(session), options.closeProofMs, "/tritON/profile/SAML2/Redirect/SSO").catch((cause: unknown) => {
+          if (cause instanceof Error && cause.name === "TimeoutError") throw new Error("UCSD_SSO_SUBMIT_TIMEOUT", { cause });
+          throw cause;
+        });
+        browserCurrent(session);
+      } catch (error) {
+        try { reportDuoEvent(session.owner, failureEvent(error, "portal-open", Math.max(0, options.clock.monotonicMs() - started))); }
+        catch (diagnostic) { throw new DuoDiagnosticReportError(diagnostic, error); }
+        throw new ProfileOnboardingDuoProviderError("refused", "scope", error);
+      }
     })();
-    await session.portalOpening; browserCurrent(session);
+    const opening = session.portalOpening;
+    try { await opening; }
+    catch (error) {
+      if (session.portalOpening === opening) delete session.portalOpening;
+      if (session.portal && trustedPortalUrl(session.portal.url())) await focusPage(session, session.portal);
+      throw error;
+    }
+    browserCurrent(session);
     const page = session.portal;
     if (!page || page.isClosed()) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     const url = new URL(page.url());
-    if (url.protocol !== "https:" || url.port || url.username || url.password
-      || !(url.hostname === "a5.ucsd.edu" && url.pathname.startsWith("/tritON/")
-        || url.hostname === "duo.ucsd.edu"
-        || url.hostname === "duosecurity.com" || url.hostname.endsWith(".duosecurity.com"))) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+    if (!trustedPortalUrl(url.href)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     await focusPage(session, page);
     if (page.url() !== url.href) throw new ProfileOnboardingDuoProviderError("refused", "scope");
   }
   async function focusPage(session: OwnedBrowser, page: Page): Promise<void> {
     browserCurrent(session);
-    await page.bringToFront(); browserCurrent(session);
-    if (!session.worker) throw new ProfileOnboardingDuoProviderError("unavailable", "worker");
-    await workerCall(session.worker, "browserFocus"); browserCurrent(session);
-    if (!session.context) throw new ProfileOnboardingDuoProviderError("unavailable", "provider");
-    try { await focus.show(session.context); }
-    catch (error) { throw new ProfileOnboardingDuoProviderError("unavailable", "provider", error); }
+    await selectPage(session, page); browserCurrent(session);
+    try {
+      if (!session.worker) throw new ProfileOnboardingDuoProviderError("unavailable", "worker");
+      await workerCall(session.worker, "browserFocus"); browserCurrent(session);
+      if (!session.context) throw new ProfileOnboardingDuoProviderError("unavailable", "provider");
+      await focus.show(session.context, page);
+    }
+    catch (error) {
+      browserCurrent(session);
+      reportDuoEvent(session.owner, { ...failureEvent(error, "browser-focus"), code: "ONBOARDING_DUO_FOCUS_FAILED" });
+      if ((options.platform ?? process.platform) !== "darwin") throw new ProfileOnboardingDuoProviderError("unavailable", "provider", error);
+    }
     browserCurrent(session);
   }
   async function showBrowser(owner: DraftDuoBrowserOwner): Promise<void> {
@@ -384,11 +558,8 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       if (!previous.worker || !previous.context) throw new ProfileOnboardingDuoProviderError("unavailable", "provider");
       const setupUrl = new URL("options.html", previous.worker.url()).href;
       if (previous.setupOpening || !previous.setup || previous.setup.isClosed()) {
-        const context = previous.context;
         previous.setupOpening ??= (async () => {
-          const existing = context.pages().find(page => !page.isClosed() && page.url() === setupUrl);
-          const page = existing ?? await context.newPage(); browserCurrent(previous);
-          if (!existing) { await page.goto(setupUrl, { waitUntil: "domcontentloaded" }); browserCurrent(previous); }
+          const page = await ownedPage(previous, setupUrl); browserCurrent(previous);
           return page;
         })();
         previous.setup = await previous.setupOpening; browserCurrent(previous);
@@ -423,7 +594,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     });
     assertOwner();
     const launch = options.browserRoots.beginSignupLaunch(request), rootInput = launch.input, profileDirectory = rootInput.profileDirectory;
-    const session: OwnedBrowser = { owner, profileDirectory, launch, rootInput, revoked: false, contextClosed: false, launchStarted: false, platforms: new Map(), relayTarget };
+    windowState = { state: "opening", generation: windowState.generation + 1 };
+    const generation = windowState.generation;
+    const session: OwnedBrowser = { owner, profileDirectory, launch, rootInput, revoked: false, contextClosed: false, launchStarted: false, targets: new Map(), platforms: new Map(), relayTarget };
     browser = session;
     const setupStarted = options.clock.monotonicMs();
     session.startup = (async () => {
@@ -435,10 +608,14 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       catch (error) { throw new ProfileOnboardingDuoProviderError("unavailable", "browser-root", error); }
       session.launchStarted = true;
       session.launching = browserLauncher.launch({ profileDirectory: session.profileDirectory, headless: false,
-        extensionDirectory, acceptDownloads: false, downloadsPath: session.profileDirectory, viewport: { width: 1100, height: 800 }, disablePasswordManager: true, defaultContextOptions: true }).then(context => {
+        extensionDirectory, acceptDownloads: false, downloadsPath: session.profileDirectory, viewport: { width: 640, height: 720 }, timeoutMs: options.closeProofMs, ownedProcess: process => { session.process = process; process.onExit(() => { if (browser === session) closedWindow(); }); }, disablePasswordManager: true, defaultContextOptions: true }).then(context => {
         session.context = context;
         context.on("close", () => {
           session.contextClosed = true;
+          if (browser === session) {
+            if (session.process?.exited()) closedWindow();
+            else if (windowState.state === "open" || windowState.state === "opening") windowState = { state: "checking", generation: windowState.generation };
+          }
           // Context closure precedes native profile release; the next owner operation proves cleanup.
           if (!session.close) {
             session.revoked = true;
@@ -459,14 +636,18 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().startsWith("chrome-extension://") && worker.url().endsWith("/src/relay-background.js"), timeout: options.closeProofMs });
       browserCurrent(session);
       const worker = session.worker;
-      await workerCall(worker, "browserInstall"); browserCurrent(session);
+      worker.on("close", () => { if (!context.isClosed()) workersClosedBeforeContext.add(worker); });
+      const setupUrl = new URL("options.html", worker.url()).href;
+      session.setup = await ownedPage(session, setupUrl, true);
+      browserCurrent(session);
       session.pump = (async () => {
         while (!session.revoked) {
           const raw = await workerCall(worker, "browserNext");
           if (raw === null && session.revoked) return;
           const request = z.discriminatedUnion("kind", [
-            z.strictObject({ id: z.uuid(), kind: z.enum(["state", "portal", "start", "cancel", "confirm"]), method: z.enum(["key", "touch"]).optional(), attemptId: z.uuid().optional() }),
+            z.strictObject({ id: z.uuid(), kind: z.enum(["state", "portal", "portal-show", "start", "cancel", "confirm"]), method: z.enum(["key", "touch"]).optional(), attemptId: z.uuid().optional() }),
             z.strictObject({ id: z.uuid(), kind: z.literal("return") }),
+            z.strictObject({ id: z.uuid(), kind: z.literal("window-closed") }),
             z.strictObject({ id: z.uuid(), kind: z.literal("event"), event: ProfileOnboardingDuoEventSchema }),
             z.strictObject({ id: z.uuid(), kind: z.literal("platform"), url: z.url() }),
           ]).parse(raw);
@@ -474,6 +655,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           let operationFailure: unknown;
           try {
             browserCurrent(session);
+            if (request.kind === "window-closed") { closedWindow(); continue; }
             if (request.kind === "event") {
               if (request.event.stage === "intercepted" && active) {
                 if (active.enrollmentRequestId && active.enrollmentRequestId !== request.event.requestId) throw new ProfileOnboardingDuoProviderError("refused", "scope");
@@ -494,9 +676,18 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
               continue;
             }
             if (request.kind === "portal") await openPortal(session);
+            else if (request.kind === "portal-show") {
+              if (!session.portal || !trustedPortalUrl(session.portal.url())) throw new ProfileOnboardingDuoProviderError("refused", "scope");
+              await focusPage(session, session.portal);
+            }
             else if (request.kind === "return") {
               if (!session.relayTarget) throw new ProfileOnboardingDuoProviderError("refused", "provider");
-              await focus.returnToRelay(session.relayTarget);
+              try { await focus.returnToRelay(session.relayTarget); }
+              catch (error) {
+                browserCurrent(session);
+                reportDuoEvent(owner, { ...failureEvent(error, "browser-return"), code: "ONBOARDING_DUO_FOCUS_FAILED" });
+                if ((options.platform ?? process.platform) !== "darwin") throw error;
+              }
             }
             else if (request.kind === "start") { if (!request.method || request.attemptId) throw new Error("scope"); await owner.start(request.method); }
             else if (request.kind === "cancel" || request.kind === "confirm") {
@@ -508,10 +699,17 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
             await workerCall(worker, "browserReply", [request.id, { ok: true, value: owner.readState() }]);
           } catch (error) {
             operationFailure = error;
+            let portalFailure: "untrusted" | "sign-in" | undefined;
+            const page = session.portal;
+            if (request.kind === "portal" && page && !page.isClosed()) {
+              const original = error instanceof ProfileOnboardingDuoProviderError ? error.cause : error;
+              if (!trustedPortalUrl(page.url())) portalFailure = "untrusted";
+              else if (original instanceof Error && ["UCSD_DUO_NAVIGATION_TIMEOUT", "UCSD_SSO_REDIRECT_TIMEOUT", "UCSD_SSO_FORM_TIMEOUT", "UCSD_SSO_SUBMIT_TIMEOUT"].includes(original.message)) portalFailure = "sign-in";
+            }
             try {
               if (!(error instanceof DuoDiagnosticReportError)) reportDuoEvent(owner, failureEvent(error, "browser-request", Math.max(0, options.clock.monotonicMs() - started)));
             } catch (reportError) { operationFailure = new DuoDiagnosticReportError(reportError, error); }
-            finally { await workerCall(worker, "browserReply", [request.id, { ok: false }]); }
+            finally { await workerCall(worker, "browserReply", [request.id, { ok: false, ...(portalFailure === undefined ? {} : { portalFailure }) }]); }
             if (operationFailure instanceof DuoDiagnosticReportError) throw operationFailure;
           } finally {
             if (!(operationFailure instanceof DuoDiagnosticReportError)) {
@@ -520,17 +718,28 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           }
         }
       })().catch(async error => {
-        if (session.revoked) return;
+        const pollFailure = error instanceof ProfileOnboardingDuoProviderError && error.reason === "browser-lifetime";
+        if (closingPollFailure(error, context, worker) || session.revoked && !pollFailure) return;
         session.revoked = true;
         session.pumpFailure = error;
+        if (browser === session && windowState.state !== "reopening" && windowState.state !== "failed") windowState = { state: "checking", generation: windowState.generation };
         try {
-          if (active) { await reportFailure(active, error); await close(active); }
+          const attempt = active;
+          if (attempt) { await reportFailure(attempt, error); if (pollFailure) retainPollFailure(attempt, error); await close(attempt); }
           else if (!(error instanceof DuoDiagnosticReportError)) reportDuoEvent(owner, failureEvent(error));
         } catch (reportError) { session.pumpFailure = new AggregateError([error, reportError]); }
       });
-      session.setup = context.pages()[0] ?? await context.newPage();
+      if (!session.setup) throw new ProfileOnboardingDuoProviderError("unavailable", "scope");
+      await session.setup.goto(setupUrl, { waitUntil: "domcontentloaded", timeout: options.closeProofMs });
       browserCurrent(session);
-      await session.setup.goto(new URL("options.html", worker.url()).href, { waitUntil: "domcontentloaded" });
+      for (const page of context.pages()) if (page !== session.setup && page.url() === "about:blank") await page.close();
+      await session.setup.waitForLoadState("domcontentloaded");
+      if (relayTarget?.workArea) {
+        const frame = await session.setup.evaluate(() => ({ width: Math.max(0, window.outerWidth - window.innerWidth), height: Math.max(0, window.outerHeight - window.innerHeight) }));
+        await workerCall(worker, "browserBounds", [relayTarget.workArea, frame]); browserCurrent(session);
+      }
+      session.setup.on("close", () => { if (browser === session && context.pages().every(page => page.isClosed())) closedWindow(); });
+      windowState = { state: "open", generation: windowState.generation };
       browserCurrent(session);
     })();
     let failure: { error: unknown } | undefined;
@@ -550,19 +759,31 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       catch (error) { failure = { error: new DuoDiagnosticReportError(error, failure?.error) }; }
     }
     if (failure !== undefined) {
+      windowState = { state: "failed", generation: windowState.generation, code: "DUO_SETUP_OPEN_FAILED" };
       const closure = await closeBrowser(session);
       if (closure.state !== "closed") throw new AggregateError([failure.error, session.closureFailure], "Duo setup and closure failed.");
+      if (browser === undefined && windowState.generation === generation) windowState = { state: "failed", generation, code: "DUO_SETUP_OPEN_FAILED" };
       throw failure.error;
     }
   }
 
   return Object.freeze({
-    showBrowser,
+    browserState,
+    recoverBrowser,
+    async showBrowser(owner: DraftDuoBrowserOwner) {
+      const previous = browser, generation = windowState.generation;
+      try { await showBrowser(owner); }
+      catch (cause) {
+        if (windowState.state !== "failed" && browser === previous && windowState.generation === generation && (!previous || sameOwner(previous.owner, owner))) windowState = { state: "failed", generation, code: "DUO_SETUP_OPEN_FAILED" };
+        throw cause;
+      }
+    },
     async openPortal(owner: DraftDuoBrowserOwner) { await showBrowser(owner); if (!browser) throw new ProfileOnboardingDuoProviderError("unavailable", "provider"); await openPortal(browser); },
     async closeBrowser(owner: DraftDuoBrowserOwner) {
       if (!browser) return { state: "closed" as const };
       if (!sameOwner(browser.owner, owner)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
-      return closeBrowser(browser);
+      const session = browser, closure = await closeBrowser(session);
+      return closure.state === "closed" ? { state: "closed" as const } : { state: "uncertain" as const, cause: session.closureFailure };
     },
     async start(attempt: DraftDuoAttempt, bindObservedContext: (context: DraftDuoObservedContext) => Promise<DraftDuoCapability>, onFailure: (error: Error) => Promise<void>): Promise<void> {
       if (active) {
@@ -575,7 +796,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       browserCurrent(browser);
       const session: ProviderSession = { attempt, profileDirectory: browser.profileDirectory,
         context: browser.context, worker: browser.worker,
-        reportFailure: onFailure, accepted: false, revoked: false };
+        reportFailure: onFailure, pollFailures: new Set(), accepted: false, revoked: false };
       active = session;
       session.startup = (async () => {
         if (!session.worker) throw new ProfileOnboardingDuoProviderError("unavailable", "worker");
@@ -634,8 +855,10 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
           if (error instanceof DuoDiagnosticReportError && session.failure) {
             session.failure = new ProfileOnboardingDuoProviderError(session.failure.kind, session.failure.reason, new AggregateError([session.failure, error]));
           }
-          if (session.revoked) return;
+          const pollFailure = error instanceof ProfileOnboardingDuoProviderError && error.reason === "browser-lifetime";
+          if (closingPollFailure(error, session.context, session.worker) || session.revoked && !pollFailure) return;
           await reportFailure(session, error);
+          if (pollFailure) retainPollFailure(session, error);
           queueMicrotask(() => { void close(session); });
         });
         session.expiry = setTimeout(() => {
