@@ -268,6 +268,16 @@ describe("redaction surface scan — the declaration audit", () => {
     }
     const looped = REDACTION_SURFACES.map(surface => surface.id === "egress/assistant-user-message" ? { ...surface, egress: "os-notification" as const } : surface);
     assert.ok(auditSurfaceOrigins(looped, SURFACE_LEAF_ORIGINS).some(problem => problem.includes('egress/assistant-user-message (os-notification) leaf "content"') && problem.includes("may not carry at all")));
+    for (const origin of ["operator-authored", "captured-hr-value", "local-filesystem-name", "protected-value"] as const) {
+      const reclassified = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-replay" && entry.path === "answer" ? { ...entry, origin } : entry);
+      assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, reclassified).some(problem => problem.includes('egress/assistant-replay (process-egress) leaf "answer"') && problem.includes("may not carry at all")), origin);
+    }
+    const replayUnexcepted = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-replay" && entry.path === "answer" ? { surface: entry.surface, path: entry.path, origin: entry.origin } : entry);
+    assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, replayUnexcepted).some(problem => problem.includes("needs a written exception")));
+    const captionExternal = SURFACE_LEAF_ORIGINS.map(entry => entry.surface === "egress/assistant-replay" && entry.path === "caption" ? { ...entry, origin: "external-text" as const } : entry);
+    assert.ok(auditSurfaceOrigins(REDACTION_SURFACES, captionExternal).some(problem => problem.includes('egress/assistant-replay (process-egress) leaf "caption"') && problem.includes("may not carry at all")));
+    const replayLooped = REDACTION_SURFACES.map(surface => surface.id === "egress/assistant-replay" ? { ...surface, egress: "os-notification" as const } : surface);
+    assert.ok(auditSurfaceOrigins(replayLooped, SURFACE_LEAF_ORIGINS).some(problem => problem.includes('egress/assistant-replay (os-notification) leaf "answer"') && problem.includes("may not carry at all")));
     const moved = REDACTION_SURFACES.map(surface => surface.id === "request/assistant" ? { ...surface, egress: "process-egress" as const } : surface);
     assert.ok(auditSurfaceOrigins(moved, SURFACE_LEAF_ORIGINS).some(problem => problem.includes('request/assistant (process-egress) leaf "message"') && problem.includes("may not carry at all")));
   });
