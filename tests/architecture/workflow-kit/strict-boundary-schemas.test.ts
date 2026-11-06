@@ -30,7 +30,7 @@ import { FrontendBootstrapWireSchema } from "../../../src/models/dashboard/boots
 import { DiagnosticBundleWireSchema } from "../../../src/models/dashboard/diagnostic-bundle.js";
 import { DashboardDayWireSchema } from "../../../src/models/dashboard/projection.js";
 import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/models/dashboard/run-detail.js";
-import { DashboardStreamEnvelopeSchema, DashboardTopicPatchSchema, DashboardTopicSnapshotSchema } from "../../../src/models/dashboard/subscription.js";
+import { DashboardStreamEnvelopeSchema } from "../../../src/models/dashboard/subscription.js";
 import { DelegationManifestSchema, DependencyRecordSchema } from "../../../src/rules/workflow/dependencies.js";
 import { GateResultRecordSchema } from "../../../src/models/workflow/gates.js";
 import { LedgerEntryPayloadSchema, LedgerEntrySchema, LedgerOutboxPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../src/rules/runs/ledger.js";
@@ -335,7 +335,7 @@ const BULK_RUN_COMMAND = {
   family: "run",
   type: "bump",
   targets: [{ runId: UUID_3, expectedVersion: 1 }],
-  mode: "all-or-none",
+  mode: "best-effort",
 };
 const PRESENT_PROOF_REFERENCE = {
   proofSchemaHash: HASH_A,
@@ -1008,8 +1008,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "ArtifactRef", schema: ArtifactRefWireSchema, fixtures: [ARTIFACT_REF] },
   { name: "CapturePointer", schema: CapturePointerWireSchema, fixtures: [{ artifactId: UUID_1, dimensions: { state: "missing", reason: "not captured" } }] },
   { name: "ArtifactResource", schema: ArtifactResourceWireSchema, fixtures: [ARTIFACT] },
-  { name: "DashboardTopicSnapshot", schema: DashboardTopicSnapshotSchema, fixtures: [{ topic: "artifact", payload: ARTIFACT }] },
-  { name: "DashboardTopicPatch", schema: DashboardTopicPatchSchema, fixtures: [{ topic: "artifact", payload: { operation: "replace-artifact-resource", target: { artifactId: UUID_1 }, replacement: ARTIFACT } }] },
   { name: "DashboardStreamEnvelope", schema: DashboardStreamEnvelopeSchema, fixtures: [{ type: "health", state: "live" }] },
 ];
 

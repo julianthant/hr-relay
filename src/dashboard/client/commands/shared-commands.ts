@@ -40,7 +40,7 @@ export function checkedCommandResult(command: CommandRequest, response: unknown)
         ? (target.family === "gate" && target.runId === command.target.runId && target.gateId === command.target.gateId)
           || (target.family === "run" && target.runId === command.target.runId)
         : target.family === "run" && (target.runId === command.target.runId
-        || ["cancel", "delete", "retry", "restart", "recover-run"].includes(command.type));
+        || ["cancel", "delete", "retry", "recover-run"].includes(command.type));
       case "gate": return (target.family === "gate" && target.runId === command.target.runId && target.gateId === command.target.gateId)
         || (target.family === "run" && target.runId === command.target.runId);
       case "start": return target.family === "run" || (target.family === "start" && target.workflowId === command.target.workflowId

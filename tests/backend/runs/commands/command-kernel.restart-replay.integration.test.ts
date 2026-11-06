@@ -137,7 +137,7 @@ function startTerminalRun(harness: Harness, options: Readonly<{ dryRun: boolean;
   return { runId, version };
 }
 
-function recoveredRun(harness: Harness, type: "retry" | "restart", target: { runId: string; version: number }) {
+function recoveredRun(harness: Harness, type: "retry", target: { runId: string; version: number }) {
   const applied = harness.kernel.execute(runCommand(type, target.runId, target.version));
   assert.equal(applied.state, "applied");
   if (applied.state !== "applied") throw new Error("unreachable");
@@ -150,24 +150,6 @@ function recoveredRun(harness: Harness, type: "retry" | "restart", target: { run
 }
 
 describe("command-kernel recovery choices", () => {
-  it.each(["failed", "cancelled"] as const)("Restart mints the next attempt from %s with input, dryRun and omissions unchanged", async outcome => {
-    const harness = await createHarness();
-
-    const target = startTerminalRun(harness, { dryRun: false, omit: true }, outcome);
-    const original = harness.database.authority.runs.get(target.runId);
-    assert.ok(original !== undefined);
-    const restarted = recoveredRun(harness, "restart", target);
-    assert.equal(restarted.envelope.continuation, undefined);
-    assert.equal(restarted.envelope.recovery, "restart-from-start");
-    assert.equal(restarted.envelope.retryOf, target.runId);
-    assert.equal(restarted.envelope.itemId, original.envelope.itemId);
-    assert.equal(restarted.envelope.attempt, original.envelope.attempt + 1);
-    assert.equal(restarted.envelope.dryRun, original.envelope.dryRun);
-    assert.deepEqual(restarted.envelope.stepOmissions, STEP_OMISSIONS);
-    assert.deepEqual(restarted.input, original.input);
-    assert.equal(Object.hasOwn(restarted.envelope, "startAt"), false, "a restart owns no explicit start node");
-  });
-
   it.each([false, true])("Retry preserves failed-source input, omissions and dryRun=%s without a recovery marker", async dryRun => {
     const harness = await createHarness();
     const target = startTerminalRun(harness, { dryRun, omit: true });
@@ -184,18 +166,5 @@ describe("command-kernel recovery choices", () => {
     assert.equal(Object.hasOwn(resumed.envelope, "startAt"), false);
     assert.deepEqual(harness.database.authority.writeIntents.listByRun(original.envelope.runId), []);
     assert.deepEqual(harness.database.authority.writeIntents.listByRun(resumed.envelope.runId), []);
-  });
-
-  it("refuses restart for a non-terminal run exactly as it refuses retry", async () => {
-    const harness = await createHarness();
-    const target = startTerminalRun(harness, { dryRun: false, omit: false }, "queued");
-    const before = harness.database.authority.runs.listByWorkflow(descriptor.id);
-    const again = harness.kernel.execute(runCommand("restart", target.runId, target.version));
-    assert.equal(again.state, "rejected");
-    if (again.state !== "rejected") return;
-    assert.match(again.message, /only a terminal run can be retried/u);
-    const retryAgain = harness.kernel.execute(runCommand("retry", target.runId, target.version));
-    assert.equal(retryAgain.state, "rejected");
-    assert.deepEqual(harness.database.authority.runs.listByWorkflow(descriptor.id), before);
   });
 });

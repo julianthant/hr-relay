@@ -1,13 +1,13 @@
 # Workflow authoring
 
 Start with the assigned brief, its README and the [codebase map](../reference/codebase-structure.md).
-Use the approved workflow maps and review policy in the [root instructions](../../../AGENTS.md#what-to-build)
+Use the approved workflow maps and review policy in the [root instructions](../../AGENTS.md#what-to-build)
 for coding authority and operator acceptance.
 
 Read [workflow-model](../reference/workflow-model.md),
 [task-contract](../reference/task-contract.md), [write-safety](../reference/write-safety.md) and
 [guards-and-tests](../reference/guards-and-tests.md) for their contracts. The internal
-[checklist](../../../.agents/skill-library/workflow-authoring/REFERENCE.md) adds no policy.
+[checklist](../../.agents/skill-library/workflow-authoring/REFERENCE.md) adds no policy.
 
 ## 1 · What you author and what is derived
 

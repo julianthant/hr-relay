@@ -603,10 +603,9 @@ Dashboard Rerun accepts done, failed and interrupted sources without uncertain w
 new source-bound run under the current descriptor, without inherited checkpoints or an implicit
 continuation. Compatible older source values remain available for operator selection.
 
-Native Retry and Restart retain their lifecycle contract: both take the item's next authority-allocated
-attempt and require the source descriptor version and fingerprint. Retry uses the existing checkpoint
-policies; an always-rerun node executes again. Restart marks a fresh restart-from-start attempt.
-Neither creates an authenticated continuation. Both preserve the write-safety and delegated-retry rules.
+Native Retry takes the item's next authority-allocated attempt and requires the source descriptor
+version and fingerprint. It uses the existing checkpoint policies; an always-rerun node executes again.
+It creates no authenticated continuation and preserves the write-safety and delegated-retry rules.
 
 Resume keeps the current attempt and retains completed results through exact server-issued continuation
 coordinates. Each source pins run, version, attempt and a digest of input and immutable execution
@@ -675,7 +674,7 @@ currently carry no dependency receipt: earlier or in-flight replacement historie
 native authority refuse with `RUN_CONTINUATION_REFUSED`, including own-run Resume. Effective
 members never substitute for an unprovable original scope.
 
-Dashboard Rerun consumes its canonical source-bound plan; native Retry and Restart use the lifecycle
+Dashboard Rerun consumes its canonical source-bound plan; native Retry uses the lifecycle
 service. These ordinary doors do not capture continuation lineage.
 
 The separate **Recover completed steps** action uses `run/recover-run`. It is operator-only: the assistant cannot retain or dispatch it. Native recovery and its server-derived planner require the kernel's exact active canonical recovery-command scope before reading product audit proof or minting an attempt; a parsed or retained command alone provides no authority. Its public request names only
@@ -800,7 +799,7 @@ The workflow has no transaction, gate, parallel, or delegation node. Its dry-run
 ## Not built yet
 
 - The wiring base must consume served descriptor projections through existing dashboard components, retaining explicit loading, empty, failure, refusal, and uncertain states.
-- Workflow coding follows the approved maps and review policy in the [root instructions](../../../AGENTS.md#what-to-build). Each workflow switches to served data, one at a time, after wiring across its required surfaces, a dry run where supported, and operator sign-off.
+- Workflow coding follows the approved maps and review policy in the [root instructions](../../AGENTS.md#what-to-build). Each workflow switches to served data, one at a time, after wiring across its required surfaces, a dry run where supported, and operator sign-off.
 - A workflow that first uses child-run execution must verify its registered targets, durable fan-out and recovery behavior through worker composition.
 
 

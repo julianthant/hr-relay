@@ -5481,7 +5481,7 @@ export class AuthorityDatabase implements Disposable {
         },
         findRunOrigin: (runId: string) => {
           const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
-            AND json_extract(request_json,'$.operation') IN ('create','retry','restart','recover')
+            AND json_extract(request_json,'$.operation') IN ('create','retry','recover')
             AND json_extract(outcome_json,'$.result.kind')='run'
             AND json_extract(outcome_json,'$.result.runId')=? ORDER BY id`).all(RunIdSchema.parse(runId));
           if (rows.length > 1) throw new Error("delegation-root-origin-ambiguous");

@@ -401,7 +401,7 @@ describe("approved Person Lookup scenarios", () => {
     const rerun = buildRerunPlan(database.authority, personLookupDescriptor, { runId: source.envelope.runId, expectedVersion: source.version, intent: "rerun", selectedStepKeys: personLookupDescriptor.timeline.map((step) => step.key) }, plan.planned);
     const runtimeConfig = database.authority.runtimeConfig.get(); assert.ok(runtimeConfig);
     const service = new RunRecordService({ database, clock, ids: sequentialIdFactory("c"), publishQueued: () => undefined });
-    const admitted = service.restart({ commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", runId: source.envelope.runId, expectedVersion: source.version,
+    const admitted = service.retry({ commandId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", runId: source.envelope.runId, expectedVersion: source.version,
       runtimeConfig: { generation: runtimeConfig.generation, settingsRevision: runtimeConfig.settingsRevision, settingsFingerprint: runtimeConfig.settingsFingerprint, configFingerprint: runtimeConfig.configFingerprint } }, personLookupDescriptor);
     assert.ok(admitted.state === "applied", JSON.stringify(admitted));
     const next = database.authority.runs.get(admitted.run.envelope.runId); assert.ok(next);

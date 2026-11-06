@@ -16,7 +16,8 @@ node_modules/
 .idea/
 
 # Claude Code
-.claude/
+.claude/*
+!.claude/skills
 .design/
 
 # Playwright CLI

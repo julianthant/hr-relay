@@ -92,7 +92,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   let ownsWorker: (lease: import("../../../../models/run/worker.js").WorkerLeaseRecord) => boolean = () => false;
   const projection = createOperatorProjection({ ownsWorker: lease => ownsWorker(lease), stateRoot, clock, appVersion, descriptorSetHash: setHash, ledger, database, descriptors: { resolve: id => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === id)?.descriptor }, reader: servedReader });
 
-  const { noteWriter, runLogsHub, timelineTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, lifecycle, startupCleanups, requiredClosure });
+  const { noteWriter, timelineTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, startupCleanups });
 
   const reportSupervisorFault = (error: Error): void => {
     const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "supervisor",
@@ -286,7 +286,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     } });
   const workbookLibrary = createWorkbookLibraryService({ repository: database.authority.workbooks, clock, sync: workbookSync });
 
-  const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors, runLogsHub,
+  const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors,
     actorLabel: () => {
       assertCurrent();
       const person = machineAdmission.readProfileRegistry().profiles.find(row => row.profileId === admission.profileBinding.profileId);
@@ -377,5 +377,5 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   gateParkTimer.unref();
   startupCleanups.push(() => clearInterval(gateParkTimer));
 
-  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, runLogsHub, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, custody });
+  return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, custody });
 }

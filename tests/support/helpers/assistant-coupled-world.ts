@@ -61,7 +61,7 @@ export async function assistantCoupledWorld() {
     submission: (_flow, person) => { mapped++; return { eid: person.employeeId }; },
     assertSubjectBinding: (_flow, person, input) => assert.equal(z.object({ eid: z.string() }).parse(input.value).eid, person.employeeId),
   });
-  const file = { path: 'docs/rebuild/assistant.md', mode: '100644', text: 'Synthetic public reference.\nDry runs stop before writes.' };
+  const file = { path: 'docs/reference/assistant.md', mode: '100644', text: 'Synthetic public reference.\nDry runs stop before writes.' };
   const bytes = Buffer.from(JSON.stringify({ ...SYNTHETIC_ASSISTANT_SOURCE, files: [file] }));
   const context = createAssistantContext(bytes, { ...SYNTHETIC_ASSISTANT_SOURCE, exportSha256: createHash('sha256').update(bytes).digest('hex') });
   const syntheticResponse = () => {

@@ -10,7 +10,7 @@ canonical typed command facade. The application lifecycle query supplies runtime
 current target versions and update availability. Application pause commands refresh every affected
 run in the served projection before quit notification. Queue producers retain the orthogonal pause
 state and available pause command. Ordinary Rerun accepts done, failed and interrupted sources and
-starts fresh; native Retry and Restart retain their lifecycle semantics. A separate server-authored
+starts fresh; native Retry retains its lifecycle semantics. A separate server-authored
 Recover completed steps action composes `run/recover-run` through the same client and confirmation
 flow. The server derives its checkpoint recovery plan from an exact failed or interrupted source.
 Readback verifies the new item attempt while the source remains unchanged. Incompatible contracts,
@@ -379,7 +379,7 @@ mock case for behavioral comparison. These checks do not establish live service 
 Boundary checks in `tests/architecture/dashboard/` cover wire connectivity, browser import closure,
 Fast Refresh exports, Settings vocabulary, and the absence of phone capture. Performance fixtures under
 `tests/perf/frontend/` prove complete search/copy/selection, interaction, and heap cleanup against
-Queue and Logs without HR services. Visual wiring uses the current [parity suite](../../../src/dashboard/PARITY.md)
+Queue and Logs without HR services. Visual wiring uses the current [parity suite](../../src/dashboard/PARITY.md)
 with mock values and zero diffs. No source schema, assertion, reference, membership, timeout,
 or coverage floor changes merely to make wiring pass.
 

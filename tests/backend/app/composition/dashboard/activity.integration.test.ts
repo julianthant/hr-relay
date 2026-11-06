@@ -22,7 +22,6 @@ import { registerActivityRoutes } from "../../../../../src/backend/transports/ht
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
 import type { ShellRouteDeps } from "../../../../../src/backend/transports/http/routes/shell-types.js";
 import { registerShellRoutes } from "../../../../../src/backend/transports/http/routes/shell.js";
-import { RunLogsStreamHub } from "../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import { createActivityQueries } from "../../../../../src/dashboard/client/queries/activity-queries.js";
 import { verifySelectionDownload } from "../../../../../src/dashboard/client/queries/selection-download.js";
 import { createDashboardTransport } from "../../../../../src/dashboard/client/transport.js";
@@ -139,15 +138,7 @@ async function fixture(options:{dynamicVolumeSeries?:boolean;rangeAware?:boolean
   const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));
   app.use("*",(c,next)=>{c.set("requestActorId",ActorIdSchema.parse("synthetic-operator"));return next();});
   registerActivityRoutes(app,{activity,activityPopulation});
-  const unavailable = (): never => { throw new Error("run-log-subscription-unavailable-in-activity-fixture"); };
-  const runLogsHub = new RunLogsStreamHub({
-    projection: { onChange: () => () => {}, cursor: unavailable, generation: unavailable,
-      buildDashboardDayWire: unavailable },
-    readRun: unavailable,
-    store: { tail: unavailable, snapshot: unavailable },
-  });
-  cleanup.push(() => runLogsHub.close());
-  registerShellRoutes(app,{bootstrap:{} as ShellRouteDeps["bootstrap"],search,xlsxExports:xlsx,hub:{} as ShellRouteDeps["hub"],runLogsHub});
+  registerShellRoutes(app,{bootstrap:{} as ShellRouteDeps["bootstrap"],search,xlsxExports:xlsx,hub:{} as ShellRouteDeps["hub"]});
   return {database,clock,activity,activityPopulation,search,xlsx,artifacts,sourceIdentity,app,activityDays,setShiftVolumeSeries:(value:boolean)=>{shiftVolumeSeries=value;}};
 }
 

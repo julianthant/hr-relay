@@ -30,8 +30,8 @@ before forming a theory.
 | "is the dry run really submit-free" / which workflows have a dry run | **Dry-run audit** → §9 |
 
 ## 2 · Selector / page-state repair (the loop — no shortcuts)
-1. Read the run's failure record (`npm run cli -- explain run <id>`) and the store's screenshots under `.tracker/artifacts/…`; quote the exact error and the step.
-2. `playwright-cli -s=dbg open "<url>"` headless through the Fast Duo workflow session (`channel: chromium`); use the registered protected credential source and follow the [environment and credential contract](../../../docs/rebuild/reference/clock-config-secrets.md) and the [operating reference](../repository-work/REFERENCE.md#environment); `playwright-cli --raw snapshot > /tmp/s.yml`; find the TRUE anchor.
+1. Read the run's failure record (`npm run cli -- explain run <id>`) and the store's screenshots under `.tracker/data/artifacts/…`; quote the exact error and the step.
+2. `playwright-cli -s=dbg open "<url>"` headless through the Fast Duo workflow session (`channel: chromium`); use the registered protected credential source and follow the [environment and credential contract](../../../docs/reference/clock-config-secrets.md) and the [operating reference](../repository-work/REFERENCE.md#environment); `playwright-cli --raw snapshot > /tmp/s.yml`; find the TRUE anchor.
 3. Fix in the store driver / selector registry: **structural anchors first (`id`, `name`, role+accessible name), observed labels behind them; a no-match must refuse by NAME, never fall through** (`.or()` is a union under strict mode — it asserts the arms are exclusive; prefer `.first()`-settle + a pure verdict function, D213).
 4. Port from legacy only with `// ported from hr-automation@<sha> <path>`; re-verify LIVE (D150 — live beats diffing legacy).
 5. Re-run the failing step live; then the focused unit or architecture check that covers it. If scenario-test evidence is needed, record the gap for operator-led design.
@@ -46,7 +46,7 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 
 ## 4 · Runtime / singleton
 - BFF is ONE process (lock + pinned 3938). Compare SERVED vs TREE build: `curl -s localhost:3938/api/v1/explorer | jq -r .buildId` vs `npx tsx -e 'import("./src/backend/app/build-id.ts").then(m => console.log(m.computeBuildId(process.cwd())))'`. Mismatch → restart the BFF (new workers refuse with `relay-build-changed-under-running-app`). Runs approved before the restart refuse new writes (`WRITE_BUILD_CHANGED`); Retry approves them under the new build.
-- `ls .tracker/locks/` + `kill -0 <pid>` — a dead holder's lock is observed, never rewritten by you.
+- `ls "$HOME/Library/Application Support/Relay/.tracker/data/locks"` (Windows: `%LOCALAPPDATA%\Relay\.tracker\data\locks`) + `kill -0 <pid>` — a dead holder's lock is observed, never rewritten by you.
 - Worker wedged at boot with its own old claim → D200 (lease is the evidence; sweep by workerId). A `claimed` row with an `attempting` intent is refused at startup by design — that is a §4.1 recovery, not a restart.
 
 ## 5 · Identity / checkpoint
@@ -60,19 +60,15 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 
 ## 7 · Guards / build
 - `build:registries` after adding or moving a workflow; `build:registries:check` is the freshness check.
-- New guard = file + `docs/rebuild/guard-inventory.json` entry, same commit; retire only with a `retired` entry.
+- New guard = file + `docs/guard-inventory.json` entry, same commit; retire only with a `retired` entry.
 - A browser-reachable module importing `node:*` crashes dev and only warns in prod — never alias/stub; move the Node half to a server module (`dashboard-wire-boundary` prints the chain).
 - `npm run typecheck && npm run lint && npm run test:coverage` is the gate; `--max-warnings 0`, no debt manifest.
 
-## 8 · Visual and scenario-test evidence
-`npm run test:parity` is the active desktop visual contract. Read [guards and tests](../../../docs/rebuild/reference/guards-and-tests.md)
+## 8 · Visual evidence
+`npm run test:parity` is the active desktop visual contract. Read [guards and tests](../../../docs/reference/guards-and-tests.md)
 for its runner and evidence requirements, and [dashboard parity](../../../src/dashboard/PARITY.md)
 for scene rules. Old visual receipts are historical; a green accessibility tree does not establish
 current visual acceptance (D187).
-
-There is no current `tests/scenario/` rehearsal corpus. An absent `dry-run.scenario.ts` manifest
-reports unavailable before execution. Scenario declarations and role-derived paths do not prove
-that a rehearsal ran. Scenario-test design remains operator-led.
 
 ## 9 · Dry-run audit ("dry run means nothing gets submitted")
 For a workflow (or all of them):
@@ -80,7 +76,7 @@ For a workflow (or all of them):
 2. For each transaction node: under `dryRun`, `executeDryRun` must PREVIEW (probe + would-prepare, or report `already-present`) and never fence/commit. Retained write-safety guards protect the fence and commit boundary; they do not prove a workflow rehearsal ran.
 3. A missing dry-run rehearsal manifest reports unavailable before execution. Do not invent a manifest or subject, and do not start browser/runtime work in its place.
 4. When an authorized live dry run has an available manifest, verify the whole path (search, navigation and form staging), then inspect `explain run` and durable counts. A refusal where the real run succeeds is a false rehearsal (D215); a preview that answers where the real run stops is the same defect from the other side.
-5. Record the matrix: `| workflow | rehearsal manifest (available/unavailable) | last verified live dry run (date, run id) | durable deltas | gaps |`. Scenario-test proof remains deferred to operator-led design.
+5. Record the matrix: `| workflow | rehearsal manifest (available/unavailable) | last verified live dry run (date, run id) | durable deltas | gaps |`.
 
 ## Close
 Failing test pinned → fix → gate green → under `/supervise` or an explicit review request, run the retained `review` skill's Correctness + Silent failures axes; otherwise inspect those two concerns inline → record (migration doc line / store AGENTS.md invariant) → tell the operator if it is lesson-worthy.
