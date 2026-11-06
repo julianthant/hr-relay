@@ -44,23 +44,23 @@ export function registerAssistantRoutes(app: DashboardApp, service: AssistantSer
         : await service.respond(input, c.req.raw.signal)));
     } catch { return c.json({ kind: "result", result: { state: "refused", code: "ASSISTANT_INVALID", message: ASSISTANT_FAILURES.ASSISTANT_INVALID } }, 400); }
   });
-  const unavailable = () => wireError("ASSISTANT_HISTORY_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE, false);
+  const HISTORY_UNAVAILABLE = ["ASSISTANT_HISTORY_UNAVAILABLE", ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE, false] as const;
   app.use("/api/v1/assistant/history", operatorMutationIngressGuard);
   app.get("/api/v1/assistant/history", c => {
     c.header("Cache-Control", "no-store");
     try {
-      if (service?.historyView === undefined) return c.json(unavailable(), 503);
+      if (service?.historyView === undefined) return c.json(wireError(...HISTORY_UNAVAILABLE), 503);
       return c.json(AssistantHistoryViewSchema.parse(service.historyView()));
-    } catch { return c.json(unavailable(), 503); }
+    } catch { return c.json(wireError(...HISTORY_UNAVAILABLE), 503); }
   });
   app.get("/api/v1/assistant/conversations/:conversationId", c => {
     c.header("Cache-Control", "no-store");
     try {
-      if (service?.conversation === undefined) return c.json(unavailable(), 503);
+      if (service?.conversation === undefined) return c.json(wireError(...HISTORY_UNAVAILABLE), 503);
       const view = service.conversation(c.req.param("conversationId"));
       return view === undefined ? c.json(wireError("ASSISTANT_CONVERSATION_STALE", ASSISTANT_FAILURES.ASSISTANT_CONVERSATION_STALE, false), 404)
         : c.json(AssistantConversationViewSchema.parse(view));
-    } catch { return c.json(unavailable(), 503); }
+    } catch { return c.json(wireError(...HISTORY_UNAVAILABLE), 503); }
   });
   app.post("/api/v1/assistant/history", async c => {
     c.header("Cache-Control", "no-store");
@@ -68,9 +68,9 @@ export function registerAssistantRoutes(app: DashboardApp, service: AssistantSer
     try { input = AssistantHistoryOperationSchema.parse(await readInput(c.req.raw, ASSISTANT_HISTORY_BODY_MAX_BYTES)); }
     catch { return c.json({ state: "refused", code: "ASSISTANT_INVALID" }, 400); }
     try {
-      if (service?.history === undefined) return c.json(unavailable(), 503);
+      if (service?.history === undefined) return c.json(wireError(...HISTORY_UNAVAILABLE), 503);
       return c.json(AssistantHistoryResultSchema.parse(service.history(input)));
-    } catch { return c.json(unavailable(), 503); }
+    } catch { return c.json(wireError(...HISTORY_UNAVAILABLE), 503); }
   });
   app.use("/api/v1/assistant/action", operatorMutationIngressGuard);
   app.post("/api/v1/assistant/action", async c => {

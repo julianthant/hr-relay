@@ -2598,6 +2598,7 @@ describe("authority.health preflight and static recovery boundary", () => {
     const adapterPath = "src/backend/storage/sqlite/authority-database.ts";
     const sqliteBoundaryPaths = [
       "src/backend/storage/sqlite/assistant-authorization.ts",
+      "src/backend/storage/sqlite/assistant-history.ts",
       "src/backend/storage/sqlite/assistant-model-preference.ts",
       "src/backend/storage/sqlite/authority-database.ts",
       "src/backend/storage/sqlite/backup-inspection.ts",
