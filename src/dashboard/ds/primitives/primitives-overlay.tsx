@@ -18,7 +18,7 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import { X } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { dsElev, dsIcon, dsLayer, dsMotion, dsRadius, dsText } from "../theme/tokens.js";
-import { IconButton } from "./primitives-core.js";
+import { Button, IconButton } from "./primitives-core.js";
 import { FloatingSurface } from "./primitives-layout.js";
 
 /** Floating surfaces: Dialog, Drawer, Popover, Tooltip, Toast. */
@@ -756,17 +756,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 /** A toast tied to the surface that renders it: shown while mounted, withdrawn when the state clears.
- * `sticky` is for a state the operator must act on; otherwise it dismisses itself. */
+ * `sticky` is for a state the operator must act on; otherwise it dismisses itself. Without a `ToastProvider` it renders inline. */
 export function Notice({ tone, title, description, action, sticky = false }: Pick<DsToast, "tone" | "title" | "description" | "action" | "sticky">) {
-  const { toast, dismiss } = useToasts();
+  const toasts = useContext(ToastContext);
   const onAction = useRef(action?.onAction);
   onAction.current = action?.onAction;
   const label = action?.label;
   useEffect(() => {
-    const id = toast({ tone, title, description, sticky, duration: 6000, action: label === undefined ? undefined : { label, onAction: () => onAction.current?.() } });
-    return () => dismiss(id);
-  }, [toast, dismiss, tone, title, description, label, sticky]);
-  return null;
+    if (toasts === null) return;
+    const id = toasts.toast({ tone, title, description, sticky, duration: 6000, action: label === undefined ? undefined : { label, onAction: () => onAction.current?.() } });
+    return () => toasts.dismiss(id);
+  }, [toasts, tone, title, description, label, sticky]);
+  if (toasts !== null) return null;
+  return <div role={tone === "danger" ? "alert" : "status"}><span>{title}</span><span>{description}</span>{action && <Button size="sm" variant="secondary" onClick={action.onAction}>{action.label}</Button>}</div>;
 }
 
 function ToastViewport() {

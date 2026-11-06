@@ -1,6 +1,6 @@
 import { useState, type RefObject } from 'react';
 import { MoreHorizontal } from 'lucide-react';
-import { Badge, Banner, Button, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, Drawer, DrawerContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Field, IconButton, Input, Select } from '../../ds/ui.js';
+import { Badge, Banner, Notice, Button, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, Drawer, DrawerContent, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Field, IconButton, Input, Select } from '../../ds/ui.js';
 import { formatInstantDate } from '../../lib/date-format.js';
 import type { WorkbookLibraryAction, WorkbookLibraryEntry, WorkbookLibraryVersion } from '../../../models/dashboard/workbook-library.js';
 import type { LibraryChangeResult } from '../../state/spreadsheet-wiring-adapter.js';
@@ -31,8 +31,8 @@ export function SpreadsheetVersions({ entry, onClose, onDownload, onChange, onCh
   return <><Drawer open={entry !== null} onOpenChange={open => { if (!open && !working) close(); }}><DrawerContent title="Versions" description={entry?.name} size="480px" className="hub-sheets-versions">
     {entry && <div className="hub-sheets-versions-body">
       <section className="hub-sheets-section"><h3>Source</h3><div className="hub-sheets-version-row"><div>{entry.metadata.sharePoint ? <><a href={entry.metadata.sharePoint.url} target="_blank" rel="noreferrer">SharePoint</a><p className="hub-sheets-caption">{lastSync ? `Last sync ${formatInstantDate(lastSync.savedAt)}` : 'No sync saved yet'}</p></> : <><p>This Mac</p><p className="hub-sheets-caption">Versions are saved in your local library.</p></>}</div>{entry.metadata.sharePoint && <Button disabled={working || pending} onClick={() => void perform(() => onChange(entry, { kind: 'sync' }))}>Sync now</Button>}</div></section>
-      {pending && <Banner tone="warning" title="Change not yet confirmed">Check the result before changing this spreadsheet again.<Button disabled={working} onClick={() => void perform(() => onCheck(entry))}>Check result</Button></Banner>}
-      {error && !dialog && <Banner tone="danger" title="Version action unavailable">{error}</Banner>}
+      {pending && <Notice sticky tone="warning" title="Change not yet confirmed" action={working ? undefined : { label: "Check result", onAction: () => void perform(() => onCheck(entry)) }} />}
+      {error && !dialog && <Notice tone="danger" title="Version action unavailable" description={error} />}
       <section className="hub-sheets-section"><div className="hub-sheets-toolbar"><h3>Saved versions</h3><Button disabled={working || pending} onClick={() => newVersion(entry.metadata.sharePoint ? 'sharepoint' : `version:${entry.state.selectedVersionId}`)}>New version</Button></div>
         <div className="hub-sheets-version-list">{entry.state.versions.toReversed().map(version => <div className="hub-sheets-version-row" key={version.id}>
           <div className="min-w-0">{renameId === version.id ? <Field label="Version name"><Input value={name} disabled={working || pending} onChange={event => setName(event.target.value)} /></Field> : <><strong>{version.name}</strong><div className="hub-sheets-actions">{version.id === entry.state.selectedVersionId && <Badge>In use</Badge>}{version.source === 'sharepoint' && <Badge>Automatic</Badge>}</div><p className="hub-sheets-caption">{formatInstantDate(version.savedAt)} · {version.source === 'sharepoint' ? 'Synced from SharePoint' : version.source === 'workflow' ? 'Workflow' : 'Saved locally'}</p></>}</div>

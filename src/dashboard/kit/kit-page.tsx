@@ -42,7 +42,6 @@ import {
   DateRangeInput,
   Disclosure,
   MetaLine,
-  Refusal,
   DS_STATUS,
   DS_STATUS_ORDER,
   Dialog,
@@ -558,41 +557,10 @@ function ContainersSection() {
             </CardFooter>
           </Card>
 
-          <Banner
-            tone="danger"
-            title="UCPath write parked"
-            action={
-              <Button size="sm" variant="dangerGhost">
-                Resolve
-              </Button>
-            }
-          >
-            The transaction was submitted but the read-back did not confirm it. Nothing will be
-            retried automatically — check UCPath and mark it present or absent.
-          </Banner>
-          <Banner tone="warning" title="OCR fell back to tier 2 on 3 pages">
-            Handwritten SSNs on those pages were re-read by a weaker model. Verify them.
-          </Banner>
           <Banner tone="info" title="Synthetic data">
             Nothing on this page touches a real system.
           </Banner>
           <Banner tone="success" title="12 records verified" />
-
-          {/* Differentiate rule refusals from failures and retain the code explaining the refusal. */}
-          <Refusal
-            title="Nothing was enqueued — this form was built on a stale contract"
-            code="workflow-version-conflict"
-            outcome="nothing is enqueued"
-            meta={["form built at v5", "server serves v6"]}
-            action={
-              <Button size="sm" variant="primary">
-                Reload the form
-              </Button>
-            }
-          >
-            Separations changed behaviour after this modal opened. Starting on the old contract
-            would run retired code against a live person.
-          </Refusal>
 
           <Well className="flex flex-col gap-[var(--ds-space-snug)]">
             <SectionLabel>MetaLine — the provenance line</SectionLabel>
@@ -1158,9 +1126,6 @@ function OverlaysSection() {
           description="They will be written to UCPath in one batch. Nothing is written until you confirm."
         >
           <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
-            <Banner tone="warning" title="3 records came from a tier-2 OCR read">
-              Verify the handwritten fields before approving.
-            </Banner>
             <KeyValueList
               items={[
                 { key: "Workflow", value: "Emergency Contact" },

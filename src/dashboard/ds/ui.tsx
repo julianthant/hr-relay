@@ -104,7 +104,6 @@ export {
   MetaLine,
   /** A wrapping row of PEER facts. */
   ChipRow,
-  Refusal,
   BulletList,
   EmptyState,
   Tabs,

@@ -101,9 +101,6 @@ export function useStorageDoctor() {
   return { doctor, runDoctor };
 }
 
-export interface RestoreWriteHold { backupCapturedAt: string; waitingWrites: number; version: number }
-export type EndHoldResult = { state: "ended" } | { state: "refused"; code: "RESTORE_WRITE_HOLD_END_REFUSED" };
-export interface RestoreWriteHoldPort { hold: RestoreWriteHold | undefined; end: (version: number) => Promise<EndHoldResult> }
-/** No port means no open hold. The parity harness supplies a fixture port. */
-export const RestoreWriteHoldContext = createContext<RestoreWriteHoldPort | undefined>(undefined);
-export const useRestoreWriteHold = () => useContext(RestoreWriteHoldContext);
+/** Set while this person's data was restored from a backup; no provider means no notice. */
+export const RestoreNoticeContext = createContext<{ backupCapturedAt: string } | undefined>(undefined);
+export const useRestoreNotice = () => useContext(RestoreNoticeContext);

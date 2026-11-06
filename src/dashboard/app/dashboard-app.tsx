@@ -45,7 +45,7 @@ import {
 SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../models/dashboard/bootstrap.js";
-import { Banner,Button,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
+import { Banner,Button,Notice,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { DashboardCommandBindingProvider, useDashboardClient, useDashboardCommandExecutor } from "../state/client-context.js";
 import type { CommandOutcome, RetainedCommandRequest, CommandExecutionOptions, CommandExecutionScope } from "./commands/command-executor.js";
 import { useServedNow } from "../state/served-clock.js";
@@ -97,7 +97,7 @@ import { mockQueueId } from "../surfaces/workflows/mocks/workflow-queue-model.js
 import { updateMockReview } from "../surfaces/workflows/mocks/workflow-review-model.js";
 import "../surfaces/shell/permanent-shell.css";
 import { PROPOSED_STATUS, dsStatusOf } from "../surfaces/shared/status/status-model.js";
-import { StorageBanner } from "../surfaces/settings/storage/storage-settings.js";
+import { StorageNotice } from "../surfaces/settings/storage/storage-settings.js";
 import { WorkspaceRail } from "../surfaces/shell/workspace-rail.js";
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { notificationTargetUnavailable, resolveRunNavigation } from "./navigation/run-navigation.js";
@@ -1118,12 +1118,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         <DashboardPageBoundary resetKey={JSON.stringify(route)} onRecover={() => setRoute({ start: false }, "replace")}>
         {/* Show unreachable authority on every view; backup warnings do not stop work. */}
         {}
-        <StorageBanner
+        <StorageNotice
           storage={boot.storage}
           onOpenSettings={openSettings}
         />
         {quitting && <Banner tone="info" shape="band" title="Relay quits after runs pause">Each run finishes its current step first. A submit in progress is never interrupted.</Banner>}
-        {lifecycle.resource.state === "failed" && <Banner tone="danger" shape="band" title="Run controls unavailable">{operatorFailureSentence("APPLICATION_ADMISSION_REFUSED")}<Button size="sm" variant="secondary" onClick={lifecycle.refresh}>Check connection</Button></Banner>}
+        {lifecycle.resource.state === "failed" && <Notice sticky tone="danger" title="Run controls unavailable" description="Work remains held." action={{ label: "Check connection", onAction: lifecycle.refresh }} />}
 
         <div className="flex min-h-0 flex-1">
 
