@@ -1,10 +1,12 @@
+import { createDebugEventWriter } from "../../../src/backend/logs/debug-events.js";
+import { debugTimelineFixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 import { profileBrowserClosure } from "../../../src/backend/runtime/browser/profile-browser-closure.js";
 import { runtimeLifetimeLock } from "../../support/helpers/backend/runtime-lifetime.js";
 import { syntheticOnboardingDuo, finishProfileOnboarding } from "../../support/helpers/admission-fixture.js";
 import { createProductionAssistantTools } from "../../../src/backend/assistant/tools.js";
 import { assistantKnowledgeArtifact, createAssistantContext } from "../../../src/backend/assistant/context.js";
 import { AssistantRequestSchema, AssistantResultSchema } from "../../../src/models/dashboard/assistant.js";
-import { type AssistantFunctionContext } from "../../../src/backend/assistant/service.js";
+import { createAssistantService, type AssistantFunctionContext } from "../../../src/backend/assistant/service.js";
 import { createAssistantAuthorization } from "../../../src/backend/assistant/authorization.js";
 
 
@@ -416,4 +418,47 @@ it("keeps checkpoint recovery operator-only even when a manifest classifies the 
   assert.equal(f.database.authority.commands.get(command.commandId), undefined);
   assert.equal(f.database.authority.commandAudits.findByCommand(command.commandId), undefined);
   assert.equal(f.database.authority.assistantAuthorization.actionByCommand(command.commandId), undefined);
+});
+
+it("answers a natural workflow question using production knowledge without private input or action functions", async () => {
+  const f = await fixture(), knowledge = assistantKnowledgeArtifact([{ id: "person-lookup", label: "Person Lookup" }]);
+  const tools = createProductionAssistantTools({ knowledge, database: f.database, kernel: f.kernel, authorization: f.authorization,
+    actorId: "local-operator", clock: f.clock, assertCurrent: () => f.runtime.assertCurrent(f.active.token) });
+  const payloads: unknown[] = [], debug = debugTimelineFixture();
+  const debugEvents = createDebugEventWriter({ repository: debug.repository, clock: f.clock, build: "synthetic", development: false });
+  const model = "synthetic-model", authority = { revision: 1, attemptGeneration: 1, availability: "available" as const };
+  const service = createAssistantService({ ...tools, context: createAssistantContext(Buffer.from(knowledge.bytes), knowledge.policy),
+    runtime: () => knowledge.policy, clock: f.clock,
+    modelPolicy: () => ({ policy: { model, eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: "2026-10-22T12:00:00.000Z" }, isCurrent: () => true }),
+    debugEvents,
+    account: { async readAuthority() { return authority; }, revalidateAuthority() { return true; },
+      async listAssistantModels() { return { catalog: { models: [{ slug: model, displayName: "Synthetic" }] }, authority }; },
+      async inferAssistant(input) {
+        payloads.push(input); assert.deepEqual(input.tools, []);
+        const bytes = JSON.stringify(input);
+        for (const privateValue of ["Which workflows", "One short sentence", "PRIVATE_SUBJECT_CANARY", "PRIVATE_SUFFIX_CANARY"]) assert.equal(bytes.includes(privateValue), false);
+        assert.ok(bytes.includes("Person Lookup is a served workflow"));
+        return { responseId: "synthetic-response", model, output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Relay can run Person Lookup." }] }] };
+      } },
+  });
+  const result = await service.respond({ message: "Which workflows can Relay run? One short sentence.", subjectRef: "PRIVATE_SUBJECT_CANARY" }, new AbortController().signal);
+  assert.equal(result.state, "answered");
+  if (result.state !== "answered") throw new Error("workflow answer required");
+  assert.equal(result.text, "Relay can run Person Lookup."); assert.equal(result.citations.length, 1);
+  const citation = result.citations[0];
+  assert.deepEqual(citation, { path: knowledge.reference.files[0].path, revision: knowledge.policy.revision,
+    startLine: Object.keys(knowledge.topics).indexOf("workflow person-lookup") + 1,
+    endLine: Object.keys(knowledge.topics).indexOf("workflow person-lookup") + 1,
+    quote: `workflow person-lookup: ${knowledge.topics["workflow person-lookup"]}` });
+  assert.equal(payloads.length, 1); assert.equal(debug.records.length, 0);
+  const refused = await service.respond({ message: "Which workflows can Relay run? PRIVATE_SUFFIX_CANARY" }, new AbortController().signal);
+  assert.equal(refused.state, "refused"); if (refused.state === "refused") assert.equal(refused.code, "ASSISTANT_PROPOSAL_REFUSED");
+  assert.equal(payloads.length, 1); assert.equal(debug.records.length, 1);
+  const payload = debug.records[0].payload; assert.equal(payload.kind, "debug");
+  if (payload.kind !== "debug") throw new Error("local proposal diagnostic required");
+  const { build, pid, pinned, ...diagnostic } = payload.event;
+  assert.equal(build, "synthetic"); assert.equal(pid, process.pid); assert.equal(pinned, false);
+  assert.deepEqual(Object.keys(diagnostic).sort(), ["area", "category", "code", "correlationId", "phase", "reason"]);
+  assert.deepEqual({ ...diagnostic, correlationId: "generated" }, { category: "http", phase: "failed", correlationId: "generated", area: "assistant-proposal", reason: "input-projection", code: "ASSISTANT_PROPOSAL_REFUSED" });
+  assert.equal(JSON.stringify(debug.records).includes("PRIVATE"), false);
 });

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import type { DebugEventSchema } from "../../models/events/timeline.js";
 import { AuthoritySourceClosureUnprovedError } from '../storage/source-closure.js';
 import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
 import { z } from "zod";
@@ -43,6 +45,7 @@ export interface AssistantFunctionSet {
   }>[];
 }
 export interface AssistantServiceOptions {
+  readonly debugEvents?: { emit(event: Omit<z.input<typeof DebugEventSchema>, "build" | "pid">): void };
   readonly verifySelectedModel?: (signal: AbortSignal) => Promise<void>;
   readonly readModelPreference?: () => AssistantModelPreferenceView;
   readonly readPermission?: () => AssistantPermissionView;
@@ -85,6 +88,11 @@ export function createAssistantService(options: AssistantServiceOptions) {
     }
     return { policy, modelPolicyCurrent };
   }
+  const proposalRefused = (reason: "projection-unavailable" | "input-projection" | "function-binding" | "canonical-completion-required" | "function-invocation" | "action-decision") => {
+    options.debugEvents?.emit({ category: "http", phase: "failed", correlationId: randomUUID(), area: "assistant-proposal", reason,
+      code: "ASSISTANT_PROPOSAL_REFUSED" });
+    return refused("ASSISTANT_PROPOSAL_REFUSED");
+  };
   return Object.freeze({
     permission() {
       if (options.readPermission === undefined) throw new Error("assistant-permission-unavailable");
@@ -103,11 +111,16 @@ export function createAssistantService(options: AssistantServiceOptions) {
         if (!policy.success || !modelPolicyCurrent()) return { state: "refused", code: "ASSISTANT_MODEL_UNVERIFIED" };
         if (options.decideAction === undefined) return { state: "refused", code: "ASSISTANT_UNAVAILABLE" };
         return AssistantActionResultSchema.parse(await options.decideAction(parsed.data, signal));
-      } catch (error) { return { state: "refused", code: error instanceof ChatGptResourceClosureUnprovedError || error instanceof AuthoritySourceClosureUnprovedError ? 'CHATGPT_RESOURCE_CLOSURE_UNPROVED' : "ASSISTANT_PROPOSAL_REFUSED" }; }
+      } catch (error) {
+        if (error instanceof ChatGptResourceClosureUnprovedError || error instanceof AuthoritySourceClosureUnprovedError) return { state: "refused", code: "CHATGPT_RESOURCE_CLOSURE_UNPROVED" };
+        proposalRefused("action-decision");
+        return { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
+      }
     },
     async respond(input: unknown, signal: AbortSignal): Promise<AssistantResult> {
       let effect: AssistantActionProposal | undefined;
       let verifying = false;
+      let localStage: "input-projection" | "function-binding" | "function-invocation" = "input-projection";
       try {
         const request = AssistantRequestSchema.safeParse(input);
         if (!request.success) return refused("ASSISTANT_INVALID");
@@ -129,8 +142,9 @@ export function createAssistantService(options: AssistantServiceOptions) {
         };
         assertCurrent();
         if (!policy.success) return refused("ASSISTANT_MODEL_UNVERIFIED");
-        if (options.projectInput === undefined) return refused("ASSISTANT_PROPOSAL_REFUSED");
+        if (options.projectInput === undefined) return proposalRefused("projection-unavailable");
         const projected = options.projectInput(request.data);
+        localStage = "function-binding";
         const bound = await options.bindFunctions?.({ request: request.data, context, subjects: options.subjects, planner: options.planner, assertCurrent }, signal) ?? [];
         assertCurrent();
         const functions = bound.map(set => ({ ...set, functions: set.functions.map(fn => ({ ...fn })) }));
@@ -166,7 +180,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           history.push(...turn.output);
           const calls = turn.output.filter(item => item.type === "function_call"), messages = turn.output.filter(item => item.type === "message");
           if (calls.length === 0) {
-            if (projected.completion === "canonical-action" || projected.completion === "canonical-read") return refused("ASSISTANT_PROPOSAL_REFUSED");
+            if (projected.completion === "canonical-action" || projected.completion === "canonical-read") return proposalRefused("canonical-completion-required");
             if (messages.length !== 1) return refused("ASSISTANT_INVALID");
             const text = messages[0].content.map(part => part.text).join("");
             assertAuthority();
@@ -185,6 +199,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           if (repeated.has(key)) return refused("ASSISTANT_LIMIT");
           repeated.add(key);
           assertAuthority();
+          localStage = "function-invocation";
           const outcome = await fn.invoke(parsed, signal, { request: request.data, context, subjects: options.subjects, planner: options.planner, assertCurrent: assertAuthority, assertRetainedCurrent,
             effectEntered(action) {
               if (effect !== undefined) throw new AssistantLocalIntentError("assistant-effect-already-entered");
@@ -226,7 +241,7 @@ export function createAssistantService(options: AssistantServiceOptions) {
           const code = z.enum(Object.keys(ASSISTANT_FAILURES) as [AssistantFailureCode, ...AssistantFailureCode[]]).safeParse(error.code);
           if (code.success) return refused(code.data);
         }
-        if (error instanceof AssistantLocalIntentError) return refused("ASSISTANT_PROPOSAL_REFUSED");
+        if (error instanceof AssistantLocalIntentError) return proposalRefused(localStage);
         if (error instanceof AssistantContextError) return refused(error.code);
         if (error instanceof z.ZodError) return refused("ASSISTANT_INVALID");
         return refused(verifying ? "ASSISTANT_VERIFICATION_FAILED" : "ASSISTANT_UNAVAILABLE");
