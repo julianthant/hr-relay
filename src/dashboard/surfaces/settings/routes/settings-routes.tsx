@@ -19,7 +19,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
   const removeTrigger = useRef<HTMLElement | null>(null);
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="routes" />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Routes unavailable" description={editor.editor.message} action={{ label: "Try again", onAction: editor.reload }} />;
+  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Routes unavailable" description={editor.editor.message.replace(/ Try again\.$/u, "")} action={{ label: "Try again", onAction: editor.reload }} />;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "routes");
   if (section === undefined) return <Notice tone="danger" title="Routes unavailable" />;
