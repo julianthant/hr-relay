@@ -562,20 +562,20 @@ The current schema is 23. Workbook catalogue names and the version in use are se
 
 Fresh workbook storage contains one General type seed. Incomplete-profile inventory reports that row and treats only its exact initial payload as pristine, alongside either bare authority or authenticated Settings initialization. Extra or edited types and workbook masters, creations, operations or named versions remain activity that blocks withdrawal.
 
-The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21 and 22. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
+The supported READY bound-profile upgrade sources are schemas 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22 and 23. The existing stopped READY issuer, exact source/credential binding, backup and source-closure checks govern that upgrade. Preference writes require the operator-only command, request-local trusted profile/epoch/account/catalog preparation, exact expected revision and command/audit authentication. Same-command replay returns its authenticated historical result and never rewinds a newer preference. With the trusted producer absent the command is unavailable.
 
 
-`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 23` and
+`src/backend/storage/sqlite/migrations.ts` defines `CURRENT_AUTHORITY_SCHEMA_VERSION = 24` and
 `AUTHORITY_APPLICATION_ID = 1217249861`. `AuthorityDatabase` accepts only that current native layout.
 An existing database must match its application ID, `user_version`, metadata, and registered shape.
 `AuthoritySchemaVersionError` reports unsupported versions. Existing databases do not migrate during
 ordinary startup. Ordinary writable opens and stopped upgrades use SQLite existing-only mode,
 including when a source disappears during opening. Only `initializeProfile`, after its issued setup
 admission check, creates the absent canonical profile database and its current baseline.
-Schemas 1 through 22 are inspected only under stopped upgrade or maintenance authority; ordinary readers
+Schemas 1 through 23 are inspected only under stopped upgrade or maintenance authority; ordinary readers
 use the current layout. Stopped inspection projects the absent pre-v15 pause column as null only
 after validating the predecessor's registered schema, including run/search/timeline/result owners.
-The native layout includes the pause scalar and its JSON-equality triggers, plus immutable OCR source uploads, review revisions and approved snapshots. The forward v18 migration adds library catalogue state, immutable named snapshots and action receipts under the same verified-backup upgrade boundary. The v19 guard checks every captured workbook reference in runs and retained start plans, including terminal runs and consumed plans, against the current derived output-schema hash. A mismatch refuses with `workbook_reference_schema_upgrade_unproved` before migration effects and preserves retained references, proofs and the source schema; it never rehashes or rebinds evidence.
+The native layout includes the pause scalar and its JSON-equality triggers, plus immutable OCR source uploads, review revisions and approved snapshots. The forward v18 migration adds library catalogue state, immutable named snapshots and action receipts under the same verified-backup upgrade boundary. The v19 guard checks every captured workbook reference in runs and retained start plans, including terminal runs and consumed plans, against the current derived output-schema hash. A mismatch refuses with `workbook_reference_schema_upgrade_unproved` before migration effects and preserves retained references, proofs and the source schema; it never rehashes or rebinds evidence. The v24 migration moves the assistant effort preference to light|medium|high|xhigh|max: a stored `low` becomes `light` in the preference, its commands (request digest recomputed) and their audits, with the audit and preference triggers dropped and recreated around the conversion.
 
 The v21 migration updates only the completion-immutability trigger: an authenticated aggregate refresh may replace a done or failed current completion while retaining its exact prior result and receipt rows. Failed predecessors require matching retained failure evidence; unrelated completion changes remain refused.
 
