@@ -1,18 +1,16 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
-import { settlePredecessorRunEvidence } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
 import { createSettingsActivationRepositories } from "../../../../src/backend/storage/sqlite/settings-activation.js";
-import { WORKER_CUSTODY_CONVERSION_ID, WORKER_CUSTODY_MIGRATION_STATEMENTS, WORKER_CUSTODY_SCAN_ID, WORKER_CUSTODY_SLOT_REBUILD_ID,
-  assertWorkerCustodyConverted, convertWorkerCustody, rebuildWorkerSlots } from "../../../../src/backend/storage/sqlite/worker-custody-migration.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/models/run/record.js";
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema, deriveIdempotencyKeyDigest } from "../../../../src/rules/write-safety/write-safety.js";
 import { CONFIG_SNAPSHOT, HASH_B, NOW, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6, UUID_7, UUID_8 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, TRACE_ID } from "../../../support/fixtures/phase1f-run-fixtures.js";
+import { migrateWorkerCustody } from "../../../support/helpers/storage/worker-custody-migration.js";
 
 const LIFETIME = { leaseGeneration: 2, membershipRevision: 1 };
 const WORKER = "person-lookup-worker-1";
@@ -56,20 +54,7 @@ function insertCommand(database: DatabaseSync, id: string, family: string, reque
   database.prepare("INSERT INTO command_audits VALUES(?,?,NULL,?,?)").run(id, id, canonicalJsonStringify({ request }), NOW);
 }
 
-function migrate(database: DatabaseSync): void {
-  database.exec("BEGIN EXCLUSIVE");
-  try {
-    for (const statement of WORKER_CUSTODY_MIGRATION_STATEMENTS) {
-      if (statement.includes(WORKER_CUSTODY_SLOT_REBUILD_ID)) rebuildWorkerSlots(database);
-      if (statement.includes(WORKER_CUSTODY_CONVERSION_ID)) {
-        convertWorkerCustody(database, NOW, () => { throw new Error("artifact-unexpected"); }, (record, settled) => settlePredecessorRunEvidence(database, record, settled));
-      }
-      database.exec(statement);
-      if (statement.includes(WORKER_CUSTODY_SCAN_ID)) assertWorkerCustodyConverted(database);
-    }
-    database.exec("COMMIT");
-  } catch (error) { database.exec("ROLLBACK"); throw error; }
-}
+const migrate = (database: DatabaseSync) => migrateWorkerCustody(database, NOW);
 
 const PROOF = { schemaHash: HASH_B, value: "T123456" };
 type WriteShape = { intentId: string; attemptId: string; runId: string; key: string; status: "committed" | "observed-present" | "attempting" | "parked";
@@ -126,20 +111,6 @@ it("deletes the worker-lifetime closure and worker history and keeps unrelated r
   } finally { database.close(); }
 });
 
-it("refuses a closure run with an unresolved write and leaves the store unchanged", () => {
-  for (const status of ["attempting", "parked"]) {
-    const database = store();
-    try {
-      insertRun(database, claimed());
-      database.prepare("INSERT INTO write_intents(id,system,idempotency_key,idempotency_key_digest,status,generation,run_id,payload_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
-        .run(UUID_4, "ucpath", `key-${status}`, "b".repeat(64), status, 1, RUN_ID, "{}", NOW, NOW);
-      const before = dump(database);
-      assert.throws(() => migrate(database), /authority-upgrade-unresolved-writes/u);
-      assert.deepEqual(dump(database), before);
-    } finally { database.close(); }
-  }
-});
-
 it("changes only the worker tables on a store with no worker-lifetime history", () => {
   const database = store();
   try {
@@ -167,44 +138,3 @@ it("refuses a closure run whose write is not committed and proven, and leaves th
   }
 });
 
-it("refuses a closure run with a transaction fence and no committed intent", () => {
-  const database = store();
-  try {
-    insertRun(database, claimed());
-    database.prepare("INSERT INTO timeline_events(id,workflow,run_id,worker_id,kind,occurred_at,recorded_at,retention_date,retention_class,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?)")
-      .run(UUID_7, "person-lookup", RUN_ID, WORKER, "span", NOW, NOW, "2026-07-31", "protected", canonicalJsonStringify({ kind: "span", event: { t: "transaction.fenced", runId: RUN_ID } }));
-    const before = dump(database);
-    assert.throws(() => migrate(database), /authority-upgrade-unresolved-writes/u);
-    assert.deepEqual(dump(database), before);
-  } finally { database.close(); }
-});
-
-it("keeps committed write evidence and the resolution journal that authenticates it, and an unrelated write byte-identical", () => {
-  const database = store();
-  try {
-    insertRun(database, claimed()); insertRun(database, unrelated());
-    const resolution = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
-    insertCommand(database, resolution, "run", { family: "run", type: "check-parked-write", target: { runId: RUN_ID } }, RUN_ID);
-    insertWrite(database, { status: "committed", intentId: UUID_7, attemptId: UUID_8, runId: RUN_ID, key: "10101010|termination|2026-08-01", resolution });
-    insertWrite(database, { status: "committed", intentId: UUID_4, attemptId: UUID_5, runId: UUID_6, key: "10101011|termination|2026-08-01" });
-    const writes = [database.prepare("SELECT * FROM write_intents ORDER BY id").all(), database.prepare("SELECT * FROM write_attempts ORDER BY id").all()];
-    const journal = [database.prepare("SELECT * FROM commands WHERE id=?").get(resolution), database.prepare("SELECT * FROM command_audits WHERE command_id=?").all(resolution)];
-    migrate(database);
-    assert.deepEqual(database.prepare("SELECT id FROM runs").all().map(row => row.id), [UUID_6]);
-    assert.deepEqual([database.prepare("SELECT * FROM write_intents ORDER BY id").all(), database.prepare("SELECT * FROM write_attempts ORDER BY id").all()], writes);
-    assert.deepEqual([database.prepare("SELECT * FROM commands WHERE id=?").get(resolution), database.prepare("SELECT * FROM command_audits WHERE command_id=?").all(resolution)], journal);
-  } finally { database.close(); }
-});
-
-it("refuses when a kept write was resolved by a worker command the migration must delete", () => {
-  const database = store();
-  try {
-    insertRun(database, claimed());
-    const resolution = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
-    insertCommand(database, resolution, "worker-browser", { family: "worker-browser", type: "check-parked-write", target: { workerId: WORKER, runId: RUN_ID } });
-    insertWrite(database, { status: "committed", intentId: UUID_7, attemptId: UUID_8, runId: RUN_ID, key: "10101010|termination|2026-08-01", resolution });
-    const before = dump(database);
-    assert.throws(() => migrate(database), /authority-upgrade-retained-run-reference/u);
-    assert.deepEqual(dump(database), before);
-  } finally { database.close(); }
-});

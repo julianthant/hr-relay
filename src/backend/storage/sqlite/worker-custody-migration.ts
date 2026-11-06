@@ -4,11 +4,15 @@ import { z } from "zod";
 import { RunDeleteInputSchema } from "../../../models/run/deleted-run.js";
 import type { PredecessorRunRecord } from "../../../models/run/record.js";
 import { CanonicalDeleteRequestSchema } from "./run-store-contracts.js";
-import { insertNativeCommand } from "./command-record-row.js";
+import { commandFromRow, insertNativeCommand } from "./command-record-row.js";
 import { BUILD_ID_ENVELOPE_SCHEMA_VERSION } from "./migrations.js";
 import { executeNativeRunDeletion, prepareNativeRunDeletion, RunDeletionRefusedError } from "./native-run-deletion.js";
 import { childrenFirst, lifecycleCommand, recordAudit, requireSettledPreBuildRun } from "./pre-build-run-deletion.js";
 import { readRestoreWriteFences } from "./restore-write-fences.js";
+import { confirmationPublicationFromRow } from "../../../models/events/confirmed-operation.js";
+import { authenticateParkedWriteResolution } from "../../../rules/write-safety/parked-resolution.js";
+import { WriteAttemptRecordSchema, WriteIntentRecordSchema, type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import { nativeOrdinaryRecordFromRow } from "./native-record-row.js";
 import { predecessorRunRecordFromRow } from "./run-record-row.js";
 
 export const WORKER_CUSTODY_CONVERSION_ID = "worker-custody-forward-conversion:v1";
@@ -129,33 +133,55 @@ function workerLifetimeClosure(database: DatabaseSync): { runs: Set<string>; see
   return { runs, seeds };
 }
 
-/** A closure run may go only when every write it touched is committed and proven; missing or inconsistent evidence is never safe. */
+/**
+ * A closure run may go only when each write it touched is committed with authenticated proof: a committed attempt, or the
+ * original parked attempt settled by its authenticated recheck. Every durable fence must match one such write by run, attempt
+ * and task. Missing, inconsistent or unsettled evidence refuses.
+ */
 function refuseUnresolvedWrites(database: DatabaseSync, closure: ReadonlySet<string>): void {
-  try { readRestoreWriteFences(database); }
-  catch { throw new Error("authority-upgrade-unresolved-writes"); }
-  const refuse = (sql: string) => {
-    for (const row of rows(database, sql)) if (row.run_id === null || closure.has(text(row, "run_id"))) throw new Error("authority-upgrade-unresolved-writes");
-  };
-  refuse("SELECT run_id FROM write_intents WHERE status<>'committed'");
-  refuse(`SELECT attempt.run_id FROM write_attempts attempt LEFT JOIN write_intents intent ON intent.id=attempt.intent_id
-    WHERE intent.id IS NULL OR intent.status<>'committed' OR intent.run_id IS NOT attempt.run_id
-      OR json_extract(attempt.payload_json,'$.outcome.state')<>'committed'`);
+  const refuse = (): never => { throw new Error("authority-upgrade-unresolved-writes"); };
+  try { readRestoreWriteFences(database); } catch { refuse(); }
+  const settled = new Map<string, CommittedIntent>();
+  for (const row of rows(database, "SELECT * FROM write_intents")) {
+    const runId = z.string().nullable().parse(row.run_id);
+    if (runId === null && row.status !== "committed") refuse();
+    if (runId === null || !closure.has(runId)) continue;
+    try { settled.set(text(row, "id"), settledIntent(database, row)); } catch { refuse(); }
+  }
+  for (const row of rows(database, "SELECT attempt.run_id FROM write_attempts attempt LEFT JOIN write_intents intent ON intent.id=attempt.intent_id WHERE intent.id IS NULL OR intent.run_id IS NOT attempt.run_id")) {
+    if (closure.has(text(row, "run_id"))) refuse();
+  }
   for (const id of closure) {
-    const row = z.object({ state: z.string() }).parse(database.prepare("SELECT state FROM runs WHERE id=?").get(id));
-    if (row.state === "parked-write") throw new Error("authority-upgrade-unresolved-writes");
-    const fenced = rows(database, "SELECT operation_id, payload_json FROM timeline_events WHERE run_id=?", id)
-      .some(event => event.operation_id !== null || hasTransactionFence(json(event.payload_json)));
-    if (fenced && database.prepare("SELECT 1 FROM write_intents WHERE run_id=? AND status='committed'").get(id) === undefined) {
-      throw new Error("authority-upgrade-unresolved-writes");
+    if (z.object({ state: z.string() }).parse(database.prepare("SELECT state FROM runs WHERE id=?").get(id)).state === "parked-write") refuse();
+    for (const event of rows(database, "SELECT operation_id, payload_json FROM timeline_events WHERE run_id=?", id)) {
+      if (event.operation_id !== null && !settled.has(text(event, "operation_id"))) refuse();
+      const fence = TransactionFenceSchema.safeParse(json(event.payload_json));
+      if (fence.success && ![...settled.values()].some(intent => intent.runId === fence.data.event.runId
+        && intent.runAttempt === fence.data.event.attempt && intent.taskId === fence.data.event.taskId)) refuse();
     }
   }
 }
 
-function hasTransactionFence(value: unknown): boolean {
-  if (Array.isArray(value)) return value.some(hasTransactionFence);
-  if (value === null || typeof value !== "object") return false;
-  const object = RowSchema.parse(value);
-  return typeof object.t === "string" && object.t.startsWith("transaction.") || Object.values(object).some(hasTransactionFence);
+/** The durable pre-click fence; `transaction.previewed` is a dry run and never a possible submit. */
+const TransactionFenceSchema = z.object({ kind: z.literal("span"),
+  event: z.object({ t: z.literal("transaction.fenced"), runId: z.string(), attempt: z.number(), taskId: z.string() }) });
+
+type CommittedIntent = Extract<WriteIntentRecord, { status: "committed" }>;
+
+function settledIntent(database: DatabaseSync, row: Row): CommittedIntent {
+  const intent = WriteIntentRecordSchema.parse(json(row.payload_json));
+  if (intent.status !== "committed") throw new Error("write-intent-unsettled");
+  for (const raw of rows(database, "SELECT payload_json FROM write_attempts WHERE intent_id=?", intent.writeIntentId)) {
+    const attempt = WriteAttemptRecordSchema.parse(json(raw.payload_json));
+    if (attempt.runId !== intent.runId) throw new Error("write-attempt-run-mismatch");
+    if (attempt.outcome.state === "committed") continue;
+    const resolution = intent.resolution;
+    if (attempt.outcome.state !== "parked" || resolution?.writeAttemptId !== attempt.writeAttemptId) throw new Error("write-attempt-unsettled");
+    authenticateParkedWriteResolution(intent, attempt, commandFromRow(database.prepare("SELECT * FROM commands WHERE id=?").get(resolution.commandId)),
+      nativeOrdinaryRecordFromRow("command_audits", database.prepare("SELECT * FROM command_audits WHERE id=?").get(resolution.auditId)));
+  }
+  confirmationPublicationFromRow(intent, row.publication_json);
+  return intent;
 }
 
 /** Resolution journals that authenticate kept write intents; they stay with the write evidence. */
