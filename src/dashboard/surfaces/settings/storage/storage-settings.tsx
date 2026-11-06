@@ -23,7 +23,7 @@ export function StorageBanner({ storage, onOpenSettings }: {
   return <Banner className="shrink-0" tone="danger" shape="band"
     icon={<ShieldAlert aria-hidden className={dsIcon.lg} />}
     title="Authority storage is unavailable"
-    action={<Button size="sm" variant="secondary" onClick={onOpenSettings}>Storage checks</Button>}>
+    action={<Button size="sm" variant="secondary" onClick={() => onOpenSettings()}>Storage checks</Button>}>
     {AUTHORITY_HAZARD} Checked {fmtClock(storage.checkedAt)}.
   </Banner>;
 }

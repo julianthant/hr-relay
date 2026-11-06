@@ -69,3 +69,13 @@ describe('assistant mock proposal', () => {
     assert.equal(assistantReducer(empty, late), empty);
   });
 });
+
+describe('sent attachments', () => {
+  it('keeps names on the committed operator message only', () => {
+    const base = { draft: 'Review this', messages: [], sequence: 0, turn: { state: 'idle' } } as const;
+    const sent = assistantReducer(base, { type: 'send', attachments: [{ id: 'f1', name: 'Notes.pdf' }] });
+    assert.deepEqual(sent.messages[0]?.attachments, [{ id: 'f1', name: 'Notes.pdf' }]);
+    assert.equal(assistantReducer({ ...base, draft: ' ' }, { type: 'send', attachments: [{ id: 'f1', name: 'Notes.pdf' }] }).messages.length, 0);
+    assert.equal(assistantReducer(base, { type: 'send' }).messages[0]?.attachments, undefined);
+  });
+});
