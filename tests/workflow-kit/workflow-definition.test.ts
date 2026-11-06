@@ -6,7 +6,6 @@ import { taskStoreRegistry } from "../../src/backend/app/registries/task-registr
 import { SearchPersonOrg } from "../../src/models/systems/ucpath/search-person-org.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/models/workflow/presentation.js";
 import { type RegisteredTaskStore } from "../../src/workflow-kit/task-registry.js";
-import { BUILD_MANIFEST } from "../../src/workflow-kit/validation/build-manifest.js";
 import { defineWorkflowRole } from "../../src/workflow-kit/validation/module-role.js";
 import { type AnyWorkflowEntry, type WorkflowAuthor, compileWorkflow, composeWorkflowModule, defineStepEntries, defineWorkflow, workflowDefinitionOf, workflowExplorerDeclaration, workflowEntryKinds } from "../../src/workflow-kit/workflow-definition.js";
 import { defineWorkflowStep, descriptorRuntimeNodes, workflowTerminalResultExecution } from "../../src/workflow-kit/workflow.js";
@@ -17,7 +16,7 @@ import { UcpathDeletePendingTerminations } from "../../src/models/systems/ucpath
 import { UcpathReadPendingTerminationSet } from "../../src/models/systems/ucpath/read-pending-termination-set.js";
 import { UcpathStagePendingTerminationSweep } from "../../src/models/systems/ucpath/stage-pending-termination-sweep.js";
 import { ItemIdSchema, WorkflowIdSchema, EidSchema, FingerprintSchema } from "../../src/rules/identity/ids.js";
-import { compileFixtureWorkflow, everyEntryKindWorkflow, fixtureBuildManifest } from "../support/fixtures/workflow-definition-fixtures.js";
+import { compileFixtureWorkflow, everyEntryKindWorkflow } from "../support/fixtures/workflow-definition-fixtures.js";
 import { projectStartSteps } from "../../src/backend/runs/start/step-selection.js";
 import { CANONICAL_FIELDS } from "../../src/models/fields/registry.js";
 import { CrmReadOnboardingRecord } from "../../src/models/systems/crm/read-onboarding-record.js";
@@ -47,7 +46,7 @@ describe("workflow definition compiler", () => {
         }, [], { bind: () => ({ emplId: "10800000" }), deriveChildItemId: () => ItemIdSchema.parse("00000000-0000-4000-8000-000000000fe2") }));
         return { steps: [[{ key: "children", label: "Children" }, children]], result: author.result(z.strictObject({ state: z.literal("done") }), [], () => ({ state: "done" as const })) };
       }, delegationDisplay);
-      const descriptor = compileWorkflow(definition, { manifest: fixtureBuildManifest([id]) }).descriptor;
+      const descriptor = compileWorkflow(definition).descriptor;
       const children = descriptorRuntimeNodes(descriptor).filter(node => node.kind === "child-run");
       expect(children.map(node => node.policy.visibility)).toEqual([delegationDisplay ?? "inline", "inline", "linked", "hidden-unless-failed"]);
       for (const child of children) expect(child.policy).toMatchObject({
@@ -229,13 +228,8 @@ describe("workflow definition compiler", () => {
     expect(compileWorkflow(personLookupWorkflow).kind).toBe("compiled-workflow");
   });
 
-  it("memoizes one compiled workflow per definition AND build manifest; a second manifest refuses instead of returning the first compile", () => {
+  it("memoizes one compiled workflow per definition", () => {
     const compiled = compileWorkflow(personLookupWorkflow);
-    expect(compileWorkflow(personLookupWorkflow, { manifest: BUILD_MANIFEST })).toBe(compiled);
-
-    expect(() => compileWorkflow(personLookupWorkflow, { manifest: { ...BUILD_MANIFEST } })).toThrow(
-      /workflow person-lookup was already compiled under a different build manifest; one definition compiles under exactly one manifest/u,
-    );
     expect(compileWorkflow(personLookupWorkflow)).toBe(compiled);
   });
 
@@ -570,32 +564,26 @@ describe("canonical awaited child terminal evidence", () => {
         return { steps: [[{ key: "child", label: "Child" }, [child]]],
           result: result(z.strictObject({ state: z.literal("done") }), [child], ({ outputs }) => z.object({ state: z.literal("done") }).parse(outputs.child)) };
       },
-    }), { manifest: fixtureBuildManifest(["fixture-child-result-parent"]) }), /owns no output schema/);
+    })), /owns no output schema/);
   });
 });
 
-const { DISPLAY_CHILD_A_ID, DISPLAY_CHILD_B_ID, DISPLAY_FORWARD_ID, outerWorkflow } = createOperationDisplayFixtures();
+const { DISPLAY_FORWARD_ID, outerWorkflow } = createOperationDisplayFixtures();
 
 
 const operation = SearchPersonOrg.operation;
 if (operation === undefined) throw new Error("SearchPersonOrg must declare its reusable display operation");
 
 const forwardWorkflow = outerWorkflow(DISPLAY_FORWARD_ID, "forward");
-const displayManifest = fixtureBuildManifest([
-  DISPLAY_CHILD_A_ID,
-  DISPLAY_CHILD_B_ID,
-  DISPLAY_FORWARD_ID,
-]);
 
 describe("workflow operation display declarations", () => {
 
   it("serves the exact compiled complete structure through the real Explorer projection", () => {
-    const compiled = compileWorkflow(forwardWorkflow, { manifest: displayManifest });
+    const compiled = compileWorkflow(forwardWorkflow);
     const module = composeWorkflowModule(compiled, taskStoreRegistry.stores);
     const explorer = buildWorkflowExplorer({
       ...explorerQueryDeps(manualClock(new Date("2026-09-27T12:00:00.000Z")), FingerprintSchema.parse("c".repeat(64))),
       modules: [module],
-      buildManifest: fixtureBuildManifest([DISPLAY_FORWARD_ID]),
     });
     const workflow = explorer.workflows[0];
     if (workflow === undefined || workflow.operationStructure.state !== "declared") {

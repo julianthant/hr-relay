@@ -3,7 +3,6 @@ import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js
 import { createDurableChildRunExecutor } from "../../../../src/backend/runtime/execution/durable-child-executor.js";
 import { childUnawaitedModules } from "../../../support/fixtures/child-execution-workflows.js";
 import { Plan1Input, plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
-import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { WorkerResetBindingSchema } from "../../../../src/models/run/worker-control.js";
@@ -419,7 +418,7 @@ it("exposes no raw success setter and atomically cancels a safe queued cascade b
     factory: h.deps.sessionFactory, clock: h.authority.clock, scheduler: h.scheduler,
     acquireDeadlineMs: h.deps.sessionAcquireMs, duoCeremony: h.deps.duoCeremony });
   const resolve = (id: string) => modules.find(module => module.descriptor.id === id)?.descriptor;
-  const execution = canonicalChildExecution({ ...h.deps, sessions, buildManifest: childExecutionBuildManifest }, database, h.authority.path, resolve);
+  const execution = canonicalChildExecution({ ...h.deps, sessions }, database, h.authority.path, resolve);
   const parent = execution.start(root.descriptor, { emplId: "10000000", text: "Reset fixture", mode: Plan1Input.shape.mode.options[0] }, { dryRun: false });
   expect(database.authority.runs.claimNext({ workerId, workflow: h.deps.workflowId, workerLifetime: { membershipRevision: database.authority.workerSlots.get(workerId)?.membershipRevision, leaseGeneration: database.authority.workerLeases.get(workerId)?.leaseGeneration }, now: h.authority.clock.now().toISOString() }).state).toBe("claimed");
   const node = descriptorRuntimeNodes(root.descriptor).find(node => node.kind === "child-run");

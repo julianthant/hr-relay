@@ -11,7 +11,6 @@ describe("generated conflict classification", () => {
     assert.equal(generatedOnlyConflicts([registryPath, "src/models/failures/error-catalog.ts"]), false);
     assert.equal(generatedOnlyConflicts(["src/workflows/unknown/generated.ts"]), false);
     assert.equal(generatedOnlyConflicts([]), false);
-    assert.equal(generatedOnlyConflicts(["src/workflow-kit/validation/generated-build-manifest.ts"]), false);
     const registry = GENERATED_OUTPUTS.find(output => output.script === "build:registries");
     assert.deepEqual(registry?.paths.toSorted(), [...workflowRegistrySources(process.cwd()).keys()].toSorted());
   });

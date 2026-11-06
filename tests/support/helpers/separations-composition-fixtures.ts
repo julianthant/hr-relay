@@ -1,3 +1,4 @@
+import { currentBuildId } from "../../../src/backend/app/build-id.js";
 import { admitProtectedInput } from "../../../src/backend/runs/start/protected-input.js";
 import { protectedSecretSource } from "./protected-secret-source.js";
 import { testWorkerLifetime, testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
@@ -75,7 +76,6 @@ export const COMPOSITION_WORKER_ID = "separations-worker-1";
 export const COMPOSITION_RUN_ID = UUID_2;
 export const COMPOSITION_ITEM_ID = UUID_3;
 export const COMPOSITION_NOW = "2026-08-14T10:00:00.000Z";
-export const COMPOSITION_IMPL_FINGERPRINT = FingerprintSchema.parse("c".repeat(64));
 export const COMPOSITION_CONFIG_FINGERPRINT = FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint);
 
 export const SWEEP_NODE = "clear-pending";
@@ -284,7 +284,7 @@ export function compositionQueuedRun(
       itemId: COMPOSITION_ITEM_ID,
       traceId: "sp-100000-2222",
       descriptorVersion: 1,
-      contractFingerprint: separationsDescriptor.contractFingerprint,
+      contractFingerprint: separationsDescriptor.contractFingerprint, buildId: currentBuildId(),
       resolvedInstance: { kuali: "prod", ucpath: "prod", "new-kronos": "prod" },
       configFingerprint: COMPOSITION_CONFIG_FINGERPRINT,
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
@@ -391,8 +391,7 @@ export async function compositionHarness(options: Readonly<{
     scheduler: new ManualScheduler(clock),
     taskDeadlineMs: 60_000,
     operator: "local-operator",
-    log: recordingLogger().log,
-    resolveImplFingerprint: () => COMPOSITION_IMPL_FINGERPRINT,
+    log: recordingLogger().log 
   });
   let closed = false;
   const closeController = async () => {

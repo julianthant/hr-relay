@@ -8,7 +8,6 @@ import { defineTaskStoreRegistry } from "../../../../src/workflow-kit/task-regis
 import { createWorkflowRegistry } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { plan1Child, plan1Leaf, plan1Parent, plan1Stores, plan1Workflows } from "../../../support/fixtures/plan1-operation-workflows.js";
 
-import { childExecutionBuildManifest as manifest } from "../../../support/fixtures/child-execution-build-manifest.js";
 
 const modules = plan1Workflows.map(compiled => composeWorkflowModule(compiled, plan1Stores.stores));
 const resolve = (id: string) => modules.find(module => module.descriptor.id === id);
@@ -32,7 +31,7 @@ describe("private child execution registry qualification before authority effect
       resolveChild: (parentId, id) => {
         edges.push(`${parentId}:${id}`);
         return qualified.childModuleOf(parentId, id);
-      }, stores: plan1Stores, manifest,
+      }, stores: plan1Stores,
     });
     await assert.rejects(composeWorkerRuntime(world.value), /unrequested-admission-effect/u);
     assert.equal(world.effects(), 1);
@@ -41,7 +40,7 @@ describe("private child execution registry qualification before authority effect
     assert.ok(edges.includes(`${plan1Child.descriptor.id}:${plan1Leaf.descriptor.id}`));
     for (const id of [plan1Child.descriptor.id, plan1Leaf.descriptor.id]) {
       const privateRoot = await input(id, { resolve: key => qualified.publicRegistry[key],
-        resolveChild: qualified.childModuleOf, stores: plan1Stores, manifest });
+        resolveChild: qualified.childModuleOf, stores: plan1Stores });
       await assert.rejects(composeWorkerRuntime(privateRoot.value), /not registered/u);
       assert.equal(privateRoot.effects(), 0);
     }
@@ -51,7 +50,7 @@ describe("private child execution registry qualification before authority effect
     for (const child of [undefined, parent]) {
       const world = await input(plan1Parent.descriptor.id, {
         resolve: id => qualified.publicRegistry[id], resolveChild: () => child,
-        stores: plan1Stores, manifest,
+        stores: plan1Stores,
       });
       await assert.rejects(composeWorkerRuntime(world.value), /delegation-target-descriptor-unavailable|worker-execution-registry-mismatch/u);
       assert.equal(world.effects(), 0);
@@ -67,7 +66,7 @@ describe("private child execution registry qualification before authority effect
 
   it("refuses an unknown root or descendant instead of falling back to production modules", async () => {
     for (const workflowId of ["unregistered-child-root", plan1Child.descriptor.id]) {
-      const world = await input(workflowId, { resolve: id => id === plan1Child.descriptor.id ? resolve(id) : undefined, stores: plan1Stores, manifest });
+      const world = await input(workflowId, { resolve: id => id === plan1Child.descriptor.id ? resolve(id) : undefined, stores: plan1Stores });
       await assert.rejects(composeWorkerRuntime(world.value), /not registered|delegation-target-descriptor-unavailable/u);
       assert.equal(world.effects(), 0);
     }
@@ -76,8 +75,8 @@ describe("private child execution registry qualification before authority effect
   it("refuses a foreign module and a genuine module whose stores are outside the selected owner", async () => {
     const empty = defineTaskStoreRegistry([], { scenarioIds: [], tasks: [] });
     for (const registry of [
-      { resolve: () => resolve(plan1Child.descriptor.id), stores: plan1Stores, manifest },
-      { resolve, stores: empty, manifest },
+      { resolve: () => resolve(plan1Child.descriptor.id), stores: plan1Stores },
+      { resolve, stores: empty },
     ]) {
       const world = await input(plan1Leaf.descriptor.id, registry);
       await assert.rejects(composeWorkerRuntime(world.value), /worker-execution-registry-mismatch/u);
@@ -91,7 +90,7 @@ describe("private child execution registry qualification before authority effect
       const module = resolve(id);
       if (id !== plan1Leaf.descriptor.id || module === undefined) return module;
       return ++reads === 1 ? module : { ...module };
-    }, stores: plan1Stores, manifest });
+    }, stores: plan1Stores });
     await assert.rejects(composeWorkerRuntime(world.value), /worker-execution-registry-mismatch/u);
     assert.equal(reads, 2);
     assert.equal(world.effects(), 0);

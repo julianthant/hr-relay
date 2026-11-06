@@ -30,7 +30,7 @@ import { EmergencyContactCanonicalInput } from "../../models/workflows/emergency
 import { bindOcrRoster } from "../../models/workflows/ocr/roster.js";
 import { CrmDocDownloadCanonicalInput } from "../../models/workflows/crm-doc-download/input.js";
 import { ReadCrmDocumentRows, CrmDocumentRowCandidateSchema, CrmDocumentRowChoiceSchema, CRM_DOCUMENT_ROW_CHOICE_GATE_ID } from "../../models/workflows/crm-doc-download/read-document-rows.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../workflow-kit/fingerprints.js";
 
 
 const onboardingInputBinding = Object.freeze({
@@ -348,7 +348,7 @@ function crmReferenceRows(repositories: AuthorityRepositories, run: RunRecord) {
     || checkpoint.nodeId !== "document-rows" || checkpoint.attempt > run.envelope.attempt || Number(checkpoint.claimGeneration) > Number(owner.claimGeneration)
     || checkpoint.descriptorVersion !== run.envelope.descriptorVersion
     || checkpoint.contractFingerprint !== run.envelope.contractFingerprint
-    || checkpoint.implFingerprint !== resolveTaskImplFingerprint(BUILD_MANIFEST, ReadCrmDocumentRows.id)
+    || checkpoint.implFingerprint !== taskImplFingerprint(ReadCrmDocumentRows)
     || checkpoint.output.schemaHash !== deriveSchemaHash(ReadCrmDocumentRows.output, "output")) throw new WorkbookLibraryError("WORKBOOK_STORAGE_CORRUPT");
   const rows = ReadCrmDocumentRows.output.parse(checkpoint.output.value), reference = referenceFor(run, ONBOARDING_ROSTER_TYPE_ID);
   const input = parseCanonicalInputSnapshot(CrmDocDownloadCanonicalInput, run.input.parsed);

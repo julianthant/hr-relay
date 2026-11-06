@@ -1,3 +1,4 @@
+import { currentBuildId } from "../../../src/backend/app/build-id.js";
 import { jsonLeafPaths, transactionCheckpointProvenance } from "../../../src/backend/runs/provenance/task-provenance.js";
 import { JsonValueSchema } from "../../../src/rules/validation/canonical-json.js";
 import { resolvePersonLookupIdentity, derivePersonLookupOutcome } from "../../../src/rules/matching/person-lookup.js";
@@ -162,7 +163,7 @@ export function seedPersonLookupExitRun(
       itemId: EXIT_ITEM_ID,
       traceId: EXIT_TRACE_ID,
       descriptorVersion: personLookupDescriptor.version,
-      contractFingerprint: personLookupDescriptor.contractFingerprint,
+      contractFingerprint: personLookupDescriptor.contractFingerprint, buildId: currentBuildId(),
       resolvedInstance: { ucpath: "prod", crm: "prod" },
       configFingerprint: active.configFingerprint,
       configSnapshotId: active.configSnapshotId,
@@ -538,7 +539,7 @@ export function kualiReceiptEvidence(
       itemId: KUALI_ITEM_ID,
       traceId: KUALI_TRACE_ID,
       descriptorVersion: descriptor.version,
-      contractFingerprint: descriptor.contractFingerprint,
+      contractFingerprint: descriptor.contractFingerprint, buildId: currentBuildId(),
       resolvedInstance: { kuali: "prod" },
       configFingerprint: CONFIG_FINGERPRINT,
       configSnapshotId: CONFIG_SNAPSHOT_ID,
@@ -797,7 +798,7 @@ export function identityGateReceiptEvidence(): IdentityGateReceiptEvidence {
       itemId: GATE_ITEM_ID,
       traceId: GATE_TRACE_ID,
       descriptorVersion: descriptor.version,
-      contractFingerprint: descriptor.contractFingerprint,
+      contractFingerprint: descriptor.contractFingerprint, buildId: currentBuildId(),
       resolvedInstance: { ucpath: "prod" },
       configFingerprint: CONFIG_FINGERPRINT,
       configSnapshotId: CONFIG_SNAPSHOT_ID,

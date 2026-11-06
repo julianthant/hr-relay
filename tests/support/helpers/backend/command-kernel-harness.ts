@@ -3,7 +3,7 @@ import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-rec
 import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
 
 import { testRunContinuation } from "../../fixtures/run-lifecycle-fixtures.js";
-import { WRITE_FIXTURE_IMPL_FINGERPRINT, writeFixtureDescriptor } from "../../fixtures/write-sequencer-fixtures.js";
+import { writeFixtureDescriptor } from "../../fixtures/write-sequencer-fixtures.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -163,8 +163,7 @@ export function createCommandKernelTestWorld(profileFixture: () => Promise<Bound
   function requeueingWriteResolution(calls: string[], database: AuthorityDatabase, clock: ReturnType<typeof manualClock>): WriteResolutionExecutor {
     const executor = createWriteResolutionExecutor({ authority: database,
       continuation: testRunContinuation(database, clock), ids: sequentialIdFactory("c"),
-      descriptors: { resolve: id => id === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined },
-      resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT });
+      descriptors: { resolve: id => id === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined }  });
     return {
       recheck: (repositories, context) => { calls.push(`${context.command.type}:${context.run.envelope.runId}`); return executor.recheck(repositories, context); },
       resolveAbsent: (repositories, context) => { calls.push(`${context.command.type}:${context.run.envelope.runId}`); return executor.resolveAbsent(repositories, context); },

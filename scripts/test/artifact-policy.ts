@@ -1,4 +1,3 @@
-import { BUILD_MANIFEST_PATH } from "../../src/models/workflow/build-manifest.js";
 import { isAbsolute, relative } from "node:path";
 
 export interface TestArtifactListing {
@@ -11,8 +10,6 @@ export interface TestArtifactListing {
 
 export function artifactOwnershipViolations(input: TestArtifactListing): string[] {
   const violations: string[] = [];
-  if (input.tracked.includes(BUILD_MANIFEST_PATH)) violations.push(`generated build manifest is tracked: ${BUILD_MANIFEST_PATH}`);
-  if (!input.ignored.includes(BUILD_MANIFEST_PATH)) violations.push(`generated build manifest is not ignored: ${BUILD_MANIFEST_PATH}`);
   const withinRepository = (path: string): boolean => {
     const rel = relative(input.repositoryRoot, path);
     return rel === "" || (rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel));

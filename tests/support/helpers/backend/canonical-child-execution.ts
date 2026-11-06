@@ -32,7 +32,6 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
   const poolIndex = options?.poolIndex ?? 1;
   const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
   const lifecycle = new RunRecordService({ database, clock, ids: deps.ids, resolveDescriptor: resolve,
-    ...(deps.buildManifest === undefined ? {} : { buildManifest: deps.buildManifest }),
     publishQueued: (run, publication) => {
       assert.ok(publication);
       emitter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));

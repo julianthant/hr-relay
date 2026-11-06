@@ -12,6 +12,7 @@ import { duoCeremonyGatesOver } from "./duo-ceremony-fixtures.js";
 import { createBoundProfileFixture } from "./admission-fixture.js";
 import { manualClock, type TestClock } from "../../../src/rules/time/clock.js";
 import { descriptorRuntimeNodes } from "../../../src/workflow-kit/workflow.js";
+import { taskImplFingerprint } from "../../../src/workflow-kit/fingerprints.js";
 import type { WriteSequencerContext } from "../../../src/backend/runtime/execution/run-executor.js";
 import {
   createWriteSequencer,
@@ -90,9 +91,6 @@ export const FINALIZATION_WORKER_ID = `${FINALIZATION_WORKFLOW_ID}-worker-1`;
 export const FINALIZATION_RUN_ID = UUID_2;
 export const FINALIZATION_ITEM_ID = UUID_3;
 export const FINALIZATION_NOW = "2026-08-14T10:00:00.000Z";
-export const FINALIZATION_IMPL_FINGERPRINT = FingerprintSchema.parse(
-  "f".repeat(64),
-);
 export const FINALIZATION_CONFIG_FINGERPRINT = FingerprintSchema.parse(CONFIG_SNAPSHOT.fingerprint);
 
 /** The department the fold resolved — the option text the fake's control offers. */
@@ -480,8 +478,7 @@ export async function finalizationHarness(
     scheduler: new ManualScheduler(clock),
     taskDeadlineMs: 60_000,
     operator: "local-operator",
-    log: recordingLogger().log,
-    resolveImplFingerprint: () => FINALIZATION_IMPL_FINGERPRINT,
+    log: recordingLogger().log 
   });
   let closeAttempted = false, databaseClosed = false;
   const closeDatabase = () => {
@@ -582,6 +579,13 @@ export function finalizationContext(
   };
 }
 
+function finalizationNodeImplFingerprint(nodeId: string) {
+  const node = descriptorRuntimeNodes(separationsKualiFinalizationDescriptor).find(candidate => String(candidate.id) === nodeId);
+  if (node?.kind === "task") return taskImplFingerprint(node.uses);
+  if (node?.kind === "transaction") return taskImplFingerprint(node.commit.uses);
+  throw new Error(`finalization fixture has no task node ${nodeId}`);
+}
+
 /** Authenticated upstream checkpoint evidence required to seal a preview. */
 export function finalizationPreviewDependencies(
   run: RunRecord,
@@ -605,7 +609,7 @@ export function finalizationPreviewDependencies(
       descriptorVersion: separationsKualiFinalizationDescriptor.version,
       contractFingerprint:
         separationsKualiFinalizationDescriptor.contractFingerprint,
-      implFingerprint: FINALIZATION_IMPL_FINGERPRINT,
+      implFingerprint: finalizationNodeImplFingerprint(nodeId),
       provenance: [],
       writtenAt: FINALIZATION_NOW,
     });

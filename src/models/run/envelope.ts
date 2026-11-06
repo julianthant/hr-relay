@@ -62,6 +62,8 @@ export const RunEnvelopeSchema = z.strictObject({
   traceId: TraceIdSchema,
   descriptorVersion: PositiveIntSchema,
   contractFingerprint: FingerprintSchema,
+  /** The app build that approved this run's writes; a delegated child carries its parent's. */
+  buildId: FingerprintSchema,
     /* Stamped for older enqueues so a missing complete snapshot cannot be quietly read as a legacy run. */
   operationDisplayCapability: z.enum(["legacy", "complete"]).optional(),
     /** Present only for a complete display minted with this exact run. */

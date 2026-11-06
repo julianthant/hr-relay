@@ -13,6 +13,7 @@ import { createWorkerBrowserChannel } from "../../../runtime/workers/worker-brow
 import { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { type RuntimePreflight } from "../../preflight/runtime-admission.js";
 import { spawn as spawnChildProcess } from "node:child_process";
+import { currentBuildId, PARENT_BUILD_ID_ENV } from "../../build-id.js";
 import { lstatSync,rmdirSync } from "node:fs";
 import { join } from "node:path";
 import { DEVELOPMENT_DEBUG_MIRROR_ENV,workerBootstrapEnvironment } from "../../../../models/config/secrets.js";
@@ -37,7 +38,8 @@ export function productionWorkerLaunch(repoRoot: string, environment?: NodeJS.Pr
 }> {
   return Object.freeze({
     command: process.execPath,
-    environment: Object.freeze({ ...workerBootstrapEnvironment(environment), ...(development ? { [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1" } : {}) }),
+    environment: Object.freeze({ ...workerBootstrapEnvironment(environment), [PARENT_BUILD_ID_ENV]: currentBuildId(),
+      ...(development ? { [DEVELOPMENT_DEBUG_MIRROR_ENV]: "1" } : {}) }),
     prefixArgs: Object.freeze([...(development ? ["--conditions=development"] : []), "--import", "tsx", join(repoRoot, "scripts", "dev", "secure-env-bootstrap.ts"), "cli"]),
     cwd: repoRoot,
   });

@@ -15,7 +15,7 @@ import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/ide
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { BUILD_MANIFEST,resolveWorkflowFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
+import { isCompiledWorkflowContract } from "../../../workflow-kit/workflow-definition.js";
 import { authorizeWorkflowDelegationRefresh, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
@@ -93,7 +93,7 @@ export function ocrChildRetryAvailable(repositories: AuthorityRepositories, read
   if (member === undefined) return false;
   assertOcrChildRetryCurrent(repositories, reader, child);
   return member.dependency.state === "failed" && childTerminalSettlement(child, repositories)?.state === "failed"
-    && child.envelope.contractFingerprint === resolveWorkflowFingerprint(BUILD_MANIFEST, child.envelope.workflow);
+    && isCompiledWorkflowContract(child.envelope.workflow, child.envelope.contractFingerprint);
 }
 
 export function assertOcrReviewChildrenCurrent(repositories: AuthorityRepositories, runId: string, seed: OcrReviewRevision["seed"],
@@ -270,7 +270,7 @@ export function requireCurrentOcrSnapshot(repositories: AuthorityRepositories, r
   const reference = OcrApprovalReferenceSchema.parse(candidate);
   const review = readOcrReviewAuthority(repositories, reader, reference.sourceRunId);
   if (review === undefined || review.revision.revision !== reference.revision
-    || review.run.envelope.contractFingerprint !== resolveWorkflowFingerprint(BUILD_MANIFEST, review.run.envelope.workflow)) throw new OcrReviewRefusedError();
+    || !isCompiledWorkflowContract(review.run.envelope.workflow, review.run.envelope.contractFingerprint)) throw new OcrReviewRefusedError();
   const snapshot = readOcrSnapshotsAuthority(repositories, review).find(snapshot => snapshot.snapshotId === reference.snapshotId);
   if (snapshot === undefined || snapshot.reviewDigest !== review.digest || ocrSnapshotDigest(snapshot) !== reference.digest) throw new OcrReviewRefusedError();
   return snapshot;

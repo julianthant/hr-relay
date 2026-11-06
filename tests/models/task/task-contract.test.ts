@@ -19,7 +19,6 @@ import { expect } from "vitest";
 import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { defineWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
-import { fixtureBuildManifest } from "../../support/fixtures/workflow-definition-fixtures.js";
 import { WriteFixtureCommit } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { WriteFixturePrepare } from "../../support/fixtures/write-sequencer-fixtures.js";
 import { WriteFixtureProbe } from "../../support/fixtures/write-sequencer-fixtures.js";
@@ -499,7 +498,7 @@ it("compiles a sealed transaction probe role and refuses missing, mismatched, du
     steps: ({ transaction, result }) => {
       const write = transaction({ id: "write", prepare, commit, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 1000 }, [], { prepareBind: ({ input }) => ({ eid: input.firstEid }), commitBind: ({ input }) => ({ eid: input.firstEid }) });
       return { steps: [[{ key: "write", label: "Write" }, [write]]], result: result(z.strictObject({ done: z.boolean() }), [], () => ({ done: true })) };
-    } }), { manifest: fixtureBuildManifest([DISPLAY_FORWARD_ID]) });
+    } }));
   expect(build(reads).descriptor.operationDisplay?.capability).toBe("complete");
   expect(() => build([])).toThrow(/requires one probe contract/u);
   expect(() => build([...reads, ...reads])).toThrow(/requires one probe contract/u);

@@ -11,7 +11,12 @@ import type { AuthorityRepositories } from "../../storage/sqlite/authority-datab
 import { authenticateDescendantHome } from "../../storage/sqlite/delegation-authority.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
+import { ExtractFormPage } from "../../../models/processing/ocr/extract-form-page.js";
+import { ReadManualOcrReading } from "../../../models/workflows/ocr-page/read-manual-reading.js";
+import { ReadOcrPageReading } from "../../../models/workflows/ocr-page/read-page-reading.js";
+import { ReadOcrResult } from "../../../models/workflows/ocr/read-result.js";
+import { ReadOcrSourcePages } from "../../../models/workflows/ocr/read-source-pages.js";
 import { OcrResultSchema } from "../../../models/workflows/ocr/result.js";
 import { publishOcrReview, authenticateOcrOperator } from "./ocr-review-authority.js";
 import { taskId } from "../../../rules/identity/ids.js";
@@ -78,8 +83,7 @@ export function createOcrCheckpointPublication(reader: Pick<RunRecordService, "r
         || checkpoint.descriptorVersion !== run.envelope.descriptorVersion
         || checkpoint.contractFingerprint !== run.envelope.contractFingerprint || stored === undefined || !same(stored, checkpoint)
         || checkpoint.output.schemaHash !== deriveSchemaHash(review ? OcrResultSchema : OcrPageReadingSchema, "output")
-        || checkpoint.implFingerprint !== resolveTaskImplFingerprint(BUILD_MANIFEST,
-          taskId(review ? "workflow:ocr/read-result" : checkpoint.nodeId === "manual-reading" ? "workflow:ocr-page/read-manual-reading" : "workflow:ocr-page/read-page-reading"))) throw new OcrPublicationRefusedError();
+        || checkpoint.implFingerprint !== taskImplFingerprint(review ? ReadOcrResult : checkpoint.nodeId === "manual-reading" ? ReadManualOcrReading : ReadOcrPageReading)) throw new OcrPublicationRefusedError();
       if (review) { publishOcrReview(repositories, reader, run, checkpoint); return; }
       const input = OcrPageWorkflowInputSchema.parse(run.input.parsed.value);
       const reading = OcrPageReadingSchema.parse(checkpoint.output.value);
@@ -91,7 +95,7 @@ export function createOcrCheckpointPublication(reader: Pick<RunRecordService, "r
         "read-source-pages", parent.envelope.attempt).filter(row => row.runId === parent.envelope.runId).at(-1);
       if (source === undefined || source.contractFingerprint !== parent.envelope.contractFingerprint
         || source.output.schemaHash !== deriveSchemaHash(PreparedOcrPagesSchema, "output")
-        || source.implFingerprint !== resolveTaskImplFingerprint(BUILD_MANIFEST, taskId("workflow:ocr/read-source-pages"))) throw new OcrPublicationRefusedError();
+        || source.implFingerprint !== taskImplFingerprint(ReadOcrSourcePages)) throw new OcrPublicationRefusedError();
       const prepared = PreparedOcrPagesSchema.parse(source.output.value);
       if (!same(prepared.manifest.document, request.document)
         || prepared.pages.filter(page => same(page, input)).length !== 1) throw new OcrPublicationRefusedError();
@@ -118,7 +122,7 @@ export function createOcrCheckpointPublication(reader: Pick<RunRecordService, "r
           "extract", run.envelope.attempt).filter(row => row.runId === run.envelope.runId).at(-1);
         if (extracted === undefined || extracted.contractFingerprint !== run.envelope.contractFingerprint
           || extracted.output.schemaHash !== deriveSchemaHash(AdmittedExtractionSchema, "output")
-          || extracted.implFingerprint !== resolveTaskImplFingerprint(BUILD_MANIFEST, taskId("ocr/extract-form-page"))
+          || extracted.implFingerprint !== taskImplFingerprint(ExtractFormPage)
           || !same(AdmittedExtractionSchema.parse(extracted.output.value), reading.extraction)) throw new OcrPublicationRefusedError();
       }
       repositories.ocrExtractions.insert(reading);

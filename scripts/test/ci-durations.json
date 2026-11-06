@@ -1285,8 +1285,6 @@
   "tests/scripts/build/generate-workflow-registries.integration.test.ts": 3.3,
   "tests/scripts/build/generated-outputs.test.ts": 0.3,
   "tests/scripts/build/merge-generated-conflicts.integration.test.ts": 0.6,
-  "tests/scripts/build/workflow-build-manifest.integration.test.ts": 46.2,
-  "tests/scripts/build/workflow-build-manifest.test.ts": 9,
   "tests/scripts/dev/dashboard.integration.test.ts": 0.9,
   "tests/scripts/dev/dashboard.test.ts": 0.3,
   "tests/scripts/dev/relay-backend.test.ts": 0,

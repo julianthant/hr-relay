@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
+import { digestFiles, filesUnder } from "../../source-digest.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 
 export const DASHBOARD_BUILD_IDENTITY_FILE = "dashboard-build-identity.json";
@@ -41,28 +42,6 @@ const INPUT_FILES = [
 ] as const;
 
 const PARITY_INPUT_FILES = ["vite.parity.config.ts", "tests/parity/app-entry.tsx", "tests/parity/helpers/workflow-composition.ts"] as const;
-
-function filesUnder(root: string, into: string[]): void {
-  const info = lstatSync(root);
-  if (!info.isDirectory()) throw new Error(`dashboard build input is not a directory: ${root}`);
-  for (const entry of readdirSync(root, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-    const path = join(root, entry.name);
-    if (entry.isDirectory()) filesUnder(path, into);
-    else if (entry.isFile()) into.push(path);
-    else throw new Error(`dashboard build input contains an unsafe entry: ${relative(root, path)}`);
-  }
-}
-
-function digestFiles(base: string, files: readonly string[]): string {
-  const hash = createHash("sha256");
-  for (const file of files) {
-    hash.update(relative(base, file).split(sep).join("/"));
-    hash.update("\0");
-    hash.update(createHash("sha256").update(readFileSync(file)).digest("hex"));
-    hash.update("\n");
-  }
-  return hash.digest("hex");
-}
 
 export function computeDashboardBuildInputDigest(repoRoot: string, buildScript: DashboardBuildCommand = DASHBOARD_BUILD_COMMAND): string {
   const root = resolve(repoRoot);

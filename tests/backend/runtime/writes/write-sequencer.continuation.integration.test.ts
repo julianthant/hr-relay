@@ -18,7 +18,7 @@ import { createWriteSequencerTestWorld } from "../../../support/helpers/backend/
 import { recordingLogger } from "../../../support/helpers/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { testRunLifecycle, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
-import { absentProbeEvidence, buildWriteFixtureRegistry, WRITE_FIXTURE_EID, WRITE_FIXTURE_IMPL_FINGERPRINT,
+import { absentProbeEvidence, buildWriteFixtureRegistry, WRITE_FIXTURE_EID,
   WRITE_FIXTURE_KEY_DIGEST, WRITE_FIXTURE_NODE_ID, WRITE_FIXTURE_WORKFLOW_ID, WriteFixtureCommit,
   writeFixtureDescriptor, writeFixtureQueuedRun } from "../../../support/fixtures/write-sequencer-fixtures.js";
 
@@ -125,7 +125,7 @@ async function fixture(changeCheckpoint?: (row: RunCheckpointRecord) => RunCheck
       commitRecheckedParkedWrite: h.database.commitRecheckedParkedWrite.bind(h.database) }, lifecycle: testRunLifecycle(h.database, h.clock),
       stores: buildWriteFixtureRegistry(h.world), sessions: h.manager, emitter: h.emitter.emitter,
       clock: h.clock, ids: h.ids, scheduler: h.scheduler, taskDeadlineMs: 60_000, operator: "local-operator",
-      log: recordingLogger().log, resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT });
+      log: recordingLogger().log  });
     return sequencer.executeTransaction(candidate);
   }
   return { h, original, source, checkpoint, context, lifecycle, repositories, execute, issue };

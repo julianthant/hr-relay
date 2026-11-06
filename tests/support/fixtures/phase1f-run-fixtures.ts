@@ -1,4 +1,5 @@
 
+import { currentBuildId } from "../../../src/backend/app/build-id.js";
 import { CONFIG_SNAPSHOT, HASH_A, HASH_C, LATER, NOW, UUID_2, UUID_3, UUID_5 } from "./phase1c-contract-fixtures.js";
 import {
   deriveCanonicalInputDigest,
@@ -34,7 +35,7 @@ export const RUN_ENVELOPE = {
   itemId: ITEM_ID,
   traceId: TRACE_ID,
   descriptorVersion: 1,
-  contractFingerprint: HASH_A,
+  contractFingerprint: HASH_A, buildId: currentBuildId(),
   resolvedInstance: { ucpath: "prod", crm: "prod" },
   configFingerprint: CONFIG_SNAPSHOT.fingerprint,
   configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,

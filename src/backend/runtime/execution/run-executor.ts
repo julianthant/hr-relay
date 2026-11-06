@@ -46,8 +46,7 @@ import { RunLifecycleSchema, RunRecordSchema, runClaim, type RunLifecycle, type 
 import type { RunResultRecord, TerminalDependencyEvidence } from "../../../models/run/result.js";
 import type { SessionNeed } from "../../../models/sessions/session.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
-import type { BuildManifest } from "../../../models/workflow/build-manifest.js";
+import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { auditCheckpointFreshness, CheckpointExpectationSchema, loadCheckpoint, RunCheckpointRecordSchema, type CheckpointPatch, type ReplayedCheckpoint, type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { applyCheckpointPatches } from "../checkpoints/checkpoint-patch.js";
 import { deriveArtifactProjectionRows } from "../../../models/workflow/artifact-projection.js";
@@ -208,7 +207,6 @@ export interface RunExecutorDependencies {
   readonly lifecycle: WorkerRunLifecyclePort;
   readonly descriptor: AnyWorkflowDescriptor;
   readonly stores: TaskStoreRegistry;
-  readonly buildManifest?: BuildManifest;
   readonly authority: RunExecutionAuthority;
   readonly sessions: WorkerSessionManager;
   readonly emitter: SpanEmitter;
@@ -352,7 +350,6 @@ export async function executeClaimedRun(
   const initial = RunRecordSchema.parse(input.run);
   const claim = RunClaimTokenSchema.parse(input.claim);
   const { descriptor, clock } = deps;
-  const buildManifest = deps.buildManifest ?? BUILD_MANIFEST;
   const envelope = initial.envelope;
   const runId = envelope.runId;
   if (envelope.workflow !== descriptor.id
@@ -813,7 +810,7 @@ export async function executeClaimedRun(
     const checkpointExpectation = (node: TaskRuntimeNode) => CheckpointExpectationSchema.parse({
       descriptorVersion: descriptor.version,
       contractFingerprint: descriptor.contractFingerprint,
-      implFingerprint: resolveTaskImplFingerprint(buildManifest, node.uses.id),
+      implFingerprint: taskImplFingerprint(node.uses),
       outputSchemaHash: deriveSchemaHash(node.uses.output, "output"),
     });
 
@@ -1444,7 +1441,7 @@ export async function executeClaimedRun(
         },
         descriptorVersion: descriptor.version,
         contractFingerprint: descriptor.contractFingerprint,
-        implFingerprint: resolveTaskImplFingerprint(buildManifest, contract.id),
+        implFingerprint: taskImplFingerprint(contract),
         provenance: provenance.provenance,
         observationOrigins: provenance.points.flatMap(point => (point.origins ?? []).map(entry => ({ path: [...point.field.split("."), ...entry.path], origin: entry.origin }))),
         ...(operationDisplaySnapshot === undefined ? {} : { operationSources: [...actionSources].flatMap(([key, source]) =>
@@ -1853,7 +1850,7 @@ export async function executeClaimedRun(
             ...(retainedRunProtectedBindings(initial).length === 0 ? {} : { protectedBindings: retainedRunProtectedBindings(initial) }) },
           descriptorVersion: descriptor.version,
           contractFingerprint: descriptor.contractFingerprint,
-          implFingerprint: resolveTaskImplFingerprint(buildManifest, node.uses.id),
+          implFingerprint: taskImplFingerprint(node.uses),
           provenance: jsonLeafPaths(value).map((path) => ({
             path, source: "operator", observedAt: assertedAt, originalObservedAt: assertedAt,
           })),

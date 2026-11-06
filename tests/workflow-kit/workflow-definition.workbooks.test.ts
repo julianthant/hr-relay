@@ -3,7 +3,7 @@ import { z } from "zod";
 import { defineTaskContract } from "../../src/models/task/task-contract.js";
 import { defineCanonicalInput } from "../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/models/workflow/presentation.js";
-import { taskId } from "../../src/rules/identity/ids.js";
+import { FingerprintSchema, taskId } from "../../src/rules/identity/ids.js";
 import { flow } from "../../src/workflow-kit/flow.js";
 import { compileWorkflow, defineStepEntries, defineStepProof, defineWorkflow, inheritStepProof } from "../../src/workflow-kit/workflow-definition.js";
 import type { AnyWorkflowDefinition, WorkflowAuthor } from "../../src/workflow-kit/workflow-definition.js";
@@ -15,7 +15,6 @@ import { ocrWorkflow } from "../../src/workflows/ocr/workflow.js";
 import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
 import { onbaseWorkflow } from "../../src/workflows/onbase/workflow.js";
 import { separationsWorkflow } from "../../src/workflows/separations/workflow.js";
-import { fixtureBuildManifest } from "../support/fixtures/workflow-definition-fixtures.js";
 import { onboardingWorkflow } from "../../src/workflows/onboarding/workflow.js";
 import { ONBOARDING_ROSTER_FIELDS } from "../../src/models/workflows/onboarding/roster.js";
 
@@ -44,8 +43,7 @@ const base = {
 const fixtureFlow = flow(Input)
   .step("reading", contract, { dependsOn: [], replay: "checkpoint", bind: ({ input }) => input })
   .build({ schema: Input, dependsOn: ["reading"], derive: ({ outputs }) => outputs.reading });
-const manifest = fixtureBuildManifest([base.id, "workbook-requirements-proof"]);
-const fingerprint = manifest.workflows.find(entry => entry.id === base.id)!.fingerprint;
+const fingerprint = FingerprintSchema.parse("f".repeat(64));
 const descriptorSpec = { ...base, flow: fixtureFlow, contractFingerprint: fingerprint };
 const currentDefinitions: readonly AnyWorkflowDefinition[] = [
   personLookupWorkflow, separationsWorkflow, i9CheckWorkflow, i9LookupWorkflow, ocrWorkflow, ocrPageWorkflow, onbaseWorkflow,
@@ -84,7 +82,7 @@ describe("direct workbook type requirements", () => {
   it("preserves exact nonempty IDs and order through compilation and sealed readers", () => {
     const ids = ["roster/custom:2026", "Mixed Case type"];
     const definition = defineWorkflow({ ...base, requiredWorkbookTypeIds: ids });
-    const { descriptor } = compileWorkflow(definition, { manifest });
+    const { descriptor } = compileWorkflow(definition);
     expect(definition.requiredWorkbookTypeIds).toEqual(ids);
     expect(descriptor.requiredWorkbookTypeIds).toEqual(ids);
     expect(descriptor.requiredWorkbookTypeIds).not.toBe(definition.requiredWorkbookTypeIds);
@@ -137,9 +135,9 @@ describe("direct workbook type requirements", () => {
     expect(definition.requiredWorkbookTypeIds).toEqual(parent.requiredWorkbookTypeIds);
     expect(definition.requiredWorkbookTypeIds).not.toBe(parent.requiredWorkbookTypeIds);
     expect(definition.role).toEqual({ kind: "chunk-harness", of: parent.id, step: "reading" });
-    const { descriptor } = compileWorkflow(definition, { manifest });
+    const { descriptor } = compileWorkflow(definition);
     expect(workflowPlanning(descriptor).requiredWorkbookTypeIds).toEqual(["existing-master"]);
-    expect(descriptor.contractFingerprint).toBe(manifest.workflows.find(entry => entry.id === definition.id)!.fingerprint);
+    expect(descriptor.contractFingerprint).not.toBe(compileWorkflow(parent).descriptor.contractFingerprint);
   });
 
   it.each(currentDefinitions)(

@@ -197,9 +197,9 @@ export const ExplorerTaskWireSchema = z.strictObject({
   /** Every field this contract's input and output own, sorted, side-tagged. */
   fields: z.array(ExplorerContractFieldWireSchema),
   contractSource: SourceLinkWireSchema,
-  /** The store's task implementation, and the fingerprint the manifest gave it. */
+  /** The store's task implementation and its contract identity. */
   implSource: SourceLinkWireSchema,
-  implFingerprint: FingerprintSchema.optional(),
+  implFingerprint: FingerprintSchema,
 });
 export type ExplorerTaskWire = z.infer<typeof ExplorerTaskWireSchema>;
 
@@ -398,8 +398,6 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
   sources: z.strictObject({
     descriptor: SourceLinkWireSchema,
     module: SourceLinkWireSchema,
-    /** Every file in the descriptor's fingerprinted source closure. */
-    closureFileCount: z.number().int().positive(),
   }),
 }).superRefine((workflow, context) => {
   const graphNodeIds = new Set(workflow.nodes.map(({ id }) => String(id)));

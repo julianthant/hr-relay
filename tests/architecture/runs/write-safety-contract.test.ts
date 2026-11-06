@@ -28,7 +28,6 @@ import {
   absentProbeEvidence,
   buildWriteFixtureRegistry,
   createWriteFixtureWorld,
-  WRITE_FIXTURE_IMPL_FINGERPRINT,
   WRITE_FIXTURE_KEY,
   WriteFixtureCommit,
   WriteFixtureProofSchema,
@@ -146,8 +145,7 @@ describe("crash recovery routes probe-first with evidence-qualified settlement",
       scheduler,
       taskDeadlineMs: 60_000,
       operator: "local-operator",
-      log: recordingLogger().log,
-      resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+      log: recordingLogger().log 
     });
     return {
       clock, database, world, recovery,

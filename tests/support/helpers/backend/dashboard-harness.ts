@@ -1,3 +1,4 @@
+import { currentBuildId } from "../../../../src/backend/app/build-id.js";
 import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
@@ -443,7 +444,7 @@ export function runRecordOf(input: SeedRunInput): RunRecord {
       itemId: uuidOf(input.seed + 5000),
       traceId: traceOf(input.seed),
       descriptorVersion: input.descriptor?.version ?? 1,
-      contractFingerprint: input.descriptor?.contractFingerprint ?? HASH_A,
+      contractFingerprint: input.descriptor?.contractFingerprint ?? HASH_A, buildId: currentBuildId(),
       resolvedInstance: { ucpath: "prod" },
       configFingerprint: CONFIG_SNAPSHOT.fingerprint,
       configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,

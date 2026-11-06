@@ -1,3 +1,4 @@
+import { currentBuildId } from "../../../../src/backend/app/build-id.js";
 import { OnboardingReadI9ProfilePlan } from "../../../../src/models/workflows/onboarding/read-i9-profile-plan.js";
 import { OnboardingReadHirePlan } from "../../../../src/models/workflows/onboarding/read-hire-plan.js";
 import { UcpathStageHire } from "../../../../src/models/systems/ucpath/stage-hire.js";
@@ -138,7 +139,7 @@ export function createOnboardingWriteWorld() {
       const ports = testWorkerPorts(database, clock, { path: profile.path, descriptor, poolIndex: 1 });
       const worker = database.authority.workerSlots.list(descriptor.id).find(row => row.poolIndex === 1); assert.ok(worker);
       const record = RunRecordSchema.parse({ envelope: { runId, itemId, workflow: descriptor.id, traceId: `iwp-120000-${runId.slice(0, 4)}`,
-        descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
+        descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint, buildId: currentBuildId(),
         resolvedInstance: { i9: "prod", ...(hireOptions === undefined ? {} : { ucpath: "prod" }) }, configFingerprint: CONFIG_SNAPSHOT.fingerprint, configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId,
         shape: "single", priority: "bulk", dryRun, attempt: 1, enqueuedAt: now },
         input: { raw: input, parsed: { schemaHash: deriveSchemaHash(canonicalInput, "output"), value: input, protectedBindings: [] },

@@ -27,7 +27,6 @@ import {
   absentProbeEvidence,
   buildWriteFixtureRegistry,
   createWriteFixtureWorld,
-  WRITE_FIXTURE_IMPL_FINGERPRINT,
   WRITE_FIXTURE_KEY,
   WRITE_FIXTURE_NODE_ID,
   WRITE_FIXTURE_NOW,
@@ -173,8 +172,7 @@ async function orderingHarness(): Promise<OrderingHarness> {
     scheduler: new ManualScheduler(clock),
     taskDeadlineMs: 60_000,
     operator: "local-operator",
-    log: recordingLogger().log,
-    resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+    log: recordingLogger().log 
   });
   const execute = (context: WriteSequencerContext): Promise<unknown> =>
     withBoundRunConfigFingerprint(

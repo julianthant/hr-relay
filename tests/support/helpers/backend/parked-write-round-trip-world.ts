@@ -18,7 +18,7 @@ import { manualClock, type TestClock } from "../../../../src/rules/time/clock.js
 import { type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_KEY, WRITE_FIXTURE_NOW, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions, type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
+import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, WRITE_FIXTURE_KEY, WRITE_FIXTURE_NOW, WRITE_FIXTURE_WORKER_ID, WRITE_FIXTURE_WORKFLOW_ID, writeFixtureDescriptor, writeFixtureQueuedRun, writeFixtureSessions, type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
 import { duoCeremonyGatesOver } from "../duo-ceremony-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
@@ -91,8 +91,7 @@ export function createParkedWriteRoundTripTestWorld() {
           resolve: (workflowId) => (workflowId === WRITE_FIXTURE_WORKFLOW_ID ? resolutionDescriptor : undefined),
         },
         authority: database,
-        ids,
-        resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+        ids 
       }),
       workerRuntime: { pool: { planPoolWorkerCount: () => { throw new Error("unexpected worker command"); }, spawnPoolWorker: () => { throw new Error("unexpected worker command"); }, refreshPoolBrowser: () => { throw new Error("unexpected worker command"); }, reopenPoolBrowser: () => { throw new Error("unexpected worker command"); }, stopPoolWorker: () => { throw new Error("unexpected worker command"); }, pausePoolWorker: () => { throw new Error("unexpected worker command"); }, resumePoolWorker: () => { throw new Error("unexpected worker command"); } } },
     });
@@ -141,8 +140,7 @@ export function createParkedWriteRoundTripTestWorld() {
           scheduler,
           taskDeadlineMs: 60_000,
           operator: "local-operator",
-          log,
-          resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+          log 
         }),
       });
 

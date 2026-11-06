@@ -17,7 +17,7 @@ import { NO_INTAKE_PROJECTIONS,UNWIRED_INTAKE_PARSER } from "../../fixtures/inta
 import { CONFIG_SNAPSHOT,UUID_5,UUID_6,UUID_7,UUID_8 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { testRunContinuation, testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifecycle-fixtures.js";
-import { WRITE_FIXTURE_IMPL_FINGERPRINT,WRITE_FIXTURE_ITEM_ID,WRITE_FIXTURE_KEY,WRITE_FIXTURE_KEY_DIGEST,WRITE_FIXTURE_NODE_ID,WRITE_FIXTURE_NOW,WRITE_FIXTURE_OBSERVATION,WRITE_FIXTURE_RUN_ID,WRITE_FIXTURE_STAGED_STATE,WRITE_FIXTURE_WORKER_ID,WRITE_FIXTURE_WORKFLOW_ID,buildWriteFixtureRegistry,createWriteFixtureWorld,writeFixtureDescriptor,writeFixtureQueuedRun,writeFixtureSessionManager,writeFixtureSessions,type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
+import {WRITE_FIXTURE_ITEM_ID,WRITE_FIXTURE_KEY,WRITE_FIXTURE_KEY_DIGEST,WRITE_FIXTURE_NODE_ID,WRITE_FIXTURE_NOW,WRITE_FIXTURE_OBSERVATION,WRITE_FIXTURE_RUN_ID,WRITE_FIXTURE_STAGED_STATE,WRITE_FIXTURE_WORKER_ID,WRITE_FIXTURE_WORKFLOW_ID,buildWriteFixtureRegistry,createWriteFixtureWorld,writeFixtureDescriptor,writeFixtureQueuedRun,writeFixtureSessionManager,writeFixtureSessions,type WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
 import { ManualScheduler,recordingLogger,type SessionFactoryHarness } from "../phase1f-executor-harness.js";
 import { AuthorityDatabase } from "../synthetic-storage-admission.js";
 import { boundFixtureWorker, detachBoundFixtureWorkers } from "../synthetic-database-admission.js";
@@ -108,8 +108,7 @@ export function createWriteRecoveryTestWorld(profileFixture: () => Promise<Bound
       scheduler: new ManualScheduler(clock),
       taskDeadlineMs: 60_000,
       operator: "local-operator",
-      log: recordingLogger().log,
-      resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+      log: recordingLogger().log 
     }); held.recovery = recovery;
     retainedWriteRecoveryOwners.delete(held);
     return {
@@ -226,8 +225,7 @@ export function createWriteRecoveryTestWorld(profileFixture: () => Promise<Bound
           String(descriptor.id) === workflowId ? descriptor : undefined,
       },
       authority: h.database,
-      ids: h.ids,
-      resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT,
+      ids: h.ids 
     });
     const makeKernel=()=>{
     const lifecycle = new RunRecordService({database:h.database,clock:h.clock,ids:h.ids,publishQueued:()=>{}});
@@ -239,8 +237,7 @@ export function createWriteRecoveryTestWorld(profileFixture: () => Promise<Bound
       workerRuntime:{pool:{planPoolWorkerCount:unused,spawnPoolWorker:unused,refreshPoolBrowser:unused,reopenPoolBrowser:unused,
         stopPoolWorker:unused,pausePoolWorker:unused,resumePoolWorker:unused}},
       writeResolution:createWriteResolutionExecutor({authority:h.database,continuation:runContinuationPort(lifecycle),
-        descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},ids:h.ids,
-        resolveImplFingerprint:()=>WRITE_FIXTURE_IMPL_FINGERPRINT})});
+        descriptors:{resolve:workflow=>workflow===String(descriptor.id)?descriptor:undefined},ids:h.ids })});
     return kernel;
     };
     return { h, executor, kernel:makeKernel(),makeKernel };

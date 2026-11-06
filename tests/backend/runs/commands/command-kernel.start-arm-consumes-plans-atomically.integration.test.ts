@@ -1,3 +1,4 @@
+import { currentBuildId } from "../../../../src/backend/app/build-id.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";
@@ -187,7 +188,7 @@ describe("start arm consumes plans atomically", () => {
         itemId,
         traceId: "kr-170000-7777",
         descriptorVersion: 1,
-        contractFingerprint: plan.descriptorFingerprint,
+        contractFingerprint: plan.descriptorFingerprint, buildId: currentBuildId(),
         resolvedInstance: { ucpath: "prod" },
         configFingerprint: plan.configFingerprint,
         configSnapshotId: UUID_4,

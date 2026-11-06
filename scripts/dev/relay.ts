@@ -82,7 +82,7 @@ function readFrame(socket: Socket, receive: (value: unknown) => void): void {
 }
 
 async function prepareBackend(): Promise<void> {
-  const child = spawn(process.execPath, ["--import", "tsx", join(repositoryRoot, "scripts", "build", "generate-workflow-manifest.ts")],
+  const child = spawn(process.execPath, ["--import", "tsx", join(repositoryRoot, "scripts", "build", "windows-observer-policy.ts")],
     { cwd: repositoryRoot, stdio: "inherit" });
   await new Promise<void>((resolve, reject) => {
     child.once("error", reject);
