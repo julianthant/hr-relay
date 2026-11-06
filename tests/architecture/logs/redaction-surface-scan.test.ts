@@ -232,6 +232,8 @@ describe("redaction surface scan — the declaration audit", () => {
       "wire/assistant|action.workflowId|repository-authored",
       "wire/assistant|action.label|repository-authored",
       "wire/assistant|action.targetLabel|captured-hr-value",
+      "wire/assistant|action.person.name|captured-hr-value",
+      "wire/assistant|proposal.person.name|captured-hr-value",
       "wire/assistant|proposal.startPlan.planned[].title|captured-hr-value",
       "wire/assistant|proposal.startPlan.planned[].subtitle|captured-hr-value",
       "wire/assistant|action.startPlan.planned[].title|captured-hr-value",

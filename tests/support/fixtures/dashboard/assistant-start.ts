@@ -6,6 +6,7 @@ export const ASSISTANT_START_PROPOSAL = AssistantActionProposalSchema.parse({
   revision: 1, expiresAt: "2099-01-01T00:00:00Z",
   label: "Start Person Lookup", targetLabel: "EID 10101010",
   subject: "selected-run", effect: "workflow-start", workflowId: "person-lookup", dryRun: false,
+  person: { name: "Avery Sample", employeeId: "10101010" },
   startPlan: {
     startPlanId: "00000000-0000-4000-8000-000000000003",
     workflowId: "person-lookup", expectedVersion: 2, expiresAt: "2099-01-01T00:00:00Z",

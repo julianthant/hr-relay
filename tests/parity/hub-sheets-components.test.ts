@@ -7,7 +7,7 @@ import { createServer, type ViteDevServer } from 'vite';
 import { captureA11yReference } from './helpers/capture.js';
 import { FIXTURE_APP_VERSION, FIXTURE_DAY, FIXTURE_DESCRIPTOR_HASH } from './helpers/fixture-identity.js';
 
-const states = ['library', 'library-registered', 'files-empty', 'files', 'files-preview', 'picker', 'editor', 'versions', 'type-create', 'type-edit', 'import'] as const;
+const states = ['library', 'library-registered', 'editor', 'versions', 'type-create', 'type-edit', 'import'] as const;
 let server: ViteDevServer, baseUrl: string, fixtureRoot: string;
 test.beforeAll(async () => {
   const evidence = resolve('.work/HUB-WIRE-1C'); mkdirSync(evidence, { recursive: true });
@@ -23,7 +23,6 @@ import {SpreadsheetEditor} from '/@fs/${resolve('src/dashboard/surfaces/spreadsh
 import {SpreadsheetVersions} from '/@fs/${resolve('src/dashboard/surfaces/spreadsheets/spreadsheet-versions.tsx')}';
 import {SpreadsheetColumnImport} from '/@fs/${resolve('src/dashboard/surfaces/spreadsheets/spreadsheet-column-import.tsx')}';
 import {prepareSpreadsheetColumns} from '/@fs/${resolve('src/dashboard/surfaces/spreadsheets/spreadsheet-column-import-model.ts')}';
-import {ChatFiles} from '/@fs/${resolve('src/dashboard/surfaces/shell/chat-files.tsx')}';
 import {exportSheetInWorker} from '/@fs/${resolve('src/dashboard/surfaces/spreadsheets/spreadsheet-import-client.ts')}';
 import {ToastProvider} from '/@fs/${resolve('src/dashboard/ds/ui.tsx')}';
 import '/@fs/${resolve('src/dashboard/app/index.css')}';
@@ -35,15 +34,11 @@ document.documentElement.dataset.motion=params.get('motion')||'on';
 const workbook={name:'Autumn onboarding.xlsx',libraryId:'fixture',themes:[],hasFormulas:false,sheets:[{id:'sheet',name:'People',width:3,hidden:[],headerRow:1,columnBindings:['firstName','lastName','eid'].map((fieldId,column)=>({id:'column-'+column,sourceColumn:column,sourceHeader:['First name','Last name','Employee ID'][column],fieldId,basis:'manual'})),rows:[['First name','Last name','Employee ID'],['Alex','Rivera','10000001'],['Morgan','Vega','10000002']].map((cells,index)=>({id:'row-'+index,cells:cells.map(value=>({value}))}))}]};
 const types=mockWorkbookTypes([{id:'onboarding',name:'Onboarding roster',fields:['First name','Last name','Employee ID']},{id:'employment',name:'Employment records',fields:['First name','Last name','Employee ID']}]);
 const files=mockWorkbookLibrary([{id:'one',name:'Autumn onboarding.xlsx',typeId:'onboarding',sheets:[{name:'People'}],addedAt:'2026-10-01T00:00:00Z',rowCount:17},{id:'two',name:'Employment check.xlsx',typeId:'employment',sheets:[{name:'People'}],addedAt:'2026-10-01T00:00:00Z',rowCount:24}],types);
-const chatFiles=['Autumn onboarding.csv','Autumn onboarding-updated.csv','Onboarding results.csv'].map((name,index)=>({id:'file-'+index,name,kind:'workbook',reference:{libraryId:'file-'+index,version:index===1?2:1,name,status:['Attached','Updated','Generated'][index]}}));
-const emptyFiles=[];
-const port={subscribe:()=>()=>{},snapshot:()=>scene==='files-empty'?emptyFiles:chatFiles,open:async file=>({kind:'workbook',document:{...workbook,name:file.name,libraryId:file.reference.libraryId}}),download:async file=>({name:file.name,blob:new Blob([await exportSheetInWorker(workbook.sheets[0])],{type:'text/csv'})})};
 const records=[1,2].map(version=>({libraryId:'fixture',version,createdAt:'2026-10-01T00:00:00Z',savedAt:'2026-10-01T00:00:00Z',workbook}));
 const versionEntry={...files[0],libraryId:'fixture',name:workbook.name,state:{...files[0].state,libraryId:'fixture',selectedVersionId:'v2',versions:records.map(record=>({id:'v'+record.version,name:record.version===1?'Original':'Fall hires added',version:record.version,snapshotId:'snapshot-'+record.version,savedAt:record.savedAt,source:'operator'}))}};
-function App(){const [document,setDocument]=useState(workbook),[dirty,setDirty]=useState(false),[view,setView]=useState(scene),[attached,setAttached]=useState('');const trigger=useRef(null),typeTrigger=useRef(null);const chat=view.startsWith('files')||view==='picker';
-return <ToastProvider><main className={chat?'fixture-chat':'fixture-library'} data-fixture-ready={scene} data-demo-theme={theme}>
-{chat?<ChatFiles port={port} mode={view==='picker'?'attach':'browse'} onBackToChat={()=>setView('back')} onAttachFile={file=>setAttached(file.name)} onOpenWorkbook={file=>{setDocument({...workbook,name:file.name,libraryId:file.libraryId});setView('editor')}}/>:view==='back'?<p role="status">Back in chat</p>:view==='editor'||view==='versions'?<SpreadsheetEditor document={document} dirty={dirty} onDocument={(next,dirty)=>{if(next)setDocument(next);else setView('library');setDirty(dirty)}} onHistory={()=>setView('versions')} onSave={async next=>({state:'confirmed',version:3,readback:next})}/>:<SpreadsheetLibrary files={scene==='library-registered'?[...files,...mockWorkbookLibrary(chatFiles.map(file=>({id:file.id,name:file.name,typeId:'local',sheets:[{name:'People'}],addedAt:'2026-10-01T00:00:00Z',rowCount:2,version:file.reference.version})),types)]:files} types={types} busy={false} loading={false} failed={false} pendingImport={false} importTrigger={trigger} onImport={()=>setView('import')} onCreateType={button=>{typeTrigger.current=button;setView('type-create')}} onEditType={(type,button)=>{typeTrigger.current=button;setView('type-edit')}} onOpen={()=>setView('editor')} onDownload={async()=>{}} onVersions={()=>setView('versions')} onChange={async()=>({state:'confirmed'})} onCheck={async()=>({state:'confirmed'})}/>}
-{attached&&<p role="status">Attached {attached}</p>}
+function App(){const [document,setDocument]=useState(workbook),[dirty,setDirty]=useState(false),[view,setView]=useState(scene);const trigger=useRef(null),typeTrigger=useRef(null);
+return <ToastProvider><main className="fixture-library" data-fixture-ready={scene} data-demo-theme={theme}>
+{view==='editor'||view==='versions'?<SpreadsheetEditor document={document} dirty={dirty} onDocument={(next,dirty)=>{if(next)setDocument(next);else setView('library');setDirty(dirty)}} onHistory={()=>setView('versions')} onSave={async next=>({state:'confirmed',version:3,readback:next})}/>:<SpreadsheetLibrary files={files} types={types} busy={false} loading={false} failed={false} pendingImport={false} importTrigger={trigger} onImport={()=>setView('import')} onCreateType={button=>{typeTrigger.current=button;setView('type-create')}} onEditType={(type,button)=>{typeTrigger.current=button;setView('type-edit')}} onOpen={()=>setView('editor')} onDownload={async()=>{}} onVersions={()=>setView('versions')} onChange={async()=>({state:'confirmed'})} onCheck={async()=>({state:'confirmed'})}/>}
 <SpreadsheetTypeDialog key={view} open={view==='type-create'||view==='type-edit'} onOpenChange={()=>setView('library')} type={view==='type-edit'?types[0]:undefined} returnFocus={typeTrigger} onSave={async()=>({state:'confirmed'})}/>
 <SpreadsheetVersions entry={view==='versions'?versionEntry:null} pending={false} onChange={async()=>({state:'confirmed'})} onCheck={async()=>({state:'confirmed'})} onClose={()=>setView('editor')} onDownload={async()=>{}}/>
 <SpreadsheetColumnImport open={view==='import'} document={prepareSpreadsheetColumns(document)} onOpenChange={()=>setView('library')} onChange={setDocument} onCancel={()=>setView('library')} onConfirm={()=>setView('editor')} returnFocus={trigger}/>
@@ -85,23 +80,11 @@ for (const browserName of ['chromium', 'webkit'] as const) test.describe(browser
       for (const scene of states) {
         await loadScene(scene);
         await expect(page.locator('[data-fixture-ready]')).toBeVisible(); await page.evaluate(() => document.fonts.ready);
-        if (scene === 'files-preview') { await page.getByRole('button', { name: 'Preview Autumn onboarding-updated.csv', exact: true }).click(); await expect(page.getByRole('table', { name: 'People preview', exact: true })).toBeVisible(); }
-        const target = scene === 'files-preview' || scene === 'type-create' || scene === 'type-edit' || scene === 'versions' || scene === 'import' ? page.getByRole('dialog').first() : page.locator('.fixture-chat,.fixture-library');
+        const target = scene === 'type-create' || scene === 'type-edit' || scene === 'versions' || scene === 'import' ? page.getByRole('dialog').first() : page.locator('.fixture-library');
         if (scene === 'versions') await expect(page.getByRole('heading', { name: 'Saved versions', exact: true })).toBeVisible();
         const name = await captureA11yReference(page, resolve('tests/parity/references'), { stateId: `hub-sheets-${scene}`, viewport: `${width}x1000`, theme, adapter: 'fixture', fixtureId: 'hub-sheets-components', descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: browserName });
         await expect(target).toHaveScreenshot(`${name}.png`, { animations: 'disabled' });
       }
-      await loadScene('files-empty'); await expect(page.getByRole('button', { name: 'Back to chat' })).toBeVisible();
-      await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab'); await expect(page.getByRole('button', { name: 'Back to chat' })).toBeFocused();
-      await page.keyboard.press('Enter'); await expect(page.getByRole('status')).toHaveText('Back in chat');
-      await loadScene('picker'); await page.getByRole('button', { name: 'Attach Autumn onboarding-updated.csv', exact: true }).click(); await expect(page.getByRole('status')).toHaveText('Attached Autumn onboarding-updated.csv');
-      await loadScene('files');
-      const preview = page.getByRole('button', { name: 'Preview Autumn onboarding-updated.csv', exact: true });
-      await expect(preview).toBeVisible(); const filesBefore = await page.locator('.fixture-chat').boundingBox();
-      await preview.click(); await expect(page.getByRole('table', { name: 'People preview' })).toBeVisible();
-      expect(await page.locator('.fixture-chat').boundingBox()).toEqual(filesBefore);
-      await page.keyboard.press('Escape'); await expect(preview).toBeFocused();
-      await expect(preview.locator('..')).toHaveCSS('background-color', theme === 'light' ? 'rgb(148, 148, 148)' : 'rgb(176, 176, 176)');
       await loadScene('library');
       const library = page.locator('.hub-sheets-library'), create = page.getByRole('button', { name: 'Create type', exact: true });
       await expect(create).toBeVisible(); const before = await library.boundingBox();
@@ -109,22 +92,6 @@ for (const browserName of ['chromium', 'webkit'] as const) test.describe(browser
       expect(await library.boundingBox()).toEqual(before);
       await expect(page.getByRole('textbox', { name: 'Type name', exact: true })).toHaveCSS('outline-style', 'none');
       await page.keyboard.press('Escape'); await expect(create).toBeFocused();
-      await loadScene('files-empty', 'off');
-      const back = page.getByRole('button', { name: 'Back to chat', exact: true }); await expect(back).toBeVisible();
-      await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab'); await expect(back).toBeFocused();
-      await expect(back).toHaveCSS('background-color', theme === 'light' ? 'rgb(148, 148, 148)' : 'rgb(176, 176, 176)');
-      await expect(back).toHaveCSS('transition-duration', '0s');
-      await page.emulateMedia({ reducedMotion: 'reduce' }); await expect(back).toHaveCSS('animation-name', 'none');
-      await page.emulateMedia({ reducedMotion: 'no-preference' });
-      await loadScene('files', 'off');
-      await page.getByRole('button', { name: 'Preview Autumn onboarding-updated.csv', exact: true }).click();
-      await expect(page.getByRole('table', { name: 'People preview' })).toBeVisible();
-      const scrim = page.locator('body > div[data-state="open"]:has(+ .hub-chat-files-dialog)');
-      await expect(scrim).toHaveCSS('transition-duration', '0s'); await expect(scrim).toHaveCSS('opacity', '1');
-      await page.emulateMedia({ reducedMotion: 'reduce' });
-      await page.evaluate(() => { document.documentElement.dataset.motion = 'on'; });
-      await expect(scrim).toHaveCSS('transition-duration', '0s');
-      await page.emulateMedia({ reducedMotion: 'no-preference' });
       const tree = await page.locator('body').ariaSnapshot(); info.annotations.push({ type: `a11y-attachment-sha256:${evidenceName}`, description: createHash('sha256').update(tree).digest('hex') }); await info.attach(evidenceName, { body: tree, contentType: 'text/yaml' });
       expect(errors).toEqual([]);
       } finally { await info.attach(evidenceName.replace('.a11y.yml', '.console.json'), { body: JSON.stringify(errors), contentType: 'application/json' }); await page.context().close(); }

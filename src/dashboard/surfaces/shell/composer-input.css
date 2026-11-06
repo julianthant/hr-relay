@@ -9,7 +9,8 @@
 #hub-panel-assistant .hub-toolbar .hub-input-button:focus-visible{outline:2px solid var(--ui-primary)!important;outline-offset:2px;background:var(--ui-hover)!important;color:var(--ui-primary)!important;box-shadow:none!important}
 #hub-panel-assistant .hub-toolbar svg{width:14px;height:14px;flex:none;pointer-events:none}
 #hub-panel-assistant .hub-toolbar [data-size=icon-sm] svg{width:16px;height:16px}
-#hub-panel-assistant #hub-model-trigger{min-width:0;flex-shrink:1}
+#hub-panel-assistant .hub-toolbar .hub-input-button:has(>span+svg){flex:0 1 auto;min-width:0;overflow:hidden}
+#hub-panel-assistant .hub-toolbar .hub-input-button>span:has(+svg){min-width:0;overflow:hidden;text-overflow:ellipsis}
 #hub-panel-assistant #hub-send{margin-left:auto;border-radius:50%;background:var(--ui-primary);color:var(--ui-panel);border:1px solid var(--ui-stroke-control)}
 #hub-panel-assistant #hub-send:enabled:hover{opacity:.85}
 #hub-panel-assistant #hub-send:focus-visible{background:var(--ui-primary)!important;color:var(--ui-panel)!important}
@@ -51,3 +52,4 @@ html[data-demo-theme=dark] .hub-assistant-menu.hub-menu{box-shadow:var(--hub-sha
 
 html[data-motion=off] .hub-assistant-menu[data-starting-style]{opacity:1!important;transform:none!important}
 @media(prefers-reduced-motion:reduce){.hub-assistant-menu[data-starting-style]{opacity:1!important;transform:none!important}}
+#hub-panel-assistant .hub-composer .hub-attachment{margin:6px 8px 0;padding:1px 4px 1px 8px}

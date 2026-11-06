@@ -1,20 +1,20 @@
-import { ASSISTANT_UNKNOWN_NOTICE, assistantCanVerify, assistantConfirmRefusal } from "../assistant/assistant-model.js";
+import { ASSISTANT_UNKNOWN_NOTICE, assistantConfirmRefusal, type AssistantMockProposal } from "../assistant/assistant-model.js";
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
-import { Fragment, useLayoutEffect, useRef, type HTMLAttributes, type ReactNode } from 'react';
-import { ArrowDown, Check, Folder, History, Play, Plus, Sparkles, X } from 'lucide-react';
+import { useLayoutEffect, useRef, type HTMLAttributes } from 'react';
+import { ArrowDown, Check, History, Paperclip, Plus, Sparkles, X } from 'lucide-react';
 import type { DashboardClient } from '../../client/index.js';
-import { Dialog, DialogContent, DialogClose, Disclosure, Button } from '../../ds/ui.js';
+import { Dialog, DialogContent, DialogClose, Button } from '../../ds/ui.js';
 import type { ComposerDraftPort } from './composer-model.js';
 import { ComposerInput } from './composer-input.js';
 import { useAssistantPanel, type AssistantConversationPort, type AssistantConversation, type AssistantFile, type AssistantPorts } from './assistant-panel-model.js';
 import './assistant-panel.css';
-import { ASSISTANT_VERIFY_COMMAND, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
+import { type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 
 export function AssistantReply({ children }: { children: React.ReactNode }) {
   return <div className="hub-assistant-line"><span className="hub-avatar" aria-hidden><Sparkles /></span><div className="hub-message">{children}</div></div>;
 }
-export function AssistantFileChip({ file, onOpen }: { file: AssistantFile; onOpen?: (file: AssistantFile) => void }) {
-  return <button type="button" className="hub-file-chip" onClick={() => onOpen?.(file)} disabled={!onOpen}><Folder aria-hidden /><span>{file.name}<small>{file.status} spreadsheet</small></span><ArrowDown aria-hidden /></button>;
+export function AssistantFileChip({ file }: { file: AssistantFile }) {
+  return <div className="hub-file-chip"><Paperclip aria-hidden /><span>{file.name}<small>{file.status} spreadsheet</small></span></div>;
 }
 export function AssistantActionCard({ conversation, onAction, onView, onSignIn, busy }: { conversation: AssistantConversation; onAction: (action: 'approve' | 'decline' | 'cancel') => void; onView: (trigger: HTMLButtonElement) => void; onSignIn: (trigger: HTMLButtonElement) => void; busy: boolean }) {
   const scene = conversation.scene;
@@ -31,17 +31,44 @@ export function AssistantActionCard({ conversation, onAction, onView, onSignIn, 
       <button type="button" data-action={handoff ? 'sign-in' : 'approve'} className={`hub-btn ${destructive ? 'danger' : 'primary'}`} disabled={busy} onClick={event => handoff ? onSignIn(event.currentTarget) : onAction('approve')}>{handoff ? 'Open sign-in' : scene === 'failed' ? 'Try again' : destructive ? 'Delete' : 'Approve'}</button></>}
   </span></footer></article>;
 }
-export function AssistantPanel({ producer, accountClient, onAttachFile, onRegisterSpreadsheet, onOpenChatFile, onRunWorkflow,
-  onClose, onChats, onNewChat, onRename, title, headerProps, children, filesOpen, onSendMessage, draft, served, onAutomaticTitle, historyNotice, modelPreference, initialText = '' }: AssistantPorts & {
+const HIDDEN_PROPOSAL_FACTS = new Set(['Input', 'Runs', 'Expires', 'Browser', 'Captures', 'Configuration', 'Options', 'Mode']);
+const MODE_LABEL = { 'dry-run': 'Dry run', 'read-only': 'Read only', 'local-change': 'Local change' } as const;
+function proposalPeople(proposal: AssistantMockProposal): readonly { name: string; id?: string }[] {
+  if (proposal.startPlan) return [{ name: proposal.person?.name ?? proposal.startPlan.planned[0]?.title ?? '', ...(proposal.person?.employeeId ? { id: proposal.person.employeeId } : {}) }];
+  return proposal.subjects.map(subject => ({ name: subject.name, id: subject.id }));
+}
+function ProposalCard({ proposal, disposition, refusal, onCancel, onConfirm }: { proposal: AssistantMockProposal; disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown'; refusal?: string; onCancel: () => void; onConfirm: () => void }) {
+  const people = proposalPeople(proposal);
+  const peopleLabel = people.length === 1 ? (people[0]?.name ?? '') : `${String(people.length)} people`;
+  if (disposition === 'confirmed' || disposition === 'cancelled') {
+    const done = disposition === 'confirmed';
+    return <div className="hub-resolved" aria-label="Resolved proposal"><span>{done ? <Check aria-hidden /> : <X aria-hidden />}</span><span className="hub-resolved-title">{proposal.workflow.label}{people.length ? ` · ${peopleLabel}` : ''}</span><span className="hub-resolved-status" role="status">{done ? (proposal.startPlan ? 'Started' : 'Done') : 'Not started'}</span></div>;
+  }
+  const options = [MODE_LABEL[proposal.mode], ...proposal.values.filter(value => !HIDDEN_PROPOSAL_FACTS.has(value.label)).map(value => value.value)];
+  const busy = disposition === 'confirming', unknown = disposition === 'unknown';
+  return <article className="hub-card hub-proposal" aria-label={`Proposed ${proposal.workflow.label}`}>
+    <div className="hub-card-body"><h3>{proposal.workflow.label}</h3><dl className="hub-facts">
+      {proposal.person ? <><dt>Name</dt><dd>{proposal.person.name ?? 'Not provided'}</dd><dt>EID</dt><dd>{proposal.person.employeeId ?? 'Not provided'}</dd></>
+        : proposal.startPlan ? <><dt>Request</dt><dd>{proposal.startPlan.planned[0]?.title}</dd></>
+        : people.length > 0 && <><dt>Name</dt><dd>{people.map(person => <div key={`${person.name}:${person.id ?? ''}`}>{person.name}</div>)}</dd><dt>EID</dt><dd>{people.map(person => <div key={`${person.name}:${person.id ?? ''}`}>{person.id}</div>)}</dd></>}
+      <dt>Options</dt><dd>{options.join(' · ')}</dd>
+    </dl></div>
+    <footer className="hub-card-footer"><span className="hub-footer-status" role={unknown ? 'alert' : 'status'}>{busy ? <span className="hub-spinner" aria-hidden /> : null}{refusal ?? ''}</span><span className="hub-footer-actions">
+      <Button size="sm" variant="ghost" disabled={disposition !== 'review'} onClick={onCancel}>Cancel</Button>
+      <Button size="sm" variant="primary" disabled={proposal.action === undefined || Boolean(refusal)} onClick={onConfirm}>Confirm</Button></span></footer>
+  </article>;
+}
+export function AssistantPanel({ producer, accountClient, onAttachFile, onRegisterSpreadsheet, onRunWorkflow, onOpenSettings,
+  onClose, onChats, onNewChat, onRename, title, headerProps, onSendMessage, draft, served, onAutomaticTitle, historyNotice, modelPreference, initialText = '' }: AssistantPorts & {
   historyNotice?: string; modelPreference?: AssistantModelPreferenceView['preference'];
   onAutomaticTitle?: (title: string) => void; served?: ReturnType<typeof useAssistantController>; producer: AssistantConversationPort; accountClient: Pick<DashboardClient, 'chatGptAccount'>; onClose?: () => void; onChats?: () => void;
-  onNewChat?: () => void; onRename?: () => void; title?: string; headerProps?: HTMLAttributes<HTMLElement>; children?: ReactNode; filesOpen?: boolean; onSendMessage?: () => void; initialText?: string; draft?: ComposerDraftPort;
+  onNewChat?: () => void; onRename?: () => void; title?: string; headerProps?: HTMLAttributes<HTMLElement>; onOpenSettings?: (section?: string) => void; onSendMessage?: () => void; initialText?: string; draft?: ComposerDraftPort;
 }) {
-  const model = useAssistantPanel({ producer, accountClient, served, ports: { onAttachFile, onRegisterSpreadsheet, onOpenChatFile, onRunWorkflow } });
+  const model = useAssistantPanel({ producer, accountClient, served, ports: { onAttachFile, onRegisterSpreadsheet, onRunWorkflow } });
   const conversation = model.conversation, workflow = conversation.workflow;
   const wasAtLatest = useRef(true);
   const detailTrigger = useRef<HTMLButtonElement>(null);
-  useLayoutEffect(() => { const element = model.transcript.current; if (element && wasAtLatest.current) element.scrollTop = element.scrollHeight; }, [conversation, served?.state, model.transcript, children]);
+  useLayoutEffect(() => { const element = model.transcript.current; if (element && wasAtLatest.current) element.scrollTop = element.scrollHeight; }, [conversation, served?.state, model.transcript]);
   const actionScene = conversation.scene !== 'new' && conversation.scene !== 'conversation';
   const ready = workflow?.rows.filter(row => row.issue === null).length ?? 0;
   const accountReady = served ? served.accountAvailable : model.account?.state === 'connected';
@@ -50,44 +77,29 @@ export function AssistantPanel({ producer, accountClient, onAttachFile, onRegist
   const proposal = turn?.state === 'proposal' ? turn.proposal : undefined;
   return <section id="hub-panel-assistant" className="hub-assistant-panel" role="region" aria-label="Relay assistant" data-source={served ? "served" : conversation.source}>
     <header {...headerProps} className="hub-panel-header"><div className="hub-panel-title"><button type="button" className="hub-chat-title hub-plain" title="Rename chat" onClick={onRename} disabled={!onRename}><span>{title ?? conversation.title}</span></button></div>
-      <div className="hub-header-actions"><button type="button" className="hub-icon" aria-label="Chat files" aria-pressed={filesOpen} onClick={() => { void onOpenChatFile?.(undefined, 'browse'); }} disabled={!onOpenChatFile}><Folder aria-hidden /></button><button type="button" className="hub-icon" aria-label="Chats" onClick={onChats} disabled={!onChats}><History aria-hidden /></button><button type="button" className="hub-icon" aria-label="New chat" onClick={() => { if (onNewChat) onNewChat(); else model.newChat(); }} disabled={model.busy}><Plus aria-hidden /></button><button type="button" className="hub-icon" aria-label="Close assistant" onClick={onClose} disabled={!onClose}><X aria-hidden /></button></div>
+      <div className="hub-header-actions"><button type="button" className="hub-icon" aria-label="Chats" onClick={onChats} disabled={!onChats}><History aria-hidden /></button><button type="button" className="hub-icon" aria-label="New chat" onClick={() => { if (onNewChat) onNewChat(); else model.newChat(); }} disabled={model.busy}><Plus aria-hidden /></button><button type="button" className="hub-icon" aria-label="Close assistant" onClick={onClose} disabled={!onClose}><X aria-hidden /></button></div>
     </header><div className="hub-panel-content">
-      <div className="hub-thread-wrap">{children ?? <><div className="hub-transcript" ref={model.transcript} role="log" aria-label="Assistant conversation" onScroll={() => { model.onScroll(); const element = model.transcript.current; if (element) wasAtLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop < 48; }}>
+      <div className="hub-thread-wrap"><><div className="hub-transcript" ref={model.transcript} role="log" aria-label="Assistant conversation" onScroll={() => { model.onScroll(); const element = model.transcript.current; if (element) wasAtLatest.current = element.scrollHeight - element.clientHeight - element.scrollTop < 48; }}>
         {(served ? served.state.messages.length === 0 : conversation.scene === 'new') ? <div className="hub-empty"><strong>How can I help?</strong>Ask about a record or describe what you want to do.</div> : null}
         {!served && actionScene ? <><div className="hub-message operator">Update Alex Rivera’s work email.</div><AssistantReply>I found the record. Review the change before I save it.</AssistantReply><AssistantActionCard conversation={conversation} busy={model.busy} onAction={action => { void model.act(action); }} onView={trigger => { detailTrigger.current = trigger; model.setDetail('record'); }} onSignIn={trigger => { detailTrigger.current = trigger; model.setDetail('sign-in'); }} /></> : null}
-        {!served && workflow ? <><p className="hub-caption">Sample workflow · synthetic records</p><AssistantFileChip file={workflow.file} onOpen={onOpenChatFile ? file => { void onOpenChatFile(file); } : undefined} /></> : null}
-        {(served?.state.messages ?? conversation.messages).map((message, index) => message.role === 'operator' ? <div className="hub-message operator" key={index}>{message.text}</div> : <AssistantReply key={index}>{message.text}{served?.state.messages[index]?.code && <small className="hub-failure-code">{served.state.messages[index].code}</small>}{served?.state.messages[index]?.sources?.map(source => <Disclosure key={source.id} summary={`Source: ${source.title}`}><p className="hub-source-quote">{source.excerpt}</p><p className="hub-source-quote">{source.version}</p></Disclosure>)}</AssistantReply>)}
+        {!served && workflow ? <><p className="hub-caption">Sample workflow · synthetic records</p><AssistantFileChip file={workflow.file} /></> : null}
+        {(served?.state.messages ?? conversation.messages).map((message, index) => message.role === 'operator' ? <div className="hub-message operator" key={index}>{message.text}{message.attachments?.map(file => <span className="hub-sent-file" key={file.id}><Paperclip aria-hidden />{file.name}</span>)}</div> : <AssistantReply key={index}>{message.text}</AssistantReply>)}
         {!served && workflow ? <>{workflow.state === 'review' ? <><AssistantReply>I found {ready} ready rows. {workflow.rows.filter(row => row.issue !== null).map(row => `${row.person} is missing a required ${row.issue === 'Needs date' ? 'date' : 'name'} and will stay on hold.`).join(' ')}</AssistantReply><article className="hub-card"><div className="hub-card-body"><h3>Review {workflow.label}</h3>{workflow.rows.map(row => <div className="hub-demo-row" key={`${row.sheet}:${row.row}`}><span>{row.person}</span><span>{row.issue ?? 'Ready'}</span></div>)}</div><footer className="hub-card-footer"><span className="hub-footer-status">{ready} ready · {workflow.rows.length - ready} on hold</span><button type="button" className="hub-btn primary" disabled={!ready || !onRunWorkflow || model.busy} onClick={() => { void model.runWorkflow(); }}>Run {ready} {workflow.label}</button></footer></article></> : workflow.state === 'running' ? <article className="hub-card"><div className="hub-card-body"><h3>Running {workflow.label}</h3><div className="hub-demo-row"><span>Read spreadsheet</span><span><Check aria-hidden /> Done</span></div><div className="hub-demo-row"><span>Validate rows</span><span><Check aria-hidden /> Done</span></div><div className="hub-demo-row"><span>Process records</span><span>Waiting for results</span></div></div><footer className="hub-card-footer"><span className="hub-footer-status">Sample run</span></footer></article> : workflow.state === 'complete' ? <AssistantReply>The sample run is complete. {ready} rows were processed; {workflow.rows.length - ready} stays on hold. Your updated spreadsheet and results are ready.</AssistantReply> : <p className="hub-footer-status" role="status">{workflow.message}</p>}</> : null}
-        {conversation.files.filter(file => file.status !== 'Attached').map(file => <AssistantFileChip key={file.id} file={file} onOpen={onOpenChatFile ? file => { void onOpenChatFile(file); } : undefined} />)}
-        {served && proposal && (proposal.startPlan && turn?.state === 'proposal' && (turn.disposition === 'confirmed' || turn.disposition === 'cancelled') ?
-          <div className="hub-resolved" aria-label="Resolved start"><span>{turn.disposition === 'confirmed' ? <Check aria-hidden /> : <X aria-hidden />}</span><span className="hub-resolved-title">{proposal.workflow.label} · {proposal.startPlan.planned[0].title}</span><span className="hub-resolved-status" role="status">{turn.disposition === 'confirmed' ? 'Started · 1 run' : 'Not started'}</span></div>
-          : <article className="hub-card" aria-label={proposal.startPlan ? proposal.workflow.label : proposal.action === undefined ? "Proposed run details" : "Proposed action details"}>
-            <div className="hub-card-body"><h3>{proposal.workflow.label}</h3><dl className="hub-facts">
-              {!proposal.startPlan && <><dt>{proposal.action === undefined ? "Subjects" : "Subject"}</dt><dd>{proposal.action !== undefined ? "None" : proposal.subjects.map(subject => <div key={subject.id}>{subject.name} {subject.id}</div>)}</dd></>}
-              {proposal.values.map(value => <Fragment key={value.label}><dt aria-label={value.label}>{value.label === "Configuration" ? "Config" : value.label}</dt><dd>{value.value}</dd></Fragment>)}
-              {proposal.startPlan && <><dt>Output</dt><dd>Run results in Logs</dd></>}
-            </dl><Disclosure summary="Effects and stop points"><p>{proposal.startPlan ? "Proposed workflow start" : proposal.action !== undefined ? "Proposed action · Local change" : `${proposal.workflow.version} ${proposal.workflow.id}`}</p>
-              {proposal.startPlan && <><p>Plan: <span className="break-all">{proposal.startPlan.startPlanId}</span> · revision {proposal.startPlan.expectedVersion}</p>{Object.entries(proposal.startPlan.fingerprints).map(([label, value]) => <p key={label}>{label}: <span className="break-all">{value}</span></p>)}</>}
-              {proposal.effects.map(effect => <p key={effect}>{effect}</p>)}{proposal.stopBefore.map(stop => <p key={stop}>{stop}</p>)}
-            </Disclosure></div>
-            <footer className="hub-card-footer"><span className="hub-footer-status" role="status">{assistantConfirmRefusal(served.state, served.revision, served.accountAvailable) ?? served.confirmRefusal ?? (proposal.startPlan ? 'Waiting for you' : undefined)}</span><span className="hub-footer-actions">
-              {proposal.startPlan ? <><Button size="sm" variant="ghost" disabled={turn?.state === 'proposal' && turn.disposition !== 'review'} onClick={() => { served.onAction({ type: 'cancel' }); model.transcript.current?.closest('section')?.querySelector<HTMLTextAreaElement>('textarea')?.focus(); }}>Not now</Button>
-                <Button size="sm" variant="primary" icon={<Play aria-hidden className="size-3" />} disabled={!!assistantConfirmRefusal(served.state, served.revision, served.accountAvailable) || !!served.confirmRefusal} onClick={() => { served.onAction({ type: 'confirm' }); model.transcript.current?.closest('section')?.querySelector<HTMLTextAreaElement>('textarea')?.focus(); }}>Start run</Button></>
-                : <><button className="hub-btn" type="button" disabled={turn?.state === 'proposal' && turn.disposition !== 'review'} onClick={() => served.onAction({ type: 'cancel' })}>Cancel</button><button type="button" className="hub-btn primary" disabled={proposal.action === undefined || !!assistantConfirmRefusal(served.state, served.revision, served.accountAvailable) || !!served.confirmRefusal} onClick={() => served.onAction({ type: 'confirm' })}>Confirm</button></>}
-            </span></footer>
-          </article>)}
-        {served && turn?.state === 'waiting' && <p className="hub-footer-status" role="status">{turn.prompt === ASSISTANT_VERIFY_COMMAND ? 'Testing assistant…' : 'Preparing a reply…'}<button className="hub-btn" type="button" onClick={() => served.onAction({ type: 'cancel' })}>Cancel</button></p>}
+        {conversation.files.filter(file => file.status !== 'Attached').map(file => <AssistantFileChip key={file.id} file={file} />)}
+        {served && proposal && turn?.state === 'proposal' && <ProposalCard proposal={proposal} disposition={turn.disposition} refusal={assistantConfirmRefusal(served.state, served.revision, served.accountAvailable) ?? served.confirmRefusal}
+          onCancel={() => { served.onAction({ type: 'cancel' }); model.transcript.current?.closest('section')?.querySelector<HTMLTextAreaElement>('textarea')?.focus(); }}
+          onConfirm={() => { served.onAction({ type: 'confirm' }); model.transcript.current?.closest('section')?.querySelector<HTMLTextAreaElement>('textarea')?.focus(); }} />}
+        {served && turn?.state === 'waiting' && <p className="hub-footer-status" role="status">Preparing a reply…<button className="hub-btn" type="button" onClick={() => served.onAction({ type: 'cancel' })}>Cancel</button></p>}
         {served && turn?.state === 'failed' && <p className="hub-footer-status" role="alert">Reply unavailable. Your request is kept.<button className="hub-btn" type="button" disabled={!accountReady || served.state.draft !== turn.prompt} onClick={() => served.onAction({ type: 'retry' })}>Retry reply</button></p>}
         {served && turn?.state === 'unknown' && <p className="hub-footer-status" role="alert">{ASSISTANT_UNKNOWN_NOTICE}</p>}
         {served && turn?.state === 'cancelled' && <p className="hub-caption" role="status">Reply cancelled. Your request is kept; send it again when ready.</p>}
-        {served?.state.restored && <p className="hub-caption">Restored chat. Earlier sources are recorded snapshots; previous proposals cannot be confirmed.</p>}
-        {served && !accountReady && <p role="status" className="hub-caption">{served.accountHeading}. {served.accountNotice}</p>}
+        {served?.state.restored && <p className="hub-caption">Restored chat. Previous proposals cannot be confirmed.</p>}
         {historyNotice && <p role="status" className="hub-caption">{historyNotice}</p>}
         {model.error ? <p role="alert" className="hub-footer-status">{model.error}</p> : null}
         {!served && !model.account ? <p role="status" className="hub-caption">{model.error ? 'ChatGPT account unavailable.' : 'Loading ChatGPT account…'}</p> : !served && !accountReady ? <p role="status" className="hub-caption">ChatGPT is unavailable. Open Settings to review your account.</p> : null}
-      </div>{model.showLatest ? <button type="button" className="hub-scroll-bottom" aria-label="Scroll to latest message" onClick={() => { wasAtLatest.current = true; model.latest(); }}><ArrowDown aria-hidden /></button> : null}</>}</div>
-      {served && <div className="hub-assistant-setup"><p className="hub-caption" role="status">{turn?.state === 'waiting' && turn.prompt === ASSISTANT_VERIFY_COMMAND ? 'Testing the selected model…' : served.state.verification?.state === 'failed' ? 'Assistant test failed. See the reason above.' : served.state.verification?.state === 'passed' ? 'Last test passed. Verification lasts up to 15 minutes.' : 'Test your ChatGPT connection before chatting.'}</p><Button size="sm" variant="ghost" disabled={!canCompose || model.busy || !assistantCanVerify(served.state.turn)} onClick={() => served.onAction({ type: 'verify' })}>Test assistant</Button></div>}
-      <ComposerInput key={conversation.id} modelPreference={modelPreference} draft={draft} settlementKey={served?.state.messages.findLast(message => message.role === 'assistant')?.id} autoFocus={conversation.scene === 'new'} initialText={initialText} onEdit={served ? value => served.onAction({ type: 'edit', value }) : undefined} preview={!served} onSend={async value => { if (model.refuseAttachments(value)) return false;  onSendMessage?.(); const sent = await model.send(value); if (served && sent && title === 'New chat') onAutomaticTitle?.(value.text.slice(0, 55)); return served ? false : sent; }} onAttachFile={onAttachFile === undefined ? undefined : model.attachFile} onOpenChatFile={onOpenChatFile === undefined ? undefined : model.openChatFile} disabled={model.busy || turn?.state === 'waiting' || turn?.state === 'unknown' || turn?.state === 'proposal' && turn.disposition === 'unknown' || !canCompose} />
+      </div>{model.showLatest ? <button type="button" className="hub-scroll-bottom" aria-label="Scroll to latest message" onClick={() => { wasAtLatest.current = true; model.latest(); }}><ArrowDown aria-hidden /></button> : null}</></div>
+      {served && !accountReady && <div className="hub-assistant-strip" role="status"><span>{served.accountNotice}</span>{onOpenSettings && served.accountAction && <Button size="sm" variant={served.accountAction === 'sign-in' ? 'primary' : 'secondary'} onClick={() => onOpenSettings(served.accountAction === 'preflight' ? 'preflight' : 'general')}>{served.accountAction === 'preflight' ? 'Open Preflight' : served.accountAction === 'sign-in' ? 'Sign in' : 'Open Settings'}</Button>}</div>}
+      <ComposerInput key={conversation.id} modelPreference={modelPreference} draft={draft} settlementKey={served?.state.messages.findLast(message => message.role === 'assistant')?.id} autoFocus={conversation.scene === 'new'} initialText={initialText} onEdit={served ? value => served.onAction({ type: 'edit', value }) : undefined} preview={!served} onSend={async value => { if (model.refuseAttachments(value)) return false;  onSendMessage?.(); const sent = await model.send(value); if (served && sent && title === 'New chat') onAutomaticTitle?.(value.text.slice(0, 55)); return served ? false : sent; }} onAttachFile={onAttachFile === undefined ? undefined : model.attachFile} disabled={model.busy || turn?.state === 'waiting' || turn?.state === 'unknown' || turn?.state === 'proposal' && turn.disposition === 'unknown' || !canCompose} />
     </div>
     <Dialog open={model.detail !== null} onOpenChange={open => { if (!open) model.setDetail(null); }}><DialogContent title={model.detail === 'sign-in' ? 'Sign in to UCPath' : 'Work email saved'} className="hub-assistant-detail" hideClose onCloseAutoFocus={event => { event.preventDefault(); if (detailTrigger.current?.isConnected) detailTrigger.current.focus(); }}>{model.detail === 'sign-in' ? <p>Complete sign-in in your browser, then return here.</p> : <p>Alex Rivera<br /><strong>alex.rivera@example.edu</strong></p>}<footer><DialogClose className="hub-btn">Close</DialogClose>{model.detail === 'sign-in' ? <DialogClose className="hub-btn primary" onClick={model.finishMockSignIn}>Simulate signed in</DialogClose> : null}</footer></DialogContent></Dialog>
   </section>;
