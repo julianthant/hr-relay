@@ -250,6 +250,20 @@ A dropped connection can retain a slot's `lease` directory. Verify that its sync
 and tests have stopped before removing that exact empty directory with `rmdir`. Never remove a
 live lease. GitHub CI remains the merge gate.
 
+### Focused tests in GitHub Actions
+
+```sh
+scripts/ci/focused-tests.sh <lane> <ubuntu|macos|windows|both|all> <test file>...
+```
+
+Runs the named files on a scratch branch (`both` is Ubuntu and macOS, `all` adds Windows; Windows-native files run only here or on a Windows machine) without a PR, the Mac test slot or the PC. The script commits `HEAD`'s tree with
+`git commit-tree`, naming the files and runners in `Focused-tests:` and `Focused-os:` trailers, force-pushes it to
+`scratch/<lane>`, watches `.github/workflows/focused-tests.yml`, prints PASS/FAIL per file, job timings and the run URL,
+then deletes the branch. It refuses tracked uncommitted changes, since the run tests `HEAD`. The workflow refuses an
+empty list, a path outside `tests/` or a missing file, then runs `privacy:check`, then the files with the CI worker
+flags (`scripts/ci/focused-run.sh`). A scratch run is quick feedback, never merge evidence: the PR's CI is the gate.
+Lanes use distinct names; pushing the same lane again cancels its earlier run.
+
 ### CI scheduling
 
 Unit, integration and parity use two workers. Ubuntu jobs put test temp on tmpfs and have 20-minute
