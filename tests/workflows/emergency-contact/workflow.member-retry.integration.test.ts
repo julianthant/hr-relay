@@ -533,11 +533,19 @@ it(`retries a member while its parent is ${boundary}`, async () => {
       assert.equal(f.database.authority.lifecycleJournal.getCommand(request.commandId), undefined);
     }
     return refused;
+  }, acknowledgePause: (...args) => {
+    if (settlementRetry && reached && holdAcknowledged === undefined) holdAcknowledged = { transactionDepth, outerTransaction: outerTransactions };
+    return nativeLifecycle.acknowledgePause(...args);
   } };
   const transaction = f.database.withAuthorityTransaction.bind(f.database);
-  let transactionDepth = 0;
+  let transactionDepth = 0, outerTransactions = 0;
+  let holdAcknowledged: { transactionDepth: number; outerTransaction: number } | undefined;
   if (boundary === "at accounting capture" || settlementRetry) f.database.withAuthorityTransaction = work => {
-    if (settlementRetry && settling && !reached && transactionDepth === 0) retryHeldParent();
+    if (settlementRetry && settling && transactionDepth === 0) {
+      // The injected Retry's own kernel transactions are not executor transactions.
+      if (!reached) { retryHeldParent(); outerTransactions = 0; }
+      outerTransactions += 1;
+    }
     if (!settlementRetry && !reached && transactionDepth === 0 && f.current().lifecycle.state === "validating") {
       reached = true;
       const claim = runClaim(f.current()); assert.ok(claim);
@@ -588,6 +596,8 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   } finally { f.database.withAuthorityTransaction = transaction; }
   assert.equal(reached, true);
   assert.equal(discarded, diagnosticCapture ? 1 : 0);
+  // The hold check and its acknowledgment must share the first outer transaction after capture: no Retry or Pause can commit between them.
+  if (settlementRetry) assert.deepEqual(holdAcknowledged, { transactionDepth: 1, outerTransaction: 1 });
   if (diagnosticCapture) assert.deepEqual(f.database.authority.failures.listByRun(f.parentRun.envelope.runId), []);
   assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["abandoned", "done"]);
   assert.equal(report.stopped, "idle"); assert.equal(report.closure, "proved");
