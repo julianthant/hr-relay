@@ -31,8 +31,14 @@ for _ in $(seq 60); do
 done
 [ -n "$run" ] || die "No focused-tests run started for $commit."
 
+echo "Run $run: https://github.com/$(gh repo view --json nameWithOwner --jq .nameWithOwner)/actions/runs/$run"
+while [ "$(gh api "repos/{owner}/{repo}/actions/runs/$run" --jq .status)" != completed ]; do sleep 10; done
+conclusion=$(gh api "repos/{owner}/{repo}/actions/runs/$run" --jq .conclusion)
 status=0
-gh run watch "$run" --exit-status --compact || status=$?
+if [ "$conclusion" != success ]; then
+  status=1
+  gh run view "$run" --log-failed 2>/dev/null | grep -F '##[error]' | sed 's/.*##\[error\]/error: /' | sort -u | head -5 || true
+fi
 gh run download "$run" --dir "$results" 2>/dev/null || true
 gh run view "$run" --json url,jobs > "$results/run.json"
 
@@ -41,7 +47,7 @@ node -e '
   const [dir, ...files] = process.argv.slice(1);
   const run = JSON.parse(readFileSync(`${dir}/run.json`, "utf8"));
   const seconds = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 1000);
-  for (const job of run.jobs) {
+  for (const job of run.jobs.filter(job => job.conclusion !== "skipped")) {
     const tests = job.steps.find(step => step.name === "Run focused tests");
     const total = seconds(job.startedAt, job.completedAt);
     const test = tests ? seconds(tests.startedAt, tests.completedAt) : 0;
