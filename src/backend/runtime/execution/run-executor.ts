@@ -527,6 +527,10 @@ export async function executeClaimedRun(
     checkCancellation();
     const current = getRun();
     requireOriginalClaim(current);
+    // A member Retry can hold the parent while the failure was awaited; the hold wins over this failure.
+    if (current.pause?.state === "requested" && deps.authority.withAuthorityTransaction?.(repositories =>
+      authenticateDelegationRetryPause(repositories, descriptor, current, initial.version)) === true)
+      throw new RunPauseRequestedError("paused");
     const authorization = buildTerminalAuthorization({
       run: current,
       authorizedAt: instant(),
