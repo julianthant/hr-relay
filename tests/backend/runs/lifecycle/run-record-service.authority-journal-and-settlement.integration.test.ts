@@ -283,7 +283,7 @@ describe("canonical run-record service", () => {
     assert.equal(published.length, 1);
   });
 
-  it("#11 retry and restart create new attempts from a failed source and preserve its identity", async () => {
+  it("#11 retry creates a new attempt from a failed source and preserve its identity", async () => {
     const { service, request, runtimeConfig, database } = await fixture();
     database.authority.runSessions.insert(RUN_SESSION);
     const run = runningRun(service, { ...request, sessionId: RUN_SESSION_ID, descriptorVersion: personLookupDescriptor.version,
@@ -303,17 +303,8 @@ describe("canonical run-record service", () => {
     service.transition({ commandId: "80000000-0000-4000-8000-000000000002",
       runId: retry.run.envelope.runId, expectedVersion: 1,
       lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
-    const restart = service.restart({ commandId: "80000000-0000-4000-8000-000000000003",
-      runId: run.envelope.runId, expectedVersion: failed.version, runtimeConfig }, personLookupDescriptor);
-    assert.ok(restart.state === "applied");
-    assert.equal(restart.run.envelope.attempt, 3);
-    assert.equal(restart.run.sessionId, RUN_SESSION_ID);
-    assert.equal(restart.run.envelope.recovery, "restart-from-start");
-    assert.equal(restart.run.envelope.retryOf, run.envelope.runId);
     assert.equal(retry.run.envelope.continuation, undefined);
-    assert.equal(restart.run.envelope.continuation, undefined);
-    assert.deepEqual(restart.run.input, run.input);
-    assert.equal(database.authority.runs.listByItem({ workflow: run.envelope.workflow, itemId: run.envelope.itemId }).length, 3);
+    assert.equal(database.authority.runs.listByItem({ workflow: run.envelope.workflow, itemId: run.envelope.itemId }).length, 2);
     assert.deepEqual(service.read(run.envelope.runId), source);
   });
 

@@ -10,7 +10,7 @@ canonical typed command facade. The application lifecycle query supplies runtime
 current target versions and update availability. Application pause commands refresh every affected
 run in the served projection before quit notification. Queue producers retain the orthogonal pause
 state and available pause command. Ordinary Rerun accepts done, failed and interrupted sources and
-starts fresh; native Retry and Restart retain their lifecycle semantics. A separate server-authored
+starts fresh; native Retry retains its lifecycle semantics. A separate server-authored
 Recover completed steps action composes `run/recover-run` through the same client and confirmation
 flow. The server derives its checkpoint recovery plan from an exact failed or interrupted source.
 Readback verifies the new item attempt while the source remains unchanged. Incompatible contracts,

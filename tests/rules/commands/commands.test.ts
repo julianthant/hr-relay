@@ -123,7 +123,6 @@ describe("authority classification and command families", () => {
       "pause-all-and-quit": "destructive",
       retry: "external-submit",
       "recover-run": "external-submit",
-      restart: "external-submit",
       cancel: "destructive",
       bump: "local-write",
       rename: "local-write",
@@ -235,7 +234,7 @@ describe("authority classification and command families", () => {
       family: "run",
       type: "bump",
       targets: [{ runId: UUID_3, expectedVersion: 1 }],
-      mode: "all-or-none",
+      mode: "best-effort",
     };
     assert.equal(BulkRunCommandRequestSchema.safeParse(bulk).success, true);
     assert.equal(BulkRunCommandRequestSchema.safeParse({ ...bulk, type: "plan-version-bump", targetVersion: HASH_A }).success, false);

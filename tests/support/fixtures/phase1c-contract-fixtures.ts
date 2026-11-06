@@ -65,7 +65,7 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "worker-browser", type: "refresh-browser", target: { ...WORKER_TARGET, browserSessionId: UUID_4 } },
   { ...BASE_COMMAND, family: "worker-browser", type: "reopen-browser", target: { ...WORKER_TARGET, browserSessionId: UUID_4 } },
   { ...BASE_COMMAND, family: "settings", type: "apply-settings", target: { expectedRevision: 1 }, payload: { settingsSchemaHash: HASH_A, patchFingerprint: HASH_B, patch: { "browser.headless": { set: false } } } },
-  ...["retry", "restart", "recover-run", "cancel", "bump", "delete"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
+  ...["retry", "recover-run", "cancel", "bump", "delete"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
   { ...BASE_COMMAND, family: "run", type: "rename", target: RUN_TARGET, payload: { displayName: "Summer onboarding" } },
   { ...BASE_COMMAND, family: "run", type: "recheck-write", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: HASH_A }, payload: { occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST } },
   { ...BASE_COMMAND, family: "run", type: "resolve-write-absent", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1, writeAttemptId: UUID_5, bindingProofDigest: HASH_A }, payload: { occurrenceKeyDigest: IDEMPOTENCY_KEY_DIGEST } },

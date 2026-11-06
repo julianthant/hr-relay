@@ -173,7 +173,7 @@ export interface BulkCommandContext {
   readonly requestedAt?: string | undefined;
 }
 
-/** Refuse empty batches; best-effort is the only supported atomicity. */
+/** Refuse empty batches. */
 export function composeBulkRunCommand(plan: BulkVerbPlan, context: BulkCommandContext): ComposedBulkCommand {
   if (plan.verb !== "cancel") return { state: "refused", reason: "Open Rerun for one source and review its steps and values." };
   if (plan.eligible.length === 0) {
