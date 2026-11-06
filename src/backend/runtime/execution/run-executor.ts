@@ -893,7 +893,6 @@ export async function executeClaimedRun(
           stored,
           checkpointExpectation(node),
           node.uses.output,
-          deps.authority.evidenceSchemaHash?.bind(deps.authority),
         );
         if (retainedAccounting && !load.found) throw new RunContinuationRefusedError("delegation-accounting-upstream-checkpoint-unavailable");
         // `stored` is the repository's strict parse already; a found load has a row.

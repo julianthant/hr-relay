@@ -171,7 +171,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
             if (producer === undefined || producer.envelope.workflow !== parent.envelope.workflow || producer.envelope.itemId !== parent.envelope.itemId
               || producer.envelope.attempt !== checkpoint.attempt || producer.envelope.contractFingerprint !== descriptor.contractFingerprint) throw new Error("delegation-scope-checkpoint-mismatch");
             const loaded = loadCheckpoint(checkpoint, CheckpointExpectationSchema.parse({ descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
-              implFingerprint: taskImplFingerprint(source.uses), outputSchemaHash: deriveSchemaHash(source.uses.output, "output") }), source.uses.output, schemaReader);
+              implFingerprint: taskImplFingerprint(source.uses), outputSchemaHash: deriveSchemaHash(source.uses.output, "output") }), source.uses.output);
             if (!loaded.found || checkpoint.provenance.some(fact => {
               const observedAt = fact.source === "derived" ? fact.originalObservedAt : fact.observedAt;
               const age = dependencies.clock.nowMs() - Date.parse(observedAt);
@@ -485,7 +485,7 @@ function reusableDelegationRead(repositories: AuthorityRepositories, dependencie
       const checkpoint = readRunCheckpoint(repositories,run.envelope,String(node.id),true);
       if (checkpoint === undefined) continue;
       const loaded = loadCheckpoint(checkpoint,CheckpointExpectationSchema.parse({ descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
-        implFingerprint: taskImplFingerprint(node.uses), outputSchemaHash: deriveSchemaHash(node.uses.output,"output") }),node.uses.output,schemaReader);
+        implFingerprint: taskImplFingerprint(node.uses), outputSchemaHash: deriveSchemaHash(node.uses.output,"output") }),node.uses.output);
       if (!loaded.found) return false;
       authenticateObservationOrigins(repositories,descriptor,checkpoint,schemaReader);
       if (checkpoint.provenance.some(fact => {

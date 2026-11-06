@@ -38,10 +38,7 @@ it("persists predecessor input, completed Kuali proof, linked result and receipt
       implFingerprint: checkpoint.implFingerprint, outputSchemaHash: deriveSchemaHash(task.uses.output, "output") });
     const strictLoad = loadCheckpoint(checkpoint, expectation, task.uses.output);
     assert.equal(strictLoad.found, false);
-    if (!strictLoad.found) assert.equal(strictLoad.reason, "output-schema-mismatch");
-    assert.equal(loadCheckpoint(checkpoint, expectation, task.uses.output, schemaReader).found, true);
-    assert.equal(loadCheckpoint(checkpoint, { ...expectation, implFingerprint: "d".repeat(64) as typeof expectation.implFingerprint }, task.uses.output, schemaReader).found, false);
-    assert.equal(loadCheckpoint(checkpoint, { ...expectation, contractFingerprint: "d".repeat(64) as typeof expectation.contractFingerprint }, task.uses.output, schemaReader).found, false);
+    if (!strictLoad.found) assert.equal(strictLoad.reason, "contract-fingerprint-mismatch");
     const { parseCanonicalInputSnapshot } = await import("../../../../src/models/workflow/canonical-input.js");
     assert.deepEqual(parseCanonicalInputSnapshot(descriptor.canonicalInput, f.run.input.parsed,
       { owner: { kind: "run-input", id: f.run.envelope.runId }, source: f.run.input, schemaReader }), f.run.input.parsed.value);
