@@ -19,7 +19,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
   const removeTrigger = useRef<HTMLElement | null>(null);
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="routes" />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Routes could not be read" action={{ label: "Try again", onAction: editor.reload }} />;
+  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Routes unavailable" description={editor.editor.message} action={{ label: "Try again", onAction: editor.reload }} />;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "routes");
   if (section === undefined) return <Notice tone="danger" title="Routes unavailable" />;
@@ -53,7 +53,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
                 </Field>;
               })}
               {leaf.path === "urls.sharepoint.prod" && <>
-                {!credentialWarning && <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />}
+                {!credentialWarning && <SettingsSaveFeedback save={credentials.save} retry={credentials.retry} retryConflict={credentials.submit} />}
                 <ProtectedSettingField editor={editor} name={rosterName} description="Download the onboarding roster." controlWidth="wide" className="routes-page-field"
                   onRemove={(hasSaved, label) => { removeTrigger.current = globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null; setRemoval({ hasSaved, label }); }} />
               </>}
@@ -65,7 +65,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
           return <BodySection key={leaf.path} className="routes-page-system" title={<span className="routes-section-heading"><span>{presentation.name}</span><span>{meta}</span></span>}>
             {leaf.path === "urls.sharepoint.prod" && (document.protectedSettings.state === "unknown" || credentialWarning) && <div className="mb-[var(--ds-space-heading-content)] flex flex-col gap-[var(--ds-space-heading-content)]">
               {document.protectedSettings.state === "unknown" && <Notice sticky tone="warning" title="Roster URL unavailable" action={{ label: "Retry", onAction: editor.reload }} />}
-              {credentialWarning && <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />}
+              {credentialWarning && <SettingsSaveFeedback save={credentials.save} retry={credentials.retry} retryConflict={credentials.submit} />}
             </div>}
             <FormGroup label={presentation.name}>{content}</FormGroup>
           </BodySection>;

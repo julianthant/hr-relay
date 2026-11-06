@@ -24,7 +24,7 @@ export function FactsPane({
   }
   if (facts.state === "failed") {
     return (<>
-      <Notice tone="danger" title="Facts could not be read" description={facts.message} />
+      <Notice tone="danger" title="These facts could not be read" description={facts.message} />
       {facts.facts !== undefined && children(facts.facts)}
     </>);
   }

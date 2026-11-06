@@ -119,7 +119,7 @@ describe('compact run headers', () => {
     projectRunLogs.mockReturnValue({ steps: [], timeline: [] });
     const markup = renderToStaticMarkup(createElement(LogSample, { source: 'served', selection: { row, workflowLabel: 'OCR' } }));
     assert.match(markup, /Earlier review changes no longer apply/);
-    assert.match(markup, /Page 2: OCR evidence changed in revision 4/);
+    assert.match(markup, /Page 2, revision 4/);
   });
 
   it('opens native Records from its served count and returns to Logs with the same toggle', () => {

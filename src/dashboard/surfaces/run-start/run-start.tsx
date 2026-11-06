@@ -22,6 +22,7 @@ import { cn } from "../../lib/utils.js";
 import {
   BareButton,
   Badge,
+  Banner,
   Button,
   Checkbox,
   Switch,
@@ -40,7 +41,7 @@ import {
   dsFg,
   dsFocus,
   dsIcon,
-  dsText, Notice,
+  dsText,
 } from "../../ds/ui.js";
 import type { CommandResult, RunWorkerStartupFailure } from "../../../rules/commands/commands.js";
 import { settleCommandResult } from "../../app/commands/command-result.js";
@@ -802,7 +803,7 @@ export function RunStartDialog({
   const launchRefusal = selectedLaunch?.state === 'unavailable' ? selectedLaunch.reason : undefined;
   const previewFlow = previewSelection ? mockWorkflow(previewSelection.workflowId) : undefined;
 
-  const referenceControls = (types: readonly string[]) => types.length === 0 ? undefined : <>{library.catalogLoading ? <p role="status">Loading reference data…</p> : library.catalogError ? <Notice sticky tone="danger" title="Reference data unavailable" description={library.catalogError} action={{ label: "Refresh", onAction: () => void library.adapter.refreshCatalog() }} /> : types.map(typeId => {
+  const referenceControls = (types: readonly string[]) => types.length === 0 ? undefined : <>{library.catalogLoading ? <p role="status">Loading reference data…</p> : library.catalogError ? <Banner tone="danger" title="Reference data unavailable">{library.catalogError}<Button onClick={() => void library.adapter.refreshCatalog()}>Refresh</Button></Banner> : types.map(typeId => {
                     const selection = selectedReferences[typeId];
                     const entries = library.catalog.filter(entry => entry.type.id === typeId && entry.state.origin.kind === 'local' && !entry.state.removed);
                     const entry = entries.find(entry => entry.libraryId === selection.libraryId);
@@ -839,17 +840,19 @@ export function RunStartDialog({
             </ol>
           <DialogBody key={currentStage} className="launch-content @container">
             {isRerun && snapshot === null && sourceError === null && <p role="status">Loading source…</p>}
-            {sourceError !== null && <Notice tone="danger" title="Rerun unavailable" description={sourceError} />}
-            {recoveryError !== null && <Notice tone="danger" title="Submission recovery unavailable" description={recoveryError} />}
+            {sourceError !== null && <Banner tone="danger" title="Rerun unavailable">{sourceError}</Banner>}
+            {recoveryError !== null && <Banner tone="danger" title="Submission recovery unavailable">{recoveryError}</Banner>}
             {recovery !== null && result === null && (
-              <Notice sticky tone="warning" title="A previous submission needs readback" description={recovery.target.workflowId}
-                action={busy ? undefined : { label: "Replay exact submission", onAction: () => void sendFinal(recovery, requestFingerprint) }} />
+              <Banner tone="warning" title="A previous submission needs readback">
+                <MetaLine items={[recovery.commandId, recovery.target.workflowId]} />
+                <Button disabled={busy} onClick={() => void sendFinal(recovery, requestFingerprint)}>Replay exact submission</Button>
+              </Banner>
             )}
             {result !== null && (
               <EnqueueResultBanner result={result} onDismiss={returnToInput} onReload={returnToInput} />
             )}
             {error !== null && (
-              <Notice tone="danger" title="Request did not complete" description={error} />
+              <Banner tone="danger" title="The request did not complete">{error}</Banner>
             )}
 
             {currentStage !== "Options" && <section className="flex flex-col gap-1">
@@ -868,7 +871,7 @@ export function RunStartDialog({
                   {pdfSurface !== undefined ? <>
                     <WorkflowPdfInput files={pdfInput.draft?.files.map(file => ({ name: file.source.fileName, size: file.source.artifact.bytes })) ?? []}
                       busy={busy || pdfInput.loading} onChoose={files => { void pdfInput.choose(pdfSurface, files); }} onRemove={pdfInput.remove} />
-                    {pdfInput.error !== null && <Notice tone="danger" title="PDF selection refused" description={pdfInput.error} />}
+                    {pdfInput.error !== null && <Banner tone="danger" title="PDF selection refused">{pdfInput.error}</Banner>}
                   </> : inputRun.state === "present" ? (
                     !declaredInput && isRerun && rerunInputText === undefined && snapshot?.values.some(candidate => candidate.state === "available" && candidate.targetStepKey === undefined && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) ? null : <TypedInput
                       surface={inputRun.surface}
@@ -882,8 +885,8 @@ export function RunStartDialog({
                         {referenceControls([rowCapability.typeId])}
                         {library.catalogRefreshing && <p role="status">Refreshing reference data. Row selection is disabled.</p>}
                         {workbookRows.state === "loading" && <div role="status" aria-label="Loading saved rows"><Skeleton className="h-9 w-full" /></div>}
-                        {workbookRows.state === "error" && <Notice sticky tone="danger" title="Saved rows unavailable" description={workbookRows.error ?? undefined} action={{ label: "Refresh reference data", onAction: () => void library.adapter.refreshCatalog() }} />}
-                        {!rowSelectionFresh && <Notice sticky tone="warning" title="Previous row selection" description="Earlier spreadsheet data cannot be planned." action={{ label: "Clear selection", onAction: () => setSelectedWorkbookRows(undefined) }} />}
+                        {workbookRows.state === "error" && <Banner tone="danger" title="Saved rows unavailable">{workbookRows.error}<Button variant="secondary" onClick={() => void library.adapter.refreshCatalog()}>Refresh reference data</Button></Banner>}
+                        {!rowSelectionFresh && <Banner tone="warning" title="Previous row selection"><p>The selected rows are from earlier spreadsheet data and cannot be planned.</p><Button variant="secondary" onClick={() => setSelectedWorkbookRows(undefined)}>Clear previous row selection</Button></Banner>}
                         {workbookRows.state === "ready" && rowChoices.length === 0 && <EmptyState title="No saved data rows" description="This version contains no rows after the worksheet headers." />}
                         {rowChoices.length > 0 && <Table label="Saved spreadsheet rows"><THead><TR><TH>Select</TH><TH>Source row</TH><TH>Lookup key</TH></TR></THead><TBody>{rowChoices.map(choice => {
                           const selected = selectedWorkbookRows?.choices.some(row => row.sheetId === choice.sheetId && row.rowId === choice.rowId) ?? false;
@@ -947,7 +950,9 @@ export function RunStartDialog({
 
               {currentStage === "Warning" && warning !== null && (
                 <section aria-label="Repeat transaction warning" className="flex flex-col gap-[var(--ds-space-cozy)]">
-                  <Notice sticky tone="warning" title="Already submitted" description="Running them again may create duplicates." />
+                  <Banner tone="warning" title="These transactions were already submitted">
+                    Running them again may create duplicates.
+                  </Banner>
                   {warning.rerun.warnings.map((entry) => {
                     const step = snapshot?.steps.find((candidate) => candidate.nodes.some((node) => node.nodeId === entry.nodeId));
                     if (step === undefined) throw new Error("RERUN_WARNING_STEP_UNAVAILABLE");
@@ -1030,7 +1035,11 @@ export function RunStartDialog({
                       { key: "Dry run", value: plan.dryRun ? "On" : "Off" },
                   ]}>
                   {omissionMismatch && (
-                    <Notice sticky tone="danger" title="Plan omits different steps" description="Plan the run again." />
+                    <Banner tone="danger" title="This plan does not describe the steps you omitted">
+                      {`You omitted ${sentOmittedSteps.length === 0 ? "no steps" : sentOmittedSteps.join(", ")}; the plan came back omitting `
+                        + `${planOmittedSteps.length === 0 ? "no steps" : planOmittedSteps.join(", ")}. `
+                        + "Go back and plan the run again — this plan would start a different run."}
+                    </Banner>
                   )}
                   <PlanRefusals refused={plan.refused} sources={rowCapability === undefined ? undefined : preview.entries} />
                 </RunConfirmLayout>

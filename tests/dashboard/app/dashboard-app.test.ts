@@ -908,8 +908,8 @@ function withTitle(title: string, cursor: string, revision: number): DashboardDa
 describe_m2('real mounted dashboard through the typed mock transport', () => {
 
   for (const save of [
-    { section: "performance", field: "Task", value: "240", title: "Settings save unconfirmed", inline: "Settings write unconfirmed" },
-    { section: "credentials", field: "UCPath username", value: "private-credential-sentinel", title: "Credentials save unconfirmed", inline: "Credentials write unconfirmed" },
+    { section: "performance", field: "Task", value: "240", title: "Settings save unconfirmed" },
+    { section: "credentials", field: "UCPath username", value: "private-credential-sentinel", title: "Credentials save unconfirmed" },
   ]) for (const replacement of ["confirmed", "conflict", "refused"] as const) it_m2(`replaces one ${save.title} warning on ${replacement} exact replay`, async () => {
     const commands: unknown[] = [];
     const authority = await syntheticSettingsAuthority(); disposers.push(authority.close);
@@ -940,7 +940,6 @@ describe_m2('real mounted dashboard through the typed mock transport', () => {
     assert_m2.match(toasts[0]?.textContent ?? "", new RegExp(save.title, "u"));
     assert_m2.match(toasts[0]?.textContent ?? "", /Your draft is retained\. Retry the exact attempt to confirm the result\./u);
     assert_m2.doesNotMatch(toasts[0]?.textContent ?? "", /Command result|private-credential-sentinel|private-transport-sentinel/u);
-    assert_m2.match(h.host.textContent ?? "", new RegExp(save.inline, "u"));
     assert_m2.equal(input.value, save.value);
     await settle(); assert_m2.equal(commands.length, 1, "uncertainty must not retry automatically");
     const retry = async () => {

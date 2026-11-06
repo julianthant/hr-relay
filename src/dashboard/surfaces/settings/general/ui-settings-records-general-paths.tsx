@@ -109,7 +109,7 @@ export function CompactSettingsSection({ editor, sectionId, appearance, deleteAc
     <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "ChatGPT account, appearance, and account controls." : "Where Relay saves files on this Mac."} />
     {sectionId === "general" && <ChatGptAccountSettings />}
     {sectionId === "general" && appearance}
-    {editor.editor.state === "failed" && sectionId !== "paths" && <Notice sticky tone="danger" title="Settings could not be read" action={{ label: "Try again", onAction: editor.reload }} />}
+    {editor.editor.state === "failed" && sectionId !== "paths" && <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message} action={{ label: "Try again", onAction: editor.reload }} />}
     {editor.editor.state === "loaded" ? <CompactSettingsForm editor={editor} sectionId={sectionId} />
       : sectionId === "paths" ? <div className="settings-compact-form"><div className="ds-body-stack"><PathsContent editor={editor} /></div></div>
       : editor.editor.state === "loading" && <SettingsSectionSkeleton section={sectionId} contentOnly />}

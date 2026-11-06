@@ -17,7 +17,7 @@ export function EditableSettingsSection({ editor, sectionId, appearance, deleteA
   if (sectionId === "performance") return <PerformanceSettingsSection editor={editor} />;
   if (sectionId === "providers") return <Banner tone="info" title="Provider settings retired">ChatGPT sign-in is available in General.</Banner>;
   if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings could not be read" action={{ label: "Try again", onAction: editor.reload }} />;
+  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings unavailable" action={{ label: "Try again", onAction: editor.reload }} />;
   const document = editor.editor.document;
   const sections = document.sections.filter(section => section.id === sectionId);
   if (sections.length === 0) return <Notice tone="danger" title="Section unavailable" />;

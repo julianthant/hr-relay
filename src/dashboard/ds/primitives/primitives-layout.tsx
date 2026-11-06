@@ -7,7 +7,7 @@ import {
   type HTMLAttributes,
   type ReactNode,
 } from "react";
-import { CircleAlert, Info, TriangleAlert, CheckCircle2, ChevronRight } from "lucide-react";
+import { CircleAlert, Info, ShieldAlert, TriangleAlert, CheckCircle2, ChevronRight } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 import { ShadcnCard, ShadcnCardContent, ShadcnCardFooter, ShadcnCardHeader } from "./shadcn-card.js";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./shadcn-collapsible.js";
@@ -537,7 +537,7 @@ const BANNER_TONE = {
 export type DsBannerTone = keyof typeof BANNER_TONE;
 export type DsBannerShape = "card" | "band";
 
-/** Inline message for confirmations and for results shown inside a dialog. Page warnings and failures use `Notice`. */
+/** Persistent surface messages announce severity and provide a recovery action. */
 export function Banner({
   tone = "info",
   shape = "card",
@@ -724,6 +724,45 @@ export function ChipRow({
     >
       {children}
     </div>
+  );
+}
+
+
+
+/** Refusals retain their code and unchanged outcome; distinguish declined work from product failures. */
+export function Refusal({
+  title,
+  code,
+  outcome,
+  meta = [],
+  action,
+  className,
+  children,
+}: {
+  title: ReactNode;
+  /** the machine-readable refusal code — required; a refusal without one is a shrug */
+  code: string;
+  /** what was NOT done, in the product's own words */
+  outcome?: ReactNode;
+  /** extra provenance segments beside the code */
+  meta?: ReactNode[];
+  action?: ReactNode;
+  className?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <Banner
+      tone="danger"
+      title={title}
+      icon={<ShieldAlert aria-hidden className={dsIcon.lg} />}
+      action={action}
+      className={className}
+    >
+      <span className="flex flex-col gap-[var(--ds-space-tight)]">
+        {children && <span>{children}</span>}
+        <MetaLine items={[`code ${code}`, ...meta, outcome]} />
+      </span>
+    </Banner>
   );
 }
 

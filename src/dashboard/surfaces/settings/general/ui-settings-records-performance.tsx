@@ -54,7 +54,7 @@ function PerformanceRow({ editor, leaf }: { editor: Editor; leaf: EditableSettin
 export function PerformanceSettingsSection({ editor }: { editor: Editor }) {
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="performance" />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings could not be read" action={{ label: "Try again", onAction: editor.reload }} />;
+  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Settings unavailable" description={editor.editor.message} action={{ label: "Try again", onAction: editor.reload }} />;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "performance");
   if (section === undefined) return <Notice tone="danger" title="Performance unavailable" />;

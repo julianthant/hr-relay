@@ -15,13 +15,14 @@ import {
   IconButton,
   KeyValueList,
   MetaLine,
+  Refusal,
   Select,
   SegmentedChoice,
   Textarea,
   Well,
   dsFg,
   dsIcon,
-  dsText, Notice,
+  dsText,
 } from "../../ds/ui.js";
 import { fmtClock } from "../shared/status/format.js";
 import type { CommandResult } from "../../../rules/commands/commands.js";
@@ -161,20 +162,23 @@ function PlanRowCard({ row }: { row: StartPlanResponse["planned"][number] }) {
   );
 }
 
-/** Per-entry refusals stay next to the entries they refuse; one notice carries the count. */
+/** Keep the server’s refusal code and sentence verbatim so the operator can act on both. */
 export function PlanRefusals({ refused, sources }: { refused: StartPlanResponse["refused"]; sources?: RunInputPreview["entries"] }) {
   if (refused.length === 0) return null;
   return (
-    <>
-      <Notice sticky tone="danger" title={refused.length === 1 ? "1 entry not planned" : `${String(refused.length)} entries not planned`} />
-      <ul className="flex flex-col gap-[var(--ds-space-snug)] text-body text-ui-secondary">
-        {refused.map((entry) => (
-          <li key={`${String(entry.entry)}-${entry.code}`}>
-            {`Entry ${String(entry.entry)}${sources?.find(source => source.index + 1 === entry.entry) ? ` (${sources.find(source => source.index + 1 === entry.entry)?.sourceText})` : ""}: ${entry.message}`}
-          </li>
-        ))}
-      </ul>
-    </>
+    <ul className="flex flex-col gap-[var(--ds-space-snug)]">
+      {refused.map((entry) => (
+        <li key={`${String(entry.entry)}-${entry.code}`}>
+          <Refusal
+            title={`Entry ${String(entry.entry)}${sources?.find(source => source.index + 1 === entry.entry) ? ` (${sources.find(source => source.index + 1 === entry.entry)?.sourceText})` : ""} was not planned`}
+            code={entry.code}
+            outcome="nothing is enqueued for it"
+          >
+            {entry.message}
+          </Refusal>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -199,12 +203,46 @@ export function EnqueueResultBanner({
       </Button>
     ) : undefined;
 
-  if (result.state === "rejected") return <Notice tone="danger" title="Start refused" description={result.message} />;
+  if (result.state === "rejected") {
+    return (
+      <Refusal
+        title="The start was refused"
+        code={result.code}
+        outcome="nothing is enqueued"
+        action={dismissWith("Dismiss")}
+      >
+        {result.message}
+      </Refusal>
+    );
+  }
 
-  // Conflicts spend the plan token; reload the served basis before planning again.
-  if (result.state === "conflict") return <Notice sticky tone="warning" title="Start plan changed" description={result.message} action={onReload ? { label: "Reload the form", onAction: onReload } : undefined} />;
+  if (result.state === "conflict") {
+    // Conflicts spend the plan token; reload the served basis before planning again.
+    return (
+      <Banner
+        tone="warning"
+        title="The start plan moved under this form"
+        action={
+          onReload ? (
+            <Button size="sm" variant="primary" onClick={onReload}>
+              Reload the form
+            </Button>
+          ) : undefined
+        }
+      >
+        <div className="flex flex-col gap-[var(--ds-space-snug)]">
+          <span>{result.message}</span>
+          <KeyValueList
+            items={[{ key: "server holds version", value: String(result.currentVersion), tone: "warning" }]}
+          />
+        </div>
+      </Banner>
+    );
+  }
 
-  if (result.state === "confirmation-required") return <Notice tone="warning" title="Confirmation required" description={result.message} />;
+  if (result.state === "confirmation-required") {
+    return <Banner tone="warning" title="Confirmation required" action={dismissWith("Close")}>{result.message}</Banner>;
+  }
 
   return (
     <Banner
@@ -451,7 +489,7 @@ export function TypedInput({
     {declaration.controls.filter(control => control.placement === "input" && control.modes.includes(mode?.value ?? "")).map(control =>
       <Checkbox key={control.field} label={control.label} checked={values[control.field] === true} onCheckedChange={value => onValue?.(control.field, value === true)} />)}
   </>;
-  if (rowInput !== undefined) return <>{controls}{rowInput}{preview.problem !== null && <Notice tone="danger" title="Selected rows need attention" description={preview.problem} />}</>;
+  if (rowInput !== undefined) return <>{controls}{rowInput}{preview.problem !== null && <Banner tone="danger" title="Selected rows need attention">{preview.problem}</Banner>}</>;
   return <>{controls}<div className="flex flex-col gap-[var(--ds-space-snug)]">{field}
     {preview.entries.length > 0 && <section aria-label="Parsed input" className="mt-3 flex flex-col gap-3">
       <div className="flex items-center justify-between"><h4 className="text-body font-semibold">Parsed input</h4><Badge tone="neutral">{preview.entries.length} {preview.entries.length === 1 ? "run" : "runs"}</Badge></div>

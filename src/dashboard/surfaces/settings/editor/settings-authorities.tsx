@@ -26,7 +26,7 @@ function CredentialsSection({ editor, profileName }: { editor: Editor; profileNa
   const removeTrigger = useRef<HTMLElement | null>(null);
   const settingsFocus = useSettingsFormFocus<HTMLFormElement>(editor.locked || editor.protectedEditor.locked, editor.onFieldBlur);
   if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" />;
-  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Credentials unavailable" action={{ label: "Try again", onAction: editor.reload }} />;
+  if (editor.editor.state === "failed") return <Notice sticky tone="danger" title="Credentials unavailable" description={editor.editor.message.replace(/ Try again\.$/u, "")} action={{ label: "Try again", onAction: editor.reload }} />;
   const settingsDocument = editor.editor.document;
   const authority = settingsDocument.protectedSettings;
   const credentials = editor.protectedEditor;
@@ -45,7 +45,7 @@ function CredentialsSection({ editor, profileName }: { editor: Editor; profileNa
     <PageHeading title="Credentials" description="Sign-in details and protected workflow configuration." />
     {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current values unavailable" description={editor.readProblem} action={{ label: "Refresh", onAction: editor.reload }} />}
     {authority.state === "unknown" && <Notice sticky tone="warning" title="Credentials unavailable" action={{ label: "Retry", onAction: editor.reload }} />}
-    <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />
+    <SettingsSaveFeedback save={credentials.save} retry={credentials.retry} retryConflict={credentials.submit} />
     <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); credentials.submit(); }}>
       <BodySection title="UCPath sign-in">
         <FormGroup label="UCPath sign-in">

@@ -100,6 +100,7 @@ export {
  * one place the shared arrival lives. Never wrap it in a `Panel` — the card */
   TakeoverFrame,
   Banner,
+  Refusal,
   Disclosure,
   MetaLine,
   /** A wrapping row of PEER facts. */
