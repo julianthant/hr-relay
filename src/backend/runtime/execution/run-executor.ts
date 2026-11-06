@@ -520,46 +520,54 @@ export async function executeClaimedRun(
       configFingerprint: envelope.configFingerprint,
       descriptorFingerprint: descriptor.contractFingerprint,
     });
+    let disposed = false;
     try {
     const bound = prepared === undefined
       ? failure
       : FailureRecordSchema.parse({ ...failure, diagnosticBundleId: prepared.bundleId });
     checkCancellation();
-    const current = getRun();
-    requireOriginalClaim(current);
-    // A member Retry can hold the parent while the failure was awaited; the hold wins over this failure.
-    if (current.pause?.state === "requested" && deps.authority.withAuthorityTransaction?.(repositories =>
-      authenticateDelegationRetryPause(repositories, descriptor, current, initial.version)) === true)
-      throw new RunPauseRequestedError("paused");
-    const authorization = buildTerminalAuthorization({
-      run: current,
-      authorizedAt: instant(),
-      consequence: { kind: "failed", failure: bound },
-    });
-    const settle = () => {
+    // The member-Retry hold check and failure admission share one transaction so no Retry or Pause commits between them.
+    const settle = (repositories?: AuthorityRepositories): "held" | "settled" | RunTerminalAdmissionLostError => {
+      const current = getRun();
+      requireOriginalClaim(current);
+      if (repositories !== undefined && current.pause?.state === "requested" && current.cancelRequested !== true
+        && authenticateDelegationRetryPause(repositories, descriptor, current, initial.version)) {
+        requireLifecycleApplied(deps.lifecycle.acknowledgePause({
+          commandId: lifecycleCommandId("executor-pause", { runId, generation: claim.claimGeneration, commandId: current.pause.commandId }),
+          runId, claim,
+        }));
+        return "held";
+      }
+      const authorization = buildTerminalAuthorization({
+        run: current,
+        authorizedAt: instant(),
+        consequence: { kind: "failed", failure: bound },
+      });
       const outcome = deps.lifecycle.terminalize({ kind: "failure",
         commandId: lifecycleCommandId("failure", { runId, failureId: bound.failureId }),
         terminal: { failure: bound, authorization },
       }, descriptor);
       if (outcome.state === "refused" && outcome.refusal.reason === "lost")
-        throw new RunTerminalAdmissionLostError(outcome, authorization.expectedVersion);
+        return new RunTerminalAdmissionLostError(outcome, authorization.expectedVersion);
       requireLifecycleApplied(outcome);
+      if (prepared !== undefined && capture !== undefined) capture.persist(prepared);
+      return "settled";
     };
-    if (prepared === undefined || capture === undefined) {
-      settle();
-    } else if (deps.authority.withAuthorityTransaction === undefined) {
+    if (prepared !== undefined && deps.authority.withAuthorityTransaction === undefined) {
       throw new Error(
         `run ${runId} has a diagnostic capture port but no authority transaction to settle its bundle with the failure`,
       );
-    } else {
-      deps.authority.withAuthorityTransaction(() => {
-        settle();
-        capture.persist(prepared);
-      });
+    }
+    const settled = deps.authority.withAuthorityTransaction === undefined ? settle() : deps.authority.withAuthorityTransaction(settle);
+    if (settled instanceof RunTerminalAdmissionLostError) throw settled;
+    if (settled === "held") {
+      disposed = true;
+      if (prepared !== undefined && capture !== undefined) capture.discard(prepared);
+      return RunExecutionOutcomeSchema.parse({ state: "abandoned", runId, reason: "paused" });
     }
     return RunExecutionOutcomeSchema.parse({ state: "failed", runId, failureId: bound.failureId });
     } catch (error) {
-      if (prepared !== undefined && capture !== undefined) {
+      if (!disposed && prepared !== undefined && capture !== undefined) {
         try { capture.discard(prepared); } catch (cleanup) { throw new AggregateError([error, cleanup], "diagnostic-failure-settlement-disposal-failed", { cause: cleanup }); }
       }
       throw error;
