@@ -262,7 +262,10 @@ become `unknown`. The existing writer persists and mirrors this metadata.
 Authentication failures before inference record closed refresh, discovery, key, signature and claim
 stages. Assistant model discovery records its own request/body/schema stage and a closed JSON failure
 reason (missing body, read, size, UTF-8 or JSON). Catalog failures use `CHATGPT_MODELS_UNAVAILABLE`;
-they do not claim that sign-in verification failed. The existing 64,000-byte JSON bound is retained.
+they do not claim that sign-in verification failed. Model catalogs include provider instruction
+metadata and have a separate 2 MiB decoded-body budget. The reader counts actual streamed bytes,
+independent of Content-Length; the 256-model schema, field limits, visibility and order remain
+validated. Auth, token, discovery and JWKS JSON retain their 64,000-byte budget.
 Successful inference accepts `text/event-stream` or an absent Content-Type only after bounded SSE
 decoding, a valid `response.completed`, and operation-specific output validation. Explicit other
 media types, malformed bytes, incomplete streams and inconsistent output remain refused.

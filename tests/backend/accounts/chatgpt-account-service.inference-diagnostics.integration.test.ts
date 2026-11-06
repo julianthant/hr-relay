@@ -24,6 +24,105 @@ async function fixture(admission?: Parameters<typeof chatGptFixture>[0]) {
   return { ...f, mirrors, records: timeline.records, debugEvents };
 }
 
+function catalogBytes(bytes: number) {
+  const catalog = { models: [{ slug: image.model, display_name: "Synthetic model", visibility: "list" }], private: "PRIVATE_CATALOG_CANARY" };
+  const padding = bytes - Buffer.byteLength(JSON.stringify(catalog));
+  assert.ok(padding >= 0);
+  catalog.private += "é".repeat(Math.floor(padding / 2)) + "x".repeat(padding % 2);
+  const body = new TextEncoder().encode(JSON.stringify(catalog));
+  assert.equal(body.byteLength, bytes);
+  return body;
+}
+
+it("accepts a fragmented instruction-rich catalog before assistant inference and publishes only ordered visible model choices", async () => {
+  const f = await fixture();
+  try {
+    await f.connected(); const before = f.repository.read();
+    const instructions = "PRIVATE_CATALOG_CANARY ".repeat(1400);
+    const models = Array.from({ length: 12 }, (_, index) => ({ slug: index === 0 ? image.model : `synthetic-${String(index)}`,
+      display_name: `Synthetic model ${String(index)}`, visibility: index === 3 || index === 7 ? "hide" : "list",
+      model_messages: { instructions_template: instructions }, base_instructions: instructions }));
+    const body = new TextEncoder().encode(JSON.stringify({ models }));
+    assert.ok(body.byteLength > 754_717 && body.byteLength < 2_097_152);
+    f.setModelsHook(async () => {
+      let offset = 0;
+      return new Response(new ReadableStream<Uint8Array>({ pull(controller) {
+        if (offset === body.length) { controller.close(); return; }
+        controller.enqueue(body.subarray(offset, offset + 4093)); offset = Math.min(body.length, offset + 4093);
+      } }), { headers: { "content-type": "application/json" } });
+    });
+    const catalog = await f.service.listAssistantModels();
+    assert.deepEqual(catalog.catalog.models, models.filter(model => model.visibility === "list")
+      .map(model => ({ slug: model.slug, displayName: model.display_name })));
+    assert.equal(JSON.stringify(catalog).includes("CANARY"), false);
+    assert.equal((await f.service.inferAssistant(assistant)).model, image.model);
+    assert.equal(f.calls.filter(call => call.url.endsWith("/responses")).length, 1);
+    assert.deepEqual(f.repository.read(), before); assert.equal(f.records.length, 0); assert.equal(f.mirrors.length, 0);
+  } finally { await f.cleanup(); }
+});
+
+it("accepts a catalog at the exact byte budget and cancels the first byte over it despite a short Content-Length", async () => {
+  const f = await fixture();
+  try {
+    await f.connected(); const before = f.repository.read();
+    f.setModelsHook(async () => new Response(catalogBytes(2_097_152), { headers: { "content-type": "application/json" } }));
+    assert.deepEqual((await f.service.listAssistantModels()).catalog.models, [{ slug: image.model, displayName: "Synthetic model" }]);
+    let cancelled = false;
+    f.setModelsHook(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(catalogBytes(2_097_153)); }, cancel() { cancelled = true; },
+    }), { headers: { "content-type": "application/json", "content-length": "1" } }));
+    await assert.rejects(f.service.listAssistantModels(), { code: "CHATGPT_MODELS_UNAVAILABLE" });
+    assert.equal(cancelled, true); assert.deepEqual(f.repository.read(), before);
+    assert.equal(f.records.length, 1); const payload = f.records[0].payload;
+    assert.equal(payload.kind, "debug"); if (payload.kind !== "debug") throw new Error("catalog diagnostic required");
+    assert.equal(payload.event.chatGptInference?.path, "catalog-body");
+    assert.equal(payload.event.chatGptInference?.jsonFailure, "too-large");
+    assert.equal(JSON.stringify([f.records, f.mirrors]).includes("CANARY"), false);
+    assert.equal(f.calls.some(call => call.url.endsWith("/responses")), false);
+  } finally { await f.cleanup(); }
+});
+
+it("retains model-count validation for a large catalog within the byte budget", async () => {
+  const f = await fixture();
+  try {
+    await f.connected(); const before = f.repository.read();
+    f.setModels({ models: Array.from({ length: 257 }, (_, index) => ({ slug: `synthetic-${String(index)}`, display_name: "Synthetic model", visibility: "list" })),
+      private: "PRIVATE_CATALOG_CANARY".repeat(4000) });
+    await assert.rejects(f.service.listAssistantModels(), { code: "CHATGPT_MODELS_UNAVAILABLE" });
+    assert.deepEqual(f.repository.read(), before); assert.equal(f.records.length, 1);
+    const payload = f.records[0].payload; assert.equal(payload.kind, "debug");
+    if (payload.kind !== "debug") throw new Error("catalog diagnostic required");
+    assert.equal(payload.event.chatGptInference?.path, "catalog-schema");
+    assert.equal(payload.event.chatGptInference?.jsonFailure, undefined);
+    assert.equal(JSON.stringify([f.records, f.mirrors]).includes("CANARY"), false);
+    assert.equal(f.calls.some(call => call.url.endsWith("/responses")), false);
+  } finally { await f.cleanup(); }
+});
+
+it.each(["discovery", "jwks", "token"] as const)("retains the 64,000-byte %s budget when model catalogs have a separate budget", async endpoint => {
+  const f = await fixture(); let service: ReturnType<typeof createChatGptAccountService> | undefined;
+  try {
+    await f.connected(); const before = f.repository.read(); f.clock.advanceWall(3_600_000);
+    const suffix = endpoint === "discovery" ? "/.well-known/openid-configuration" : endpoint === "jwks" ? "/jwks" : "/oauth/token";
+    service = createChatGptAccountService({ admission: f.admission, stateRoot: f.root, clock: f.clock, fetch: async (input, init) => {
+      const response = await f.transport(input, init);
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      if (!url.endsWith(suffix)) return response;
+      const body: unknown = await response.json(); assert.ok(body !== null && typeof body === "object");
+      return Response.json({ ...body, private: "PRIVATE_AUTH_CANARY".repeat(4000) });
+    } });
+    service.setDebugEvents(f.debugEvents);
+    await assert.rejects(service.refreshAccount(), { code: "CHATGPT_AUTH_INVALID" });
+    assert.deepEqual(f.repository.read(), before); assert.equal(f.records.length, 1);
+    const payload = f.records[0].payload; assert.equal(payload.kind, "debug");
+    if (payload.kind !== "debug") throw new Error("auth diagnostic required");
+    assert.equal(payload.event.chatGptInference?.path, endpoint === "token" ? "auth-token-body" : endpoint === "jwks" ? "auth-jwks" : "auth-discovery");
+    assert.equal(payload.event.chatGptInference?.jsonFailure, "too-large");
+    assert.equal(JSON.stringify([f.records, f.mirrors]).includes("CANARY"), false);
+    assert.equal(f.calls.some(call => call.url.endsWith("/responses") || call.url.endsWith("/models")), false);
+  } finally { await service?.close(); await f.cleanup(); }
+});
+
 for (const operation of ["ocr", "assistant"] as const) {
   for (const envelope of ["error", "detail"] as const) {
     it.each([
@@ -63,7 +162,8 @@ for (const operation of ["ocr", "assistant"] as const) {
 
 it.each([
   ["parse", () => new Response("PRIVATE_RESPONSE_CANARY", { headers: { "content-type": "application/json" } })],
-  ["too-large", () => Response.json({ models: [], private: "PRIVATE_RESPONSE_CANARY".repeat(4000) })],
+  ["parse", () => new Response(catalogBytes(754_717).subarray(0, 754_716), { headers: { "content-type": "application/json" } })],
+  ["too-large", () => new Response(catalogBytes(2_097_153), { headers: { "content-type": "application/json" } })],
   ["decode", () => new Response(new Uint8Array([255]), { headers: { "content-type": "application/json" } })],
   ["missing-body", () => new Response(null, { status: 204 })],
 ] as const)("records assistant catalog %s failure separately from a verified OCR account", async (jsonFailure, response) => {

@@ -16,6 +16,7 @@ import { ERROR_CATALOG, type ErrorCatalogCode } from "../../models/failures/erro
 import { ChatGptInferenceDiagnosticSchema, ChatGptStreamEventTypeSchema, ChatGptShapeKeySchema, type ChatGptInferenceDiagnostic, type DebugEventSchema } from "../../models/events/timeline.js";
 
 const AUTH = "https://auth.openai.com", RESOURCE = "https://api.openai.com/v1";
+const MODEL_CATALOG_MAX_BYTES = 2 * 1024 * 1024;
 const PLAN_SCOPES = ["offline_access", "resource.invoke", "chatgpt.tokens.use.direct"];
 type ChatGptAccountCode = Exclude<Extract<ErrorCatalogCode, `CHATGPT_${string}`>, `CHATGPT_CREDENTIAL_${string}`>;
 export class ChatGptAccountError extends Error {
@@ -63,13 +64,13 @@ function authUrl(value: string): string {
   if (url.origin !== AUTH || url.username !== "" || url.password !== "" || url.hash !== "") throw fault("CHATGPT_AUTH_INVALID");
   return url.href;
 }
-async function boundedJson(response: Response, diagnostic?: ChatGptInferenceDiagnostic, invalidCode: ChatGptAccountCode = "CHATGPT_AUTH_INVALID"): Promise<unknown> {
+async function boundedJson(response: Response, diagnostic?: ChatGptInferenceDiagnostic, invalidCode: ChatGptAccountCode = "CHATGPT_AUTH_INVALID", maxBytes = 64_000): Promise<unknown> {
   if (!response.ok || response.body === null) { if (diagnostic !== undefined) diagnostic.jsonFailure = "missing-body"; await response.body?.cancel(); throw fault(invalidCode === "CHATGPT_AUTH_INVALID" ? "CHATGPT_AUTH_UNAVAILABLE" : invalidCode); }
   const reader = response.body.getReader(), chunks: Uint8Array[] = []; let size = 0;
   let outcome: { readonly kind: "value"; readonly value: unknown } | { readonly kind: "error"; readonly error: unknown };
   try {
     for (;;) { const chunk = await reader.read(); if (chunk.done) break; size += chunk.value.length;
-      if (size > 64_000) { if (diagnostic !== undefined) diagnostic.jsonFailure = "too-large"; throw fault(invalidCode); } chunks.push(chunk.value); }
+      if (size > maxBytes) { if (diagnostic !== undefined) diagnostic.jsonFailure = "too-large"; throw fault(invalidCode); } chunks.push(chunk.value); }
     if (diagnostic !== undefined) diagnostic.jsonFailure = "decode";
     const text = new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks));
     if (diagnostic !== undefined) diagnostic.jsonFailure = "parse";
@@ -730,7 +731,7 @@ export function createChatGptAccountService(options: ChatGptAccountServiceOption
         operation.assertCurrent();
         if (!response.ok) await rejectPlanResponse(response, operation, diagnostic);
         diagnostic.path = "catalog-body";
-        const body = await boundedJson(response, diagnostic, "CHATGPT_MODELS_UNAVAILABLE");
+        const body = await boundedJson(response, diagnostic, "CHATGPT_MODELS_UNAVAILABLE", MODEL_CATALOG_MAX_BYTES);
         diagnostic.path = "catalog-schema";
         const parsed = z.object({ models: z.array(z.object({ slug: AssistantInferenceRequestSchema.shape.model,
           display_name: z.string().min(1).max(256), visibility: z.string().min(1).max(64) })).max(256) }).safeParse(body);
