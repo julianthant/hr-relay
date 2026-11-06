@@ -768,7 +768,7 @@ export function Notice({ tone, title, description, action, sticky = false }: Pic
     return () => toasts.dismiss(id);
   }, [toasts, tone, title, description, label, sticky]);
   if (toasts !== null) return null;
-  return <div role={tone === "danger" ? "alert" : "status"}><span>{title}</span><span>{description}</span>{action && <Button size="sm" variant="secondary" onClick={action.onAction}>{action.label}</Button>}</div>;
+  return <div role={tone === "danger" ? "alert" : "status"}><span>{title}</span><span>{description}</span>{action && <Button size="sm" variant="secondary" onClick={() => action.onAction()}>{action.label}</Button>}</div>;
 }
 
 function ToastViewport() {
