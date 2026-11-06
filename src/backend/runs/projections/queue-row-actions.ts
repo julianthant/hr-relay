@@ -167,7 +167,7 @@ export function queueRowActions(
         confirmLabel: "Recover", tone: "neutral" } })] : [];
   const rerun = (!facts.crashed || recover.length === 0) && !facts.isChild && !facts.parkedWrite
     && ["done", "failed", "partial"].includes(facts.status)
-    && (policyEnables(policy, "retry", facts) || policyEnables(policy, "restart", facts))
+    && policyEnables(policy, "retry", facts)
     ? [ActionDescriptorWireSchema.parse({ key: "rerun", label: "Rerun", kind: "navigation",
       navigate: { kind: "rerun", expectedVersion: facts.rowRevision },
       intent: "primary", icon: "retry", placement: ["footer", "menu", "data"] })] : [];

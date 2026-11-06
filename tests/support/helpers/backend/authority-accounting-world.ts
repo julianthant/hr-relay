@@ -74,7 +74,6 @@ export function createAuthorityAccountingTestWorld() {
     type: "cancel",
     bulkCommandId: UUID_8,
     targets: [{ runId: RUN_ID, expectedVersion: 1 }],
-    mode: "best-effort",
   } as const;
 
   const BULK_COMMAND_ACCEPTANCE = {

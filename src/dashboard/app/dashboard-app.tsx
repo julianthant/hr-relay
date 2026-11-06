@@ -713,7 +713,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
       if (!allPaused) return;
       const plan: BulkVerbPlan = { verb: "resume", label: "Resume", eligible: targets.map(target => ({ ...target,
         title: dayWire?.queueSurfaces.find(row => row.runId === target.runId)?.title ?? target.runId })), skipped: [], unavailable: [] };
-      void executeShell(BulkRunCommandRequestSchema.parse({ ...envelope, bulkCommandId: envelope.commandId, family: "run", type: "resume", targets, mode: "best-effort" }), "Resume all runs", plan).then(lifecycle.refresh);
+      void executeShell(BulkRunCommandRequestSchema.parse({ ...envelope, bulkCommandId: envelope.commandId, family: "run", type: "resume", targets }), "Resume all runs", plan).then(lifecycle.refresh);
     } else {
       void executeShell(CommandRequestSchema.parse({ ...envelope, family: "application", type: action,
         target: { runtimeGeneration: application.runtimeGeneration }, payload: { targets, ...(action === "pause-all-and-quit" ? { confirmed: true } : {}) } }),

@@ -77,7 +77,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
         payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
       }],
       ["/api/v1/commands/bulk", {
-        commandId, bulkCommandId, family: "run", type: "cancel", mode: "best-effort",
+        commandId, bulkCommandId, family: "run", type: "cancel",
         targets: [{ runId: RUN_ID, expectedVersion: 1 }],
       }],
     ] as const) {
@@ -134,7 +134,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
       payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
     };
     const bulk = {
-      commandId, bulkCommandId, family: "run", type: "cancel", mode: "best-effort",
+      commandId, bulkCommandId, family: "run", type: "cancel",
       targets: [{ runId: RUN_ID, expectedVersion: 1 }],
     };
     for (const [path, body, status, code] of [

@@ -79,7 +79,7 @@ function planCheckpointContinuation(repositories: AuthorityRepositories, descrip
   const origin = run.sessionId === undefined || run.envelope.parent !== undefined ? undefined
     : repositories.lifecycleJournal.findRunOrigin(run.envelope.runId);
   const native = origin?.operation === "recover" ? CanonicalRecoverRunRequestSchema.parse(origin.request)
-    : origin?.operation === "retry" || origin?.operation === "restart" ? CanonicalRetrySourceRequestSchema.parse(origin.request) : undefined;
+    : origin?.operation === "retry" ? CanonicalRetrySourceRequestSchema.parse(origin.request) : undefined;
   if (native?.sourceCommandId !== undefined) {
     try { authenticateRootRun(repositories, run); }
     catch (cause) { throw new RunContinuationRefusedError("run-recovery-source-origin-unavailable", { cause }); }

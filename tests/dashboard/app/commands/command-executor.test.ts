@@ -17,7 +17,7 @@ function command(n = 10, runId = RUN, expectedVersion = 1) {
 function bulk(n = 20, runIds = [RUN, OTHER]) {
   const { target: _target, ...envelope } = command(n);
   return BulkRunCommandRequestSchema.parse({ ...envelope, bulkCommandId: id(n),
-    targets: runIds.map(runId => ({ runId, expectedVersion: 1 })), mode: "best-effort" });
+    targets: runIds.map(runId => ({ runId, expectedVersion: 1 })) });
 }
 function deferred<Value>() {
   let resolve!: (value: Value) => void;

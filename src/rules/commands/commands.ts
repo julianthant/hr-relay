@@ -72,7 +72,6 @@ export const CommandActionSchema = z.enum([
   "recover-run",
   "pause",
   "resume",
-  "restart",
   "cancel",
   "bump",
   "rename",
@@ -308,13 +307,11 @@ export const RunCommandRequestSchema = z.discriminatedUnion("type", [
     target: WorkbookRowChoiceTargetSchema,
     payload: z.strictObject({ sheetId: z.string().min(1), rowId: z.string().min(1) }) }),
     /** Native Retry/Restart remain distinct from explicit checkpoint recovery. */
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "restart", "pause", "resume", "cancel", "bump"]), target: RunVersionTargetSchema }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "pause", "resume", "cancel", "bump"]), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("recover-run"), target: RunVersionTargetSchema }),
   /** Delete means delete: a terminal queue run and every row it owns leave authority. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("delete"), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
-    // Field-level patch model; an entry edits one field, never a whole checkpoint blob.
-  // blob payload was a deferred-arm placeholder no producer ever sent.
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("recheck-write"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema, writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema, transactionId: z.string().regex(/^T\d+$/u).optional() }) }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("resolve-write-absent"), target: z.strictObject({ ...RunVersionTargetSchema.shape, writeIntentId: WriteIntentIdSchema, intentGeneration: PositiveIntSchema, writeAttemptId: WriteAttemptIdSchema, bindingProofDigest: FingerprintSchema }), payload: z.strictObject({ occurrenceKeyDigest: FingerprintSchema }) }),
 ]);
@@ -585,7 +582,6 @@ export const RunLifecycleCommandOperationSchema = z.enum([
   "terminalize",
   "requeue",
   "retry",
-  "restart",
   "recover",
   "delete",
   "purge",
@@ -661,7 +657,6 @@ export const BulkRunCommandRequestSchema = z.strictObject({
   type: z.enum(["retry", "pause", "resume", "cancel", "bump"]),
   bulkCommandId: CommandIdSchema,
   targets: z.array(RunVersionTargetSchema).min(1),
-  mode: z.enum(["all-or-none", "best-effort"]),
 });
 
 /** Exact accepted parent identity for ordered N-child replay. */
@@ -816,7 +811,6 @@ export const COMMAND_EFFECT_BY_ACTION = {
   resume: "external-submit",
   retry: "external-submit",
   "recover-run": "external-submit",
-  restart: "external-submit",
   cancel: "destructive",
   bump: "local-write",
   rename: "local-write",
@@ -863,7 +857,6 @@ export const COMMAND_ASSISTANT_METADATA = {
   resume: "Continue a paused run",
   retry: "Resume an eligible run",
   "recover-run": "Recover authenticated completed steps from a failed or interrupted run",
-  restart: "Restart an eligible run",
   cancel: "Cancel an eligible run",
   bump: "Change run priority",
   rename: "Rename a run",
@@ -903,7 +896,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"],
   settings: ["apply-settings", "apply-protected-settings"],
-  run: ["retry", "recover-run", "pause", "resume", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent", "resolve-workbook-row", "resolve-workbook-reference-row"],
+  run: ["retry", "recover-run", "pause", "resume", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent", "resolve-workbook-row", "resolve-workbook-reference-row"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"],
 } as const satisfies Record<z.infer<typeof CommandFamilySchema>, readonly z.infer<typeof CommandActionSchema>[]>;
@@ -946,7 +939,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "remove-worker", "retry-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser", "check-parked-write"] },
   { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
-  { family: "run", actions: ["retry", "recover-run", "pause", "resume", "restart", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent", "resolve-workbook-row", "resolve-workbook-reference-row"] },
+  { family: "run", actions: ["retry", "recover-run", "pause", "resume", "cancel", "bump", "rename", "delete", "recheck-write", "resolve-write-absent", "resolve-workbook-row", "resolve-workbook-reference-row"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze", "notification-read-all", "notification-unread-all", "notification-snooze-all", "notification-unsnooze-all"] },
 ].map((entry) => ({
