@@ -102,7 +102,7 @@ current corpus.
   separate reference-data and workflow-output tables, search and type filtering, named versions in a drawer,
   typed fields, selected header/column import, real XLSX workers and bounded editor history.
   The former Library/Types tabs and Date added column are absent.
-- The HUB Assistant mounts in the shell with a retained composer in Chat files. Product conversations use the served assistant controller with per-chat cancellation and account authority.
+- The HUB Assistant mounts in the shell. Product conversations use the served assistant controller with per-chat cancellation and account authority.
   Canonical selected-run actions require explicit Start run confirmation and show their exact public plan. Confirmed starts and cancellations resolve in the thread; unknown outcomes retain the disabled card. Other proposals without issued action authority keep confirmation unavailable. Explicit parity composition retains the approved conversation and workflow
   samples; workbook registration and exact-version reads use the served library.
 - Archive and UI catalog URLs show removal notices; their pages and Queue context menus are absent.

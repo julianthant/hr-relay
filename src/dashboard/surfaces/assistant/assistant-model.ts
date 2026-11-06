@@ -16,6 +16,7 @@ export interface AssistantMessage {
   readonly text: string;
   readonly sources?: readonly AssistantSource[];
   readonly code?: AssistantFailureCode;
+  readonly attachments?: readonly { readonly id: string; readonly name: string }[];
 }
 
 export interface AssistantMockProposal {

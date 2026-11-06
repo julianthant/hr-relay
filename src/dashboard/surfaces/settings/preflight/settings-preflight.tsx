@@ -1,4 +1,5 @@
 import { usePreflightOcr } from "./preflight-ocr-model.js";
+import { usePreflightAssistant } from "./preflight-assistant-model.js";
 import { useDelayedLoading } from "../../shared/loading/loading-model.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
 import type { ReactNode } from "react";
@@ -112,6 +113,7 @@ function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, ch
 function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workflowLabels }: { workflowLabels?: ReadonlyMap<string, string>; preflight: PreflightRerunState; onRerun: () => void; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   const scope = usePreflightScope();
   const { snapshot: ocr, testOcr } = usePreflightOcr();
+  const { snapshot: assistantTest, testAssistant } = usePreflightAssistant();
   const ocrBusy = ocr.state === "loading";
   const displayed = preflight.state === "completed" || preflight.state === "historical" || preflight.state === "refreshing" ? preflight : undefined;
   const show = useDelayedLoading(displayed === undefined && preflight.state !== "refused");
@@ -136,7 +138,10 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
       <div className="mb-[var(--ds-space-heading-content)] flex flex-wrap gap-2">
         <Button variant="secondary" onClick={onRerun} disabled={busy || preflight.state === "idle"} aria-busy={busy}>Run preflight</Button>
         <Button variant="secondary" onClick={() => { void testOcr(); }} disabled={ocr.state === "disabled" || ocrBusy || ocr.state === "uncertain"} loading={ocrBusy}>Test OCR</Button>
+        <Button variant="secondary" onClick={() => { void testAssistant(); }} disabled={assistantTest.state === "loading"} loading={assistantTest.state === "loading"}>Test assistant</Button>
       </div>
+      {(assistantTest.state === "passed" || assistantTest.state === "failed") && <Banner className="mb-[var(--ds-space-heading-content)]" tone={assistantTest.state === "passed" ? "success" : "danger"}
+        title={assistantTest.state === "passed" ? "Assistant test passed" : "Assistant test failed"}>{assistantTest.state === "failed" ? assistantTest.message : "The assistant can answer for the next 15 minutes."}</Banner>}
       {ocr.state !== "idle" && <Banner className="mb-[var(--ds-space-heading-content)]"
         tone={ocr.state === "completed" ? "success" : ocrBusy ? "info" : ocr.state === "failed" ? "danger" : "warning"}
         title={ocr.state === "completed" ? "OCR test completed" : ocr.state === "loading" ? "Testing OCR" : ocr.state === "disabled" ? "OCR test unavailable" : ocr.state === "uncertain" ? "OCR test outcome uncertain" : ocr.state === "refused" ? "OCR test refused" : "OCR test failed"}>

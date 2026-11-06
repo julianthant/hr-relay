@@ -25,7 +25,6 @@ export type AssistantWorkflowResult = { readonly state: 'complete'; readonly sou
 export interface AssistantPorts {
   readonly onAttachFile?: (file?: File) => Promise<AssistantFile | null>;
   readonly onRegisterSpreadsheet?: (file: AssistantFile) => Promise<void>;
-  readonly onOpenChatFile?: (file?: AssistantFile, mode?: 'browse' | 'attach') => Promise<AssistantFile | null | void>;
   readonly onRunWorkflow?: (request: AssistantWorkflowRequest) => Promise<AssistantWorkflowResult>;
 }
 const workflowOptions = [
@@ -131,10 +130,6 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
     if (refuseAttachmentInput()) return null;
     return ports.onAttachFile?.(file) ?? null;
   }
-  async function openChatFile(file?: AssistantFile, mode?: Parameters<NonNullable<AssistantPorts['onOpenChatFile']>>[1]) {
-    if (refuseAttachmentInput()) return null;
-    return ports.onOpenChatFile?.(file, mode);
-  }
   async function send(value: ComposerValue) {
     if (refuseAttachments(value)) return false;
     const identity = generation.current, authority = currentAuthority.current;
@@ -168,7 +163,7 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
     });
   }
   function latest() { const element = transcript.current; if (element) element.scrollTop = element.scrollHeight; setShowLatest(false); }
-  return { conversation, account, error, busy, refuseAttachments, attachFile, openChatFile, detail, setDetail, transcript, showLatest, latest, send, runWorkflow,
+  return { conversation, account, error, busy, refuseAttachments, attachFile, detail, setDetail, transcript, showLatest, latest, send, runWorkflow,
     onScroll: () => { const el = transcript.current; if (el) setShowLatest(el.scrollHeight - el.clientHeight - el.scrollTop >= 48); },
     finishMockSignIn: () => { setConversation(current => ({ ...current, scene: 'ask-write' })); setDetail(null); },
     act: (action: 'approve' | 'decline' | 'cancel') => perform(() => producer.act(conversation, action)),

@@ -51,3 +51,4 @@ html[data-demo-theme=dark] .hub-assistant-menu.hub-menu{box-shadow:var(--hub-sha
 
 html[data-motion=off] .hub-assistant-menu[data-starting-style]{opacity:1!important;transform:none!important}
 @media(prefers-reduced-motion:reduce){.hub-assistant-menu[data-starting-style]{opacity:1!important;transform:none!important}}
+#hub-panel-assistant .hub-composer .hub-attachment{margin:6px 8px 0;padding:1px 4px 1px 8px}

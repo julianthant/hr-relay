@@ -7,21 +7,20 @@ import { Button, Dialog, DialogContent, DialogFooter } from "../../ds/ui.js";
 import { chatAge, createMockHubChatsPort, useHubChats, useHubPanelPosition, type HubChatsPort } from "./hub-shell-model.js";
 import { AssistantPanel } from "./assistant-panel.js";
 import type { AssistantPorts } from "./assistant-panel-model.js";
-import { ChatFiles } from "./chat-files.js";
 import { useHubAssistant } from "./hub-assistant-model.js";
 import "./hub-shell.css";
 import { useDashboardClient } from '../../state/client-context.js';
 import { useAssistantHistory, type AssistantHistory } from '../assistant/assistant-history-model.js';
 import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 
-type HubShellProps = { source?: "mock" | "served"; authority?: unknown; subjectRef?: string; settingsOpen: boolean; onLogout: () => void; chatsPort?: HubChatsPort; onRunWorkflow: NonNullable<AssistantPorts["onRunWorkflow"]>; commands?: DashboardCommandBinding };
+type HubShellProps = { source?: "mock" | "served"; authority?: unknown; subjectRef?: string; onOpenSettings?: (section?: string) => void; settingsOpen: boolean; onLogout: () => void; chatsPort?: HubChatsPort; onRunWorkflow: NonNullable<AssistantPorts["onRunWorkflow"]>; commands?: DashboardCommandBinding };
 export function HubShell(props: HubShellProps) {
   const client = useDashboardClient();
   const history = useAssistantHistory(client, props.source === 'served', props.authority);
   return <HubShellBody key={history.store?.profileId ?? (history.pending ? 'loading' : 'session')} {...props} history={history.store}
     preferenceChanged={history.preferenceChanged} modelPreference={history.preference} historyPending={history.pending || props.source === 'served' && history.store === undefined} historyNotice={history.notice || (history.pending ? 'Loading chat history…' : '')} />;
 }
-function HubShellBody({ settingsOpen, onLogout, chatsPort, onRunWorkflow, source = "mock", authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged }: HubShellProps & { history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
+function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRunWorkflow, source = "mock", authority, commands, subjectRef, history, historyPending, historyNotice, modelPreference, preferenceChanged }: HubShellProps & { history?: AssistantHistory; historyPending: boolean; historyNotice: string; modelPreference?: AssistantModelPreferenceView['preference']; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
   const panelPosition = useHubPanelPosition(4);
   const launcherPosition = useHubPanelPosition(8, true);
   const [logout, setLogout] = useState(false);
@@ -41,8 +40,6 @@ function HubShellBody({ settingsOpen, onLogout, chatsPort, onRunWorkflow, source
   const assistant = useHubAssistant(onRunWorkflow, (id, title) => { if (model.chats.some(chat => chat.id === id)) model.rename(id, title); }, history);
   const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged });
   const served = historyPending ? { ...servedController, canCompose: false } : servedController;
-  const filesView = assistant.view?.id === model.currentId ? assistant.view : undefined;
-  const backToChat = () => { assistant.closeFiles(); panelPosition.element.current?.querySelector<HTMLTextAreaElement>("textarea")?.focus(); };
   const current = model.chats.find(chat => chat.id === model.currentId);
   const currentSession = current ? assistant.session(current.id, current.title) : undefined;
   const edit = (kind: "rename" | "delete", id: string) => {
@@ -55,10 +52,10 @@ function HubShellBody({ settingsOpen, onLogout, chatsPort, onRunWorkflow, source
   return <>
     {footer && createPortal(<Button tabIndex={0} size="sm" variant="ghost" className="hub-logout size-8 p-0" aria-label="Log out" title="Log out" onClick={() => setLogout(true)} icon={<LogOut aria-hidden className="size-4" />} />, footer)}
       <section ref={panelPosition.element} id="hub-shell-assistant" className="hub-slot" aria-label={list ? "Relay assistant" : "Assistant panel"} data-source={model.source} hidden={settingsOpen || !opened} inert={settingsOpen || !opened} aria-hidden={settingsOpen || !opened} onKeyDown={event => {
-        if (event.key === "Escape" && !event.defaultPrevented && !editing) { event.preventDefault(); if (filesView) backToChat(); else if (list) setList(false); else { setOpened(false); panelPosition.reset(); launcher.current?.focus(); } }
+        if (event.key === "Escape" && !event.defaultPrevented && !editing) { event.preventDefault(); if (list) setList(false); else { setOpened(false); panelPosition.reset(); launcher.current?.focus(); } }
       }}>
         {list && <header className="hub-slot-header" tabIndex={0} aria-label="Move panel with arrow keys" onPointerDown={panelPosition.onPointerDown} onPointerMove={panelPosition.onPointerMove} onPointerUp={panelPosition.onPointerUp} onPointerCancel={panelPosition.onPointerCancel} onLostPointerCapture={panelPosition.onPointerCancel} onKeyDown={panelPosition.onKeyDown}><div className="hub-slot-title"><span>Chats</span></div><div className="hub-header-actions">
-          {icon("Chats", <History aria-hidden />, () => { assistant.closeFiles(); setList(value => !value); })}{icon("New chat", <Plus aria-hidden />, () => { assistant.closeFiles(); model.create(); setList(false); })}{icon("Close assistant", <X aria-hidden />, () => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); })}
+          {icon("Chats", <History aria-hidden />, () => { setList(value => !value); })}{icon("New chat", <Plus aria-hidden />, () => { model.create(); setList(false); })}{icon("Close assistant", <X aria-hidden />, () => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); })}
         </div></header>}
         {list ? <div className="hub-transcript hub-chat-list" onKeyDown={event => {
           if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) || event.target instanceof HTMLInputElement) return;
@@ -77,9 +74,9 @@ function HubShellBody({ settingsOpen, onLogout, chatsPort, onRunWorkflow, source
           })}
         </div> : null}
         <div className="hub-assistant-slot" data-hub-assistant-slot="" hidden={list} inert={list}>
-          {current && currentSession && <AssistantPanel key={current.id} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={source === "served" ? served : undefined} onAutomaticTitle={title => currentSession.autoTitle(title)} producer={currentSession.producer} draft={currentSession.draft} accountClient={assistant.client} {...assistant.ports(current.id)} title={current.title} filesOpen={!!filesView} onSendMessage={filesView ? assistant.closeFiles : undefined}
-            onClose={() => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); }} onChats={() => { assistant.closeFiles(); setList(true); }} onNewChat={() => { assistant.closeFiles(); model.create(); setList(false); }} onRename={() => edit("rename", current.id)}
-            headerProps={{ tabIndex: 0, "aria-label": "Move panel with arrow keys", onPointerDown: panelPosition.onPointerDown, onPointerMove: panelPosition.onPointerMove, onPointerUp: panelPosition.onPointerUp, onPointerCancel: panelPosition.onPointerCancel, onLostPointerCapture: panelPosition.onPointerCancel, onKeyDown: panelPosition.onKeyDown }} >{filesView ? <div className="hub-files-slot">{assistant.error && <p role="alert">{assistant.error}</p>}<ChatFiles key={`${filesView.id}:${filesView.initialFile?.id ?? filesView.mode}`} port={assistant.session(filesView.id).files} mode={filesView.mode} initialFile={filesView.initialFile} onBackToChat={backToChat} onAttachFile={filesView.mode === "attach" ? file => { void assistant.select(file); } : undefined} /></div> : undefined}</AssistantPanel>}
+          {current && currentSession && <AssistantPanel key={current.id} historyNotice={historyNotice || model.error} modelPreference={modelPreference} served={source === "served" ? served : undefined} onAutomaticTitle={title => currentSession.autoTitle(title)} producer={currentSession.producer} draft={currentSession.draft} accountClient={assistant.client} {...assistant.ports(current.id)} title={current.title} onOpenSettings={onOpenSettings}
+            onClose={() => { setOpened(false); panelPosition.reset(); launcher.current?.focus(); }} onChats={() => { setList(true); }} onNewChat={() => { model.create(); setList(false); }} onRename={() => edit("rename", current.id)}
+            headerProps={{ tabIndex: 0, "aria-label": "Move panel with arrow keys", onPointerDown: panelPosition.onPointerDown, onPointerMove: panelPosition.onPointerMove, onPointerUp: panelPosition.onPointerUp, onPointerCancel: panelPosition.onPointerCancel, onLostPointerCapture: panelPosition.onPointerCancel, onKeyDown: panelPosition.onKeyDown }} ></AssistantPanel>}
         </div>
       </section>
       <button tabIndex={0} ref={element => { launcher.current = element; launcherPosition.element.current = element; }} className="hub-assistant-launcher" hidden={settingsOpen} type="button" aria-label="Assistant" aria-description="Drag to move. Alt and arrow keys also move the launcher." aria-controls="hub-shell-assistant" aria-expanded={opened} onPointerDown={launcherPosition.onPointerDown} onPointerMove={launcherPosition.onPointerMove} onPointerUp={launcherPosition.onPointerUp} onPointerCancel={launcherPosition.onPointerCancel} onLostPointerCapture={launcherPosition.onPointerUp} onKeyDown={launcherPosition.onKeyDown} onClick={() => { if (launcherPosition.moved.current) { launcherPosition.moved.current = false; return; } panelPosition.reset(); setOpened(value => !value); }}>{opened ? <ChevronDown aria-hidden /> : <Sparkles aria-hidden />}</button>
