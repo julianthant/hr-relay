@@ -850,7 +850,7 @@ const LIBRARY_ACTION_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrig
   ...WORKBOOK_VALUE_ORIGINS.map(entry => ({ ...entry, path: `change.from.workbook.${entry.path}` })),
 ];
 const PLANNED_OUTPUT_ORIGINS = ['name', 'sheetId', 'worksheetName', 'folderName', 'archiveName', 'people[].rowId', 'people[].label'] as const;
-const LIBRARY_NAME_RETENTION = 'Operator-approved named workbook and version management retains entered names in the local library state and its immutable action journal (docs/rebuild/reference/data-intake-and-edit-data.md, Saved workbook reference data). This permits local authority retention only, with no process or OS notification egress.';
+const LIBRARY_NAME_RETENTION = 'Operator-approved named workbook and version management retains entered names in the local library state and its immutable action journal (docs/reference/data-intake-and-edit-data.md, Saved workbook reference data). This permits local authority retention only, with no process or OS notification egress.';
 
 const OCR_REVIEW_ORIGINS: readonly Readonly<{ path: string; origin: LeafOrigin }>[] = [
   { path: "approvedSnapshots[].records[].fields.answers[].raw", origin: "captured-hr-value" },
@@ -1175,7 +1175,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   ...LIBRARY_METADATA_ORIGINS.map(path => ({ surface: 'wire/workbook-metadata', path, origin: 'captured-hr-value' as const })),
   ...LIBRARY_CHANGE_ORIGINS.flatMap(path => ['request/workbook-operation', 'durable/workbook-operation'].map(surface => ({ surface,
     path: surface.startsWith('durable/') ? `change.${path}` : path, origin: path === 'name' ? 'operator-authored' as const : 'captured-hr-value' as const,
-    ...(surface === 'durable/workbook-operation' && path === 'name' ? { exception: 'Operator-approved manual named-version retention (docs/rebuild/reference/data-intake-and-edit-data.md, Saved workbook reference data) preserves the operator-entered name in local durable workbook authority and its operation journal only; it does not authorize process or OS notification egress.' } : {}) }))),
+    ...(surface === 'durable/workbook-operation' && path === 'name' ? { exception: 'Operator-approved manual named-version retention (docs/reference/data-intake-and-edit-data.md, Saved workbook reference data) preserves the operator-entered name in local durable workbook authority and its operation journal only; it does not authorize process or OS notification egress.' } : {}) }))),
   ...WORKBOOK_VALUE_ORIGINS.flatMap(entry => ['request/workbook-operation', 'durable/workbook-operation'].map(surface => ({ surface,
     path: `${surface.startsWith('durable/') ? 'change.' : ''}workbook.${entry.path}`, origin: entry.origin }))),
   ...['operationId', 'source.runId', 'source.syncId'].map(path => ({ surface: 'durable/workbook-operation', path, origin: 'captured-hr-value' as const })),

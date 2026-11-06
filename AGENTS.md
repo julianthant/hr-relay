@@ -6,7 +6,7 @@ Relay is the production rebuild of `hr-automation`. It is a local desktop app fo
 ## What to build
 
 - Start with the assigned brief and its folder's README, then the
-  [codebase map](docs/rebuild/reference/codebase-structure.md). Work only on the assigned task.
+  [codebase map](docs/reference/codebase-structure.md). Work only on the assigned task.
 - Work assigned through a brief follows that brief and its folder's README. Receipts, notes and
   handoffs go in the brief's evidence folder inside `.work/`, never in a commit.
 - The roadmap at docs/roadmap/roadmap.md lists the key implementations and their status.
@@ -25,13 +25,29 @@ Relay is the production rebuild of `hr-automation`. It is a local desktop app fo
 - Each workflow switches from mock to served data through one static per-workflow switch. Never fall
   back from served to mock at runtime. A served failure shows its failure state.
 
+## Language
+
+- **Onboarding (sign-up)**: creating a Relay profile and signing in with Duo (`src/backend/profiles/`). It is not the **Onboarding workflow** (`src/workflows/onboarding/`), which hires a new person through CRM, UCPath and I-9.
+- **Operator**: the one HR person using the dashboard. It is not an end user, a tenant or an agent.
+- **Served / mock**: a workflow's dashboard data comes from the backend (`served`) or from fixtures (`mock`), chosen by one static entry in `config/dashboard-workflow-sources.json`. Never a runtime fallback from one to the other.
+- **Dry run**: `dryRun=true`. A workflow reads and previews every form but submits no UCPath transaction and finalizes no Kuali document. It is not a mock run: it uses live systems.
+- **Sign-off**: the operator's explicit approval of a workflow's dry run, required before it switches from mock to served. A passing test or parity run is not sign-off.
+- **Person Lookup**: finds one person in UCPath and cross-checks CRM, read-only. Other workflows delegate to it. It is not a write workflow.
+- **Separations**: turns one Kuali separation document into one terminated employee across Kuali, UCPath and Kronos. It writes only outside dry runs.
+- **OCR**: reads PDF pages, groups records and looks up identities for the operator to review and release. It writes nothing to HR systems.
+- **EC (Emergency Contact)**: reads a PDF through OCR, then delegates each approved OCR record to an EC member that previews or saves that person's primary contact in UCPath. It is not part of OCR.
+- **Parent / delegated rows / member list**: a parent run delegates work to child runs. The Queue shows the children as the parent's delegated rows; the parent's member list is its approved records in source order. A child is not a separate workflow run the operator starts.
+- **Settled parent**: a parent whose members have all finished. A settled mixed-outcome EC parent still admits Retry of each eligible failed member. UNKNOWN and a committed or unresolved Save still refuse.
+- **SharePoint Download**: the Spreadsheets library's Sync of one SharePoint `.xlsx`/`.csv` into a workbook. It is not a workflow.
+- **Spreadsheets library**: the typed workbook store (one mutable master per workbook, manual named versions). Workflow outputs go there, never to loose files.
+
 ## Codebase
 
 One person builds and maintains this codebase. Keep it organized, clean and easy to follow.
 
 The repository holds only the current version. No compatibility readers, old migration steps, porting or change records, lesson files, history or backups of old code. A stored-data change ships as a forward migration that deletes the reader it replaces.
 
-- Each concept has one home. [docs/rebuild/reference/codebase-structure.md](docs/rebuild/reference/codebase-structure.md)
+- Each concept has one home. [docs/reference/codebase-structure.md](docs/reference/codebase-structure.md)
   is the map. Update it in the same commit as any move.
 - A change deletes the code it replaces. No shims, parallel old and new paths, commented-out code or
   unused exports.
@@ -43,7 +59,7 @@ The repository holds only the current version. No compatibility readers, old mig
   their own trees; fixtures and helpers live in tests/support/.
   Delete tests for behavior that no longer exists.
 - Add a guard only to prevent a real, recurring mistake, and record its reason in
-  `docs/rebuild/guard-inventory.json`.
+  `docs/guard-inventory.json`.
 - Comments: only where the code cannot say it, in a few words.
 - Docs describe the system as it is now. When a rule changes, update its owning doc in the same
   commit. Keep history out of the repository.
@@ -112,7 +128,7 @@ The repository holds only the current version. No compatibility readers, old mig
   to your change locally before pushing, and parity when the change touches a dashboard screen.
 - A test file that needs native platform proofs goes in `NATIVE_FILES` in `scripts/test/ci-files.ts`. When CI jobs'
   end times spread more than a minute, refresh `scripts/test/ci-durations.json` (see
-  `docs/rebuild/reference/guards-and-tests.md`).
+  `docs/reference/guards-and-tests.md`).
 - A pull request bundles a good amount of related work, so CI runs once per batch rather than after
   every small fix. Keep commits logical inside it; never mix unrelated features. Title and describe
   what changed and why. Pull a branch before continuing work on it.
@@ -179,17 +195,18 @@ The repository holds only the current version. No compatibility readers, old mig
 
 ## Read by task
 
-`ref <slug>` means `docs/rebuild/reference/<slug>.md`. Read only the relevant sections.
+`ref <slug>` means `docs/reference/<slug>.md`. Read only the relevant sections.
 
 | Task | Read first |
 | --- | --- |
-| Any task | The assigned brief, its folder's README, the [codebase map](docs/rebuild/reference/codebase-structure.md) and the [roadmap](docs/roadmap/roadmap.md) |
-| Workflow | `ref task-contract`, `ref workflow-model`, `ref stores`, [authoring guide](docs/rebuild/guides/workflow-authoring.md) |
+| Any task | The assigned brief, its folder's README, the [codebase map](docs/reference/codebase-structure.md) and the [roadmap](docs/roadmap/roadmap.md) |
+| Workflow | `ref task-contract`, `ref workflow-model`, `ref stores`, [authoring guide](docs/guides/workflow-authoring.md) |
 | Dashboard, client, CLI | `src/dashboard/AGENTS.md`, `ref frontend-backend-integration`, `ref dashboard-surfaces`; use `/ui` for frontend work |
 | Settings, config, secrets | `ref clock-config-secrets` |
 | Worker, browser, external write | `ref execution-and-sessions`, `ref write-safety`, the system's `AGENTS.md` |
 | Intake, OCR, Edit Data | `ref data-intake-and-edit-data` |
 | Tests and guards | `ref guards-and-tests` |
+| Live dry run, "verify X in the app" | [`/verify`](.agents/skills/verify/SKILL.md) and its [feature map](.agents/skills/verify/features/README.md) |
 | Environment, porting, conventions | The [operating reference](.agents/skill-library/repository-work/REFERENCE.md) |
 
 ## Commands
@@ -200,7 +217,7 @@ The repository holds only the current version. No compatibility readers, old mig
 | Production bundle and server | `npm run web:build`, then `npm run dashboard:prod` |
 | Workflow dry run | Sign in to the dashboard, use Run, and select Dry Run for a workflow that supports previews |
 | Visual contract | `npm run test:parity` (desktop only) |
-| Affected pre-push tests on the PC | `npm run test:pc -- [files or globs]`; see [guards and tests](docs/rebuild/reference/guards-and-tests.md#pre-push-tests-on-the-pc) |
+| Affected pre-push tests on the PC | `npm run test:pc -- [files or globs]`; see [guards and tests](docs/reference/guards-and-tests.md#pre-push-tests-on-the-pc) |
 | Workflow manifest | `npm run build:manifest`, then `npm run build:manifest:check` |
 | Store catalog | `npm run stores:catalog`, then `npm run stores:catalog:check` |
 | Roadmap | `npm run roadmap`, then `npm run roadmap:check` |

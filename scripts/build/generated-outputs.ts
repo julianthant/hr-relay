@@ -10,7 +10,7 @@ export const GENERATED_OUTPUTS = [
   },
   {
     script: "stores:catalog",
-    paths: ["docs/rebuild/reference/stores.md"],
+    paths: ["docs/reference/stores.md"],
     section: { start: "<!-- store-catalog:start -->", end: "<!-- store-catalog:end -->" },
   },
   { script: "roadmap", paths: ["docs/roadmap/index.html"] },

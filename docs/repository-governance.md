@@ -122,7 +122,7 @@ Without a retained artifact, CI explicitly uses the committed `scripts/test/ci-d
 unmeasured files use the positive measured median, or one second without measurements. Invalid
 reports or failed downloads fail CI. Every later CI fix must preserve this automatic timing feedback
 and refresh the committed seed when shard end times spread more than a minute. The
-[test reference](rebuild/reference/guards-and-tests.md#2-vitest-selection-and-commands) owns file
+[test reference](reference/guards-and-tests.md#2-vitest-selection-and-commands) owns file
 membership and selection details.
 
 Playwright browser caches use `~/Library/Caches/ms-playwright` on macOS and
