@@ -1,3 +1,4 @@
+import { ocrModule } from "../../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { Readable } from "node:stream";
@@ -15,7 +16,6 @@ import type { ContentAddressedArtifactWriter } from "../../../../src/workflow-ki
 import { createTaskProvenanceCollector } from "../../../../src/backend/runs/provenance/task-provenance.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { manualClock } from "../../../../src/rules/time/clock.js";
-import { ocrModule } from "../../../../src/backend/app/registries/workflow-registry.js";
 
 const CSV = "text/csv";
 type ArtifactReference = ReturnType<typeof ArtifactRefSchema.parse>;

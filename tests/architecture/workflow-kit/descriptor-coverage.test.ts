@@ -103,7 +103,7 @@ function bundleViolations(entry: string, root = REPO_ROOT): readonly string[] {
 
 describe("descriptor coverage", () => {
   it("keeps ids, codes, and icons unique and closed across every registered descriptor", () => {
-    const ids = ALL.map(({ id }) => String(id));
+    const ids = [...ALL, ...STEP_PROOF_MODULES.map(module => module.descriptor)].map(({ id }) => String(id));
     const codes = ALL.map(({ code }) => code);
     assert.equal(new Set(ids).size, ids.length, "workflow ids must be unique");
     assert.equal(new Set(codes).size, codes.length, "trace codes must be unique");

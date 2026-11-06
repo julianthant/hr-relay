@@ -1,3 +1,4 @@
+import { separationsIdentityCheckModule } from "../registered-workflows.js";
 import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";
 import { RunRecordService } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { createWriteResolutionExecutor } from "../../../../src/backend/runtime/writes/write-recovery.js";
@@ -10,7 +11,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
-import { separationsIdentityCheckModule } from "../../../../src/backend/app/registries/step-proof-modules.js";
 import { createCommandKernel, type CommandKernel, type SettingsApplicationExecutor, type WorkerPoolRuntimeAdoption, type WriteResolutionExecutor } from "../../../../src/backend/runs/commands/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/commands/settings-service.js";
 

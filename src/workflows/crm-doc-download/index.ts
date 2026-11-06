@@ -8,7 +8,7 @@ import { crmDocumentReadIdocsDefinition } from "./steps/read-idocs/step.js";
 import { crmDocumentPackageWorksheetsDefinition } from "./steps/package-worksheets/step.js";
 
 export const registration = deepFreeze({
-  definition: crmDocDownloadWorkflow, exposure: { kind: "public", order: 4 }, store: crmDocDownloadStore,
+  definition: crmDocDownloadWorkflow, store: crmDocDownloadStore,
   proofs: [defineStepProof(crmDocDownloadWorkflow, crmDocumentSearchRecordsDefinition), defineStepProof(crmDocDownloadWorkflow, crmDocumentReferenceDefinition),
     defineStepProof(crmDocDownloadWorkflow, crmDocumentReadIdocsDefinition), defineStepProof(crmDocDownloadWorkflow, crmDocumentPackageWorksheetsDefinition)],
 } as const);

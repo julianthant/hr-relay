@@ -1,4 +1,4 @@
-/** Workflow source helpers: the relative-import closure walk (bundle boundary and registry checks) and the declared-id parser shared by the registry generator and the layout guard. */
+/** Workflow source helpers: the relative-import closure walk and the declared-id parser the layout guard reads. */
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -69,7 +69,7 @@ export function collectSourceClosure(repoRoot: string, entry: string): readonly 
   return sources.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
 }
 
-/** Reads the id a descriptor declares, never one inferred from its folder; `workflow-layout` shares this parser so the two readers cannot drift. */
+/** Reads the id a descriptor declares, never one inferred from its folder. */
 export function declaredWorkflowId(entry: string): string {
   const source = ts.createSourceFile(
     entry, readFileSync(entry, "utf8"), ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);

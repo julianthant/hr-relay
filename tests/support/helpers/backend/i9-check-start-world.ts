@@ -1,8 +1,9 @@
+import { i9CheckStartModule } from "../registered-workflows.js";
 import { createDeterministicI9Driver } from "../../../../src/backend/systems/i9/driver/fake.js";
 import { WorkbookNamedReferenceSnapshotSchema } from "../../../../src/models/dashboard/workbooks.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { i9CheckStartModule, CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
 import { composeWorkerArtifactProjector } from "../../../../src/backend/app/composition/worker/artifact-output.js";
 import { createOcrReviewAdapter } from "../../../../src/backend/processing/providers/ocr-review-adapter.js";

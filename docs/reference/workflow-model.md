@@ -150,13 +150,11 @@ Trace identity uses the code; a presentation label is not a substitute.
 ### 1.2 The bundle crossing
 
 Definitions and task contracts are browser-safe. Backend task implementations are bound separately.
-Each workflow's `index.ts` declares its definition, public picker order or child-only/unregistered
-exposure, workflow task store and step proofs. `npm run build:registries` reads those declarations
-without executing them. It generates backend module/store/proof lists and a separate descriptor
-tuple that imports only `workflow.ts` definitions. `src/workflows/descriptor-registry.ts` re-exports
-that browser-safe tuple; `src/backend/app/registries/workflow-registry.ts` admits the generated backend
-modules against the shared task-store inventory. The manifest build and check include registry generation
-and freshness respectively.
+Each workflow's `index.ts` declares its definition, workflow task store and step proofs.
+`src/workflows/registry.ts` lists the registrations by hand: `PUBLIC_WORKFLOWS` in Run picker order
+and `CHILD_ONLY_WORKFLOWS` for workflows admitted only through declared delegation edges.
+`src/backend/app/registries/workflow-registry.ts` composes each entry against the shared task-store
+inventory, so a missing or unbound store or contract fails at startup.
 
 `WORKFLOW_MODULES` contains public workflows. It derives `DESCRIPTORS`,
 `SERVER_REGISTRY`, `WORKFLOW_DEFINITIONS`, `INTAKE_PROJECTIONS`, and `WORKFLOW_ROLES`.
@@ -191,16 +189,15 @@ harnesses for `identity-check`, `kronos-timecard`, `kuali-extraction`, `kuali-fi
 `ucpath-transaction`. Its `job-summary` group has no harness folder.
 The `workflow-layout` guard in `tests/architecture/workflow-kit/workflow-layout.test.ts` checks
 registered and retained modules against their role, owning composition, and declared groups.
-The generated child-only inventory includes OCR and OCR Page; the generated step-proof inventory
-includes their retained harnesses. These source audits cover both inventories without exposing
+The hand-kept `CHILD_ONLY_WORKFLOWS` list in `src/workflows/registry.ts` includes OCR and OCR Page;
+`STEP_PROOF_MODULES` collects their retained harnesses from each registration's proofs. These source audits cover both inventories without exposing
 children or proofs as public starts.
 Scenario-path helpers derive potential addresses; they do not prove scenario files or execution.
 
-The workflow-ID boundary audits public, child-only and proof inventories. Retained dashboard mock
-literals and OCR service literals have exact AST references in
-`tests/support/helpers/retained-dashboard-mock-fixtures.ts`. The OCR service references cover review
-admission, source-bound resources, approval publication, the OCR CLI command and deferred-feature text.
-Added, removed or repurposed occurrences fail the boundary checks. Explorer derives contract and
+The workflow-ID boundary (`no-workflow-id-branches`) audits public, child-only and proof ids in
+generic code. Its `ALLOWED_SITES` list admits each known file (or the dashboard mocks folder) for
+named ids with a reason: dry-run targets, the OCR record service, Separations identity folds and the
+preview mocks. A new id in any other generic file, a stale entry or a missing reason fails. Explorer derives contract and
 implementation directories from the bound store's kind and namespace.
 These references admit no new workflow dispatch or public start.
 

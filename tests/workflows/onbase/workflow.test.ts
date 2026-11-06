@@ -1,8 +1,8 @@
+import { onbaseImportDocumentModule, onbaseModule, onbaseSourcePageModule } from "../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { CHILD_ONLY_WORKFLOW_MODULES, onbaseModule, workflowModuleOf, childWorkflowModuleOf, WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
-import { onbaseSourcePageModule, onbaseImportDocumentModule, STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS, CHILD_ONLY_WORKFLOW_MODULES, workflowModuleOf, childWorkflowModuleOf, WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
+import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { BROWSER_SYSTEM_BINDINGS } from "../../../src/backend/runtime/browser/system-bindings.js";
 import { onbaseStore } from "../../../src/backend/systems/onbase/task-registry.js";
 import { OnbaseCommitImport, ONBASE_EXAMPLE_INPUT, OnbaseInputSchema, ONBASE_EXAMPLE_TARGET, ONBASE_EXAMPLE_PROOF, validateOnbaseImportVerdict } from "../../../src/models/systems/onbase/import-document.js";
@@ -12,7 +12,7 @@ describe("OnBase child-only workflow registration", () => {
   it("binds its real exclusive system store and derived proofs without public or undeclared starts", () => {
     assert.ok(CHILD_ONLY_WORKFLOW_MODULES.includes(onbaseModule));
     assert.equal(WORKFLOW_MODULES.some(module => module.descriptor.id === "onbase"), false);
-    assert.equal(WORKFLOW_DESCRIPTORS.some(descriptor => descriptor.id === "onbase"), false);
+    assert.equal(DESCRIPTORS.some(descriptor => descriptor.id === "onbase"), false);
     assert.throws(() => workflowModuleOf("onbase"), /not registered/u);
     assert.throws(() => childWorkflowModuleOf("person-lookup", "onbase"), /does not declare delegation/u);
     assert.deepEqual(onbaseModule.descriptor.surfaces, {});
