@@ -75,12 +75,13 @@ const login = { email: "fixture@ucsd.edu", password: "disposable-fixture-passwor
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const hostFacts = { primaryDisplay: null };
 /** One person's refused upgrade is a sign-in hold for that person, not a boot failure. */
-async function assertStartupHeld(workspace: string, lifetime: RuntimeLifetimeLock, cause: (error: unknown) => boolean): Promise<void> {
+async function assertStartupHeld(workspace: string, lifetime: RuntimeLifetimeLock, cause: (error: unknown) => boolean,
+  code: "STORAGE_PROFILE_UPGRADE_REFUSED" | "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES" = "STORAGE_PROFILE_UPGRADE_REFUSED"): Promise<void> {
   const machine = acquireEntrypointAdmission(workspace, "shared", lifetime);
   const runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts });
   try {
     assert.throws(() => runtime.session.signIn({ ...login, at: systemClock.now().toISOString() }),
-      (error: unknown) => error instanceof Error && "code" in error && error.code === "STORAGE_PROFILE_UPGRADE_REFUSED" && cause(error.cause));
+      (error: unknown) => error instanceof Error && "code" in error && error.code === code && cause(error.cause));
   } finally { await runtime.close("shutdown"); machine.release(); }
 }
 function post(port: number) {
@@ -308,8 +309,9 @@ it("refuses automatic upgrade while a real UNKNOWN parked write is unresolved an
     const before = rows(path, 10);
     assert.ok((before.write_intents?.length ?? 0) > 0); assert.ok((before.write_attempts?.length ?? 0) > 0);
     lifetime = await RuntimeLifetimeLock.acquire(0);
-    await assert.rejects(upgradeRegisteredPersonStores(workspace, lifetime, hostFacts), error =>
-      error instanceof RegisteredPersonUpgradeRefusedError && error.code === "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES");
+    await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts);
+    await assertStartupHeld(workspace, lifetime, cause => cause instanceof RegisteredPersonUpgradeRefusedError
+      && cause.code === "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES", "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES");
     assert.deepEqual(rows(path, 10), before);
     assert.equal(readProfileDatabaseBinding(path).schemaVersion, 10);
     assert.equal(digest(protectedPath), protectedBefore);
@@ -395,7 +397,9 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
         await upgradeRegisteredPersonStores(currentWorkspace, held, hostFacts, f.clock);
       })();
       if (intent !== undefined) {
-        await assert.rejects(upgrade, error => error instanceof RegisteredPersonUpgradeRefusedError && error.code === "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES");
+        await upgrade;
+        await assertStartupHeld(currentWorkspace, held, cause => cause instanceof RegisteredPersonUpgradeRefusedError
+          && cause.code === "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES", "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES");
         const refused = rows(currentPath, 10);
         for (const table of ["runs", "write_intents", "write_attempts", "worker_leases", "auth_leases", "deleted_runs"]) assert.deepEqual(refused[table], before[table], table);
         assert.equal(readProfileDatabaseBinding(currentPath).schemaVersion, 10);
