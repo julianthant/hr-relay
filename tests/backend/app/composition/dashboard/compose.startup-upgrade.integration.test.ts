@@ -21,6 +21,7 @@ import { requireLifecycleApplied } from "../../../../../src/backend/runs/lifecyc
 import * as admissionOwner from "../../../../../src/backend/storage/admission/admission.js";
 import { acquireSharedRuntimeAdmission,type RuntimeAdmission } from "../../../../../src/backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../../../src/backend/storage/admission/lifetime-lock.js";
+import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/admission/bootstrap-admission.js";
 import { createBrowserRoots } from "../../../../../src/backend/storage/browser-roots.js";
 import { readFixedLayoutIntent } from "../../../../../src/backend/storage/maintenance/fixed-layout.js";
 import { WorkerBrowserObservationSchema } from "../../../../../src/models/run/worker-control.js";
@@ -73,6 +74,16 @@ import { migrationTableNames } from "../../../../../src/backend/storage/sqlite/m
 const login = { email: "fixture@ucsd.edu", password: "disposable-fixture-password" };
 const digest = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
 const hostFacts = { primaryDisplay: null };
+/** One person's refused upgrade is a sign-in hold for that person, not a boot failure. */
+async function assertStartupHeld(workspace: string, lifetime: RuntimeLifetimeLock, cause: (error: unknown) => boolean,
+  code: "STORAGE_PROFILE_UPGRADE_REFUSED" | "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES" = "STORAGE_PROFILE_UPGRADE_REFUSED"): Promise<void> {
+  const machine = acquireEntrypointAdmission(workspace, "shared", lifetime);
+  const runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts });
+  try {
+    assert.throws(() => runtime.session.signIn({ ...login, at: systemClock.now().toISOString() }),
+      (error: unknown) => error instanceof Error && "code" in error && error.code === code && cause(error.cause));
+  } finally { await runtime.close("shutdown"); machine.release(); }
+}
 function post(port: number) {
   return fetch(`http://127.0.0.1:${port}/api/v1/profile/sign-in`, { method: "POST", headers: {
     "content-type": "application/json", origin: `http://127.0.0.1:${port}`,
@@ -139,8 +150,9 @@ it("keeps failed pre-upgrade backups before HTTP, notification producers, accoun
   const network = vi.spyOn(globalThis, "fetch").mockImplementation(() => { throw new Error("account or HR transport forbidden before upgrade"); });
   const start = vi.spyOn(http, "startDashboardHttpServer");
   try {
-    await assert.rejects(upgradeRegisteredPersonStores(profile.workspace, profile.lifetime, hostFacts), error => error instanceof RegisteredPersonUpgradeRefusedError
-      && error.cause instanceof Error && error.cause.message === "required-startup-backup-failed");
+    await upgradeRegisteredPersonStores(profile.workspace, profile.lifetime, hostFacts);
+    await assertStartupHeld(profile.workspace, profile.lifetime, cause => cause instanceof RegisteredPersonUpgradeRefusedError
+      && cause.cause instanceof Error && cause.cause.message === "required-startup-backup-failed");
     assert.deepEqual(readFileSync(profile.path), before); assert.equal(readProfileDatabaseBinding(profile.path).schemaVersion, 8);
     assert.equal(start.mock.calls.length, 0); assert.equal(network.mock.calls.length, 0); assert.equal(notifications.mock.calls.length, 0);
     const owner = acquireSharedRuntimeAdmission(profile.workspace, profile.lifetime); owner.release();
@@ -297,8 +309,9 @@ it("refuses automatic upgrade while a real UNKNOWN parked write is unresolved an
     const before = rows(path, 10);
     assert.ok((before.write_intents?.length ?? 0) > 0); assert.ok((before.write_attempts?.length ?? 0) > 0);
     lifetime = await RuntimeLifetimeLock.acquire(0);
-    await assert.rejects(upgradeRegisteredPersonStores(workspace, lifetime, hostFacts), error =>
-      error instanceof RegisteredPersonUpgradeRefusedError && error.code === "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES");
+    await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts);
+    await assertStartupHeld(workspace, lifetime, cause => cause instanceof RegisteredPersonUpgradeRefusedError
+      && cause.code === "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES", "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES");
     assert.deepEqual(rows(path, 10), before);
     assert.equal(readProfileDatabaseBinding(path).schemaVersion, 10);
     assert.equal(digest(protectedPath), protectedBefore);
@@ -323,7 +336,8 @@ it.each(["missing", "corrupt", "future", "foreign"] as const)("stops established
       } finally { database.close(); }
     }
     const before = existsSync(profile.path) ? readFileSync(profile.path) : undefined;
-    await assert.rejects(upgradeRegisteredPersonStores(profile.workspace, profile.lifetime, hostFacts), RegisteredPersonUpgradeRefusedError);
+    await upgradeRegisteredPersonStores(profile.workspace, profile.lifetime, hostFacts);
+    await assertStartupHeld(profile.workspace, profile.lifetime, cause => cause instanceof RegisteredPersonUpgradeRefusedError);
     assert.deepEqual(existsSync(profile.path) ? readFileSync(profile.path) : undefined, before);
     assert.deepEqual(readFileSync(keyPath), keyBefore); assert.equal(existsSync(join(profile.stateRoot, "backups", "authority")), false);
     await assertRuntimeLifetimeHeld(profile.lifetime);
@@ -383,7 +397,9 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
         await upgradeRegisteredPersonStores(currentWorkspace, held, hostFacts, f.clock);
       })();
       if (intent !== undefined) {
-        await assert.rejects(upgrade, error => error instanceof RegisteredPersonUpgradeRefusedError && error.code === "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES");
+        const unresolved = (error: unknown) => error instanceof RegisteredPersonUpgradeRefusedError && error.code === "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES";
+        if (move) await assert.rejects(upgrade, unresolved);
+        else { await upgrade; await assertStartupHeld(currentWorkspace, held, unresolved, "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES"); }
         const refused = rows(currentPath, 10);
         for (const table of ["runs", "write_intents", "write_attempts", "worker_leases", "auth_leases", "deleted_runs"]) assert.deepEqual(refused[table], before[table], table);
         assert.equal(readProfileDatabaseBinding(currentPath).schemaVersion, 10);
@@ -481,32 +497,40 @@ for (const [phase, move] of [["prepared", false], ["commit-intent", false], ["do
       session.close(); sourceAdmission.release(); await f.closeController();
       await lifetime.close(); lifetime = await RuntimeLifetimeLock.acquire(0);
       convert.mockImplementationOnce(() => { throw new Error("interrupted-after-schema-commit"); });
-      await assert.rejects(upgradeRegisteredPersonStores(f.workspace, lifetime, hostFacts), RegisteredPersonUpgradeRefusedError);
+      await upgradeRegisteredPersonStores(f.workspace, lifetime, hostFacts);
       assert.equal(readProfileDatabaseBinding(f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       assert.deepEqual(LogoutOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))), operation);
       convert.mockRestore();
-      let workspace = f.workspace, stateRoot = f.stateRoot, path = f.path;
-      if (target !== undefined) {
-        await prepareApplicationDataWorkspace(f.workspace, target, lifetime, hostFacts);
-        workspace = target; stateRoot = join(target, ".tracker", "data", "profiles", profileId); path = join(stateRoot, "state.db");
-        operationPath = join(target, ".tracker", "data", "machine", "operations", `${pending.operationId}.json`);
-        assert.equal(readFixedLayoutIntent(target)?.phase, "complete");
-      }
-      await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts);
+      await upgradeRegisteredPersonStores(f.workspace, lifetime, hostFacts);
       const next = LogoutOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
       const { settlement: previousSettlement, ...previousIdentity } = operation, { settlement, ...identity } = next;
       assert.deepEqual(identity, previousIdentity); assert.ok(previousSettlement && settlement);
-      const current = withReadonlyAuthoritySnapshot(path, database => inspectOpenDatabase(database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint);
+      const current = withReadonlyAuthoritySnapshot(f.path, database => inspectOpenDatabase(database, CURRENT_AUTHORITY_SCHEMA_VERSION).authorityContentFingerprint);
       assert.deepEqual(settlement.requests, previousSettlement.requests); assert.deepEqual(settlement.workers, previousSettlement.workers);
       assert.equal(settlement.phase, phase === "done" ? "done" : "prepared");
       assert.equal(phase === "done" ? settlement.after : settlement.before, current);
+      assert.equal(readdirSync(join(f.stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json")).length, 1);
+      let workspace = f.workspace, stateRoot = f.stateRoot;
+      if (target !== undefined) {
+        await prepareApplicationDataWorkspace(f.workspace, target, lifetime, hostFacts);
+        workspace = target; stateRoot = join(target, ".tracker", "data", "profiles", profileId);
+        operationPath = join(target, ".tracker", "data", "machine", "operations", `${pending.operationId}.json`);
+        const layout = readFixedLayoutIntent(target);
+        assert.ok(layout?.phase === "complete");
+        const plan = layout.profiles.find(plan => plan.profileId === profileId); assert.ok(plan);
+        assert.equal(plan.logout, undefined);
+        assert.equal(existsSync(operationPath), false);
+      }
       assert.equal(readdirSync(join(stateRoot, "backups", "authority")).filter(name => name.endsWith(".manifest.json")).length, move ? 2 : 1);
       machine = acquireSharedRuntimeAdmission(workspace, lifetime);
-      assert.equal(machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "cancelling");
-      runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts });
-      assert.equal(runtime.session.resumeLogout(pending.operationId).state, "cancelling");
-      await runtime.awaitClosurePreparation(profileId);
-      assert.equal(runtime.session.resumeLogout(pending.operationId).state, "signed-out");
+      if (move) assert.equal(machine.readProfileRegistry().activeProfileId, null);
+      else {
+        assert.equal(machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "cancelling");
+        runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts });
+        assert.equal(runtime.session.resumeLogout(pending.operationId).state, "cancelling");
+        await runtime.awaitClosurePreparation(profileId);
+        assert.equal(runtime.session.resumeLogout(pending.operationId).state, "signed-out");
+      }
       assert.equal(existsSync(operationPath), false);
       assert.equal(machine.readProfileRegistry().profiles.find(row => row.profileId === profileId)?.lifecycle, "ready");
     } finally { convert.mockRestore(); await runtime?.close(); source?.close(); sourceAdmission?.release(); session.close(); machine?.release(); await f.close(); await lifetime.close(); if (target !== undefined) rmSync(target, { recursive: true, force: true }); }

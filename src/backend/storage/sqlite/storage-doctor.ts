@@ -39,6 +39,7 @@ import { validateSamePersonRestoreCandidate } from "./same-person-restore-candid
 import { inspectRestoreEligibility,inspectStorageRecovery } from "./storage-recovery-status.js";
 import { TimelineRecordError } from "./timeline-repository.js";
 import { inspectAuthorityUpgradeStatus } from "./upgrade-status.js";
+import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 
 export const StorageDoctorOptionsSchema = z.strictObject({
   stateRootTrustAnchor: z.string().min(1),
@@ -637,6 +638,7 @@ export class StorageDoctorObservationChangedError extends Error {
     this.name = "StorageDoctorObservationChangedError";
   }
 }
+bindErrorOrigin(StorageDoctorObservationChangedError, "storage-doctor-observation-changed");
 
 function authorityIdentityChanged(
   initial: AuthorityIdentityRead,

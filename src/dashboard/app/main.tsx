@@ -2,7 +2,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createDashboardClient } from "../client/index.js";
-import { DashboardReportDeliveryError } from "../client/errors.js";
+import { DashboardClientError, DashboardReportDeliveryError } from "../client/errors.js";
+import { serializeErrorCauses } from "../../models/failures/error-origins.js";
+import { DASHBOARD_UNHANDLED_ERROR } from "../../models/events/debug-report.js";
 import { DashboardClientProvider } from "../state/client-context.js";
 import { DashboardApp } from "./dashboard-app.js";
 import { activeTakeover, parseRoute, shellViewOf } from "./navigation/url-state.js";
@@ -19,9 +21,11 @@ const client = createDashboardClient({ baseUrl: window.location.origin,
 const clientId = crypto.randomUUID();
 const report = (error: unknown) => {
   const failure = error instanceof Error ? error : new Error("Dashboard rejected a non-Error value");
-  void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard",
-    route: window.location.pathname, surface: "app", code: "DASHBOARD_UNHANDLED_ERROR",
-    message: failure.message, ...(failure.stack === undefined ? {} : { stack: failure.stack }) })
+  const [cause] = failure instanceof DashboardClientError ? serializeErrorCauses(failure) : [];
+  void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard", route: window.location.pathname, surface: "app",
+    ...(cause === undefined
+      ? { code: DASHBOARD_UNHANDLED_ERROR, message: failure.message, ...(failure.stack === undefined ? {} : { stack: failure.stack }) }
+      : { code: cause.code, reason: cause.reason, message: cause.name, stack: cause.stack }) })
     .catch(() => {
       window.reportError(new DashboardReportDeliveryError());
     });

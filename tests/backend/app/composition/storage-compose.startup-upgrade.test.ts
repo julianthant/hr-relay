@@ -4,7 +4,7 @@ import { mkdirSync,mkdtempSync,rmSync,writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it,vi } from "vitest";
-import { RegisteredPersonUpgradeRefusedError,upgradeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
+import { upgradeRegisteredPersonStores } from "../../../../src/backend/app/composition/storage-compose.js";
 import { RuntimeAdmission } from "../../../../src/backend/storage/admission/admission.js";
 import { RuntimeLifetimeLock } from "../../../../src/backend/storage/admission/lifetime-lock.js";
 import * as upgrades from "../../../../src/backend/storage/maintenance/upgrade.js";
@@ -44,9 +44,8 @@ it.each([false, true])("checks every registered ready person before any upgrade 
     assert.equal(browserUpgrade.mock.calls.length, 1); assert.deepEqual(events, []);
     browserGate.resolve();
     if (invalidPeer) {
-      await assert.rejects(pendingUpgrade, error => error instanceof RegisteredPersonUpgradeRefusedError
-        && error.cause instanceof Error && error.cause.message === "foreign registered peer");
-      assert.equal(upgrade.mock.calls.length, 0); assert.equal(release.mock.calls.length, 1);
+      await pendingUpgrade;
+      assert.equal(upgrade.mock.calls.length, 1); assert.equal(release.mock.calls.length, 3);
     } else {
       await pendingUpgrade;
       assert.equal(upgrade.mock.calls.length, 1); assert.equal(release.mock.calls.length, 3);
