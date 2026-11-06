@@ -12,7 +12,7 @@ export const ASSISTANT_START_PROPOSAL = AssistantActionProposalSchema.parse({
     dryRun: false, browserMode: "headed", captureBrowserScreenshots: true,
     fingerprints: { descriptorFingerprint: "a".repeat(64), configFingerprint: "b".repeat(64),
       ingressSchemaHash: "c".repeat(64), canonicalInputSchemaHash: "d".repeat(64), inputFingerprint: "e".repeat(64) },
-    planned: [{ title: "EID 10101010", subtitle: "Person Lookup", display: { kind: "person", name: "Avery Sample", employeeId: "10101010" } }],
+    planned: [{ title: "EID 10101010", subtitle: "Person Lookup", display: { kind: "person", name: "Sample, Avery", employeeId: "10101010" } }],
   },
 });
 
@@ -20,7 +20,7 @@ const start = ASSISTANT_START_PROPOSAL.effect === "workflow-start" ? ASSISTANT_S
 const person = (name: string, employeeId: string) => ({ title: `EID ${employeeId}`, subtitle: "Person Lookup", display: { kind: "person", name, employeeId } });
 
 export const ASSISTANT_START_MULTI_PROPOSAL = AssistantActionProposalSchema.parse({ ...start, source: "entries", targetLabel: "3 people",
-  startPlan: { ...start.startPlan, planned: [person("Avery Sample", "10101010"), person("Morgan Vega", "20202020"), person("Alex Rivera", "30303030")] } });
+  startPlan: { ...start.startPlan, planned: [person("Sample, Avery", "10101010"), person("Vega, Morgan", "20202020"), person("Rivera, Alex", "30303030")] } });
 
 export const ASSISTANT_RERUN_PROPOSAL = AssistantActionProposalSchema.parse({ ...start, source: "rerun", label: "Rerun Person Lookup" });
 
@@ -32,4 +32,4 @@ export const ASSISTANT_SEPARATIONS_MULTI_PROPOSAL = AssistantActionProposalSchem
 export const ASSISTANT_PAUSE_PROPOSAL = AssistantActionProposalSchema.parse({ chatId: start.chatId, actionId: start.actionId, revision: 1,
   expiresAt: "2099-01-01T00:00:00Z", label: "Pause Person Lookup", targetLabel: "EID 10101010", effect: "run-action", action: "pause",
   workflowId: "person-lookup", run: { runId: "00000000-0000-4000-8000-000000000004", expectedVersion: 3 },
-  row: person("Avery Sample", "10101010") });
+  row: person("Sample, Avery", "10101010") });

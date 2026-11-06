@@ -148,7 +148,7 @@ it.each(['notification', 'workflow'] as const)('renders the existing served %s c
   assert.doesNotMatch(host.textContent ?? '', /start selected workflow|Model, effort and voice controls are unavailable/u);
   assert.doesNotMatch(current.footnote, /Workflow execution requires dashboard Run/u);
   if (kind === 'workflow') {
-    for (const fact of ['Avery Sample', '10101010', 'Read only']) assert.ok(card.textContent?.includes(fact));
+    for (const fact of ['Sample, Avery', '10101010', 'Read only']) assert.ok(card.textContent?.includes(fact));
     for (const hidden of ['Headed', 'Captures', 'Effects and stop points']) assert.equal(card.textContent?.includes(hidden), false);
     assert.match(current.footnote, /Workflow starts require a confirmed plan/u);
   } else { assert.match(card.textContent ?? '', /Local change/u); assert.match(card.textContent ?? '', /Local notification/u); }
@@ -253,7 +253,7 @@ it.each([
     const retired = retain.mock.calls.at(-1)?.[1];
     assert.equal(retired?.turn.state, 'proposal');
     if (retired?.turn.state !== 'proposal') throw Error('pending decision must remain represented');
-    assert.equal(retired.turn.disposition, 'unknown');
+    assert.equal(retired.turn.disposition, 'stale', 'a local-only write commits atomically, so an abandoned decision is never unknown');
     assert.equal(signal?.aborted, true);
     await history.chats.remove(oldId);
   });

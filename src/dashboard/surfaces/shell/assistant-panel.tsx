@@ -41,7 +41,7 @@ function proposalRows(proposal: AssistantMockProposal): readonly AssistantPropos
 function ProposalRows({ rows }: { rows: readonly AssistantProposalRow[] }) {
   return <>
     {rows.map((row, index) => <Fragment key={index}>{row.display.kind === 'person'
-      ? <><dt>Name</dt><dd>{row.display.name ?? 'Not provided'}</dd><dt>EID</dt><dd>{row.display.employeeId ?? 'Not provided'}</dd></>
+      ? <><dt>Person</dt><dd className="hub-person">{row.display.name && <span>{row.display.name}</span>} {row.display.employeeId && <span>{row.display.employeeId}</span>}</dd></>
       : row.display.kind === 'document' ? <><dt>Document</dt><dd>{row.display.documentNumber}</dd></>
       : <><dt>Request</dt><dd>{row.title}</dd></>}</Fragment>)}
     {rows.length > 1 && <><dt>Total</dt><dd>{rows.length}</dd></>}
@@ -50,20 +50,22 @@ function ProposalRows({ rows }: { rows: readonly AssistantProposalRow[] }) {
 export function ProposalCard({ proposal, disposition, refusal, onCancel, onConfirm }: { proposal: AssistantMockProposal; disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown'; refusal?: string; onCancel: () => void; onConfirm: () => void }) {
   const rows = proposalRows(proposal), only = rows.length === 1 ? rows[0] : undefined;
   const target = only === undefined ? proposal.issued?.targetLabel : only.display.kind === 'person' ? only.display.name ?? only.display.employeeId ?? only.title : only.display.kind === 'document' ? only.display.documentNumber : only.title;
+  // An unknown outcome is one plain line, carried by the transcript message.
+  if (disposition === 'unknown') return null;
   if (disposition === 'confirmed' || disposition === 'cancelled') {
     const done = disposition === 'confirmed';
     return <div className="hub-resolved" aria-label="Resolved proposal"><span>{done ? <Check aria-hidden /> : <X aria-hidden />}</span><span className="hub-resolved-title">{proposal.workflow.label}{rows.length > 0 ? ` · ${target ?? ''}` : ''}</span><span className="hub-resolved-status" role="status">{done ? (proposal.issued?.effect === 'workflow-start' ? 'Started' : 'Done') : 'Not started'}</span></div>;
   }
   const options = [MODE_LABEL[proposal.mode], ...proposal.values.filter(value => !HIDDEN_PROPOSAL_FACTS.has(value.label)).map(value => value.value)];
-  const busy = disposition === 'confirming', unknown = disposition === 'unknown';
+  const busy = disposition === 'confirming';
   return <article className="hub-card hub-proposal" aria-label={`Proposed ${proposal.workflow.label}`}>
     <div className="hub-card-body"><h3>{proposal.workflow.label}</h3><dl className="hub-facts">
       <ProposalRows rows={rows} />
       <dt>Options</dt><dd>{options.join(' · ')}</dd>
     </dl></div>
-    <footer className="hub-card-footer"><span className="hub-footer-status" role={unknown ? 'alert' : 'status'}>{busy ? <span className="hub-spinner" aria-hidden /> : null}{unknown ? ASSISTANT_UNKNOWN_NOTICE : refusal ?? ''}</span><span className="hub-footer-actions">
+    <footer className="hub-card-footer"><span className="hub-footer-status" role="status">{busy ? <span className="hub-spinner" aria-hidden /> : null}{refusal ?? ''}</span><span className="hub-footer-actions">
       <Button size="sm" variant="ghost" disabled={disposition !== 'review'} onClick={onCancel}>Cancel</Button>
-      <Button size="sm" variant="primary" disabled={proposal.action === undefined || busy || unknown || Boolean(refusal)} onClick={onConfirm}>Confirm</Button></span></footer>
+      <Button size="sm" variant="primary" disabled={proposal.action === undefined || busy || Boolean(refusal)} onClick={onConfirm}>Confirm</Button></span></footer>
   </article>;
 }
 export function AssistantPanel({ producer, accountClient, onAttachFile, onRegisterSpreadsheet, onRunWorkflow, onOpenSettings,

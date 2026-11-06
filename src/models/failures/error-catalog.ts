@@ -136,7 +136,7 @@ export const ERROR_CATALOG = Object.freeze({
   ASSISTANT_CHAT_LIMIT: catalogEntry("Delete an old chat before starting another.", EmptyParametersSchema),
   ASSISTANT_HISTORY_FULL: catalogEntry("Chat history is full. Delete an old chat.", EmptyParametersSchema),
   ASSISTANT_CONVERSATION_STALE: catalogEntry("This chat changed elsewhere and was reloaded.", EmptyParametersSchema),
-  ASSISTANT_OUTCOME_UNKNOWN: catalogEntry("Not sure this finished. Check it before trying again.", EmptyParametersSchema),
+  ASSISTANT_OUTCOME_UNKNOWN: catalogEntry("Couldn't finish this.", EmptyParametersSchema),
   ASSISTANT_CONVERSATION_BUSY: catalogEntry("This chat is still waiting for a reply.", EmptyParametersSchema),
   ASSISTANT_CANCELLED: catalogEntry("The assistant request was cancelled.", EmptyParametersSchema),
   ASSISTANT_LIMIT: catalogEntry("The assistant reached its request limit.", EmptyParametersSchema),

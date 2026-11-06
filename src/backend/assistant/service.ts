@@ -14,6 +14,7 @@ import { AssistantToolRefusal, type AssistantPlugin } from "./plugins/plugin.js"
 import { ASSISTANT_TOOL_NAMESPACE, assistantToolRegistry } from "./plugins/registry.js";
 import type { AssistantWorkflowFacts } from "./plugins/workflows/facts.js";
 import { AssistantHistoryRefusal, type AssistantHistoryRepository, type AssistantSettlement } from "../storage/sqlite/assistant-history.js";
+import { ERROR_CATALOG } from "../../models/failures/error-catalog.js";
 
 export interface AssistantModelPolicy {
   readonly model?: string;
@@ -315,8 +316,8 @@ function settlementOf(turn: Readonly<{ result: AssistantResult; modelText?: stri
     case "action-proposal": return { delivery: "answered", reply: { id: randomUUID(), kind: "proposal", actionId: result.proposal.actionId,
       text: "Review this proposal. No action has been applied.", modelText: `I prepared a confirmation card: ${result.proposal.label}. The operator has not decided yet.` } };
     case "unknown": {
-      const text = `Outcome unknown: ${result.action.label}. Do not retry.`;
-      return { delivery: "answered", reply: { id: randomUUID(), kind: "proposal", actionId: result.actionId, text, modelText: text } };
+      return { delivery: "answered", reply: { id: randomUUID(), kind: "proposal", actionId: result.actionId, text: ERROR_CATALOG.ASSISTANT_OUTCOME_UNKNOWN.text,
+        modelText: `Outcome unknown: ${result.action.label}. Do not retry.` } };
     }
     case "refused": return { delivery: "refused", code: result.code };
   }

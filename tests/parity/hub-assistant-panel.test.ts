@@ -130,7 +130,7 @@ for (const scene of ['new', 'ask-read', 'ask-write', 'permission-changed', 'work
   });
 }
 
-test('served local action uses the existing card and keeps lost confirmation non-retryable', async ({ page }, info) => {
+test('served local action uses the existing card; a lost local confirmation is never unknown or retried', async ({ page }, info) => {
   for (const lost of [false, true]) {
     await page.goto(`${baseUrl}?served=1&lost=${lost ? '1' : '0'}`);
     const input = page.getByRole('textbox', { name: 'Message Relay' });
@@ -143,10 +143,10 @@ test('served local action uses the existing card and keeps lost confirmation non
     const confirm = card.getByRole('button', { name: 'Confirm', exact: true }); await expect(confirm).toBeEnabled();
     await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'lost' : 'ready'}.png`) });
     await confirm.click();
-    if (lost) { await expect(card).toContainText(ASSISTANT_UNKNOWN_NOTICE); await expect(confirm).toBeDisabled(); }
+    if (lost) { await expect(confirm).toBeDisabled(); await expect(page.getByText(ASSISTANT_UNKNOWN_NOTICE)).toHaveCount(0); }
     else await expect(page.getByLabel('Resolved proposal')).toContainText('Done');
     await expect(page.locator('body')).toHaveAttribute('data-decisions', '1');
-    await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'unknown' : 'complete'}.png`) });
+    await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'lost-local' : 'complete'}.png`) });
   }
 });
 
@@ -155,13 +155,11 @@ test('served automatic unknown and lost respond have no Retry or new Send', asyn
     await page.goto(`${baseUrl}?served=1&${mode}=1`);
     const input = page.getByRole('textbox', { name: 'Message Relay' }); await expect(input).toBeEnabled();
     await input.fill('mark notifications read'); await page.getByRole('button', { name: 'Send message', exact: true }).click();
-    await expect(page.getByText(ASSISTANT_UNKNOWN_NOTICE).first()).toBeVisible();
+    await expect(page.getByText(ASSISTANT_UNKNOWN_NOTICE, { exact: true })).toHaveCount(1);
     await expect(page.getByRole('button', { name: 'Retry reply' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
-    if (mode === 'autoUnknown') {
-      const card = page.getByRole('article', { name: /^Proposed / });
-      await expect(card).toContainText('25 current notifications'); await expect(card.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
-    } else await expect(page.getByRole('article', { name: /^Proposed / })).toHaveCount(0);
+    await expect(page.getByRole('article', { name: /^Proposed / })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /^(Confirm|Cancel)$/u })).toHaveCount(0);
     await expect(page.locator('body')).not.toHaveAttribute('data-decisions');
     await page.screenshot({ path: info.outputPath(`automatic-${mode}.png`) });
   }
@@ -177,11 +175,11 @@ const SERVED_SCENES = {
   'limit-reached': { account: { ...CONNECTED, planUsage: 'limit-reached' }, strip: /Open Settings/ },
   proposal: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL } },
   'start-proposal': { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL } },
-  'rerun-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_RERUN_PROPOSAL }, facts: [['Name', 'Avery Sample'], ['EID', '10101010'], ['Options', 'Read only']] },
-  'pause-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL }, facts: [['Name', 'Avery Sample'], ['EID', '10101010'], ['Options', 'Local change · Pause']] },
+  'rerun-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_RERUN_PROPOSAL }, facts: [['Person', 'Sample, Avery 10101010'], ['Options', 'Read only']] },
+  'pause-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL }, facts: [['Person', 'Sample, Avery 10101010'], ['Options', 'Local change · Pause']] },
   'separations-multi-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_SEPARATIONS_MULTI_PROPOSAL }, facts: [['Document', '4501'], ['Document', '4502'], ['Total', '2'], ['Options', 'Read only']] },
   confirmed: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL }, confirm: 'applied' },
-  unknown: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL }, confirm: 'lost' },
+  unknown: { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL }, confirm: 'lost' },
   refused: { account: CONNECTED, respond: 'fail' },
 } as const;
 for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Object.entries(SERVED_SCENES)) {
@@ -198,7 +196,7 @@ for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Obje
       await expect(panel.locator('.hub-composer')).toBeVisible();
     } else {
       await expect(input).toBeEnabled(); await input.fill('do it'); await input.press('Enter');
-      if ('confirm' in spec) { await panel.getByRole('button', { name: 'Confirm', exact: true }).click(); await expect(panel.getByLabel(spec.confirm === 'lost' ? 'Proposed Mark a notification read' : 'Resolved proposal')).toBeVisible(); }
+      if ('confirm' in spec) { await panel.getByRole('button', { name: 'Confirm', exact: true }).click(); if (spec.confirm === 'lost') { await expect(panel.getByText(ASSISTANT_UNKNOWN_NOTICE, { exact: true })).toHaveCount(1); await expect(panel.getByRole('article')).toHaveCount(0); } else await expect(panel.getByLabel('Resolved proposal')).toBeVisible(); }
       else if (spec.respond === 'fail') await expect(panel.getByText(/Assistant verification failed/)).toBeVisible();
       else await expect(panel.getByRole('article')).toBeVisible();
       if ('facts' in spec) expect(await panel.locator('.hub-facts dt').evaluateAll(terms => terms.map(term => [term.textContent, term.nextElementSibling?.textContent]))).toEqual(spec.facts);

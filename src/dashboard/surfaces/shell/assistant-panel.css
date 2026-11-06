@@ -26,6 +26,8 @@
 #hub-panel-assistant .hub-facts{margin:0;display:grid;grid-template-columns:66px minmax(0,1fr);gap:5px 10px;font-size:12px;line-height:18px}
 #hub-panel-assistant .hub-facts dt{color:var(--ui-muted)}
 #hub-panel-assistant .hub-facts dd{margin:0;overflow-wrap:anywhere}
+#hub-panel-assistant .hub-facts .hub-person{display:flex;flex-wrap:wrap;column-gap:8px}
+#hub-panel-assistant .hub-person span:last-child:not(:first-child){font-variant-numeric:tabular-nums}
 #hub-panel-assistant .hub-change{display:block;margin-top:4px;color:var(--ui-primary)}
 #hub-panel-assistant .hub-card-footer{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:9px 10px;border-top:1px solid var(--ui-stroke);min-height:48px;white-space:nowrap}
 #hub-panel-assistant .hub-footer-status{color:var(--ui-muted);font-size:11px;flex:1;min-width:0;white-space:normal;overflow-wrap:anywhere;line-height:18px}

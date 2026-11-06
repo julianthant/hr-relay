@@ -28,9 +28,9 @@ async function capture(page: Page, info: TestInfo, state: string, theme: string)
 }
 
 const PLANS = {
-  "": { proposal: ASSISTANT_START_PROPOSAL, facts: [["Name", "Avery Sample"], ["EID", "10101010"], ["Options", "Read only"]], resolved: "Avery Sample" },
-  "multi-": { proposal: ASSISTANT_START_MULTI_PROPOSAL, facts: [["Name", "Avery Sample"], ["EID", "10101010"], ["Name", "Morgan Vega"], ["EID", "20202020"],
-    ["Name", "Alex Rivera"], ["EID", "30303030"], ["Total", "3"], ["Options", "Read only"]], resolved: "3 people" },
+  "": { proposal: ASSISTANT_START_PROPOSAL, facts: [["Person", "Sample, Avery 10101010"], ["Options", "Read only"]], resolved: "Sample, Avery" },
+  "multi-": { proposal: ASSISTANT_START_MULTI_PROPOSAL, facts: [["Person", "Sample, Avery 10101010"], ["Person", "Vega, Morgan 20202020"],
+    ["Person", "Rivera, Alex 30303030"], ["Total", "3"], ["Options", "Read only"]], resolved: "3 people" },
 } as const;
 for (const theme of ["light", "dark"]) for (const [plan, { proposal, facts, resolved }] of Object.entries(PLANS)) for (const outcome of ["applied", "cancelled", "unknown"] as const) {
   test(`selected-run ${plan}start ${outcome} ${theme}`, async ({ page }, info) => {
@@ -75,8 +75,8 @@ for (const theme of ["light", "dark"]) for (const [plan, { proposal, facts, reso
     expect(decisions[0]).toEqual({ chatId: proposal.chatId, actionId: proposal.actionId, revision: proposal.revision,
       ...(outcome === "cancelled" ? { decision: "cancel" } : { decision: "confirm", reviewedDigest: await assistantProposalDigest(proposal) }) });
     if (outcome === "unknown") {
-      await expect(card).toContainText(ASSISTANT_UNKNOWN_NOTICE);
-      await expect(start).toBeDisabled(); await expect(card.getByRole("button", { name: "Cancel", exact: true })).toBeDisabled();
+      await expect(panel.getByText(ASSISTANT_UNKNOWN_NOTICE, { exact: true })).toHaveCount(1);
+      await expect(card).toHaveCount(0); await expect(panel.getByRole("button", { name: /^(Confirm|Cancel)$/u })).toHaveCount(0);
       await expect(field).toBeDisabled(); await expect(panel.getByRole("button", { name: "Retry reply", exact: true })).toHaveCount(0);
       await page.keyboard.press("Enter"); expect(decisions).toHaveLength(1);
     } else {
