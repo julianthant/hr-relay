@@ -602,6 +602,37 @@ it("removes an unfinished sign-up at startup through the existing cancellation p
   } finally { await profile.close(); machine.release(); rmSync(f.root, { recursive: true }); }
 });
 
+it("close and reopen recovers an unproved Duo browser hold only after the owning process exits", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "closure-hold-reopen-")));
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
+  const initialLifetime = await runtimeLifetimeLock(), port = initialLifetime.port; await initialLifetime.close();
+  const child = fork(fileURLToPath(new URL("../../support/processes/onboarding-closure-hold-worker.ts", import.meta.url)), [root, String(port)], {
+    env: credentialKeychainTestEnvironment(process.env), execArgv: ["--import", testProcessImport()], stdio: ["ignore", "ignore", "pipe", "ipc"] });
+  const closed = once(child, "close");
+  let stderr = ""; child.stderr?.on("data", (bytes: Buffer) => { stderr += bytes.toString(); });
+  try {
+    const ready = z.strictObject({ type: z.literal("held"), profileId: z.uuid(), operationId: z.uuid(), keychain: z.array(z.tuple([z.string(), z.string()])) })
+      .parse((await Promise.race([once(child, "message"), closed.then(() => { throw new Error(`closure-hold fixture exited before ready: ${stderr}`); })]))[0]);
+    FakeKeyringEntry.import(ready.keychain);
+    const stateRoot = join(root, rebuildRuntimeIsolation.stateRoot), operationPath = join(stateRoot, "machine", "operations", `${ready.operationId}.json`);
+    assert.equal(existsSync(operationPath), true); assert.equal(existsSync(join(stateRoot, "profiles", ready.profileId)), true);
+    child.send("stop"); assert.deepEqual(await closed, [97, null]); assert.equal(stderr, "");
+    const lifetime = await RuntimeLifetimeLock.acquire(port), machine = acquireEntrypointAdmission(root, "exclusive", lifetime);
+    const profile = composeProfileRuntime({ admission: machine, hostFacts: { primaryDisplay: null }, clock: systemClock });
+    try {
+      await profile.session.recoverOnboarding();
+      assert.equal(existsSync(operationPath), false); assert.equal(existsSync(join(stateRoot, "profiles", ready.profileId)), false);
+      assert.deepEqual(machine.readProfileRegistry().profiles, []);
+      const replacement = profile.session.signUp({ firstName: "Fresh", lastName: "Fixture", email: "fresh-fixture@ucsd.edu", password: "disposable-fresh-fixture", createdAt: systemClock.now().toISOString() });
+      assert.equal(replacement.state, "onboarding"); if (replacement.state !== "onboarding") throw new Error("replacement draft required");
+      assert.deepEqual(await profile.session.cancelOnboarding(replacement.token, replacement.operationId), { state: "signed-out" });
+    } finally { await profile.close(); machine.release(); await lifetime.close(); }
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) { child.kill("SIGKILL"); await closed; }
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 it.each([false, true])("removes an uninitialized sign-up only after native key absence is proved (unexpected key: %s)", async unexpectedKey => {
   const f = await privateDraftFixture();
   const original = SignUpOperationSchema.parse(JSON.parse(readFileSync(join(f.machine.stateRoot, "machine", "operations", `${f.draft.operationId}.json`), "utf8")));
