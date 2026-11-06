@@ -16,7 +16,7 @@ import { hasUnprovedSourceClosure,retainAuthoritySourceClosure } from "../source
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { inspectAuthorityBackupReadOnly,openAuthorityBackupSourceReadOnly } from "../sqlite/backup-inspection.js";
 import { AuthorityBackupService,verifyBackupManifestAtPath,verifyStoppedBackupManifestAtPath,type VerifiedBackup } from "../sqlite/backup-service.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION,deriveAuthorityUpgradePlanDigest } from "../sqlite/migrations.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION,CURRENT_AUTHORITY_SCHEMA_VERSION,deriveAuthorityUpgradePlanDigest } from "../sqlite/migrations.js";
 import { requireDatabaseSourcePath } from "../sqlite/recovery-admission.js";
 import { assertStoppedBackupClosure,prepareStoppedBackupClosure,readStoppedProfileUpgradeInventory,StorageBackupClosureUnprovedError,type ProfileBrowserClosure,type StoppedBackupClosure } from "./profile-inventory.js";
 
@@ -151,7 +151,11 @@ function assertReadyUpgradeInventory(before: ReadyUpgradeInventory, after: Ready
   if (before.operationId !== after.operationId) throw new Error("profile-stopped-upgrade-operation-changed");
   const { upgrades: priorUpgrades, ...priorFacts } = before.facts;
   const { upgrades: nextUpgrades, ...nextFacts } = after.facts;
-  if (canonicalJsonStringify(priorFacts) !== canonicalJsonStringify(nextFacts)) throw new Error("profile-stopped-upgrade-resources-changed");
+  // The upgrade that crosses the build-id schema deletes every run; all other facts stay identical.
+  const runsDeleted = publication.kind === "upgraded" && publication.sourceSchemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION;
+  if (runsDeleted && nextFacts.runs.length !== 0) throw new Error("profile-stopped-upgrade-resources-changed");
+  const comparable = (facts: typeof priorFacts) => runsDeleted ? { ...facts, runs: [] } : facts;
+  if (canonicalJsonStringify(comparable(priorFacts)) !== canonicalJsonStringify(comparable(nextFacts))) throw new Error("profile-stopped-upgrade-resources-changed");
   if (publication.kind === "unchanged") {
     if (canonicalJsonStringify(priorUpgrades) !== canonicalJsonStringify(nextUpgrades)) throw new Error("profile-stopped-upgrade-journal-changed");
   } else {

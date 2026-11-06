@@ -58,6 +58,7 @@ export const ERROR_CATALOG = Object.freeze({
   CONTACT_APPROVED_FIELDS_INVALID: catalogEntry("The approved contact fields cannot form a complete UCPath contact plan. Correct and approve the OCR record again.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_BACKUP_FAILED: catalogEntry("The automatic shutdown backup could not be verified. Relay has not completed a clean shutdown.", EmptyParametersSchema),
   STORAGE_AUTOMATIC_REPAIR_REFUSED: catalogEntry("Relay could not safely repair saved person data. Your data and unresolved writes have been retained; startup cannot continue.", EmptyParametersSchema),
+  STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES: catalogEntry("Relay could not update its saved person data because an earlier write's outcome is not settled. Nothing was changed and your data has been retained; startup cannot continue.", EmptyParametersSchema),
   STORAGE_PROFILE_UPGRADE_REFUSED: catalogEntry("Relay could not verify and upgrade its saved person data. Your data has been retained; startup cannot continue.", EmptyParametersSchema),
   DRY_RUN_SAMPLE_UNDECLARED: catalogEntry("Dry-run sample values require declared preview provenance.", EmptyParametersSchema),
   DRY_RUN_SAMPLE_REFUSED: catalogEntry("Dry-run samples cannot authorize a real submission.", EmptyParametersSchema),
