@@ -16,7 +16,8 @@ import { createAssistantService } from "../../../assistant/service.js";
 import { createAssistantPlugins } from "../../../assistant/plugins/registry.js";
 import { createAssistantProposals } from "../../../assistant/proposals.js";
 import { assistantWorkflowFacts, loadAssistantWorkflowFacts, type AssistantWorkflowFacts } from "../../../assistant/plugins/workflows/facts.js";
-import { assistantSurfaceCoverage, createAssistantPluginDeps } from "./assistant.js";
+import { assistantSurfaceCoverage, createAssistantPluginDeps, startAssistantHistoryCleanup } from "./assistant.js";
+import { AuthoritySourceClosureUnprovedError } from "../../../storage/source-closure.js";
 import { CHATGPT_OCR_MODEL,createChatGptOcrPageReader } from "../../../processing/providers/chatgpt-ocr-adapter.js";
 import { createNominatimGeocodeAdapter } from "../../../processing/providers/geocode-adapters.js";
 import { createCommandKernel } from "../../../runs/commands/command-kernel.js";
@@ -64,7 +65,6 @@ import { GATE_PARK_WATCH_MS,composeDashboardTimeline } from "./timeline.js";
 import { WORKER_BIRTH_POLL_MS,WORKER_BIRTH_TIMEOUT_MS,composeWorkerProcessControl,productionWorkerLaunch,realWorkerProcessSpawner } from "./worker-process.js";
 import { composeWriteSafety,prepareWriteSafety } from "./write-safety.js";
 
-const ASSISTANT_HISTORY_CLEANUP_MS = 60 * 60 * 1000;
 
 export async function composeDashboardRuntimeStartup(input: DashboardComposeInput, startupCleanups: StartupCleanup[], custody: StartupCustody): Promise<DashboardRuntime> {
   const environment = prepareDashboardEnvironment(input, custody);
@@ -391,8 +391,12 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const gateParkTimer = setInterval(() => void notificationObserver.observe(), GATE_PARK_WATCH_MS);
   gateParkTimer.unref();
   startupCleanups.push(() => clearInterval(gateParkTimer));
-  const historyTimer = setInterval(() => { try { database.authority.assistantHistory.reclaimExpired(clock.now().toISOString()); } catch { /* the next tick or startup retries */ } }, ASSISTANT_HISTORY_CLEANUP_MS);
-  historyTimer.unref();
+  const historyTimer = startAssistantHistoryCleanup(() => { database.authority.assistantHistory.reclaimExpired(clock.now().toISOString()); }, error => {
+    const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "assistant-history-cleanup", code: "ASSISTANT_HISTORY_CLEANUP_FAILED",
+      reason: error instanceof RuntimeCustodyUncertainError || error instanceof AuthoritySourceClosureUnprovedError ? "custody-unproved" : "cleanup-failed" };
+    debugEvents.emit(event);
+    input.workerProcess?.faultSink?.(JSON.stringify(event));
+  });
   startupCleanups.push(() => clearInterval(historyTimer));
 
   return composeDashboardShutdown({ profile, selected, requireProducerClosure, notificationObserver, assistantAuthorization, shutdownRequested, noteWriter, timelineTimer, hub, stopWorkerControl, server, gateParkTimer, historyTimer, custody });
