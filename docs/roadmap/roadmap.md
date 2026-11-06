@@ -25,7 +25,8 @@ Complete these in order on the Mac.
 - [done] Write safety — capture browser steps and submit boundaries, retain dry-run evidence, show UCPath transaction findings for operator review and keep Kuali reload verification.
 - [now] OCR and Emergency Contact — dry-run preview and fake-driver Save are proven, live selectors are captured and production Save is wired but never run live; serve per-person rows, finish individual member Retry, then prove the first live Save with the operator present.
 - [done] Served Explorer matches the mock — make Person Lookup and Separations Explorer read like the approved mock from served workflow definitions.
-- [now] Assistant usable — allowlist reads, make every changing action and workflow start a confirmed proposal, show citations and failures, and add Test assistant.
+- [done] Assistant usable — allowlist reads, make every changing action and workflow start a confirmed proposal, answer ordinary questions through ChatGPT, show the workflow, name, Employee ID and key options on each confirmation card, and run Test assistant from Settings > Preflight.
+- [next] Assistant follow-ups — send attached files to the model and keep them in chat history, and start one workflow for several people with one confirmation.
 - [done] Operator dashboard fixes — tidy Settings (nav, theme, storage, account), derive the timekeeper name and initials from the signed-in name, clean Employee ID input, keep worker notices in toasts, fix spreadsheet import size and add Clear run history.
 - [done] Readable run logs — show plain steps with no internal names and a failure card with its reason, starting with Person Lookup.
 - [done] Dashboard cleanups — make Explorer read-only, have the assistant always ask before acting and propose workflow starts, and save appearance preferences per person.
