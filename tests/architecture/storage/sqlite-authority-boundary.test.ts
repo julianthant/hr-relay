@@ -21,6 +21,7 @@ const PRIVATE_SQLITE_ADAPTERS = [
   "src/backend/storage/sqlite/native-run-deletion.ts",
   "src/backend/storage/sqlite/notification-publications.ts",
   "src/backend/storage/sqlite/pre-build-run-deletion.ts",
+  "src/backend/storage/sqlite/worker-custody-migration.ts",
   "src/backend/storage/sqlite/ocr-review.ts",
   "src/backend/storage/sqlite/profile-local-databases.ts",
   "src/backend/storage/sqlite/readonly-authority-snapshot.ts",

@@ -131,7 +131,7 @@ function writeEvidence(run: PredecessorRunRecord, command: z.infer<typeof RunLif
   settleEvidence(result, run);
 }
 
-function lifecycleCommand(operation: string, request: unknown, fence: unknown, now: string) {
+export function lifecycleCommand(operation: string, request: unknown, fence: unknown, now: string) {
   return RunLifecycleCommandRecordSchema.parse({
     kind: "run-lifecycle", commandId: z.object({ commandId: z.string() }).parse(request).commandId, operation,
     requestFingerprint: FingerprintSchema.parse(sha256Hex(`hrauto:run-lifecycle-command:v1\0${operation}\0${canonicalJsonStringify(request)}`)),
@@ -139,7 +139,7 @@ function lifecycleCommand(operation: string, request: unknown, fence: unknown, n
   });
 }
 
-function recordAudit(database: DatabaseSync, command: z.infer<typeof RunLifecycleCommandRecordSchema>, result: z.infer<typeof RunLifecycleCommandAuditRecordSchema>["result"], now: string) {
+export function recordAudit(database: DatabaseSync, command: z.infer<typeof RunLifecycleCommandRecordSchema>, result: z.infer<typeof RunLifecycleCommandAuditRecordSchema>["result"], now: string) {
   insertNativeCommand(database, command);
   const audit = RunLifecycleCommandAuditRecordSchema.parse({
     kind: "run-lifecycle", auditId: command.commandId, request: command, result, completedAt: now,
@@ -167,7 +167,7 @@ function childOpen(database: DatabaseSync, runId: string): boolean {
   return database.prepare("SELECT 1 FROM runs WHERE parent_id=? AND state<>'terminal' LIMIT 1").get(runId) !== undefined;
 }
 
-function childrenFirst(runs: readonly PredecessorRunRecord[]): PredecessorRunRecord[] {
+export function childrenFirst(runs: readonly PredecessorRunRecord[]): PredecessorRunRecord[] {
   const ordered: PredecessorRunRecord[] = [];
   const visiting = new Set<string>();
   const visited = new Set<string>();
