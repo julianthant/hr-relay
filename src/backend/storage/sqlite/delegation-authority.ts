@@ -833,7 +833,8 @@ export function prepareDelegationRetry(repositories: AuthorityRepositories, run:
   const selectedChild = selected[0];
   const accounting = request.refreshAuthorization === undefined ? undefined : workflowDelegationAccounting(request.refreshAuthorization, parent);
   const accountingMember = accounting !== undefined && accounting.joinNodeId === selectedChild.group.invocation.nodeId;
-  if (accountingMember && continued === undefined && source.type === "retry") {
+  if (accountingMember && continued === undefined) {
+    if (source.type !== "retry") throw new RunContinuationRefusedError("delegation-accounting-recovery-requires-member-retry");
     assertDelegationRetryUnwritten(repositories, run, accounting.target);
     if (parent.cancelRequested === true || parent.lifecycle.state === "terminal" && repositories.evidenceReceipts.findByRun(parent.envelope.runId) === undefined)
       throw new RunContinuationRefusedError("delegation-accounting-parent-receipt-unavailable");

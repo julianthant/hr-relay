@@ -1,0 +1,151 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
+import { afterEach, beforeEach, it, vi } from "vitest";
+import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
+import { RunContinuationRefusedError } from "../../../src/backend/storage/sqlite/run-continuation.js";
+import type { RunRecord } from "../../../src/models/run/record.js";
+import { TransactionOutcomeSchema } from "../../../src/rules/write-safety/write-safety-primitives.js";
+import { createEmergencyContactRetryWorld, contactSaveMember } from "../../support/helpers/backend/emergency-contact-retry-world.js";
+
+const world = createEmergencyContactRetryWorld();
+type Fixture = Awaited<ReturnType<typeof world.fixture>>;
+let fixture: Fixture;
+beforeEach(async () => { fixture = await world.fixture(); });
+afterEach(world.cleanup);
+const signal = () => new AbortController().signal;
+const saves = (f: Fixture) => ["10800000", "10800001"].map(eid => {
+  const backend = f.persistence.get(eid); assert.ok(backend); return backend.submissions.length;
+});
+
+function failed(f: Fixture) {
+  const run = f.children().find(child => child.lifecycle.state === "terminal" && child.lifecycle.outcome === "failed"
+    && !f.children().some(next => next.envelope.retryOf === child.envelope.runId));
+  assert.ok(run); return run;
+}
+
+function parentBytes(f: Fixture) {
+  const raw = new DatabaseSync(f.path, { readOnly: true });
+  try {
+    return { results: raw.prepare("SELECT id,payload_json,terminal_run_json FROM run_results WHERE run_id=? ORDER BY settlement_version").all(f.parentRun.envelope.runId),
+      receipts: raw.prepare("SELECT id,settlement_version,payload_json FROM run_receipts WHERE run_id=? ORDER BY id").all(f.parentRun.envelope.runId) };
+  } finally { raw.close(); }
+}
+
+function unchangedState(f: Fixture) {
+  const children = f.database.authority.runs.listChildren(f.parentRun.envelope.runId);
+  const intents = children.flatMap(child => f.database.authority.writeIntents.listByRun(child.envelope.runId));
+  return { parent: f.current(), children, dependencies: f.database.authority.dependencies.listByParentRun(f.parentRun.envelope.runId),
+    intents, attempts: intents.flatMap(intent => f.database.authority.writeAttempts.listByIntent(intent.writeIntentId)),
+    bytes: parentBytes(f), saves: saves(f), generation: f.database.getMeta().authorityGeneration };
+}
+
+function refuseDirectRecover(f: Fixture, target: RunRecord) {
+  const command = { ...f.runCommand("retry", target), type: "recover-run" as const }, before = unchangedState(f);
+  const recover = vi.spyOn(f.canonical.lifecycle, "recover");
+  try {
+    for (const request of [command, command, { ...command, commandId: randomUUID() }]) {
+      const calls = recover.mock.calls.length;
+      const result = f.canonical.kernel.execute(request);
+      assert.ok(result.state === "rejected" && result.code === "RUN_CONTINUATION_REFUSED", JSON.stringify(result));
+      if (target.lifecycle.state === "terminal") {
+        assert.equal(recover.mock.calls.length, calls + 1, "ordinary recovery planning reached the genuine native owner");
+        const refused = recover.mock.results.at(-1); assert.ok(refused?.type === "throw");
+        assert.ok(refused.value instanceof RunContinuationRefusedError);
+        assert.match(refused.value.message, /delegation-accounting-recovery-requires-member-retry/);
+      } else assert.equal(recover.mock.calls.length, calls, "UNKNOWN refuses before native recovery");
+      assert.deepEqual(unchangedState(f), before);
+    }
+  } finally { recover.mockRestore(); }
+}
+
+function receipts(f: Fixture) {
+  return createReceiptService({ database: f.database, runReader: f.canonical.lifecycle,
+    descriptors: [f.root.descriptor, contactSaveMember.descriptor] });
+}
+
+it("refuses direct Recover before Save under a settled parent with no receipt, then permits Retry with an exact retained receipt", async () => {
+  const f = fixture, original = failed(f);
+  assert.equal((await f.canonical.step(f.parentRun, signal())).outcome.state, "done");
+  const parent = f.current(); assert.ok(parent.completion);
+  const version = parent.completion.expectedVersion + 1;
+  const settlement = f.database.authority.runResults.getSettlement(parent.envelope.runId, version); assert.ok(settlement);
+  assert.equal(f.database.authority.evidenceReceipts.findByRun(parent.envelope.runId), undefined);
+  assert.deepEqual(parentBytes(f).receipts, []);
+  assert.deepEqual(saves(f), [1, 0]);
+  refuseDirectRecover(f, original);
+  const bytes = parentBytes(f);
+  const command = f.runCommand("retry", original);
+  assert.equal(f.canonical.kernel.execute(command).state, "applied");
+  assert.equal(f.current().lifecycle.state, "queued");
+  assert.equal(f.current().pause?.state, "paused");
+  const replacement = f.children().filter(child => child.envelope.retryOf === original.envelope.runId);
+  assert.equal(replacement.length, 1); const next = replacement[0]; assert.ok(next);
+  assert.equal(next.lifecycle.state, "queued");
+  assert.deepEqual(saves(f), [1, 0]);
+  const retained = f.database.authority.evidenceReceipts.listByRun(parent.envelope.runId);
+  assert.equal(retained.length, 1); const receipt = retained[0]; assert.ok(receipt);
+  const receiptBytes = parentBytes(f).receipts;
+  assert.equal(receiptBytes.length, 1);
+  assert.equal(receiptBytes[0]?.settlement_version, version);
+  assert.deepEqual(f.database.authority.evidenceReceipts.get(receipt.receiptId), receipt);
+  assert.deepEqual(parentBytes(f).results, bytes.results);
+  const executed = await f.canonical.step(f.parentRun, signal());
+  assert.equal(executed.run.envelope.runId, next.envelope.runId); assert.equal(executed.outcome.state, "done");
+  assert.equal(f.canonical.kernel.execute(f.runCommand("resume", f.current())).state, "applied");
+  assert.equal((await f.canonical.step(f.parentRun, signal())).outcome.state, "done");
+  assert.deepEqual(f.database.authority.runResults.getSettlement(parent.envelope.runId, version), settlement);
+  assert.deepEqual(settlement.run.envelope, parent.envelope);
+  const currentReceipt = receipts(f).ensureReceipt(parent.envelope.runId);
+  assert.notEqual(currentReceipt.receiptId, receipt.receiptId);
+  assert.deepEqual(f.database.authority.evidenceReceipts.get(receipt.receiptId), receipt);
+  const finalBytes = parentBytes(f);
+  for (const row of bytes.results) assert.deepEqual(finalBytes.results.find(current => current.id === row.id), row);
+  for (const row of receiptBytes) assert.deepEqual(finalBytes.receipts.find(current => current.id === row.id), row);
+  assert.equal(f.canonical.kernel.execute(command).state, "already-applied");
+  assert.equal(f.children().filter(child => child.envelope.retryOf === original.envelope.runId).length, 1);
+  assert.deepEqual(saves(f), [1, 1]);
+});
+
+for (const effect of ["committed", "already-present", "UNKNOWN"] as const)
+it(`refuses direct Recover of ${effect} member evidence without a replacement, parent/dependency mutation or repeated Save`, async () => {
+  const f = fixture, original = failed(f);
+  if (effect === "already-present") {
+    const saved = f.persistence.get("10800000"), target = f.persistence.get("10800001"); assert.ok(saved && target);
+    const first = f.facts[0], second = f.facts[1]; assert.ok(first && second);
+    const snapshot = saved.snapshot();
+    assert.equal(snapshot.rows.filter(row => row.name === first.correctedContactName).length, 1);
+    target.replacePersisted({ ...snapshot, displayedEid: "10800001", displayedName: second.employeeName,
+      rows: snapshot.rows.map(row => row.name === first.correctedContactName ? { ...row, name: second.correctedContactName } : row) });
+  }
+  assert.equal(f.canonical.kernel.execute(f.runCommand("retry", original)).state, "applied");
+  f.control.unknownAfterSave = effect === "UNKNOWN";
+  f.control.failAfterSave = effect !== "UNKNOWN";
+  const executed = await f.canonical.step(f.parentRun, signal());
+  assert.equal(executed.outcome.state, effect === "UNKNOWN" ? "parked-write" : "failed");
+  const target = f.current(executed.run.envelope.runId);
+  const intents = f.database.authority.writeIntents.listByRun(target.envelope.runId);
+  assert.equal(intents.length, 1);
+  assert.equal(intents[0]?.status, effect === "UNKNOWN" ? "parked" : effect === "committed" ? "committed" : "observed-present");
+  if (effect !== "UNKNOWN") {
+    const checkpoint = f.database.authority.runCheckpoints.listByItem(target.envelope.workflow, target.envelope.itemId)
+      .find(row => row.runId === target.envelope.runId && row.nodeId === "contact-preview"); assert.ok(checkpoint);
+    assert.equal(TransactionOutcomeSchema.parse(checkpoint.output.value).disposition, effect);
+    assert.equal(f.canonical.kernel.execute(f.runCommand("resume", f.current())).state, "applied");
+    assert.equal((await f.canonical.step(f.parentRun, signal())).outcome.state, "done");
+    assert.equal(f.database.authority.evidenceReceipts.findByRun(f.parentRun.envelope.runId), undefined);
+  }
+  const expectedSaves = effect === "already-present" ? [1, 0] : [1, 1];
+  assert.deepEqual(saves(f), expectedSaves);
+  refuseDirectRecover(f, target);
+  const before = unchangedState(f);
+  const retry = f.canonical.kernel.execute(f.runCommand("retry", target));
+  assert.equal(retry.state, "rejected");
+  assert.deepEqual(unchangedState(f), before);
+  assert.deepEqual(saves(f), expectedSaves);
+  if (effect !== "UNKNOWN") {
+    const receipt = receipts(f).ensureReceipt(f.parentRun.envelope.runId);
+    assert.deepEqual(f.database.authority.evidenceReceipts.get(receipt.receiptId), receipt);
+    assert.deepEqual(saves(f), expectedSaves);
+  }
+});
