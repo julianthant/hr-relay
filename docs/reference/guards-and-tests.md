@@ -115,7 +115,7 @@ results. Role-derived scenario paths do not prove that a file exists.
 | `npm run test:integration -- <paths>` | `vitest run --project integration --passWithNoTests=false`. |
 | `npm run test:architecture -- <paths>` | `vitest run --project architecture --passWithNoTests=false`. |
 | `npm run test:local -- <paths>` | `vitest run --project local --passWithNoTests=true`. |
-| `npm run test:coverage` | `vitest run --coverage --project unit --project integration --project architecture && tsx scripts/test/suite-size.ts`. |
+| `npm run test:coverage` | `vitest run --coverage --project unit --project integration --project architecture`. |
 | `npm run test:perf` | `vitest run --project perf --passWithNoTests=false`. |
 | `npm run test:watch` | Interactive `vitest` on unit, integration, architecture and perf. |
 | `npm run perf:dashboard` | `TZ=UTC tsx tests/perf/dashboard-benchmark.ts`. |
@@ -415,8 +415,7 @@ npm run test:perf
 Coverage runs alone and selects unit, integration, and architecture without perf. The perf project
 runs afterward without coverage instrumentation. Separate full unit, integration, and architecture
 reruns add no acceptance evidence for unchanged inputs. The brief may additionally
-require `npm run stores:catalog:check` or other affected freshness
-checks. Derived output is regenerated at its source before its freshness check.
+require affected freshness checks. Derived output is regenerated at its source before its freshness check.
 
 Before coverage, the operator gate still requires free memory, no swap pressure, and no listener
 on port 3938:
@@ -435,10 +434,7 @@ inputs. A changed contract, generator input, fixture, config, or documentation p
 invalidates its affected evidence. A recording-only commit does not by itself invalidate unchanged
 code results. Old live results remain dated observations, never current external readiness.
 
-`scripts/test/suite-size.ts` measures unique selected files and line counts for each configured
-project. Empty selection throws. `test:coverage` chains it only after Vitest succeeds. The report
-is for review, not a maximum-file or line-count limit. Test count and timing targets never justify
-removing unique protection or disguising an unrun gate.
+Test count and timing targets never justify removing unique protection or disguising an unrun gate.
 
 ## 5. Guard registration and removal
 
@@ -460,10 +456,8 @@ coordinated edit to both a guard and its inventory row. Review and operator auth
 the boundary for deliberate loss of protection. The inventory still uses machine-owned retirement
 and activation fields; this prose does not alter their schema or statuses.
 
-The dashboard workflow-ID guards pin 151 retained mock literal names and their exact AST sites.
-The inventory includes existing Emergency Contact data sites recognized by the registered workflow
-universe; generic notification consumers retain no workflow-ID sites. Registration does not authorize
-new branches: served/sibling injections, removed sites and same-count repurposing still fail.
+The workflow-ID guard (`no-workflow-id-branches`) admits registered ids in generic code only at
+files listed with a reason; a new branch elsewhere, a stale entry or a missing reason fails.
 
 ### 5.1 Required source scanners
 

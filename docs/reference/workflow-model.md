@@ -194,11 +194,10 @@ includes their retained harnesses. These source audits cover both inventories wi
 children or proofs as public starts.
 Scenario-path helpers derive potential addresses; they do not prove scenario files or execution.
 
-The workflow-ID boundary audits public, child-only and proof inventories. Retained dashboard mock
-literals and OCR service literals have exact AST references in
-`tests/support/helpers/retained-dashboard-mock-fixtures.ts`. The OCR service references cover review
-admission, source-bound resources, approval publication, the OCR CLI command and deferred-feature text.
-Added, removed or repurposed occurrences fail the boundary checks. Explorer derives contract and
+The workflow-ID boundary (`no-workflow-id-branches`) audits public, child-only and proof ids in
+generic code. Its `ALLOWED_SITES` list admits each known file (or the dashboard mocks folder) for
+named ids with a reason: dry-run targets, the OCR record service, Separations identity folds and the
+preview mocks. A new id in any other generic file, a stale entry or a missing reason fails. Explorer derives contract and
 implementation directories from the bound store's kind and namespace.
 These references admit no new workflow dispatch or public start.
 

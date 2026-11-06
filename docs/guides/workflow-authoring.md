@@ -29,15 +29,15 @@ Do not author descriptors, flows, module files, node fragments or a second Explo
 `workflow.ts`. Do not add workflow-id branches to generic dashboard or runtime code. Extend a
 shared capability at its owner when the requested behavior needs one.
 
-`workflow-layout` and `workflow-authoring-budget` constrain paths and builder calls; the latter
-checks closed `ARTIFACT_EXEMPTIONS` and `GENERIC_WORKFLOW_ID_ALLOWLIST` lists. Keep receipts and
+`workflow-layout` constrains paths; `no-workflow-id-branches` refuses workflow-id literals in generic
+code outside its reasoned `ALLOWED_SITES` list. Keep receipts and
 evidence in the brief's main-checkout `.work/` evidence folder.
 
 ## 2 · Find, reuse or build
 
-Search the generated task catalog in [stores](../reference/stores.md) by system, capability,
-effect, input and output. `src/backend/app/registries/task-registry.ts` composes that inventory;
-`npm run stores:catalog` generates it and `npm run stores:catalog:check` checks its bytes.
+Search the task catalog in [stores](../reference/stores.md) by system, capability, effect, input
+and output. `src/backend/app/registries/task-registry.ts` composes that inventory; update the
+catalog entry when you add or change a store task.
 
 | Need | Change |
 | --- | --- |
@@ -92,7 +92,7 @@ For a new operator workflow:
    picker order) or, for a workflow admitted only through declared delegation edges, in
    `CHILD_ONLY_WORKFLOWS`. `src/backend/app/registries/workflow-registry.ts` composes each entry
    against the task-store inventory; a store or contract that does not bind fails at startup.
-4. Run `npm run stores:catalog` and `npm run stores:catalog:check`.
+4. Add the workflow's failure codes to `src/models/failures/error-catalog.ts`.
 5. Record copied source provenance, acceptance evidence and unfinished checks in the brief's
    evidence folder.
 
@@ -332,11 +332,11 @@ Inspect these existing tests for the affected seam:
   `tests/workflow-kit/workflow-definition.integration.test.ts`: compiler and runtime.
 - `tests/workflows/registry.test.ts`: registration identity and ordering.
 - `tests/architecture/workflow-kit/workflow-layout.test.ts`: paths.
-- `tests/architecture/workflow-kit/workflow-authoring-budget.test.ts`: budget.
+- `tests/architecture/workflow-kit/no-workflow-id-branches.test.ts`: no workflow-id branches in generic code.
 - `tests/architecture/workflow-kit/descriptor-coverage.test.ts`: descriptor and bundle-boundary coverage.
 - `tests/architecture/workflow-kit/step-omission-invariants.test.ts`: omissions.
 
-Check `npm run stores:catalog:check` and `auditImplBindings`
+Check `auditImplBindings`
 consumers when their inputs change.
 
 Before proposing integration, run `npm run typecheck`, `npm run lint`, `npm run web:build`,

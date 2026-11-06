@@ -48,7 +48,7 @@ npm run test:unit          # deterministic units only; positional file filters a
 npm run test:integration   # real-resource and composed workflow proofs; run deliberately
 npm run test:architecture  # the guard suite alone
 npm run test:local         # operator-machine tests only; passes when that project is empty
-npm run test:coverage      # 60/80 lines/statements/functions floors + the suite-size report
+npm run test:coverage      # 60/80 lines/statements/functions floors
 npm run test:watch
 
 # Workflow execution uses the signed-in dashboard Run surface.
@@ -59,8 +59,6 @@ npm run web               # the vite dev server alone, proxying /api to a BFF yo
 npm run web:build         # production bundle into dist/dashboard
 
 npm run build:observer-policy # prepare the ignored Windows observer policy artifact
-npm run stores:catalog     # regenerate the generated §2 task catalog in docs/reference/stores.md
-npm run stores:catalog:check # fail if the committed catalog is stale
 ```
 
 Contract fingerprints are computed in memory and need no preparation. A running dashboard freezes its

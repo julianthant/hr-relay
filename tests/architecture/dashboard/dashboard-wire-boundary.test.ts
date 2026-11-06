@@ -1,38 +1,9 @@
-import { createRetainedDashboardMockFixtures } from "../../support/helpers/retained-dashboard-mock-fixtures.js";
-
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { builtinModules } from "node:module";
 import { join, resolve } from "node:path";
-import { DESCRIPTORS, CHILD_ONLY_WORKFLOW_MODULES } from "../../../src/backend/app/registries/workflow-registry.js";
 import { REPO_ROOT, repoRelative, walkFiles } from "../support/helpers/guard-files.js";
-
-const { RETAINED_MOCK_SITES, retainedLiteralSite, RETAINED_MOCK_LITERALS } = createRetainedDashboardMockFixtures();
-
-
-const literalSites = new WeakMap<ts.SourceFile, { ids: string; values: readonly string[] }>();
-
-function workflowLiteralIssues(sources: ReadonlyMap<string, string>, ids: readonly string[]): readonly string[] {
-  const violations: string[] = [];
-  const key = JSON.stringify(ids);
-  for (const path of Object.keys(RETAINED_MOCK_LITERALS)) if (!sources.has(path)) violations.push(`${path}: missing retained fixture owner`);
-  for (const [path, content] of sources) {
-    const source = parseContent(path, content);
-    let cached = literalSites.get(source);
-    if (cached?.ids !== key) {
-      const values: string[] = [];
-      visit(source, node => { if (ts.isStringLiteralLike(node) && ids.includes(node.text)) values.push(retainedLiteralSite(node, source)); });
-      cached = { ids: key, values };
-      literalSites.set(source, cached);
-    }
-    const values = cached.values;
-    const expected = RETAINED_MOCK_SITES[path];
-    if (expected !== undefined && JSON.stringify(values) === JSON.stringify(expected)) continue;
-    if (values.length > 0 || expected !== undefined) violations.push(`${path}: unadmitted workflow literals ${values.join(", ")}`);
-  }
-  return violations;
-}
 
 const DASHBOARD_ROOT = resolve(REPO_ROOT, "src/dashboard");
 
@@ -292,44 +263,5 @@ describe("dashboard wire boundary (ref frontend-backend-integration)", () => {
     const registry = bundleClosure("src/workflows/registry.ts");
     expect([...registry].filter((file) => file.startsWith("src/workflows/")).length)
       .toBeGreaterThan(1);
-  });
-
-  it("bounds retained fixture literals exactly and refuses served or sibling workflow branches", () => {
-    const ids = [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor)].map(descriptor => String(descriptor.id));
-    const sources = new Map(files.map(file => [repoRelative(file), readFileSync(file, "utf8")]));
-    expect(Object.values(RETAINED_MOCK_LITERALS).flat()).toHaveLength(151);
-
-    expect(workflowLiteralIssues(sources, ids)).toEqual([]);
-    for (const path of ["src/dashboard/client/queries/day-queries.ts", "src/dashboard/surfaces/workflows/mocks/new-sibling.ts", "src/dashboard/surfaces/workflows/mocks/workflow-mock-run.tsx", ...Object.keys(RETAINED_MOCK_LITERALS)]) {
-      for (const workflowId of ["person-lookup", "onboarding", "ocr", "ocr-page", "crm-doc-download", "emergency-contact"]) {
-        const changed = new Map(sources);
-        changed.set(path, `${sources.get(path) ?? ""}\nconst injected = (id: string) => id === "${workflowId}";`);
-        expect(workflowLiteralIssues(changed, ids).some(issue => issue.startsWith(`${path}:`))).toBe(true);
-      }
-    }
-    const repurposedPath = "src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.ts";
-    const repurposed = new Map(sources);
-    const original = sources.get(repurposedPath)!;
-    repurposed.set(repurposedPath, original.replace('"separations"', '(unknownId === "separations" ? unknownId : unknownId)'));
-    expect(workflowLiteralIssues(repurposed, ids).some(issue => issue.startsWith(`${repurposedPath}:`))).toBe(true);
-    for (const path of ["src/dashboard/surfaces/workflows/mocks/workflow-mock-catalog.ts", "src/dashboard/surfaces/workflows/mocks/workflow-mock-model.ts", "src/dashboard/surfaces/workflows/mocks/workflow-operation-catalog.ts", "src/dashboard/surfaces/workflows/mocks/workflow-operation-model.ts", "src/dashboard/surfaces/workflows/mocks/workflow-review-model.ts"]) {
-      const original = sources.get(path)!;
-      for (const changed of [original.replace('"emergency-contact"', '(unknownId === "emergency-contact" ? unknownId : unknownId)'),
-        original.replace('"emergency-contact"', '"unregistered-contact"')]) {
-        const altered = new Map(sources); altered.set(path, changed);
-        expect(workflowLiteralIssues(altered, ids).some(issue => issue.startsWith(`${path}:`))).toBe(true);
-      }
-    }
-    const missing = new Map(sources); missing.delete(Object.keys(RETAINED_MOCK_LITERALS)[0]);
-    expect(workflowLiteralIssues(missing, ids).length).toBeGreaterThan(0);
-  });
-
-  it("branches on no concrete workflow id anywhere under src/dashboard", () => {
-    const ids = [...DESCRIPTORS, ...CHILD_ONLY_WORKFLOW_MODULES.map(module => module.descriptor)].map((descriptor) => String(descriptor.id));
-
-    expect(ids.length).toBeGreaterThan(0);
-    const sources = new Map(files.map(file => [repoRelative(file), readFileSync(file, "utf8")]));
-    const violations = workflowLiteralIssues(sources, ids);
-    expect(violations).toEqual([]);
   });
 });

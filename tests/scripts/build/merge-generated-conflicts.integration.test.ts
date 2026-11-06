@@ -77,23 +77,6 @@ it("regenerates a generated file deleted by the PR and modified by staging", () 
   });
 });
 
-it("refuses a deleted catalog rather than restoring its authored sections", () => {
-  fixture(false, (root, _head, staging) => {
-    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-    const catalog = "docs/reference/stores.md";
-    git("rm", "--", catalog);
-    git("commit", "-m", "delete catalog");
-    git("checkout", "--detach", staging);
-    writeFileSync(join(root, catalog), "Authored introduction\n<!-- store-catalog:start -->\nnew catalog\n<!-- store-catalog:end -->\n");
-    git("commit", "-am", "update catalog");
-    const updatedStaging = git("rev-parse", "HEAD");
-    git("checkout", "feature");
-    let generated = false;
-    assert.throws(() => mergeGeneratedConflicts(root, updatedStaging, () => { generated = true; }), /Command failed: git cat-file/u);
-    assert.equal(generated, false);
-  });
-});
-
 it("merges on a fresh runner without a configured Git identity", () => {
   fixture(false, (root, _head, staging) => {
     execFileSync("git", ["config", "user.name", ""], { cwd: root });

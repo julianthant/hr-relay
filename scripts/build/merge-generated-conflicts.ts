@@ -1,10 +1,10 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { isDirectExecution } from "../test/scope-files.js";
-import { clearGeneratedSection, GENERATED_OUTPUTS, generatedOnlyConflicts } from "./generated-outputs.js";
+import { GENERATED_OUTPUTS, generatedOnlyConflicts } from "./generated-outputs.js";
 
 const TRAIN_IDENTITY = ["-c", "user.name=Relay merge train", "-c", "user.email=41898282+github-actions[bot]@users.noreply.github.com"];
 
@@ -31,14 +31,7 @@ export function mergeGeneratedConflicts(root: string, staging: string, generate 
   }
   for (const output of GENERATED_OUTPUTS) {
     for (const path of output.paths) {
-      if (!conflicts.includes(path)) continue;
-      if ("section" in output) {
-        git(root, "cat-file", "-e", `:2:${path}`);
-        git(root, "cat-file", "-e", `:3:${path}`);
-        writeFileSync(join(root, path), clearGeneratedSection(readFileSync(join(root, path), "utf8"), output.section));
-      } else {
-        writeFileSync(join(root, path), "");
-      }
+      if (conflicts.includes(path)) writeFileSync(join(root, path), "");
     }
   }
   generate(root);
