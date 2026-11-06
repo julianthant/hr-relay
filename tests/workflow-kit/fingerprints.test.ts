@@ -26,7 +26,7 @@ describe("contract fingerprints", () => {
       { ...base, result: z.strictObject({ found: z.boolean(), eid: z.string() }) },
       { ...base, graph: [{ id: "read", kind: "task", dependsOn: [] }, { id: "again", kind: "task", dependsOn: ["read"] }] },
       { ...base, contracts: [{ ...read, output: z.strictObject({ found: z.string() }) }] },
-      { ...base, contracts: [{ ...read, id: taskId("fixture/read-other") }] },
+      { ...base, contracts: [{ ...read, id: taskId("workflow:fixture/read-other") }] },
     ]) assert.notEqual(workflowContractFingerprint(changed), original);
     assert.notEqual(taskImplFingerprint({ ...read, output: z.strictObject({ found: z.string() }) }), taskImplFingerprint(read));
     assert.notEqual(taskImplFingerprint({ ...read, effect: "prepare" as const }), taskImplFingerprint(read));
