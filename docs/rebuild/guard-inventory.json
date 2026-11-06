@@ -512,7 +512,7 @@
       "file": "tests/architecture/logs/redaction-surface-scan.worker-startup.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md; docs/rebuild/reference/clock-config-secrets.md",
-      "invariant": "Reason: shared startup result text reaches five operator surfaces; omitted origins or misclassified dynamic errors can evade the privacy audit. Six cases pin the exact ten message/detail origins and schema leaves across dashboard day, run-logs stream, stream envelope, intake and OCR command results. Every origin omission must fail independently; dynamic detail is external-text and forbidden at process and OS-notification egress, while the fixed catalog message remains repository-authored.",
+      "invariant": "Reason: shared startup result text reaches four operator surfaces; omitted origins or misclassified dynamic errors can evade the privacy audit. Five cases pin the exact eight message/detail origins and schema leaves across dashboard day, stream envelope, intake and OCR command results. Every origin omission must fail independently; dynamic detail is external-text and forbidden at process and OS-notification egress, while the fixed catalog message remains repository-authored.",
       "replacementRequired": true
     },
     {

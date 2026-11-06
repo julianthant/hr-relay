@@ -3,7 +3,6 @@ import { request as httpRequest } from "node:http";
 import { randomBytes, createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
 import { DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
-import { RunLogsStreamHub } from "../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import assert from "node:assert/strict";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -543,7 +542,7 @@ for (const fault of ["prior-custody", "transport-cancellation"] as const) it(`dr
   let context: ReturnType<typeof profile.selectedContext> | undefined;
   let token: string | undefined, preparations = 0, finalCloses = 0;
   const timers = vi.spyOn(globalThis, "setInterval"), clears = vi.spyOn(globalThis, "clearInterval");
-  const dashboardHubClose = vi.spyOn(DashboardStreamHub.prototype, "close"), logsHubClose = vi.spyOn(RunLogsStreamHub.prototype, "close");
+  const dashboardHubClose = vi.spyOn(DashboardStreamHub.prototype, "close");
   vi.spyOn(storageCompose, "composeProfileRuntime").mockImplementation(input => {
     profile = actualProfile(input);
     return { ...profile,
@@ -591,7 +590,7 @@ for (const fault of ["prior-custody", "transport-cancellation"] as const) it(`dr
       || value instanceof Error && value.cause !== undefined && retainsPrimary(value.cause);
     assert.equal(retainsPrimary(error), true);
     assert.ok(preparations > 0, "actual selected activity cancellation and preparation completed");
-    assert.ok(dashboardHubClose.mock.calls.length > 0 && logsHubClose.mock.calls.length > 0);
+    assert.ok(dashboardHubClose.mock.calls.length > 0);
     assert.ok(ownedTimers.every(timer => clears.mock.calls.some(call => call[0] === timer)));
     assert.equal(finalCloses, 0, "unproved transport or prior custody cannot close the profile database");
     context.database.getMeta();

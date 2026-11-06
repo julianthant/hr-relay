@@ -118,7 +118,7 @@ describe("redaction surface scan — the declaration audit", () => {
     }
   });
 
-  for (const id of ["wire/run-logs-stream", "wire/run-detail-section", "wire/stream-envelope", "wire/ocr-command-result"]) {
+  for (const id of ["wire/run-detail-section", "wire/stream-envelope", "wire/ocr-command-result"]) {
     it(`reviews every OCR leaf and refuses missing origins or foreign egress (${id})`, () => {
       const origins = SURFACE_LEAF_ORIGINS.filter(entry => entry.surface === id && (entry.path.includes(".ocr.") || id === "wire/ocr-command-result"));
       assert.equal(origins.length, id === "wire/ocr-command-result" ? 10 : 49);
@@ -143,7 +143,6 @@ describe("redaction surface scan — the declaration audit", () => {
   it("pins each current provenance and display origin and refuses captured addresses outside local custody", () => {
     const reviewed: { surface: string; path: string; origin: string }[] = [];
     for (const [surface, prefix] of [
-      ["wire/run-logs-stream", "envelope.payload.rows[]"],
       ["wire/stream-envelope", "payload.rows[]"],
       ["wire/run-detail-section", "payload.rows[]"],
       ["wire/run-detail-section", "payload.observations[]"],
@@ -259,7 +258,6 @@ describe("redaction surface scan — the declaration audit", () => {
     const reviewed = [
       ["wire/dashboard-day", "attemptHistory[].endedAt.reason", "repository-authored"],
       ["wire/stream-envelope", "payload.attemptHistory[].endedAt.reason", "repository-authored"],
-      ["wire/run-logs-stream", "envelope.payload.rows[].displayFields[].value", "captured-hr-value"],
       ["wire/run-detail-section", "payload.notes[].operatorAction.value", "captured-hr-value"],
       ["wire/run-detail-section", "payload.rows[].displayFields[].label", "repository-authored"],
       ["wire/workflow-explorer", "workflows[].timeline[].operatorFields[].example", "repository-authored"],
