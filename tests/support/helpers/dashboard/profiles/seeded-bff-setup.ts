@@ -42,7 +42,7 @@ const retainedSeededFixtureOwners = new Set<object>();
 
 export function createSeededBffSetup({ seedRuntimeConfig, composeFixtureServices, assertServedBundle, dateNavigationReader, seedDateNavigation }: {
 seedRuntimeConfig: (database: AuthorityDatabase, clock: Clock) => void;
-composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub"> & { closeRunLogs: () => void };
+composeFixtureServices: (input: Parameters<typeof SeededServicesTypes.composeSeededServices>[0]) => Pick<ReturnType<typeof SeededServicesTypes.composeSeededServices>, "app" | "hub">;
 assertServedBundle: typeof BundleTypes.assertServedBundle;
 dateNavigationReader: typeof DateNavigationServerTypes.dateNavigationReader;
 seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
@@ -192,7 +192,7 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
     const selectionServices = await input.prepareSelection?.({database,clock,root});
     const services = composeFixtureServices({database,clock,stateRoot,root,projection,spans,descriptors,runIds,selectionServices});
     held.services = services;
-    const { app, hub, closeRunLogs } = services;
+    const { app, hub } = services;
 
     const server: Server = createServer((req, res) => {
       void (async (): Promise<void> => {
@@ -241,7 +241,6 @@ seedDateNavigation: typeof DateNavigationServerTypes.seedDateNavigation;
             server.close((error) => (error === undefined ? resolvePromise() : rejectPromise(error)));
           });
           hub.close();
-          closeRunLogs();
         } catch (error) {
           held.primary = error;
           throw retainAuthoritySourceClosure([error], { admission: { held, workers } });

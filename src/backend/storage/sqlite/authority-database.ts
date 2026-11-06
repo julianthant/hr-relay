@@ -113,13 +113,13 @@ import { RunEvidenceReceiptSchema,type RunEvidenceReceipt } from "../../../model
 import { FailureRecordSchema,type FailureRecord } from "../../../models/trust/failure.js";
 import { RunCheckpointRecordSchema,checkpointLookupKey,checkpointRecordKey,type RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
 import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
-import { ActorIdSchema,ArtifactIdSchema,BrowserSystemIdSchema,CommandAuditIdSchema,CommandIdSchema,DiagnosticBundleIdSchema,FailureFingerprintSchema,FingerprintSchema,GateIdSchema,IsoInstantSchema,ItemIdSchema,LOCAL_OPERATOR_ACTOR_ID,PositiveIntSchema,RunIdSchema,RunSessionIdSchema,TraceIdSchema,WorkerIdSchema,WorkflowIdSchema,WriteIntentIdSchema } from "../../../rules/identity/ids.js";
+import { ActorIdSchema,ArtifactIdSchema,BrowserSystemIdSchema,CommandAuditIdSchema,CommandIdSchema,DiagnosticBundleIdSchema,FailureIdSchema,FailureFingerprintSchema,FingerprintSchema,GateIdSchema,IsoInstantSchema,ItemIdSchema,LOCAL_OPERATOR_ACTOR_ID,PositiveIntSchema,RunIdSchema,RunSessionIdSchema,TraceIdSchema,WorkerIdSchema,WorkflowIdSchema,WriteIntentIdSchema } from "../../../rules/identity/ids.js";
 import { DuoCeremonyLeaseAcquireRequestSchema,DuoCeremonyLeaseRecordSchema,DuoCeremonyLeaseReleaseOutcomeSchema,DuoCeremonyLeaseTakeoverSchema,isDuoCeremonyLeaseLive,type DuoCeremonyLeaseAcquireRequest,type DuoCeremonyLeaseRecord,type DuoCeremonyLeaseReleaseOutcome } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { localDatePart,systemClock,type Clock } from "../../../rules/time/clock.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { IdempotencyKeySchema,WriteAttemptRecordSchema,WriteIntentRecordSchema,type WriteAttemptRecord,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import { isDuoCeremonyLeaseToken,mintDuoCeremonyLeaseToken,retireDuoCeremonyLeaseToken,type DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
-import { assertWorkflowRunResultAuthorization,descriptorRuntimeNodes,workflowProjections,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { assertWorkflowRunResultAuthorization,workflowDelegationAccounting,descriptorRuntimeNodes,workflowProjections,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { assertCredentialCopyResourcesClosed } from "../maintenance/profile-custody.js";
 import type { VerifiedBackup } from "./backup-service.js";
 import { admitDelegationRefresh, authenticateDelegationRefresh, settleDelegationRefresh } from "./delegation-refresh.js";
@@ -224,6 +224,7 @@ type RunLifecycleJournalRepository = Readonly<{
   insertAudit(input: unknown): ImmutableInsertResult<z.infer<typeof RunLifecycleCommandAuditRecordSchema>>;
   findAuditByCommand(commandId: string): z.infer<typeof AuthorityCommandAuditRecordSchema> | undefined;
   findContinuationIssue(runId: string, appliedVersion?: number): z.infer<typeof RunLifecycleCommandAuditRecordSchema> | undefined;
+  findRunResume(runId: string, throughVersion?: number): z.infer<typeof RunLifecycleCommandAuditRecordSchema> | undefined;
   findDelegationParentHold(runId: string, sourceCommandId: string, appliedVersion: number): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   findRunOrigin(runId: string): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
   findGatePark(runId: string, gateId: string, throughVersion: number): z.infer<typeof RunLifecycleCommandRecordSchema> | undefined;
@@ -403,7 +404,7 @@ type RunRepository = Readonly<{
   requestCancellation(input: Readonly<{ runId: string; expectedVersion: number; now: string; cancellationSource?: Readonly<{ commandId: string; rootRunId: string }> }>): RunUpdateOutcome;
   advanceRevision(input: Readonly<{ runId: string; expectedVersion: number; now: string }>): RunUpdateOutcome;
 
-  setPause(input: unknown): RunUpdateOutcome;
+  setPause(input: unknown, accountingAuthorization?: object): RunUpdateOutcome;
   bumpPriority(input: unknown): RunUpdateOutcome;
 
   injectCheckpointPatches(input: unknown): RunUpdateOutcome;
@@ -716,6 +717,7 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
     sql: `SELECT count(*) AS count FROM runs AS run
       LEFT JOIN run_results AS result ON result.run_id = run.id AND ${schemaVersion >= 20 ? CURRENT_RUN_SETTLEMENT_SQL.replaceAll("settlement.","result.") : "1"}
       LEFT JOIN run_failures AS failure ON failure.run_id = run.id
+        ${schemaVersion >= 21 ? "AND failure.id=json_extract(run.lifecycle_json,'$.completion.failureId')" : ""}
       WHERE COALESCE(json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') IN ('done','failed'), 0)
         IS NOT (json_type(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion') IS 'object')
         OR (json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.completion.kind') = 'done' AND (
@@ -750,8 +752,16 @@ function invariantQueries(schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION) { re
     sql: `
       SELECT count(*) AS count FROM run_failures AS failure
       JOIN runs AS run ON run.id = failure.run_id
-      WHERE json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.outcome') IS NOT 'failed'
-        OR json_extract(json_set(run.lifecycle_json,'$.envelope',json(run.envelope_json)), '$.lifecycle.failureId') IS NOT failure.id
+      WHERE ${schemaVersion >= 21 ? `NOT EXISTS (
+        SELECT 1 FROM run_results result WHERE result.run_id=run.id
+          AND json_extract(result.terminal_run_json,'$.lifecycle.outcome')='failed'
+          AND json_extract(result.terminal_run_json,'$.lifecycle.failureId')=failure.id
+          AND json_extract(result.terminal_run_json,'$.completion.failureId')=failure.id
+          AND json_extract(result.payload_json,'$.result.value.kind')='failed-evidence'
+          AND json_extract(result.payload_json,'$.result.value.authorization.failureId')=failure.id
+          AND result.settlement_version=json_extract(result.terminal_run_json,'$.completion.expectedVersion')+1
+      )` : `json_extract(run.lifecycle_json, '$.lifecycle.outcome') IS NOT 'failed'
+        OR json_extract(run.lifecycle_json, '$.lifecycle.failureId') IS NOT failure.id`}
     `,
   },
 {
@@ -1178,18 +1188,32 @@ function assertTerminalEvidenceOwner(database: DatabaseSync, record: RunResultRe
         || canonicalJsonStringify(current.delegationRefresh ?? null) !== canonicalJsonStringify(run.delegationRefresh ?? null)) throw new Error("run-settlement-completion-mismatch");
     } else {
       const rows = database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
-        AND json_extract(request_json,'$.operation')='terminalize'
-        AND json_extract(request_json,'$.request.terminal.result.runId')=?
+        AND json_extract(request_json,'$.operation') IN ('terminalize','recover-crash')
+        AND json_extract(outcome_json,'$.result.runId')=?
         AND json_extract(outcome_json,'$.result.appliedVersion')=?`).all(record.runId,run.version);
       if (rows.length !== 1 || rows[0] === undefined) throw new Error("run-settlement-native-owner-unavailable");
       const command = RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[0]));
-      const request = z.object({ terminal: SuccessTerminalizationRequestSchema }).parse(command.request);
       const rawAudit = database.prepare("SELECT * FROM command_audits WHERE command_id=?").get(command.commandId);
       const audit = RunLifecycleCommandAuditRecordSchema.parse(nativeOrdinaryRecordFromRow("command_audits",rawAudit));
-      if (run.completion.kind !== "done" || canonicalJsonStringify(request.terminal.result) !== canonicalJsonStringify(record)
-        || canonicalJsonStringify(completionFromAuthorization(request.terminal.authorization)) !== canonicalJsonStringify(run.completion)
-        || audit.result.kind !== "run" || audit.result.runId !== record.runId || audit.result.appliedVersion !== run.version
+      if (audit.result.kind !== "run" || audit.result.runId !== record.runId || audit.result.appliedVersion !== run.version
         || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)) throw new Error("run-settlement-native-owner-mismatch");
+      if (run.completion.kind === "done") {
+        const request = z.object({ terminal: SuccessTerminalizationRequestSchema }).parse(command.request);
+        if (command.operation !== "terminalize" || canonicalJsonStringify(request.terminal.result) !== canonicalJsonStringify(record)
+          || canonicalJsonStringify(completionFromAuthorization(request.terminal.authorization)) !== canonicalJsonStringify(run.completion))
+          throw new Error("run-settlement-native-owner-mismatch");
+      } else if (evidence?.kind === "failed-evidence" && command.operation === "terminalize") {
+        const request = z.object({ terminal: FailureTerminalizationRequestSchema }).parse(command.request);
+        if (canonicalJsonStringify(request.terminal.authorization) !== canonicalJsonStringify(evidence.authorization)
+          || deriveTerminalFailureDigest(request.terminal.failure) !== evidence.failureDigest)
+          throw new Error("run-settlement-native-owner-mismatch");
+      } else if (evidence?.kind === "failed-evidence" && command.operation === "recover-crash") {
+        const request = CanonicalCrashRecoveryRequestSchema.parse(command.request);
+        if (request.runId !== run.envelope.runId || request.expectedVersion !== evidence.authorization.expectedVersion
+          || request.now !== evidence.authorization.authorizedAt || canonicalJsonStringify(request.claim) !== canonicalJsonStringify(evidence.authorization.claim)
+          || evidence.authorization.failureId !== FailureIdSchema.parse(lifecycleCommandId("crash-failure",command.commandId)))
+          throw new Error("run-settlement-native-owner-mismatch");
+      } else throw new Error("run-settlement-native-owner-mismatch");
     }
   }
   if (evidence === undefined) {
@@ -1514,7 +1538,7 @@ export function inspectNativeAuthority(database: DatabaseSync, expectedSchemaVer
   const tables = expectedSchemaVersion < 10 ? z.array(z.union([currentTables.element,
     z.strictObject({ name: z.literal("explorer_overrides"), classification: z.literal("authority") }),
   ])) : currentTables;
-  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
+  return AuthorityCopyInspectionSchema.extend({ tables, schemaVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]), installationId: z.uuid().optional(), profileId: z.uuid().optional() }).parse({
     applicationId,
     schemaVersion,
     installationId: meta.installation_id,
@@ -2556,7 +2580,7 @@ export class AuthorityDatabase implements Disposable {
       if (record === undefined || !("startupLogout" in record) || record.startupLogout === undefined
         || canonicalJsonStringify(record.startupLogout.operation) !== canonicalJsonStringify(operation)) return undefined;
       const settlement = operation.settlement;
-      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19].includes(record.fromSchemaVersion)
+      if (record.phase !== "settled" || record.toSchemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION || ![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20].includes(record.fromSchemaVersion)
         || settlement === undefined || record.startupLogout.postimage !== authorityContentFingerprint(database, record.recordKey)) throw new Error("profile-startup-logout-postimage-changed");
       const backup = verifyBackup(admission, record.backup.manifestPath);
       if (backup.manifest.sha256 !== record.backup.sha256 || backup.manifest.authorityContentFingerprint !== record.upgradeId
@@ -4676,7 +4700,9 @@ export class AuthorityDatabase implements Disposable {
     }
     if (table === "runs") {
       const row = this.#database.prepare("SELECT * FROM runs WHERE id = ?").get(recordKey);
-      return row === undefined ? undefined : schema.parse(runRecordFromRow(row));
+      if (row === undefined) return undefined;
+      const record = runRecordFromRow(row);
+      return Object.is(schema, RunRecordSchema) ? structuredClone(record) as z.output<Schema> : schema.parse(record);
     }
     if (table === "run_results") {
       const row = readRunSettlementRow(this.#database,recordKey);
@@ -4697,7 +4723,8 @@ export class AuthorityDatabase implements Disposable {
       if (table === "run_receipts") assertRefreshedReceiptSettlement(this.#database,RunEvidenceReceiptSchema.parse(record),row);
       if (table === "write_intents") { authenticateStoredWriteResolution(this.#database,record); assertConfirmationPublication(this.#database,recordKey); }
       if (table === "command_audits") authenticateStoredResolutionAudit(this.#database,record);
-      return schema.parse(record);
+      return table === "run_checkpoints" && Object.is(schema, RunCheckpointRecordSchema)
+        ? structuredClone(record) as z.output<Schema> : schema.parse(record);
     }
     throw new Error(`native reader is undefined for ${table}`);
   }
@@ -4707,7 +4734,8 @@ export class AuthorityDatabase implements Disposable {
     if(table === "run_receipts") assertRefreshedReceiptSettlement(this.#database,RunEvidenceReceiptSchema.parse(record),row);
     if(table === "write_intents") { authenticateStoredWriteResolution(this.#database,record); assertConfirmationPublication(this.#database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId); }
     if(table === "command_audits")authenticateStoredResolutionAudit(this.#database,record);
-    return schema.parse(record);
+    return table === "run_checkpoints" && Object.is(schema, RunCheckpointRecordSchema)
+      ? structuredClone(record) as z.output<Schema> : schema.parse(record);
   }
 
   #insertSimpleRecord<Schema extends z.ZodType>(
@@ -5387,6 +5415,29 @@ export class AuthorityDatabase implements Disposable {
         },
       }),
       lifecycleJournal: Object.freeze({
+        findRunResume: (runId: string, throughVersion?: number) => {
+          const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
+            AND json_extract(request_json,'$.operation')='resume'
+            AND json_extract(outcome_json,'$.result.kind')='run'
+            AND json_extract(outcome_json,'$.result.runId')=?
+            AND json_extract(outcome_json,'$.result.appliedVersion')<=?
+            ORDER BY CAST(json_extract(outcome_json,'$.result.appliedVersion') AS INTEGER) DESC LIMIT 2`)
+            .all(RunIdSchema.parse(runId), throughVersion ?? Number.MAX_SAFE_INTEGER);
+          const row = rows[0];
+          if (row === undefined) return undefined;
+          const command = RunLifecycleCommandRecordSchema.parse(commandFromRow(row));
+          const audit = this.authority.lifecycleJournal.findAuditByCommand(command.commandId);
+          if (audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
+            || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command)
+            || z.object({ outcome_json: z.string() }).parse(row).outcome_json !== canonicalJsonStringify(audit)) throw new Error("run-resume-audit-unavailable");
+          if (rows[1] !== undefined) {
+            const previous = RunLifecycleCommandRecordSchema.parse(commandFromRow(rows[1]));
+            const other = this.authority.lifecycleJournal.findAuditByCommand(previous.commandId);
+            if (other !== undefined && "kind" in other && other.kind === "run-lifecycle" && other.result.kind === "run" && audit.result.kind === "run"
+              && other.result.appliedVersion === audit.result.appliedVersion) throw new Error("run-resume-audit-ambiguous");
+          }
+          return audit;
+        },
         findContinuationIssue: (runId: string, appliedVersion?: number) => {
           const version = z.number().int().positive().optional().parse(appliedVersion) ?? null;
           const row = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
@@ -5422,7 +5473,7 @@ export class AuthorityDatabase implements Disposable {
         },
         findRunOrigin: (runId: string) => {
           const rows = this.#database.prepare(`SELECT * FROM commands WHERE family='run-lifecycle'
-            AND json_extract(request_json,'$.operation') IN ('create','retry','restart','recover')
+            AND json_extract(request_json,'$.operation') IN ('create','retry','recover')
             AND json_extract(outcome_json,'$.result.kind')='run'
             AND json_extract(outcome_json,'$.result.runId')=? ORDER BY id`).all(RunIdSchema.parse(runId));
           if (rows.length > 1) throw new Error("delegation-root-origin-ambiguous");
@@ -6600,12 +6651,15 @@ export class AuthorityDatabase implements Disposable {
           (current) => RunRecordSchema.parse({ ...current, displayName: request.displayName }),
         );
       },
-      setPause: (input: unknown) => {
+      setPause: (input: unknown, accountingAuthorization?: object) => {
         const request = z.strictObject({ runId: RunIdSchema, expectedVersion: z.number().int().positive(),
           now: IsoInstantSchema, claim: RunClaimTokenSchema.optional(),
           pause: RunRecordSchema.shape.pause, continuation: RunRecordSchema.shape.envelope.shape.continuation, acknowledge: z.boolean().optional(),
         }).parse(input);
         return this.#mutateRun(request.runId, request.expectedVersion, request.now, request.claim, current => {
+          if (accountingAuthorization !== undefined && (workflowDelegationAccounting(accountingAuthorization, current) === undefined
+            || request.continuation !== undefined || request.pause !== undefined || current.pause?.state !== "paused"))
+            throw new Error("delegation-accounting-resume-envelope-change-refused");
           if (current.lifecycle.state === "terminal" || current.lifecycle.state === "parked-write") throw new Error("run-pause-invalid-state");
           if (request.acknowledge && (request.claim === undefined || current.pause?.state !== "requested")) throw new Error("run-pause-claim-required");
           if (request.pause?.state === "paused" && runClaim(current) !== undefined && !request.acknowledge) throw new Error("run-pause-acknowledgment-required");

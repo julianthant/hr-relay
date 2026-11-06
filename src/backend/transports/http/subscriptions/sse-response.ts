@@ -2,8 +2,6 @@ import { systemClock } from "../../../../rules/time/clock.js";
 // Use a pull source so socket demand controls delivery; pushing would bypass backpressure.
 import type { DashboardStreamEnvelope } from "../../../../models/dashboard/subscription.js";
 import type { DashboardStreamConnection } from "./dashboard-stream.js";
-import type { CompositeConnection } from "./run-logs-stream.js";
-import type { CompositeStreamEnvelope } from "../../../../models/dashboard/run-logs-subscription.js";
 
 /** One envelope as an SSE event: the cursor rides as the event id so `Last-Event-ID` resumes it. */
 export function sseSerialize(envelope: DashboardStreamEnvelope): string {
@@ -69,13 +67,4 @@ function streamBody<T>(connection: Readonly<{ initial: readonly T[]; next(): Pro
 
 export function dashboardEventStreamBody(connection: DashboardStreamConnection, lifecycle?: Parameters<typeof streamBody>[2]): ReadableStream<Uint8Array> {
   return streamBody(connection, sseSerialize, lifecycle);
-}
-
-export function compositeEventStreamBody(connection: CompositeConnection, lifecycle?: Parameters<typeof streamBody>[2]): ReadableStream<Uint8Array> {
-  return streamBody(connection, (envelope: CompositeStreamEnvelope, initial, finalInitial) => {
-    const resumeEligible = envelope.source === "control" && envelope.type === "reset-required" ? false
-      : !initial || (finalInitial && envelope.source === "control"
-        && envelope.type === "health" && envelope.state === "live");
-    return `${resumeEligible ? `id: ${envelope.transportCursor}\n` : ""}data: ${JSON.stringify(envelope)}\n\n`;
-  }, lifecycle);
 }

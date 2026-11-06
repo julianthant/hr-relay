@@ -7,9 +7,8 @@ import { PositiveIntSchema, ProjectionCursorSchema } from "../../../../rules/ide
 import { buildBootstrap } from "../../../runs/queries/bootstrap.js";
 import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
 import { SectionUnavailableError } from "../../../runs/commands/refusals.js";
-import { compositeEventStreamBody, dashboardEventStreamBody } from "../subscriptions/sse-response.js";
+import { dashboardEventStreamBody } from "../subscriptions/sse-response.js";
 const TOPICS_PATTERN = /^dashboard-day:(\d{4}-\d{2}-\d{2})$/;
-const RUN_LOG_TOPICS_PATTERN = /^(?:dashboard-day:(\d{4}-\d{2}-\d{2}),)?run-logs:([0-9a-f-]{36})$/u;
 const StreamResumeSchema = z.strictObject({
   lastEventId: ProjectionCursorSchema.optional(),
   lastProjectionGeneration: PositiveIntSchema.optional(),
@@ -73,23 +72,9 @@ export function registerShellRoutes(app: DashboardApp, deps: ShellRouteDeps): vo
   app.get("/events/v1", async (c) => {
     const connectionId = randomUUID();
     const lifecycle = (phase: "started" | "settled" | "failed" | "reset", durationMs: number) => deps.debugEvents?.emit({ category: "sse", phase, correlationId: connectionId, durationMs }, { kind: "transport", connectionId });
-    const topics = z.string().max(150).refine(value => TOPICS_PATTERN.test(value)
-      || RUN_LOG_TOPICS_PATTERN.test(value), "events-topics-invalid").parse(c.req.query("topics"));
+    const topics = z.string().max(150).refine(value => TOPICS_PATTERN.test(value), "events-topics-invalid").parse(c.req.query("topics"));
     const match = TOPICS_PATTERN.exec(topics);
-    if (match === null) {
-      const mixed = RUN_LOG_TOPICS_PATTERN.exec(topics);
-      if (mixed === null) throw new Error("events-topics-invalid");
-      const runId = z.uuid().parse(mixed[2]);
-      const rawCursor = c.req.header("Last-Event-ID") ?? c.req.query("cursor");
-      if (c.req.header("Dashboard-Projection-Generation") !== undefined
-        || c.req.query("projectionGeneration") !== undefined) throw new Error("run-logs-composite-projection-generation-invalid");
-      const connection = deps.runLogsHub.connect({ runId,
-        ...(mixed[1] === undefined ? {} : { day: z.iso.date().parse(mixed[1]) }),
-        ...(rawCursor === undefined ? {} : { lastEventId: rawCursor }) });
-      return new Response(compositeEventStreamBody(connection, lifecycle), { status: 200, headers: {
-        "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive",
-      } });
-    }
+    if (match === null) throw new Error("events-topics-invalid");
     const rawLastEventId = c.req.header("Last-Event-ID") ?? c.req.query("cursor");
     const rawLastProjectionGeneration = c.req.header("Dashboard-Projection-Generation")
       ?? c.req.query("projectionGeneration");

@@ -17,7 +17,7 @@ import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js"
 import { requireParkedWriteCheckTarget } from "../../runtime/writes/write-recovery.js";
 import { withCanonicalRunCommandScope } from "../../storage/sqlite/command-record-row.js";
 import { captureDelegationResume,delegationResumeCommandId,currentDelegationManifests,retainedDelegationManifests,selectDelegationGroupForChild } from "../../storage/sqlite/delegation-authority.js";
-import { RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
+import { readRunCheckpoint, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { admitWorkerLifecycle,admitWorkerReset } from "../../storage/sqlite/worker-control.js";
 import { admitWorkerPoolRoster,requireWorkerPoolRoster } from "../../storage/sqlite/worker-slots.js";
 import { executeFailureResolution,failureResolutionCapability } from "../lifecycle/failure-resolution.js";
@@ -61,8 +61,8 @@ import { deepFreeze } from "../../../rules/validation/immutability.js";
 import { WriteIntentRecordSchema,type WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
 import { BUILD_MANIFEST,resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
-import { descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
+import { authorizeWorkflowDelegationRefresh, workflowDelegationAccounting, descriptorRuntimeNodes,workflowPlanning,type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { assertDelegationRetryUnwritten } from "../../storage/sqlite/delegation-authority.js";
 import { readSettings } from "../../runtime/settings/settings-runtime.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { activeRunsForItem,fanOutQueuedRuns,requireApplied,runTarget,type TargetReference,type VersionChange } from "../lifecycle/run-fan-out.js";
@@ -96,8 +96,6 @@ const PHASE1_ACTIVE = {
     "pause",
     "resume",
     "retry",
-
-    "restart",
     "cancel",
     "bump",
     "rename",
@@ -123,15 +121,7 @@ const PHASE1_ACTIVE = {
 
 } as const;
 
-const PHASE1_DEFERRED = {
-  intake: [],
-  settings: [],
-  run: [],
-  notification: [],
-} as const;
-
 export const PHASE1_ACTIVE_COMMAND_ARMS = deepFreeze(PHASE1_ACTIVE);
-export const PHASE1_DEFERRED_COMMAND_ARMS = deepFreeze(PHASE1_DEFERRED);
 
 function armActions(partition: Readonly<Record<string, readonly string[]>>, family: string): readonly string[] {
   const actions = Object.hasOwn(partition, family) ? partition[family] : undefined;
@@ -142,19 +132,12 @@ function armActions(partition: Readonly<Record<string, readonly string[]>>, fami
 
 for (const { family, actions } of COMMAND_FAMILY_REGISTRY) {
   const active = armActions(PHASE1_ACTIVE, family);
-  const deferred = armActions(PHASE1_DEFERRED, family);
-  const combined = [...active, ...deferred];
-  if (combined.length !== actions.length
-    || new Set(combined).size !== combined.length
-    || actions.some((action) => !combined.includes(action))) {
+  if (active.length !== actions.length
+    || new Set(active).size !== active.length
+    || actions.some((action) => !active.includes(action))) {
     throw new Error(`command arm partition does not cover family ${family} exactly`);
   }
 }
-
-const DEFERRED_ARM_KEYS: ReadonlySet<string> = new Set(
-  Object.entries(PHASE1_DEFERRED as Readonly<Record<string, readonly string[]>>).flatMap(([family, actions]) =>
-    actions.map((action) => `${family}/${action}`)),
-);
 
 /* ── injected seams ──────────────────────────────────────────────────────── */
 
@@ -169,7 +152,7 @@ export interface WorkflowDescriptorResolver {
 
 
 type RunCommand = Extract<CommandRequest, { family: "run" }>;
-type RunBasicCommand = Extract<RunCommand, { type: "retry" | "restart" | "cancel" | "bump" | "pause" | "resume" | "recover-run" }>;
+type RunBasicCommand = Extract<RunCommand, { type: "retry" | "cancel" | "bump" | "pause" | "resume" | "recover-run" }>;
 
 type RunRecoveryCommand = RunBasicCommand;
 type IntakeCommand = Extract<CommandRequest, { family: "intake" }>;
@@ -285,6 +268,7 @@ export interface RunConfigIdentity {
 }
 
 export interface CommandKernelDependencies {
+  readonly ensureReceipt?: (runId: string) => unknown;
   readonly workbookRows?: Readonly<{
     resolve(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-row" }>): unknown;
     resolveReference?(repositories: AuthorityRepositories, command: Extract<CommandRequest, { type: "resolve-workbook-reference-row" }>, capturedAt: string): SchemaBoundCanonicalValue | Readonly<{ state: "pending" }>;
@@ -668,14 +652,6 @@ function executeRetry(
       `run ${request.target.runId} is ${current.lifecycle.state}; only a terminal run can be retried`,
     );
   }
-  if (current.envelope.parent !== undefined && request.type !== "retry") {
-    reject(
-      request,
-      "policy-refused",
-      `run ${request.target.runId} is a delegated child of ${current.envelope.parent.runId}; `
-      + "delegated children use reviewed Retry; Restart is unavailable",
-    );
-  }
   const descriptor = resolveDescriptorOrReject(dependencies, request, current.envelope.workflow);
   requireDescriptorMatchesEnvelope(request, descriptor, current);
   if (descriptor.enqueue === "reject-active") {
@@ -697,8 +673,19 @@ function executeRetry(
   let record: RunRecord;
   let children: readonly RunRecord[] = [];
   try {
-    record = lifecycleRun(request, dependencies.lifecycle[request.type === "restart" ? "restart" : "retry"]({
-      commandId: lifecycleCommandId(`operator-${request.type}`, request.commandId),
+    if (current.envelope.parent !== undefined) {
+      const parent = repositories.runs.get(current.envelope.parent.runId);
+      const parentDescriptor = parent === undefined ? undefined : dependencies.descriptors.resolve(parent.envelope.workflow);
+      const authorization = parent === undefined || parentDescriptor === undefined ? undefined : authorizeWorkflowDelegationRefresh(parentDescriptor, parent);
+      if (parent !== undefined && parent.lifecycle.state === "terminal" && authorization !== undefined
+        && workflowDelegationAccounting(authorization, parent) !== undefined) {
+        assertDelegationRetryUnwritten(repositories, current, descriptor);
+        if (dependencies.ensureReceipt === undefined) throw new RunContinuationRefusedError("delegation-accounting-receipt-service-unavailable");
+        dependencies.ensureReceipt(parent.envelope.runId);
+      }
+    }
+    record = lifecycleRun(request, dependencies.lifecycle.retry({
+      commandId: lifecycleCommandId("operator-retry", request.commandId),
       runId: current.envelope.runId, expectedVersion: request.target.expectedVersion,
       runtimeConfig: selectRunRuntime(repositories), appVersion: dependencies.appVersion,
       sourceCommandId: request.commandId,
@@ -2517,7 +2504,6 @@ function dispatchActive(
           repositories.runtimeConfig.requireSettingsCurrent();
           return executeRecover(dependencies, repositories, request);
         case "retry":
-        case "restart":
           repositories.runtimeConfig.requireSettingsCurrent();
           return executeRetry(dependencies, repositories, request, now);
         case "cancel": return executeCancel(dependencies, repositories, request, now);
@@ -2738,7 +2724,6 @@ export function executeSettingsCommand(
 export function createCommandKernel(dependencies: CommandKernelDependencies): CommandKernel {
   const availability = () => commandAssistantAvailability((family, action) => {
     if (family === "assistant-model-preference" || family === "application" || family === "run" && action === "recover-run") return false;
-    if (DEFERRED_ARM_KEYS.has(`${family}/${action}`)) return false;
     if (family === "settings") return dependencies.settings !== undefined;
     if (family === "failure-resolution") return dependencies.failureResolution?.capability().state === "available";
     if (family === "start" || family === "intake") return dependencies.workflowSources !== undefined
@@ -2776,16 +2761,6 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
       });
       if (parentCommandId !== undefined && request.family !== "run") throw new Error("command-group children must be run commands");
       if (request.family === "settings") return executeSettingsCommand(dependencies, request);
-      if (DEFERRED_ARM_KEYS.has(`${request.family}/${request.type}`)) {
-        // Computed purely: no journal row, no audit row, no generation advance.
-        return CommandResultSchema.parse({
-          state: "rejected",
-          commandId: request.commandId,
-          code: "capability-unavailable",
-          message: `${request.family}/${request.type} is schema-recognized but its owning later milestone `
-            + "has not activated it; no authority state was changed",
-        });
-      }
       let rollback: (() => void) | undefined;
       let commit: (() => void) | undefined;
       try {

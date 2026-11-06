@@ -30,6 +30,6 @@ HR share a system and declaration, not routes, frames, or anchors; scope each gu
 
 Before changing either surface, read `session.ts` and the relevant `driver/` source.
 Before termination/sweep changes, read the assigned workflow brief,
-`docs/rebuild/reference/write-safety.md`, and the exact task/driver contracts. Use the generated
-`docs/rebuild/reference/stores.md` for task discovery; do not copy its inventory here.
+`docs/reference/write-safety.md`, and the exact task/driver contracts. Use the generated
+`docs/reference/stores.md` for task discovery; do not copy its inventory here.
 Root rules apply.

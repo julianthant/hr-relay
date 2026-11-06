@@ -2,15 +2,15 @@ import { assertRuntimeLifetimeHeld, runtimeLifetimeLock } from "../../../../supp
 import { request as httpRequest } from "node:http";
 import { randomBytes, createHash, generateKeyPairSync, randomUUID } from "node:crypto";
 import { ProfileSessionRefusedError } from "../../../../../src/backend/profiles/profile-errors.js";
+import { ProfileOnboardingDuoProviderError } from "../../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import { DashboardStreamHub } from "../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
-import { RunLogsStreamHub } from "../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import assert from "node:assert/strict";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it, vi } from "vitest";
 import * as httpServer from "../../../../../src/backend/transports/http/http-server.js";
-import { AuthoritySourceClosureUnprovedError } from "../../../../../src/backend/storage/source-closure.js";
+import { AuthoritySourceClosureUnprovedError, createBrowserSourceRecovery } from "../../../../../src/backend/storage/source-closure.js";
 import * as storageCompose from "../../../../../src/backend/app/composition/storage-compose.js";
 import * as dashboardRunners from "../../../../../src/backend/app/preflight/dashboard-runners.js";
 import * as debugEvents from "../../../../../src/backend/logs/debug-events.js";
@@ -23,7 +23,7 @@ import { acquireEntrypointAdmission } from "../../../../../src/backend/storage/a
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
 import { PublicProfileStateSchema } from "../../../../../src/models/profiles/public-profile.js";
 import { FrontendBootstrapWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
-import { ProfileRegistryDocumentSchema, ProfileVerifierDocumentSchema } from "../../../../../src/models/profiles/profile.js";
+import { ProfileRegistryDocumentSchema, ProfileVerifierDocumentSchema, SignUpOperationSchema } from "../../../../../src/models/profiles/profile.js";
 import type { DraftDuoCapability, ProfileOnboardingDuoProvider } from "../../../../../src/backend/profiles/onboarding-duo.js";
 import { healthyRuntimePreflightRunners } from "../../../../support/fixtures/preflight-seams.js";
 import { syntheticOnboardingDuo } from "../../../../support/helpers/admission-fixture.js";
@@ -51,7 +51,7 @@ async function readyPublicSignUp(base: string, methods: "confirmed" | "detected"
     assert.equal(result.methods[method].state, "complete");
     assert.equal(result.step, method === "touch" ? "ready" : "duo");
   }
-  return { post, cookie, finish: () => post("/api/v1/profile/onboarding/complete", { operationId: draft.operationId }, cookie) };
+  return { post, cookie, draft, finish: () => post("/api/v1/profile/onboarding/complete", { operationId: draft.operationId }, cookie) };
 }
 
 async function finishPublicSignUp(base: string): Promise<Response> {
@@ -66,6 +66,84 @@ async function fixture(lifetime?: Parameters<typeof acquireEntrypointAdmission>[
   mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
   return { root, lifetime: controller, machine };
 }
+
+for (const scenario of [{ action: "complete", withCause: true, unknownFirst: true }, { action: "cancel", withCause: true, unknownFirst: true },
+  ...(["cancel", "complete"] as const).flatMap(action => [false, true].map(withCause => ({ action, withCause, unknownFirst: false })))])
+  it(`recovers exact public browser custody before ${scenario.action} (cause=${scenario.withCause}, Unknown=${scenario.unknownFirst})`, async () => {
+    const f = await fixture(), primary = new AuthoritySourceClosureUnprovedError([new Error("synthetic native browser closure unproved")]);
+    const sourceRecovery = createBrowserSourceRecovery(); sourceRecovery.retain(primary);
+    const synthetic = syntheticOnboardingDuo();
+    let recovered = false, closes = 0, generation = 4, firstAttempt = scenario.unknownFirst, reopens = 0, recoveryFailed = false;
+    const probeFailure = new AuthoritySourceClosureUnprovedError([new Error("synthetic owned native probe remained busy")]);
+    const runtime = await composeDashboardApplication({ admission: f.machine, lifetimeLock: f.lifetime, isolation: rebuildRuntimeIsolation,
+      backendPortOverride: 0, frontendPortOverride: 0, env: {}, onboardingDuo: { ...synthetic,
+        browserState() { return recovered ? { state: "open", generation } : recoveryFailed ? { state: "failed", generation, code: "DUO_SETUP_FILES_BUSY" } : { state: "closed", generation }; },
+        async start(...args) { if (firstAttempt) { firstAttempt = false; await args[2](new ProfileOnboardingDuoProviderError("unknown", "worker")); } else await synthetic.start(...args); },
+        async closeBrowser() { closes++; return recovered ? { state: "closed" } : { state: "uncertain", ...(scenario.withCause ? { cause: primary } : {}) }; },
+        async recoverBrowser(owner, expected) {
+          owner.assertCurrent(); assert.equal(expected, generation); reopens++;
+          if (scenario.unknownFirst && reopens === 1) { recoveryFailed = true; sourceRecovery.retain(probeFailure); throw probeFailure; }
+          await sourceRecovery.prove(async () => { recovered = true; }); generation++;
+        },
+      } });
+    const base = `http://127.0.0.1:${runtime.port}`;
+    const post = (path: string, body: unknown, cookie?: string) => fetch(`${base}/api/v1/profile/${path}`, { method: "POST", headers: {
+      origin: base, "content-type": "application/json", ...(cookie ? { cookie } : {}) }, body: JSON.stringify(body) });
+    let failure: unknown, stage = "signup";
+    try {
+      let cookie: string | undefined, draft;
+      if (scenario.unknownFirst) {
+        const signup = await post("sign-up", { firstName: "Held", lastName: "Fixture", email: "held-fixture@ucsd.edu", password: "disposable-held-fixture" });
+        draft = PublicProfileStateSchema.parse(await signup.json()); cookie = signup.headers.get("set-cookie")?.split(";", 1)[0];
+      } else { const ready = await readyPublicSignUp(base); draft = ready.draft; cookie = ready.cookie; }
+      assert.ok(cookie); assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("draft required");
+      const call = (action: string, extra = {}) => { stage = action; return post(`onboarding/${action}`, { operationId: draft.operationId, ...extra }, cookie); };
+      if (scenario.unknownFirst) {
+        const start = await call("duo/start", { method: "key" }); assert.equal(start.status, 200);
+        assert.equal(PublicProfileStateSchema.parse(await start.json()).state, "onboarding");
+      } else assert.equal((await call("duo/browser")).status, 200);
+      const operationPath = join(f.machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
+      const credentialPath = join(f.machine.stateRoot, "machine", "duo-credentials", `${draft.profileId}.json`);
+      stage = "retain credential bytes";
+      const credentials = readFileSync(credentialPath);
+      const failed = await call(scenario.unknownFirst ? "cancel" : scenario.action);
+      assert.equal(failed.status, 409); assert.deepEqual(await failed.json(), { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
+      const held = readFileSync(operationPath);
+      for (const action of ["cancel", "complete", "duo/browser", "duo/portal", "duo/start"]) {
+        const refused = await call(action, action === "duo/start" ? { method: "key" } : {});
+        assert.equal(refused.status, 409, action); assert.deepEqual(await refused.json(), { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
+      }
+      assert.equal(closes, 1); assert.deepEqual(readFileSync(operationPath), held); assert.deepEqual(readFileSync(credentialPath), credentials);
+      assert.deepEqual(f.machine.readProfileRegistry().profiles, []);
+      const current = PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json());
+      assert.equal(current.state, "onboarding");
+      const foreign = await post("onboarding/duo/reopen", { operationId: draft.operationId, generation }, "relay-profile-onboarding=foreign");
+      assert.equal(foreign.status, 409); assert.equal(recovered, false);
+      if (scenario.unknownFirst) {
+        const blocked = await call("duo/reopen", { generation }); assert.equal(blocked.status, 409);
+        assert.deepEqual(await blocked.json(), { state: "refused", code: "DUO_SETUP_FILES_BUSY" });
+        assert.equal(recovered, false); assert.deepEqual(readFileSync(operationPath), held); assert.deepEqual(readFileSync(credentialPath), credentials);
+      }
+      const reopen = await call("duo/reopen", { generation }); assert.equal(reopen.status, 200);
+      if (scenario.unknownFirst) {
+        const history = SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8"))).onboarding?.attempts[0]; assert.ok(history);
+        assert.equal(history.state, "unknown"); assert.ok(history.failure); assert.ok(history.providerClosedAt);
+        if (scenario.action === "complete") for (const method of ["key", "touch"]) {
+          const pending = PublicProfileStateSchema.parse(await (await call("duo/start", { method })).json());
+          assert.equal(pending.state, "onboarding"); if (pending.state !== "onboarding") throw new Error("attempt required");
+          assert.equal((await call("duo/confirm", { method, attemptId: pending.methods[method as "key" | "touch"].attemptId, operatorConfirmed: true })).status, 200);
+        }
+      }
+      const done = await call(scenario.action); assert.equal(done.status, 200);
+      const result = PublicProfileStateSchema.parse(await done.json()); assert.equal(result.state, scenario.action === "cancel" ? "signed-out" : "active");
+    } catch (error) { failure = new Error(`public recovery failed at ${stage}`, { cause: error }); }
+    finally {
+      try { await runtime.stop(); } catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "public recovery and cleanup failed"); }
+      try { f.machine.release(); } catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "public recovery admission cleanup failed"); }
+      rmSync(f.root, { recursive: true, force: true });
+    }
+    if (failure !== undefined) throw failure instanceof Error ? failure : new Error("public-recovery-fixture-failed", { cause: failure });
+  });
 
 for (const closeFails of [false, true]) it(`preserves startup recovery failure and ${closeFails ? "unproved" : "proved"} profile closure under the held controller`, async () => {
   const controllerLock=await runtimeLifetimeLock();
@@ -543,7 +621,7 @@ for (const fault of ["prior-custody", "transport-cancellation"] as const) it(`dr
   let context: ReturnType<typeof profile.selectedContext> | undefined;
   let token: string | undefined, preparations = 0, finalCloses = 0;
   const timers = vi.spyOn(globalThis, "setInterval"), clears = vi.spyOn(globalThis, "clearInterval");
-  const dashboardHubClose = vi.spyOn(DashboardStreamHub.prototype, "close"), logsHubClose = vi.spyOn(RunLogsStreamHub.prototype, "close");
+  const dashboardHubClose = vi.spyOn(DashboardStreamHub.prototype, "close");
   vi.spyOn(storageCompose, "composeProfileRuntime").mockImplementation(input => {
     profile = actualProfile(input);
     return { ...profile,
@@ -591,7 +669,7 @@ for (const fault of ["prior-custody", "transport-cancellation"] as const) it(`dr
       || value instanceof Error && value.cause !== undefined && retainsPrimary(value.cause);
     assert.equal(retainsPrimary(error), true);
     assert.ok(preparations > 0, "actual selected activity cancellation and preparation completed");
-    assert.ok(dashboardHubClose.mock.calls.length > 0 && logsHubClose.mock.calls.length > 0);
+    assert.ok(dashboardHubClose.mock.calls.length > 0);
     assert.ok(ownedTimers.every(timer => clears.mock.calls.some(call => call[0] === timer)));
     assert.equal(finalCloses, 0, "unproved transport or prior custody cannot close the profile database");
     context.database.getMeta();

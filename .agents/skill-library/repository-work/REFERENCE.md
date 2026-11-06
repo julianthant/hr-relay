@@ -3,28 +3,25 @@
 Detailed guidance moved from the root instruction pair on 2026-09-04. Read only the
 sections relevant to the task, as routed by the root `AGENTS.md`. This is an operating
 reference, not a second plan or contract: the roadmap, admitted phase doc, and owning
-`docs/rebuild/reference/` contract win on disagreement. The as-built descriptions below
+`docs/reference/` contract win on disagreement. The as-built descriptions below
 are the pre-1.6 baseline unless they explicitly name a landed 1.6 seam; verify current
 status against the owning phase before implementation.
 
-## Current code paths — 2026-10-01
+## Current code paths
 
-The current source and dependency map is `docs/rebuild/reference/codebase-structure.md`. Use it
-when an older section names a moved module; dated path narratives preserve their original revision
-evidence. Active checked-in migration/provenance inputs live under
-`docs/rebuild/migrations/legacy/`; canonical field inventory and pending implementation bindings
-now live under `src/models/fields/` and `src/backend/app/registries/`.
+The current source and dependency map is `docs/reference/codebase-structure.md`. Canonical field
+inventory and pending implementation bindings live under `src/models/fields/` and
+`src/backend/app/registries/`.
 
-`tests/parity/` is the active desktop visual contract; run `npm run test:parity` for visual changes.
-There is no current `tests/scenario/` rehearsal corpus. An absent `dry-run.scenario.ts` manifest
-reports unavailable before execution. Workflow scenario IDs are declarations, not test evidence.
-See [guards and tests](../../../docs/rebuild/reference/guards-and-tests.md) for the current suite map.
+`tests/parity/` is the desktop visual contract; run `npm run test:parity` for visual changes.
+Workflow scenario IDs are declarations, not test evidence.
+See [guards and tests](../../../docs/reference/guards-and-tests.md) for the current suite map.
 
 ## Before you start
 
 Read the assigned brief and the relevant owning reference contract before implementation.
 
-- `docs/rebuild/reference/` — the contracts, each doc owning its own; in prose **`ref <slug>`**:
+- `docs/reference/` — the contracts, each doc owning its own; in prose **`ref <slug>`**:
   `task-contract` (tasks, stores, drivers) ·
   `workflow-model` (the builder, descriptors, the run state machine) · `dashboard-surfaces` (spans,
   the ONE projection, every surface) · `execution-and-sessions` (workers, queues, browser sessions) ·
@@ -35,7 +32,7 @@ Read the assigned brief and the relevant owning reference contract before implem
   `stores` (the DERIVED store
   catalog — read it before authoring a task, and remember the code wins over it).
 - Read the owning reference and nearest module `AGENTS.md` before kernel, driver, dashboard, or write-safety changes.
-- `docs/rebuild/guard-inventory.json` — the reviewed guard manifest. `tests/architecture/`
+- `docs/guard-inventory.json` — the reviewed guard manifest. `tests/architecture/`
   must match it exactly, both directions.
 
 **A decision is not ratified until it lands in its owning doc, in the same commit that records it.**
@@ -55,8 +52,7 @@ npm run test:coverage      # 60/80 lines/statements/functions floors + the suite
 npm run test:watch
 
 # Workflow execution uses the signed-in dashboard Run surface.
-npm run cli               # the runtime CLI (help | phase | dashboard | worker | explain | storage | ocr)
-npm run cli -- storage backup  # explicit SQLite backup for a person, raw-byte archive for stopped flat native6
+npm run cli               # the runtime CLI (help | phase | dashboard | worker | explain | storage | ocr | test-data)
 npm run dashboard         # the dev dashboard in ONE terminal: BFF (3938) + vite (5174); Ctrl+C stops both
 npm run cli -- dashboard  # the BFF alone; `dashboard:prod` passes --prod and serves dist/dashboard from it (run web:build first)
 npm run web               # the vite dev server alone, proxying /api to a BFF you started yourself
@@ -66,7 +62,7 @@ npm run build:manifest     # regenerate tracked registries and prepare the ignor
 npm run build:manifest:prepare # prepare only the ignored manifest
 npm run build:registries:check # read-only tracked registry freshness
 npm run build:manifest:check # read-only registry freshness, then manifest byte freshness
-npm run stores:catalog     # regenerate the generated §2 task catalog in docs/rebuild/reference/stores.md
+npm run stores:catalog     # regenerate the generated §2 task catalog in docs/reference/stores.md
 npm run stores:catalog:check # fail if the committed catalog is stale
 ```
 
@@ -74,7 +70,7 @@ Source tools prepare the ignored static manifest before loading their graphs; au
 never regenerates tracked registries. Independent checks refuse missing or stale inputs without
 repair. After editing fingerprint inputs or the installed toolchain, restart affected Vitest watch,
 Vite and dev dashboard sessions before collecting current results. See
-[manifest preparation](../../../docs/rebuild/reference/guards-and-tests.md#build-manifest-preparation)
+[manifest preparation](../../../docs/reference/guards-and-tests.md#build-manifest-preparation)
 for all boundaries, exact-byte checks and the future packaging contract.
 
 Vitest schedules at most four isolated file forks (or the available CPU count when lower).
@@ -84,19 +80,17 @@ Keep per-file isolation, in-test concurrency, test membership, coverage floors a
 limits intact. Run full coverage without a concurrent compiler/linter gate; reduce contention
 before treating a full-suite timeout as permission to weaken a check.
 
-Phase 3.2 onward uses [verification checklist](../../../docs/rebuild/reference/guards-and-tests.md):
+Phase 3.2 onward uses [verification checklist](../../../docs/reference/guards-and-tests.md):
 focused tests/lint/affected checks for all within-phase work, full gates and repairs at phase exit.
 This overrides the older default/group schedule below; Phase 3.1 retains its own exception.
 
-D191 in `docs/rebuild/reference/guards-and-tests.md`  owns documentation-only checks,
+D191 in `docs/reference/guards-and-tests.md`  owns documentation-only checks,
 unchanged-input evidence reuse and concurrent gate scheduling. Its 2026-09-09 amendment assigns
 focused tests/scoped lint/quick checks to Phase 3 and future parallel workers, and full gates plus
 fixes to the named finalizer. Other in-flight assignments keep their explicit cadence until revised.
 
-The gate family is deliberately plain (`typecheck`/`lint`/`test:coverage`, D191 — `test:coverage` is
-a strict superset of the earlier `test`+`test:architecture` pair and measured faster); the old
-`*:rebuild` names retired with D93 and the `rebuild:` runtime prefix with D247 (2026-08-20) — this is
-its own repository, so its commands are plain `cli` / `dashboard` / `web`. See "Operational
+The gate family is `typecheck` / `lint` / `test:coverage` (D191); `test:coverage` is a strict superset
+of `test` + `test:architecture`. Commands are plain `cli` / `dashboard` / `web`. See "Operational
 isolation" below for what still MUST differ from the legacy checkout.
 
 ## Cross-repo rules (D93/D94)
@@ -139,16 +133,15 @@ control under `.tracker/control`.
 
 SQLite owns ordinary settings and immutable snapshots; keep them with their native database
 authority. A missing or incompatible existing database refuses startup; never discard one half to
-hide a mismatch. The independent local credential store owns protected values. Explicit
-`npm run cli -- storage backup` writes a verified SQLite backup for the selected person, or an
-immutable raw-byte archive for a stopped pre-profile native6 store. Flat archive admission never
-claims, registers or adopts historical rows. Startup's flat start-clean reader verifies that archive
-before removing data. Ordinary shutdown does not write a backup. The clock/config contract owns
-exact source and recovery restrictions.
+hide a mismatch. The independent local credential store owns protected values. A verified
+SQLite backup is written at clean shutdown and before an upgrade; there is no backup command. Flat
+archive admission never claims, registers or adopts historical rows, and startup's flat start-clean
+reader verifies that archive before removing data. The clock/config contract owns exact source and
+recovery restrictions.
 Run deletion requires terminal records and their `deleted_runs` tombstones. Read [clock,
-configuration, and secrets](../../../docs/rebuild/reference/clock-config-secrets.md), [workflow
-model](../../../docs/rebuild/reference/workflow-model.md), and [guards and
-tests](../../../docs/rebuild/reference/guards-and-tests.md) for the owning contracts.
+configuration, and secrets](../../../docs/reference/clock-config-secrets.md), [workflow
+model](../../../docs/reference/workflow-model.md), and [guards and
+tests](../../../docs/reference/guards-and-tests.md) for the owning contracts.
 
 ## Live verification — standing pre-authorization (always available, never ask)
 
@@ -203,8 +196,8 @@ The typed subject registry checks availability before private input reads or bro
 Unknown, unavailable, consumed, or pending subjects block execution; an available subject with bad
 input fails. Never use application settings, credentials, or environment files as test-input
 fallbacks. Do not expose a canary, substitute another target, or infer current availability. Read
-[clock, configuration, and secrets](../../../docs/rebuild/reference/clock-config-secrets.md) and
-[guards and tests](../../../docs/rebuild/reference/guards-and-tests.md) for the owning rules.
+[clock, configuration, and secrets](../../../docs/reference/clock-config-secrets.md) and
+[guards and tests](../../../docs/reference/guards-and-tests.md) for the owning rules.
 
 ## Coding conventions
 
@@ -214,12 +207,8 @@ fallbacks. Do not expose a canary, substitute another target, or infer current a
   they are not operator-startable or picker entries. The composition owns step identities and each
   harness imports them. An operator workflow folder may also contain its backend-loaded
   `task-registry.ts` and `tasks/`, but no arbitrary descriptor/module/node files beside the entry.
-  A step folder exists only when it carries a harness (`job-summary` has none). There is no
-  `src/workflows/proving/`.
-- Workflow scenario suites and their T1 proof convention were retired on 2026-10-02; there is no
-  current scenario corpus. `tests/parity/` remains the active desktop visual contract. Old
-  structural-scenario files are not current rehearsal evidence. Future scenario tests must be designed
-  with the operator; a declared workflow scenario ID alone proves no execution.
+  A step folder exists only when it carries a harness (`job-summary` has none).
+- `tests/parity/` is the desktop visual contract. A declared workflow scenario ID alone proves no execution.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
@@ -241,7 +230,7 @@ fallbacks. Do not expose a canary, substitute another target, or infer current a
 - Structured errors, never `console.*` in `src/`.
 - Workflow definitions remain browser-safe: value imports are restricted to zod, `src/models/**`,
   `src/rules/**` and audited `src/workflow-kit/**` builders. The current dependency map is
-  `docs/rebuild/reference/codebase-structure.md`. D311/D317 supersede the old D106 per-workflow
+  `docs/reference/codebase-structure.md`. D311/D317 supersede the old D106 per-workflow
   `module.ts` attachment instruction: author one `workflow.ts`; `compileWorkflow` derives its module requirements.
   Branch cases and parallel branches name nodes downstream of their controller (D104).
 

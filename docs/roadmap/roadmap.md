@@ -12,7 +12,7 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 - [done] Person Lookup and Separations rerun readiness — use current inputs and readiness checks for reruns.
 - [done] Settings Test OCR — run the OCR test from Preflight.
 - [done] PR flow — run staging pull request CI on Ubuntu with the macOS-only files, reserve native platform proofs and parity for operator-started full releases, and auto-merge into staging.
-- [done] Review loop — the reviewer clears each local commit before push and loops with the coder; a fresh reviewer reads the whole diff before merge. A workflow PR also passes a live dry run with the operator before it merges.
+- [done] Review loop — one coder and one reviewer per lane take turns; the reviewer starts at the first local commit, uses the review skill and clears each commit before push; a fresh reviewer replaces it for the final whole-diff read. A workflow PR also passes a live dry run with the operator before it merges.
 - [next] Functional spec — keep product behaviour in the charter and mechanisms in reference docs.
 
 ## Built and wired
@@ -34,18 +34,38 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 
 Complete these in order. A workflow is ready after its live dry run and operator sign-off.
 
-- [now] Finish in-flight work — merge Emergency Contact member Retry (#153), the Duo setup window (#142), restored worker custody (Secure Enclave key across a reboot; blocks live runs) and the macOS-native test baseline.
-- [now] Assistant follow-ups — start one workflow for several people with one confirmation, then send attached files to the model and keep them in chat history.
+- [done] Emergency Contact member Retry — retry one failed member with an atomic failure hold and superseding accounting.
+- [now] Finish in-flight work — merge the Duo setup window (#142) and the macOS-native test baseline.
+- [now] Worker custody by construction — the parent owns workers in memory, stops them over IPC, learns of exits from the OS and fences claims by generation; delete leases, stored heartbeats, stop journals and the polled browser control channel. Live sign-offs start after this merges.
+- [done] Docs and dev tooling — dissolve `docs/rebuild/`, add the AGENTS.md glossary, refresh the repo skills, link `.claude/skills` and add the `verify` skill for live dry runs.
+- [now] Assistant agent — replace the phrase matcher with a tool-calling agent: free text to ChatGPT, tool plugins under `src/backend/assistant/plugins/`, Employee IDs as references and other typed identifiers masked, confirmed proposals for workflow starts (one or several people, or an attached PDF into OCR), rerun, pause, resume, cancel, notifications and Spreadsheets library setup, chat history with attachments, then a model check and a live dry run.
 - [now] Sign-up and accounts — require Touch ID and a Duo security key added at duo.ucsd.edu; use a Chromium virtual platform authenticator where the machine has no Touch ID. Keep credentials on logout, put Delete account in Settings > General, resume a signed-in profile after a restart, and let Log out finish while workflows run.
 - [next] Person Lookup sign-off — pass a read-only exact-ID live run, fix what it finds in one PR, sign off.
 - [next] Separations sign-off — pass a live dry run, fix what it finds in one PR, sign off.
 - [next] OCR and Emergency Contact sign-off — serve per-person rows, prove the first live Save with the operator present, sign off.
 - [next] Catalog cleanup — remove Work-Study, Kronos Pay Rule, Oath Signature, Oath Upload, Old Kronos Reports and SharePoint Download from the catalog, preflight and docs, and regenerate parity screenshots once with the parity refresh.
-- [next] OnBase activation — switch to served data, pass a live dry run, update its screenshots, sign off.
+- [next] OnBase activation — switch to served data, pass a live dry run, update its screenshots, sign off, then refresh the `verify` skill.
 - [next] Onboarding activation — switch to served data, pass a live dry run, update its screenshots, sign off.
 - [next] I-9 Lookup and Check activation — switch to served data, pass a live dry run, update their screenshots, sign off.
 - [next] CRM Document Download activation — switch to served data, pass a live dry run, update its screenshots, sign off.
 - [next] Operator preview — complete the full test pass and verify automatic backup and self-repair.
+
+## Simplify the core
+
+Each item deletes its own tests and guards. Worker custody (above) comes first.
+
+- [now] Contract fingerprints — fingerprint each workflow from its own folder, schemas and kit version, bind writes to one app build id and delete the generated manifest; merge before the assistant agent.
+- [now] Dead code — remove the restart command, duplicate retry and recover blocks, empty arms, bulk mode, unused stream topics, the parity verifier and browser-roots v1, move step-proof workflows and the scenario registry into tests, and serve HTTP through @hono/node-server.
+- [next] Lean run journal — journal only operator commands, write heartbeats as a plain update and derive receipts once.
+- [next] Login mutex — hold Duo and OnBase logins with an in-memory parent mutex.
+- [next] One schema baseline — squash migrations into one baseline, delete old-format conversions and relocation, and store artifacts as raw bytes.
+- [next] Credentials file — keep one encrypted credentials file per person, written atomically, with the keychain key.
+- [next] Write-time checks only — drop read-time re-proving and split the authority database, command kernel and claimed-run executor by move.
+- [next] Install control — replace installation, admission, registry and continuity proofs with one install-control module and a person-store handle.
+- [next] Workflow facts once — declare workflow facts once in a hand-kept registry that replaces the generators; guards stop listing workflows by name.
+- [next] Dashboard mocks — delete each workflow's mock at its activation, split LoadedApp before the next activation and drop parity-only mock arms after the assistant agent.
+- [next] Tests and guards — keep one line per guard, move behaviour tests out of the architecture suite, scan instead of listing boundary schemas, un-alias merged test files and share one reusable CI workflow.
+- [later] UI cleanup — right-size parity to 150-200 states, then move to one UI library in a single UI-only PR.
 
 ## Windows, after the Mac is signed off
 

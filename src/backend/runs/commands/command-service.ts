@@ -61,7 +61,7 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       }
 
       if (request.family === "start" || (request.family === "intake" && request.type === "enqueue-intake-manifest")
-        || (request.family === "run" && (request.type === "retry" || request.type === "restart" || request.type === "recover-run"))) {
+        || (request.family === "run" && (request.type === "retry" || request.type === "recover-run"))) {
         deps.projection.ingestFromTimeline();
         return;
       }
@@ -135,17 +135,6 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
         });
       }
       const request = parsed.data;
-
-      if (request.mode !== "best-effort") {
-        // `all-or-none` is recognized but unsupported; independent target transactions cannot promise atomic bulk writes.
-        return BulkRunCommandResponseSchema.parse({
-          state: "refused",
-          code: "capability-unavailable",
-          message: `bulk mode "${request.mode}" is schema-recognized and unexecuted: one command is one authority `
-            + "transaction, so an all-or-none batch would need a kernel arm that spans N commands. Nothing was "
-            + "attempted; re-send the batch as best-effort to receive the per-run vector",
-        });
-      }
 
       const runIds = request.targets.map(({ runId }) => runId);
       if (new Set(runIds).size !== runIds.length) {

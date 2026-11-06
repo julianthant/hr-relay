@@ -1,7 +1,5 @@
-import { finished } from "node:stream/promises";
-
-import { createServer,type IncomingMessage,type Server,type ServerResponse } from "node:http";
-import { Readable } from "node:stream";
+import { getRequestListener, type HttpBindings, type Http2Bindings } from "@hono/node-server";
+import { createServer, ServerResponse } from "node:http";
 import { z } from "zod";
 import type { DashboardApp } from "./routes/api.js";
 
@@ -32,28 +30,9 @@ export interface DashboardHttpListener extends DashboardHttpServer {
   mount(app: DashboardApp, accepts: (request: Request) => boolean): DashboardHttpMount;
 }
 
-function toWebRequest(req: IncomingMessage, hostname: string, port: number, signal: AbortSignal): Request {
-  const url = `http://${hostname}:${String(port)}${req.url ?? "/"}`;
-  const method = req.method ?? "GET";
-  const headers = new Headers();
-  for (const [name, value] of Object.entries(req.headers)) {
-    if (typeof value === "string") headers.set(name, value);
-    else if (Array.isArray(value)) for (const entry of value) headers.append(name, entry);
-  }
-  if (method === "GET" || method === "HEAD") return new Request(url, { method, headers, signal });
-  const body = Readable.toWeb(req);
-  if (!(body instanceof ReadableStream)) {
-    throw new Error("node request body did not adapt to a web ReadableStream");
-  }
-  const init: RequestInit & { readonly duplex: "half" } = {
-    method,
-    headers,
-    body,
-    duplex: "half",
-    signal,
-  };
-  return new Request(url, init);
-}
+type Mount = { app: DashboardApp; accepts: (request: Request) => boolean; state: "open" | "closing" | "closed" | "failed";
+  failures: unknown[]; closing?: Promise<void> };
+type Transfer = { mount?: Mount; response: ServerResponse; done: Promise<void>; reason?: "client" | "shutdown" };
 
 function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
@@ -63,168 +42,6 @@ function primaryFirstAggregate(primary: unknown, cleanup: unknown, message: stri
   return new AggregateError([primary, cleanup], message, { cause: primary });
 }
 
-class DashboardResponseClosedError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "DashboardResponseClosedError";
-  }
-}
-
-function waitForDrain(res: ServerResponse): Promise<void> {
-  if (res.destroyed) {
-    return Promise.reject(new DashboardResponseClosedError("dashboard response closed before drain wait"));
-  }
-  return new Promise<void>((resolve, reject) => {
-    const cleanup = (): void => {
-      res.removeListener("drain", onDrain);
-      res.removeListener("close", onClose);
-      res.removeListener("error", onError);
-    };
-    const onDrain = (): void => {
-      cleanup();
-      resolve();
-    };
-    const onClose = (): void => {
-      cleanup();
-      reject(new DashboardResponseClosedError("dashboard response closed while waiting for drain"));
-    };
-    const onError = (error: Error): void => {
-      cleanup();
-      reject(error);
-    };
-    res.once("drain", onDrain);
-    res.once("close", onClose);
-    res.once("error", onError);
-  });
-}
-
-function endResponse(res: ServerResponse): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const cleanup = (): void => {
-      res.removeListener("finish", onFinish);
-      res.removeListener("close", onClose);
-      res.removeListener("error", onError);
-    };
-    const onFinish = (): void => {
-      cleanup();
-      resolve();
-    };
-    const onClose = (): void => {
-      cleanup();
-      reject(new DashboardResponseClosedError("dashboard response closed before finish"));
-    };
-    const onError = (error: Error): void => {
-      cleanup();
-      reject(error);
-    };
-    res.once("finish", onFinish);
-    res.once("close", onClose);
-    res.once("error", onError);
-    res.end();
-  });
-}
-
-interface RequestCancellation {
-  readonly hasBody: boolean;
-  readonly reason: Error | undefined;
-  cancel(reason: Error): Promise<void>;
-  attachBody(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void>;
-  settle(): Promise<void>;
-}
-
-function createRequestCancellation(requestAbort: AbortController): RequestCancellation {
-  let reason: Error | undefined;
-  let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
-  let bodyCancellation: Promise<void> | undefined;
-  const startBodyCancellation = (): Promise<void> => {
-    if (reader === undefined || reason === undefined) return Promise.resolve();
-    bodyCancellation ??= reader.cancel(reason);
-    return bodyCancellation;
-  };
-  return {
-    get hasBody(): boolean {
-      return reader !== undefined;
-    },
-    get reason(): Error | undefined {
-      return reason;
-    },
-    cancel(nextReason: Error): Promise<void> {
-      reason ??= nextReason;
-      requestAbort.abort(reason);
-      return startBodyCancellation();
-    },
-    attachBody(nextReader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
-      reader = nextReader;
-      return reason === undefined ? Promise.resolve() : startBodyCancellation();
-    },
-    settle(): Promise<void> {
-      return bodyCancellation ?? Promise.resolve();
-    },
-  };
-}
-
-class DashboardShutdownError extends Error {
-  constructor() {
-    super("dashboard server is shutting down");
-    this.name = "DashboardShutdownError";
-  }
-}
-
-class DashboardClientDisconnectedError extends Error {
-  constructor(phase: string) {
-    super(`dashboard client disconnected ${phase}`);
-    this.name = "DashboardClientDisconnectedError";
-  }
-}
-
-function expectedCancellation(error: unknown, reason: Error | undefined): boolean {
-  return (reason instanceof DashboardShutdownError || reason instanceof DashboardClientDisconnectedError)
-    && (error === reason || error instanceof DashboardResponseClosedError
-      || error instanceof Error && error.name === "AbortError" && error.cause === reason);
-}
-
-async function pipeResponse(
-  response: Response,
-  res: ServerResponse,
-  cancellation: RequestCancellation,
-): Promise<void> {
-  try {
-    if (response.body === null) {
-      if (res.destroyed) return;
-      res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
-      await endResponse(res);
-      return;
-    }
-    const reader = response.body.getReader();
-    await cancellation.attachBody(reader);
-    if (res.destroyed) {
-      await cancellation.cancel(new DashboardClientDisconnectedError("before response handoff"));
-      return;
-    }
-    res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      if (res.destroyed) throw new DashboardResponseClosedError("dashboard response closed before body write");
-      const canContinue = res.write(chunk.value);
-      if (!canContinue) await waitForDrain(res);
-    }
-    if (res.destroyed) throw new DashboardResponseClosedError("dashboard response closed before finish");
-    await endResponse(res);
-    await cancellation.settle();
-  } catch (error: unknown) {
-    const requestedReason = cancellation.reason;
-    try {
-      await cancellation.cancel(asError(error));
-    } catch (cleanup: unknown) {
-      throw primaryFirstAggregate(error, cleanup, "dashboard response transfer and cancellation both failed");
-    }
-    if (requestedReason instanceof DashboardShutdownError
-      && (error === requestedReason || error instanceof DashboardResponseClosedError)) return;
-    throw error;
-  }
-}
-
 export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): Promise<DashboardHttpListener> {
   const requestedPort = z.number().int().nonnegative().parse(deps.port);
   const hostname = deps.hostname ?? "127.0.0.1";
@@ -232,99 +49,129 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
     throw new Error(`the dashboard BFF is loopback-only; refusing to bind ${hostname}`);
   }
 
-  // Reassigned to the OS-assigned port after listen when requestedPort is 0;
-  // requests only arrive after listen, so the handler always sees the bound port.
-  let boundPort = requestedPort;
-  type Mount = { app: DashboardApp; accepts: (request: Request) => boolean; state: "open" | "closing" | "closed" | "failed";
-    failures: unknown[]; closing?: Promise<void> };
-  type Transfer = { cancellation: RequestCancellation; response: ServerResponse; mount?: Mount };
-  const active = new Map<Promise<void>, Transfer>();
+  const active = new Set<Transfer>();
+  const unownedFailures: unknown[] = [];
   let selected: Mount | undefined;
   let closing = false;
-  const retainedObserverFailures: AggregateError[] = [];
-  const retainObserverFailure = (failure: AggregateError): void => {
-    retainedObserverFailures.push(failure);
+
+  const retain = (transfer: Transfer, failure: unknown): void => {
+    (transfer.mount?.failures ?? unownedFailures).push(failure);
   };
-  const server: Server = createServer((req, res) => {
-    const requestAbort = new AbortController();
-    const cancellation = createRequestCancellation(requestAbort);
-    const ownership: Transfer = { cancellation, response: res };
-    const disconnect = (): void => {
-      const phase = cancellation.hasBody ? "during response transfer" : "before response handoff";
-      void cancellation.cancel(new DashboardClientDisconnectedError(phase)).catch((error: unknown) => {
-        ownership.mount?.failures.push(error);
-        if (!res.destroyed) res.destroy(asError(error));
-      });
-    };
-    req.once("aborted", disconnect);
-    const responseClosed = (): void => { if (!res.writableFinished) disconnect(); };
-    res.once("close", responseClosed);
-    res.once("error", disconnect);
-    const transfer = (async (): Promise<void> => {
-      const request = toWebRequest(req, hostname, boundPort, requestAbort.signal);
-      if (closing) throw new DashboardShutdownError();
-      if (request.method === "GET" || request.method === "HEAD") {
+  /** Report to the local observer; an unobserved failure and a throwing observer stay owed until close, and an unproved cleanup stays owed by its mount. */
+  const settleFailure = (transfer: Transfer, failure: Error, proved: boolean): void => {
+    if (deps.onTransferError === undefined) {
+      if (!proved) retain(transfer, new AggregateError([failure], "dashboard transfer failure had no local observer", { cause: failure }));
+      return;
+    }
+    try {
+      deps.onTransferError(failure);
+    } catch (observerFailure: unknown) {
+      retain(transfer, primaryFirstAggregate(failure, observerFailure, "dashboard transfer and local failure observation both failed"));
+      return;
+    }
+    if (!proved) transfer.mount?.failures.push(failure);
+  };
+
+  /** Own the response body: client disconnect and shutdown cancel the source and settle only when that cancellation does. */
+  const ownBody = (response: Response, transfer: Transfer, request: Request, settle: () => void): Response => {
+    const source = (response.body as ReadableStream<Uint8Array>).getReader();
+    let cancelling: Promise<void> | undefined;
+    const cancel = (reason: unknown): Promise<void> => {
+      transfer.reason ??= "client";
+      cancelling ??= (async () => {
+        transfer.response.off("close", onClose);
+        const closed = new Error("dashboard response closed before finish");
         try {
-          const ended = finished(req, { readable: true, writable: false, cleanup: true, signal: requestAbort.signal });
-          req.resume();
-          await ended;
-        } catch (error) {
-          if (error instanceof Error && error.name === "AbortError" && error.cause === cancellation.reason
-            && cancellation.reason instanceof DashboardShutdownError) throw cancellation.reason;
-          throw error;
+          await source.cancel(reason ?? request.signal.reason);
+        } catch (cleanup: unknown) {
+          if (transfer.reason === "shutdown") retain(transfer, cleanup);
+          else settleFailure(transfer, primaryFirstAggregate(closed, cleanup, "dashboard response transfer and cancellation both failed"), false);
+          return settle();
         }
-      }
-      if (closing) throw cancellation.reason ?? new DashboardShutdownError();
-      const mount = selected;
-      if (mount?.state === "open" && mount.accepts(request)) ownership.mount = mount;
-      const response = await (ownership.mount?.app ?? deps.app).fetch(request);
-      await pipeResponse(response, res, cancellation);
-    })().catch(async (error: unknown) => {
-      if (error instanceof DashboardShutdownError && error === cancellation.reason) return;
-      const closure = res.destroyed && expectedCancellation(error, cancellation.reason)
-        ? await cancellation.settle().then(
-          () => ({ state: "proved" as const }),
-          (cleanup: unknown) => ({ state: "unproved" as const,
-            error: primaryFirstAggregate(error, cleanup, "dashboard cancellation closure is unproved") }),
-        ) : { state: "unproved" as const, error: asError(error) };
-      if (closure.state === "proved" && cancellation.reason instanceof DashboardShutdownError) return;
-      const normalized = closure.state === "proved" ? asError(error) : closure.error;
-      if (closure.state === "unproved") ownership.mount?.failures.push(normalized);
-      if (!res.destroyed) res.destroy(normalized);
-      if (deps.onTransferError === undefined) {
-        if (closure.state === "proved") return;
-        retainObserverFailure(new AggregateError(
-          [normalized],
-          "dashboard transfer failure had no local observer",
-          { cause: normalized },
-        ));
-        throw normalized;
-      }
-      try {
-        deps.onTransferError(normalized);
-      } catch (observerFailure: unknown) {
-        const aggregate = primaryFirstAggregate(
-          normalized,
-          observerFailure,
-          "dashboard transfer and local failure observation both failed",
-        );
-        ownership.mount?.failures.push(aggregate);
-        retainObserverFailure(aggregate);
-        throw aggregate;
-      }
-      if (closure.state === "unproved") throw normalized;
+        if (transfer.reason === "client") settleFailure(transfer, closed, true);
+        settle();
+      })();
+      return cancelling;
+    };
+    const onClose = (): void => {
+      if (!transfer.response.writableFinished) void cancel(undefined);
+    };
+    transfer.response.once("close", onClose);
+    const finish = (): void => {
+      transfer.response.off("close", onClose);
+      settle();
+    };
+    const body = new ReadableStream<Uint8Array>({
+      async pull(controller): Promise<void> {
+        try {
+          const chunk = await source.read();
+          if (cancelling === undefined) {
+            if (chunk.done) {
+              finish();
+              controller.close();
+            } else controller.enqueue(chunk.value);
+            return;
+          }
+        } catch (error: unknown) {
+          if (cancelling === undefined) {
+            settleFailure(transfer, asError(error), false);
+            finish();
+            // @hono/node-server ends a rejected pre-headers read as a finished body.
+            if (!transfer.response.headersSent) transfer.response.destroy();
+            controller.error(error);
+            return;
+          }
+        }
+        try { controller.close(); } catch { /* the adapter already cancelled this stream */ }
+      },
+      cancel,
+    }, { highWaterMark: 0 });
+    return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+  };
+
+  const handle = async (request: Request, bindings: HttpBindings | Http2Bindings): Promise<Response> => {
+    const outgoing = bindings.outgoing;
+    if (!(outgoing instanceof ServerResponse)) throw new Error("the dashboard HTTP server expects HTTP/1 responses");
+    if (closing) return new Response(null, { status: 503 });
+    const mount = selected?.state === "open" && selected.accepts(request) ? selected : undefined;
+    const finished = Promise.withResolvers<void>();
+    const transfer: Transfer = { ...(mount === undefined ? {} : { mount }), response: outgoing, done: finished.promise };
+    active.add(transfer);
+    void finished.promise.then(() => { active.delete(transfer); });
+    // The adapter aborts with a bare string; the route gets one Error naming where the client left.
+    const abort = new AbortController();
+    let handedOff = false;
+    request.signal.addEventListener("abort", () => {
+      abort.abort(new Error(transfer.reason === "shutdown" ? "dashboard server is shutting down"
+        : `dashboard client disconnected ${handedOff ? "during response transfer" : "before response handoff"}`));
+    }, { once: true });
+    const routed = new Request(request.url, {
+      method: request.method, headers: request.headers, signal: abort.signal,
+      ...(request.method === "GET" || request.method === "HEAD" ? {} : { body: request.body, duplex: "half" }),
     });
-    const task: Promise<void> = transfer.finally(() => {
-      req.removeListener("aborted", disconnect);
-      res.removeListener("close", responseClosed);
-      res.removeListener("error", disconnect);
-      active.delete(task);
-    });
-    active.set(task, ownership);
-    void task.catch((error: unknown) => {
-      if (!res.destroyed) res.destroy(asError(error));
-    });
-  });
+    try {
+      const response = await (mount?.app ?? deps.app).fetch(routed);
+      if (abort.signal.aborted) {
+        // The client left before handoff: release the body quietly; nobody receives this response.
+        try { await response.body?.cancel(abort.signal.reason); } catch (cleanup: unknown) { settleFailure(transfer, asError(cleanup), false); }
+        finished.resolve();
+        return new Response(null, { status: 499 });
+      }
+      if (response.body === null) {
+        finished.resolve();
+        return response;
+      }
+      handedOff = true;
+      return ownBody(response, transfer, routed, finished.resolve);
+    } catch (error: unknown) {
+      if (!abort.signal.aborted) settleFailure(transfer, asError(error), false);
+      finished.resolve();
+      throw error;
+    }
+  };
+
+  const server = createServer(getRequestListener(handle, { hostname, overrideGlobalObjects: false }));
+  let boundPort: number;
 
   try {
     await new Promise<void>((resolve, reject) => {
@@ -360,6 +207,13 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
     throw primary;
   }
 
+  const shutDown = (transfers: readonly Transfer[]): void => {
+    for (const transfer of transfers) {
+      transfer.reason ??= "shutdown";
+      transfer.response.destroy();
+    }
+  };
+
   return Object.freeze({
     port: boundPort,
     mount: (app: DashboardApp, accepts: (request: Request) => boolean): DashboardHttpMount => {
@@ -369,23 +223,15 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
       return Object.freeze({ close(): Promise<void> {
         if (mount.closing !== undefined) return mount.closing;
         mount.state = "closing";
-        const captured = [...active.entries()].filter(([, transfer]) => transfer.mount === mount);
-        const shutdown = new DashboardShutdownError();
-        const cancellations = captured.map(([, transfer]) => {
-          const cancelled = transfer.cancellation.cancel(shutdown);
-          transfer.response.destroy();
-          return cancelled;
-        });
+        const owned = [...active].filter((transfer) => transfer.mount === mount);
+        shutDown(owned);
         mount.closing = (async () => {
-          const settled = await Promise.allSettled([...captured.map(([task]) => task), ...cancellations]);
-          const failures = [...mount.failures];
-          for (const result of settled) if (result.status === "rejected" && !failures.includes(result.reason)) failures.push(result.reason);
-          if (failures.length > 0) {
+          await Promise.all(owned.map((transfer) => transfer.done));
+          if (mount.failures.length > 0) {
             mount.state = "failed";
-            throw new AggregateError(failures, "dashboard HTTP mount closure is unproved");
+            throw new AggregateError([...mount.failures], "dashboard HTTP mount closure is unproved");
           }
           mount.state = "closed";
-          if (selected !== mount) throw new Error("dashboard HTTP mount ownership changed");
           selected = undefined;
         })();
         return mount.closing;
@@ -399,28 +245,13 @@ export async function startDashboardHttpServer(deps: DashboardHttpServerDeps): P
           else reject(error);
         });
       });
-      const shutdown = new DashboardShutdownError();
-      const cancellations = [...active.values()].map(({ cancellation }) => cancellation.cancel(shutdown));
+      const transfers = [...active];
+      shutDown(transfers);
       server.closeAllConnections();
-      const settled = await Promise.allSettled([closeServer, ...active.keys(), ...cancellations]);
-      const failures: unknown[] = [...(selected?.failures ?? [])];
-      for (const result of settled) {
-        if (result.status === "rejected") failures.push(result.reason);
-      }
-      const unrepresentedObserverFailures = retainedObserverFailures.filter(
-        (failure) => !failures.includes(failure),
-      );
-      if (unrepresentedObserverFailures.length > 0) {
-        const first = unrepresentedObserverFailures[0];
-        failures.push(unrepresentedObserverFailures.length === 1
-          ? first
-          : new AggregateError(
-            unrepresentedObserverFailures,
-            `dashboard local transfer observation failed ${String(unrepresentedObserverFailures.length)} times`,
-            { cause: first },
-          ));
-      }
-      retainedObserverFailures.length = 0;
+      const [closed] = await Promise.allSettled([closeServer, ...transfers.map((transfer) => transfer.done)]);
+      const failures: unknown[] = [...(selected?.failures ?? []), ...unownedFailures];
+      if (closed.status === "rejected") failures.push(closed.reason);
+      unownedFailures.length = 0;
       if (failures.length === 1) throw failures[0];
       if (failures.length > 1) throw new AggregateError(failures, "dashboard shutdown observed transfer cleanup failures");
     },

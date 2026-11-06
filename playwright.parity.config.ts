@@ -42,5 +42,6 @@ export default defineConfig({
   reporter: [
     ["list"],
     ["json", { outputFile: "tests/parity/.output/results.json" }],
+    ["./tests/parity/helpers/a11y-evidence-reporter.ts"],
   ],
 });

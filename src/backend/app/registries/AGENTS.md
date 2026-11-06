@@ -26,5 +26,5 @@ changing facts in instructions.
 - Maintain the manifest/registry/CLI correspondence in both directions. Preserve named blocked
   reasons and the observation date without leaking secret values.
 
-Before admission changes, read `docs/rebuild/reference/guards-and-tests.md` and the registry's
+Before admission changes, read `docs/reference/guards-and-tests.md` and the registry's
 unit/architecture tests. Root rules apply.

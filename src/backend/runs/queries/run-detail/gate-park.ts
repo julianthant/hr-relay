@@ -1,3 +1,4 @@
+import { readRunCheckpoint } from "../../../storage/sqlite/run-continuation.js";
 import { acceptsRecheckTransactionId } from "../../../../rules/write-safety/parked-resolution.js";
 import { retainedUcpathFindings } from "./ucpath-findings.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
@@ -38,7 +39,6 @@ import { checkpointLookupKey } from "../../../../models/workflow/checkpoint.js";
 import { deriveSchemaHash } from "../../../../models/validation/schema-bound-value.js";
 import { deriveStableUuid, lifecycleCommandId } from "../../../../rules/identity/identifiers.js";
 import { canonicalJsonStringify } from "../../../../rules/validation/canonical-json.js";
-import { readRunCheckpoint } from "../../../runtime/checkpoints/run-checkpoint-reader.js";
 import { timelineCheckpointReference } from "../../../../models/events/timeline.js";
 
 

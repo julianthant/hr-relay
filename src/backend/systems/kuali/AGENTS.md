@@ -42,7 +42,7 @@ Task names, effects, and schemas are in the source and the generated store catal
 - Before locator, wire, or timing changes: `driver/interpreter.ts` and `driver/ui-registry.ts`
   carry the implementation and verified encodings. Record port commit and source paths in the
   assigned task's evidence folder.
-- Before task/driver boundary changes: `docs/rebuild/reference/task-contract.md` and
-  `docs/rebuild/reference/stores.md` (derived catalog; code wins).
+- Before task/driver boundary changes: `docs/reference/task-contract.md` and
+  `docs/reference/stores.md` (derived catalog; code wins).
 
 Root safety, authorization, and validation rules apply.

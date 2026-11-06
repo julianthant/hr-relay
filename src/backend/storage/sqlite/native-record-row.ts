@@ -1,3 +1,4 @@
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 import { runSettlementContext } from "./run-settlement-row.js";
 import { confirmationPublicationFromRow } from "../../../models/events/confirmed-operation.js";
 import { WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
@@ -52,7 +53,7 @@ function valueAt(record: unknown, path: string): string | number | null {
   return z.union([z.string(),z.number()]).parse(value);
 }
 export function isNativeOrdinaryTable(table: AuthorityTableName): table is NativeOrdinaryTable { return Object.hasOwn(fields,table); }
-export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: unknown, schemaVersion = 20): unknown {
+export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: unknown, schemaVersion = CURRENT_AUTHORITY_SCHEMA_VERSION): unknown {
   const row = RowSchema.parse(input);
   let record: unknown;
   if (table === "run_results") {
