@@ -21,7 +21,8 @@ Proves a change the way the operator uses it: sign in, Run, read Logs, check the
 ```bash
 EVID=/Users/julianhein/Projects/hr-relay/.work/verify/<workflow>-$(date +%F)   # evidence survives cleanup
 mkdir -p "$EVID"
-lsof -nP -iTCP:3938 -iTCP:5174 -sTCP:LISTEN; ls .tracker/data/locks/          # both empty, else stop
+LOCKS="$HOME/Library/Application Support/Relay/.tracker/data/locks"   # Windows: %LOCALAPPDATA%\Relay\.tracker\data\locks
+lsof -nP -iTCP:3938 -iTCP:3939 -iTCP:5174 -sTCP:LISTEN; ls "$LOCKS"   # all empty, else stop
 nohup npm run dashboard > "$EVID/dashboard.log" 2>&1 & echo $! > "$EVID/dashboard.pid"
 until grep -q "dashboard BFF listening" "$EVID/dashboard.log"; do sleep 2; done  # read only for readiness
 playwright-cli -s=verify open http://localhost:5174 --headed
@@ -35,14 +36,11 @@ Start from the checkout that is meant to be previewed (`staging` or the PR branc
 
 ```bash
 npm run cli -- phase                       # state root, ports, namespace are Relay's, not legacy's
-npm run cli -- storage doctor --json       # exit 0 = authority, recovery, credentials, spans healthy
 npm run cli -- test-data check --json --subject <label>   # the subject is available (names only)
 playwright-cli list                        # sessions you do not own are left alone
 ```
 
-`storage doctor` refuses with `authority-backup-profile-binding-required` in a checkout that has no installation; run the doctor from the checkout that owns the store.
-
-After sign-in, open Settings › Preflight and Run preflight; record its result. It runs no OCR and starts no run.
+After sign-in, open Settings › Preflight and Run preflight, and read the storage section; screenshot both. Preflight runs no OCR and starts no run.
 
 ## Hand over for login
 
@@ -59,7 +57,7 @@ Per the feature file: Run → workflow → input → Confirm (read the exact inp
 Under `$EVID/`:
 - `NN-<step>.png` screenshots: Confirm screen, Queue row, each Logs step list, the result;
 - `run.md`: workflow, subject label, run ID and trace ID, start/end time, terminal state, the Logs steps in order, the result as shown;
-- `explain.json`: `npm run cli -- explain run <runId> --json` and `storage doctor --json` after the run.
+- `explain.json`: `npm run cli -- explain run <runId> --json`; plus a Settings storage-section screenshot after the run.
 
 Proof standard: the run came from the real Run path; Logs show every declared step with its dry-run state (Previewed, Not clicked, Skipped with reason); `explain run` shows no write attempt or submit receipt; the source system's record is unchanged. Mock-served data, an empty grid or a log line alone proves nothing.
 
@@ -68,7 +66,8 @@ Proof standard: the run came from the real Run path; Logs show every declared st
 ```bash
 playwright-cli -s=verify close
 kill -INT "$(cat "$EVID/dashboard.pid")"      # npm forwards it; waits for the clean shutdown
-lsof -nP -iTCP:3938 -iTCP:5174 -sTCP:LISTEN; ls .tracker/data/locks/   # empty
+LOCKS="$HOME/Library/Application Support/Relay/.tracker/data/locks"
+lsof -nP -iTCP:3938 -iTCP:3939 -iTCP:5174 -sTCP:LISTEN; ls "$LOCKS"   # empty
 ```
 
 Leave `$EVID/` in place. Report: workflow, run ID, pass/fail per the feature file, evidence path, anything not checked.

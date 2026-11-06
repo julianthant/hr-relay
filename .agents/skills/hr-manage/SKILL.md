@@ -1,7 +1,7 @@
 ---
 name: hr-manage
 description: >-
-  The shared operations skill every workflow-specific HR skill is built on — managing the Relay dashboard and its workflow runs: start and stop the dashboard runtime, start runs (dryRun default) for one subject or a cohort through the signed-in dashboard, monitor (Logs, explain run, storage doctor), take gate approvals, retry only real failures, refuse re-runs after an UNKNOWN submit, and close with a per-subject status table. Also covers runtime housekeeping (ports, locks, orphan browsers). Invoke on `/hr-manage`, "run X for these people", "start/restart the dashboard", "what's the status of the runs", "approve the gate", "monitor the batch".
+  The shared operations skill every workflow-specific HR skill is built on — managing the Relay dashboard and its workflow runs: start and stop the dashboard runtime, start runs (dryRun default) for one subject or a cohort through the signed-in dashboard, monitor (Logs, explain run, Settings storage section), take gate approvals, retry only real failures, refuse re-runs after an UNKNOWN submit, and close with a per-subject status table. Also covers runtime housekeeping (ports, locks, orphan browsers). Invoke on `/hr-manage`, "run X for these people", "start/restart the dashboard", "what's the status of the runs", "approve the gate", "monitor the batch".
 ---
 
 # /hr-manage — run, batch, monitor, approve, report
@@ -24,7 +24,7 @@ Every command runs from the checkout that owns the store and ports. `npm run cli
 | Backend alone / Vite alone | `npm run backend` / `npm run web` (start the backend first) |
 | Production bundle | `npm run web:build`, then `npm run dashboard:prod` |
 | Active isolation (state root, ports, namespace) | `npm run cli -- phase` |
-| Authority + span reconciliation, read-only | `npm run cli -- storage doctor [--json]` |
+| Authority and storage health | Settings, signed in: the served storage section |
 | Explain a run from authority | `npm run cli -- explain run <traceId\|runId> [--json]` |
 | Persisted diagnostics | `npm run cli -- explain diagnostics [--run <runId>] [--json]` |
 | Subject readiness by label | `npm run cli -- test-data check --json --subject <label> [--workflow <id>]` |
@@ -36,9 +36,9 @@ Every command runs from the checkout that owns the store and ports. `npm run cli
 
 ```bash
 playwright-cli list                       # identify sessions; close only sessions this task owns
-ls .tracker/data/locks/                   # process locks; a stale pid here explains "already running"
+LOCKS="$HOME/Library/Application Support/Relay/.tracker/data/locks"   # Windows: %LOCALAPPDATA%\Relay\.tracker\data\locks
+ls "$LOCKS"; lsof -nP -iTCP:3938 -iTCP:3939 -iTCP:5174 -sTCP:LISTEN   # a stale pid or busy port explains "already running"
 npm run dashboard                         # ONE terminal; wait for "dashboard BFF listening on 127.0.0.1:3938"
-npm run cli -- storage doctor --json      # exit 0 = authority, recovery, credentials and spans healthy
 ```
 
 The backend is a singleton (pinned port + lock). A backend started before a workflow-definition edit serves the old fingerprint and refuses every run it plans: restart it (`hr-debug` §Runtime). Dashboard boot never launches a worker; Run, Rerun and Sessions › Add workers do.
@@ -70,7 +70,7 @@ Settings › Preflight shows the served capability checks. Run it from the signe
 | Live timeline / queue / gate | dashboard (playwright-cli snapshot + screenshot); Logs holds the failure record and evidence receipt |
 | Failure details | `npm run cli -- explain diagnostics --run <runId> --json`; stopped boot faults: `explain diagnostics --boot` |
 | Alerts | the notification bell / inbox (storage-degraded, needs-you); the storage banner for authority-unavailable |
-| Health | `storage doctor`; worker log lines; `.tracker/data/locks/` |
+| Health | Settings' storage section; worker log lines; the lock directory above |
 
 A gated run parks: approve only through the dashboard ceremony. The approval shape is computed server-side; the packet leads with disconfirming evidence — read it, don't rubber-stamp.
 
@@ -83,7 +83,7 @@ States come from authority (`explain run` and the dashboard), never from memory.
 
 ## 7 · Housekeeping
 
-- Stop: Ctrl+C the dashboard terminal (a clean shutdown drains workers and writes the shutdown backups); close only task-owned browser sessions; confirm `.tracker/data/locks/` holds no live pid (`kill -0`).
+- Stop: Ctrl+C the dashboard terminal (a clean shutdown drains workers and writes the shutdown backups); close only task-owned browser sessions; confirm the lock directory (§2) holds no live pid (`kill -0`) and ports 3938/3939/5174 are free.
 - Backups are automatic at clean shutdown and before an upgrade; there is no backup command. `storage upgrade` runs only stopped and only when the operator says so.
 - Orphan browsers: `playwright-cli list`, close your own sessions by name; never close another task's.
 - Anything that smells like a platform defect → `.agents/skill-library/hr-debug/REFERENCE.md`; a

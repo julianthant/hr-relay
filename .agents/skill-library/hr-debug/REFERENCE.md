@@ -46,7 +46,7 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 
 ## 4 · Runtime / singleton
 - BFF is ONE process (lock + pinned 3938). Compare SERVED vs TREE fingerprint: `curl -s localhost:3938/api/v1/explorer | jq '.[].contractFingerprint'` vs `src/workflow-kit/validation/generated-build-manifest.ts` after `npm run build:manifest`. Mismatch → restart the BFF; every run it planned is unclaimable.
-- `ls .tracker/data/locks/` + `kill -0 <pid>` — a dead holder's lock is observed, never rewritten by you.
+- `ls "$HOME/Library/Application Support/Relay/.tracker/data/locks"` (Windows: `%LOCALAPPDATA%\Relay\.tracker\data\locks`) + `kill -0 <pid>` — a dead holder's lock is observed, never rewritten by you.
 - Worker wedged at boot with its own old claim → D200 (lease is the evidence; sweep by workerId). A `claimed` row with an `attempting` intent is refused at startup by design — that is a §4.1 recovery, not a restart.
 
 ## 5 · Identity / checkpoint
