@@ -12,7 +12,7 @@
   - button "New chat"
   - button "Close assistant" [disabled]
   - log "Assistant conversation":
-    - text: do it Review this proposal. No action has been applied. Confirmed action accepted. Mark a notification read
+    - text: do it Review this proposal. No action has been applied. Confirmed action accepted. Pause Person Lookup · Sample, Avery
     - status: Done
   - group "Message composer":
     - text: Message Relay
