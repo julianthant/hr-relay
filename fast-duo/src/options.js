@@ -4,11 +4,12 @@ document.getElementById('closeSetup').addEventListener('click', async () => {
   try {
     const tab = await chrome.tabs.getCurrent();
     if (!Number.isInteger(tab?.id) || tab.id < 0) throw new Error('RELAY_SETUP_TAB_UNAVAILABLE');
-    await chrome.tabs.remove(tab.id);
+    if (!Number.isInteger(tab.windowId) || tab.windowId < 0) throw new Error('RELAY_SETUP_WINDOW_UNAVAILABLE');
+    await chrome.windows.remove(tab.windowId);
   } catch {
     const message = document.getElementById('message');
     message.hidden = false; message.setAttribute('role', 'alert');
-    message.textContent = 'This tab could not close. Close it with its tab button.';
+    message.textContent = 'This window could not close. Close it with its window button.';
   }
 });
 

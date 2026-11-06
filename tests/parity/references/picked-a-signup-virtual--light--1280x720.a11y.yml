@@ -18,11 +18,14 @@
     - listitem:
       - button "Ready" [disabled]
   - heading "Set up Duo" [level=1]
-  - paragraph: Add your security key and Touch ID in the setup browser, in either order.
+  - paragraph: Add your security key and Touch ID, in either order.
   - list "Duo methods":
     - listitem: Security key Not started
     - listitem: Touch ID Not started
   - status: "Security key: Not started · Touch ID: Not started"
+  - status:
+    - strong: Setup window is open
+    - paragraph: Add your security key and Touch ID in the setup window.
   - button "Cancel sign-up"
-  - button "Show setup browser"
+  - button "Show window"
 - region "Notifications"

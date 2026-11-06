@@ -17,11 +17,15 @@
       - button "Duo setup"
     - listitem:
       - button "Ready"
-  - heading "You’re all set" [level=1]
-  - paragraph: Your profile and sign-in methods are ready.
-  - list:
-    - listitem: Your details saved
-    - listitem: Security key confirmed
-    - listitem: Touch ID confirmed
-  - button "Go to dashboard"
+  - heading "Duo setup is complete" [level=1]
+  - paragraph: Security key and Touch ID are confirmed. Finish to open Relay.
+  - list "Duo methods":
+    - listitem: Security key Completed
+    - listitem: Touch ID Completed
+  - status: "Security key: Completed · Touch ID: Completed"
+  - status:
+    - strong: Setup window is open
+    - paragraph: Both sign-in methods are confirmed. You can finish setup.
+  - button "Cancel sign-up"
+  - button "Finish setup"
 - region "Notifications"

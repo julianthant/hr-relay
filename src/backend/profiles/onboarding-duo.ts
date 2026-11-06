@@ -1,6 +1,6 @@
 import type { DuoAssertion, DuoAssertionRequest } from "../storage/configuration/duo-signing.js";
 import type { DuoEnrollmentScope } from "../../models/config/duo-credential-store.js";
-import type { ProfileOnboardingMethod, ProfileOnboardingState } from "../../models/profiles/public-profile.js";
+import type { ProfileOnboardingBrowser, ProfileOnboardingMethod, ProfileOnboardingState } from "../../models/profiles/public-profile.js";
 import type { ProfileOnboardingDuoEvent, ProfileOnboardingDuoFailure } from "../../models/profiles/profile.js";
 
 export interface DraftDuoBrowserOwner {
@@ -71,9 +71,12 @@ export interface DraftDuoCapability {
 }
 
 export interface ProfileOnboardingDuoProvider {
+  browserState?(operationId: string): ProfileOnboardingBrowser;
+  // Resolves after exact generation closure and profile release, before replacement opening.
+  recoverBrowser?(owner: DraftDuoBrowserOwner, generation: number): Promise<void>;
   showBrowser(owner: DraftDuoBrowserOwner): Promise<void>;
   openPortal(owner: DraftDuoBrowserOwner): Promise<void>;
-  closeBrowser(owner: DraftDuoBrowserOwner): Promise<Readonly<{ state: "closed" | "uncertain" }>>;
+  closeBrowser(owner: DraftDuoBrowserOwner): Promise<Readonly<{ state: "closed" } | { state: "uncertain"; cause?: unknown }>>;
   start(attempt: DraftDuoAttempt,
     bindObservedContext: (context: DraftDuoObservedContext) => Promise<DraftDuoCapability>,
     reportFailure: (error: Error) => Promise<void>): Promise<void>;

@@ -144,7 +144,7 @@ it("never carries selected public-session authority into a replacement client", 
 
 const draftMethod = (state: "idle" | "pending" | "complete" | "unknown" = "idle") => ({ state,
   ceremonyObserved: state === "complete", portalAccepted: state === "complete", operatorConfirmed: state === "complete", exactCredentialRequestObserved: false });
-const onboardingDraft = () => ({ state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
+const onboardingDraft = () => ({ browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
   profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const, methods: { key: draftMethod(), touch: draftMethod() } });
 
 it("served Open Duo dispatches the owned portal command without opening a local demo", async () => {
@@ -389,6 +389,74 @@ for (const recovery of ["same", "foreign-operation", "foreign-profile", "signed-
         assert.equal(session.state?.state, "signed-out");
         assert.equal(session.port.onboarding, undefined);
       } else assert.equal(session.failure, true);
+    }
+  } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); }
+});
+
+for (const source of ["action", "poll"] as const) it(`keeps polling and permits exact Reopen after a closure failure from ${source}`, async () => {
+  vi.useFakeTimers();
+  const draft = onboardingDraft(), paths: string[] = [];
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async (url, options) => {
+    const path = new URL(url).pathname; paths.push(path);
+    if (path.endsWith("/reopen")) {
+      const body = options?.body; assert.ok(typeof body === "string");
+      assert.deepEqual(JSON.parse(body), { operationId: draft.operationId, generation: 1 });
+      return Response.json({ ...draft, browser: { state: "open", generation: 2 } });
+    }
+    return Response.json(paths.length === 1 ? draft : { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
+  } });
+  const host = document.createElement("div"), root = createRoot(host);
+  let session!: ReturnType<typeof usePublicProfileSession>;
+  function Probe() { session = usePublicProfileSession(client, true); return null; }
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    const previousShow = session.port.showBrowser.bind(session.port);
+    await act(async () => { if (source === "action") await session.port.showBrowser(); else await vi.advanceTimersByTimeAsync(1000); });
+    assert.deepEqual(session.state, { ...draft, browser: { state: "failed", generation: 1, code: "DUO_SETUP_STOP_FAILED" } });
+    assert.equal(session.port.unavailable, true);
+    await assert.rejects(previousShow(), /ONBOARDING_SCOPE_REPLACED/);
+    for (const action of [() => session.port.openPortal(), () => session.port.complete(), () => session.port.cancel(), () => session.port.start("key")]) {
+      await assert.rejects(action(), /ONBOARDING_SCOPE_REPLACED/);
+    }
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    assert.equal(paths.length, 3, "closure failure must not suspend status reads");
+    await act(async () => { await session.port.reopenBrowser(); });
+    assert.equal(session.port.unavailable, false);
+    assert.equal(session.port.onboarding?.browser.generation, 2);
+  } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); }
+});
+
+for (const code of ["PROFILE_LOGOUT_BLOCKED", "PROFILE_SIGN_IN_REFUSED", "BROWSER_CLOSURE_UNPROVED"] as const) it(`scopes login unavailability and session recovery to closure uncertainty after ${code}`, async () => {
+  vi.useFakeTimers();
+  const active = { state: "active", profileId: "00000000-0000-4000-8000-000000000002", duoState: "ready", epoch: 1 };
+  const reads = [{ state: "refused", code }, { state: "signed-out", signUpRequired: false }, { state: "signed-out", signUpRequired: false }, onboardingDraft(), active];
+  const paths: string[] = [];
+  const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async url => {
+    const path = new URL(url).pathname; paths.push(path);
+    return Response.json(path.endsWith("/sign-in") ? { state: "refused", code } : reads[Math.min(paths.filter(value => value.endsWith("/state")).length, reads.length) - 1]);
+  } });
+  const host = document.createElement("div"), root = createRoot(host);
+  let session!: ReturnType<typeof usePublicProfileSession>;
+  function Probe() { session = usePublicProfileSession(client, true); return null; }
+  const details = { firstName: "Fixture", lastName: "Operator", email: "fixture@ucsd.edu", password: "disposable-fixture-password" };
+  try {
+    await act(async () => root.render(createElement(Probe)));
+    assert.deepEqual(session.state, { state: "refused", code });
+    const closure = code === "BROWSER_CLOSURE_UNPROVED";
+    assert.equal(session.port.unavailable, closure);
+    if (closure) await assert.rejects(session.port.submit("login", details), /ONBOARDING_SCOPE_REPLACED/);
+    else await act(async () => { assert.deepEqual(await session.port.submit("login", details), { state: "refused", code }); });
+    assert.equal(paths.filter(path => path.endsWith("/sign-in")).length, closure ? 0 : 1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    if (code === "PROFILE_SIGN_IN_REFUSED") {
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+      assert.equal(paths.filter(path => path.endsWith("/state")).length, 4);
+      assert.deepEqual(session.state, { state: "refused", code }, "an ordinary refusal survives signed-out and foreign draft reads");
+      await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+      assert.deepEqual(session.state, active);
+    } else {
+      assert.deepEqual(session.state, { state: "signed-out", signUpRequired: false });
+      assert.equal(session.port.unavailable, false);
     }
   } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); }
 });

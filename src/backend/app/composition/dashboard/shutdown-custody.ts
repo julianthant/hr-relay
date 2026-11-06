@@ -1,7 +1,9 @@
+import { ProfileOnboardingBrowserFailureCodeSchema } from "../../../../models/profiles/public-profile.js";
+import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import type { Clock } from "../../../../rules/time/clock.js";
 import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { StorageMaintenanceCustodyUnavailableError } from "../../../storage/maintenance/custody-availability.js";
-import { AuthoritySourceClosureUnprovedError,hasUnprovedSourceClosure } from "../../../storage/source-closure.js";
+import { AuthoritySourceClosureUnprovedError,assertSourceClosuresProved,hasUnprovedSourceClosure } from "../../../storage/source-closure.js";
 import type { DashboardHttpListener } from "../../../transports/http/http-server.js";
 import { type DashboardHttpServer } from "../../../transports/http/http-server.js";
 import type { composeProfileRuntime } from "../storage-compose.js";
@@ -107,7 +109,20 @@ export function composeApplicationStop(resources: {
     const transportClosure = listener.close();
     stopping = (async () => {
       try { await transportClosure; } catch (error) { failures.push(error); }
-      failures.unshift(...retainedCustodyFailures);
+      for (const error of retainedCustodyFailures) {
+        const pending = [error], seen = new Set<unknown>();
+        let runtimeFailure = false;
+        while (pending.length) {
+          const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
+          if (value instanceof RuntimeCustodyUncertainError) { runtimeFailure = true; break; }
+          if (value instanceof AggregateError) { const errors: readonly unknown[] = value.errors; pending.push(...errors); }
+          if (value instanceof Error) pending.push(value.cause);
+        }
+        if (!runtimeFailure && error instanceof ProfileSessionRefusedError && (error.code === "BROWSER_CLOSURE_UNPROVED" || ProfileOnboardingBrowserFailureCodeSchema.safeParse(error.code).success)) {
+          try { assertSourceClosuresProved(new Set([error])); }
+          catch (unproved) { failures.push(unproved); }
+        } else failures.push(error);
+      }
       const selectedRuntime = readSelectedRuntime();
       if (selectedRuntime !== undefined) {
         try { await selectedRuntime.detach(); } catch (error) { failures.push(error); }

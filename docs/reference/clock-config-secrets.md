@@ -828,13 +828,30 @@ approved account surface is wired.
 Show setup browser opens one draft-owned full bundled Chromium window on macOS and Windows on the Relay Fast Duo extension's
 existing setup page. Open duo.ucsd.edu opens a separate tab in that same context, acquires the
 original protected Details only after verifying the exact UCSD SSO document and form controls,
-then submits that pinned POST form once. Reopening focuses the owned tab; failed initialization
-remains refused and never resubmits. Login does not prove either enrollment method or MFA completion.
+then submits that pinned POST form once. A direct HTTPS `duosecurity.com` landing opens the tab without
+acquiring credentials; the starting `duo.ucsd.edu` URL is not landing evidence. Navigation and pinned
+submission timeouts have distinct closed diagnostic codes. Successful opening is reused in that context;
+a failed portal opening can be retried in the same tab. Login does not prove either enrollment method or MFA completion.
+The provider sends a closed recovery hint through the existing extension broker. Manual sign-in
+advice requires a known sign-in timeout on a trusted URL. Untrusted pages say not to enter a
+password and to close that tab; unknown refusals never suggest signing in there.
 An active attempt's lost stop acknowledgement retains uncertain custody until that exact attempt's
 startup, reporting, UNKNOWN retention and callbacks settle within its closure deadline. Only the
 same owned browser's complete context, page, process and callback closure plus profile deletion
 can then supersede that stop failure. Other failures refuse replacement; reopening never retries
 or confirms an enrollment.
+Failed browser cleanup records its bounded phase in the private Duo diagnostic log. A native probe
+that settles after the closure deadline cannot remove the profile or permit replacement.
+Only a Playwright target-close poll failure whose worker did not close before its context may
+settle with context closing. Other poll failures retain their causes even if closing overtakes their
+asynchronous handlers. Closing status alone never proves closure: the context event,
+tracked pages, settled callbacks, native exclusion and profile cleanup are still required.
+An unproved setup-browser closure holds sign-up with `BROWSER_CLOSURE_UNPROVED`; reads and commands
+retain that refusal without reacquiring the held file locks. The dashboard preserves the draft and
+asks the operator to close and reopen Relay. Startup removes the unfinished sign-up only after
+proving the old process and its exact browser root unused.
+The provider carries uncertain browser-close results and their original cause through Cancel and
+Finish drains; an absent cause does not turn uncertainty into available authority.
 Show and Open focus the selected page and its owned Chromium window, restore a minimized
 window and activate its exact process through AppKit or Windows foreground APIs. Return to Relay
 uses the original app/window captured before launch; the extension cannot supply a native target.

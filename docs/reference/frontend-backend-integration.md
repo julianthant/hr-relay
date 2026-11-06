@@ -455,7 +455,9 @@ otherwise its cause and the closure failure remain uncertain and replacement is 
 starts enrollment or submits SSO. Each successful Show or Open also focuses the owned browser
 window, including its initial opening and a replacement after proved closure. A rejected attempt
 initialization is awaited to settlement during cleanup; its Unknown result and refusal fences remain.
-Explicit Open Duo retains the existing once-per-context login path.
+Explicit Open Duo reuses a successful opening within its context and retries a failed opening in
+the same tab. A direct HTTPS `duosecurity.com` landing acquires no credentials and establishes no
+enrollment proof. The starting `duo.ucsd.edu` URL does not settle the bounded sign-in wait.
 
 Settings Preflight owns the OCR diagnostic presentation and request lifecycle in
 `surfaces/settings/preflight/preflight-ocr-model.ts`. The profile-scoped shell composes it with the

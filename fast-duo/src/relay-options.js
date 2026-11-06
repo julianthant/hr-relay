@@ -51,12 +51,7 @@ export async function mountRelayOptions(initial) {
       const identity = element('span', 'relay-method-identity'); identity.append(element('strong', '', label), element('span', '', kinds[method]));
       const pill = element('span', 'relay-method-pill'); pill.append(svg(tone), document.createTextNode(states[state]));
       head.append(tile, identity, pill);
-      const track = element('ol', 'relay-method-track'); track.setAttribute('aria-label', `${label} progress`);
-      const tones = state === 'idle' ? ['off', 'off', 'off'] : state === 'complete' ? ['complete', 'complete', 'complete'] : ['complete', failed ? 'failed' : 'pending', 'off'];
-      for (const [index, text] of ['Started', failed ? 'Not confirmed' : 'Added in Duo', 'Confirmed by Relay'].entries()) {
-        const step = element('li', '', text); step.dataset.state = tones[index]; track.append(step);
-      }
-      item.append(head, track); list.append(item);
+      item.append(head); list.append(item);
     }
     if (focusedMethod) list.querySelector(`[data-method="${focusedMethod}"]`).focus({ preventScroll: true });
     $('accountCount').textContent = `${Object.values(methods).filter(method => method.state === 'complete').length} of 2 completed`;
@@ -70,12 +65,13 @@ export async function mountRelayOptions(initial) {
     $('returnRelay').hidden = current.action === 'Return to Relay';
     $('returnRelay').disabled = busy;
     $('message').hidden = !unavailable || unavailable === 'state';
-    $('message').textContent = unavailable === 'return' ? 'Could not bring Relay forward. Select its window to review setup.' : 'Relay could not finish that action. Try again, or return to Relay.';
+    $('message').textContent = unavailable === 'return' ? 'Could not bring Relay forward. Select its window to review setup.' : unavailable === 'untrusted' ? 'Relay could not trust this Duo page. Do not enter your password. Close the Duo tab, then try Show Duo again.' : unavailable === 'portal' ? 'Relay could not sign in to Duo. Select Sign in to Duo to open the trusted sign-in page.' : 'Relay could not finish that action. Try again, or return to Relay.';
     $('message').setAttribute('role', 'alert');
   }
   const duoOption = { key: 'Security key', touch: 'Touch ID or Windows Hello' };
   function task(methods, blocked) {
     const attempt = methods[selected], label = labels[selected];
+    if (unavailable === 'portal') return { title: 'Sign in to Duo', instruction: 'Open the trusted Duo sign-in page and sign in by hand.', action: 'Sign in to Duo', run: () => command('RELAY_SHOW_PORTAL') };
     if (blocked) return { title: 'Reconnect to Relay', instruction: 'This page lost contact with Relay. Open setup again from Relay.', action: 'Return to Relay', run: () => command('RELAY_RETURN') };
     if (Object.values(methods).every(method => method.state === 'complete')) return { title: 'Both methods added', instruction: 'Security key and Touch ID are verified. Return to Relay to finish sign-up.', action: 'Return to Relay', run: () => command('RELAY_RETURN') };
     if (attempt.state === 'unavailable') return { title: `${label} unavailable`, instruction: 'Relay cannot set up this method from here. Return to Relay to check setup.', action: 'Return to Relay', run: () => command('RELAY_RETURN') };
@@ -95,10 +91,12 @@ export async function mountRelayOptions(initial) {
     if (stateRead) polling = true;
     else { busy = true; actionGeneration++; }
     const generation = actionGeneration;
+    let portalFailure;
     const focusedMethod = document.activeElement?.closest('.relay-method-card')?.dataset.method;
     if (!stateRead) render();
     try {
       const response = await chrome.runtime.sendMessage({ type, ...(method === undefined ? {} : { method }), ...(attemptId === undefined ? {} : { attemptId }) });
+      if (['RELAY_OPEN_PORTAL', 'RELAY_SHOW_PORTAL'].includes(type) && !response?.success) portalFailure = response?.portalFailure;
       if (stateRead && generation !== actionGeneration) return;
       if (!response?.success || response.result?.relaySetup !== true) throw new Error('Relay setup refused');
       const next = response.result.profile;
@@ -106,7 +104,7 @@ export async function mountRelayOptions(initial) {
       profile = next; if (type !== 'STATE' || unavailable === 'state') unavailable = false;
     } catch {
       if (type === 'RELAY_RETURN') unavailable = 'return';
-      else if ((!stateRead || generation === actionGeneration) && (type !== 'STATE' || !unavailable)) unavailable = type === 'STATE' ? 'state' : 'action';
+      else if ((!stateRead || generation === actionGeneration) && (type !== 'STATE' || !unavailable)) unavailable = type === 'STATE' ? 'state' : portalFailure === 'untrusted' ? 'untrusted' : portalFailure === 'sign-in' ? 'portal' : 'action';
     }
     finally { if (stateRead) polling = false; else busy = false; render(); if (focusedMethod && document.activeElement === document.body) $('accountList').querySelector(`[data-method="${focusedMethod}"]`).focus({ preventScroll: true }); }
   }

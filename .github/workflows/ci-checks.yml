@@ -183,9 +183,10 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
-      - name: Install Chromium and its system libraries
+      # ubuntu-24.04 already has Chromium's libraries. --with-deps only apt-installs extra fonts, and azure.archive.ubuntu.com stalls those debs.
+      - name: Install Chromium
         if: matrix.suite == 'integration'
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - run: npm run web:build
         if: matrix.suite == 'integration'
       - name: Put test temp on tmpfs
