@@ -30,6 +30,9 @@ it('registers attached, updated and generated files through HTTP/SQLite, reopens
   if (result.state !== 'complete') throw Error('missing result');
   session.linkOutputs(request, result);
   for (const output of result.files) { await session.register(output); await session.register(output); }
+  const library = (await client.workbookList()).map(record => [record.workbook.name, record.version]).sort();
+  assert.deepEqual(library, [['People.csv', 2], ['Results.csv', 1]]);
+  assert.equal(createHubAssistantSession('other', adapter).producer.initial().messages.length, 0);
   assert.equal(writes.length, 3); assert.ok(writes.every(path => /^\/api\/v1\/workbooks(?:\/[^/]+\/save)?$/u.test(path)));
 });
 
