@@ -606,7 +606,7 @@ export const ERROR_CATALOG = Object.freeze({
     EmptyParametersSchema,
   ),
   RESTORE_WRITE_HOLD_END_REFUSED: catalogEntry(
-    "It changed or was already ended. Reopen Storage.",
+    "The hold was not ended. It changed or was already ended. Reopen Storage and check again.",
     EmptyParametersSchema,
   ),
   PROFILE_RESTORE_ADMISSION_REQUIRED: catalogEntry(
