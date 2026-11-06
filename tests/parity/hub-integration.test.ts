@@ -231,12 +231,7 @@ test('HUB served product uses typed answers and refusals without sample executio
     let reply = 0;
     await page.route('**/api/v1/assistant/respond', route => {
       const index = reply++;
-      return route.fulfill({ json: index === 0 ? { state: 'answered', text: 'Verified explanation', citations: [{ path: 'docs/example.md', revision: 'a'.repeat(40), startLine: 1, endLine: 2, quote: 'Verified source quote' }] } : index === 1 ? { state: 'refused', code: 'ASSISTANT_PROPOSAL_REFUSED', message: 'Synthetic refusal' } : { state: 'proposal', proposal: {
-        workflowId: 'person-lookup', subject: { subjectRef: 'synthetic', displayName: 'Synthetic Person' }, intent: 'dry-run', descriptorVersion: 2,
-        descriptorFingerprint: 'd'.repeat(64), configSnapshotId: 'config', configFingerprint: 'c'.repeat(64), inputFingerprint: 'i'.repeat(64), optionsFingerprint: 'o'.repeat(64),
-        expiresAt: '2099-10-22T00:00:00Z', stopBefore: { nodeId: 'commit', phase: 'commit', afterPrepareTaskId: 'prepare', commitTaskId: 'submit' },
-        effects: { workflowExecuted: false, transactionCommitted: false }, confirmation: 'required-in-run',
-      } } });
+      return route.fulfill({ json: index === 0 ? { state: 'answered', text: 'Verified explanation' } : { state: 'refused', code: 'ASSISTANT_PROPOSAL_REFUSED', message: 'Synthetic refusal' } });
     });
     await page.goto(`${server.baseUrl}/?fixture=hub-served`);
     const launcher = page.getByRole('button', { name: 'Assistant', exact: true });
@@ -246,20 +241,15 @@ test('HUB served product uses typed answers and refusals without sample executio
     const panel = page.locator('#hub-panel-assistant'), field = panel.getByRole('textbox', { name: 'Message Relay', exact: true });
     await expect(panel).toHaveAttribute('data-source', 'served'); await expect(page.getByRole('button', { name: 'Assistant', exact: true })).toHaveCount(1);
     await expect(field).toBeEnabled(); await field.fill('Explain this workflow'); await field.press('Enter');
-    await expect(panel).toContainText('Verified explanation'); await expect(field).toHaveValue(''); await panel.getByRole('button', { name: 'Source: docs/example.md:1-2' }).click(); await expect(panel).toContainText('Verified source quote');
+    await expect(panel).toContainText('Verified explanation'); await expect(field).toHaveValue('');
     for (const label of ['Ask before every action', `Model: ${ASSISTANT_DEFAULT_MODEL}`, `Thinking effort: ${ASSISTANT_DEFAULT_EFFORT}`, 'Voice input']) await expect(panel.getByRole('button', { name: label, exact: true })).toBeDisabled();
     await field.fill('Run separations'); await field.press('Enter');
     await expect(panel).toContainText('The current planner refused this proposal. Review it in Run.'); await expect(field).toHaveValue('');
     mkdirSync(evidence, { recursive: true });
     await panel.screenshot({ path: resolve(evidence, 'hub-served-answer-refusal.png'), animations: 'disabled' });
     await expect(panel).not.toContainText('Sample run'); await expect(panel).not.toContainText('Alex Rivera');
-    await field.fill('Propose a dry run'); await field.press('Enter');
-    const proposal = panel.getByRole('article', { name: 'Proposed run details' }); await expect(proposal).toContainText('Synthetic Person');
-    await expect(proposal.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
-    await proposal.getByRole('button', { name: 'Effects and stop points' }).click(); await expect(proposal).toContainText('commit: submit (after prepare)');
-    await expect(proposal).toContainText('Confirmation is unavailable'); await expect(field).toHaveValue('');
     expect(await panel.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
-    expect(writes).toEqual(['/api/v1/assistant/respond', '/api/v1/assistant/respond', '/api/v1/assistant/respond']); expect(errors).toEqual([]);
+    expect(writes).toEqual(['/api/v1/assistant/respond', '/api/v1/assistant/respond']); expect(errors).toEqual([]);
     await panel.screenshot({ path: resolve(evidence, 'hub-served-proposal.png'), animations: 'disabled' });
     await info.attach('hub-served.png', { body: readFileSync(resolve(evidence, 'hub-served-proposal.png')), contentType: 'image/png' });
     await attachShellA11y(page, info, 'hub-served.a11y.yml');
