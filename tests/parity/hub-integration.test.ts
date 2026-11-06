@@ -97,9 +97,9 @@ for (const engine of ['chromium', 'webkit'] as const) for (const width of [1440,
       const effortTrigger = panel.getByRole('button', { name: 'Thinking effort: Medium', exact: true });
       await effortTrigger.focus(); await effortTrigger.press('Space'); await expect(page.getByRole('menu')).toHaveCSS('transform', 'none');
       await page.keyboard.press('Home'); await expect(page.getByRole('menuitemradio', { name: 'Light', exact: true })).toBeFocused();
-      await page.keyboard.press('ArrowDown'); await expect(page.getByRole('menuitemradio', { name: 'Low', exact: true })).toBeFocused(); await page.keyboard.press('Space');
-      const low = panel.getByRole('button', { name: 'Thinking effort: Low', exact: true }); await expect(low).toBeFocused();
-      await low.press('Space'); await expect(page.getByRole('menu')).toHaveCSS('transform', 'none'); await page.keyboard.press('m'); await expect(page.getByRole('menuitemradio', { name: 'Medium', exact: true })).toBeFocused();
+      await page.keyboard.press('End'); await expect(page.getByRole('menuitemradio', { name: 'Max', exact: true })).toBeFocused(); await page.keyboard.press('Space');
+      const max = panel.getByRole('button', { name: 'Thinking effort: Max', exact: true }); await expect(max).toBeFocused();
+      await max.press('Space'); await expect(page.getByRole('menu')).toHaveCSS('transform', 'none'); await page.keyboard.press('Home'); await page.keyboard.press('ArrowDown'); await expect(page.getByRole('menuitemradio', { name: 'Medium', exact: true })).toBeFocused();
       await page.keyboard.press('Enter'); await expect(effortTrigger).toBeFocused();
       await panel.getByRole('button', { name: 'New chat', exact: true }).click();
       await field.fill('Keep this draft');

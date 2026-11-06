@@ -41,7 +41,9 @@ function proposalRows(proposal: AssistantMockProposal): readonly AssistantPropos
 function ProposalRows({ rows }: { rows: readonly AssistantProposalRow[] }) {
   return <>
     {rows.map((row, index) => <Fragment key={index}>{row.display.kind === 'person'
-      ? <><dt>Person</dt><dd className="hub-person">{row.display.name && <span>{row.display.name}</span>} {row.display.employeeId && <span>{row.display.employeeId}</span>}</dd></>
+      ? row.display.name === undefined ? <><dt>EID</dt><dd>{row.display.employeeId}</dd></>
+        : row.display.employeeId === undefined ? <><dt>Name</dt><dd>{row.display.name}</dd></>
+        : <><dt>Person</dt><dd className="hub-person"><span>{row.display.name}</span> <span>EID {row.display.employeeId}</span></dd></>
       : row.display.kind === 'document' ? <><dt>Document</dt><dd>{row.display.documentNumber}</dd></>
       : <><dt>Request</dt><dd>{row.title}</dd></>}</Fragment>)}
     {rows.length > 1 && <><dt>Total</dt><dd>{rows.length}</dd></>}

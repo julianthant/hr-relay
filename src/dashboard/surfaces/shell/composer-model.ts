@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import type { AssistantFile } from './assistant-panel-model.js';
 
 export const ASSISTANT_MODELS = ['Default', 'GPT-6.1 Sol', 'GPT-6 Astra', 'GPT-6 Sol', 'GPT-6 Luna', 'GPT-5.6 Sol', 'GPT-5.6 Terra', 'GPT-5.6 Luna'] as const;
-export const ASSISTANT_EFFORTS = ['Light', 'Low', 'Medium', 'High', 'xHigh'] as const;
+export const ASSISTANT_EFFORTS = ['Light', 'Medium', 'High', 'xHigh', 'Max'] as const;
 export const ASSISTANT_APPROVALS = [
   { label: 'Ask before every action', description: 'Confirm each proposed change.' },
 ] as const;
