@@ -70,8 +70,8 @@ describe("assistant history through backup and restore", () => {
     const profile = await createBoundProfileFixture(), admission = profile.admission, root = profile.stateRoot;
     const clock = manualClock(new Date("2026-09-10T20:00:00Z")), now = clock.now().toISOString();
     try {
-      const open = () => AuthorityDatabase.open(admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "assistant-history-restore" }, clock,
-        undefined, undefined, undefined, boundProfileCredentials(admission));
+      const open = () => AuthorityDatabase.open(profile.admission, { path: profile.path, busyTimeoutMs: 250, migrationOwner: "assistant-history-restore" }, clock,
+        undefined, undefined, undefined, boundProfileCredentials(profile.admission));
       let db = open();
       const history = db.authority.assistantHistory, id = randomUUID(), messageId = randomUUID();
       assert.equal(history.apply({ operation: "create", conversationId: id, title: "Kept chat" }, now).state, "saved");

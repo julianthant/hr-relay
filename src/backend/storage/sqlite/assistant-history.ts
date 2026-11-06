@@ -261,8 +261,8 @@ export function createAssistantHistoryRepository(ports: Ports) {
     },
     /** Earlier rows with replay text, in order; never `inert` rows or the current turn. */
     replay(conversationId: string, beforeOrdinal: number): readonly Readonly<{ role: "operator" | "assistant"; modelText: string }>[] {
-      return ports.read(() => messages(conversationId).filter(row => row.ordinal < beforeOrdinal && row.modelText !== null && row.delivery !== "sending")
-        .map(row => ({ role: row.role, modelText: row.modelText ?? "" })));
+      return ports.read(() => messages(conversationId).flatMap(row => row.ordinal < beforeOrdinal && row.modelText !== null && row.delivery !== "sending"
+        ? [{ role: row.role, modelText: row.modelText }] : []));
     },
     /** One guarded settlement; returns the new revision, or undefined when the turn is gone, expired or already settled. */
     settle(conversationId: string, messageId: string, settlement: AssistantSettlement, now: string): number | undefined {
