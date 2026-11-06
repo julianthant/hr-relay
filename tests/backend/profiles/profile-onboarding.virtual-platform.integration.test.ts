@@ -72,9 +72,9 @@ for (const custody of ["ready", "retained", "missing"] as const) it(`requires ${
       assert.ok(credentials.some(credential => credential.authenticator?.transport === "internal"));
     } finally { owner.release(); }
   } finally {
-    await session.closeOnboarding();
-    if (retained) session.close();
-    else assert.throws(() => session.close(), (error: unknown) => error instanceof AggregateError && error.message === "profile-onboarding-custody-unproved");
+    const unproved = (error: unknown) => error instanceof AggregateError && error.message === "profile-onboarding-custody-unproved";
+    if (retained) { await session.closeOnboarding(); session.close(); }
+    else { await assert.rejects(session.closeOnboarding(), unproved); assert.throws(() => session.close(), unproved); }
     machine.release(); rmSync(root, { recursive: true, force: true });
   }
 });
