@@ -171,7 +171,6 @@ export const AssistantProposalRowSchema = z.strictObject({ title: z.string().min
   .refine(row => row.display.kind !== "person" || row.display.name !== undefined || row.display.employeeId !== undefined, "a person row shows a name or an EID");
 export type AssistantProposalRow = z.infer<typeof AssistantProposalRowSchema>;
 export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
-  z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("local-write") }),
   z.strictObject({ ...AssistantActionProposalFields, effect: z.literal("workflow-start"), source: z.enum(["entries", "run", "rerun"]),
     workflowId: z.string().min(1), dryRun: z.boolean(),
     startPlan: StartPlanWireSchema.pick({

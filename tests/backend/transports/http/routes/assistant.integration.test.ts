@@ -1,6 +1,7 @@
 import { AssistantHistoryResultSchema, AssistantHistoryViewSchema, AssistantModelPreferenceViewSchema, AssistantPermissionViewSchema } from '../../../../../src/models/dashboard/assistant.js';
 import { AssistantActionDecisionSchema, AssistantActionResultSchema } from "../../../../../src/models/dashboard/assistant.js";
 import assert from "node:assert/strict";
+import { ASSISTANT_PAUSE_PROPOSAL } from "../../../../support/fixtures/dashboard/assistant-start.js";
 import { Hono } from "hono";
 import { it } from "vitest";
 import type { DashboardApp } from "../../../../../src/backend/transports/http/routes/api-types.js";
@@ -77,14 +78,13 @@ it("keeps operator confirmation behind the same bounded loopback/media door and 
 });
 
 it("returns an issued automatic unknown action unchanged without converting it to a generic refusal", async () => {
-  const action = { chatId: "00000000-0000-4000-8000-000000000001", actionId: "00000000-0000-4000-8000-000000000002", revision: 1,
-    expiresAt: "2099-01-01T00:00:00Z", label: "Mark 25 current notifications read", targetLabel: "25 current notifications", effect: "local-write" as const };
+  const action = ASSISTANT_PAUSE_PROPOSAL;
   const result = { state: "unknown" as const, actionId: action.actionId, action };
   const app: DashboardApp = new Hono(); let calls = 0;
   registerAssistantRoutes(app, { async respond() { calls++; return { kind: "result", result }; } });
   const response = await app.request("http://127.0.0.1:3938/api/v1/assistant/respond", { method: "POST", headers: {
     host: "127.0.0.1:3938", origin: "http://127.0.0.1:3938", "content-type": "application/json",
-  }, body: JSON.stringify({ conversationId: "11111111-1111-4111-8111-111111111111", expectedRevision: 1, messageId: "22222222-2222-4222-8222-222222222222", message: "mark notifications read" }) });
+  }, body: JSON.stringify({ conversationId: "11111111-1111-4111-8111-111111111111", expectedRevision: 1, messageId: "22222222-2222-4222-8222-222222222222", message: "pause it" }) });
   assert.equal(response.status, 200); assert.equal(calls, 1); assert.deepEqual(await response.json(), { kind: "result", result });
 });
 

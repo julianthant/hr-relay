@@ -772,13 +772,14 @@ strictly later generation, so an old token returns "reference expired" instead o
 Every inference passes the service's currentness check to `inferAssistant`; the account runs it after each credential
 await, immediately before the Responses POST and on every streamed chunk, and closes the operation on every exit.
 Verification expiry, model policy, profile runtime and account authority changes therefore stop the next POST.
-Proposal tools (`src/backend/assistant/proposals.ts`) only prepare a card; their result goes to the operator and ends the turn:
+Confirm applies only to runs. Proposal tools (`src/backend/assistant/proposals.ts`) only prepare a card; their result goes to the operator and ends the turn:
 - `propose_workflow_start`: 1–20 entries in the workflow's Input Run grammar, or a run reference to reuse that run's input. One canonical plan, all or none; a dry run when supported, a live read when the workflow has no transaction node.
 - `propose_rerun`: the run's own input with all of its steps.
 - `propose_run_action`: pause, resume or cancel one run through the existing run command.
-- `propose_notification_action`: read, unread, snooze or unsnooze all current notifications or one.
 
-Each card is an existing authorization record (`createChat`, `prepare`) with the earlier of the 60-second action expiry and the plan expiry. Card rows show the planned canonical input's typed identity (Name/EID, document number) from the server's plan, never model text. Confirm sends the SHA-256 of the canonical JSON of the card it rendered; the server refuses a missing or different digest, a foreign chat, an old revision, an expired card and any changed plan, settings, source run, notification membership, grant, manifest or model authority before approval. A card is claimed once. A failure after dispatch may have begun is `unknown` and is never retried.
+The change tool `change_notifications` marks all current notifications or one read or unread, or snoozes or unsnoozes them, at once with no card: the assistant authorization record is approved by policy and consumed in the same authority transaction as the target check, and the model receives `{ state, count }` and answers in words.
+
+Each card is an existing authorization record (`createChat`, `prepare`) with the earlier of the 60-second action expiry and the plan expiry. Card rows show the planned canonical input's typed identity (Person, EID or Name; document number) from the server's plan, never model text. Confirm sends the SHA-256 of the canonical JSON of the card it rendered; the server refuses a missing or different digest, a foreign chat, an old revision, an expired card and any changed plan, settings, source run, grant, manifest or model authority before approval. A card is claimed once. A failure after dispatch may have begun is `unknown`, shown as one line "Couldn't finish this.", and is never retried.
 
 `scripts/build/generate-assistant-knowledge.ts` writes, and with `--check` verifies, the hash-pinned
 `src/backend/assistant/plugins/workflows/facts.json` from the served workflow definitions. Boot compares it byte

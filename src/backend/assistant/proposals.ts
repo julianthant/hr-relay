@@ -45,8 +45,6 @@ interface Pending {
   readonly record: ActionRecord;
   readonly digest: string;
   readonly start: boolean;
-  /** A local-only write (notifications): consume and its caption commit together, so its outcome is never unknown. */
-  readonly local: boolean;
   /** The conversation whose turn issued the card and the card's fixed-verb label; the decision caption uses both. */
   readonly conversationId: string;
   readonly label: string;
@@ -80,6 +78,7 @@ const countLabel = (rows: readonly AssistantProposalRow[]) => {
   return n === 1 ? `1 ${noun[0]}` : `${String(n)} ${noun[1]}`;
 };
 const NOTIFICATION_ACTIONS = { read: "notification-read", unread: "notification-unread", snooze: "notification-snooze", unsnooze: "notification-unsnooze" } as const;
+const ChangeOutput = z.strictObject({ state: z.literal("applied"), count: z.number().int().positive() });
 
 /** The proposal tools and the one Confirm owner; nothing here dispatches before the operator confirms an issued card. */
 export function createAssistantProposals(deps: AssistantProposalDeps) {
@@ -117,7 +116,7 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
     assertCurrent();
     const proposal = AssistantActionProposalSchema.parse(card({ chatId: chat.chatId, actionId: prepared.id, revision: prepared.revision, expiresAt }));
     prune();
-    pending.set(prepared.id, { chat, revision: prepared.revision, expiresAt, record: issuedRecord, digest: digestOf(proposal), start: command.family === "start", local: proposal.effect === "local-write",
+    pending.set(prepared.id, { chat, revision: prepared.revision, expiresAt, record: issuedRecord, digest: digestOf(proposal), start: command.family === "start",
       conversationId: context.conversationId, label: proposal.label,
       assertCurrent, assertApplied: checks.assertApplied ?? (() => {}) });
     return proposal;
@@ -222,31 +221,37 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
           workflowId: run.envelope.workflow, run: target, row }), {
           assertCurrent() { if (requireTrustRun(deps.runs, run.envelope.runId).version !== run.version) refuse(); } });
       } },
-    { kind: "proposal", name: "propose_notification_action",
-      description: "Prepare a card to mark notifications read or unread, or to snooze or unsnooze them: all current ones, or one notification reference. The operator confirms it.",
-      parameters: notificationParameters,
-      async propose(value, context) {
+    { kind: "change", name: "change_notifications",
+      description: "Mark notifications read or unread, or snooze or unsnooze them: all current ones, or one notification reference. It applies at once, with no card; tell the operator what changed.",
+      parameters: notificationParameters, output: ChangeOutput, privacy: [],
+      async invoke(value, context) {
         const input = notificationParameters.parse(value);
+        let command: CommandRequest, count: number, assertCurrent: () => void;
         if (input.target === "all") {
           const operation: NotificationCollectionOperation = NotificationCollectionOperationSchema.parse(input.action);
-          const observe = () => deps.database.withAuthorityReadSnapshot(() => deps.database.authority.notifications.collection(context.actorId, operation));
-          const target = observe();
+          const observe = () => deps.database.authority.notifications.collection(context.actorId, operation);
+          const target = deps.database.withAuthorityReadSnapshot(observe);
           if (target.matchingCount === 0) refuse();
-          const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: deps.clock.now().toISOString(), requestedBy: deps.actorId, source: "assistant",
+          command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: deps.clock.now().toISOString(), requestedBy: deps.actorId, source: "assistant",
             family: "notification", type: `${NOTIFICATION_ACTIONS[input.action]}-all`, target });
-          const noun = `${String(target.matchingCount)} current notifications`;
-          return issue(command, context, identity => ({ ...identity, effect: "local-write", targetLabel: noun,
-            label: input.action === "read" ? `Mark ${noun} read` : input.action === "unread" ? `Mark ${noun} unread` : input.action === "snooze" ? `Snooze ${noun}` : `Unsnooze ${noun}` }), {
-            assertCurrent() { if (canonicalJsonStringify(observe()) !== canonicalJsonStringify(target)) refuse(); } });
+          count = target.matchingCount;
+          assertCurrent = () => { if (canonicalJsonStringify(observe()) !== canonicalJsonStringify(target)) refuse(); };
+        } else {
+          const id = context.references.resolve(input.target, ["N"]).target, record = deps.database.authority.notifications.get(id);
+          if (record === undefined || record.actorId !== context.actorId) throw new AssistantToolRefusal("ASSISTANT_READ_STALE");
+          command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: deps.clock.now().toISOString(), requestedBy: deps.actorId, source: "assistant",
+            family: "notification", type: NOTIFICATION_ACTIONS[input.action], target: { notificationId: record.notificationId, actorId: record.actorId, expectedVersion: record.version } });
+          count = 1;
+          assertCurrent = () => { if (deps.database.authority.notifications.get(id)?.version !== record.version) refuse(); };
         }
-        const id = context.references.resolve(input.target, ["N"]).target, record = deps.database.authority.notifications.get(id);
-        if (record === undefined || record.actorId !== context.actorId) throw new AssistantToolRefusal("ASSISTANT_READ_STALE");
-        const target = { notificationId: record.notificationId, actorId: record.actorId, expectedVersion: record.version };
-        const command = CommandRequestSchema.parse({ commandId: randomUUID(), requestedAt: deps.clock.now().toISOString(), requestedBy: deps.actorId, source: "assistant",
-          family: "notification", type: NOTIFICATION_ACTIONS[input.action], target });
-        const verb = input.action === "read" ? "Mark read" : input.action === "unread" ? "Mark unread" : input.action === "snooze" ? "Snooze" : "Unsnooze";
-        return issue(command, context, identity => ({ ...identity, effect: "local-write", label: `${verb}: notification`, targetLabel: record.title.slice(0, 160) }), {
-          assertCurrent() { if (deps.database.authority.notifications.get(id)?.version !== record.version) refuse(); } });
+        context.assertCurrent();
+        // Confirm applies only to runs: a small local change is approved by policy and consumed in the same transaction as its currentness check.
+        const chat = deps.authorization.createChat(), prepared = deps.authorization.prepare(chat, command);
+        deps.authorization.approve(chat, prepared.id, prepared.revision);
+        const result = deps.database.withAuthorityTransaction(() => { assertCurrent(); return deps.authorization.consume(chat, prepared.id); });
+        if (result !== null) deps.commands.publish(command, result);
+        if (result?.state !== "applied") refuse();
+        return { state: "applied", count };
       } },
   ] };
 
@@ -273,22 +278,6 @@ export function createAssistantProposals(deps: AssistantProposalDeps) {
       pending.delete(decision.actionId);
       deps.authorization.approve(issued.chat, decision.actionId, decision.revision);
       const notDone = `Not done: ${issued.label}. ${ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED}`;
-      if (issued.local) {
-        let result;
-        try {
-          result = deps.database.withAuthorityTransaction(() => {
-            const settled = deps.authorization.consume(issued.chat, decision.actionId);
-            caption(settled?.state === "applied" ? `Done: ${issued.label}.` : notDone);
-            return settled;
-          });
-        } catch {
-          // The transaction rolled back: nothing changed.
-          try { caption(notDone); } catch { /* readback shows the caption is missing */ }
-          return { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
-        }
-        if (result !== null) deps.commands.publish(issued.record.command, result);
-        return result?.state === "applied" ? { state: "applied", actionId: decision.actionId } : { state: "refused", code: "ASSISTANT_PROPOSAL_REFUSED" };
-      }
       // After the claim every failure, including this Confirm's own abort, is UNKNOWN: the action is spent and never retried.
       try {
         const current = () => { signal.throwIfAborted(); issued.assertCurrent(); };

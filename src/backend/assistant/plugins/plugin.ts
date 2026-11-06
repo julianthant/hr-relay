@@ -32,7 +32,11 @@ export interface AssistantProposalTool extends AssistantToolIdentity {
   readonly kind: "proposal";
   propose(argumentsValue: unknown, context: AssistantToolContext): Promise<AssistantActionProposal>;
 }
-export type AssistantTool = AssistantReadTool | AssistantProposalTool;
+/** A small local change (no run) that applies inside the turn without a card; its output returns to the model. */
+export interface AssistantChangeTool extends Omit<AssistantReadTool, "kind"> {
+  readonly kind: "change";
+}
+export type AssistantTool = AssistantReadTool | AssistantChangeTool | AssistantProposalTool;
 export interface AssistantPlugin {
   readonly domain: string;
   readonly tools: readonly AssistantTool[];

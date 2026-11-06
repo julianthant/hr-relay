@@ -131,23 +131,22 @@ for (const scene of ['new', 'ask-read', 'ask-write', 'permission-changed', 'work
   });
 }
 
-test('served local action uses the existing card; a lost local confirmation is never unknown or retried', async ({ page }, info) => {
+test('served run action uses the card; a lost confirmation is the one unknown line and is never retried', async ({ page }, info) => {
   for (const lost of [false, true]) {
     await page.goto(`${baseUrl}?served=1&lost=${lost ? '1' : '0'}`);
     const input = page.getByRole('textbox', { name: 'Message Relay' });
-    await expect(input).toBeEnabled(); await input.fill('mark notifications read');
+    await expect(input).toBeEnabled(); await input.fill('pause it');
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
-    const card = page.getByRole('article', { name: 'Proposed Mark a notification read' });
+    const card = page.getByRole('article', { name: `Proposed ${ASSISTANT_PAUSE_PROPOSAL.label}` });
     await expect(card).toContainText('Local change');
-    await expect(card).toContainText('Local notification');
-    await expect(card).not.toContainText('Dry run'); await expect(card).not.toContainText('Alex Rivera');
+    await expect(card).not.toContainText('Dry run');
     const confirm = card.getByRole('button', { name: 'Confirm', exact: true }); await expect(confirm).toBeEnabled();
     await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'lost' : 'ready'}.png`) });
     await confirm.click();
-    if (lost) { await expect(confirm).toBeDisabled(); await expect(page.getByText(ASSISTANT_UNKNOWN_NOTICE)).toHaveCount(0); }
+    if (lost) { await expect(page.getByText(ASSISTANT_UNKNOWN_NOTICE, { exact: true })).toHaveCount(1); await expect(card).toHaveCount(0); }
     else await expect(page.getByLabel('Resolved proposal')).toContainText('Done');
     await expect(page.locator('body')).toHaveAttribute('data-decisions', '1');
-    await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'lost-local' : 'complete'}.png`) });
+    await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'unknown' : 'complete'}.png`) });
   }
 });
 
@@ -166,7 +165,6 @@ test('served automatic unknown and lost respond have no Retry or new Send', asyn
   }
 });
 
-const LOCAL_PROPOSAL = { chatId: '00000000-0000-4000-8000-000000000001', actionId: '00000000-0000-4000-8000-000000000002', revision: 1, expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', effect: 'local-write' };
 const CONNECTED = { state: 'connected', name: 'Fixture Operator', email: 'operator@example.edu', expiresAt: '2099-10-19T00:00:00Z', planUsage: 'enabled' };
 const SERVED_SCENES = {
   'signed-out': { account: { state: 'signed-out' }, strip: 'Reconnect ChatGPT to use the assistant.' },
@@ -174,12 +172,12 @@ const SERVED_SCENES = {
   'unverified-narrow': { account: { state: 'unavailable', code: 'CHATGPT_USAGE_UNAVAILABLE', message: ERROR_CATALOG.CHATGPT_USAGE_UNAVAILABLE.text }, strip: /Open Preflight/, width: 300 },
   disabled: { account: { ...CONNECTED, planUsage: 'disabled' }, strip: /Open Settings/ },
   'limit-reached': { account: { ...CONNECTED, planUsage: 'limit-reached' }, strip: /Open Settings/ },
-  proposal: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL } },
+  'local-change': { account: CONNECTED, respond: { state: 'answered', text: 'Marked 2 notifications read.' }, answer: 'Marked 2 notifications read.' },
   'start-proposal': { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL } },
   'rerun-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_RERUN_PROPOSAL }, facts: [['Person', 'Sample, Avery EID 10101010'], ['Options', 'Read only']] },
   'pause-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL }, facts: [['Person', 'Sample, Avery EID 10101010'], ['Options', 'Local change · Pause']] },
   'separations-multi-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_SEPARATIONS_MULTI_PROPOSAL }, facts: [['Document', '4501'], ['Document', '4502'], ['Total', '2'], ['Options', 'Read only']] },
-  confirmed: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL }, confirm: 'applied' },
+  confirmed: { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL }, confirm: 'applied' },
   unknown: { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL }, confirm: 'lost' },
   refused: { account: CONNECTED, respond: 'fail' },
 } as const;
@@ -187,7 +185,7 @@ for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Obje
   test(`assistant served ${scene} ${theme}`, { annotation: [{ type: 'required-a11y-evidence', description: `hub-assistant-served-${scene}-${theme}.a11y.yml` }] }, async ({ page }, info) => {
     await page.route('**/api/v1/settings/chatgpt-account', route => route.fulfill({ json: spec.account }));
     if ('respond' in spec) await page.route('**/api/v1/assistant/respond', route => route.fulfill({ json: { kind: 'result', result: spec.respond === 'fail' ? { state: 'refused', code: 'ASSISTANT_VERIFICATION_FAILED', message: 'x' } : spec.respond } }));
-    await page.route('**/api/v1/assistant/action', route => 'confirm' in spec && spec.confirm === 'lost' ? route.abort('failed') : route.fulfill({ json: { state: 'applied', actionId: LOCAL_PROPOSAL.actionId } }));
+    await page.route('**/api/v1/assistant/action', route => 'confirm' in spec && spec.confirm === 'lost' ? route.abort('failed') : route.fulfill({ json: { state: 'applied', actionId: ASSISTANT_PAUSE_PROPOSAL.actionId } }));
     await page.goto(`${baseUrl}/?served=1&transport=1&theme=${theme}`);
     const panel = page.locator('#hub-panel-assistant'), input = panel.getByRole('textbox', { name: 'Message Relay' });
     if ('width' in spec) await panel.evaluate((element, width) => { element.style.width = `${width}px`; }, spec.width);
@@ -199,6 +197,7 @@ for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Obje
       await expect(input).toBeEnabled(); await input.fill('do it'); await input.press('Enter');
       if ('confirm' in spec) { await panel.getByRole('button', { name: 'Confirm', exact: true }).click(); if (spec.confirm === 'lost') { await expect(panel.getByText(ASSISTANT_UNKNOWN_NOTICE, { exact: true })).toHaveCount(1); await expect(panel.getByRole('article')).toHaveCount(0); } else await expect(panel.getByLabel('Resolved proposal')).toBeVisible(); }
       else if (spec.respond === 'fail') await expect(panel.getByText(/Assistant verification failed/)).toBeVisible();
+      else if ('answer' in spec) { await expect(panel.getByText(spec.answer, { exact: true })).toBeVisible(); await expect(panel.getByRole('article')).toHaveCount(0); }
       else await expect(panel.getByRole('article')).toBeVisible();
       if ('facts' in spec) expect(await panel.locator('.hub-facts dt').evaluateAll(terms => terms.map(term => [term.textContent, term.nextElementSibling?.textContent]))).toEqual(spec.facts);
     }

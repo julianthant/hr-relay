@@ -22,7 +22,7 @@ import { composeDashboardRuntime } from "../../../../../src/backend/app/composit
 import { composeProfileRuntime } from "../../../../../src/backend/app/composition/storage-compose.js";
 import { ASSISTANT_WORKFLOW_FACTS_PATH, assistantWorkflowFacts } from "../../../../../src/backend/assistant/plugins/workflows/facts.js";
 import { rebuildRuntimeIsolation } from "../../../../../src/backend/app/config/runtime-isolation.js";
-import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND,  AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionResultSchema, AssistantActionDecisionSchema } from "../../../../../src/models/dashboard/assistant.js";
+import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND,  AssistantInferenceRequestSchema, AssistantResultSchema, AssistantActionDecisionSchema } from "../../../../../src/models/dashboard/assistant.js";
 import { CommandResultSchema } from "../../../../../src/rules/commands/commands.js";
 import { SETTINGS_SCHEMA_HASH, deriveRawSettingsPatchFingerprint } from "../../../../../src/models/config/settings.js";
 import { createBoundProfileFixture } from "../../../../support/helpers/admission-fixture.js";
@@ -321,7 +321,7 @@ function assertAssistantProposalFaults(owner: Parameters<typeof faultAuthoritySn
 
 it.each([
   { mode: "every-action", staleAccount: false }, { mode: "every-action", staleAccount: true },
-] as const)("proposes notification collection actions through the composed service with staleAccount=$staleAccount and bounded outbound data", async ({ mode, staleAccount }) => {
+] as const)("changes notifications at once without a card through the composed service with staleAccount=$staleAccount and bounded outbound data", async ({ mode, staleAccount }) => {
   const installed = true;
   await withServedAssistant(async ({ context, transport, clock, originalFetch, origin, post }) => {
     if (installed) {
@@ -373,45 +373,26 @@ it.each([
         const outbound = JSON.stringify(request);
         for (const local of [...ids, "Local title", "Local summary", "unrecognized private local request"]) assert.equal(outbound.includes(local), false);
         turns++;
-        const output = turns === 1 ? [{ type: "function_call", namespace: "relay", name: "propose_notification_action", call_id: "call_local", arguments: JSON.stringify({ action: "read", target: "all" }), status: "completed" }]
+        const output = turns === 1 ? [{ type: "function_call", namespace: "relay", name: "change_notifications", call_id: "call_local", arguments: JSON.stringify({ action: "read", target: "all" }), status: "completed" }]
           : [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: "Notification updated." }] }];
         return new Response(completedResponseStream(output, request.model, `resp_${turns}`), { headers: { "Content-Type": "text/event-stream" } });
       });
+      if (staleAccount) await context.account.signOut();
+      const before = durableRows();
       const result = AssistantResultSchema.parse(await send(postDoor(post), { message: "mark notifications read" }));
-      if (mode === "every-action") {
-        assert.equal(result.state, "action-proposal"); if (result.state !== "action-proposal") throw new Error("pending operator action required");
-        assert.equal(turns, 1, "operator DTO never returns to model");
-        assert.equal(result.proposal.targetLabel, "25 current notifications");
-        assert.equal(context.database.authority.notifications.get(id)?.status, "unread");
-        const record = context.database.authority.assistantAuthorization.action(result.proposal.actionId); assert.ok(record);
-        assert.equal(record.command.source, "assistant");
-        const before = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
-        const foreign = AssistantActionResultSchema.parse(await post("assistant/action", { chatId: randomUUID(), actionId: result.proposal.actionId, revision: result.proposal.revision, decision: "confirm", reviewedDigest: await assistantProposalDigest(result.proposal) }));
-        assert.equal(foreign.state, "refused"); assertAssistantProposalFaults({ database: context.database, stateRoot: context.admission.stateRoot }, before, "action-decision");
-        const decision = { chatId: result.proposal.chatId, actionId: result.proposal.actionId, revision: result.proposal.revision, decision: "confirm", reviewedDigest: await assistantProposalDigest(result.proposal) };
-        const edited = await assistantProposalDigest({ ...result.proposal, targetLabel: "24 current notifications" });
-        const beforeEdited = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
-        assert.equal(AssistantActionResultSchema.parse(await post("assistant/action", { ...decision, reviewedDigest: edited })).state, "refused");
-        assertAssistantProposalFaults({ database: context.database, stateRoot: context.admission.stateRoot }, beforeEdited, "action-decision");
-        assert.equal(context.database.authority.notifications.get(id)?.status, "unread");
-        if (staleAccount) {
-          await context.account.signOut();
-          const stopped = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
-          assert.equal(AssistantActionResultSchema.parse(await post("assistant/action", decision)).state, "refused");
-          assertHttpFaultOnly({ database: context.database, stateRoot: context.admission.stateRoot }, stopped, 1);
-          assert.equal(context.database.authority.notifications.get(id)?.status, "unread");
-        } else {
-        const confirmed = AssistantActionResultSchema.parse(await post("assistant/action", decision));
-        assert.equal(confirmed.state, "applied");
-        const settled = context.database.authority.assistantAuthorization.action(result.proposal.actionId); assert.ok(settled);
-        assert.equal(settled.state, "settled");
-        const audit = context.database.authority.commandAudits.findByCommand(settled.command.commandId);
+      if (staleAccount) {
+        assert.equal(result.state, "refused");
+        assert.deepEqual(durableRows(), before, "a stale account applies nothing");
+      } else {
+        assert.deepEqual(result, { state: "answered", text: "Notification updated." });
+        assert.equal(turns, 2, "the change result returns to the model, which answers in words");
+        const actions = durableRows().actions.filter(row => !before.actions.some(prior => prior.id === row.id));
+        assert.equal(actions.length, 1);
+        const record = context.database.authority.assistantAuthorization.action(String(actions[0]?.id)); assert.ok(record);
+        assert.equal(record.state, "settled"); assert.equal(record.command.source, "assistant");
+        const audit = context.database.authority.commandAudits.findByCommand(record.command.commandId);
         assert.equal(audit?.request.source, "assistant"); assert.equal(audit?.versionChanges.length, 25);
-        const after = faultAuthoritySnapshot({ database: context.database, stateRoot: context.admission.stateRoot });
-        assert.equal(AssistantActionResultSchema.parse(await post("assistant/action", decision)).state, "refused");
-        assertAssistantProposalFaults({ database: context.database, stateRoot: context.admission.stateRoot }, after, "action-decision");
-        }
-      } else throw new Error("granted mode required");
+      }
       for (const notificationId of ids) assert.equal(context.database.authority.notifications.get(notificationId)?.status, staleAccount ? "unread" : "read");
     }
 
@@ -742,15 +723,6 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
       assert.equal((await decide({ chatId: listed.chatId, actionId: listed.actionId, revision: listed.revision, decision: 'cancel' })).state, 'cancelled');
       assert.equal(database.authority.startPlans.get(startPlanId)?.consumedBy, undefined);
 
-      database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: 'local-operator',
-        dedupeFingerprint: 'd'.repeat(64), trigger: 'storage', channel: 'ping', status: 'unread', snooze: { state: 'not-snoozed' }, title: 'Local title', summary: 'Local summary',
-        links: [{ kind: 'storage', diagnosticFingerprint: 'e'.repeat(64) }], count: 1, version: 1, lastSeenAt: clock.now().toISOString(), createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() })));
-      const notices = await propose('Mark notifications read', () => ['propose_notification_action', { action: 'read', target: 'all' }]);
-      database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: 'local-operator',
-        dedupeFingerprint: 'f'.repeat(64), trigger: 'storage', channel: 'ping', status: 'unread', snooze: { state: 'not-snoozed' }, title: 'Later title', summary: 'Later summary',
-        links: [{ kind: 'storage', diagnosticFingerprint: 'e'.repeat(64) }], count: 1, version: 1, lastSeenAt: clock.now().toISOString(), createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() })));
-      assert.equal((await confirm(notices)).state, 'refused');
-      assert.ok(database.authority.notifications.listByActor('local-operator').every(row => row.status === 'unread'));
     } finally { cleanupSubscription(); }
   });
 });
