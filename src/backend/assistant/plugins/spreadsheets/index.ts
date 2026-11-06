@@ -13,10 +13,10 @@ export function spreadsheetsPlugin(deps: AssistantPluginDeps): AssistantPlugin {
     parameters, output: Output, privacy: [],
     async invoke(value, context) {
       const { limit } = parameters.parse(value);
-      const catalog = deps.workbookCatalog().slice(0, limit);
+      const catalog = deps.workbookCatalog();
       context.assertCurrent();
-      return JsonValueSchema.parse({ sheets: catalog.map(entry => ({ sheet: context.references.issue("S", entry.libraryId, entry.name),
-        version: entry.version, worksheets: entry.worksheets.length, rows: entry.rowCount })), more: deps.workbookCatalog().length > limit });
+      return JsonValueSchema.parse({ sheets: catalog.slice(0, limit).map(entry => ({ sheet: context.references.issue("S", entry.libraryId, entry.name),
+        version: entry.version, worksheets: entry.worksheets.length, rows: entry.rowCount })), more: catalog.length > limit });
     },
   }] };
 }
