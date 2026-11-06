@@ -541,6 +541,16 @@ acknowledged sign-out action; unknown unavailable state never implies stored cre
 live in Preflight, outside the account panel. Sign-out requires acknowledgment. Usage links to
 `https://chatgpt.com/settings/usage`. OAuth, consent, eligibility, usage limits, and secure token
 persistence require the backend account adapter. A displayed preview identity never proves plan access.
+Returning focus or visibility to Relay re-reads the original pending sign-in attempt, replacing its
+previous completion read. Only that attempt's typed result settles sign-in; cancellation, expiry and
+profile disposal abort its read and remove its listeners.
+Lost completion delivery retains those listeners and the original deadline even if account readback
+already shows connected. Successful completion replay reads the current account, and the browser
+revalidates it after delivery before publishing account state. Sign-out in progress is unavailable;
+an original typed closure refusal remains refused regardless of the current account.
+Account reads renew eligible ChatGPT access tokens before returning Settings state, including after
+restart. A renewable access-token expiry therefore keeps the connection; temporary renewal failures
+remain unavailable, and terminal refresh denial requires sign-in again.
 
 ### Editable fields, Credentials, and Paths
 
@@ -748,12 +758,21 @@ state; the dashboard renders the admitted projection and exact command result.
 ### Assistant production input boundary
 
 The selected dashboard composition owns the assistant service and the same profile account and
-canonical command authorization. The local intent projection accepts only named help topics,
-selected-run explanations, supported workflow-start proposals and notification actions. It sends fixed
-application text, public workflow/mode metadata and request-local opaque references;
-operator messages, notification text, subject identifiers and source-file bodies stay local. Unknown
-or ambiguous input refuses before inference. The trusted local projection also binds whether a
-request permits a help answer or requires canonical action completion. A notification action with
+canonical command authorization. The local intent projection accepts named help topics, finite
+app-topic question forms (what is/are, how does/do, tell me about, how does Relay handle, and
+what can Relay do with), questions asking which workflows Relay can run or support (optionally
+requesting one short sentence), selected-run explanations, supported workflow-start proposals
+and notification actions. App-help questions bind no functions. Workflow-list questions project
+only the current served-workflow knowledge and request a one-sentence answer. Answers retain
+exact validated knowledge-line citations. The projection sends fixed application text, public
+workflow/mode metadata and request-local opaque references; operator messages, private suffixes,
+notification text, subject identifiers and source-file bodies stay local. Unknown or ambiguous
+input refuses before inference.
+
+Local proposal refusals use the existing debug writer with a closed stage reason: input projection,
+function binding or invocation, missing projection, required canonical completion, or action decision.
+They include no operator/provider text or local object identities. The trusted local projection also
+binds whether a request permits a help answer or requires canonical action completion. A notification action with
 only model text and no canonical call refuses; it cannot report an execution from model prose. Notification commands resolve the reference back to the
 same actor and complete sorted current inbox membership and versions, then wait for operator confirmation before using the once-consumable command door.
 Plural actions use one opaque collection reference and exact matching count. Inbox Read all uses the

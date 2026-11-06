@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { it, vi } from "vitest";
 import { createBoundProfileFixture } from "../../support/helpers/admission-fixture.js";
 import { chatGptFixture, completedOcrStream } from "../../support/helpers/chatgpt-account-fixtures.js";
+import { completedResponseStream, partialTextStream } from "../../support/helpers/chatgpt-response-stream.js";
 import { IsoInstantSchema } from "../../../src/rules/identity/ids.js";
 import { createChatGptCredentialRepository } from "../../../src/backend/storage/configuration/chatgpt-credential-repository.js";
 import { createChatGptAccountService } from "../../../src/backend/accounts/chatgpt-account-service.js";
@@ -98,7 +99,7 @@ it("Responses sends image or PDF inline with required no-store stream settings",
 });
 for (const code of ["subscription_sharing_usage_limit_exceeded", "subscription_sharing_usage_unavailable"])
   it(`rejects streamed partial text and persists ${code}`, async () => {
-    const f = await chatGptFixture(); try { await f.connected(); f.setSse(`data: {"type":"response.output_text.delta","delta":"Partial"}\n\ndata: {"type":"response.failed","response":{"error":{"code":"${code}"}}}\n\n`);
+    const f = await chatGptFixture(); try { await f.connected(); f.setSse(`${partialTextStream("Partial")}data: {"type":"response.failed","response":{"error":{"code":"${code}"}}}\n\n`);
       await assert.rejects(f.service.extractText(image), { code: code.endsWith("exceeded") ? "CHATGPT_USAGE_LIMIT" : "CHATGPT_USAGE_UNAVAILABLE" });
       const state = f.service.readAccount(); assert.equal(state.state, code.endsWith("exceeded") ? "connected" : "unavailable"); if (state.state === "connected") assert.equal(state.planUsage, "limit-reached");
     } finally { await f.cleanup(); }
@@ -194,7 +195,7 @@ it("signout refuses an errored live stream's unproved closure without clearing c
     const path = join(f.root, "credentials", "chatgpt-account.json"), before = readFileSync(path);
     const callsBefore = f.calls.length;
     f.setResponse(init => new Response(new ReadableStream<Uint8Array>({ start(controller) {
-      controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_text.delta","delta":"Partial"}\n\n')); began();
+      controller.enqueue(new TextEncoder().encode(partialTextStream("Partial"))); began();
       init.signal?.addEventListener("abort", () => controller.error(new Error("synthetic-sensitive")), { once: true });
     } }), { headers: { "Content-Type": "text/event-stream" } }));
     const running = f.service.extractText(image);
@@ -228,7 +229,7 @@ it("signout drains actual graceful stream cancellation before clearing credentia
     f.setResponse(() => {
       const body = new ReadableStream<Uint8Array>({
         start(controller) {
-          controller.enqueue(new TextEncoder().encode('data: {"type":"response.output_text.delta","delta":"Partial"}\n\n'));
+          controller.enqueue(new TextEncoder().encode(partialTextStream("Partial")));
           started.resolve();
         },
         async cancel() { cancelCalls++; cancelling.resolve(); await release.promise; },
@@ -306,12 +307,19 @@ for (const kind of ["error", "refusal", "incomplete", "empty", "contradictory", 
     await f.connected();
     const text = '{"synthetic":"valid-looking"}';
     const response = { id: "resp_synthetic", model: image.model, status: kind === "contradictory" ? "failed" : "completed",
-      output: [{ type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: kind === "mismatch" ? "different" : text }] }] };
-    if (kind === "multiple") response.output.push(response.output[0]);
+      output: [{ id: "item_synthetic_0", type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text: kind === "mismatch" ? "different" : text }] }] };
+    if (kind === "multiple") response.output.push({ ...response.output[0], id: "item_synthetic_1" });
     const prelude = kind === "error" ? 'data: {"type":"error","code":"synthetic"}\n\n'
       : kind === "refusal" ? 'data: {"type":"response.refusal.delta","delta":"refused"}\n\n'
       : kind === "incomplete" ? 'data: {"type":"response.incomplete"}\n\n' : "";
-    f.setSse(`data: ${JSON.stringify({ type: "response.output_text.delta", delta: text })}\n\n${prelude}data: ${JSON.stringify({ type: "response.completed", ...(kind === "empty" ? {} : { response }) })}\n\n`);
+    let done = completedResponseStream(response.output, image.model).split('data: {"type":"response.completed"')[0]
+      .replace('"delta":"different"', `"delta":${JSON.stringify(text)}`);
+    if (kind === "multiple") {
+      const secondDelta = `data: ${JSON.stringify({ type: "response.output_text.delta", output_index: 1, item_id: "item_synthetic_1", content_index: 0, delta: text })}\n\n`;
+      assert.ok(done.includes(secondDelta));
+      done = done.replace(secondDelta, "");
+    }
+    f.setSse(`${done}${prelude}data: ${JSON.stringify({ type: "response.completed", ...(kind === "empty" ? {} : { response }) })}\n\n`);
     await assert.rejects(f.service.extractText(image));
   } finally { await f.cleanup(); }
 });
@@ -320,7 +328,7 @@ for (const [status, body, code] of [
   [503, { error: { code: "subscription_sharing_usage_unavailable" } }, "CHATGPT_USAGE_UNAVAILABLE"],
   [403, { error: { code: "subscription_sharing_user_not_eligible" } }, "CHATGPT_PLAN_DISABLED"],
   [403, { error: { code: "chatpass_v2_scope_not_authorized" } }, "CHATGPT_PLAN_DISABLED"],
-  [400, { error: { code: "subscription_sharing_unsupported_capability" } }, "CHATGPT_OCR_INVALID"],
+  [400, { error: { code: "subscription_sharing_unsupported_capability" } }, "CHATGPT_REQUEST_REJECTED"],
   [401, { detail: "synthetic-sensitive" }, "CHATGPT_ACCOUNT_EXPIRED"],
   [403, { detail: "synthetic-sensitive" }, "CHATGPT_PLAN_DISABLED"],
   [503, { detail: "synthetic-sensitive" }, "CHATGPT_USAGE_UNAVAILABLE"],
@@ -365,7 +373,7 @@ it("accepts recognized reasoning items with exactly one completed assistant mess
       { type: "reasoning", id: "rs_synthetic", summary: [] },
       { type: "message", role: "assistant", status: "completed", content: [{ type: "output_text", text }] },
     ] };
-    f.setSse(`data: ${JSON.stringify({ type: "response.output_text.delta", output_index: 1, content_index: 0, delta: text })}\n\ndata: ${JSON.stringify({ type: "response.completed", response })}\n\n`);
+    f.setSse(completedResponseStream(response.output, image.model));
     assert.deepEqual(await f.service.extractText(image), { text, model: image.model, responseId: "resp_synthetic" });
   } finally { await f.cleanup(); }
 });

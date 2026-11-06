@@ -116,6 +116,7 @@ Paths are relative to `tests/support/`. Modules under `fixtures/` supply parsed 
 | `helpers/assistant-coupled-server.ts` | served synthetic assistant browser proof and owned cleanup |
 | `helpers/assistant-coupled-world.ts` | coupled assistant account transport, canonical authority and pure planner fixtures |
 | `helpers/chatgpt-account-fixtures.ts` | synthetic ChatGPT account fixtures |
+| `helpers/chatgpt-response-stream.ts` | pure synthetic Responses added, delta, done and completion event builders for OCR and assistant transport tests |
 | `helpers/dashboard-model-fixtures.ts` | dashboard run detail, queue, pagination and artifact data |
 | `helpers/dashboard/fixture-bff.ts` | fixture bff |
 | `helpers/dashboard/profiles/bundle-setup.ts` | bundle profile setup |
