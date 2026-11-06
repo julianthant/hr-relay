@@ -180,7 +180,7 @@ export function signInBoundProfileFixture(machine: RuntimeAdmission): void {
   } finally { session.close(); }
 }
 
-export async function createBoundProfileFixture(options: { pending?: "storage" | "onboarding"; sharedMachine?: true; workspace?: string; lifetime?: RuntimeLifetimeLock } = {}) {
+export async function createBoundProfileFixture(options: { pending?: "storage" | "onboarding"; sharedMachine?: true; workspace?: string; lifetime?: RuntimeLifetimeLock; email?: string } = {}) {
   if (options.pending !== undefined && options.sharedMachine === true) throw new Error("pending profile fixture requires exclusive machine");
   const workspace = options.workspace === undefined
     ? realpathSync(mkdtempSync(join(tmpdir(), "relay-bound-profile-")))
@@ -193,7 +193,7 @@ export async function createBoundProfileFixture(options: { pending?: "storage" |
       let machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
       ownedAdmissions.push(machine);
       mkdirSync(join(workspace, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
-      const fields = { firstName: "Fixture", lastName: "Example", email: "fixture@ucsd.edu",
+      const fields = { firstName: "Fixture", lastName: "Example", email: options.email ?? "fixture@ucsd.edu",
         password: "disposable-fixture-password", createdAt: "2026-10-01T12:00:00.000Z" };
       const session = createSyntheticProfileSession({ admission: machine, machineRoot: machine.stateRoot,
         activity: { hasUnquiescedWork: () => false } });
