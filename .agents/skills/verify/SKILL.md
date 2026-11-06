@@ -40,6 +40,8 @@ npm run cli -- test-data check --json --subject <label>   # the subject is avail
 playwright-cli list                        # sessions you do not own are left alone
 ```
 
+`storage doctor` refuses with `authority-backup-profile-binding-required` in a checkout that has no installation; run the doctor from the checkout that owns the store.
+
 After sign-in, open Settings › Preflight and Run preflight; record its result. It runs no OCR and starts no run.
 
 ## Hand over for login
