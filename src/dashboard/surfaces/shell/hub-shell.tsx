@@ -40,7 +40,12 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   const model = useHubChats(chatsPort ?? localChats);
   const assistant = useHubAssistant(onRunWorkflow, (id, title) => { if (model.chats.some(chat => chat.id === id)) model.rename(id, title); }, history);
   const assistantTest = useContext(PreflightAssistantContext);
-  const modelChanged = useCallback((view: AssistantModelPreferenceView) => { assistantTest.invalidate?.(); preferenceChanged?.(view); }, [assistantTest, preferenceChanged]);
+  const seenPreference = useRef(modelPreference);
+  const modelChanged = useCallback((view: AssistantModelPreferenceView) => {
+    const prior = seenPreference.current; seenPreference.current = view.preference;
+    if (prior !== undefined && (prior.slug !== view.preference.slug || prior.effort !== view.preference.effort)) assistantTest.invalidate?.();
+    preferenceChanged?.(view);
+  }, [assistantTest, preferenceChanged]);
   const servedController = useAssistantController(assistant.client, authority, subjectRef, false, model.currentId, commands, { history, preferenceChanged: modelChanged });
   const served = historyPending ? { ...servedController, canCompose: false } : servedController;
   const current = model.chats.find(chat => chat.id === model.currentId);
