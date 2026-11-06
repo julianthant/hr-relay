@@ -894,11 +894,12 @@ Sign-up presents Touch ID and Security key as distinct required verified enrollm
 authenticator for Touch ID; it never substitutes for Security key. Finish stays unavailable until
 both enrollments are verified. Finishing and cancellation stay pending until their owners settle.
 The Duo footer shows live setup-window status immediately above its actions. Show window
-focuses the existing owned popup. Closed or failed status offers Reopen, including after both
+focuses the existing owned normal Chromium window. Closed or failed status offers Reopen, including after both
 methods are confirmed. Reopen stops only the browser Relay started, proves exit and native
-profile release, then opens one fresh popup without retrying enrollment or changing Unknown
+profile release, then opens one fresh normal window without retrying enrollment or changing Unknown
 readiness. Stop or file-proof failure stays specific and leaves Reopen offered. No whole-sign-up
-hold or Relay-restart instruction is used. The Fast Duo popup is a compact native Chromium window;
+hold or Relay-restart instruction is used. The compact normal Chromium window keeps native
+tab/address chrome visible and contains exactly the owned setup and portal tabs, with no extra window;
 its method cards keep icon, title, one-line subtitle and status chip, without progress tracks.
 Unknown enrollment is labelled Unknown, not failed or completed. Method chips stay on one line.
 The Duo footer confirms Cancel sign-up before calling the existing cancellation owner; returning to

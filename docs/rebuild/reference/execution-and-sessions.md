@@ -56,7 +56,8 @@ The identity is stored as a hash. A held lease has no expiry or worker-death tak
 bounded and cancellation-aware. Exact generation/session release follows proved page/context
 closure. Uncertain launch or closure retains the lease, and worker close proof requires its release.
 
-Duo sign-up owns one full Chromium popup and its genuine child-process stop capability.
+Duo sign-up owns one compact normal Chromium window with native tab/address chrome,
+exactly its setup and portal tabs, and its genuine child-process stop capability.
 Window creation/removal is projected separately from process and file closure. Explicit Reopen
 serializes by draft and window generation, positively stops the owned process, settles callbacks,
 and performs native profile exclusion/removal before launching again. The browser-root owner
