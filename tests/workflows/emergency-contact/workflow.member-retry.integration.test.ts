@@ -6,6 +6,7 @@ import { createReceiptService } from "../../../src/backend/runs/trust/receipt-se
 import { aggregateMemberRetryAvailable } from "../../../src/backend/runs/queries/run-retry.js";
 import { assertDelegationRetryUnwritten, delegationAccountingExecution } from "../../../src/backend/storage/sqlite/delegation-authority.js";
 import { runClaim } from "../../../src/models/run/record.js";
+import { DiagnosticBundleSchema } from "../../../src/models/trust/diagnostic.js";
 import { CanonicalTerminalizeRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { readQueueRecordMembers } from "../../../src/backend/runs/queries/ocr-record-members.js";
 import { EmergencyContactResultSchema, EmergencyContactMemberResultSchema } from "../../../src/models/workflows/emergency-contact/result.js";
@@ -420,7 +421,7 @@ it(`refuses accounting with a ${ownership} after manual Resume`, async () => {
   assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), [1, 1]);
 });
 
-for (const boundary of ["active in its child join", "already paused", "at first native success admission", "at first native failure admission", "at accounting capture", "at typed refusal failure admission"] as const)
+for (const boundary of ["active in its child join", "already paused", "at first native success admission", "at first native failure admission", "at failure diagnostic capture", "at accounting capture", "at typed refusal failure admission"] as const)
 it(`retries a member while its parent is ${boundary}`, async () => {
   const f = fixture;
   const paused = boundary === "already paused";
@@ -443,7 +444,8 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   const originalChildren = f.children().map(child => ({ runId: child.envelope.runId, bytes: canonicalJsonStringify(child) }));
   const originalEnvelope = canonicalJsonStringify(f.current().envelope), originalRows = originalBytes(f);
   const firstFailureAdmission = boundary === "at first native failure admission", failureAdmission = firstFailureAdmission || typedRefusal;
-  if (firstFailureAdmission) f.control.failAccounting = true;
+  const diagnosticCapture = boundary === "at failure diagnostic capture";
+  if (firstFailureAdmission || diagnosticCapture) f.control.failAccounting = true;
   const previous = failed(f), execute = f.canonical.childRuns.executeChildRuns.bind(f.canonical.childRuns);
   const retry = f.runCommand("retry", previous);
   let reached = false;
@@ -455,6 +457,27 @@ it(`retries a member while its parent is ${boundary}`, async () => {
       assert.equal(f.canonical.kernel.execute(retry).state, "applied");
     }
     return joined;
+  };
+  let discarded = 0;
+  const diagnostics = !diagnosticCapture ? undefined : {
+    captureForFailure: async (context: { failure: { failureId: string }; configFingerprint: string; descriptorFingerprint: string }) => {
+      assert.equal(reached, false);
+      reached = true;
+      const original = f.current(), claim = runClaim(original); assert.ok(claim);
+      assert.equal(original.lifecycle.state, "running");
+      assert.equal(original.pause, undefined);
+      const writes = [...f.persistence.values()].map(value => value.submissions.length);
+      assert.equal(f.canonical.kernel.execute(retry).state, "applied");
+      assert.deepEqual(runClaim(f.current()), claim);
+      assert.equal(f.current().pause?.state, "requested");
+      assert.deepEqual([...f.persistence.values()].map(value => value.submissions.length), writes);
+      return DiagnosticBundleSchema.parse({ bundleId: randomUUID(), runId: original.envelope.runId,
+        origin: { kind: "failure", failureId: context.failure.failureId }, createdAt: f.clock.now().toISOString(),
+        contentDigest: "a".repeat(64), configFingerprint: context.configFingerprint, descriptorFingerprint: context.descriptorFingerprint,
+        redaction: { fields: [], warnings: [] }, attachments: [], retention: { kind: "pinned", reason: "write-recovery" } });
+    },
+    persist: () => { throw new Error("a held parent must never persist its prepared failure bundle"); },
+    discard: () => { discarded += 1; },
   };
   await f.harness.manager.closeAll("parked");
   const runtime = f.database.authority.runtimeConfig.get(); assert.ok(runtime);
@@ -516,7 +539,7 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   const claimed: string[] = [];
   let report: Awaited<ReturnType<typeof runWorkerLoop>>;
   try {
-    report = await runWorkerLoop({ ...f.harness.deps, workflowId: f.root.descriptor.id, workerId: owner.workerId, lifecycle,
+    report = await runWorkerLoop({ ...f.harness.deps, ...(diagnostics === undefined ? {} : { diagnostics }), workflowId: f.root.descriptor.id, workerId: owner.workerId, lifecycle,
     sessionFactory: f.harness.sessions.factory, sessionAcquireMs: 20_000,
     browserScreenshotCapture: { capture: async context => { assert.equal(context.screenshot.state, "available"); } },
     duoCeremony: duoCeremonyGatesOver(f.database, f.clock, f.harness.scheduler),
@@ -550,6 +573,8 @@ it(`retries a member while its parent is ${boundary}`, async () => {
   });
   } finally { f.database.withAuthorityTransaction = transaction; }
   assert.equal(reached, true);
+  assert.equal(discarded, diagnosticCapture ? 1 : 0);
+  if (diagnosticCapture) assert.deepEqual(f.database.authority.failures.listByRun(f.parentRun.envelope.runId), []);
   assert.deepEqual(report.outcomes.map(outcome => outcome.state), ["abandoned", "done"]);
   assert.equal(report.stopped, "idle"); assert.equal(report.closure, "proved");
   assert.equal(f.current().lifecycle.state, "queued");
