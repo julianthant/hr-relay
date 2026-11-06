@@ -253,10 +253,10 @@ live lease. GitHub CI remains the merge gate.
 ### Focused tests in GitHub Actions
 
 ```sh
-scripts/ci/focused-tests.sh <lane> <ubuntu|macos|both> <test file>...
+scripts/ci/focused-tests.sh <lane> <ubuntu|macos|windows|both|all> <test file>...
 ```
 
-Runs the named files on a scratch branch without a PR, the Mac test slot or the PC. The script commits `HEAD`'s tree with
+Runs the named files on a scratch branch (`both` is Ubuntu and macOS, `all` adds Windows; Windows-native files run only here or on a Windows machine) without a PR, the Mac test slot or the PC. The script commits `HEAD`'s tree with
 `git commit-tree`, naming the files and runners in `Focused-tests:` and `Focused-os:` trailers, force-pushes it to
 `scratch/<lane>`, watches `.github/workflows/focused-tests.yml`, prints PASS/FAIL per file, job timings and the run URL,
 then deletes the branch. It refuses tracked uncommitted changes, since the run tests `HEAD`. The workflow refuses an

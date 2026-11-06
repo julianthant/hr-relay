@@ -24,6 +24,7 @@ jobs:
       files: ${{ steps.plan.outputs.files }}
       ubuntu: ${{ steps.plan.outputs.ubuntu }}
       macos: ${{ steps.plan.outputs.macos }}
+      windows: ${{ steps.plan.outputs.windows }}
       web: ${{ steps.plan.outputs.web }}
     steps:
       - uses: actions/checkout@v7
@@ -38,7 +39,7 @@ jobs:
           read -ra files <<< "$(git log -1 --format='%(trailers:key=Focused-tests,valueonly,unfold)' | tr '\n' ' ')"
           os=$(git log -1 --format='%(trailers:key=Focused-os,valueonly)' | xargs)
           [ ${#files[@]} -gt 0 ] || fail "The head commit lists no Focused-tests files."
-          case "$os" in ubuntu|macos|both) ;; *) fail "Focused-os must be ubuntu, macos or both, not '$os'." ;; esac
+          case "$os" in ubuntu|macos|windows|both|all) ;; *) fail "Focused-os must be ubuntu, macos, windows, both (ubuntu+macos) or all, not '$os'." ;; esac
           web=false
           for file in "${files[@]}"; do
             [[ $file =~ ^tests/[A-Za-z0-9._@+/-]+$ && $file != *..* ]] || fail "$file is not a path under tests/."
@@ -47,8 +48,9 @@ jobs:
           done
           {
             echo "files=${files[*]}"
-            echo "ubuntu=$([[ $os != macos ]] && echo true || echo false)"
-            echo "macos=$([[ $os != ubuntu ]] && echo true || echo false)"
+            echo "ubuntu=$([[ $os =~ ^(ubuntu|both|all)$ ]] && echo true || echo false)"
+            echo "macos=$([[ $os =~ ^(macos|both|all)$ ]] && echo true || echo false)"
+            echo "windows=$([[ $os =~ ^(windows|all)$ ]] && echo true || echo false)"
             echo "web=$web"
           } >> "$GITHUB_OUTPUT"
       - run: npm ci
@@ -141,6 +143,50 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           name: focused-macos
+          path: ${{ runner.temp }}/focused/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  windows:
+    needs: plan
+    if: needs.plan.outputs.windows == 'true'
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: npm
+      - run: npm ci
+      - run: npm run build:observer-policy
+      - uses: actions/cache@v6
+        if: needs.plan.outputs.web == 'true'
+        with:
+          path: ~/AppData/Local/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-chromium-${{ hashFiles('package-lock.json') }}
+      - name: Install Chromium
+        if: needs.plan.outputs.web == 'true'
+        run: npx playwright install chromium
+      - run: npm run web:build
+        if: needs.plan.outputs.web == 'true'
+      - name: Verify full Chromium installation before timed native proofs
+        if: needs.plan.outputs.web == 'true'
+        timeout-minutes: 1
+        run: npx tsx scripts/test/chromium-preflight.ts
+      - name: Run focused tests
+        env:
+          FILES: ${{ needs.plan.outputs.files }}
+        run: scripts/ci/focused-run.sh $FILES
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: focused-windows
           path: ${{ runner.temp }}/focused/
           if-no-files-found: ignore
           retention-days: 7

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Runs named test files in GitHub Actions on a scratch branch built from HEAD's tree; not merge evidence.
-# Usage: scripts/ci/focused-tests.sh <lane> <ubuntu|macos|both> <test file>...
+# Usage: scripts/ci/focused-tests.sh <lane> <ubuntu|macos|windows|both|all> <test file>...
 set -euo pipefail
 die() { echo "$*" >&2; exit 2; }
-[ $# -ge 3 ] || die "usage: focused-tests.sh <lane> <ubuntu|macos|both> <test file>..."
+[ $# -ge 3 ] || die "usage: focused-tests.sh <lane> <ubuntu|macos|windows|both|all> <test file>..."
 lane=$1 os=$2
 shift 2
 [[ $lane =~ ^[a-z0-9][a-z0-9._-]*$ ]] || die "lane must be lowercase letters, digits, '.', '_' or '-'."
-case "$os" in ubuntu|macos|both) ;; *) die "os must be ubuntu, macos or both." ;; esac
+case "$os" in ubuntu|macos|windows|both|all) ;; *) die "os must be ubuntu, macos, windows, both (ubuntu+macos) or all." ;; esac
 git diff --quiet HEAD -- || die "Tracked files have uncommitted changes; the run tests HEAD. Commit them first."
 
 branch=scratch/$lane
