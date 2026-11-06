@@ -36,10 +36,10 @@ function searchState(path: string): unknown {
 const held = {
   "critical-fence-missing": "STORAGE_PROFILE_FORMAT_UNSUPPORTED",
   "unknown-record-field": "STORAGE_PROFILE_FORMAT_UNSUPPORTED",
-  foreign: "PROFILE_STARTUP_CONVERSION_REFUSED",
+  foreign: "STORAGE_AUTOMATIC_REPAIR_REFUSED",
   future: "STORAGE_PROFILE_NEWER_VERSION",
   unsupported: "STORAGE_PROFILE_FORMAT_UNSUPPORTED",
-  "recovery-refusal": "PROFILE_STARTUP_CONVERSION_REFUSED",
+  "recovery-refusal": "STARTUP_CRASH_RECOVERY_REFUSED",
 } as const;
 
 for (const state of ["damaged", "projection-missing", ...Object.keys(held) as (keyof typeof held)[]] as const) it(`restores only SQLite-damaged startup authority and holds everything else: ${state}`, async () => {

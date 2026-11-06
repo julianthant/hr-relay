@@ -496,9 +496,11 @@ its exact constructor to one row of static name, catalog or transport code and r
 `name`, `code` or message text never selects a row, and subclasses are not inherited. Unbound errors
 become `UnknownError`, non-errors `UnknownCause`, chains stop at 16 rows with a fixed truncation row,
 and frames keep only build-relative `src/`, `scripts/`, `node_modules/` or `assets/` positions.
-Profile-request failures, unexpected inner API failures, screenshot verification exceptions and
-worker supervisor/transfer faults emit one event per cause row with the shared correlation ID; the
-supervisor and transfer stderr fault lines carry the same name/code/reason rows. Exception messages,
+Unexpected inner API failures emit one event per cause row with one correlation id for that failure.
+Screenshot verification exceptions share `sessionId`. Worker supervisor and transfer faults emit one
+event per cause row with one correlation id, and their stderr lines carry the same name, code and
+reason. Profile-request rows go through `appendEmergencyFault` and do not carry a correlation id.
+Exception messages,
 request values and private file paths are omitted. HTTP responses retain the catalogued public code.
 A request whose client disconnected records `request-disconnected` and its cause rows without an
 HTTP status, so a cancelled transfer is never logged as a delivered 500.

@@ -4,7 +4,7 @@ import { assertMaintenanceCustodyAvailable, StorageMaintenanceCustodyUnavailable
 import { hasPendingShutdownBackupRetirement, resumeShutdownBackupRetirement } from "../../storage/maintenance/clean-shutdown-backups.js";
 import type { CredentialStore } from "../../../models/config/credential-store.js";
 import type { HostConfigFacts } from "../../../models/config/host-display.js";
-import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
+import { ERROR_CATALOG, ErrorCatalogCodeSchema, type ErrorCatalogCode } from "../../../models/failures/error-catalog.js";
 import { LogoutOperationSchema,type LogoutOperation } from "../../../models/profiles/profile.js";
 import { runClaim } from "../../../models/run/record.js";
 import { createChatGptAccountService } from "../../accounts/chatgpt-account-service.js";
@@ -106,6 +106,12 @@ function machineWideStartupFailure(error: unknown, seen = new Set<unknown>()): b
   if (hasUnprovedSourceClosure(error) || error instanceof StorageMaintenanceCustodyUnavailableError || error instanceof ProfileRestoreBrowserCustodyUnprovedError) return true;
   if (!(error instanceof Error)) return false;
   return machineWideStartupFailure(error.cause, seen) || error instanceof AggregateError && (error.errors as readonly unknown[]).some(nested => machineWideStartupFailure(nested, seen));
+}
+
+function heldSignInCode(held: unknown): ErrorCatalogCode {
+  const code = typeof held === "object" && held !== null && "code" in held ? held.code : undefined;
+  const parsed = ErrorCatalogCodeSchema.safeParse(code);
+  return parsed.success ? parsed.data : "PROFILE_STARTUP_CONVERSION_REFUSED";
 }
 
 function heldPeopleFor(lifetime: object): Map<string, unknown> {
@@ -903,8 +909,7 @@ export function composeProfileRuntime(input: Readonly<{
       revalidateAuthority: (capture, admission) => contextFor(admission).accountAuthority.revalidateAuthority(capture, admission) },
     sessionChange: profileId => {
       const held = heldPeople.get(machine.lifetime)?.get(profileId);
-      if (held !== undefined) throw new ProfileSessionRefusedError(held instanceof AuthorityFormatUnsupportedError || held instanceof StartupProjectionRepairError ? held.code
-        : "PROFILE_STARTUP_CONVERSION_REFUSED", { cause: held });
+      if (held !== undefined) throw new ProfileSessionRefusedError(heldSignInCode(held), { cause: held });
       return resources.get(profileId)?.ordinary?.context !== undefined && resources.get(profileId)?.ordinary?.state !== "closed"
       ? { state: "refused", code: "PROFILE_TRANSITION_BLOCKED", message: ERROR_CATALOG.PROFILE_TRANSITION_BLOCKED.text } : { state: "closed" };
     },

@@ -80,7 +80,7 @@ async function assertStartupHeld(workspace: string, lifetime: RuntimeLifetimeLoc
   const runtime = composeProfileRuntime({ admission: machine, clock: systemClock, hostFacts });
   try {
     assert.throws(() => runtime.session.signIn({ ...login, at: systemClock.now().toISOString() }),
-      (error: unknown) => error instanceof Error && "code" in error && error.code === "PROFILE_STARTUP_CONVERSION_REFUSED" && cause(error.cause));
+      (error: unknown) => error instanceof Error && "code" in error && error.code === "STORAGE_PROFILE_UPGRADE_REFUSED" && cause(error.cause));
   } finally { await runtime.close("shutdown"); machine.release(); }
 }
 function post(port: number) {

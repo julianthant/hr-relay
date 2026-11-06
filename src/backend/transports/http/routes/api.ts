@@ -44,8 +44,9 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
       try {
         const causes = serializeErrorCauses(error);
         const disconnected = causes.some(cause => cause.reason === "request-disconnected");
+        const correlationId = randomUUID();
         for (const cause of causes) debugEvents.emit({ category: "http", phase: "failed",
-          correlationId: randomUUID(), area: "request", reason: "request-cause", ...(disconnected ? {} : { status }),
+          correlationId, area: "request", reason: "request-cause", ...(disconnected ? {} : { status }),
           code: cause.code, message: cause.name, stack: cause.stack });
       } catch {
         return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
