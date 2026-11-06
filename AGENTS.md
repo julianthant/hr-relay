@@ -25,6 +25,22 @@ Relay is the production rebuild of `hr-automation`. It is a local desktop app fo
 - Each workflow switches from mock to served data through one static per-workflow switch. Never fall
   back from served to mock at runtime. A served failure shows its failure state.
 
+## Language
+
+- **Onboarding (sign-up)**: creating a Relay profile and signing in with Duo (`src/backend/profiles/`). It is not the **Onboarding workflow** (`src/workflows/onboarding/`), which hires a new person through CRM, UCPath and I-9.
+- **Operator**: the one HR person using the dashboard. It is not an end user, a tenant or an agent.
+- **Served / mock**: a workflow's dashboard data comes from the backend (`served`) or from fixtures (`mock`), chosen by one static entry in `config/dashboard-workflow-sources.json`. Never a runtime fallback from one to the other.
+- **Dry run**: `dryRun=true`. A workflow reads and previews every form but submits no UCPath transaction and finalizes no Kuali document. It is not a mock run: it uses live systems.
+- **Sign-off**: the operator's explicit approval of a workflow's dry run, required before it switches from mock to served. A passing test or parity run is not sign-off.
+- **Person Lookup**: finds one person in UCPath and cross-checks CRM, read-only. Other workflows delegate to it. It is not a write workflow.
+- **Separations**: turns one Kuali separation document into one terminated employee across Kuali, UCPath and Kronos. It writes only outside dry runs.
+- **OCR**: reads PDF pages, groups records and looks up identities for the operator to review and release. It writes nothing to HR systems.
+- **EC (Emergency Contact)**: reads a PDF through OCR, then delegates each approved OCR record to an EC member that previews or saves that person's primary contact in UCPath. It is not part of OCR.
+- **Parent / delegated rows / member list**: a parent run delegates work to child runs. The Queue shows the children as the parent's delegated rows; the parent's member list is its approved records in source order. A child is not a separate workflow run the operator starts.
+- **Settled parent**: a parent whose members have all finished. A settled EC parent with mixed outcomes is immutable and refuses member Retry.
+- **SharePoint Download**: the Spreadsheets library's Sync of one SharePoint `.xlsx`/`.csv` into a workbook. It is not a workflow.
+- **Spreadsheets library**: the typed workbook store (one mutable master per workbook, manual named versions). Workflow outputs go there, never to loose files.
+
 ## Codebase
 
 One person builds and maintains this codebase. Keep it organized, clean and easy to follow.
