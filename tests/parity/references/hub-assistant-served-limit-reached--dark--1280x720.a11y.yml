@@ -15,7 +15,7 @@
     - strong: How can I help?
     - text: Ask about a record or describe what you want to do.
   - status:
-    - text: The ChatGPT plan usage limit was reached.
+    - text: ChatGPT usage limit reached. Try again later.
     - button "Open Settings"
   - group "Message composer":
     - text: Message Relay
@@ -25,6 +25,5 @@
       - button "Add files" [disabled]
       - button "Ask before every action" [disabled]
       - 'button "Model: Model unavailable" [disabled]': Model unavailable
-      - 'button "Thinking effort: Effort unavailable" [disabled]': Effort unavailable
       - button "Voice input" [disabled]
       - button "Send message" [disabled]

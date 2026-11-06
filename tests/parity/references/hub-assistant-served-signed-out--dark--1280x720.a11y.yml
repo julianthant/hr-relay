@@ -15,7 +15,7 @@
     - strong: How can I help?
     - text: Ask about a record or describe what you want to do.
   - status:
-    - text: Reconnect the ChatGPT account before using the assistant.
+    - text: Reconnect ChatGPT to use the assistant.
     - button "Sign in"
   - group "Message composer":
     - text: Message Relay
@@ -25,6 +25,5 @@
       - button "Add files" [disabled]
       - button "Ask before every action" [disabled]
       - 'button "Model: Model unavailable" [disabled]': Model unavailable
-      - 'button "Thinking effort: Effort unavailable" [disabled]': Effort unavailable
       - button "Voice input" [disabled]
       - button "Send message" [disabled]

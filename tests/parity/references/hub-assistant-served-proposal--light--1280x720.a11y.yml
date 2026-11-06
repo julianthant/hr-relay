@@ -28,6 +28,5 @@
       - button "Add files"
       - button "Ask before every action" [disabled]
       - 'button "Model: Model unavailable" [disabled]': Model unavailable
-      - 'button "Thinking effort: Effort unavailable" [disabled]': Effort unavailable
       - button "Voice input" [disabled]
       - button "Send message" [disabled]
