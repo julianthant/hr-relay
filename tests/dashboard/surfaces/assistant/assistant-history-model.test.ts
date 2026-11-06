@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { afterEach, it } from 'vitest';
-import { ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, type AssistantHistoryOperation } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, ASSISTANT_HISTORY_METADATA_MAX_UNITS, type AssistantHistoryOperation } from '../../../../src/models/dashboard/assistant.js';
 import { ASSISTANT_PROPOSAL_CAPTION, createAssistantHistory, importBatches } from '../../../../src/dashboard/surfaces/assistant/assistant-history-model.js';
 import { assistantHistoryServer } from '../../../support/helpers/dashboard/assistant-history-server.js';
 
@@ -39,6 +39,8 @@ it('creates one chat for an empty profile and keeps rename, select, drafts and c
   assert.equal(w.server.repository.conversation(second.id, w.server.now()), undefined);
   await reopened.chats.rename(first.id, 'Renamed elsewhere');
   await assert.rejects(store.chats.rename(first.id, 'Stale revision'), (error: unknown) => error instanceof Error && error.message === ASSISTANT_FAILURES.ASSISTANT_CONVERSATION_STALE);
+  await store.chats.rename(first.id, 'Saved after the re-read');
+  assert.equal(w.server.repository.conversation(first.id, w.server.now())?.title, 'Saved after the re-read', 'a refused revision re-reads the served chats');
 });
 
 it('restores served rows without a card or Confirm and states every turn delivery', async () => {
@@ -133,6 +135,11 @@ it('keeps unparseable, foreign or unsaved source bytes and disables sending', as
     assert.equal(store.blocked(), true); assert.equal(store.notice(), ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE);
     assert.equal(w.bytes.get(w.key), raw); assert.equal(w.server.writes.length, 0);
   }
+  const large = world(), oversized = JSON.stringify({ format: 1, profileId: large.server.profileId, chats: [], transcripts: {} }) + ' '.repeat(ASSISTANT_HISTORY_METADATA_MAX_UNITS);
+  large.bytes.set(large.key, oversized);
+  const refused = await large.open();
+  assert.equal(refused.blocked(), true); assert.equal(refused.notice(), ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE);
+  assert.equal(large.bytes.get(large.key), oversized, 'a source above the metadata budget is kept, not converted'); assert.equal(large.server.writes.length, 0);
   const w = world(), id = randomUUID();
   const raw = JSON.stringify({ format: 1, profileId: w.server.profileId, chats: [oldChat(id, 'Kept')], transcripts: {} });
   w.bytes.set(w.key, raw); w.server.fail(() => 'before');

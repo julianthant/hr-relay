@@ -2,7 +2,7 @@
 import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
 import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
-import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantResult, type AssistantActionResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantRequest, type AssistantResult, type AssistantActionResult } from '../../../../src/models/dashboard/assistant.js';
 import { AssistantPanel as ShellAssistantPanel } from '../../../../src/dashboard/surfaces/shell/assistant-panel.js';
 import { TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { createAssistantMockProducer as createSetupAssistantProducer, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { afterEach, it, vi } from 'vitest';
 import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { createAssistantHistory } from '../../../../src/dashboard/surfaces/assistant/assistant-history-model.js';
+import { ASSISTANT_PROPOSAL_CAPTION, createAssistantHistory } from '../../../../src/dashboard/surfaces/assistant/assistant-history-model.js';
 import { ASSISTANT_START_PROPOSAL } from '../../../support/fixtures/dashboard/assistant-start.js';
 import { resultClient } from '../../../support/helpers/dashboard/assistant-served-client.js';
 import { assistantHistoryServer } from '../../../support/helpers/dashboard/assistant-history-server.js';
@@ -323,4 +323,39 @@ it('disables Cancel and Confirm once a refused decision leaves the issued card s
   assert.equal(button('Cancel').disabled, true); assert.equal(button('Confirm').disabled, true);
   await act(async () => { button('Cancel').click(); button('Confirm').click(); });
   assert.equal(decisions, 1);
+});
+
+it.each([
+  { name: 'a saved answer whose response is lost', reply: 'answer', lost: true, shown: 'Stored answer.' },
+  { name: 'an answered delivery receipt', reply: 'answer', lost: false, shown: 'Stored answer.' },
+  { name: 'a saved proposal whose response is lost', reply: 'proposal', lost: true, shown: 'This proposal is no longer available. Ask again to review a new one.' },
+] as const)('presents the stored outcome of $name with one send and no restored Confirm', async ({ reply, lost, shown }) => {
+  const server = assistantHistoryServer();
+  const history = await createAssistantHistory(server.client, { getItem: () => null, removeItem() {} }, server.profileId, new AbortController().signal);
+  const id = history.chats.read()[0].id;
+  let sends = 0;
+  const client = { ...server.client, async assistantRespond(input: AssistantRequest) {
+    sends++;
+    const accepted = server.repository.accept({ conversationId: input.conversationId, expectedRevision: input.expectedRevision, messageId: input.messageId,
+      text: input.message, modelText: input.message, subjectRef: null, now: server.now() });
+    assert.equal(accepted.state, 'accepted');
+    const revision = server.repository.settle(input.conversationId, input.messageId, { delivery: 'answered', reply: reply === 'answer'
+      ? { id: crypto.randomUUID(), kind: 'answer', text: 'Stored answer.', modelText: 'Stored answer.' }
+      : { id: crypto.randomUUID(), kind: 'proposal', actionId: crypto.randomUUID(), text: ASSISTANT_PROPOSAL_CAPTION, modelText: 'I prepared a confirmation card.' } }, server.now());
+    assert.ok(revision !== undefined);
+    if (lost) throw Error('synthetic lost response after the server saved the outcome');
+    return { kind: 'delivery' as const, receipt: { conversationId: input.conversationId, messageId: input.messageId, ordinal: accepted.ordinal, revision, delivery: 'answered' as const } };
+  } };
+  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
+  const account = { ...preview, mode: 'live' as const };
+  let current!: ReturnType<typeof useAssistantController>;
+  function Harness() { current = useAssistantController(client, 'current-person', undefined, false, id, undefined, { history }); return null; }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
+  await act(async () => { current.onAction({ type: 'edit', value: 'Explain' }); current.onAction({ type: 'send' }); });
+  await act(async () => { await vi.waitFor(() => { assert.equal(current.state.messages.at(-1)?.text, shown); }); });
+  assert.equal(sends, 1);
+  assert.notEqual(current.state.turn.state, 'proposal', 'readback never restores a Confirm');
+  assert.equal(current.state.messages.some(message => message.text === 'The reply was not saved. Do not resend it; ask again as a new message.'), false);
+  server.close();
 });

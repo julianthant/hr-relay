@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import { z } from 'zod';
 import {
-  ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, AssistantModelPreferenceViewSchema, type AssistantConversationView, type AssistantFailureCode,
+  ASSISTANT_FAILURES, ASSISTANT_HISTORY_BODY_MAX_BYTES, ASSISTANT_HISTORY_METADATA_MAX_UNITS, AssistantModelPreferenceViewSchema, type AssistantConversationView, type AssistantFailureCode,
   type AssistantHistoryOperation, type AssistantHistoryResult, type AssistantHistoryView, type AssistantModelPreferenceView, type AssistantReceipt,
 } from '../../../models/dashboard/assistant.js';
 import { deriveStableUuid } from '../../../rules/identity/stable-uuid.js';
+import { systemClock } from '../../../rules/time/clock.js';
 import type { AssistantQueries } from '../../client/index.js';
 import type { HubChat, HubChatsPort } from '../shell/hub-shell-model.js';
 import type { AssistantMessage, AssistantState } from './assistant-model.js';
@@ -81,11 +82,17 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
   let view: AssistantHistoryView = { chats: [], selectedId: null };
   const conversations = new Map<string, AssistantConversationView>();
   let notice = '', blocked = false;
+  /** The old key stays authoritative and sending pauses until a reload. */
+  const block = (text: string) => { notice = text; blocked = true; };
   const listeners = new Set<() => void>();
   const changed = () => { for (const listener of listeners) listener(); };
   const write = async (operation: AssistantHistoryOperation): Promise<Extract<AssistantHistoryResult, { state: 'saved' | 'cleared' }>> => {
     const result = await client.assistantHistoryWrite(operation, signal);
-    if (result.state === 'refused') throw Error(ASSISTANT_FAILURES[result.code]);
+    if (result.state === 'refused') {
+      // A refused revision check re-reads the served chats so the next attempt uses current revisions.
+      if (result.code === 'ASSISTANT_CONVERSATION_STALE') await reload();
+      throw Error(ASSISTANT_FAILURES[result.code]);
+    }
     return result;
   };
   const reload = async () => {
@@ -105,8 +112,10 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
 
   async function convert(raw: string) {
     let old: OldData;
-    try { old = OldData.parse(JSON.parse(raw)); if (old.profileId !== profileId) throw Error('ASSISTANT_HISTORY_INVALID'); }
-    catch { notice = ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE; blocked = true; return; }
+    try {
+      if (raw.length > ASSISTANT_HISTORY_METADATA_MAX_UNITS) throw Error('ASSISTANT_HISTORY_INVALID');
+      old = OldData.parse(JSON.parse(raw)); if (old.profileId !== profileId) throw Error('ASSISTANT_HISTORY_INVALID');
+    } catch { block(ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE); return; }
     try {
       for (const chat of old.chats) for (const batch of importBatches(chat.id, chat.title, old.transcripts[chat.id])) await write(batch);
       const selected = old.selected ?? old.chats[0]?.id;
@@ -121,7 +130,7 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
       });
       if (!complete) throw Error('ASSISTANT_HISTORY_UNSAVED');
       storage.removeItem(key);
-    } catch { notice = ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNSAVED; blocked = true; }
+    } catch { block(ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNSAVED); }
   }
 
   const raw = storage.getItem(key);
@@ -148,7 +157,7 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
     })();
   }
   const chats: HubChatsPort = {
-    source: 'local', read: () => view.chats.map(chat => chatOf(chat, Date.now())), selectedId: () => view.selectedId ?? view.chats[0]?.id,
+    source: 'local', read: () => view.chats.map(chat => chatOf(chat, systemClock.nowMs())), selectedId: () => view.selectedId ?? view.chats[0]?.id,
     async select(id) { await write({ operation: 'select', conversationId: id, expectedRevision: requireRevision(id) }); await refresh(id); view = { ...view, selectedId: id }; changed(); },
     async create() {
       const id = crypto.randomUUID();
@@ -156,7 +165,7 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
       await reload();
       const created = view.chats.find(chat => chat.id === id);
       if (created === undefined) throw Error('HUB_CHAT_UNAVAILABLE');
-      return chatOf(created, Date.now());
+      return chatOf(created, systemClock.nowMs());
     },
     async rename(id, title) {
       if (!title.trim() || title.trim().length > 200) throw Error('HUB_CHAT_TITLE_INVALID');
@@ -175,6 +184,16 @@ export async function createAssistantHistory(client: Client, storage: Pick<Stora
       const conversation = conversations.get(receipt.conversationId);
       if (conversation !== undefined && receipt.revision > conversation.revision) conversations.set(receipt.conversationId, { ...conversation, revision: receipt.revision });
       void refresh(receipt.conversationId).catch(() => { notice = ASSISTANT_FAILURES.ASSISTANT_HISTORY_UNAVAILABLE; changed(); });
+    },
+    /** Re-reads one chat and returns what it stores for the turn `messageId`: its reply, refusal or delivery state; undefined when the turn is not stored. */
+    async outcome(id: string, messageId: string): Promise<AssistantMessage | undefined> {
+      await refresh(id);
+      const conversation = conversations.get(id), rows = conversation?.messages ?? [], turn = rows.find(row => row.id === messageId && row.kind === 'turn');
+      if (conversation === undefined || turn === undefined) return undefined;
+      // One send at a time per chat, so the turn's reply is the first answer or proposal after it.
+      const reply = turn.delivery === 'answered' ? rows.find(row => row.ordinal > turn.ordinal && (row.kind === 'answer' || row.kind === 'proposal'))?.id
+        : `${turn.id}-${turn.delivery === 'refused' ? 'refused' : turn.delivery === 'delivery-unknown' ? 'unknown' : 'sending'}`;
+      return restoredState(conversation)?.messages.find(message => message.id === reply);
     },
     /** Re-reads one chat; true when it holds the decision caption for `actionId`. */
     async decided(id: string, actionId: string) { await refresh(id); return conversations.get(id)?.messages.some(row => row.kind === 'decision' && row.actionId === actionId) === true; },

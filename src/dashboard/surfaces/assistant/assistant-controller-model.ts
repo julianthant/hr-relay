@@ -67,6 +67,8 @@ export interface AssistantControllerHistory {
   revision(): number;
   receipt(receipt: AssistantReceipt): void;
   local(text: string): Promise<void>;
+  /** The stored outcome of one sent turn, read back from the server. */
+  outcome(messageId: string): Promise<AssistantMessage | undefined>;
   decided(actionId: string): Promise<boolean>;
   unsaved(): void;
 }
@@ -87,6 +89,15 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     const request = { requestId, prompt, abort: new AbortController(), binding };
     outstanding = request;
     const current = () => !retired && outstanding === request && !request.abort.signal.aborted && binding === request.binding;
+    const messageId = crypto.randomUUID();
+    /** Presents the stored outcome of this send, never a Confirm and never another send; `fallback` when nothing stored can be read. */
+    const readBack = async (fallback: AssistantAction) => {
+      try {
+        const stored = await history?.outcome(messageId);
+        if (stored !== undefined && current()) { publish(assistantReducer(state, { type: 'settle', requestId, message: { ...stored, id: 'assistant-' + requestId } })); return; }
+      } catch { /* the outcome stays unknown, as the fallback states */ }
+      if (current()) publish(assistantReducer(state, fallback));
+    };
     const complete = (message: string) => {
       if (!current()) return;
       publish(assistantReducer(state, { type: "settle", requestId, message: { id: 'assistant-' + requestId, role: 'assistant', text: message } }));
@@ -126,12 +137,12 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         return;
       }
       const verify = assistantSetupCommand(prompt) === 'verify';
-      const envelope = await client.assistantRespond({ conversationId, expectedRevision: history?.revision() ?? 1, messageId: crypto.randomUUID(),
+      const envelope = await client.assistantRespond({ conversationId, expectedRevision: history?.revision() ?? 1, messageId,
         message: verify ? ASSISTANT_VERIFY_COMMAND : prompt, ...(verify || binding.subjectRef === undefined ? {} : { subjectRef: binding.subjectRef }) }, request.abort.signal);
       if (envelope.receipt !== undefined) history?.receipt(envelope.receipt);
       if (!current()) return;
       if (envelope.kind === 'delivery') {
-        publish(assistantReducer(state, { type: 'settle', requestId, message: { id: 'assistant-' + requestId, role: 'assistant', text: ASSISTANT_UNSAVED_REPLY } }));
+        await readBack({ type: 'settle', requestId, message: { id: 'assistant-' + requestId, role: 'assistant', text: ASSISTANT_UNSAVED_REPLY } });
         return;
       }
       const result = envelope.result, presented = presentResult(result, requestId, prompt);
@@ -144,7 +155,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         if (assistantSetupCommand(prompt) === 'verify') publish({ ...assistantReducer(state, { type: 'settle', requestId,
           message: { id: 'assistant-' + requestId, role: 'assistant', text: ASSISTANT_FAILURES.ASSISTANT_VERIFICATION_FAILED, code: 'ASSISTANT_VERIFICATION_FAILED' } }),
           verification: { state: 'failed', code: 'ASSISTANT_VERIFICATION_FAILED' } });
-        else publish(assistantReducer(state, { type: "uncertain", requestId }));
+        else await readBack({ type: "uncertain", requestId });
       }
     } finally {
       if (outstanding === request) {
@@ -184,7 +195,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
       publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition,
         message: { id: `action-${proposal.id}`, role: 'assistant', text: result.state === 'applied' ? 'Confirmed action accepted.'
           : result.state === 'cancelled' ? 'Action cancelled.' : result.state === 'unknown' ? 'Action outcome is unknown. Do not retry this action.' : ASSISTANT_FAILURES[result.code] } }));
-      if (history !== undefined && result.state !== 'refused' && !await history.decided(proposal.id).catch(() => false)) history.unsaved();
+      if (history !== undefined && result.state !== 'refused') await history.decided(proposal.id).then(found => { if (!found) history.unsaved(); }, () => { history.unsaved(); });
     } catch {
       if (current()) publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'unknown' }));
     } finally {
@@ -255,7 +266,7 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   const controller = useMemo(() => {
     let current = controllers.get(chatId);
     if (!current) { current = createAssistantController(sessions.client, { authority: undefined }, history === undefined || !history.has(chatId) ? undefined : { conversationId: chatId, read: () => history.read(chatId), retain: state => { history.retain(chatId, state); },
-      revision: () => history.revision(chatId), receipt: receipt => { history.receipt(receipt); }, local: text => history.local(chatId, text),
+      revision: () => history.revision(chatId), receipt: receipt => { history.receipt(receipt); }, local: text => history.local(chatId, text), outcome: messageId => history.outcome(chatId, messageId),
       decided: actionId => history.decided(chatId, actionId), unsaved: () => { history.unsaved(); } }); controllers.set(chatId, current); }
     return current;
   }, [controllers, sessions, chatId, history]);

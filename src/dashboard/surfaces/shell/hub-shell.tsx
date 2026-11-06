@@ -31,6 +31,7 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
   const [editing, setEditing] = useState<{ kind: "rename" | "delete"; id: string }>();
   const [title, setTitle] = useState("");
   const [announcement, setAnnouncement] = useState("");
+  const [saving, setSaving] = useState(false);
   const launcher = useRef<HTMLButtonElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const anchor = useRef<HTMLSpanElement>(null);
@@ -94,13 +95,18 @@ function HubShellBody({ onOpenSettings, settingsOpen, onLogout, chatsPort, onRun
     <Dialog open={editing !== undefined} onOpenChange={open => { if (!open) setEditing(undefined); }}><DialogContent hideClose className="hub-modal" title={editing?.kind === "rename" ? "Rename chat" : "Delete chat?"} description={editing?.kind === "rename" ? "Keep it short and recognizable" : `Delete “${title}”? This cannot be undone.`}
       onCloseAutoFocus={event => { event.preventDefault(); const target = returnFocus.current; (target?.isConnected ? target : document.querySelector<HTMLElement>(".hub-chat-open") ?? launcher.current)?.focus({ preventScroll: true }); }}>
       <form onSubmit={event => {
-        event.preventDefault(); if (!editing) return;
-        if (editing.kind === "rename") { void model.rename(editing.id, title); assistant.session(editing.id).rename(title); setAnnouncement("Chat renamed."); }
-        else { served.forgetSession(editing.id); assistant.forgetSession(editing.id); void model.remove(editing.id); setAnnouncement("Chat deleted."); }
-        setEditing(undefined);
+        event.preventDefault(); if (!editing || saving) return;
+        const { id, kind } = editing;
+        setSaving(true);
+        void (kind === "rename" ? model.rename(id, title) : model.remove(id)).then(saved => {
+          setSaving(false); setEditing(undefined);
+          if (!saved) return;
+          if (kind === "rename") { assistant.session(id).rename(title); setAnnouncement("Chat renamed."); }
+          else { served.forgetSession(id); assistant.forgetSession(id); setAnnouncement("Chat deleted."); }
+        });
       }}>
         {editing?.kind === "rename" && <input className="hub-field" aria-label="Chat title" autoComplete="off" maxLength={200} value={title} onFocus={event => event.target.select()} onChange={event => setTitle(event.target.value)} />}
-        <DialogFooter><button tabIndex={0} className="hub-btn" type="button" onClick={() => setEditing(undefined)}>Cancel</button><button tabIndex={0} className={`hub-btn ${editing?.kind === "delete" ? "danger" : "primary"}`} type="submit" disabled={editing?.kind === "rename" && !title.trim()}>{editing?.kind === "rename" ? "Save" : "Delete"}</button></DialogFooter>
+        <DialogFooter><button tabIndex={0} className="hub-btn" type="button" onClick={() => setEditing(undefined)}>Cancel</button><button tabIndex={0} className={`hub-btn ${editing?.kind === "delete" ? "danger" : "primary"}`} type="submit" aria-busy={saving || undefined} disabled={saving || editing?.kind === "rename" && !title.trim()}>{editing?.kind === "rename" ? "Save" : "Delete"}</button></DialogFooter>
       </form></DialogContent></Dialog>
   </>;
 }

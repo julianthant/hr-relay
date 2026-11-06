@@ -41,9 +41,12 @@ export function useHubChats(supplied?: HubChatsPort) {
   const [chats, setChats] = useState(port.read);
   const [currentId, setCurrentId] = useState<string | undefined>(() => port.selectedId?.() ?? chats[0]?.id);
   const [error, setError] = useState('');
+  /** True once the port acknowledged the change; a failure stays visible in `error`. */
   const settle = async (work: () => Promise<void>, fallback: string) => {
-    try { await work(); setError(''); } catch (cause) { setError(cause instanceof Error ? cause.message : fallback); }
+    let saved = false;
+    try { await work(); setError(''); saved = true; } catch (cause) { setError(cause instanceof Error ? cause.message : fallback); }
     setChats(port.read());
+    return saved;
   };
   return { chats, currentId, error, source: port.source,
     select: (id: string) => settle(async () => { await port.select?.(id); setCurrentId(id); }, 'Chat could not be opened.'),
