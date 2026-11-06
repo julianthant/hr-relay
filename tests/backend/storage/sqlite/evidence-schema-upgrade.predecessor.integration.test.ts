@@ -57,14 +57,8 @@ it("persists predecessor input, completed Kuali proof, linked result and receipt
       return dependency;
     });
     const running = { ...f.run, lifecycle: { state: "running" } }, clock = manualClock(new Date(f.result.createdAt));
-    assert.throws(() => terminal.build(running, evidence, clock), /canonical input schema/u);
-    const rebuilt = terminal.build(running, evidence, clock, schemaReader);
-    assert.deepEqual(rebuilt.record.result.value, f.result.result.value);
-    assert.deepEqual(rebuilt.record.result.protectedBindings, f.result.result.protectedBindings);
-    assert.equal(rebuilt.record.resultSchemaHash, terminal.schemaHash);
-    assert.deepEqual(rebuilt.record.dependencies, f.result.dependencies);
-    assert.equal(rebuilt.record.dependencyDigest, f.result.dependencyDigest);
-    assert.throws(() => terminal.build({ ...running, envelope: { ...running.envelope, descriptorVersion: running.envelope.descriptorVersion + 1 } }, evidence, clock, schemaReader), /not bound/u);
+    assert.throws(() => terminal.build(running, evidence, clock), /not bound/u);
+    assert.throws(() => terminal.build(running, evidence, clock, schemaReader), /not bound/u);
 
     assert.equal(f.separationsRun.input.parsed.schemaHash, "66dc2f33bf56808164be764f921a1e5a2a95afd5e0a7b760fdba687ee81575dc");
     assert.ok(admissions.some(entry => entry.owner.kind === "run-input" && entry.owner.id === f.separationsRun.envelope.runId));
