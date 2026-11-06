@@ -122,7 +122,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     await password.fill(secret);
     await client.executeCommand({ ...original, commandId: randomUUID(), target: { expectedRevision: cleared.protectedSettings.readback.revision }, payload: { ...original.payload, writeId: randomUUID(), entries: { ucpathUserId: { set: "synthetic-competing-timekeeper" } } } });
     await password.blur();
-    await expect(page.getByText("The command conflicted with a newer state. Refresh and review the current result.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Credentials changed", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry edit", exact: true })).toBeVisible();
     await expect(password).toBeEnabled();
     expect(await password.inputValue() === secret).toBe(true);

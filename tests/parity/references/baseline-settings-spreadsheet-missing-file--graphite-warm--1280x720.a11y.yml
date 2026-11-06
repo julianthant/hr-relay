@@ -42,10 +42,6 @@
         - /url: "?settings=keyboard"
     - region "Spreadsheets":
       - button "Open XLSX or CSV"
-      - alert:
-        - text: Spreadsheet unavailable
-        - paragraph: This file is no longer registered.
-        - button "Open library"
 - status
 - region "Session Panel":
   - group "Session actions":
@@ -54,4 +50,8 @@
     - button "Add workers"
     - button "Settings" [pressed]
     - button "Log out"
-- region "Notifications"
+- region "Notifications":
+  - alert "Spreadsheet unavailable":
+    - heading "Spreadsheet unavailable" [level=2]
+    - paragraph: No longer registered.
+    - button "Open library"

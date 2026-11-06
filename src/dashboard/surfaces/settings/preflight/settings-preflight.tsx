@@ -142,9 +142,10 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
       </div>
       {(assistantTest.state === "passed" || assistantTest.state === "failed") && <Notice tone={assistantTest.state === "passed" ? "success" : "danger"}
         title={assistantTest.state === "passed" ? "Assistant test passed" : "Assistant test failed"} description={assistantTest.state === "failed" ? assistantTest.message : undefined} />}
-      {ocr.state !== "idle" && ocr.state !== "loading" && <Notice
+      {ocr.state === "disabled" && <p className={cn(dsText.meta, "mb-[var(--ds-space-heading-content)]")}><span className="font-semibold">OCR test unavailable</span> <span>{ERROR_CATALOG[ocr.code].text}</span></p>}
+      {ocr.state !== "idle" && ocr.state !== "loading" && ocr.state !== "disabled" && <Notice
         tone={ocr.state === "completed" ? "success" : ocr.state === "failed" ? "danger" : "warning"}
-        title={ocr.state === "completed" ? "OCR test completed" : ocr.state === "disabled" ? "OCR test unavailable" : ocr.state === "uncertain" ? "OCR test outcome uncertain" : ocr.state === "refused" ? "OCR test refused" : "OCR test failed"}
+        title={ocr.state === "completed" ? "OCR test completed" : ocr.state === "uncertain" ? "OCR test outcome uncertain" : ocr.state === "refused" ? "OCR test refused" : "OCR test failed"}
         description={ocr.state === "completed" ? `Model: ${ocr.model}` : ERROR_CATALOG[ocr.code].text} />}
     {preflight.state === "refused" && <Notice tone="warning" title="Readiness unavailable" description={preflight.message} />}
     {historical && <Notice sticky tone="warning" title="Previous result" description={previousMessage} action={{ label: "Run preflight", onAction: onRerun }} />}

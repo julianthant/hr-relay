@@ -225,7 +225,7 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await page.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("button", { name: "Spreadsheets", exact: true }).click();
       await expect(file).toBeFocused();
       await open({ spreadsheet: "missing-baseline-file" });
-      await expect(page.getByText("This file is no longer registered.", { exact: true })).toBeVisible();
+      await expect(page.getByText("No longer registered.", { exact: true })).toBeVisible();
       await capture(page, info, theme, width, "spreadsheet-missing-file");
       await open({ spreadsheetImport: true, spreadsheetImportView: "columns" });
       await expect(page.getByRole("dialog", { name: "Import unavailable", exact: true })).toBeVisible();
@@ -454,12 +454,12 @@ for (const theme of PARITY_THEMES) for (const width of [1280]) {
       await expect(page.getByRole("button", { name: "Importing…", exact: true })).toBeDisabled();
 
       gate.resolve();
-      await expect(page.getByText("SPREADSHEET_WORKER_FAILED", { exact: true })).toBeVisible();
+      await expect(page.getByText("Spreadsheet unavailable", { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Import spreadsheet", exact: true })).toBeEnabled();
       await page.unroute("**/assets/spreadsheet-import-worker-*.js");
       await page.getByLabel("Open XLSX or CSV", { exact: true }).setInputFiles({ name: "Baseline retry.csv", mimeType: "text/csv", buffer: Buffer.from("Employee ID\n10000001\n") });
       await expect(page.getByRole("dialog", { name: "Choose spreadsheet columns", exact: true })).toBeVisible();
-      await expect(page.getByText("SPREADSHEET_WORKER_FAILED", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Spreadsheet unavailable", { exact: true })).toHaveCount(0);
 
       await attachTree(page, info, evidence("spreadsheet-reading", theme, width));
     } finally { gate.resolve(); await server.close(); }

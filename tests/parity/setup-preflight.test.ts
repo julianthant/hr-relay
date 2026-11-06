@@ -45,7 +45,7 @@ for(const scene of SETUP_SCENES)for(const theme of PARITY_THEMES)for(const viewp
       await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,settings:"preflight"});await dismissWorkflowWindow(page);await assertThemeApplied(page,theme);
       const setup=page.getByRole("region",{name:"Preflight",exact:true});
       await expect(setup.getByRole("combobox")).toBeVisible();if(scene.selected)await chooseSelect(setup.getByRole("combobox"), server.scope);
-      await expect(setup).toContainText(scene.expected);await expect(setup.getByRole("button",{name:"Run preflight",exact:true})).toBeEnabled();
+      await expect(page.getByText(scene.expected,{exact:true}).first()).toBeVisible();await expect(setup.getByRole("button",{name:"Run preflight",exact:true})).toBeEnabled();
       const readUrl=new URL("/api/v1/preflight",server.baseUrl);
       if(scene.selected)readUrl.searchParams.set("selection",JSON.stringify({workflowId:server.scope}));
       const read=await page.context().request.get(readUrl.toString());expect(read.ok()).toBe(true);
@@ -58,7 +58,7 @@ for(const scene of SETUP_SCENES)for(const theme of PARITY_THEMES)for(const viewp
         await expect(setup.locator("time")).toHaveAttribute("dateTime",displayedReport.checkedAt);
         await expect(setup.getByText("Scope details",{exact:true})).toHaveCount(0);
       }
-      if(served.state==="unavailable")await expect(setup).toContainText(served.reason);
+      if(served.state==="unavailable")await expect(page.locator("body")).toContainText(served.reason);
       await assertChecks(setup,served,true);
 
       expect(errors).toEqual([]);await info.attach("production-preflight-proof",{body:JSON.stringify({provenance:server.provenance(),requests:server.requests}),contentType:"application/json"});
@@ -90,7 +90,7 @@ test("Setup keeps an expired check visible as a previous result",async({page},_i
     await expect(page.getByText("Previous result", { exact: true })).toBeVisible();
     await expect(setup).toContainText("Previous check");
     await expect(setup.locator("time")).toHaveCount(1);
-    await expect(setup).toContainText("Run preflight for current readiness");
+    await expect(page.getByRole("status").filter({hasText:"Previous result"}).getByRole("button",{name:"Run preflight",exact:true})).toBeVisible();
     await expect(setup).not.toContainText("Ready to run");
     await expect(setup.locator(".diagnostic-check-entry")).not.toHaveCount(0);
   }finally{await server.close();}
