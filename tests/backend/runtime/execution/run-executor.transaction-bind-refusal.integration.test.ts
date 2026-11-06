@@ -5,7 +5,6 @@ import { createProfileFixtureSet } from "../../../support/helpers/admission-fixt
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { WriteFixturePrepare, WriteFixtureCommit, WriteFixtureProbe, buildWriteFixtureRegistry, createWriteFixtureWorld, writeFixtureSessions, WRITE_FIXTURE_EID } from "../../../support/fixtures/write-sequencer-fixtures.js";
-import { fixtureBuildManifest } from "../../../support/fixtures/workflow-definition-fixtures.js";
 import { defineTaskContract } from "../../../../src/models/task/task-contract.js";
 import { defineCanonicalInput } from "../../../../src/models/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
@@ -43,7 +42,7 @@ const compiled = compileWorkflow(defineWorkflow({ id: "fixture-transaction-bind-
     });
     return { steps: [[{ key: "contact", label: "Contact" }, [contact]]], result: author.result(commit.output, [contact], ({ outputs }) => outputs.contact.output) };
   },
-}), { manifest: fixtureBuildManifest(["fixture-transaction-bind-refusal"]) });
+}));
 
 it("terminalizes a named real transaction bind refusal with complete display before sequencer, probe or browser acquisition", async () => {
   const driver = createWriteFixtureWorld(), stores = buildWriteFixtureRegistry(driver), sessions = writeFixtureSessions(driver);

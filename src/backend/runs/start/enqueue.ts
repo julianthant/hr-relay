@@ -9,6 +9,7 @@ import { RunRecordSchema } from "../../../models/run/record.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { currentBuildId } from "../../runtime/build-id.js";
 
 export interface QueuedRunSpec {
   readonly descriptor: AnyWorkflowDescriptor;
@@ -54,6 +55,7 @@ export function buildQueuedRun(spec: QueuedRunSpec): RunRecord {
     traceId: spec.traceId,
     descriptorVersion: spec.descriptor.version,
     contractFingerprint: spec.descriptor.contractFingerprint,
+    buildId: currentBuildId(),
     operationDisplayCapability: operationDisplaySnapshot === undefined ? "legacy" : "complete",
     ...(operationDisplaySnapshot === undefined ? {} : { operationDisplaySnapshot }),
     ...(spec.requestedInstance === undefined ? {} : { requestedInstance: spec.requestedInstance }),

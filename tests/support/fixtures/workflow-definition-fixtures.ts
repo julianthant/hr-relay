@@ -14,9 +14,7 @@ import { UcpathReadPendingTerminationSet } from "../../../src/models/systems/ucp
 import { SearchPersonOrg } from "../../../src/models/systems/ucpath/search-person-org.js";
 import { UcpathStagePendingTerminationSweep } from "../../../src/models/systems/ucpath/stage-pending-termination-sweep.js";
 import { CANONICAL_FIELDS } from "../../../src/models/fields/registry.js";
-import { EidSchema, FingerprintSchema, ItemIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
-import { BUILD_MANIFEST } from "../../../src/workflow-kit/validation/build-manifest.js";
-import { parseBuildManifest, type BuildManifest } from "../../../src/models/workflow/build-manifest.js";
+import { EidSchema, ItemIdSchema, WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { defineCanonicalInput } from "../../../src/models/workflow/canonical-input.js";
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
@@ -25,34 +23,8 @@ import {
   PersonLookupCanonicalInput,
 } from "../../../src/workflows/person-lookup/workflow.js";
 
-const FIXTURE_FINGERPRINT = FingerprintSchema.parse("f".repeat(64));
-
-/** The checked-in manifest plus one entry per fixture id, so a fixture can compile. */
-export function fixtureBuildManifest(ids: readonly string[]): BuildManifest {
-  return parseBuildManifest({
-    ...BUILD_MANIFEST,
-    workflows: [
-      ...BUILD_MANIFEST.workflows,
-      ...ids.map((id) => ({
-        id,
-        fingerprint: FIXTURE_FINGERPRINT,
-        sources: [{ path: `tests/unit/fixtures/${id}.fixture.ts`, sha256: FIXTURE_FINGERPRINT }],
-      })),
-    ],
-  });
-}
-
-// Reuse one manifest identity per definition; compileWorkflow refuses a structurally equal replacement.
-const FIXTURE_MANIFESTS = new Map<string, BuildManifest>();
-
 export function compileFixtureWorkflow(definition: AnyWorkflowDefinition): AnyCompiledWorkflow {
-  const id = String(definition.id);
-  let manifest = FIXTURE_MANIFESTS.get(id);
-  if (manifest === undefined) {
-    manifest = fixtureBuildManifest([id]);
-    FIXTURE_MANIFESTS.set(id, manifest);
-  }
-  return compileWorkflow(definition, { manifest });
+  return compileWorkflow(definition);
 }
 
 export const EveryEntryKindInput = z.strictObject({

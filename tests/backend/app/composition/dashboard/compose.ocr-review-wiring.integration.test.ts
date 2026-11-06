@@ -59,12 +59,12 @@ it("composes served OCR with readable gate authority while public starts remain 
     assert.ok(refused.state === "rejected" && refused.code === "target-not-found");
     const consent = f.approval();
     assert.equal(kernel.execute(consent).state, "applied");
-    const approved = requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, consent.payload.result.value);
+    const approved = requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, consent.payload.result.value, f.resolve);
     assert.equal(approved.revision, 2);
     assert.equal(approved.records[0].assertedEid, "10800000");
     assert.deepEqual(readOcrReviewAuthority(f.database.authority, f.canonical.lifecycle, f.run.envelope.runId)?.revision.records, approved.records);
     assert.equal(kernel.execute(f.command("discard-ocr-record", 2)).state, "rejected");
-    assert.deepEqual(requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, consent.payload.result.value), approved);
+    assert.deepEqual(requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, consent.payload.result.value, f.resolve), approved);
   } finally {
     try { if (dashboard === undefined) await runtime.close(); else await dashboard.stop(); }
     finally { await profile.close(); }

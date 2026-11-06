@@ -93,8 +93,20 @@ async function withStoppedMachineStorage<Result>(workspace: string, lifetime: Ru
 }
 
 export class RegisteredPersonUpgradeRefusedError extends Error {
-  readonly code = "STORAGE_PROFILE_UPGRADE_REFUSED";
-  constructor(cause: unknown) { super(ERROR_CATALOG.STORAGE_PROFILE_UPGRADE_REFUSED.text, { cause }); this.name = "RegisteredPersonUpgradeRefusedError"; }
+  readonly code: "STORAGE_PROFILE_UPGRADE_REFUSED" | "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES";
+  constructor(cause: unknown) {
+    const code = causedByUnresolvedWrites(cause) ? "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES" : "STORAGE_PROFILE_UPGRADE_REFUSED";
+    super(ERROR_CATALOG[code].text, { cause });
+    this.code = code;
+    this.name = "RegisteredPersonUpgradeRefusedError";
+  }
+}
+
+function causedByUnresolvedWrites(error: unknown): boolean {
+  for (let cause = error; cause instanceof Error; cause = cause.cause) {
+    if (cause.message === "authority-upgrade-unresolved-writes") return true;
+  }
+  return false;
 }
 
 /** One person whose startup inspection, repair, upgrade or recovery was refused; boot continues for the others. */

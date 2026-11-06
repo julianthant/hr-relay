@@ -25,14 +25,13 @@ import { testAdmittedWorker, testWorkerLifetime } from "../../fixtures/run-lifec
 
 export function canonicalChildExecution(deps: RunExecutorDependencies, database: AuthorityDatabase, path: string,
   resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined,
-  checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>,
+  checkpointPublication?: (reader: Pick<RunRecordService, "read">, run: RunRecord, resolve: (workflowId: string) => AnyWorkflowDescriptor | undefined) => NonNullable<RunExecutorDependencies["publishCheckpoint"]>,
   options?: Readonly<{ poolIndex?: number; workbooks?: Pick<WorkbookLibraryService, "snapshot" | "catalog" | "libraryVersion">;
     resources?(reader: Pick<RunRecordService, "read">, run: RunRecord): Pick<RunExecutorDependencies, "providers" | "artifactProjector" | "taskNotes" | "confirmedActionPublisher"> }>) {
   const { clock } = deps;
   const poolIndex = options?.poolIndex ?? 1;
   const emitter = createTimelineEmitter({ repository: database.authority.timelineEvents, clock });
   const lifecycle = new RunRecordService({ database, clock, ids: deps.ids, resolveDescriptor: resolve,
-    ...(deps.buildManifest === undefined ? {} : { buildManifest: deps.buildManifest }),
     publishQueued: (run, publication) => {
       assert.ok(publication);
       emitter.emit(runQueuedSpanEvent({ run, ...publication, actorId: ActorIdSchema.parse(publication.actorId) }));
@@ -98,7 +97,7 @@ export function canonicalChildExecution(deps: RunExecutorDependencies, database:
     const outcome = await withBoundRunConfigFingerprint(deps.sessions, FingerprintSchema.parse(run.envelope.configFingerprint),
       () => executeClaimedRun({ ...deps, lifecycle: workerRunLifecyclePort(lifecycle), descriptor: execution, childRuns,
         ...options?.resources?.(lifecycle, run),
-        ...(checkpointPublication === undefined ? {} : { publishCheckpoint: checkpointPublication(lifecycle, run) }) },
+        ...(checkpointPublication === undefined ? {} : { publishCheckpoint: checkpointPublication(lifecycle, run, resolve) }) },
         { run, claim, signal }), run.envelope.browserMode, { runId: run.envelope.runId,
         descriptorFingerprint: run.envelope.contractFingerprint,
         ...(run.envelope.captureBrowserScreenshots === undefined ? {} : { captureBrowserScreenshots: run.envelope.captureBrowserScreenshots }) });

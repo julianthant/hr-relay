@@ -13,7 +13,6 @@ import { PersonLookupCanonicalInput } from "../../../../src/workflows/person-loo
 import { personLookupDescriptor } from "../../../support/helpers/registered-workflows.js";
 import { QUEUED_RUN } from "../../../support/fixtures/phase1f-run-fixtures.js";
 import { HASH_A, NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
-import { fixtureBuildManifest } from "../../../support/fixtures/workflow-definition-fixtures.js";
 
 const schema = z.strictObject({ approved: z.boolean() });
 const descriptor = compileWorkflow(defineWorkflow({
@@ -27,7 +26,7 @@ const descriptor = compileWorkflow(defineWorkflow({
     return { steps: [[{ key: "approval", label: "Approval" }, [approval]]],
       result: result(schema, [approval], ({ outputs }) => outputs.approval) };
   },
-}), { manifest: fixtureBuildManifest(["fixture-gate-result"]) }).descriptor;
+})).descriptor;
 const run = { ...QUEUED_RUN,
   lifecycle: { state: "running", workerId: "worker-1", claimedAt: NOW, heartbeatAt: NOW }, claimGeneration: 1,
   envelope: { ...QUEUED_RUN.envelope, workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint },

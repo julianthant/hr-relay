@@ -2,7 +2,6 @@ import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../
 import { workerRunLifecyclePort } from "../../../../src/backend/runs/lifecycle/run-record-service.js";
 import { withBoundRunConfigFingerprint } from "../../../../src/backend/runtime/workers/worker-sessions.js";
 import { plan1Contract, plan1Stores } from "../../../support/fixtures/plan1-operation-workflows.js";
-import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
 import { randomUUID } from "node:crypto";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { testWorkerPorts, testWorkerLifetime } from "../../../support/fixtures/run-lifecycle-fixtures.js";
@@ -777,7 +776,7 @@ describe("parallel and seam arms", () => {
     const childClaim = { run: childMutation.run, claim: { workerId: home.workerId, claimGeneration: childMutation.run.claimGeneration } };
     assert.equal(childClaim.run.envelope.runId, children[0].envelope.runId);
     const childDone = await withBoundRunConfigFingerprint(wired.deps.sessions, childClaim.run.envelope.configFingerprint,
-      () => executeClaimedRun({ ...wired.deps, lifecycle: workerRunLifecyclePort(canonical.lifecycle), descriptor: childLeafDescriptor, stores: plan1Stores, buildManifest: childExecutionBuildManifest }, { ...childClaim, signal: SIGNAL }));
+      () => executeClaimedRun({ ...wired.deps, lifecycle: workerRunLifecyclePort(canonical.lifecycle), descriptor: childLeafDescriptor, stores: plan1Stores }, { ...childClaim, signal: SIGNAL }));
     assert.deepEqual(childDone, { state: "done", runId: children[0].envelope.runId });
     await wired.deps.sessions.closeAll("parked");
     wired.deps.sessions.configureExecution(childRunDescriptor.id, wired.deps.stores);

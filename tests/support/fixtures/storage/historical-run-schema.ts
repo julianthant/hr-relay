@@ -1,14 +1,14 @@
 import { canonicalJsonStringify } from "../../../../src/rules/validation/canonical-json.js";
-import { SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import assert from "node:assert/strict";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { inspectNativeAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
-import { runRecordColumns, runRecordFromRow } from "../../../../src/backend/storage/sqlite/run-record-row.js";
-import type { RunRecord } from "../../../../src/models/run/record.js";
+import { predecessorRunRecordFromRow, runRecordColumns } from "../../../../src/backend/storage/sqlite/run-record-row.js";
+import { PredecessorRunRecordSchema, type PredecessorRunRecord } from "../../../../src/models/run/record.js";
 
 export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
-  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 21);
+  assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, CURRENT_AUTHORITY_SCHEMA_VERSION);
   const trigger = SQLITE_MIGRATIONS.find(migration => migration.version === 20)?.statements
     .find(statement => statement.startsWith("CREATE TRIGGER runs_completion_immutable"));
   assert.ok(trigger);
@@ -17,7 +17,7 @@ export function restoreSchema20CompletionFixture(database: DatabaseSync): void {
 }
 
 export function restoreSchema19RunSettlementFixture(database: DatabaseSync): void {
-  if (database.prepare("PRAGMA user_version").get()?.user_version === 21) restoreSchema20CompletionFixture(database);
+  if (database.prepare("PRAGMA user_version").get()?.user_version === CURRENT_AUTHORITY_SCHEMA_VERSION) restoreSchema20CompletionFixture(database);
   assert.equal(database.prepare("PRAGMA user_version").get()?.user_version, 20);
   assert.equal(database.prepare("SELECT count(*) AS count FROM (SELECT run_id FROM run_results GROUP BY run_id HAVING count(*)>1)").get()?.count, 0);
   database.exec("DROP TRIGGER runs_completion_immutable");
@@ -80,17 +80,17 @@ export function removeEmptyExclusiveSessionLeaseFixture(database: DatabaseSync):
   database.exec("DROP TABLE exclusive_session_leases");
 }
 
-export function readNative6RunRecord(database: DatabaseSync, input: unknown): RunRecord {
+export function readNative6RunRecord(database: DatabaseSync, input: unknown): PredecessorRunRecord {
   inspectNativeAuthority(database, 6);
   const row = z.record(z.string(), z.union([z.string(), z.number(), z.null()])).parse(input);
   assert.equal(Object.hasOwn(row, "pause_state"), false);
-  return runRecordFromRow({ ...row, pause_state: null });
+  return predecessorRunRecordFromRow({ ...row, pause_state: null });
 }
 
-export function updateNative6RunFixture(database: DatabaseSync, record: RunRecord): void {
+export function updateNative6RunFixture(database: DatabaseSync, record: PredecessorRunRecord): void {
   inspectNativeAuthority(database, 6);
   assert.equal(Object.hasOwn(record, "pause"), false);
-  const entries = Object.entries(runRecordColumns(record)).filter(([key]) => key !== "id" && key !== "pause_state");
+  const entries = Object.entries(runRecordColumns(record, PredecessorRunRecordSchema)).filter(([key]) => key !== "id" && key !== "pause_state");
   const changes = Number(database.prepare(`UPDATE runs SET ${entries.map(([key]) => `${key} = ?`).join(",")} WHERE id = ? AND version = ?`)
     .run(...entries.map(([, value]) => value), record.envelope.runId, record.version - 1).changes);
   assert.equal(changes, 1, "native6 fixture run-version-fence-lost");

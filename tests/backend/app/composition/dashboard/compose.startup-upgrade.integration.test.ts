@@ -277,7 +277,7 @@ for (const scenario of ["key-close", "service-inspection", "binding-inspection",
   await runCredentialSourceRetentionCase(`startup-upgrade-${scenario}`);
 });
 
-it("preserves a real UNKNOWN parked write, its fenced attempt and stopped worker history through automatic upgrade", async () => {
+it("refuses automatic upgrade while a real UNKNOWN parked write is unresolved and keeps every row at its schema", async () => {
   const world = createRunRecordServiceTestWorld(), f = await world.fixture();
   let lifetime: RuntimeLifetimeLock | undefined;
   try {
@@ -308,15 +308,10 @@ it("preserves a real UNKNOWN parked write, its fenced attempt and stopped worker
     const before = rows(path, 10);
     assert.ok((before.write_intents?.length ?? 0) > 0); assert.ok((before.write_attempts?.length ?? 0) > 0);
     lifetime = await RuntimeLifetimeLock.acquire(0);
-    await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts);
-    const after = rows(path, 10);
-    for (const [table, previous] of Object.entries(before)) {
-      if (table === "runs") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, pause_state: null })));
-      else if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
-      else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, previous.length), previous);
-      else assert.deepEqual(after[table]?.map(row => prePreferencesSettingsRow(table, row)), previous.map(row => ({ ...row })));
-    }
-    assert.equal(after.database_upgrades?.length, (before.database_upgrades?.length ?? 0) + 1);
+    await assert.rejects(upgradeRegisteredPersonStores(workspace, lifetime, hostFacts), error =>
+      error instanceof RegisteredPersonUpgradeRefusedError && error.code === "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES");
+    assert.deepEqual(rows(path, 10), before);
+    assert.equal(readProfileDatabaseBinding(path).schemaVersion, 10);
     assert.equal(digest(protectedPath), protectedBefore);
   } finally { await lifetime?.close(); await world.cleanup(); }
 });
@@ -365,7 +360,7 @@ function historicalTen(path: string): void {
 }
 
 for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] as const) it(
-  `upgrades ${mode} work and held durable leases intact before current-format crash recovery (fixed layout: ${move})`, async () => {
+  `${mode === "unknown" ? "refuses upgrade with" : "tombstones"} ${mode} work and keeps held durable leases intact (fixed layout: ${move})`, async () => {
     const world = createRunRecordServiceTestWorld(), f = await world.interruptedFixture({ nativePaths: move });
     const profileId = f.admission.profileBinding.profileId, workspace = f.machine.readInstallationContext()?.workspace; assert.ok(workspace);
     const intent = mode === "unknown" ? world.parkedWriteIntent(f.database, f.run, { writeIntentId: randomUUID(), code: "unknown", message: "Unresolved external write" }) : undefined;
@@ -391,15 +386,27 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
       await f.closeController(); historicalTen(path);
       const before = rows(path, 10);
       assert.ok(before.worker_leases?.some(row => row.worker_id === CANONICAL_WORKER_ID && row.state === heldWorker.lifecycle.state));
-      lifetime = await RuntimeLifetimeLock.acquire(0);
-      if (target === undefined) await upgradeRegisteredPersonStores(workspace, lifetime, hostFacts, f.clock);
-      else {
-        await prepareApplicationDataWorkspace(workspace, target, lifetime, hostFacts, f.clock);
-        await upgradeRegisteredPersonStores(target, lifetime, hostFacts, f.clock);
-        currentWorkspace = target; currentPath = join(target, ".tracker", "data", "profiles", profileId, "state.db");
+      const held = lifetime = await RuntimeLifetimeLock.acquire(0);
+      const upgrade = (async () => {
+        if (target !== undefined) {
+          await prepareApplicationDataWorkspace(workspace, target, held, hostFacts, f.clock);
+          currentWorkspace = target; currentPath = join(target, ".tracker", "data", "profiles", profileId, "state.db");
+        }
+        await upgradeRegisteredPersonStores(currentWorkspace, held, hostFacts, f.clock);
+      })();
+      if (intent !== undefined) {
+        await assert.rejects(upgrade, error => error instanceof RegisteredPersonUpgradeRefusedError && error.code === "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES");
+        const refused = rows(currentPath, 10);
+        for (const table of ["runs", "write_intents", "write_attempts", "worker_leases", "auth_leases", "deleted_runs"]) assert.deepEqual(refused[table], before[table], table);
+        assert.equal(readProfileDatabaseBinding(currentPath).schemaVersion, 10);
+        return;
       }
+      await upgrade;
       const after = rows(currentPath, 10);
+      assert.deepEqual(after.runs ?? [], []);
+      assert.deepEqual((after.deleted_runs ?? []).map(row => [row.run_id, row.cleanup_state]), [[f.run.envelope.runId, "pending"]]);
       for (const [table, previous] of Object.entries(before)) {
+        if (["runs", "deleted_runs", "commands", "command_audits", "timeline_events", "run_search", "run_results", "run_receipts", "run_failures", "run_checkpoints"].includes(table)) continue;
         if (move && table === "browser_sessions") {
           const plan = readFixedLayoutIntent(currentWorkspace)?.profiles.find(row => row.profileId === profileId); assert.ok(plan);
           assert.deepEqual(after[table]?.map(row => ({ ...row })), previous.map(row => {
@@ -420,12 +427,7 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
       machine = acquireSharedRuntimeAdmission(currentWorkspace, lifetime); admission = machine.admitProfile(profileId);
       database = AuthorityDatabase.open(admission, { path: currentPath, migrationOwner: "startup-upgrade-recovery", busyTimeoutMs: 250 }, f.clock,
         undefined, undefined, undefined, createCredentialStore({ admission, stateRoot: admission.stateRoot }));
-      const recovered = database.authority.runs.get(f.run.envelope.runId); assert.ok(recovered);
-      if (intent === undefined) assert.ok(recovered.lifecycle.state === "terminal" && recovered.lifecycle.outcome === "failed");
-      else {
-        assert.equal(recovered.lifecycle.state, "parked-write");
-        assert.deepEqual(database.authority.writeIntents.get(intent.writeIntentId), intent);
-      }
+      assert.equal(database.authority.runs.get(f.run.envelope.runId), undefined);
       assert.equal(database.authority.workerLeases.get(CANONICAL_WORKER_ID)?.lifecycle.state, "stopped");
     } finally { database?.close(); admission?.release(); machine?.release(); await lifetime?.close(); await world.cleanup(); if (target !== undefined) rmSync(target, { recursive: true, force: true }); }
   },

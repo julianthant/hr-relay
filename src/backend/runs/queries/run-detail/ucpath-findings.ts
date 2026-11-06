@@ -7,7 +7,7 @@ import { UcpathReadTransactionFindings } from "../../../../models/systems/ucpath
 import { UcpathTerminationTargetSchema, isUcpathTerminationAction } from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import { UcpathTransactionFindingsReadSchema, type UcpathTransactionFindingsRead } from "../../../../models/ui/ucpath-transaction-findings.js";
 import { deriveSchemaHash } from "../../../../models/validation/schema-bound-value.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../../workflow-kit/fingerprints.js";
 import { rebuildCommitInput, requireWriteResolutionBinding } from "../../../runtime/writes/write-resolution-binding.js";
 import { LogIdentityRefusedError } from "../../commands/refusals.js";
 import { deriveStableUuid } from "../../../../rules/identity/identifiers.js";
@@ -51,7 +51,7 @@ export function retainedUcpathFindings(deps: RunDetailQueryDeps, run: RunRecord,
     || target.bindingProofDigest !== intent.bindingProofDigest || target.occurrenceKeyDigest !== intent.idempotencyKeyDigest
     || intent.bindingProof.afterPrepareSpanPath !== `${target.traceId}/${target.nodeId}/prepare`
     || identity.descriptorVersion !== descriptor.version || identity.contractFingerprint !== descriptor.contractFingerprint
-    || Number(identity.claimGeneration) !== Number(run.claimGeneration) || identity.implFingerprint !== resolveTaskImplFingerprint(BUILD_MANIFEST, UcpathReadTransactionFindings.id)
+    || Number(identity.claimGeneration) !== Number(run.claimGeneration) || identity.implFingerprint !== taskImplFingerprint(UcpathReadTransactionFindings)
     || result.probeTaskId !== UcpathReadTransactionFindings.id || result.provenance !== "system-probe" || result.state !== "unknown"
     || evidence?.schemaHash !== deriveSchemaHash(UcpathReadTransactionFindings.output, "output")
     || result.evidenceDigest !== sha256Hex(canonicalJsonStringify({ target, state: result.state, code: result.code, evidence, findingsIdentity: identity }))) {

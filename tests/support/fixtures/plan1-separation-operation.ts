@@ -12,7 +12,6 @@ import { runDeclaredAction } from "../../../src/backend/systems/browser-shared/a
 import { kualiSession } from "../../../src/backend/systems/kuali/session-provider.js";
 import { ucpathSession } from "../../../src/backend/systems/ucpath/session-provider.js";
 import { Plan1Input, Plan1CanonicalInput, Plan1Output } from "./plan1-operation-workflows.js";
-import { fixtureBuildManifest } from "./workflow-definition-fixtures.js";
 
 const slotName = (field: string) => field.replace(/[A-Z]/gu, (letter) => `-${letter.toLowerCase()}`);
 const fieldLabel = (field: string) => ({ employee: "Employee ID", documentNumber: "Document number", lastDayWorked: "Last day worked", separationDate: "Separation date", holidayPay: "Holiday pay", department: "Department", title: "Job title", reason: "Reason", effectiveDate: "Termination effective date", comments: "Comments", managerComments: "Manager comments", template: "Template", transaction: "Transaction number", finalPay: "Final pay" })[field as keyof typeof fictionalSeparationDocument] ?? field;
@@ -127,7 +126,7 @@ export const plan1SeparationWorkflow = compileWorkflow(defineWorkflow({ id: "fix
     const verify = task({ id: "verify", label: "Verify saved document", contract: verifyContract, replay: "checkpoint" }, [kuali], ({ outputs }) => outputs.kuali.fictional);
     return { steps: [[{ key: "read", label: "Read request" }, [read]], [{ key: "compute", label: "Reconcile dates" }, [compute]], [{ key: "review", label: "Resolve ambiguity" }, [review]], [{ key: "ucpath", label: "Stage termination" }, [ucpath]], [{ key: "kuali", label: "Finalize document" }, [kuali]], [{ key: "verify", label: "Verify document" }, [verify]]], result: result(Plan1Output, [verify], ({ input, outputs }) => ({ eid: input.emplId, disposition: outputs.verify.fictional.transaction, providerState: "verified" })) };
   },
-}), { manifest: fixtureBuildManifest(["fixture-plan1-separation"]) });
+}));
 export function fictionalSeparationDrivers(ambiguous = false) {
   const kuali = new Map(Object.entries({ ...fictionalSeparationDocument, ...reconcileFictionalSeparation(fictionalSeparationDocument) }));
   if (ambiguous) kuali.set("separationDate", "09/24/2026");

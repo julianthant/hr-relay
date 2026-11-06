@@ -10,7 +10,7 @@ import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-pro
 import { auditWorkflowModuleRoles, type WorkflowRoleView } from "../../../src/workflow-kit/validation/workflow-module-audit.js";
 import { defineWorkflowRole, type WorkflowModuleRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { workflowSourceFolder, workflowSourcePath } from "../../../src/workflow-kit/validation/source-layout.js";
-import { declaredWorkflowId } from "../../../scripts/build/workflow-build-manifest.js";
+import { declaredWorkflowId } from "../../../scripts/build/workflow-source.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 
 const WORKFLOWS_ROOT = "src/workflows";
@@ -345,7 +345,7 @@ const FIXTURES: readonly LayoutFixture[] = [
       files["src/workflows/combo/workflow.ts"] = "export const workflow = buildIt({ id: someId });\n";
     }),
     modules: cleanFixtureModules(),
-    expected: /workflow\.ts: build manifest needs exactly one string-literal descriptor id/,
+    expected: /workflow\.ts: workflow source needs exactly one string-literal descriptor id/,
   },
   {
     name: "nested-below-a-step-folder",

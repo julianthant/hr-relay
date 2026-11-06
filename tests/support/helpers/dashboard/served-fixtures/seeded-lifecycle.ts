@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { currentBuildId } from "../../../../../src/backend/runtime/build-id.js";
 
 
 import { admitDirectWorker } from "../../../../../src/backend/storage/sqlite/worker-slots.js";
@@ -85,6 +86,7 @@ function enqueueRun(world: SeedWorld, spec: SeedSpec): RunRecord {
       traceId,
       descriptorVersion: personLookupDescriptor.version,
       contractFingerprint: CONTRACT_FINGERPRINT,
+      buildId: currentBuildId(),
       resolvedInstance: { ucpath: "prod", crm: "prod" },
       configFingerprint: CONFIG_FINGERPRINT,
       configSnapshotId: CONFIG_SNAPSHOT_ID,

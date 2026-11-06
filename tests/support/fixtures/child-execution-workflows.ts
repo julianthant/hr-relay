@@ -4,7 +4,6 @@ import { z } from "zod";
 import { compileWorkflow, composeWorkflowModule, defineWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/models/workflow/presentation.js";
-import { childExecutionBuildManifest as manifest } from "./child-execution-build-manifest.js";
 import { Plan1Input, Plan1CanonicalInput, Plan1Output, plan1Contract, plan1Leaf, plan1Stores, plan1ExpiringLeaf, plan1ExpiringStores, plan1ExpiringContract } from "./plan1-operation-workflows.js";
 
 const ids = ["fixture-child-runtime-nested", "fixture-child-runtime-root"];
@@ -28,7 +27,7 @@ export const childExecutionNested = compileWorkflow(defineWorkflow({ ...common, 
       { path: "providerState", source: { kind: "child-output", entryId: "nested", path: "providerState" } },
       { path: "disposition", source: { kind: "child-output", entryId: "nested", path: "disposition" } },
     ]) };
-  } }), { manifest });
+  } }));
 export const childExecutionRoot = compileWorkflow(defineWorkflow({ ...common, id: ids[1], code: "fcr",
   steps: ({ delegate, result }) => {
     const left = delegate({ id: "left", target: { id: childExecutionNested.descriptor.id, input: Plan1Input, result: Plan1Output },
@@ -49,7 +48,7 @@ export const childExecutionRoot = compileWorkflow(defineWorkflow({ ...common, id
           { id: "right", source: { kind: "child-output", entryId: "right", path: "disposition" } },
         ] } },
       ]) };
-  } }), { manifest });
+  } }));
 export const childExecutionModules = [plan1Leaf, childExecutionNested, childExecutionRoot]
   .map(compiled => composeWorkflowModule(compiled, plan1Stores.stores));
 export const childExecutionStores = plan1Stores;
@@ -66,7 +65,7 @@ export const childExecutionParallelRoot = compileWorkflow(defineWorkflow({ ...co
       { id: "left", leaves: [left] }, { id: "right", leaves: [right] },
     ]);
     return { steps: [[{ key: "lookups", label: "Lookups" }, [lookups]]], result: result(Plan1Input, [], ({ input }) => input) };
-  } }), { manifest });
+  } }));
 export const childExecutionParallelModules = [composeWorkflowModule(plan1Leaf, plan1Stores.stores),
   composeWorkflowModule(childExecutionNested, plan1Stores.stores), composeWorkflowModule(childExecutionParallelRoot, plan1Stores.stores)];
 
@@ -79,7 +78,7 @@ export const childContinuationRoot = compileWorkflow(defineWorkflow({ ...common,
       ], deriveChildItemId: (_input, identity) => identity.canonicalItemId,
     });
     return { steps: [[{ key: "members", label: "Members" }, [children]]], result: result(Plan1Input, [], ({ input }) => input) };
-  } }), { manifest });
+  } }));
 export const childContinuationModules = [composeWorkflowModule(plan1Leaf, plan1Stores.stores), composeWorkflowModule(childContinuationRoot, plan1Stores.stores)];
 
 export function childUnawaitedModules(cascadeCancel: "cascade" | "independent") {
@@ -89,7 +88,7 @@ export function childUnawaitedModules(cascadeCancel: "cascade" | "independent") 
         policy: { ...policy, cascadeCancel } }, [],
       { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
       return { steps: [[{ key: "child", label: "Child" }, [child]]], result: result(Plan1Input, [], ({ input }) => input) };
-    } }), { manifest });
+    } }));
   return { root: compiled, modules: [composeWorkflowModule(plan1Leaf, plan1Stores.stores), composeWorkflowModule(compiled, plan1Stores.stores)] };
 }
 
@@ -109,7 +108,7 @@ export function childPolicyModules(cascadeCancel: "cascade" | "independent", vis
         { path: "providerState", source: { kind: "child-output", entryId: "child", path: "providerState" } },
         { path: "disposition", source: { kind: "child-output", entryId: "child", path: "disposition" } },
       ]) };
-    } }), { manifest });
+    } }));
   return { root: compiled, modules: [composeWorkflowModule(plan1Leaf, plan1Stores.stores), composeWorkflowModule(compiled, plan1Stores.stores)] };
 }
 
@@ -124,7 +123,7 @@ export const childMixedPolicyRoot = compileWorkflow(defineWorkflow({ ...common, 
     }));
     return { steps: children.map(child => [{ key: child.id, label: child.id }, [child]]),
       result: result(Plan1Input, [], ({ input }) => input) };
-  } }), { manifest });
+  } }));
 export const childMixedPolicyModules = [composeWorkflowModule(plan1Leaf, plan1Stores.stores),
   composeWorkflowModule(childMixedPolicyRoot, plan1Stores.stores)];
 
@@ -134,7 +133,7 @@ const childWaitGateLeaf = compileWorkflow(defineWorkflow({ ...common, id: "fixtu
     return { steps: [[{ key: "review", label: "Review" }, [approval]]], result: result(Plan1Output, [], ({ input }) => ({
       eid: input.emplId, disposition: input.text, providerState: input.text,
     })) };
-  } }), { manifest });
+  } }));
 
 export function childWaitModules(mode: "gate" | "blocked" | "manual" | "manual-recovery") {
   const middle = compileWorkflow(defineWorkflow({ ...common, id: `fixture-child-wait-${mode}-middle`, code: "fwm",
@@ -145,14 +144,14 @@ export function childWaitModules(mode: "gate" | "blocked" | "manual" | "manual-r
         policy: { ...policy, onChildFailed: mode === "manual-recovery" ? "fail-parent" : "block-parent", afterChildRetry: mode.startsWith("manual") ? "manual-parent-resume" : "resume-parent" } }, [],
       { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
       return { steps: [[{ key: "child", label: "Child" }, [child]]], result: result(Plan1Input, [], ({ input }) => input) };
-    } }), { manifest });
+    } }));
   const root = compileWorkflow(defineWorkflow({ ...common, id: `fixture-child-wait-${mode}-root`, code: "fwr",
     steps: ({ delegate, result }) => {
       const child = delegate({ id: "child", target: { id: middle.descriptor.id, input: Plan1Input, result: Plan1Input },
         edgeId: "child", cardinality: "one", await: "terminal", join: "one", policy }, [],
       { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
       return { steps: [[{ key: "child", label: "Child" }, [child]]], result: result(Plan1Input, [], ({ input }) => input) };
-    } }), { manifest });
+    } }));
   return { root, middle, leaf: mode === "gate" ? childWaitGateLeaf : plan1Leaf,
     modules: [composeWorkflowModule(plan1Leaf, plan1Stores.stores), composeWorkflowModule(childWaitGateLeaf, plan1Stores.stores),
       composeWorkflowModule(middle, plan1Stores.stores), composeWorkflowModule(root, plan1Stores.stores)] };
@@ -167,7 +166,7 @@ export const childSettledReviewRoot = compileWorkflow(defineWorkflow({ ...common
     const review = gate({ id: "review", label: "Review", result: z.strictObject({ approved: z.boolean() }) }, [reviewData]);
     return { steps: [[{ key: "members", label: "Members" }, [members]], [{ key: "review-data", label: "Review data" },[reviewData]],[{ key: "review", label: "Review" }, [review]]],
       result: result(Plan1Input,[review],({ input }) => input) };
-  } }), { manifest });
+  } }));
 export const childSettledReviewModules = { root: childSettledReviewRoot,
   modules: [composeWorkflowModule(plan1Leaf,plan1Stores.stores),composeWorkflowModule(childSettledReviewRoot,plan1Stores.stores)] };
 
@@ -177,7 +176,7 @@ export const childSettledObservationRoot = compileWorkflow(defineWorkflow({ ...c
       policy: { ...policy, onChildFailed: "allow-partial" } }, [],
     { bind: ({ input }) => [input, { ...input, emplId: EidSchema.parse("10800001") }], deriveChildItemId: (_input, identity) => identity.canonicalItemId });
     return { steps: [[{ key: "members", label: "Members" }, [members]]], result: result(Plan1Input,[],({ input }) => input) };
-  } }), { manifest });
+  } }));
 export const childSettledObservationModules = { root: childSettledObservationRoot,
   modules: [composeWorkflowModule(plan1Leaf,plan1Stores.stores),composeWorkflowModule(childSettledObservationRoot,plan1Stores.stores)] };
 
@@ -207,7 +206,7 @@ function revisedMembershipRoot(id: string, code: string, lookupTarget: typeof le
     });
     return { steps: [[{ key: "pages", label: "Pages" },[pages]],[{ key: "build", label: "Review" },[build]],[{ key: "lookups", label: "Lookups" },[lookups]]],
       result: result(Plan1Input,[],({ input }) => input) };
-  } }), { manifest }); }
+  } })); }
 export const childRevisedMembershipRoot = revisedMembershipRoot("fixture-child-revised-membership","frm",leaf);
 export const childRevisedExpiringRoot = revisedMembershipRoot("fixture-child-revised-expiring","fre",{ ...leaf, id: plan1ExpiringLeaf.descriptor.id },{ ...leaf, id: plan1ExpiringLeaf.descriptor.id },plan1ExpiringContract);
 export const childRevisedMembershipModules = { root: childRevisedMembershipRoot,

@@ -10,7 +10,6 @@ import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority
 import { composeWorkerRuntime } from "../../../src/backend/app/composition/worker-compose.js";
 import { rebuildRuntimeIsolation } from "../../../src/backend/app/config/runtime-isolation.js";
 import { childExecutionModules, childExecutionRoot, childExecutionStores } from "../fixtures/child-execution-workflows.js";
-import { childExecutionBuildManifest } from "../fixtures/child-execution-build-manifest.js";
 import { childCrashWriteModules, childCrashWriteRoot } from "../fixtures/child-execution-write-workflow.js";
 import { absentProbeEvidence, createWriteFixtureWorld, writeFixtureSessions } from "../fixtures/write-sequencer-fixtures.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
@@ -80,8 +79,7 @@ stage = "compose";
   const report = await composeWorkerRuntime({ lifetimeLock, stopSignal: controller.signal, admission: machine, isolation: rebuildRuntimeIsolation, repoRoot,
     args: [root.descriptor.id, "--pool-index", "1", "--drain"], env: {},
     ...(writeMode ? { sessionFactory: writeFixtureSessions(driver).factory } : {}),
-    executionRegistry: { resolve: id => executionRegistry.publicRegistry[id], resolveChild: executionRegistry.childModuleOf, stores,
-      manifest: childExecutionBuildManifest },
+    executionRegistry: { resolve: id => executionRegistry.publicRegistry[id], resolveChild: executionRegistry.childModuleOf, stores },
     openDatabase: (options, clock) => {
       database = AuthorityDatabase.open(admission, options, clock, undefined, {
         afterSuccessStorageStep: step => {

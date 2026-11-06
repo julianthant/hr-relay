@@ -33,7 +33,9 @@ import { workerPoolMember, WorkerPoolMemberSchema } from "../../../../src/models
 import { CommandResultSchema } from "../../../../src/rules/commands/commands.js";
 import { deriveTraceId } from "../../../../src/rules/identity/identifiers.js";
 import { ActorIdSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
-import { systemClock } from "../../../../src/rules/time/clock.js";
+import { manualClock, systemClock } from "../../../../src/rules/time/clock.js";
+import { productionWorkerLaunch } from "../../../../src/backend/app/composition/dashboard/worker-process.js";
+import { BuildIdError, captureBuildId, currentBuildId, PARENT_BUILD_ID_ENV } from "../../../../src/backend/runtime/build-id.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 import { foundationFixture, id as id_m0, NOW as NOW_m0 } from "../../../support/helpers/database-foundation/fixtures.js";
@@ -656,4 +658,34 @@ describe("reset owner preflight has no effects", () => {
       h.supervisor.close();
     });
   }
+});
+
+it("passes the parent build id through the supervisor and refuses a mismatched startup", async () => {
+  const clock = manualClock(new Date("2026-01-01T00:00:00.000Z"));
+  const member = WorkerPoolMemberSchema.parse({
+    workflowId: "person-lookup", workerId: "person-lookup-worker-1", ordinal: 1, poolIndex: 1, membershipRevision: 1,
+  });
+  let spawned = false;
+  let environment: NodeJS.ProcessEnv | undefined;
+  const supervisor = createDashboardWorkerProcessSupervisor({
+    onExit: () => undefined,
+    launch: productionWorkerLaunch("/repo", { PATH: "/usr/bin" }),
+    spawn: (spec) => {
+      environment = spec.environment;
+      spawned = true;
+      return { pid: process.pid, kill: () => true, onExit: () => undefined, onError: () => undefined };
+    },
+    leases: { observe: () => spawned ? { processId: process.pid, startedAt: "2026-01-01T00:00:00.000Z" } : undefined },
+    gracefulStop: { request: () => { throw new Error("stop must not be requested"); } },
+    clock, scheduler: new ManualScheduler(clock, 0), birth: { pollMs: 250, timeoutMs: 10_000 },
+    proveRetirement: () => { throw new Error("retirement must not be requested"); },
+    onFault: error => { throw error; },
+  });
+  await supervisor.execute({ command: "spawn-worker", commandId: randomUUID(), member });
+  assert.ok(environment);
+  assert.equal(environment[PARENT_BUILD_ID_ENV], currentBuildId());
+  assert.equal(environment.PATH, "/usr/bin");
+  assert.equal(captureBuildId(environment), currentBuildId());
+  assert.throws(() => captureBuildId({ ...environment, [PARENT_BUILD_ID_ENV]: "0".repeat(64) }),
+    (error: unknown) => error instanceof BuildIdError && error.code === "relay-build-changed-under-running-app");
 });

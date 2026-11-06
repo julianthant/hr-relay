@@ -92,7 +92,7 @@ export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
     },
     authenticateSnapshotApproval: (gate: Parameters<typeof authenticateOcrSnapshotApproval>[2]) => {
       if (deps.runReader === undefined) throw new OcrReviewRefusedError();
-      return authenticateOcrSnapshotApproval(authority, deps.runReader, gate);
+      return authenticateOcrSnapshotApproval(authority, deps.runReader, gate, workflowId => byId.get(workflowId));
     },
     findReceiptByRun: (runId: string) => authority.evidenceReceipts.findByRun(runId),
     insertReceipt: (receipt: unknown) => authority.evidenceReceipts.insert(receipt),

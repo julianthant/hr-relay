@@ -6,7 +6,7 @@ import { OPERATION_DISPLAY_FORMAT_VERSION } from "../../../src/models/workflow/o
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { compileWorkflow } from "../../../src/workflow-kit/workflow-definition.js";
 
-const { DISPLAY_FORWARD_ID, outerWorkflow, displayManifest } = createOperationDisplayFixtures();
+const { DISPLAY_FORWARD_ID, outerWorkflow } = createOperationDisplayFixtures();
 
 
 const operation = SearchPersonOrg.operation;
@@ -15,7 +15,7 @@ if (operation === undefined) throw new Error("SearchPersonOrg must declare its r
 const forwardWorkflow = outerWorkflow(DISPLAY_FORWARD_ID, "forward");
 
 function compileDisplayWorkflow(definition: Parameters<typeof compileWorkflow>[0]) {
-  return compileWorkflow(definition, { manifest: displayManifest });
+  return compileWorkflow(definition);
 }
 
 describe("workflow operation display declarations", () => {

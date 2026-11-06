@@ -89,7 +89,6 @@ export interface WorkerRunResources {
 }
 export interface WorkerLoopDependencies {
   readonly debugEvents?: import("../execution/run-executor.js").RunExecutorDependencies["debugEvents"];
-  readonly buildManifest?: import("../../../models/workflow/build-manifest.js").BuildManifest;
  readonly resourcesForRun?: (run:RunRecord)=>WorkerRunResources;
  readonly idleCadence?: ()=>number;
   readonly workflowId: WorkflowId;
@@ -472,7 +471,6 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
           () => executeClaimedRun({
             descriptor: execution.descriptor,
             stores: execution.stores,
-            ...(deps.buildManifest === undefined ? {} : { buildManifest: deps.buildManifest }),
             authority: deps.authority,
             lifecycle: deps.lifecycle,
             sessions,

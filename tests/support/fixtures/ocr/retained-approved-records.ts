@@ -1,5 +1,3 @@
-import type { BuildManifest } from "../../../../src/models/workflow/build-manifest.js";
-import { resolveWorkflowFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
 import { OcrApprovedSnapshotSchema, ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
 import { z } from "zod";
 import { AdmittedRecordSchema } from "../../../../src/models/ocr/extraction.js";
@@ -41,7 +39,6 @@ export const retainedSnapshotStore = defineServiceStore("ocr", { ...ocrStore.tas
 export function createRetainedApprovedRecordReader(deps: Readonly<{
   database: Pick<AuthorityDatabase, "authority" | "withAuthorityReadSnapshot">; reader: Pick<RunRecordService, "read">; run: RunRecord;
   assertCurrent(): void; resolveDescriptor(workflowId: string): AnyWorkflowDescriptor | undefined;
-  manifest: BuildManifest;
   snapshotContract?: typeof retainedSnapshotContract;
 }>): Pick<ApprovedOcrRecordReader, "readSnapshot" | "readRecord"> {
   const reader = deps.reader;
@@ -96,7 +93,7 @@ export function createRetainedApprovedRecordReader(deps: Readonly<{
     }
     const review = readOcrReviewAuthority(deps.database.authority, reader, query.approval.sourceRunId);
     if (review === undefined || review.revision.revision !== query.approval.revision
-      || review.run.envelope.contractFingerprint !== resolveWorkflowFingerprint(deps.manifest, review.run.envelope.workflow)) throw new OcrReviewRefusedError();
+      || deps.resolveDescriptor(review.run.envelope.workflow)?.contractFingerprint !== review.run.envelope.contractFingerprint) throw new OcrReviewRefusedError();
     const snapshot = readOcrSnapshotsAuthority(deps.database.authority, review).find(snapshot => snapshot.snapshotId === query.approval.snapshotId);
     if (snapshot === undefined || snapshot.reviewDigest !== review.digest || ocrSnapshotDigest(snapshot) !== query.approval.digest) throw new OcrReviewRefusedError();
     if (query.kind === "snapshot") return snapshot;

@@ -559,7 +559,7 @@ try {
       descriptors: { resolve: id => id === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined },
       writeResolution: createWriteResolutionExecutor({ authority: database, continuation: testRunContinuation(database, clock),
         descriptors: { resolve: id => id === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined },
-        ids: { uuid: randomUUID }, resolveImplFingerprint: () => WRITE_FIXTURE_IMPL_FINGERPRINT }),
+        ids: { uuid: randomUUID }  }),
       workerRuntime: { pool: { planPoolWorkerCount: unused, spawnPoolWorker: unused, refreshPoolBrowser: unused, reopenPoolBrowser: unused,
         stopPoolWorker: unused, pausePoolWorker: unused, resumePoolWorker: unused } } });
   }

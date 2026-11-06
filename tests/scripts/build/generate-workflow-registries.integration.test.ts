@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { workflowRegistrySources } from "../../../scripts/build/generate-workflow-registries.js";
-import { collectSourceClosure } from "../../../scripts/build/workflow-build-manifest.js";
+import { collectSourceClosure } from "../../../scripts/build/workflow-source.js";
 import { testProcessImport } from "../../support/compiled-process.js";
 
 function put(root: string, path: string, content: string): void {

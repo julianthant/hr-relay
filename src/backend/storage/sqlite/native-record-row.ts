@@ -1,4 +1,5 @@
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { BUILD_ID_ENVELOPE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { PredecessorRunRecordSchema } from "../../../models/run/record.js";
 import { runSettlementContext } from "./run-settlement-row.js";
 import { confirmationPublicationFromRow } from "../../../models/events/confirmed-operation.js";
 import { WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
@@ -66,7 +67,7 @@ export function nativeOrdinaryRecordFromRow(table: NativeOrdinaryTable, input: u
   const object = z.record(z.string(),z.unknown()).parse(record);
   const extras: Record<string,string | number | null> = {};
   if (schemaVersion >= 20 && table === "run_results") {
-    const terminal = runSettlementContext(row);
+    const terminal = schemaVersion < BUILD_ID_ENVELOPE_SCHEMA_VERSION ? runSettlementContext(row, PredecessorRunRecordSchema) : runSettlementContext(row);
     if (terminal.lifecycle.state !== "terminal"
       || ([["runId","runId"],["workflow","workflowId"],["attempt","attempt"],["descriptorVersion","descriptorVersion"],
         ["contractFingerprint","contractFingerprint"],["configSnapshotId","configSnapshotId"],["configFingerprint","configFingerprint"]] as const).some(

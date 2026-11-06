@@ -4,7 +4,7 @@ import { testWorkerPorts } from "../../support/fixtures/run-lifecycle-fixtures.j
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/rules/time/clock.js";
-import { BUILD_MANIFEST } from "../../../src/workflow-kit/validation/build-manifest.js";
+import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";
 import { RunRecordSchema } from "../../../src/models/run/record.js";
 import { AuthorityDatabase } from "../../support/helpers/synthetic-storage-admission.js";
 import { seedPersonLookupExitRun } from "../../support/fixtures/receipt-run-fixtures.js";
@@ -551,7 +551,7 @@ describe("evidence receipt — declared classification coverage", () => {
       workflowProjections(descriptor).contracts.map((contract) => String(contract.id))));
     const taskIds = new Set([
       ...descriptorTaskIds,
-      ...BUILD_MANIFEST.tasks.map(({ id }) => String(id)),
+      ...taskStoreRegistry.stores.flatMap(store => Object.values(store.tasks).map(task => String(task.contract.id))),
       ...WRITE_FIXTURE_TASK_IDS.map(String),
     ]);
 

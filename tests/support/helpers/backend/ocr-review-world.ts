@@ -1,6 +1,4 @@
 import type { SpanEmitter } from "../../../../src/backend/logs/span-emitter.js";
-import { BUILD_MANIFEST } from "../../../../src/workflow-kit/validation/build-manifest.js";
-import type { BuildManifest } from "../../../../src/models/workflow/build-manifest.js";
 import type { createRetainedApprovedRecordReader } from "../../fixtures/ocr/retained-approved-records.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { runClaim } from "../../../../src/models/run/record.js";
@@ -68,7 +66,6 @@ export function createOcrReviewWorld() {
       reviewedPages?: readonly ReviewedPageFacts[]; operatorEvidence?: boolean;
       screenshotCapture?: NonNullable<Parameters<typeof world.executorHarness>[0]>["screenshotCapture"];
       member?: WorkflowModule;
-      buildManifest?: BuildManifest;
       approvedReader?: typeof createRetainedApprovedRecordReader;
       approvedStore?: RegisteredTaskStore;
       manualPageFailure?: (sourcePage: number) => boolean;
@@ -149,7 +146,7 @@ export function createOcrReviewWorld() {
         return settled;
       } };
       const notes = options.operatorEvidence === true ? createNoteTimelineWriter({ repository: database.authority.timelineEvents, clock }) : undefined;
-      const canonical = canonicalChildExecution({ ...harness.deps, emitter: { emit: event => { harness.deps.emitter.emit(event); options.onSpan?.(event); } }, ...(options.buildManifest === undefined ? {} : { buildManifest: options.buildManifest }), artifacts, ...(writeSequencer === undefined ? {} : { writeSequencer }) }, database, path, resolve,
+      const canonical = canonicalChildExecution({ ...harness.deps, emitter: { emit: event => { harness.deps.emitter.emit(event); options.onSpan?.(event); } }, artifacts, ...(writeSequencer === undefined ? {} : { writeSequencer }) }, database, path, resolve,
         options.retainedProducer === true ? retainedOcrCheckpointPublication : createOcrCheckpointPublication,
         { workbooks, resources: (reader, run) => { const claim = runClaim(run); assert.ok(claim); const descriptor = resolve(run.envelope.workflow); assert.ok(descriptor);
           const needsPlanEvidence = notes !== undefined && descriptorRuntimeNodes(descriptor).some(node => node.kind === "transaction");
@@ -159,7 +156,7 @@ export function createOcrReviewWorld() {
           idFactory: { next: () => randomUUID() }, adapters: { "ocr.approved-snapshot": createOcrApprovedSnapshotAdapter({clock,
             reader: options.approvedReader === undefined
               ? createApprovedOcrRecordReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime()})
-              : options.approvedReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime(), manifest: options.buildManifest ?? BUILD_MANIFEST}),
+              : options.approvedReader({database,run,reader,resolveDescriptor:resolve,assertCurrent:()=>admission.assertProfileRuntime()}),
           }) } } }; } });
       const sources = createOcrSourceService({ database, reader: canonical.lifecycle, clock, artifacts, artifactReader,
         assertCurrent: () => admission.assertProfileRuntime() });
