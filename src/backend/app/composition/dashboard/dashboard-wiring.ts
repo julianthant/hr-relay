@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { emitFaultWithCauses } from "../../../logs/debug-events.js";
 import { join } from "node:path";
 import { z } from "zod";
 import configuredWorkflowSources from "../../../../../config/dashboard-workflow-sources.json" with { type: 'json' };
@@ -95,16 +96,12 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const { noteWriter, runLogsHub, timelineTimer } = composeDashboardTimeline({ database, clock, loggingRepository, projection, lifecycle, startupCleanups, requiredClosure });
 
   const reportSupervisorFault = (error: Error): void => {
-    const event = { category: "worker", phase: "failed", correlationId: randomUUID(), area: "supervisor",
-      code: "WORKER_SUPERVISOR_FAILED", reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "supervisor-failed" };
-    debugEvents.emit(event);
-    input.workerProcess?.faultSink?.(JSON.stringify(event));
+    emitFaultWithCauses(debugEvents, input.workerProcess?.faultSink, error, { category: "worker", area: "supervisor", code: "WORKER_SUPERVISOR_FAILED",
+      reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "supervisor-failed" });
   };
   const reportDashboardTransferFault = (error: Error): void => {
-    const event = { category: "http", phase: "failed", correlationId: randomUUID(), area: "response-transfer",
-      code: "DASHBOARD_TRANSFER_FAILED", reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "transfer-failed" };
-    debugEvents.emit(event);
-    input.workerProcess?.faultSink?.(JSON.stringify(event));
+    emitFaultWithCauses(debugEvents, input.workerProcess?.faultSink, error, { category: "http", area: "response-transfer", code: "DASHBOARD_TRANSFER_FAILED",
+      reason: error instanceof RuntimeCustodyUncertainError ? "custody-unproved" : "transfer-failed" });
   };
   const assertAssistantEffect = (commandId: string): void => {
     if (database.authority.assistantAuthorization.actionByCommand(commandId) === undefined) return;

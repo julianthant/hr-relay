@@ -20,7 +20,7 @@ type PublicProfileState
 } from "../../../../models/profiles/public-profile.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 import { appendEmergencyFault } from "../../../logs/emergency-faults.js";
-import { valueFreeErrorCauses } from "../../../logs/debug-events.js";
+import { serializeErrorCauses } from "../../../../models/failures/error-origins.js";
 import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js";
 import { type ActiveProfileSession } from "../../../profiles/profile-session.js";
 import { createProfileOnboardingDuoProvider } from "../../../runtime/browser/onboarding-duo-provider.js";
@@ -126,7 +126,7 @@ export async function composeDashboardApplication(input: DashboardComposeInput):
   const publicFailure = (error: Error) => {
     const custodyUnproved = retainPublicFailureCustody(error, retainedCustodyFailures);
     const mapped = failureStatus(error);
-    const causes = mapped.status === 500 || error.cause !== undefined || mapped.body.code === "CREDENTIAL_CONVERSION_REQUIRED" ? valueFreeErrorCauses(error) : [];
+    const causes = mapped.status === 500 || error.cause !== undefined || mapped.body.code === "CREDENTIAL_CONVERSION_REQUIRED" ? serializeErrorCauses(error) : [];
     for (const cause of causes) {
       const diagnostic = new Error(cause.name);
       diagnostic.name = cause.name;

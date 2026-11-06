@@ -3,12 +3,18 @@ import { debugFailureOutcomes } from "../../../../models/events/debug-report.js"
 import type { DashboardApp } from "./api-types.js";
 import { wireError } from "./failure-status.js";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
+import { DashboardClientDisconnectedError } from "../http-server.js";
 
 export function registerDebugResponses(app: DashboardApp, writer: { emit(input: unknown): void }): void {
   app.use("*", async (c, next) => {
     await next();
     if (c.res.ok && c.res.headers.has("content-disposition")) return;
     try {
+      if (c.req.raw.signal.reason instanceof DashboardClientDisconnectedError) {
+        writer.emit({ category: "http", phase: "failed", area: "request", code: "INTERNAL_FAILURE", reason: "request-disconnected",
+          correlationId: randomUUID(), method: c.req.method, route: c.req.routePath });
+        return;
+      }
       let body: unknown;
       try {
         if (c.res.headers.get("content-type")?.startsWith("application/json")) body = await c.res.clone().json();

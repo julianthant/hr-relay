@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { ERROR_CATALOG } from "../failures/error-catalog.js";
 import { PreflightReadinessWireSchema } from "../preflight/preflight-contract.js";
+import { clientCauseRowAccepted } from "../failures/error-origins.js";
 import { BulkRunCommandResponseSchema, CommandRejectionCodeSchema, CommandResultSchema } from "../../rules/commands/commands.js";
 export const DashboardErrorReportSchema = z.strictObject({
   reportId: z.uuid(), clientId: z.string().min(1).max(128), release: z.string().min(1).max(128),
@@ -9,6 +10,12 @@ export const DashboardErrorReportSchema = z.strictObject({
   reason: z.string().min(1).max(128).regex(/^[a-z0-9-]+$/u).optional(),
 });
 export type DashboardErrorReport = z.infer<typeof DashboardErrorReportSchema>;
+
+/** The fixed message of a failed-request report; any other report carries one closed cause row. */
+export const DASHBOARD_REQUEST_REPORT_MESSAGE = "Dashboard request did not complete successfully";
+export function dashboardReportAccepted(report: DashboardErrorReport): boolean {
+  return report.message === DASHBOARD_REQUEST_REPORT_MESSAGE ? report.stack === undefined : clientCauseRowAccepted(report);
+}
 
 const FailureOutcomeSchema = z.object({ state: z.enum(["error", "failed", "refused", "rejected", "conflict", "unknown", "uncertain", "unavailable"]), code: z.string().optional() });
 const TRANSPORT_CODES = new Set(["SCHEMA_INVALID", "INTERNAL_FAILURE", "REQUEST_IDENTITY_REFUSED", "ROUTE_NOT_FOUND", "SECTION_UNAVAILABLE", "PROJECTION_DEGRADED", "DEBUG_REPORT_INVALID", "DEBUG_REPORT_RATE_LIMIT", "DEBUG_REPORT_SIZE_LIMIT"]);

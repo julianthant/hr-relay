@@ -21,10 +21,11 @@ import { registerTrustRoutes } from "./trust.js";
 import { composeDataQueries } from "../../../app/composition/dashboard/data.js";
 
 import { withEmergencyTimelineWriter } from "../../../logs/emergency-faults.js";
-import { createDebugEventWriter, valueFreeErrorCauses } from "../../../logs/debug-events.js";
+import { createDebugEventWriter } from "../../../logs/debug-events.js";
+import { serializeErrorCauses } from "../../../../models/failures/error-origins.js";
 import { randomUUID } from "node:crypto";
 import { ERROR_CATALOG } from "../../../../models/failures/error-catalog.js";
-import { DashboardErrorReportSchema } from "../../../../models/events/debug-report.js";
+import { dashboardReportAccepted, DashboardErrorReportSchema } from "../../../../models/events/debug-report.js";
 import { Hono } from "hono";
 
 import { staticBundleHandler } from "../static-bundle.js";
@@ -41,8 +42,10 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     const { status, body } = failureStatus(error);
     if (status >= 500) {
       try {
-        for (const cause of valueFreeErrorCauses(error)) debugEvents.emit({ category: "http", phase: "failed",
-          correlationId: randomUUID(), area: "request", reason: "request-cause", status,
+        const causes = serializeErrorCauses(error);
+        const disconnected = causes.some(cause => cause.reason === "request-disconnected");
+        for (const cause of causes) debugEvents.emit({ category: "http", phase: "failed",
+          correlationId: randomUUID(), area: "request", reason: "request-cause", ...(disconnected ? {} : { status }),
           code: cause.code, message: cause.name, stack: cause.stack });
       } catch {
         return c.json(wireError("LOGGING_UNAVAILABLE", ERROR_CATALOG.LOGGING_UNAVAILABLE.text, false), 500);
@@ -102,7 +105,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
     try { input = JSON.parse(new TextDecoder().decode(combined)); }
     catch { return c.json(wireError("DEBUG_REPORT_INVALID", "Dashboard error report must be valid JSON.", false), 400); }
     const parsed = DashboardErrorReportSchema.safeParse(input);
-    if (!parsed.success) return c.json(wireError("DEBUG_REPORT_INVALID", "Dashboard error report fields are invalid.", false), 400);
+    if (!parsed.success || !dashboardReportAccepted(parsed.data)) return c.json(wireError("DEBUG_REPORT_INVALID", "Dashboard error report fields are invalid.", false), 400);
     const report = parsed.data;
     debugEvents.emit({ category: "client", phase: "failed", correlationId: report.reportId,
       area: "dashboard", reason: report.reason,

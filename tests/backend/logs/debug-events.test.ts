@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe,it } from "vitest";
 import { z } from "zod";
-import { createDebugEventWriter, valueFreeErrorCauses } from "../../../src/backend/logs/debug-events.js";
+import { createDebugEventWriter, emitFaultWithCauses } from "../../../src/backend/logs/debug-events.js";
+import { mirrorDebugEvent } from "../../../src/backend/storage/events/local-debug-log.js";
+import { PreflightObservationChangedError } from "../../../src/rules/preflight/preflight-admission.js";
 import { debugTimelineFixture as fixture } from "../../support/helpers/backend/debug-timeline-fixture.js";
 import { WorkflowIdSchema } from "../../../src/rules/identity/ids.js";
 import { manualClock } from "../../../src/rules/time/clock.js";
@@ -27,19 +29,32 @@ describe("bounded native debug events", () => {
     writer.emit({ ...event, chatGptInference });
     assert.equal(records.length, 1);
   });
-  it("retains only names, codes and source locations from cyclic aggregate causes", () => {
-    const cause = new TypeError("Quillan, Petra; fictional record contents");
-    cause.stack = "TypeError: fictional private message\n    at privateFunction (/Users/private/project/src/backend/runs/queries/run-detail.ts:42:7)\n    at /private/profiles/record.txt:1:2\nprivate continuation";
-    const error = new AggregateError([cause, cause], "fictional private aggregate", { cause });
-    Object.defineProperty(error, "code", { value: "INTERNAL_FAILURE" });
-    Object.defineProperty(cause, "cause", { value: error });
-    error.stack = "AggregateError: private\n    at handler (/Users/private/project/src/backend/transports/http/routes/api.ts:40:1)";
-    const details = valueFreeErrorCauses(error);
-    assert.deepEqual(details, [
-      { name: "AggregateError", code: "INTERNAL_FAILURE", stack: "AggregateError\n    at src/backend/transports/http/routes/api.ts:40:1" },
-      { name: "TypeError", code: "INTERNAL_FAILURE", stack: "TypeError\n    at src/backend/runs/queries/run-detail.ts:42:7" },
+  it("keeps a supervisor fault's real closed cause in events and stderr", () => {
+    const { records, repository } = fixture();
+    const writer = createDebugEventWriter({ repository, clock: manualClock(AT), build: "test" });
+    const faults: string[] = [];
+    const error = new AggregateError([new PreflightObservationChangedError()], "PRIVATE_CANARY");
+    emitFaultWithCauses(writer, line => { faults.push(line); }, error,
+      { category: "worker", area: "supervisor", code: "WORKER_SUPERVISOR_FAILED", reason: "supervisor-failed" });
+    const events = records.map(record => record.payload.kind === "debug" ? record.payload.event : undefined);
+    assert.deepEqual(events.map(event => [event?.code, event?.reason, event?.message]), [
+      ["WORKER_SUPERVISOR_FAILED", "supervisor-failed", undefined],
+      ["INTERNAL_FAILURE", "supervisor-cause", "AggregateError"],
+      ["PREFLIGHT_OBSERVATION_CHANGED", "supervisor-cause", "PreflightObservationChangedError"],
     ]);
-    assert.equal(/Quillan|Petra|private|fictional|record/u.test(JSON.stringify(details)), false);
+    assert.equal(new Set(events.map(event => event?.correlationId)).size, 1);
+    assert.deepEqual((JSON.parse(faults[0] ?? "{}") as { causes: unknown }).causes, [
+      { name: "AggregateError", code: "INTERNAL_FAILURE", reason: "aggregate-cause" },
+      { name: "PreflightObservationChangedError", code: "PREFLIGHT_OBSERVATION_CHANGED", reason: "observation-changed" },
+    ]);
+    assert.equal(JSON.stringify([records, faults]).includes("CANARY"), false);
+  });
+  it("revalidates the mirrored payload, not only its label", () => {
+    const lines: string[] = [];
+    const record = JSON.parse(JSON.stringify({ recordedAt: AT.toISOString(), scope: { kind: "transport", connectionId: "local" },
+      event: { category: "http", phase: "failed", correlationId: "x", build: "test", pid: 1, pinned: false, reason: "PRIVATE CANARY" } })) as Parameters<typeof mirrorDebugEvent>[0];
+    assert.throws(() => { mirrorDebugEvent(record, { development: true, writeStderr: line => { lines.push(line); } }); });
+    assert.deepEqual(lines, []);
   });
   it("mirrors HTTP method, registered route template and status without client routes or payloads", () => {
     const { repository } = fixture(); const lines: string[] = [];

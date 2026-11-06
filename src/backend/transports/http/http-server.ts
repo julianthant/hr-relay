@@ -4,6 +4,7 @@ import { createServer,type IncomingMessage,type Server,type ServerResponse } fro
 import { Readable } from "node:stream";
 import { z } from "zod";
 import type { DashboardApp } from "./routes/api.js";
+import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 
 export interface DashboardHttpServerDeps {
   readonly app: DashboardApp;
@@ -170,12 +171,13 @@ class DashboardShutdownError extends Error {
   }
 }
 
-class DashboardClientDisconnectedError extends Error {
+export class DashboardClientDisconnectedError extends Error {
   constructor(phase: string) {
     super(`dashboard client disconnected ${phase}`);
     this.name = "DashboardClientDisconnectedError";
   }
 }
+bindErrorOrigin(DashboardClientDisconnectedError, "request-disconnected");
 
 function expectedCancellation(error: unknown, reason: Error | undefined): boolean {
   return (reason instanceof DashboardShutdownError || reason instanceof DashboardClientDisconnectedError)

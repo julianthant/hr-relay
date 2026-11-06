@@ -5,6 +5,7 @@ import type { Clock } from "../time/clock.js";
 import { ConfigSnapshotIdSchema, FingerprintSchema } from "../identity/ids.js";
 import { PreflightReportWireSchema, RuntimeCapabilitySchema } from "../../models/preflight/preflight-contract.js";
 import { createPreflightAuthority, type PreflightDeadlineScheduler, type PreflightRunner } from "../../models/preflight/preflight.js";
+import { bindErrorOrigin } from "../../models/failures/error-origins.js";
 
 export const PreflightAdmissionScopeSchema = z.strictObject({
   configSnapshotId: ConfigSnapshotIdSchema,
@@ -25,6 +26,7 @@ export class PreflightObservationChangedError extends PreflightAdmissionRefusal 
     this.name = "PreflightObservationChangedError";
   }
 }
+bindErrorOrigin(PreflightObservationChangedError, "preflight-observation-changed");
 export class PreflightEvidenceExpiredError extends PreflightAdmissionRefusal {
   constructor(readonly report: PreflightReport) {
     super("stale", ERROR_CATALOG.PREFLIGHT_EVIDENCE_EXPIRED.text); this.name = "PreflightEvidenceExpiredError";

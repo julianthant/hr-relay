@@ -1,5 +1,5 @@
 import { DeleteProfileAccountRequestSchema, type DeleteProfileAccountRequest, CancelProfileOnboardingDuoRequestSchema, type CancelProfileOnboardingDuoRequest, CompleteProfileOnboardingRequestSchema, CancelProfileOnboardingRequestSchema, StartProfileOnboardingDuoRequestSchema, ConfirmProfileOnboardingDuoRequestSchema, type CompleteProfileOnboardingRequest, type CancelProfileOnboardingRequest, type StartProfileOnboardingDuoRequest, type ConfirmProfileOnboardingDuoRequest, ProfileLoginRequestSchema, ProfileSignUpRequestSchema, PublicProfileStateSchema, type ProfileLoginRequest, type ProfileSignUpRequest, type PublicProfileState } from "../../models/profiles/public-profile.js";
-import { debugFailureOutcome, DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
+import { DASHBOARD_REQUEST_REPORT_MESSAGE, debugFailureOutcome, DashboardErrorReportSchema, type DashboardErrorReport } from "../../models/events/debug-report.js";
 import { invalidatePreflightReadiness } from "./queries/preflight-state.js";
 /** The ONE typed dashboard client (ref frontend-backend-integration) */
 import { createDashboardCommands, type DashboardCommands } from "./commands.js";
@@ -68,7 +68,7 @@ export function createDashboardClient(input: Readonly<{
     if (surface === undefined || profileAuthority === undefined) return;
     void client.reportError({ reportId: crypto.randomUUID(), clientId, release: "dashboard",
       route: failure.route, surface: surface(), code: failure.code, reason: failure.reason,
-      message: "Dashboard request did not complete successfully" })
+      message: DASHBOARD_REQUEST_REPORT_MESSAGE })
       .catch(() => { window.reportError(new DashboardReportDeliveryError()); });
   };
   const transport = createDashboardTransport({ ...input, captureProfileSessionStale: () => {
