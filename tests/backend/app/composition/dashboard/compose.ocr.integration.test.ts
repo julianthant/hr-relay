@@ -35,6 +35,9 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
     const invoke = (body = "{}", signal?: AbortSignal) => actualApp.request("http://127.0.0.1/api/v1/settings/chatgpt-account/test-ocr", { method: "POST", headers, body, signal });
     const missing = await invoke(); assert.equal((await missing.json() as { state: string }).state, "refused");
     assert.equal(transport.calls.filter(call => call.url.endsWith("/responses")).length, 0);
+    const unsignedFaults = runtime.selectedContext(active.token).database.authority.timelineEvents.page({ limit: 500 })
+      .filter(record => record.payload.kind === "debug" && record.payload.event.area === "chatgpt-inference");
+    assert.equal(unsignedFaults.length, 1);
     const attempt = await account.signIn({ usePlan: true }); await transport.callback(attempt); await attempt.completion;
     transport.setResponse(init => {
       assert.equal(typeof init.body, "string");
@@ -90,9 +93,23 @@ it("the actual selected dashboard Test OCR uses its account, fixed page and shar
     transport.setResponse(() => Response.json({ error: { code: "subscription_sharing_unsupported_capability" } }, { status: 400 }));
     const failed = await invoke(); assert.equal((await failed.json() as { code: string }).code, "CHATGPT_REQUEST_REJECTED"); unchanged(3);
     const inferenceFaults = context.database.authority.timelineEvents.page({ limit: 500 }).filter(record => record.payload.kind === "debug" && record.payload.event.area === "chatgpt-inference");
-    assert.equal(inferenceFaults.length, 1);
-    const payload = inferenceFaults[0].payload; assert.equal(payload.kind, "debug");
+    assert.equal(inferenceFaults.length, 2);
+    assert.deepEqual(inferenceFaults[0], unsignedFaults[0]);
+    assert.ok(inferenceFaults[0].cursor < inferenceFaults[1].cursor);
+    assert.notEqual(inferenceFaults[0].eventId, inferenceFaults[1].eventId);
+    const unsigned = inferenceFaults[0].payload; assert.equal(unsigned.kind, "debug");
+    if (unsigned.kind !== "debug") throw new Error("unsigned inference diagnostic required");
+    assert.equal(unsigned.event.code, "CHATGPT_ACCOUNT_EXPIRED");
+    assert.equal(unsigned.event.reason, "auth-account");
+    assert.equal(unsigned.event.status, undefined);
+    assert.equal(unsigned.event.method, undefined); assert.equal(unsigned.event.route, undefined);
+    assert.deepEqual(unsigned.event.chatGptInference, { operation: "ocr", path: "auth-account", contentType: "missing", providerCode: "none" });
+    const payload = inferenceFaults[1].payload; assert.equal(payload.kind, "debug");
     if (payload.kind !== "debug") throw new Error("inference diagnostic required");
+    assert.notEqual(unsigned.event.correlationId, payload.event.correlationId);
+    assert.equal(payload.event.code, "CHATGPT_REQUEST_REJECTED");
+    assert.equal(payload.event.reason, "http-error");
+    assert.equal(payload.event.method, "POST"); assert.equal(payload.event.route, "/v1/responses");
     assert.equal(payload.event.status, 400);
     assert.deepEqual(payload.event.chatGptInference, { operation: "ocr", path: "http-error", contentType: "application/json", hasBody: true,
       providerCode: "subscription_sharing_unsupported_capability",
