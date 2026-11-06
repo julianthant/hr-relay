@@ -90,7 +90,9 @@ for (const state of ["damaged", "projection-missing", ...Object.keys(held) as (k
       assert.equal(readdirSync(join(f.stateRoot, "backups", "suspects")).filter(name => name.endsWith(".sqlite")).length, 1);
     } else {
       assert.equal(restore.mock.calls.length, 0);
-      assert.equal(after.activeProfileId, registry.activeProfileId); assert.equal(after.sessionGeneration, registry.sessionGeneration);
+      assert.equal(registry.activeProfileId, profileId);
+      if (state === "projection-missing") { assert.equal(after.activeProfileId, profileId); assert.equal(after.sessionGeneration, registry.sessionGeneration); }
+      else { assert.equal(after.activeProfileId, null); assert.equal(after.sessionGeneration, registry.sessionGeneration + 1); }
       assert.equal(existsSync(join(f.workspace, ".tracker", "control", `automatic-repair-${profileId}.json`)), false);
       assert.equal(existsSync(join(f.stateRoot, "backups", "suspects")), false);
     }
@@ -130,17 +132,18 @@ it("classifies a non-SQLite or malformed person file as damaged and never as ver
   } finally { await f.close(); }
 });
 
-for (const heldSelected of [false, true]) it(`holds one person's version-skewed database while the other person upgrades, recovers and signs in (held person ${heldSelected ? "left selected" : "not selected"})`, async () => {
+for (const selected of ["held", "none", "healthy"] as const) it(`holds one person's version-skewed database while the other person upgrades, recovers and signs in (selected: ${selected})`, async () => {
   const first = await createBoundProfileFixture(), clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
+  const firstProfileId = first.admission.profileBinding.profileId;
   createProfileRegistry(first.machine).advanceSession(null);
   first.admission.release(); first.machine.release();
   const second = await createBoundProfileFixture({ workspace: first.workspace, lifetime: first.lifetime, email: "second@ucsd.edu" });
   const registryPath = join(second.machine.stateRoot, "machine", "profiles.json"), secondProfileId = second.admission.profileBinding.profileId;
   try {
-    if (!heldSelected) createProfileRegistry(second.machine).advanceSession(null);
+    if (selected !== "held") createProfileRegistry(second.machine).advanceSession(selected === "healthy" ? firstProfileId : null);
     await second.closeController();
     const before = JSON.parse(readFileSync(registryPath, "utf8")) as { activeProfileId: string | null; sessionGeneration: number };
-    assert.equal(before.activeProfileId, heldSelected ? secondProfileId : null);
+    assert.equal(before.activeProfileId, { held: secondProfileId, none: null, healthy: firstProfileId }[selected]);
     const native = new DatabaseSync(second.path);
     try { native.exec("DROP TABLE write_attempts"); } finally { native.close(); }
     const skewed = readFileSync(second.path);
@@ -151,8 +154,8 @@ for (const heldSelected of [false, true]) it(`holds one person's version-skewed 
     } finally { restore.mockRestore(); }
     assert.deepEqual(readFileSync(second.path), skewed);
     const after = JSON.parse(readFileSync(registryPath, "utf8")) as { activeProfileId: string | null; sessionGeneration: number };
-    assert.equal(after.activeProfileId, null);
-    assert.equal(after.sessionGeneration, before.sessionGeneration + (heldSelected ? 1 : 0));
+    assert.equal(after.activeProfileId, selected === "healthy" ? firstProfileId : null);
+    assert.equal(after.sessionGeneration, before.sessionGeneration + (selected === "held" ? 1 : 0));
     await assertHeld(first.workspace, first.lifetime, clock, "second@ucsd.edu", "STORAGE_PROFILE_FORMAT_UNSUPPORTED");
     const session = signIn(first.workspace, first.lifetime, clock, "fixture@ucsd.edu");
     try { const result = session.attempt(); assert.equal(result.state, "active", JSON.stringify(result)); } finally { await session.close(); }
