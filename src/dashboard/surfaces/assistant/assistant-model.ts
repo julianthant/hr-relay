@@ -50,7 +50,8 @@ export interface AssistantState {
 
 export type AssistantAction =
   | { readonly type: 'edit'; readonly value: string }
-  | { readonly type: 'send' | 'verify' | 'retry' | 'cancel' | 'confirm' | 'new-chat' }
+  | { readonly type: 'send'; readonly attachments?: readonly { readonly id: string; readonly name: string }[] }
+  | { readonly type: 'verify' | 'retry' | 'cancel' | 'confirm' | 'new-chat' }
   | { readonly type: 'reply'; readonly requestId: number; readonly proposal: AssistantMockProposal; readonly message: AssistantMessage }
   | { readonly type: 'settle'; readonly requestId: number; readonly message: AssistantMessage; readonly proposal?: AssistantMockProposal; readonly disposition?: 'unknown' }
   | { readonly type: 'fail' | 'uncertain'; readonly requestId: number }
@@ -73,7 +74,7 @@ export function assistantReducer(state: AssistantState, action: AssistantAction)
     case 'send': {
       if (!state.draft.trim() || turn.state === 'waiting' || turn.state === 'unknown') return state;
       const requestId = state.sequence + 1;
-      return { ...state, sequence: requestId, messages: [...state.messages, { id: `operator-${requestId}`, role: 'operator', text: state.draft }], turn: { state: 'waiting', requestId, prompt: state.draft } };
+      return { ...state, sequence: requestId, messages: [...state.messages, { id: `operator-${requestId}`, role: 'operator', text: state.draft, ...(action.attachments?.length ? { attachments: action.attachments } : {}) }], turn: { state: 'waiting', requestId, prompt: state.draft } };
     }
     case 'verify': {
       if (!assistantCanVerify(turn)) return state;

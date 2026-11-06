@@ -453,13 +453,12 @@ still requires the real signed-in account with available plan use and the existi
 permission and currentness checks. After explicit verification settles, the current binding refreshes
 the served account once. Superseded requests cannot publish into another conversation.
 
-Chat files retains its composer and uses version-bound workbook registration and reads. Attachment
-open/download reads its exact CAS revision through the shared client's revision lookup, independent
-of operator named versions. The model,
+The panel has no Files view. Attached and generated workbooks register through the version-bound
+Spreadsheets library; sent attachments show as name-only pills on the operator message. The model,
 effort, approval and voice controls remain unavailable. The served model and effort labels come from
 the selected person’s preference; setup changes use the existing composer command. Test assistant
-above the composer explicitly runs the same public capability verification without replacing an
-unsent draft. Named verification failures remain in the conversation and never enable inference. The explicit parity composition supplies approved mock conversations and sample workflow
+in Settings › Preflight explicitly runs the same public capability verification; its result is bound to
+the current account and clears on account change, disposal or after 15 minutes. Named verification failures remain in the conversation and never enable inference. The explicit parity composition supplies approved mock conversations and sample workflow
 scenes; product failures never select those producers. Chat titles, selected chat, text drafts and displayed replies survive refresh in the current browser
 tab’s session storage, scoped only after the server verifies the selected person. Another person’s
 key is never adopted. Saved text confers no command or model authority: restored pending requests
@@ -473,9 +472,9 @@ workflow for that run's canonical subject input. The model receives a request-sc
 workflow ID and execution mode; subject values remain local. Read-only graphs use Live read, and
 transaction graphs require supported dry-run traversal. Protected test subjects and stale definitions refuse;
 configured protected fields remain local to the canonical planner with exact retained input/binding checks.
-The existing proposal card shows Start, the canonical input, one run, mode, browser, captures and expiry, with plan identity/fingerprints in its disclosure. Start run checks the selected run/version,
+The proposal card shows the workflow, the served plan title and the mode with Cancel and Confirm; plan identity and fingerprints stay in logs. Confirm checks the selected run/version,
 person/session, current Settings, canonical plan, grant, revision and expiry, then submits through the
-same command service as Run, including worker capacity. Not now starts nothing. Confirmed starts and cancellations collapse to a resolved line. Lost dispatch remains
+same command service as Run, including worker capacity. Cancel starts nothing. Confirmed starts and cancellations collapse to a resolved line. Lost dispatch remains
 unknown and cannot be automatically retried. Changing the selection invalidates the pending card.
 
 ## Settings

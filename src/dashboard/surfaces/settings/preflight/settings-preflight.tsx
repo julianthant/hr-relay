@@ -141,7 +141,7 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
         <Button variant="secondary" onClick={() => { void testAssistant(); }} disabled={assistantTest.state === "loading"} loading={assistantTest.state === "loading"}>Test assistant</Button>
       </div>
       {(assistantTest.state === "passed" || assistantTest.state === "failed") && <Banner className="mb-[var(--ds-space-heading-content)]" tone={assistantTest.state === "passed" ? "success" : "danger"}
-        title={assistantTest.state === "passed" ? "Assistant test passed" : "Assistant test failed"}>{assistantTest.state === "failed" ? assistantTest.message : "The assistant can answer for the next 15 minutes."}</Banner>}
+        title={assistantTest.state === "passed" ? "Assistant test passed" : "Assistant test failed"}>{assistantTest.state === "failed" ? assistantTest.message : "The assistant can answer now. Run the test again if it stops replying."}</Banner>}
       {ocr.state !== "idle" && <Banner className="mb-[var(--ds-space-heading-content)]"
         tone={ocr.state === "completed" ? "success" : ocrBusy ? "info" : ocr.state === "failed" ? "danger" : "warning"}
         title={ocr.state === "completed" ? "OCR test completed" : ocr.state === "loading" ? "Testing OCR" : ocr.state === "disabled" ? "OCR test unavailable" : ocr.state === "uncertain" ? "OCR test outcome uncertain" : ocr.state === "refused" ? "OCR test refused" : "OCR test failed"}>

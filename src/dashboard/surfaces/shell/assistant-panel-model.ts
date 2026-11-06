@@ -10,7 +10,7 @@ import type { ComposerValue } from './composer-model.js';
 
 export interface AssistantFile { readonly id: string; readonly name: string; readonly status: 'Attached' | 'Updated' | 'Generated'; readonly workbook?: EditableWorkbook }
 export type AssistantScene = 'new' | 'conversation' | 'ask-read' | 'ask-write' | 'permission-changed' | 'working' | 'cancelling' | 'done' | 'failed' | 'handoff' | 'destructive' | 'delete-working' | 'resolved' | 'declined';
-export interface AssistantMessage { readonly role: 'operator' | 'assistant'; readonly text: string }
+export interface AssistantMessage { readonly role: 'operator' | 'assistant'; readonly text: string; readonly attachments?: readonly { readonly id: string; readonly name: string }[] }
 export interface AssistantRow { readonly sheet: string; readonly row: number; readonly person: string; readonly values: Readonly<Record<string, string>>; readonly issue: string | null }
 export interface AssistantWorkflow { readonly workflowId: string; readonly label: string; readonly file: AssistantFile; readonly rows: readonly AssistantRow[]; readonly state: 'review' | 'running' | 'complete' | 'uncertain' | 'failed'; readonly outputs: readonly AssistantFile[]; readonly message?: string }
 export interface AssistantConversation { readonly id: string; readonly title: string; readonly source: 'mock'; readonly scene: AssistantScene; readonly messages: readonly AssistantMessage[]; readonly files: readonly AssistantFile[]; readonly workflow?: AssistantWorkflow }
@@ -86,6 +86,11 @@ export async function readAssistantAttachment(file: File): Promise<AssistantFile
   const workbook = /\.(xlsx?|csv|tsv)$/i.test(file.name) ? await importSpreadsheetInWorker(file.name, await file.arrayBuffer()) : undefined;
   return { id: crypto.randomUUID(), name: file.name, status: 'Attached', ...(workbook ? { workbook } : {}) };
 }
+function withSentAttachments(conversation: AssistantConversation, attachments: readonly { id: string; name: string }[]): AssistantConversation {
+  const last = conversation.messages.length - 1;
+  if (!attachments.length || conversation.messages[last]?.role !== 'operator') return conversation;
+  return { ...conversation, messages: conversation.messages.map((message, index) => index === last ? { ...message, attachments } : message) };
+}
 export function useAssistantPanel({ producer, accountClient, ports, served }: { served?: ReturnType<typeof useAssistantController>; producer: AssistantConversationPort; accountClient: Pick<DashboardClient, 'chatGptAccount'>; ports: AssistantPorts }) {
   const [conversation, setConversation] = useState(() => producer.initial());
   useEffect(() => { producer.retain?.(conversation); }, [producer, conversation]);
@@ -135,10 +140,12 @@ export function useAssistantPanel({ producer, accountClient, ports, served }: { 
     const identity = generation.current, authority = currentAuthority.current;
     let dispatched = false;
     const committed = await perform(async () => {
-      const next = served ? { ...conversation, files: [...conversation.files, ...value.files] } : await producer.send(conversation, value);
+      const attachments = value.files.map(file => ({ id: file.id, name: file.name }));
+      const sentMock = served ? undefined : await producer.send(conversation, value);
+      const next = sentMock === undefined ? { ...conversation, files: [...conversation.files, ...value.files] } : withSentAttachments(sentMock, attachments);
       for (const file of value.files) if (file.workbook) await ports.onRegisterSpreadsheet?.(file);
       if (served && identity === generation.current && authority === currentAuthority.current) {
-        served.onAction({ type: 'edit', value: value.text }); served.onAction({ type: 'send' }); dispatched = true;
+        served.onAction({ type: 'edit', value: value.text }); served.onAction({ type: 'send', attachments }); dispatched = true;
       }
       return next;
     });

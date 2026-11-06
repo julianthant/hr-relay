@@ -160,10 +160,11 @@ export function DashboardApp({ workflowComposition = productWorkflowComposition,
     if (profileSource !== "served" || profileId === undefined || profileEpoch === undefined) return;
     const port = createServedChatGptAccountPort(profileClient);
     const ocr = createServedPreflightOcrPort(profileClient, port);
-    setAccountOwner({ scope: accountScope, port, ocr, assistantTest: createServedPreflightAssistantPort(profileClient, port) });
-    const close = (event: PageTransitionEvent) => { if (!event.persisted) { ocr.dispose(); port.dispose(); } };
+    const assistantTest = createServedPreflightAssistantPort(profileClient, port);
+    setAccountOwner({ scope: accountScope, port, ocr, assistantTest });
+    const close = (event: PageTransitionEvent) => { if (!event.persisted) { ocr.dispose(); assistantTest.dispose(); port.dispose(); } };
     window.addEventListener("pagehide", close);
-    return () => { window.removeEventListener("pagehide", close); ocr.dispose(); port.dispose(); };
+    return () => { window.removeEventListener("pagehide", close); ocr.dispose(); assistantTest.dispose(); port.dispose(); };
   }, [accountScope, profileClient, profileSource, profileId, profileEpoch]);
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
