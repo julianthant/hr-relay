@@ -230,7 +230,9 @@ const RunRecordBaseSchema = z.strictObject({
   version: PositiveIntSchema,
   createdAt: IsoInstantSchema,
   updatedAt: IsoInstantSchema,
-}).superRefine((record, context) => {
+});
+type RefinedRunRecord = Omit<z.infer<typeof RunRecordShapeSchema>, "envelope"> & { envelope: { enqueuedAt: string } };
+function refineRunRecord(record: RefinedRunRecord, context: z.RefinementCtx): void {
   if (Date.parse(record.updatedAt) < Date.parse(record.createdAt)) {
     context.addIssue({ code: "custom", path: ["updatedAt"], message: "run record updatedAt precedes createdAt" });
   }
@@ -242,6 +244,7 @@ const RunRecordBaseSchema = z.strictObject({
       message: "a newly enqueued run record is created at the moment it is enqueued",
     });
   }
+  refineRunCompletion(record, context);
   if (!isClaimedRunState(record.lifecycle.state) || !("heartbeatAt" in record.lifecycle)) return;
   if (record.claimGeneration === 0) {
     context.addIssue({
@@ -257,8 +260,8 @@ const RunRecordBaseSchema = z.strictObject({
       message: "a claim heartbeat cannot predate the run's enqueue",
     });
   }
-});
-function refineRunRecord(run: Omit<z.infer<typeof RunRecordShapeSchema>, "envelope">, context: z.RefinementCtx): void {
+}
+function refineRunCompletion(run: RefinedRunRecord, context: z.RefinementCtx): void {
   if (run.delegationRefresh?.phase === "waiting" && run.lifecycle.state !== "queued"
     && !(run.lifecycle.state === "terminal" && !["done", "failed"].includes(run.lifecycle.outcome))) {
     context.addIssue({ code: "custom", path: ["delegationRefresh"], message: "a waiting delegation refresh cannot execute or complete" });
@@ -280,7 +283,7 @@ function refineRunRecord(run: Omit<z.infer<typeof RunRecordShapeSchema>, "envelo
 
 }
 
-const RunRecordShapeSchema = RunRecordBaseSchema.safeExtend({ completion: RunCompletionSchema.optional() });
+const RunRecordShapeSchema = RunRecordBaseSchema.extend({ completion: RunCompletionSchema.optional() });
 export const RunRecordSchema = RunRecordShapeSchema.superRefine(refineRunRecord);
 /** A pre-22 run. A build id already stored is kept; the upgrade does not insert one. */
 export const PredecessorRunRecordSchema = RunRecordShapeSchema.extend({ envelope: PredecessorRunEnvelopeSchema })
