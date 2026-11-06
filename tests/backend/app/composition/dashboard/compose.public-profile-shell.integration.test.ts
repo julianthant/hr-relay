@@ -81,7 +81,7 @@ for (const scenario of [{ action: "complete", withCause: true, unknownFirst: tru
         browserState() { return recovered ? { state: "open", generation } : recoveryFailed ? { state: "failed", generation, code: "DUO_SETUP_FILES_BUSY" } : { state: "closed", generation }; },
         async start(...args) { if (firstAttempt) { firstAttempt = false; await args[2](new ProfileOnboardingDuoProviderError("unknown", "worker")); } else await synthetic.start(...args); },
         async closeBrowser() { closes++; return recovered ? { state: "closed" } : { state: "uncertain", ...(scenario.withCause ? { cause: primary } : {}) }; },
-        async reopenBrowser(owner, expected) {
+        async recoverBrowser(owner, expected) {
           owner.assertCurrent(); assert.equal(expected, generation); reopens++;
           if (scenario.unknownFirst && reopens === 1) { recoveryFailed = true; sourceRecovery.retain(probeFailure); throw probeFailure; }
           await sourceRecovery.prove(async () => { recovered = true; }); generation++;

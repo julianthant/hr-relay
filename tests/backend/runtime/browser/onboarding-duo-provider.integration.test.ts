@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError, createBrowserSourceRecovery } from "../../../../src/backend/storage/source-closure.js";
 import { composeDashboardApplication } from "../../../../src/backend/app/composition/dashboard/compose.js";
 import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
 import { createDuoBrowserFocus } from "../../../../src/backend/runtime/browser/native-browser-focus.js";
@@ -14,7 +15,7 @@ import { expect } from "@playwright/test";
 import type { BrowserContext } from "playwright";
 import { it } from "vitest";
 import { z } from "zod";
-import { createProfileOnboardingDuoProvider } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
+import { createProfileOnboardingDuoProvider, ProfileOnboardingDuoProviderError } from "../../../../src/backend/runtime/browser/onboarding-duo-provider.js";
 import type { DraftDuoBrowserOwner } from "../../../../src/backend/profiles/onboarding-duo.js";
 import { systemClock } from "../../../../src/rules/time/clock.js";
 import { acquireEntrypointAdmission } from "../../../../src/backend/storage/admission/bootstrap-admission.js";
@@ -487,4 +488,96 @@ for (const expire of [false, true]) it(`real public Reopen proves owned stop, na
     try { await runtime.stop(); machine.release(); } catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error]); }
   }
   if (failure !== undefined) throw failure instanceof Error ? failure : new Error("native-public-reopen-failed", { cause: failure });
+});
+
+for (const phase of ["prelaunch", "clean-setup", "unproved-setup", "foreign"] as const) it(`real public Cancel after old Unknown recovery and failed replacement: ${phase}`, async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "duo-failed-replacement-")));
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
+  const lifetime = await runtimeLifetimeLock(), machine = acquireEntrypointAdmission(root, "exclusive", lifetime);
+  const browserRoot = join(machine.stateRoot, "browsers", "onboarding"); mkdirSync(browserRoot, { recursive: true, mode: 0o700 });
+  mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
+  const processes: { process: OwnedBrowserProcess; native: boolean }[] = [], foreign = new AuthoritySourceClosureUnprovedError([new Error("controlled foreign source")]);
+  const foreignProof = createBrowserSourceRecovery(); foreignProof.retain(foreign);
+  let failReplacement = false, failCapture = false, nativeCloseRefused = false, mainLaunches = 0, nativeLaunches = 0;
+  const original = new Error("controlled replacement target observation failure");
+  const provider = createProfileOnboardingDuoProvider({ browserRoots: createBrowserRoots(machine), browserRoot,
+    extensionDirectory: realpathSync("fast-duo"), clock: systemClock, closeProofMs: 5000,
+    focus: { async captureRelay() { if (failCapture) throw original; return undefined; }, async show() {}, async returnToRelay() { throw new Error("unexpected Return"); } },
+    launcher: { async launch(input) {
+      const native = input.nativeOnly === true;
+      const context = await DEFAULT_BROWSER_LAUNCHER.launch({ ...input, headless: true, ownedProcess: process => {
+        processes.push({ process, native });
+        input.ownedProcess?.({ exited: () => process.exited(), onExit: callback => process.onExit(callback), async stop(timeout, graceful) {
+          if (native && nativeCloseRefused && graceful) throw new Error("controlled replacement native stop refused");
+          await process.stop(timeout, graceful);
+        } });
+      } });
+      if (native) nativeLaunches++;
+      else {
+        mainLaunches++; await context.route("https://**/*", route => route.abort());
+        if (failReplacement) {
+          nativeCloseRefused = phase === "unproved-setup";
+          const worker = context.serviceWorkers().find(worker => worker.url().endsWith("/src/relay-background.js"))
+            ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().endsWith("/src/relay-background.js"), timeout: 5000 });
+          await worker.evaluate(() => {
+            const owner: unknown = Reflect.get(globalThis, "relayOnboarding");
+            if (typeof owner !== "object" || owner === null) throw new Error("fixture broker required");
+            Reflect.set(globalThis, "relayOnboarding", { ...owner, browserInstall() { throw new Error("controlled replacement setup failure"); } });
+          });
+        }
+      }
+      return context;
+    } },
+  });
+  const runtime = await composeDashboardApplication({ admission: machine, lifetimeLock: lifetime, isolation: rebuildRuntimeIsolation,
+    backendPortOverride: 0, frontendPortOverride: 0, env: {}, onboardingDuo: { ...provider,
+      async start(_attempt, _bind, report) { await report(new ProfileOnboardingDuoProviderError("unknown", "worker", phase === "foreign" ? foreign : undefined)); },
+    } });
+  const base = `http://127.0.0.1:${runtime.port}`;
+  let cookie: string | undefined, failure: unknown;
+  const post = (path: string, body: unknown, session = cookie) => fetch(`${base}/api/v1/profile/${path}`, { method: "POST", headers: {
+    origin: base, "content-type": "application/json", ...(session === undefined ? {} : { cookie: session }) }, body: JSON.stringify(body) });
+  try {
+    const signup = await post("sign-up", { firstName: "Synthetic", lastName: "Recovery", email: "synthetic-recovery@ucsd.edu", password: "synthetic-recovery-password" });
+    const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("draft required");
+    cookie = signup.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+    const call = (action: string, extra = {}) => post(`onboarding/${action}`, { operationId: draft.operationId, ...extra });
+    assert.equal((await call("duo/start", { method: "touch" })).status, 200);
+    const operationPath = join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`);
+    const readOperation = () => SignUpOperationSchema.parse(JSON.parse(readFileSync(operationPath, "utf8")));
+    const old = readOperation().onboarding?.attempts[0]; assert.ok(old); assert.equal(old.state, "unknown");
+    const state = PublicProfileStateSchema.parse(await (await fetch(`${base}/api/v1/profile/state`, { headers: { cookie } })).json());
+    assert.equal(state.state, "onboarding"); if (state.state !== "onboarding") throw new Error("current draft required");
+    const request = { operationId: draft.operationId, generation: state.browser.generation };
+    failCapture = phase === "prelaunch" || phase === "foreign"; failReplacement = !failCapture;
+    const reopened = await post("onboarding/duo/reopen", request); assert.equal(reopened.status, 409);
+    assert.deepEqual(await reopened.json(), { state: "refused", code: phase === "unproved-setup" ? "BROWSER_CLOSURE_UNPROVED" : "DUO_SETUP_OPEN_FAILED" });
+    assert.ok(processes[0]?.process.exited()); assert.ok(nativeLaunches >= 1);
+    const retained = readOperation().onboarding?.attempts[0]; assert.ok(retained);
+    assert.equal(retained.attemptId, old.attemptId); assert.equal(retained.state, "unknown"); assert.deepEqual(retained.failure, old.failure);
+    assert.equal(readOperation().onboarding?.abort, undefined); assert.equal(readOperation().onboarding?.finish, undefined);
+    if (phase === "unproved-setup" || phase === "foreign") {
+      const held = readFileSync(operationPath);
+      const refused = await call("cancel"); assert.equal(refused.status, 409); assert.deepEqual(await refused.json(), { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
+      assert.equal((await call("complete")).status, 409); assert.deepEqual(readFileSync(operationPath), held);
+      assert.deepEqual(machine.readProfileRegistry().profiles, []);
+      if (phase === "foreign") await foreignProof.prove(async () => {});
+      else {
+        nativeCloseRefused = false; failReplacement = false; failCapture = true;
+        const current = provider.browserState?.(draft.operationId); assert.ok(current);
+        const failedOpen = await post("onboarding/duo/reopen", { ...request, generation: current.generation });
+        assert.equal(failedOpen.status, 409); assert.deepEqual(await failedOpen.json(), { state: "refused", code: "DUO_SETUP_OPEN_FAILED" });
+      }
+    }
+    const launches = mainLaunches;
+    const cancelled = await call("cancel"); assert.equal(cancelled.status, 200); assert.deepEqual(await cancelled.json(), { state: "signed-out" });
+    assert.ok(retained.providerClosedAt, "old closure was recorded before Cancel, independently of replacement opening");
+    assert.equal(mainLaunches, launches); assert.equal(mainLaunches, phase === "prelaunch" || phase === "foreign" ? 1 : 2);
+    assert.ok(processes.every(entry => entry.process.exited())); assert.deepEqual(machine.readProfileRegistry().profiles, []);
+  } catch (error) { failure = error; }
+  finally {
+    for (const entry of processes) try { await entry.process.stop(5000); } catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error]); }
+    try { await runtime.stop(); machine.release(); } catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error]); }
+  }
+  if (failure !== undefined) throw failure instanceof Error ? failure : new Error("native-failed-replacement-control", { cause: failure });
 });

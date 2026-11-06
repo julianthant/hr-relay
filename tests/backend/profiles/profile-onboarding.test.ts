@@ -48,7 +48,7 @@ for (const path of ["provider", "scope-loss"] as const) it(`persists and logs on
     failureDiagnostic: error => error instanceof ProfileOnboardingDuoProviderError ? { kind: error.kind, causeTag: error.reason } : { kind: "unknown", causeTag: "provider" },
     read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
     email: () => "synthetic@ucsd.edu", credentials: noSecretAccess, store: noSecretAccess, publicState: noSecretAccess,
-    provider: { async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { throw new Error("unexpected portal"); },
+    provider: { browserState() { return { state: "open", generation: 1 }; }, async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { throw new Error("unexpected portal"); },
       async closeBrowser() { return { state: "closed" }; }, async cancel() { return { state: "closed" }; },
       async start(_attempt, bind, reportFailure) {
         starts++;
@@ -126,7 +126,7 @@ it("reopens the exact browser generation after a drain failure without aborting 
       async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { unused(); }, async start() { unused(); },
       async cancel() { return { state: "closed" }; },
       async closeBrowser() { return recovered ? { state: "closed" } : { state: "uncertain", cause }; },
-      async reopenBrowser(browser, generation) { browser.assertCurrent(); calls.push(generation); await release.promise; recovered = true; },
+      async recoverBrowser(browser, generation) { browser.assertCurrent(); calls.push(generation); await release.promise; recovered = true; },
       browserState() { return { state: "closed", generation: 4 }; },
     },
   });
@@ -166,16 +166,15 @@ for (const foreign of [false, true]) it(`settles only recovered attempt custody 
       async start(_attempt, _bind, report) { await report(new ProfileOnboardingDuoProviderError("unknown", "worker", foreign ? source : undefined)); },
       async cancel() { return { state: "closed" }; },
       async closeBrowser() { return recovered ? { state: "closed" } : { state: "uncertain" }; },
-      async reopenBrowser(browser, expected) { browser.assertCurrent(); assert.equal(expected, generation); generation++; recovered = true; },
+      async recoverBrowser(browser, expected) { browser.assertCurrent(); assert.equal(expected, generation); generation++; recovered = true; },
     } });
   await owner.start(operationId, "touch");
   await assert.rejects(owner.drain(operationId)); assert.throws(() => owner.assertAbortable(operationId));
   await owner.reopenBrowser(operationId, 4);
   assert.equal(operation.onboarding?.attempts[0]?.state, "unknown");
   assert.deepEqual(operation.onboarding?.attempts[0]?.failure, { kind: "unknown", causeTag: "worker" });
-  await owner.drain(operationId);
-  if (foreign) { assert.throws(() => owner.assertAbortable(operationId)); assert.throws(() => owner.assertClosed()); await sourceRecovery.prove(async () => {}); owner.assertAbortable(operationId); owner.assertClosed(); }
-  else { owner.assertAbortable(operationId); owner.assertClosed(); }
+  if (foreign) { await assert.rejects(owner.drain(operationId)); assert.throws(() => owner.assertAbortable(operationId)); assert.throws(() => owner.assertClosed()); await sourceRecovery.prove(async () => {}); await owner.drain(operationId); owner.assertAbortable(operationId); owner.assertClosed(); }
+  else { await owner.drain(operationId); owner.assertAbortable(operationId); owner.assertClosed(); }
 });
 
 for (const foreign of [false, true]) it(`a Show failure caught after proved Reopen stays bound to its retired resource (foreign=${foreign})`, async () => {
@@ -192,16 +191,80 @@ for (const foreign of [false, true]) it(`a Show failure caught after proved Reop
     failureDiagnostic: () => ({ kind: "unknown", causeTag: "worker" }),
     read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
     email: unused, credentials: unused, store: unused, publicState: unused,
-    provider: { async showBrowser() { await opening.promise; if (foreign) throw source; }, async openPortal() { unused(); },
+    provider: { async showBrowser() { if (generation === 4) { await opening.promise; if (foreign) throw source; } }, async openPortal() { unused(); },
       browserState() { return { state: "closed", generation }; }, async start() { starts++; }, async cancel() { return { state: "closed" }; },
-      async closeBrowser() { return { state: "closed" }; }, async reopenBrowser(browser, expected) { browser.assertCurrent(); assert.equal(expected, generation); generation++; },
+      async closeBrowser() { return { state: "closed" }; }, async recoverBrowser(browser, expected) { browser.assertCurrent(); assert.equal(expected, generation); generation++; },
     } });
   const start = owner.start(operationId, "touch");
   const refused = assert.rejects(start);
   await owner.reopenBrowser(operationId, 4);
   opening.resolve(); await refused;
   assert.equal(starts, 0, "retired Show cannot start a fresh ceremony");
-  await owner.drain(operationId);
+  if (foreign) await assert.rejects(owner.drain(operationId)); else await owner.drain(operationId);
   assert.equal(operation.onboarding?.attempts[0]?.state, "unknown");
   if (foreign) assert.throws(() => owner.assertAbortable(operationId)); else { owner.assertAbortable(operationId); owner.assertClosed(); }
+});
+
+for (const phase of ["prelaunch", "clean-setup", "old-unproved", "new-unproved", "foreign"] as const) it(`settles exact old Unknown custody independently of replacement opening: ${phase}`, async () => {
+  const operationId = randomUUID(), profileId = randomUUID();
+  let operation = SignUpOperationSchema.parse({ schemaVersion: 2, kind: "sign-up", operationId, profileId,
+    commandId: randomUUID(), writeId: randomUUID(), emailKey: "a".repeat(64), firstName: "Synthetic", lastName: "Operator",
+    createdAt: "2026-11-03T08:00:00.000Z", commandFingerprint: "b".repeat(64), phase: "applying",
+    credentials: { operationId: randomUUID(), keyId: randomUUID(), generation: 1, phase: "ready" },
+    onboarding: { accountId: randomUUID(), generation: 1, attempts: [] } });
+  const old = new AuthoritySourceClosureUnprovedError([new Error("owned old close failed")]), oldProof = createBrowserSourceRecovery(); oldProof.retain(old);
+  const fresh = new AuthoritySourceClosureUnprovedError([new Error("owned new close failed")]), newProof = createBrowserSourceRecovery(); newProof.retain(fresh);
+  const foreign = new AuthoritySourceClosureUnprovedError([new Error("foreign source remains live")]), foreignProof = createBrowserSourceRecovery(); foreignProof.retain(foreign);
+  const opening = new Error("persistent replacement opening failure");
+  let generation = 4, shows = 0, recovered = false, newUnproved = false, newProved = false, allowOld = phase !== "old-unproved", allowNew = false;
+  let failed = false;
+  const unused = (): never => { throw new Error("unexpected credential access"); };
+  const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)), onEvent() {}, onFailure() {},
+    failureDiagnostic: () => ({ kind: "unknown", causeTag: "worker" }),
+    read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
+    email: unused, credentials: unused, store: unused, publicState: unused,
+    provider: {
+      browserState() { return failed ? { state: "failed", generation, code: "DUO_SETUP_OPEN_FAILED" } : { state: "open", generation }; },
+      async showBrowser(browser) {
+        browser.assertCurrent(); shows++;
+        if (shows === 1) return;
+        failed = true;
+        if (phase === "new-unproved" && !newProved) { generation = 5; newUnproved = true; throw new AggregateError([opening, fresh]); }
+        if (phase === "clean-setup") generation = 5;
+        throw opening;
+      },
+      async recoverBrowser(browser, expected) {
+        browser.assertCurrent(); assert.equal(expected, generation);
+        if (!allowOld) throw old;
+        await oldProof.prove(async () => { recovered = true; });
+        if (newUnproved) {
+          if (!allowNew) throw fresh;
+          await newProof.prove(async () => { newUnproved = false; newProved = true; });
+        }
+      },
+      async openPortal() { unused(); }, async cancel() { return { state: "closed" }; },
+      async closeBrowser() { return newUnproved ? { state: "uncertain", cause: fresh } : recovered ? { state: "closed" } : { state: "uncertain", cause: old }; },
+      async start(_attempt, _bind, report) { await report(new ProfileOnboardingDuoProviderError("unknown", "worker", phase === "foreign" ? foreign : old)); },
+    } });
+  await owner.start(operationId, "touch");
+  const attempt = operation.onboarding?.attempts[0]; assert.ok(attempt); assert.equal(attempt.state, "unknown");
+  await assert.rejects(owner.drain(operationId));
+  await assert.rejects(owner.reopenBrowser(operationId, 4), error => {
+    if (phase === "prelaunch" || phase === "clean-setup" || phase === "foreign") assert.ok(error instanceof Error && error.cause === opening);
+    return true;
+  });
+  assert.equal(operation.onboarding?.attempts[0]?.attemptId, attempt.attemptId);
+  assert.equal(operation.onboarding?.attempts[0]?.state, "unknown");
+  assert.deepEqual(operation.onboarding?.attempts[0]?.failure, { kind: "unknown", causeTag: "worker" });
+  assert.equal(operation.onboarding?.abort, undefined); assert.equal(operation.onboarding?.finish, undefined);
+  if (phase === "old-unproved" || phase === "new-unproved" || phase === "foreign") {
+    await assert.rejects(owner.drain(operationId)); assert.throws(() => owner.assertAbortable(operationId)); assert.throws(() => owner.verifyFinish(operation));
+    assert.equal(operation.onboarding?.abort, undefined);
+    if (phase === "foreign") await foreignProof.prove(async () => {});
+    else { allowOld = true; allowNew = true; await assert.rejects(owner.reopenBrowser(operationId, generation), error => error instanceof Error && error.cause === opening); }
+  }
+  const priorShows = shows;
+  await owner.drain(operationId); owner.assertAbortable(operationId); owner.assertClosed();
+  assert.equal(shows, priorShows, "Cancel needs no successful replacement opening");
+  assert.ok(operation.onboarding?.attempts[0]?.providerClosedAt);
 });

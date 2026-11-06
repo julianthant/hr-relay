@@ -1054,3 +1054,32 @@ it("preserves the failed attempt install when its slow diagnostic also fails", a
     assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "closed" });
   } finally { await w.cleanup(); }
 });
+
+for (const phase of ["prelaunch", "clean-setup", "unproved-setup"] as const) it(`proves old recovery before independent replacement failure: ${phase}`, async () => {
+  const w = world(), original = new Error("persistent replacement fixture failure");
+  try {
+    const recover = w.rawProvider.recoverBrowser?.bind(w.rawProvider), readState = w.rawProvider.browserState?.bind(w.rawProvider);
+    assert.ok(recover); assert.ok(readState);
+    await w.rawProvider.showBrowser(w.owner);
+    const oldDirectory = w.profile();
+    await assert.rejects(recover(w.owner, 0));
+    await assert.rejects(recover({ ...w.owner, operationId: randomUUID() }, 1));
+    assert.equal(w.nativeProbes(), 0); assert.equal(w.launches(), 1);
+    await recover(w.owner, 1);
+    assert.equal(w.nativeProbes(), 1); assert.equal(existsSync(oldDirectory), false); assert.equal(w.launches(), 1);
+    if (phase === "prelaunch") w.refuseCapture(original);
+    else { w.refuseBrowserSetup(original, 0); if (phase === "unproved-setup") w.refuseNative(); }
+    await assert.rejects(w.rawProvider.showBrowser(w.owner), error => {
+      if (phase === "prelaunch") assert.ok(error instanceof ProfileOnboardingDuoProviderError && error.cause === original);
+      else if (phase === "clean-setup") assert.equal(error, original);
+      else assert.ok(error instanceof AggregateError && error.errors.includes(original));
+      return true;
+    });
+    assert.equal(w.launches(), phase === "prelaunch" ? 1 : 2);
+    const state = readState(w.owner.operationId); assert.equal(state.state, "failed");
+    if (state.state === "failed") assert.equal(state.code, phase === "unproved-setup" ? "DUO_SETUP_FILES_BUSY" : "DUO_SETUP_OPEN_FAILED");
+    const closure = await w.rawProvider.closeBrowser(w.owner);
+    assert.equal(closure.state, phase === "unproved-setup" ? "uncertain" : "closed");
+    if (phase !== "unproved-setup") assert.equal(existsSync(w.profile()), false);
+  } finally { await w.closeBrowser(); await w.cleanup(); }
+});

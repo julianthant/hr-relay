@@ -423,7 +423,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     if (!session.worker || session.setup.url() !== new URL("options.html", session.worker.url()).href) throw new ProfileOnboardingDuoProviderError("refused", "scope");
     await selectPage(session, session.setup);
   }
-  async function reopenBrowser(owner: DraftDuoBrowserOwner, generation: number): Promise<void> {
+  async function recoverBrowser(owner: DraftDuoBrowserOwner, generation: number): Promise<void> {
     if (reopening) {
       if (reopeningGeneration !== generation || reopeningOwner === undefined || !sameOwner(reopeningOwner, owner)) throw new ProfileOnboardingDuoProviderError("refused", "scope");
       return reopening;
@@ -478,14 +478,9 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
         } finally { clearTimeout(timer); }
       }
       owner.assertCurrent();
-      await showBrowser(owner);
+      windowState = { state: "closed", generation };
     })();
     try { await reopening; }
-    catch (cause) {
-      const failed = browserState(owner.operationId);
-      if (failed.state !== "failed") windowState = { state: "failed", generation: failed.generation, code: "DUO_SETUP_OPEN_FAILED" };
-      throw cause;
-    }
     finally { reopening = undefined; reopeningGeneration = undefined; reopeningOwner = undefined; }
   }
   async function openPortal(session: OwnedBrowser): Promise<void> {
@@ -600,6 +595,7 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
     assertOwner();
     const launch = options.browserRoots.beginSignupLaunch(request), rootInput = launch.input, profileDirectory = rootInput.profileDirectory;
     windowState = { state: "opening", generation: windowState.generation + 1 };
+    const generation = windowState.generation;
     const session: OwnedBrowser = { owner, profileDirectory, launch, rootInput, revoked: false, contextClosed: false, launchStarted: false, targets: new Map(), platforms: new Map(), relayTarget };
     browser = session;
     const setupStarted = options.clock.monotonicMs();
@@ -766,13 +762,14 @@ export function createProfileOnboardingDuoProvider(options: OnboardingDuoProvide
       windowState = { state: "failed", generation: windowState.generation, code: "DUO_SETUP_OPEN_FAILED" };
       const closure = await closeBrowser(session);
       if (closure.state !== "closed") throw new AggregateError([failure.error, session.closureFailure], "Duo setup and closure failed.");
+      if (browser === undefined && windowState.generation === generation) windowState = { state: "failed", generation, code: "DUO_SETUP_OPEN_FAILED" };
       throw failure.error;
     }
   }
 
   return Object.freeze({
     browserState,
-    reopenBrowser,
+    recoverBrowser,
     async showBrowser(owner: DraftDuoBrowserOwner) {
       const previous = browser, generation = windowState.generation;
       try { await showBrowser(owner); }
