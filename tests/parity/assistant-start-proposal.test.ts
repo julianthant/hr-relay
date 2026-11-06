@@ -27,10 +27,12 @@ async function capture(page: Page, info: TestInfo, state: string, theme: string)
     appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default" });
 }
 
+/** The card's Person lines for the fixture's planned people: "Last, First EID <id>". */
+const personFacts = (proposal: typeof ASSISTANT_START_PROPOSAL) => (proposal.effect === "workflow-start" ? proposal.startPlan.planned : [])
+  .map(row => ["Person", row.display.kind === "person" ? `${row.display.name ?? ""} EID ${row.display.employeeId ?? ""}` : ""]);
 const PLANS = {
-  "": { proposal: ASSISTANT_START_PROPOSAL, facts: [["Person", "Sample, Avery EID 10101010"], ["Options", "Read only"]], resolved: "Sample, Avery" },
-  "multi-": { proposal: ASSISTANT_START_MULTI_PROPOSAL, facts: [["Person", "Sample, Avery EID 10101010"], ["Person", "Vega, Morgan EID 20202020"],
-    ["Person", "Rivera, Alex EID 30303030"], ["Total", "3"], ["Options", "Read only"]], resolved: "3 people" },
+  "": { proposal: ASSISTANT_START_PROPOSAL, facts: [...personFacts(ASSISTANT_START_PROPOSAL), ["Options", "Read only"]], resolved: "Sample, Avery" },
+  "multi-": { proposal: ASSISTANT_START_MULTI_PROPOSAL, facts: [...personFacts(ASSISTANT_START_MULTI_PROPOSAL), ["Total", "3"], ["Options", "Read only"]], resolved: "3 people" },
 } as const;
 for (const theme of ["light", "dark"]) for (const [plan, { proposal, facts, resolved }] of Object.entries(PLANS)) for (const outcome of ["applied", "cancelled", "unknown"] as const) {
   test(`selected-run ${plan}start ${outcome} ${theme}`, async ({ page }, info) => {

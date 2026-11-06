@@ -3,7 +3,7 @@ import { ASSISTANT_UNKNOWN_NOTICE } from '../../../../src/dashboard/surfaces/ass
 import { createDashboardClient } from '../../../../src/dashboard/client/index.js';
 import { ChatGptAccountStateSchema } from '../../../../src/models/dashboard/chatgpt-account.js';
 import { ERROR_CATALOG } from '../../../../src/models/failures/error-catalog.js';
-import { ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantRequest, type AssistantResult, type AssistantActionResult } from '../../../../src/models/dashboard/assistant.js';
+import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, ASSISTANT_DEFAULT_EFFORT, type AssistantRequest, type AssistantResult, type AssistantActionResult } from '../../../../src/models/dashboard/assistant.js';
 import { AssistantPanel as ShellAssistantPanel } from '../../../../src/dashboard/surfaces/shell/assistant-panel.js';
 import { TooltipProvider } from '../../../../src/dashboard/ds/ui.js';
 import { createAssistantMockProducer as createSetupAssistantProducer, type AssistantFile } from '../../../../src/dashboard/surfaces/shell/assistant-panel-model.js';
@@ -357,5 +357,51 @@ it.each([
   assert.equal(sends, 1);
   assert.notEqual(current.state.turn.state, 'proposal', 'readback never restores a Confirm');
   assert.equal(current.state.messages.some(message => message.text === 'The reply was not saved. Do not resend it; ask again as a new message.'), false);
+  server.close();
+});
+
+it.each([
+  { name: 'committed Done caption read back', caption: true, readback: true, disposition: 'confirmed', shown: 'Done: Mark current notifications read.', unsaved: false },
+  { name: 'verified missing caption', caption: false, readback: true, disposition: 'stale', shown: ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED, unsaved: false },
+  { name: 'committed Done caption whose readback also fails', caption: true, readback: false, disposition: 'stale', shown: ASSISTANT_PROPOSAL_CAPTION, unsaved: true },
+] as const)('settles a lost local-write decision from the stored caption: $name, with one dispatch', async ({ caption, readback, disposition, shown, unsaved }) => {
+  const server = assistantHistoryServer();
+  let decisions = 0, reads = true;
+  const conversation = server.client.assistantConversation;
+  const reader = { ...server.client, async assistantConversation(...args: Parameters<typeof conversation>) { if (!reads) throw Error('synthetic lost readback'); return conversation(...args); } };
+  const history = await createAssistantHistory(reader, { getItem: () => null, removeItem() {} }, server.profileId, new AbortController().signal);
+  const id = history.chats.read()[0].id, actionId = crypto.randomUUID(), label = 'Mark current notifications read';
+  const client = resultClient({ ...reader,
+    async assistantRespond(input: AssistantRequest): Promise<AssistantResult> {
+      const accepted = server.repository.accept({ conversationId: input.conversationId, expectedRevision: input.expectedRevision, messageId: input.messageId,
+        text: input.message, modelText: input.message, subjectRef: null, now: server.now() });
+      assert.equal(accepted.state, 'accepted');
+      const revision = server.repository.settle(input.conversationId, input.messageId, { delivery: 'answered',
+        reply: { id: crypto.randomUUID(), kind: 'proposal', actionId, text: ASSISTANT_PROPOSAL_CAPTION, modelText: 'I prepared a confirmation card.' } }, server.now());
+      assert.ok(revision !== undefined);
+      return { state: 'action-proposal', proposal: { chatId: crypto.randomUUID(), actionId, revision: 1, expiresAt: '2099-01-01T00:00:00Z', label, targetLabel: 'Current notifications', effect: 'local-write' } };
+    },
+    async assistantDecide() {
+      decisions++;
+      if (caption) server.repository.appendDecision({ conversationId: id, actionId, messageId: crypto.randomUUID(), text: `Done: ${label}.`, now: server.now() });
+      reads = readback;
+      throw Error('synthetic lost decision response after the commit');
+    } });
+  const unsavedSpy = vi.spyOn(history, 'unsaved');
+  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
+  const account = { ...preview, mode: 'live' as const };
+  let current!: ReturnType<typeof useAssistantController>;
+  function Harness() { current = useAssistantController(client, 'current-person', undefined, false, id, undefined, { history }); return null; }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: account, children: createElement(Harness) })));
+  await act(async () => { current.onAction({ type: 'edit', value: 'mark notifications read' }); current.onAction({ type: 'send' }); });
+  await act(async () => { await vi.waitFor(() => assert.equal(current.state.turn.state, 'proposal')); });
+  await act(async () => { current.onAction({ type: 'confirm' }); });
+  await act(async () => { await vi.waitFor(() => assert.equal((current.state.turn as { disposition?: string }).disposition, disposition)); });
+  assert.equal(current.state.messages.at(-1)?.text, shown);
+  assert.equal(current.state.messages.some(message => message.text === ASSISTANT_UNKNOWN_NOTICE), false);
+  assert.equal(unsavedSpy.mock.calls.length > 0, unsaved);
+  await act(async () => { current.onAction({ type: 'confirm' }); current.onAction({ type: 'retry' }); });
+  assert.equal(decisions, 1);
   server.close();
 });
