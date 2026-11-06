@@ -11,34 +11,41 @@ Statuses: `done`, `now`, `next`, `later`. Keep one directive per implementation;
 - [done] Singleton app lock and held operations — keep one app in charge of the runtime and hold maintenance operations until they settle.
 - [done] Person Lookup and Separations rerun readiness — use current inputs and readiness checks for reruns.
 - [done] Settings Test OCR — run the OCR test from Preflight.
-- [done] Automatic PR flow — run staging pull request CI on Ubuntu, reserve native platform proofs for operator-started full releases, require a fresh Codex review before storage, schema or authority changes merge (Claude reviews only on request), and auto-merge the rest into staging.
+- [done] PR flow — run staging pull request CI on Ubuntu with the macOS-only files, reserve native platform proofs and parity for operator-started full releases, and auto-merge into staging.
+- [done] Review loop — the reviewer clears each local commit before push and loops with the coder; a fresh reviewer reads the whole diff before merge. A workflow PR also passes a live dry run with the operator before it merges.
 - [next] Functional spec — keep product behaviour in the charter and mechanisms in reference docs.
 
-## Dashboard ready
-
-Complete these in order on the Mac.
+## Built and wired
 
 - [done] Portable storage core — keep one database and settings per person, simplify Mac safety checks, retain the last three quit-time backups and repair crash or corruption damage automatically without relocating folders.
-- [now] Sign-up and accounts — require Touch ID and a Duo security key, both added in Duo's device management at duo.ucsd.edu. Use a Chromium virtual platform authenticator where the machine has no Touch ID hardware. Keep credentials on logout. Put Delete account in Settings > General. Tell an empty machine to sign up first. Back up the old store, then start clean. Resume a signed-in profile after a restart; only Log out or Delete account ends it. Let Log out finish while workflows run, and keep the login page checking until it completes.
+- [done] Shared dashboard surfaces on served data — serve sessions, activity, inbox, search, spreadsheets and the assistant.
 - [done] Workflow logins — use fast-duo for every workflow login.
 - [done] Runs — pause and resume at completed steps, rerun failed items from saved results, confirm quitting and park interrupted submits as unknown.
 - [done] Write safety — capture browser steps and submit boundaries, retain dry-run evidence, show UCPath transaction findings for operator review and keep Kuali reload verification.
-- [now] OCR and Emergency Contact — dry-run preview and fake-driver Save are proven, live selectors are captured and production Save is wired but never run live; serve per-person rows, finish individual member Retry, then prove the first live Save with the operator present.
-- [done] Served Explorer matches the mock — make Person Lookup and Separations Explorer read like the approved mock from served workflow definitions.
+- [done] Served Explorer matches the mock — build Explorer timelines from served workflow definitions.
 - [done] Assistant usable — allowlist reads, make every changing action and workflow start a confirmed proposal, answer ordinary questions through ChatGPT, show the workflow, name, Employee ID and key options on each confirmation card, and run Test assistant from Settings > Preflight.
-- [next] Assistant follow-ups — send attached files to the model and keep them in chat history, and start one workflow for several people with one confirmation.
 - [done] Operator dashboard fixes — tidy Settings (nav, theme, storage, account), derive the timekeeper name and initials from the signed-in name, clean Employee ID input, keep worker notices in toasts, fix spreadsheet import size and add Clear run history.
-- [done] Readable run logs — show plain steps with no internal names and a failure card with its reason, starting with Person Lookup.
+- [done] Readable run logs — show plain steps with no internal names and a failure card with its reason.
 - [done] Dashboard cleanups — make Explorer read-only, have the assistant always ask before acting and propose workflow starts, and save appearance preferences per person.
 - [done] Spreadsheet library — retain named versions, bind reference plans to approved snapshots, authenticate SharePoint Sync and publish worksheet archives.
-- [done] CRM Document Download — package verified PDFs by worksheet with retained reference choices.
-- [done] I-9 Check and Lookup — start reviewed PDF batches, delegate person checks and publish retention results.
-- [done] Onboarding — start selected roster rows, review hire changes and verify I-9, UCPath and master-workbook writes.
-- [done] OnBase import — import PDFs through the child workflow with durable exclusive sessions.
-- [now] Duo enrollment — show Duo's real error codes and verify sign-up capture and cancellation on the Mac at duo.ucsd.edu.
-- [next] Operator preview — complete the full test pass and verify automatic backup and self-repair before preview.
-- [now] Person Lookup and Separations readiness — fix run and session start errors, the worker preflight crash and the read-failure label. Select a person only on an exact name or ID match. Pass one read-only exact-ID live run before any live Separations.
-- [next] Workflow sign-off — Person Lookup live read and sign-off, then Separations dry run and sign-off, then OCR to Emergency Contact sign-off after production Save and live selector support, then real runs.
+- [done] Built workflows on mock data — CRM Document Download, I-9 Check and Lookup, Onboarding and OnBase import are implemented; each switches to served data in its own activation below.
+
+## Dashboard ready on the Mac
+
+Complete these in order. A workflow is ready after its live dry run and operator sign-off.
+
+- [now] Finish in-flight work — merge Emergency Contact member Retry (#153), the Duo setup window (#142), restored worker custody (Secure Enclave key across a reboot; blocks live runs) and the macOS-native test baseline.
+- [now] Assistant follow-ups — start one workflow for several people with one confirmation, then send attached files to the model and keep them in chat history.
+- [now] Sign-up and accounts — require Touch ID and a Duo security key added at duo.ucsd.edu; use a Chromium virtual platform authenticator where the machine has no Touch ID. Keep credentials on logout, put Delete account in Settings > General, resume a signed-in profile after a restart, and let Log out finish while workflows run.
+- [next] Person Lookup sign-off — pass a read-only exact-ID live run, fix what it finds in one PR, sign off.
+- [next] Separations sign-off — pass a live dry run, fix what it finds in one PR, sign off.
+- [next] OCR and Emergency Contact sign-off — serve per-person rows, prove the first live Save with the operator present, sign off.
+- [next] Catalog cleanup — remove Work-Study, Kronos Pay Rule, Oath Signature, Oath Upload, Old Kronos Reports and SharePoint Download from the catalog, preflight and docs, and regenerate parity screenshots once with the parity refresh.
+- [next] OnBase activation — switch to served data, pass a live dry run, update its screenshots, sign off.
+- [next] Onboarding activation — switch to served data, pass a live dry run, update its screenshots, sign off.
+- [next] I-9 Lookup and Check activation — switch to served data, pass a live dry run, update their screenshots, sign off.
+- [next] CRM Document Download activation — switch to served data, pass a live dry run, update its screenshots, sign off.
+- [next] Operator preview — complete the full test pass and verify automatic backup and self-repair.
 
 ## Windows, after the Mac is signed off
 
@@ -48,7 +55,7 @@ Complete these in order on the Mac.
 
 ## After the dashboard is ready
 
-- [later] Desktop app — after the local web app, package a per-user Windows installer and signed macOS build; install updates only on quit or while idle.
-- [later] Remaining workflows, one at a time — implement Oath Signature, Oath Upload, Work-Study, Kronos Pay Rule, Old Kronos Reports and Background Check.
-- [later] Parked work — re-judge schema baseline and one UI library against the new core.
 - [later] Release and cutover — release staging to main and replace the old app.
+- [later] Desktop app — package a per-user Windows installer and signed macOS build; install updates only on quit or while idle.
+- [later] Removed workflows — build one again only when the operator asks.
+- [later] Parked work — re-judge schema baseline and one UI library against the new core.
