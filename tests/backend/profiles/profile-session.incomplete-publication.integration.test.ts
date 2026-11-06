@@ -34,7 +34,7 @@ import { SignUpOperationSchema } from "../../../src/models/profiles/profile.js";
 import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { systemClock } from "../../../src/rules/time/clock.js";
 import { createHistoricalIncompleteProfileFixture, convertHistoricalIncompleteProfileFixture, historicalIncompleteProfileFields } from "../../support/fixtures/storage/historical-incomplete-profile-fixture.js";
-import { currentBuildId } from "../../../src/backend/app/build-id.js";
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
 
 async function historicalPrematureFixture() {
   const started = performance.now();

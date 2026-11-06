@@ -143,14 +143,14 @@ describe("secrets single source", () => {
     assert.deepEqual(auditSoleRunnerInvocation([{ path, content }, { path: wrapperPath, content: wrapper }]), []);
     const captureBeforeGraph = [
       "  // The build id is frozen before the application graph loads, so it names the code this process runs.",
-      "  const { captureBuildId } = await import(\"../../src/backend/app/build-id.js\");",
+      "  const { captureBuildId } = await import(\"../../src/backend/runtime/build-id.js\");",
       "  captureBuildId();",
       "",
     ].join("\n");
     const missingCapture = wrapper.replace(captureBeforeGraph, "");
     const lateCapture = wrapper.replace(
-      'const { captureBuildId } = await import("../../src/backend/app/build-id.js");\n  captureBuildId();\n  const { runSecureEnvironmentBootstrap } = await import("../../src/backend/app/bootstrap/secure-env-bootstrap.js");\n  await runSecureEnvironmentBootstrap(args);',
-      'const { runSecureEnvironmentBootstrap } = await import("../../src/backend/app/bootstrap/secure-env-bootstrap.js");\n  await runSecureEnvironmentBootstrap(args);\n  const { captureBuildId } = await import("../../src/backend/app/build-id.js");\n  captureBuildId();',
+      'const { captureBuildId } = await import("../../src/backend/runtime/build-id.js");\n  captureBuildId();\n  const { runSecureEnvironmentBootstrap } = await import("../../src/backend/app/bootstrap/secure-env-bootstrap.js");\n  await runSecureEnvironmentBootstrap(args);',
+      'const { runSecureEnvironmentBootstrap } = await import("../../src/backend/app/bootstrap/secure-env-bootstrap.js");\n  await runSecureEnvironmentBootstrap(args);\n  const { captureBuildId } = await import("../../src/backend/runtime/build-id.js");\n  captureBuildId();',
     );
     for (const candidate of [wrapper + '\nawait runSecureEnvironmentBootstrap();', wrapper.replace('entryPath !== undefined &&', ''), wrapper.replace('bootstrap/secure-env-bootstrap.js', 'bootstrap/forged.js'), missingCapture, lateCapture]) {
       assert.notEqual(candidate, wrapper);

@@ -1,4 +1,4 @@
-import { currentBuildId } from "../../../../src/backend/app/build-id.js";
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 import { OnboardingReadI9ProfilePlan } from "../../../../src/models/workflows/onboarding/read-i9-profile-plan.js";
 import { OnboardingReadHirePlan } from "../../../../src/models/workflows/onboarding/read-hire-plan.js";
 import { UcpathStageHire } from "../../../../src/models/systems/ucpath/stage-hire.js";

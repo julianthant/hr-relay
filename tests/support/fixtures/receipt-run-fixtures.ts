@@ -1,4 +1,4 @@
-import { currentBuildId } from "../../../src/backend/app/build-id.js";
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
 import { jsonLeafPaths, transactionCheckpointProvenance } from "../../../src/backend/runs/provenance/task-provenance.js";
 import { JsonValueSchema } from "../../../src/rules/validation/canonical-json.js";
 import { resolvePersonLookupIdentity, derivePersonLookupOutcome } from "../../../src/rules/matching/person-lookup.js";

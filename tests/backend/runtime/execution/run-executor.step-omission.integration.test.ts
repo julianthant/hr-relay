@@ -1,4 +1,4 @@
-import { currentBuildId } from "../../../../src/backend/app/build-id.js";
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 import { afterAll, afterEach, describe, it } from "vitest";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";

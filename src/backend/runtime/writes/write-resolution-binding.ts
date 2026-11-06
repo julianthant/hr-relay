@@ -18,7 +18,7 @@ import {
 import type { RunRecord } from "../../../models/run/record.js";
 import type { RuntimeFlowNode, RuntimeScope } from "../../../models/workflow/graph.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { currentBuildId } from "../../app/build-id.js";
+import { currentBuildId } from "../build-id.js";
 
 export type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transaction" }>;
 

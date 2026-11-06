@@ -13,7 +13,7 @@ import { createWorkerBrowserChannel } from "../../../runtime/workers/worker-brow
 import { RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { type RuntimePreflight } from "../../preflight/runtime-admission.js";
 import { spawn as spawnChildProcess } from "node:child_process";
-import { currentBuildId, PARENT_BUILD_ID_ENV } from "../../build-id.js";
+import { currentBuildId, PARENT_BUILD_ID_ENV } from "../../../runtime/build-id.js";
 import { lstatSync,rmdirSync } from "node:fs";
 import { join } from "node:path";
 import { DEVELOPMENT_DEBUG_MIRROR_ENV,workerBootstrapEnvironment } from "../../../../models/config/secrets.js";

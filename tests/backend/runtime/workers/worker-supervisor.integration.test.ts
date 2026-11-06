@@ -35,7 +35,7 @@ import { deriveTraceId } from "../../../../src/rules/identity/identifiers.js";
 import { ActorIdSchema, IsoInstantSchema } from "../../../../src/rules/identity/ids.js";
 import { manualClock, systemClock } from "../../../../src/rules/time/clock.js";
 import { productionWorkerLaunch } from "../../../../src/backend/app/composition/dashboard/worker-process.js";
-import { BuildIdError, captureBuildId, currentBuildId, PARENT_BUILD_ID_ENV } from "../../../../src/backend/app/build-id.js";
+import { BuildIdError, captureBuildId, currentBuildId, PARENT_BUILD_ID_ENV } from "../../../../src/backend/runtime/build-id.js";
 import { healthyRuntimePreflightRunners } from "../../../support/fixtures/preflight-seams.js";
 import { releaseAdmissionFixtures } from "../../../support/helpers/admission-fixture.js";
 import { foundationFixture, id as id_m0, NOW as NOW_m0 } from "../../../support/helpers/database-foundation/fixtures.js";

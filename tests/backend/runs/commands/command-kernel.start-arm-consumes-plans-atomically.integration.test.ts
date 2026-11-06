@@ -1,4 +1,4 @@
-import { currentBuildId } from "../../../../src/backend/app/build-id.js";
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 import { createProfileFixtureSet } from "../../../support/helpers/admission-fixture.js";
 import { createCommandKernelTestWorld } from "../../../support/helpers/backend/command-kernel-harness.js";
 import assert from "node:assert/strict";

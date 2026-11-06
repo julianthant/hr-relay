@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { productionWorkerLaunch } from "../../../src/backend/app/composition/dashboard/worker-process.js";
-import { BuildIdError, captureBuildId, computeBuildId, currentBuildId, packageOfSpecifier, PARENT_BUILD_ID_ENV, runtimeLockEntries } from "../../../src/backend/app/build-id.js";
+import { BuildIdError, captureBuildId, computeBuildId, currentBuildId, packageOfSpecifier, PARENT_BUILD_ID_ENV, runtimeLockEntries } from "../../../src/backend/runtime/build-id.js";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });

@@ -17,7 +17,7 @@ hashes, the entry graph, and each task contract's id, effect and schema hashes. 
 derives a checkpoint's `implFingerprint` the same way. No file is generated and no source is read, so
 compilation stays browser-safe, and shared code edits never invalidate Retry, Recover or claims.
 
-The app build id (`src/backend/app/build-id.ts`) hashes the worker-runnable source under `src/backend`,
+The app build id (`src/backend/runtime/build-id.ts`) hashes the worker-runnable source under `src/backend`,
 `src/workflow-kit`, `src/workflows`, `src/models`, `src/rules` and `src/cli.ts`, the `package-lock.json`
 entries those files load (ordinary, optional and peer dependencies with nested resolution, every recorded
 platform binary included) and the Node version. `src/dashboard` and frontend-only packages are excluded.

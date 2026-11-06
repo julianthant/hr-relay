@@ -14,7 +14,7 @@ import {
 } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
-import { digestFiles, filesUnder } from "../../source-digest.js";
+import { digestFiles, filesUnder } from "../../../runtime/source-digest.js";
 import { systemClock } from "../../../../rules/time/clock.js";
 
 export const DASHBOARD_BUILD_IDENTITY_FILE = "dashboard-build-identity.json";

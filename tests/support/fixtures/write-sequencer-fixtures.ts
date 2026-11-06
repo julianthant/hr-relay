@@ -1,4 +1,4 @@
-import { currentBuildId } from "../../../src/backend/app/build-id.js";
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
 import { UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON } from "../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { sourceBoundReadContract } from "./source-bound-read-fixtures.js";
 

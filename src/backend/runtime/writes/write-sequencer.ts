@@ -54,7 +54,7 @@ import {
 import type { DataPoint, RecordedDataPoint } from "../../../rules/workflow/task-provenance.js";
 import { assertMintedMutationCapability, mintMutationCapability } from "../../../workflow-kit/mutation-capability.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
-import { currentBuildId } from "../../app/build-id.js";
+import { currentBuildId } from "../build-id.js";
 import {
   RunCheckpointRecordSchema,
   type RunCheckpointRecord,

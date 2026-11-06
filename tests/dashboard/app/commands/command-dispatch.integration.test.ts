@@ -1,4 +1,4 @@
-import { currentBuildId } from "../../../../src/backend/app/build-id.js";
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 import { randomUUID } from "node:crypto";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../src/rules/identity/ids.js";
 import { createStartPlanService } from "../../../../src/backend/runs/commands/start-plan-service.js";

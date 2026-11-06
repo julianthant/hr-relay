@@ -1,4 +1,4 @@
-import { currentBuildId } from "../../../src/backend/app/build-id.js";
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
 import { admitProtectedInput } from "../../../src/backend/runs/start/protected-input.js";
 import { protectedSecretSource } from "./protected-secret-source.js";
 import { testWorkerLifetime, testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";

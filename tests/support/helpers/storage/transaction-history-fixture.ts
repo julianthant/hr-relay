@@ -11,7 +11,7 @@ import { separationsDescriptor } from "../registered-workflows.js";
 import { HASH_A } from "../../fixtures/phase1c-contract-fixtures.js";
 import { atomicWriteCheckpoint, releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { ledgerCommitFixture, fixtureUuid } from "../../fixtures/ledger-projection-fixtures.js";
-import { currentBuildId } from "../../../../src/backend/app/build-id.js";
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 export const HISTORY_NOW = "2026-09-09T12:00:00.000Z";
 export const historyClock = capturedInstantClock(HISTORY_NOW);
 export async function historyWorld(options: Readonly<{ terminalize?: boolean }> = {}) {

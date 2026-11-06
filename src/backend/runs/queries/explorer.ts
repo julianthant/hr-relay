@@ -42,7 +42,7 @@ import type { Fingerprint } from "../../../rules/identity/ids.js";
 import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 import type { UiTaskLink } from "../../systems/ui-task-links.js";
 import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
-import { currentBuildId } from "../../app/build-id.js";
+import { currentBuildId } from "../../runtime/build-id.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
 import type { WorkflowModuleRole } from "../../../workflow-kit/validation/module-role.js";

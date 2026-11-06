@@ -786,7 +786,7 @@ export function auditSoleRunnerInvocation(
 
     if (path === BOOTSTRAP_WRAPPER) {
       const compact = ts.createPrinter({ removeComments: true }).printFile(source).replace(/\s+/gu, "");
-      const expected = 'import{pathToFileURL}from"node:url";exportasyncfunctionrunSecureEnvironmentEntrypoint(args:readonlystring[]=process.argv.slice(2)):Promise<void>{const{captureBuildId}=awaitimport("../../src/backend/app/build-id.js");captureBuildId();const{runSecureEnvironmentBootstrap}=awaitimport("../../src/backend/app/bootstrap/secure-env-bootstrap.js");awaitrunSecureEnvironmentBootstrap(args);}constentryPath=process.argv[1];if(entryPath!==undefined&&pathToFileURL(entryPath).href===import.meta.url){awaitrunSecureEnvironmentEntrypoint();}';
+      const expected = 'import{pathToFileURL}from"node:url";exportasyncfunctionrunSecureEnvironmentEntrypoint(args:readonlystring[]=process.argv.slice(2)):Promise<void>{const{captureBuildId}=awaitimport("../../src/backend/runtime/build-id.js");captureBuildId();const{runSecureEnvironmentBootstrap}=awaitimport("../../src/backend/app/bootstrap/secure-env-bootstrap.js");awaitrunSecureEnvironmentBootstrap(args);}constentryPath=process.argv[1];if(entryPath!==undefined&&pathToFileURL(entryPath).href===import.meta.url){awaitrunSecureEnvironmentEntrypoint();}';
       if (compact !== expected) violations.push(`${path}: bootstrap dispatcher must retain the guarded ordinary bootstrap invocation`);
     }
 

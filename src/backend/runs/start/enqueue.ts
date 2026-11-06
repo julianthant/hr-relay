@@ -9,7 +9,7 @@ import { RunRecordSchema } from "../../../models/run/record.js";
 import type { RunRecord } from "../../../models/run/record.js";
 import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import { currentBuildId } from "../../app/build-id.js";
+import { currentBuildId } from "../../runtime/build-id.js";
 
 export interface QueuedRunSpec {
   readonly descriptor: AnyWorkflowDescriptor;

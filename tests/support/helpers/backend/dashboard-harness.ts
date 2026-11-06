@@ -1,4 +1,4 @@
-import { currentBuildId } from "../../../../src/backend/app/build-id.js";
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
 import { releaseSeededWriteOwners } from "../timeline-write-fixture.js";
 import { retainAuthoritySourceClosure } from '../../../../src/backend/storage/source-closure.js';
 import { createBoundProfileFixture, type BoundProfileStorageFixture } from "../admission-fixture.js";

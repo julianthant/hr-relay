@@ -1,4 +1,4 @@
-import { currentBuildId } from "../../../src/backend/app/build-id.js";
+import { currentBuildId } from "../../../src/backend/runtime/build-id.js";
 import assert from "node:assert/strict";
 
 

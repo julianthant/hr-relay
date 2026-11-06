@@ -79,7 +79,7 @@ import { authenticateWorkbookReferenceExecution } from "../workbooks.js";
 import { admitDelegation } from "./delegation-admission.js";
 import { assertOcrChildRetryCurrent,assertOcrRecoverySnapshotCurrent } from "./ocr-review-authority.js";
 import { delegatedCandidateEligible,runRuntimeMatches } from "./run-claim-admission.js";
-import { currentBuildId } from "../../app/build-id.js";
+import { currentBuildId } from "../../runtime/build-id.js";
 
 const TERMINAL_SELF_EDGE_REFUSAL = "terminal has no self-edge; a settled outcome is settled";
 

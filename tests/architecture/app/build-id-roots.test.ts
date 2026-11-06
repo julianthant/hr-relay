@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { it } from "vitest";
-import { BuildIdError, computeBuildId, unscannedLoadForms } from "../../../src/backend/app/build-id.js";
+import { BuildIdError, computeBuildId, unscannedLoadForms } from "../../../src/backend/runtime/build-id.js";
 import { REPO_ROOT, walkFiles } from "../support/helpers/guard-files.js";
 
 const HASHED_ROOTS = ["src/backend", "src/workflow-kit", "src/workflows", "src/models", "src/rules"];
