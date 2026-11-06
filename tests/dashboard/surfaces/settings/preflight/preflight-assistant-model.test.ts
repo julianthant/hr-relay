@@ -1,19 +1,25 @@
 import assert from "node:assert/strict";
 import { afterEach, it, vi } from "vitest";
+import type { AssistantResult } from "../../../../../src/models/dashboard/assistant.js";
+import type { AssistantQueries } from "../../../../../src/dashboard/client/queries/assistant-queries.js";
 import type { ChatGptAccountPort, ChatGptAccountSnapshot } from "../../../../../src/dashboard/surfaces/settings/general/chatgpt-account-model.js";
 import { ASSISTANT_VERIFICATION_WINDOW_MS, createServedPreflightAssistantPort } from "../../../../../src/dashboard/surfaces/settings/preflight/preflight-assistant-model.js";
 
 afterEach(() => { vi.useRealTimers(); });
 const connected = (email: string, planUsage: "enabled" | "disabled" | "limit-reached" = "enabled"): ChatGptAccountSnapshot => ({ state: "connected", name: "Operator", email, planUsage });
 function harness() {
-  let snapshot = connected("a@example.edu"); const listeners = new Set<() => void>();
-  const account = { getSnapshot: () => snapshot, subscribe: (l: () => void) => { listeners.add(l); return () => listeners.delete(l); }, refresh: async () => {} } as unknown as ChatGptAccountPort;
-  const change = (next: ChatGptAccountSnapshot) => { snapshot = next; for (const l of listeners) l(); };
-  let release: (value: { state: "answered" }) => void = () => {};
+  let snapshot: ChatGptAccountSnapshot = connected("a@example.edu"); const listeners = new Set<() => void>();
+  let refresh: ChatGptAccountPort["refresh"] = async () => {};
+  const account: ChatGptAccountPort = {
+    mode: "live", getSnapshot: () => snapshot, subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    refresh: () => refresh?.() ?? Promise.resolve(), signIn: async () => {}, signOut: async () => {}, cancelSignIn: async () => {},
+  };
+  const change = (next: ChatGptAccountSnapshot) => { snapshot = next; for (const listener of listeners) listener(); };
   const signals: (AbortSignal | undefined)[] = [];
-  const client = { assistantRespond: (_input: unknown, signal?: AbortSignal) => { signals.push(signal); return new Promise<never>(resolve => { release = resolve as never; }); } } as never;
-  const setRefresh = (fn: () => Promise<void>) => { (account as { refresh: () => Promise<void> }).refresh = fn; };
-  return { port: createServedPreflightAssistantPort(client, account), change, signals, setRefresh, finish: () => release({ state: "answered" }) };
+  let release: (value: AssistantResult) => void = () => {};
+  const client: Pick<AssistantQueries, "assistantRespond"> = { assistantRespond: (_input, signal) => { signals.push(signal); return new Promise<AssistantResult>(resolve => { release = resolve; }); } };
+  const answered: AssistantResult = { state: "answered", text: "Verified.", citations: [] };
+  return { port: createServedPreflightAssistantPort(client, account), change, signals, setRefresh: (fn: () => Promise<void>) => { refresh = fn; }, finish: () => release(answered) };
 }
 it("drops a late settlement after the account authority changes", async () => {
   const h = harness(); const pending = h.port.testAssistant();
@@ -61,4 +67,12 @@ it("aborts on model change and disposal and refuses calls after disposal", async
   const again = h.port.testAssistant(); h.port.dispose(); assert.equal(h.signals[1]?.aborted, true); h.finish(); await again;
   const before = h.signals.length; await h.port.testAssistant();
   assert.equal(h.signals.length, before);
+});
+it("drops a held post-verify refresh when the account changes underneath it", async () => {
+  const h = harness(); let finishRefresh: () => void = () => {};
+  h.setRefresh(() => new Promise<void>(resolve => { finishRefresh = resolve; }));
+  const pending = h.port.testAssistant(); h.finish();
+  await vi.waitFor(() => assert.equal(h.port.getSnapshot().state, "passed"));
+  h.change(connected("a@example.edu", "disabled")); finishRefresh(); await pending;
+  assert.equal(h.port.getSnapshot().state, "idle");
 });
