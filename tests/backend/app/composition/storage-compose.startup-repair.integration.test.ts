@@ -130,14 +130,17 @@ it("classifies a non-SQLite or malformed person file as damaged and never as ver
   } finally { await f.close(); }
 });
 
-it("holds one person's version-skewed database while the other person upgrades, recovers and signs in", async () => {
+for (const heldSelected of [false, true]) it(`holds one person's version-skewed database while the other person upgrades, recovers and signs in (held person ${heldSelected ? "left selected" : "not selected"})`, async () => {
   const first = await createBoundProfileFixture(), clock = manualClock(new Date("2026-11-02T12:00:00.000Z"));
   createProfileRegistry(first.machine).advanceSession(null);
   first.admission.release(); first.machine.release();
   const second = await createBoundProfileFixture({ workspace: first.workspace, lifetime: first.lifetime, email: "second@ucsd.edu" });
+  const registryPath = join(second.machine.stateRoot, "machine", "profiles.json"), secondProfileId = second.admission.profileBinding.profileId;
   try {
-    createProfileRegistry(second.machine).advanceSession(null);
+    if (!heldSelected) createProfileRegistry(second.machine).advanceSession(null);
     await second.closeController();
+    const before = JSON.parse(readFileSync(registryPath, "utf8")) as { activeProfileId: string | null; sessionGeneration: number };
+    assert.equal(before.activeProfileId, heldSelected ? secondProfileId : null);
     const native = new DatabaseSync(second.path);
     try { native.exec("DROP TABLE write_attempts"); } finally { native.close(); }
     const skewed = readFileSync(second.path);
@@ -147,6 +150,9 @@ it("holds one person's version-skewed database while the other person upgrades, 
       assert.equal(restore.mock.calls.length, 0);
     } finally { restore.mockRestore(); }
     assert.deepEqual(readFileSync(second.path), skewed);
+    const after = JSON.parse(readFileSync(registryPath, "utf8")) as { activeProfileId: string | null; sessionGeneration: number };
+    assert.equal(after.activeProfileId, null);
+    assert.equal(after.sessionGeneration, before.sessionGeneration + (heldSelected ? 1 : 0));
     await assertHeld(first.workspace, first.lifetime, clock, "second@ucsd.edu", "STORAGE_PROFILE_FORMAT_UNSUPPORTED");
     const session = signIn(first.workspace, first.lifetime, clock, "fixture@ucsd.edu");
     try { const result = session.attempt(); assert.equal(result.state, "active", JSON.stringify(result)); } finally { await session.close(); }

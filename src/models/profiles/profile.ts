@@ -51,7 +51,7 @@ export type ProfileRegistryDocument = z.infer<typeof ProfileRegistryDocumentSche
 
 export const ProfileSelectionChangeReasonSchema = z.enum([
   "profile-activated", "profile-sign-in-refused", "profile-logout-requested", "profile-logout-continuation",
-  "profile-registry-published", "profile-incomplete-reclassified", "profile-authority-restored",
+  "profile-registry-published", "profile-incomplete-reclassified", "profile-authority-restored", "profile-startup-held",
 ]);
 export type ProfileSelectionChangeReason = z.infer<typeof ProfileSelectionChangeReasonSchema>;
 export const PROFILE_SELECTION_CHANGE_CALLERS = Object.freeze({
@@ -62,6 +62,7 @@ export const PROFILE_SELECTION_CHANGE_CALLERS = Object.freeze({
   "profile-registry-published": "src/backend/storage/admission/admission.ts:publishProfileRegistry",
   "profile-incomplete-reclassified": "src/backend/storage/admission/installation.ts:prepareIncompleteProfileDraft",
   "profile-authority-restored": "src/backend/storage/admission/installation.ts:settleAuthorityRestore",
+  "profile-startup-held": "src/backend/app/composition/storage-compose.ts:initializeRegisteredPersonStores",
 } as const);
 export const ProfileSelectionChangeSchema = z.strictObject({
   reason: ProfileSelectionChangeReasonSchema,

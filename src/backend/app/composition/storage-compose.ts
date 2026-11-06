@@ -12,6 +12,7 @@ import { createAssistantAuthorization } from "../../assistant/authorization.js";
 import type { ProfileOnboardingDuoProvider } from "../../profiles/onboarding-duo.js";
 import { ProfileSessionRefusedError } from "../../profiles/profile-errors.js";
 import { createProfileSession } from "../../profiles/profile-session.js";
+import { createProfileRegistry } from "../../profiles/registry.js";
 import type { CommandKernel } from "../../runs/commands/command-kernel.js";
 import { requireLifecycleApplied,RunRecordService } from "../../runs/lifecycle/run-record-service.js";
 import { reconcileExitedWorker,reconcileStoppedLogout,reconcileStoppedStartupCrash,StartupCrashRecoveryRefusedError } from "../../runs/lifecycle/startup-crash-recovery.js";
@@ -395,6 +396,14 @@ export async function initializeRegisteredPersonStores(workspace: string, lifeti
       heldPeopleFor(lifetime).set(profileId, error);
     }
   }
+  const held = heldPeopleFor(lifetime);
+  if (held.size === 0) return;
+  // No session exists at boot; a held person left selected would block every other sign-in and could not log out.
+  const machine = acquireEntrypointAdmission(workspace, "exclusive", lifetime);
+  try {
+    const registry = createProfileRegistry(machine), selected = registry.read().activeProfileId;
+    if (selected !== null && held.has(selected)) registry.advanceSession(null, "profile-startup-held");
+  } finally { machine.release(); }
 }
 
 export class AutomaticPersonRepairRefusedError extends Error {
