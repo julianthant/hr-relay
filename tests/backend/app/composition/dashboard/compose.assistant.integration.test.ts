@@ -615,129 +615,131 @@ it('confirms run actions, issues reruns and entry lists, and refuses expired, st
     const { context, transport, origin, clock, post } = fixture, { run, subjectRef } = seedAssistantReadRun(fixture), client = createDashboardClient({ baseUrl: origin });
     const database = context.database;
     let cleanupSubscription = () => {};
-    if (client.assistantDecide === undefined) throw new Error('assistant decide owner required');
-    const decide = (decision: Parameters<NonNullable<typeof client.assistantDecide>>[0]) => { if (client.assistantDecide === undefined) throw new Error('assistant decide owner required'); return client.assistantDecide(decision); };
-    assert.equal(CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
-      family: "settings", type: "apply-settings", target: { expectedRevision: context.settings.read().record.revision },
-      payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } })).state, "applied");
-    publicCapabilityResponses(transport);
-    assert.equal((await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
-    let next: (outbound: string) => readonly [string, unknown] = () => { throw new Error("no proposal scripted"); };
-    const outputs: unknown[] = [];
-    transport.setResponse(init => {
-      if (typeof init.body !== 'string') throw Error('synthetic request body required');
-      const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), last = request.input.at(-1);
-      // After a tool output the scripted model answers in prose; the turn's disposition comes from the tool outcome.
-      if (last !== undefined && 'type' in last && last.type === 'function_call_output') {
-        outputs.push(JSON.parse(last.output));
-        return new Response(completedResponseStream([{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'Done.' }] }],
+    try {
+      if (client.assistantDecide === undefined) throw new Error('assistant decide owner required');
+      const decide = (decision: Parameters<NonNullable<typeof client.assistantDecide>>[0]) => { if (client.assistantDecide === undefined) throw new Error('assistant decide owner required'); return client.assistantDecide(decision); };
+      assert.equal(CommandResultSchema.parse(await post("commands", { commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface",
+        family: "settings", type: "apply-settings", target: { expectedRevision: context.settings.read().record.revision },
+        payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveRawSettingsPatchFingerprint({}), patch: {}, assistantPermission: { expectedPolicyRevision: 0, mode: "every-action" } } })).state, "applied");
+      publicCapabilityResponses(transport);
+      assert.equal((await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: ASSISTANT_VERIFY_COMMAND })).state, 'answered');
+      let next: (outbound: string) => readonly [string, unknown] = () => { throw new Error("no proposal scripted"); };
+      const outputs: unknown[] = [];
+      transport.setResponse(init => {
+        if (typeof init.body !== 'string') throw Error('synthetic request body required');
+        const request = AssistantTransportRequestSchema.parse(JSON.parse(init.body)), last = request.input.at(-1);
+        // After a tool output the scripted model answers in prose; the turn's disposition comes from the tool outcome.
+        if (last !== undefined && 'type' in last && last.type === 'function_call_output') {
+          outputs.push(JSON.parse(last.output));
+          return new Response(completedResponseStream([{ type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'Done.' }] }],
+            request.model, `resp_${randomUUID()}`), { headers: { 'Content-Type': 'text/event-stream' } });
+        }
+        const [name, args] = next(JSON.stringify(request));
+        return new Response(completedResponseStream([{ type: 'function_call', namespace: 'relay', name, call_id: `call_${randomUUID()}`, arguments: JSON.stringify(args), status: 'completed' }],
           request.model, `resp_${randomUUID()}`), { headers: { 'Content-Type': 'text/event-stream' } });
+      });
+      const refusedTurn = async (message: string, script: (outbound: string) => readonly [string, unknown], selection?: string) => {
+        next = script;
+        return client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message, ...(selection === undefined ? {} : { subjectRef: selection }) });
+      };
+      const selected = (outbound: string) => { const token = /selected the run (\[\[R1\.g\d+\]\])/u.exec(outbound)?.[1]; assert.ok(token); return token; };
+      const propose = async (message: string, script: (outbound: string) => readonly [string, unknown], selection?: string) => {
+        next = script;
+        const result = await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message, ...(selection === undefined ? {} : { subjectRef: selection }) });
+        assert.equal(result.state, 'action-proposal'); if (result.state !== 'action-proposal') throw new Error('card required');
+        return result.proposal;
+      };
+      const confirm = async (proposal: Parameters<typeof assistantProposalDigest>[0]) => decide(AssistantActionDecisionSchema.parse({
+        chatId: proposal.chatId, actionId: proposal.actionId, revision: proposal.revision, decision: 'confirm', reviewedDigest: await assistantProposalDigest(proposal) }));
+
+      const expired = await propose('Cancel this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'cancel' }], subjectRef);
+      clock.setWall(new Date(clock.nowMs() + 61_000));
+      assert.equal((await confirm(expired)).state, 'refused');
+      assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
+
+      const cancel = await propose('Cancel this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'cancel' }], subjectRef);
+      assert.equal(cancel.effect, 'run-action');
+      assert.equal(database.authority.assistantAuthorization.action(cancel.actionId)?.command.family, 'run');
+      assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
+      assert.equal((await confirm(cancel)).state, 'applied');
+      const cancelled = database.authority.runs.get(run.envelope.runId); assert.ok(cancelled && cancelled.lifecycle.state === 'terminal');
+      assert.equal(database.authority.commandAudits.findByCommand(database.authority.assistantAuthorization.action(cancel.actionId)?.command.commandId ?? '')?.request.source, 'assistant');
+      assert.equal((await confirm(cancel)).state, 'refused');
+
+      const stale = await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: 'Pause this run', subjectRef });
+      assert.deepEqual(stale, { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
+
+      const current = `run_${run.envelope.runId}_${cancelled.version}`;
+      assert.deepEqual(await refusedTurn('Rerun this run', outbound => ['propose_rerun', { run: selected(outbound) }], current),
+        { state: 'refused', code: 'ASSISTANT_PROPOSAL_REFUSED', message: ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED }, 'a cancelled source is not rerun-eligible');
+      const durableCounts = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), raw => ({
+        actions: raw.prepare('SELECT id FROM assistant_actions').all().length, plans: raw.prepare('SELECT id FROM run_requests').all().length }));
+      const countsBefore = durableCounts();
+      assert.deepEqual(await refusedTurn('Run Person Lookup again for this run', outbound => ['propose_workflow_start', { workflow: 'person-lookup', entries: [selected(outbound)] }], subjectRef),
+        { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE }, 'a moved selected run cannot be reused');
+      assert.deepEqual(durableCounts(), countsBefore);
+
+      const second = seedAssistantReadRun(fixture);
+      const dayOf = async (runId: string) => {
+        const day = (await client.searchRuns({ q: runId, scope: 'run', limit: 1 })).results[0]?.partitionDay; assert.ok(day); return day;
+      };
+      const day = await dayOf(second.run.envelope.runId);
+      // Only a published snapshot or patch reaches this subscriber; a fresh read would pass even without publication.
+      const published: { revision: number; pause: string | undefined }[] = [];
+      await new Promise<void>((resolve, reject) => {
+        const subscription = client.subscribeDay({ day, onDay: received => {
+          const row = received.queueSurfaces.find(surface => surface.runId === second.run.envelope.runId);
+          if (row !== undefined) published.push({ revision: row.rowRevision, pause: row.pauseControl?.state });
+        }, onState: state => { if (state.state === 'live') resolve(); else if (state.state === 'stopped') reject(new Error('day subscription stopped')); } });
+        cleanupSubscription = () => subscription.close();
+      });
+      await vi.waitFor(() => assert.ok(published.length > 0), { timeout: 5_000, interval: 25 });
+      const pause = await propose('Pause this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'pause' }], second.subjectRef);
+      const beforePause = published.length;
+      assert.equal((await confirm(pause)).state, 'applied');
+      const paused = database.authority.runs.get(second.run.envelope.runId); assert.ok(paused?.pause !== undefined);
+      await vi.waitFor(() => assert.ok(published.slice(beforePause).some(row => row.revision === paused.version && row.pause === 'paused')), { timeout: 5_000, interval: 25 });
+      const resume = await propose('Resume this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'resume' }], `run_${paused.envelope.runId}_${paused.version}`);
+      const beforeResume = published.length;
+      assert.equal((await confirm(resume)).state, 'applied');
+      const resumed = database.authority.runs.get(second.run.envelope.runId); assert.ok(resumed && resumed.pause === undefined);
+      await vi.waitFor(() => assert.ok(published.slice(beforeResume).some(row => row.revision === resumed.version && row.pause !== 'paused')), { timeout: 5_000, interval: 25 });
+      cleanupSubscription();
+      for (const commandId of [pause, resume].map(card => database.authority.assistantAuthorization.action(card.actionId)?.command.commandId ?? '')) {
+        assert.equal(database.authority.commandAudits.findByCommand(commandId)?.result.state, 'applied', 'one canonical execution per confirmed card');
       }
-      const [name, args] = next(JSON.stringify(request));
-      return new Response(completedResponseStream([{ type: 'function_call', namespace: 'relay', name, call_id: `call_${randomUUID()}`, arguments: JSON.stringify(args), status: 'completed' }],
-        request.model, `resp_${randomUUID()}`), { headers: { 'Content-Type': 'text/event-stream' } });
-    });
-    const refusedTurn = async (message: string, script: (outbound: string) => readonly [string, unknown], selection?: string) => {
-      next = script;
-      return client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message, ...(selection === undefined ? {} : { subjectRef: selection }) });
-    };
-    const selected = (outbound: string) => { const token = /selected the run (\[\[R1\.g\d+\]\])/u.exec(outbound)?.[1]; assert.ok(token); return token; };
-    const propose = async (message: string, script: (outbound: string) => readonly [string, unknown], selection?: string) => {
-      next = script;
-      const result = await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message, ...(selection === undefined ? {} : { subjectRef: selection }) });
-      assert.equal(result.state, 'action-proposal'); if (result.state !== 'action-proposal') throw new Error('card required');
-      return result.proposal;
-    };
-    const confirm = async (proposal: Parameters<typeof assistantProposalDigest>[0]) => decide(AssistantActionDecisionSchema.parse({
-      chatId: proposal.chatId, actionId: proposal.actionId, revision: proposal.revision, decision: 'confirm', reviewedDigest: await assistantProposalDigest(proposal) }));
 
-    const expired = await propose('Cancel this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'cancel' }], subjectRef);
-    clock.setWall(new Date(clock.nowMs() + 61_000));
-    assert.equal((await confirm(expired)).state, 'refused');
-    assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
+      const timekeeper = await client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: 'local-operator', source: 'settings-surface',
+        family: 'settings', type: 'apply-protected-settings', target: { expectedRevision: context.settings.read().record.revision },
+        payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { timekeeperName: { set: 'Synthetic Timekeeper' } } } });
+      assert.equal(timekeeper.state, 'applied');
+      const documents = await propose('Separate documents 4502 and 4510', () => ['propose_workflow_start', { workflow: 'separations', entries: ['4502', '4510'] }]);
+      assert.ok(documents.effect === 'workflow-start' && documents.dryRun);
+      assert.deepEqual(documents.startPlan.planned.map(row => row.display), [{ kind: 'document', documentNumber: '4502' }, { kind: 'document', documentNumber: '4510' }]);
+      assert.equal(documents.targetLabel, '2 documents');
+      assert.equal((await decide({ chatId: documents.chatId, actionId: documents.actionId, revision: documents.revision, decision: 'cancel' })).state, 'cancelled');
 
-    const cancel = await propose('Cancel this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'cancel' }], subjectRef);
-    assert.equal(cancel.effect, 'run-action');
-    assert.equal(database.authority.assistantAuthorization.action(cancel.actionId)?.command.family, 'run');
-    assert.deepEqual(database.authority.runs.get(run.envelope.runId), run);
-    assert.equal((await confirm(cancel)).state, 'applied');
-    const cancelled = database.authority.runs.get(run.envelope.runId); assert.ok(cancelled && cancelled.lifecycle.state === 'terminal');
-    assert.equal(database.authority.commandAudits.findByCommand(database.authority.assistantAuthorization.action(cancel.actionId)?.command.commandId ?? '')?.request.source, 'assistant');
-    assert.equal((await confirm(cancel)).state, 'refused');
+      const listed = await propose('Look up 10812345 and Jordan Lee', outbound => {
+        const eid = /\[\[E1\.g\d+\]\]/u.exec(outbound)?.[0]; assert.ok(eid);
+        return ['propose_workflow_start', { workflow: 'person-lookup', entries: [eid, 'Jordan Lee'] }];
+      });
+      assert.equal(listed.effect, 'workflow-start'); if (listed.effect !== 'workflow-start') throw new Error('start card required');
+      assert.deepEqual(listed.startPlan.planned.map(row => row.display), [{ kind: 'person', employeeId: '10812345' }, { kind: 'person', name: 'Jordan Lee' }]);
+      assert.equal(listed.targetLabel, '2 people');
+      const record = database.authority.assistantAuthorization.action(listed.actionId); assert.ok(record && record.command.family === 'start');
+      const startPlanId = record.command.family === 'start' ? record.command.target.startPlanId : '';
+      assert.equal((await decide({ chatId: listed.chatId, actionId: listed.actionId, revision: listed.revision, decision: 'cancel' })).state, 'cancelled');
+      assert.equal(database.authority.startPlans.get(startPlanId)?.consumedBy, undefined);
 
-    const stale = await client.assistantRespond({ conversationId: randomUUID(), messageId: randomUUID(), message: 'Pause this run', subjectRef });
-    assert.deepEqual(stale, { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE });
-
-    const current = `run_${run.envelope.runId}_${cancelled.version}`;
-    assert.deepEqual(await refusedTurn('Rerun this run', outbound => ['propose_rerun', { run: selected(outbound) }], current),
-      { state: 'refused', code: 'ASSISTANT_PROPOSAL_REFUSED', message: ASSISTANT_FAILURES.ASSISTANT_PROPOSAL_REFUSED }, 'a cancelled source is not rerun-eligible');
-    const durableCounts = () => withAuthorityDatabaseReadOnly(context.admission, join(context.admission.stateRoot, 'state.db'), raw => ({
-      actions: raw.prepare('SELECT id FROM assistant_actions').all().length, plans: raw.prepare('SELECT id FROM run_requests').all().length }));
-    const countsBefore = durableCounts();
-    assert.deepEqual(await refusedTurn('Run Person Lookup again for this run', outbound => ['propose_workflow_start', { workflow: 'person-lookup', entries: [selected(outbound)] }], subjectRef),
-      { state: 'refused', code: 'ASSISTANT_READ_STALE', message: ASSISTANT_FAILURES.ASSISTANT_READ_STALE }, 'a moved selected run cannot be reused');
-    assert.deepEqual(durableCounts(), countsBefore);
-
-    const second = seedAssistantReadRun(fixture);
-    const dayOf = async (runId: string) => {
-      const day = (await client.searchRuns({ q: runId, scope: 'run', limit: 1 })).results[0]?.partitionDay; assert.ok(day); return day;
-    };
-    const day = await dayOf(second.run.envelope.runId);
-    // Only a published snapshot or patch reaches this subscriber; a fresh read would pass even without publication.
-    const published: { revision: number; pause: string | undefined }[] = [];
-    await new Promise<void>((resolve, reject) => {
-      const subscription = client.subscribeDay({ day, onDay: received => {
-        const row = received.queueSurfaces.find(surface => surface.runId === second.run.envelope.runId);
-        if (row !== undefined) published.push({ revision: row.rowRevision, pause: row.pauseControl?.state });
-      }, onState: state => { if (state.state === 'live') resolve(); else if (state.state === 'stopped') reject(new Error('day subscription stopped')); } });
-      cleanupSubscription = () => subscription.close();
-    });
-    await vi.waitFor(() => assert.ok(published.length > 0), { timeout: 5_000, interval: 25 });
-    const pause = await propose('Pause this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'pause' }], second.subjectRef);
-    const beforePause = published.length;
-    assert.equal((await confirm(pause)).state, 'applied');
-    const paused = database.authority.runs.get(second.run.envelope.runId); assert.ok(paused?.pause !== undefined);
-    await vi.waitFor(() => assert.ok(published.slice(beforePause).some(row => row.revision === paused.version && row.pause === 'paused')), { timeout: 5_000, interval: 25 });
-    const resume = await propose('Resume this run', outbound => ['propose_run_action', { run: selected(outbound), action: 'resume' }], `run_${paused.envelope.runId}_${paused.version}`);
-    const beforeResume = published.length;
-    assert.equal((await confirm(resume)).state, 'applied');
-    const resumed = database.authority.runs.get(second.run.envelope.runId); assert.ok(resumed && resumed.pause === undefined);
-    await vi.waitFor(() => assert.ok(published.slice(beforeResume).some(row => row.revision === resumed.version && row.pause !== 'paused')), { timeout: 5_000, interval: 25 });
-    cleanupSubscription();
-    for (const commandId of [pause, resume].map(card => database.authority.assistantAuthorization.action(card.actionId)?.command.commandId ?? '')) {
-      assert.equal(database.authority.commandAudits.findByCommand(commandId)?.result.state, 'applied', 'one canonical execution per confirmed card');
-    }
-
-    const timekeeper = await client.executeCommand({ commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: 'local-operator', source: 'settings-surface',
-      family: 'settings', type: 'apply-protected-settings', target: { expectedRevision: context.settings.read().record.revision },
-      payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries: { timekeeperName: { set: 'Synthetic Timekeeper' } } } });
-    assert.equal(timekeeper.state, 'applied');
-    const documents = await propose('Separate documents 4502 and 4510', () => ['propose_workflow_start', { workflow: 'separations', entries: ['4502', '4510'] }]);
-    assert.ok(documents.effect === 'workflow-start' && documents.dryRun);
-    assert.deepEqual(documents.startPlan.planned.map(row => row.display), [{ kind: 'document', documentNumber: '4502' }, { kind: 'document', documentNumber: '4510' }]);
-    assert.equal(documents.targetLabel, '2 documents');
-    assert.equal((await decide({ chatId: documents.chatId, actionId: documents.actionId, revision: documents.revision, decision: 'cancel' })).state, 'cancelled');
-
-    const listed = await propose('Look up 10812345 and Jordan Lee', outbound => {
-      const eid = /\[\[E1\.g\d+\]\]/u.exec(outbound)?.[0]; assert.ok(eid);
-      return ['propose_workflow_start', { workflow: 'person-lookup', entries: [eid, 'Jordan Lee'] }];
-    });
-    assert.equal(listed.effect, 'workflow-start'); if (listed.effect !== 'workflow-start') throw new Error('start card required');
-    assert.deepEqual(listed.startPlan.planned.map(row => row.display), [{ kind: 'person', employeeId: '10812345' }, { kind: 'person', name: 'Jordan Lee' }]);
-    assert.equal(listed.targetLabel, '2 people');
-    const record = database.authority.assistantAuthorization.action(listed.actionId); assert.ok(record && record.command.family === 'start');
-    const startPlanId = record.command.family === 'start' ? record.command.target.startPlanId : '';
-    assert.equal((await decide({ chatId: listed.chatId, actionId: listed.actionId, revision: listed.revision, decision: 'cancel' })).state, 'cancelled');
-    assert.equal(database.authority.startPlans.get(startPlanId)?.consumedBy, undefined);
-
-    database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: 'local-operator',
-      dedupeFingerprint: 'd'.repeat(64), trigger: 'storage', channel: 'ping', status: 'unread', snooze: { state: 'not-snoozed' }, title: 'Local title', summary: 'Local summary',
-      links: [{ kind: 'storage', diagnosticFingerprint: 'e'.repeat(64) }], count: 1, version: 1, lastSeenAt: clock.now().toISOString(), createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() })));
-    const notices = await propose('Mark notifications read', () => ['propose_notification_action', { action: 'read', target: 'all' }]);
-    database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: 'local-operator',
-      dedupeFingerprint: 'f'.repeat(64), trigger: 'storage', channel: 'ping', status: 'unread', snooze: { state: 'not-snoozed' }, title: 'Later title', summary: 'Later summary',
-      links: [{ kind: 'storage', diagnosticFingerprint: 'e'.repeat(64) }], count: 1, version: 1, lastSeenAt: clock.now().toISOString(), createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() })));
-    assert.equal((await confirm(notices)).state, 'refused');
-    assert.ok(database.authority.notifications.listByActor('local-operator').every(row => row.status === 'unread'));
+      database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: 'local-operator',
+        dedupeFingerprint: 'd'.repeat(64), trigger: 'storage', channel: 'ping', status: 'unread', snooze: { state: 'not-snoozed' }, title: 'Local title', summary: 'Local summary',
+        links: [{ kind: 'storage', diagnosticFingerprint: 'e'.repeat(64) }], count: 1, version: 1, lastSeenAt: clock.now().toISOString(), createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() })));
+      const notices = await propose('Mark notifications read', () => ['propose_notification_action', { action: 'read', target: 'all' }]);
+      database.withAuthorityTransaction(({ notifications }) => notifications.create(NotificationRecordSchema.parse({ notificationId: randomUUID(), actorId: 'local-operator',
+        dedupeFingerprint: 'f'.repeat(64), trigger: 'storage', channel: 'ping', status: 'unread', snooze: { state: 'not-snoozed' }, title: 'Later title', summary: 'Later summary',
+        links: [{ kind: 'storage', diagnosticFingerprint: 'e'.repeat(64) }], count: 1, version: 1, lastSeenAt: clock.now().toISOString(), createdAt: clock.now().toISOString(), updatedAt: clock.now().toISOString() })));
+      assert.equal((await confirm(notices)).state, 'refused');
+      assert.ok(database.authority.notifications.listByActor('local-operator').every(row => row.status === 'unread'));
+    } finally { cleanupSubscription(); }
   });
 });
