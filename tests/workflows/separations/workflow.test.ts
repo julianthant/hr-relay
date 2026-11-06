@@ -95,7 +95,7 @@ describe("workflow definition public equivalence characterization", () => {
         surface: { shape: "single" },
         enqueue: "reject-active",
 
-        actions: { enabled: ["retry", "recover-run", "cancel", "bump", "rename", "delete"] },
+        actions: { enabled: ["retry", "restart", "recover-run", "cancel", "bump", "rename", "delete"] },
         capabilities: undefined,
         verdicts: [
           { key: "name-differs", label: "Name differs from UCPath", tone: "warning", tag: true },

@@ -562,7 +562,8 @@ with nonempty reasons. An exclusion cannot silently grow into a parent scope.
 ## 7. Desktop parity
 
 `npm run test:parity` runs Playwright through `playwright.parity.config.ts`; the Playwright exit
-code is the result. `npm run test:parity:update` sets `PARITY_UPDATE=1` for explicit update mode. A reference update
+code is the result. `helpers/a11y-evidence-reporter.ts` fails the run when a passed test that declares
+`required-a11y-evidence` lacks the exact attached `.a11y.yml` body or its matching sha256 annotation. `npm run test:parity:update` sets `PARITY_UPDATE=1` for explicit update mode. A reference update
 requires the operator-approved UI change or signed-off served-workflow switch and a separate commit;
 wiring does not refresh references to pass.
 

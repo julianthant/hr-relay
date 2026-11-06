@@ -1,6 +1,6 @@
 # Dashboard parity suite
 
-`npm run test:parity` runs Playwright with `playwright.parity.config.ts`; its exit code is the result. The suite checks the
+`npm run test:parity` runs Playwright with `playwright.parity.config.ts`; its exit code is the result. A reporter fails the run when a test that declares `required-a11y-evidence` lacks its attached tree or matching sha256 annotation. The suite checks the
 presentation contract with mock values, plus keyboard, focus, loading, and interaction behavior.
 It does not prove live workflow or service readiness.
 

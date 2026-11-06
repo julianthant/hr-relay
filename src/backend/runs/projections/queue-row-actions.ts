@@ -156,7 +156,7 @@ export function queueRowActions(
 ): ActionDescriptorWire[] {
   if (policy === undefined) return [];
   const retry = facts.batchMemberRetryAvailable === true && facts.status === "failed" && !facts.isChild && !facts.parkedWrite
-    && policyEnables(policy, "retry", facts)
+    && (policyEnables(policy, "retry", facts) || policyEnables(policy, "restart", facts))
     ? [ActionDescriptorWireSchema.parse({ key: "retry-batch-member", label: "Retry", kind: "command", command: "retry",
       expectedVersion: facts.rowRevision, intent: "neutral", icon: "retry", placement: ["banner"] })] : [];
   const recover = facts.recoverySource !== undefined && !facts.isChild && !facts.parkedWrite
@@ -167,7 +167,7 @@ export function queueRowActions(
         confirmLabel: "Recover", tone: "neutral" } })] : [];
   const rerun = (!facts.crashed || recover.length === 0) && !facts.isChild && !facts.parkedWrite
     && ["done", "failed", "partial"].includes(facts.status)
-    && policyEnables(policy, "retry", facts)
+    && (policyEnables(policy, "retry", facts) || policyEnables(policy, "restart", facts))
     ? [ActionDescriptorWireSchema.parse({ key: "rerun", label: "Rerun", kind: "navigation",
       navigate: { kind: "rerun", expectedVersion: facts.rowRevision },
       intent: "primary", icon: "retry", placement: ["footer", "menu", "data"] })] : [];
