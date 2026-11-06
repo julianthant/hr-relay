@@ -1,6 +1,6 @@
 import { ASSISTANT_UNKNOWN_NOTICE, assistantConfirmRefusal, type AssistantMockProposal } from "../assistant/assistant-model.js";
 import type { useAssistantController } from "../assistant/assistant-controller-model.js";
-import { useLayoutEffect, useRef, type HTMLAttributes } from 'react';
+import { Fragment, useLayoutEffect, useRef, type HTMLAttributes } from 'react';
 import { ArrowDown, Check, History, Paperclip, Plus, Sparkles, X } from 'lucide-react';
 import type { DashboardClient } from '../../client/index.js';
 import { Dialog, DialogContent, DialogClose, Button } from '../../ds/ui.js';
@@ -33,42 +33,32 @@ export function AssistantActionCard({ conversation, onAction, onView, onSignIn, 
 }
 const HIDDEN_PROPOSAL_FACTS = new Set(['Input', 'Runs', 'Expires', 'Browser', 'Captures', 'Configuration', 'Options', 'Mode']);
 const MODE_LABEL = { 'dry-run': 'Dry run', 'read-only': 'Read only', 'local-change': 'Local change' } as const;
-function proposalPeople(proposal: AssistantMockProposal): readonly { name: string; id?: string }[] {
-  if (proposal.startPlan) return [{ name: proposal.person?.name ?? proposal.startPlan.planned[0]?.title ?? '', ...(proposal.person?.employeeId ? { id: proposal.person.employeeId } : {}) }];
-  return proposal.subjects.map(subject => ({ name: subject.name, id: subject.id }));
-}
 /** The served card's planned rows; the server derives each row's display from the planned input. */
 function proposalRows(proposal: AssistantMockProposal): readonly AssistantProposalRow[] {
   const issued = proposal.issued;
   return issued?.effect === 'workflow-start' ? issued.startPlan.planned : issued?.effect === 'run-action' ? [issued.row] : [];
 }
 function ProposalRows({ rows }: { rows: readonly AssistantProposalRow[] }) {
-  const people = rows.flatMap(row => row.display.kind === 'person' ? [row.display] : []);
-  const documents = rows.flatMap(row => row.display.kind === 'document' ? [row.display.documentNumber] : []);
-  const requests = rows.flatMap(row => row.display.kind === 'request' ? [row.title] : []);
-  const column = (values: readonly string[]) => values.map((value, index) => <div key={index}>{value}</div>);
   return <>
-    {people.length > 0 && <><dt>Name</dt><dd>{column(people.map(person => person.name ?? 'Not provided'))}</dd><dt>EID</dt><dd>{column(people.map(person => person.employeeId ?? 'Not provided'))}</dd></>}
-    {documents.length > 0 && <><dt>Document</dt><dd>{column(documents)}</dd></>}
-    {requests.length > 0 && <><dt>Request</dt><dd>{column(requests)}</dd></>}
+    {rows.map((row, index) => <Fragment key={index}>{row.display.kind === 'person'
+      ? <><dt>Name</dt><dd>{row.display.name ?? 'Not provided'}</dd><dt>EID</dt><dd>{row.display.employeeId ?? 'Not provided'}</dd></>
+      : row.display.kind === 'document' ? <><dt>Document</dt><dd>{row.display.documentNumber}</dd></>
+      : <><dt>Request</dt><dd>{row.title}</dd></>}</Fragment>)}
     {rows.length > 1 && <><dt>Total</dt><dd>{rows.length}</dd></>}
   </>;
 }
-function ProposalCard({ proposal, disposition, refusal, onCancel, onConfirm }: { proposal: AssistantMockProposal; disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown'; refusal?: string; onCancel: () => void; onConfirm: () => void }) {
-  const people = proposalPeople(proposal), rows = proposalRows(proposal);
-  const peopleLabel = proposal.issued?.targetLabel ?? (people.length === 1 ? (people[0]?.name ?? '') : `${String(people.length)} people`);
+export function ProposalCard({ proposal, disposition, refusal, onCancel, onConfirm }: { proposal: AssistantMockProposal; disposition: 'review' | 'edited' | 'stale' | 'cancelled' | 'confirmed' | 'confirming' | 'unknown'; refusal?: string; onCancel: () => void; onConfirm: () => void }) {
+  const rows = proposalRows(proposal), only = rows.length === 1 ? rows[0] : undefined;
+  const target = only === undefined ? proposal.issued?.targetLabel : only.display.kind === 'person' ? only.display.name ?? only.display.employeeId ?? only.title : only.display.kind === 'document' ? only.display.documentNumber : only.title;
   if (disposition === 'confirmed' || disposition === 'cancelled') {
     const done = disposition === 'confirmed';
-    return <div className="hub-resolved" aria-label="Resolved proposal"><span>{done ? <Check aria-hidden /> : <X aria-hidden />}</span><span className="hub-resolved-title">{proposal.workflow.label}{proposal.issued !== undefined || people.length ? ` · ${peopleLabel}` : ''}</span><span className="hub-resolved-status" role="status">{done ? (proposal.startPlan ? 'Started' : 'Done') : 'Not started'}</span></div>;
+    return <div className="hub-resolved" aria-label="Resolved proposal"><span>{done ? <Check aria-hidden /> : <X aria-hidden />}</span><span className="hub-resolved-title">{proposal.workflow.label}{rows.length > 0 ? ` · ${target ?? ''}` : ''}</span><span className="hub-resolved-status" role="status">{done ? (proposal.issued?.effect === 'workflow-start' ? 'Started' : 'Done') : 'Not started'}</span></div>;
   }
   const options = [MODE_LABEL[proposal.mode], ...proposal.values.filter(value => !HIDDEN_PROPOSAL_FACTS.has(value.label)).map(value => value.value)];
   const busy = disposition === 'confirming', unknown = disposition === 'unknown';
   return <article className="hub-card hub-proposal" aria-label={`Proposed ${proposal.workflow.label}`}>
     <div className="hub-card-body"><h3>{proposal.workflow.label}</h3><dl className="hub-facts">
-      {rows.length > 0 ? <ProposalRows rows={rows} />
-        : proposal.person ? <><dt>Name</dt><dd>{proposal.person.name ?? 'Not provided'}</dd><dt>EID</dt><dd>{proposal.person.employeeId ?? 'Not provided'}</dd></>
-        : proposal.startPlan ? <><dt>Request</dt><dd>{proposal.startPlan.planned[0]?.title}</dd></>
-        : people.length > 0 && <><dt>Name</dt><dd>{people.map(person => <div key={`${person.name}:${person.id ?? ''}`}>{person.name}</div>)}</dd><dt>EID</dt><dd>{people.map(person => <div key={`${person.name}:${person.id ?? ''}`}>{person.id}</div>)}</dd></>}
+      <ProposalRows rows={rows} />
       <dt>Options</dt><dd>{options.join(' · ')}</dd>
     </dl></div>
     <footer className="hub-card-footer"><span className="hub-footer-status" role={unknown ? 'alert' : 'status'}>{busy ? <span className="hub-spinner" aria-hidden /> : null}{unknown ? ASSISTANT_UNKNOWN_NOTICE : refusal ?? ''}</span><span className="hub-footer-actions">

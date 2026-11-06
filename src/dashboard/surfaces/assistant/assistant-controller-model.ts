@@ -27,7 +27,7 @@ export async function assistantProposalDigest(proposal: AssistantActionProposal)
 }
 const emptyState = (): AssistantState => ({ draft: '', messages: [], sequence: 0, turn: { state: 'idle' } });
 
-function presentResult(result: AssistantResult, requestId: number, prompt: string): { message: AssistantMessage; proposal?: AssistantMockProposal; disposition?: "unknown" } {
+export function presentResult(result: AssistantResult, requestId: number, prompt: string): { message: AssistantMessage; proposal?: AssistantMockProposal; disposition?: "unknown" } {
   const id = `assistant-${requestId}`;
   switch (result.state) {
     case 'answered': return { message: { id, role: 'assistant', text: result.text } };
@@ -35,15 +35,11 @@ function presentResult(result: AssistantResult, requestId: number, prompt: strin
     case 'unknown':
     case 'action-proposal': {
       const unknown = result.state === 'unknown', p = result.state === 'unknown' ? result.action : result.proposal;
-      const start = p.effect === 'workflow-start' ? p : undefined, rows = start?.startPlan.planned ?? (p.effect === 'run-action' ? [p.row] : []);
-      const only = rows.length === 1 ? rows[0]?.display : undefined;
+      const start = p.effect === 'workflow-start' ? p : undefined;
       return { ...(unknown ? { disposition: 'unknown' as const } : {}), message: { id, role: 'assistant', text: unknown ? 'Action outcome is unknown. Do not retry this action.' : 'Review this proposal. No action has been applied.' }, proposal: {
         id: p.actionId, revision: String(p.revision), prompt, issued: p, action: { chatId: p.chatId, actionId: p.actionId, revision: p.revision }, expiresAt: p.expiresAt,
         workflow: { id: p.effect === 'local-write' ? 'notification' : p.workflowId, label: p.label, version: String(p.revision) },
-        subjects: rows.length > 1 ? rows.map(row => ({ id: row.display.kind === 'person' ? row.display.employeeId ?? '' : row.display.kind === 'document' ? row.display.documentNumber : '', name: row.display.kind === 'person' ? row.display.name ?? row.title : row.title })) : [],
         mode: start === undefined ? 'local-change' : start.dryRun ? 'dry-run' : 'read-only',
-        ...(start === undefined ? {} : { startPlan: start.startPlan }),
-        ...(only?.kind === 'person' ? { person: { ...(only.name === undefined ? {} : { name: only.name }), ...(only.employeeId === undefined ? {} : { employeeId: only.employeeId }) } } : {}),
         values: start !== undefined ? [
           { label: 'Input', value: start.startPlan.planned.map(run => [run.title, run.subtitle].filter(Boolean).join(' · ')).join(', ') },
           { label: 'Runs', value: String(start.startPlan.planned.length) },
@@ -51,7 +47,7 @@ function presentResult(result: AssistantResult, requestId: number, prompt: strin
           { label: 'Browser', value: start.startPlan.browserMode === 'headed' ? 'Headed' : 'Headless' },
           { label: 'Captures', value: start.startPlan.captureBrowserScreenshots ? 'On' : 'Off' },
           { label: 'Expires', value: p.expiresAt },
-        ] : p.effect === 'run-action' ? [{ label: 'Run', value: p.row.title }, { label: 'Action', value: p.action === 'pause' ? 'Pause' : p.action === 'resume' ? 'Resume' : 'Cancel' }, { label: 'Expires', value: p.expiresAt }]
+        ] : p.effect === 'run-action' ? [{ label: 'Action', value: p.action === 'pause' ? 'Pause' : p.action === 'resume' ? 'Resume' : 'Cancel' }, { label: 'Expires', value: p.expiresAt }]
           : [{ label: 'Notification', value: p.targetLabel }, { label: 'Expires', value: p.expiresAt }],
         effects: [start !== undefined ? 'Starts the reviewed plan after confirmation. No HR transaction is submitted.' : p.effect === 'run-action' ? 'Changes only this run in the local queue.' : 'Changes only the bound current local notifications. No HR transaction is submitted.'], stopBefore: []
       } };

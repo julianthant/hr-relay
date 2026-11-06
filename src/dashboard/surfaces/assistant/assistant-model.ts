@@ -23,14 +23,11 @@ export interface AssistantMockProposal {
   /** The exact served proposal; its digest is the Confirm evidence. */
   readonly issued?: AssistantActionProposal;
   readonly action?: AssistantActionIdentity;
-  readonly startPlan?: Extract<AssistantActionProposal, { effect: 'workflow-start' }>['startPlan'];
-  readonly person?: { readonly name?: string; readonly employeeId?: string };
   readonly expiresAt?: string;
   readonly id: string;
   readonly revision: string;
   readonly prompt: string;
   readonly workflow: { readonly id: string; readonly label: string; readonly version: string };
-  readonly subjects: readonly { readonly id: string; readonly name: string }[];
   readonly values: readonly { readonly label: string; readonly value: string }[];
   readonly mode: 'dry-run' | 'read-only' | 'local-change';
   readonly effects: readonly string[];

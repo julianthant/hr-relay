@@ -70,7 +70,7 @@ it('confirms the actual issued action identity once and keeps a lost response un
         if (lost) throw new Error('synthetic transport lost'); return { state: 'applied', actionId: identity.actionId }; } }), { authority: 'current' });
     c.action({ type: 'edit', value: 'mark notifications read' }); c.action({ type: 'send' }); await Promise.resolve(); await Promise.resolve();
     const initial = c.snapshot().turn; assert.equal(initial.state, 'proposal');
-    if (initial.state === 'proposal') { assert.equal(initial.proposal.mode, 'local-change'); assert.deepEqual(initial.proposal.subjects, []); }
+    if (initial.state === 'proposal') { assert.equal(initial.proposal.mode, 'local-change'); assert.deepEqual(initial.proposal.issued, actionProposal.proposal); }
     c.action({ type: 'confirm' }); c.action({ type: 'confirm' });
     await vi.waitFor(() => { const settled = c.snapshot().turn; assert.ok(settled.state === 'proposal' && settled.disposition === (lost ? 'unknown' : 'confirmed')); });
     c.action({ type: 'confirm' }); c.action({ type: 'retry' }); assert.equal(calls, 1);
@@ -253,8 +253,7 @@ it('binds selected-run workflow proposals to the current selection and confirms 
       { label: 'Runs', value: '1' }, { label: 'Mode', value: 'Live read' },
       { label: 'Browser', value: 'Headed' }, { label: 'Captures', value: 'On' },
     ]);
-    assert.ok(proposal.effect === 'workflow-start');
-    assert.deepEqual(turn.proposal.startPlan, proposal.startPlan);
+    assert.deepEqual(turn.proposal.issued, proposal);
   }
   c.action({ type: 'confirm' }); await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(confirms, 1);

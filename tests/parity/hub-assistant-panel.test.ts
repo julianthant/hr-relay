@@ -1,8 +1,9 @@
 import { expect } from '@playwright/test';
 import { test } from "./helpers/fixtures.js";
 import { z } from 'zod';
+import { ASSISTANT_UNKNOWN_NOTICE } from '../../src/dashboard/surfaces/assistant/assistant-model.js';
 import { ERROR_CATALOG } from '../../src/models/failures/error-catalog.js';
-import { ASSISTANT_START_PROPOSAL } from '../support/fixtures/dashboard/assistant-start.js';
+import { ASSISTANT_PAUSE_PROPOSAL, ASSISTANT_RERUN_PROPOSAL, ASSISTANT_SEPARATIONS_MULTI_PROPOSAL, ASSISTANT_START_PROPOSAL } from '../support/fixtures/dashboard/assistant-start.js';
 import { createServer as createHttpServer } from 'node:http';
 import { resolve } from 'node:path';
 import { preview, type PreviewServer } from 'vite';
@@ -142,7 +143,7 @@ test('served local action uses the existing card and keeps lost confirmation non
     const confirm = card.getByRole('button', { name: 'Confirm', exact: true }); await expect(confirm).toBeEnabled();
     await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'lost' : 'ready'}.png`) });
     await confirm.click();
-    if (lost) { await expect(card).toContainText('Action outcome is unknown. Do not retry'); await expect(confirm).toBeDisabled(); }
+    if (lost) { await expect(card).toContainText(ASSISTANT_UNKNOWN_NOTICE); await expect(confirm).toBeDisabled(); }
     else await expect(page.getByLabel('Resolved proposal')).toContainText('Done');
     await expect(page.locator('body')).toHaveAttribute('data-decisions', '1');
     await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'unknown' : 'complete'}.png`) });
@@ -176,6 +177,9 @@ const SERVED_SCENES = {
   'limit-reached': { account: { ...CONNECTED, planUsage: 'limit-reached' }, strip: /Open Settings/ },
   proposal: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL } },
   'start-proposal': { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL } },
+  'rerun-proposal': { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_RERUN_PROPOSAL }, facts: [['Name', 'Avery Sample'], ['EID', '10101010'], ['Options', 'Read only']] },
+  'pause-proposal': { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL }, facts: [['Name', 'Avery Sample'], ['EID', '10101010'], ['Options', 'Local change · Pause']] },
+  'separations-multi-proposal': { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_SEPARATIONS_MULTI_PROPOSAL }, facts: [['Document', '4501'], ['Document', '4502'], ['Total', '2'], ['Options', 'Read only']] },
   confirmed: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL }, confirm: 'applied' },
   unknown: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL }, confirm: 'lost' },
   refused: { account: CONNECTED, respond: 'fail' },
@@ -197,6 +201,7 @@ for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Obje
       if ('confirm' in spec) { await panel.getByRole('button', { name: 'Confirm', exact: true }).click(); await expect(panel.getByLabel(spec.confirm === 'lost' ? 'Proposed Mark a notification read' : 'Resolved proposal')).toBeVisible(); }
       else if (spec.respond === 'fail') await expect(panel.getByText(/Assistant verification failed/)).toBeVisible();
       else await expect(panel.getByRole('article')).toBeVisible();
+      if ('facts' in spec) expect(await panel.locator('.hub-facts dt').evaluateAll(terms => terms.map(term => [term.textContent, term.nextElementSibling?.textContent]))).toEqual(spec.facts);
     }
     const boxes = await panel.locator('.hub-toolbar').first().locator('> *').evaluateAll(nodes => nodes.map(node => { const box = node.getBoundingClientRect(); return [box.left, box.right]; }));
     boxes.forEach((box, index) => { if (index > 0) expect(box[0]).toBeGreaterThanOrEqual(boxes[index - 1][1] - 0.5); });
