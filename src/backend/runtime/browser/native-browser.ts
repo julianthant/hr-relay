@@ -63,7 +63,7 @@ const PROFILE_IN_USE_MESSAGES = ["Failed to create a ProcessSingleton for your p
 async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["launch"]>[0]): Promise<BrowserContext> {
   const timeoutMs = z.number().positive().parse(input.timeoutMs);
   const child = spawn(chromium.executablePath(), ["--remote-debugging-pipe",
-    `--user-data-dir=${input.profileDirectory}`, "--no-first-run", "--no-default-browser-check",
+    `--user-data-dir=${input.profileDirectory}`, "--no-first-run", "--no-default-browser-check", "--no-sandbox",
     "--enable-automation", "--enable-unsafe-extension-debugging", "--disable-dev-shm-usage",
     "--disable-background-networking", "--disable-component-update", "--disable-component-extensions-with-background-pages", "--disable-breakpad", "--disable-sync", "--disable-default-apps",
     "--no-service-autorun", "--password-store=basic", "--use-mock-keychain",

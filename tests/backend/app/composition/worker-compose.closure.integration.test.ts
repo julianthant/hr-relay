@@ -7,6 +7,7 @@ import { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/author
 import { chromium } from "playwright";
 import { it, vi } from "vitest";
 import { composeWorkerRuntime, WorkerLaunchUncertainError } from "../../../../src/backend/app/composition/worker-compose.js";
+import { DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { BrowserRootsSchema } from "../../../../src/backend/storage/browser-root-contract.js";
 import { hasUnprovedSourceClosure } from "../../../../src/backend/storage/source-closure.js";
 import { withReadonlyAuthoritySnapshot } from "../../../../src/backend/storage/sqlite/readonly-authority-snapshot.js";
@@ -93,14 +94,17 @@ for (const { mode: failure, name } of [
     const queued = context.database.withAuthorityTransaction(repositories => repositories.runs.enqueue({ ...run,
       envelope: { ...run.envelope, configSnapshotId: active.configSnapshotId, configFingerprint: active.configFingerprint } }));
     assert.equal(queued.state, "inserted");
-    const nativeLaunch = chromium.launchPersistentContext.bind(chromium);
+    const nativeLaunch = DEFAULT_BROWSER_LAUNCHER.launch.bind(DEFAULT_BROWSER_LAUNCHER);
+    vi.spyOn(DEFAULT_BROWSER_LAUNCHER, "launch").mockImplementation(input => {
+      if (input.ownedProcess !== undefined) {
+        assert.equal(input.nativeOnly, true); assert.equal(input.headless, true);
+        assert.equal(input.timeoutMs, context.resolveSettings(context.settings.read().record.settings).config.timeouts.sessionAcquireMs);
+        probes += 1;
+      }
+      return nativeLaunch(input);
+    });
     vi.spyOn(chromium, "launchPersistentContext").mockImplementation((directory, options) => {
       assert.deepEqual(options?.args, ["--disable-extensions"]);
-      if (options?.timeout !== undefined) {
-        assert.equal(options.timeout, context.resolveSettings(context.settings.read().record.settings).config.timeouts.sessionAcquireMs);
-        probes += 1;
-        return nativeLaunch(directory, options);
-      }
       beforeLaunch = context.database.authority.workerLeases.get("person-lookup-worker-1"); assert.ok(beforeLaunch);
       launches += 1; launchedDirectory = directory; launchFailure = Promise.reject(new Error("uncertain launch failure")); return launchFailure;
     });

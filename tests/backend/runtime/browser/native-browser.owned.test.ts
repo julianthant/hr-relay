@@ -41,6 +41,7 @@ for (const stopped of [true, false]) it(`uses private pipes and requires positiv
     assert.ok(owned); assert.ok(transport);
     const launch = launches.at(-1); assert.ok(launch);
     assert.equal(launch.executable, chromium.executablePath());
+    assert.ok(launch.args.includes("--no-sandbox"));
     assert.ok(launch.args.includes("--remote-debugging-pipe"));
     assert.ok(launch.args.includes("--no-startup-window"));
     assert.ok(!launch.args.some(value => value.startsWith("--remote-debugging-port")));
@@ -78,6 +79,7 @@ for (const exits of [false, true]) it(`ordinary shutdown sends Browser.close wit
     if (exits) await process.stop(50, true); else await assert.rejects(process.stop(50, true), /DUO_SETUP_STOP_FAILED/);
     assert.deepEqual(calls, ["Browser.setDownloadBehavior", "Browser.close"]); assert.equal(process.exited(), exits);
     const args = launches.at(-1)?.args; assert.ok(args); assert.ok(args.includes("--disable-extensions")); assert.ok(args.includes("--use-mock-keychain"));
+    assert.ok(args.includes("--no-sandbox"));
     assert.equal(args.some(arg => arg.startsWith("--load-extension=")), false);
   } finally { connect.mockRestore(); kill.mockRestore(); write.destroy(); read.destroy(); }
 });
