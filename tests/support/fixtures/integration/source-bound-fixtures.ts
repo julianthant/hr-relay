@@ -4,7 +4,7 @@ import { readTimelineRecords } from "../../../../src/backend/storage/events/time
 import type { TaskStoreRegistry } from "../../../../src/workflow-kit/task-registry.js";
 import type { ProtectedSecretSource } from "../../../../src/models/config/secrets.js";
 import type { WriteFixtureWorld } from "../write-sequencer-fixtures.js";
-import { workflowProjections, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
+import { bindWorkflowDelegationTargets, workflowProjections, type AnyWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
 import { testAdmittedWorker } from '../run-lifecycle-fixtures.js';
 import assert from "node:assert/strict";
 
@@ -38,6 +38,7 @@ const retainedSourceBoundFixtureOwners = new Set<object>();
 export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = writeFixtureDescriptor, customStores?: (world: WriteFixtureWorld) => TaskStoreRegistry, initializeRuntime: (database: AuthorityDatabase, clock: Clock) => void = seedSyntheticRuntimeConfig, protectedSecrets?: ProtectedSecretSource,
   profileFixture: () => Promise<BoundProfileStorageFixture> = createBoundProfileFixture,
   publisherFactory?: (clock: Clock, workerId: string) => ConfirmedActionPublisher, childDescriptors: readonly AnyWorkflowDescriptor[] = []) {
+  bindWorkflowDelegationTargets([descriptor, ...childDescriptors]);
   const held: { profile?: BoundProfileStorageFixture; database?: AuthorityDatabase; worker?: ReturnType<typeof testAdmittedWorker>; primary?: unknown } = {};
   retainedSourceBoundFixtureOwners.add(held);
   try {
@@ -151,7 +152,10 @@ export async function sourceBoundHarness(descriptor: AnyWorkflowDescriptor = wri
   let disposeAttempted = false, disposeFailure: Error | undefined;
   retainedSourceBoundFixtureOwners.delete(held);
   return { profile, publisher, authorityPath:profile.path,database, get descriptor() { return registeredDescriptor; },
-    registerDescriptor(next: AnyWorkflowDescriptor) { registeredDescriptor = next; }, clock, ids, lifecycleIds, planIds, get queueRoots() {
+    registerDescriptor(next: AnyWorkflowDescriptor) {
+      bindWorkflowDelegationTargets([next, ...childDescriptors]);
+      registeredDescriptor = next;
+    }, clock, ids, lifecycleIds, planIds, get queueRoots() {
     return readTimelineRecords(database.authority.timelineEvents).records.flatMap((record) =>
       record.payload.kind === "span" && record.payload.event.t === "run.queued" ? [record.payload.event] : []);
   }, lifecycle, kernel, planner, world, stores, manager,

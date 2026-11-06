@@ -1,7 +1,7 @@
 import type { EvidenceSchemaReader } from "../../../models/storage/evidence-schema-admission.js";
 import { checkpointRecordKey } from "../../../models/workflow/checkpoint.js";
 import { AuthenticatedRunContinuation } from "../../storage/sqlite/run-continuation-delegation.js";
-import { continuationEvidenceDigest } from "../../storage/sqlite/run-continuation.js";
+import { readRunCheckpoint, continuationEvidenceDigest, RunContinuationRefusedError } from "../../storage/sqlite/run-continuation.js";
 import { authenticateWorkbookReferenceChoice, authenticateWorkbookReferenceExecution } from "../workbooks.js";
 import type { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor, workflowDryRunSupport, workflowPlanning, workflowProjections, workflowTerminalResultExecution } from "../../../workflow-kit/workflow.js";
@@ -20,7 +20,7 @@ import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { DelegationReadReuseSchema, DelegationManifestSchema, DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
 import { RunLifecycleCommandAuditRecordSchema, RunLifecycleCommandRecordSchema, RunLifecycleCommandFenceSchema, RunLifecycleCommandOperationSchema } from "../../../rules/commands/commands.js";
 import { DelegationAdmissionRequestSchema, DelegationInvocationRequestSchema, DelegationRefreshRequestSchema } from "../../storage/sqlite/delegation-contracts.js";
-import { authenticateOriginalDelegationGroup, currentDelegationManifests, readDelegationScopeEvidence } from "../../storage/sqlite/delegation-authority.js";
+import { authenticateOriginalDelegationGroup, currentDelegationManifests, readDelegationScopeEvidence, readManualDelegationResume, delegationAccountingExecution } from "../../storage/sqlite/delegation-authority.js";
 import { authenticateDelegationRefresh } from "../../storage/sqlite/delegation-refresh.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import type { ChildRunBatchContext, ChildRunContext } from "../../runtime/execution/run-executor.js";
@@ -33,7 +33,6 @@ import { canonicalDelegationChild, planCanonicalDelegation } from "./delegation-
 import { isLiveWorker } from "../../../models/run/worker.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import { delegatedCandidateEligible } from "./run-claim-admission.js";
-import { readRunCheckpoint } from "../../runtime/checkpoints/run-checkpoint-reader.js";
 import { CheckpointExpectationSchema, loadCheckpoint, resolveFreshnessBound } from "../../../models/workflow/checkpoint.js";
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
 import type { BuildManifest } from "../../../models/workflow/build-manifest.js";
@@ -233,7 +232,18 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
               && (old.checkpoint.runId !== parent.envelope.runId || old.checkpoint.claimGeneration <= root.claimGeneration);
           });
         }
-        if (sameScope && !refreshedCheckpoint) {
+        let accountingReuse = false;
+        if (readManualDelegationResume(repositories, parent) !== undefined) {
+          const accounting = delegationAccountingExecution(repositories, descriptor, parent);
+          if (accounting?.plan.joinNodeId === context.node.id) {
+            accounting.assertCurrent();
+            for (const entry of approvals) if ("checkpoint" in entry && entry.checkpoint !== undefined
+              && accounting.plan.retain.includes(String(entry.nodeId))) accounting.assertRetained(entry.checkpoint);
+            if (!sameScope) throw new RunContinuationRefusedError("delegation-accounting-scope-unavailable");
+            accountingReuse = true;
+          }
+        }
+        if (sameScope && (!refreshedCheckpoint || accountingReuse)) {
           retainedInvocation = previous.invocation;
           invocationCommandId = previous.invocation.commandId;
           revision = previous.invocation.revision;

@@ -133,7 +133,7 @@ const sharedConfig = defineConfig({
         "src/backend/runtime/writes/operation-action-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/writes/receipt-derivation-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/gates/repeat-proof.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/checkpoints/run-checkpoint-reader.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/storage/sqlite/run-continuation.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/execution/run-executor.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/policies/durable-intent.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/policies/idle-claim.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,

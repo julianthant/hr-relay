@@ -8,6 +8,7 @@ retainedRunProtectedBindings,
 valueFreeProtectedData,
 valueFreeProtectedInput
 } from "../../../src/models/write-safety/protected-input.js";
+import { canonicalJsonStringify } from "../../../src/rules/validation/canonical-json.js";
 import { SeparationWritePlanSchema } from "../../../src/rules/separations/write-plan.js";
 
 const timekeeper = ProtectedInputBindingSchema.parse({kind:"protected-store",inputPath:"timekeeperName",name:"timekeeperName",valueId:"10000000-0000-4000-8000-000000000001"});
@@ -71,4 +72,27 @@ describe("current private protected origins and public projections", () => {
     assert.deepEqual(valueFreeProtectedData({timekeeper:{name:"Private signer",comments:"Private note"}}),{timekeeper:{name:marker,comments:{state:"withheld-protected-input"}}});
     assert.deepEqual(valueFreeProtectedData({ordinaryOutput:"Current fact"}),{ordinaryOutput:"Current fact"});
   });
+  it("projects nested arrays with exact protected markers and canonical bytes", () => {
+    const input = { batches: [[{ protectedBindings: [timekeeper, document], rows: [[{
+      timekeeperName: "Synthetic signer", documentNumber: "Synthetic document", timekeeperComments: "Checked Synthetic signer",
+      idempotencyKeyDigest: "private digest", ordinary: [null, false, 17, "Current fact"],
+    }]] }]], retained: [{ timekeeperName: marker }] };
+    const before = structuredClone(input);
+    const expected = { batches: [[{ protectedBindings: [timekeeper, document], rows: [[{
+      timekeeperName: timekeeper, documentNumber: document, timekeeperComments: "Checked <protected timekeeperName>",
+      idempotencyKeyDigest: "withheld-protected-input", ordinary: [null, false, 17, "Current fact"],
+    }]] }]], retained: [{ timekeeperName: marker }] };
+    const projected = valueFreeProtectedData(input);
+    assert.deepEqual(projected, expected);
+    assert.equal(canonicalJsonStringify(projected), canonicalJsonStringify(expected));
+    assert.deepEqual(valueFreeProtectedData(projected), expected);
+    assert.deepEqual(input, before);
+  });
+  it("refuses malformed JSON and protected bindings within nested arrays", () => {
+    for (const invalid of [undefined, NaN, Infinity, 1n, () => "invalid"])
+      assert.throws(() => valueFreeProtectedData({ batches: [[{ values: [invalid] }]] }));
+    assert.throws(() => valueFreeProtectedData({ batches: [[{ protectedBindings: [{ ...document, inputPath: "emplId" }],
+      values: [{ documentNumber: "Synthetic document" }] }]] }));
+  });
+
 });

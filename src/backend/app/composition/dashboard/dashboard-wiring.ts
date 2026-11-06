@@ -158,6 +158,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   });
   startupCleanups.push(() => applicationLifecycle.dispose());
   const kernel = createCommandKernel({
+    ensureReceipt: runId => trustReads.trust.ensureReceipt(runId),
     readableDescriptors: { resolve: workflowId => READABLE_WORKFLOW_MODULES.find(module => module.descriptor.id === workflowId)?.descriptor },
     workbookRows: createRunWorkbookService({ database, clock }),
     applicationQuitAvailable: true,
