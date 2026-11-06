@@ -15,7 +15,6 @@ import type { AssistantPorts } from "../surfaces/shell/assistant-panel-model.js"
 import { HubShell } from "../surfaces/shell/hub-shell.js";
 import { useHubMotion } from "../ds/theme/motion.js";
 import "../ds/theme/hub-theme.css";
-import { commandSaveState, settingsSaveProblem } from "../surfaces/settings/editor/settings-attempt-model.js";
 import { useInboxWiring } from "../state/inbox-wiring-adapter.js";
 import { useSearchWiring } from "../state/search-wiring-adapter.js";
 import { useQueueWiring } from "../state/queue-wiring-adapter.js";
@@ -488,9 +487,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
     }
     if (outcome.kind === "confirmed") return;
     const original = executor.retainedAttempts().find(attempt => attempt.request.commandId === outcome.commandId)?.request;
-    const notice = original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")
-      ? settingsSaveProblem(commandSaveState(outcome), original.type === "apply-protected-settings") : undefined;
-    const toastId = toast(notice ?? { tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
+    if (original?.family === "settings" && (original.type === "apply-settings" || original.type === "apply-protected-settings")) return; // SettingsSaveFeedback shows these
+    const toastId = toast({ tone: outcome.kind === "uncertain" || outcome.kind === "conflict" ? "warning" : "danger", title: "Command result", description: outcome.feedback.text });
     if (outcome.kind === "uncertain") unknownWarnings.current.set(outcome.commandId, toastId);
   }, [executor, toast, dismiss]);
   const commandBinding = useMemo(() => Object.freeze({ authority, executor, scope: commandScope, feedback: commandFeedback }), [authority, executor, commandScope, commandFeedback]);
@@ -1119,6 +1117,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & { readonly request: Retained
         {/* Show unreachable authority on every view; backup warnings do not stop work. */}
         {}
         <StorageNotice
+          key={JSON.stringify(route)}
           storage={boot.storage}
           onOpenSettings={openSettings}
         />

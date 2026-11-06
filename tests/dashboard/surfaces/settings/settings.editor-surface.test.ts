@@ -121,6 +121,7 @@ describe("editable Settings surface", () => {
     await act(async () => overlayButton("Keep editing").click());
     assert.equal(input.value, "synthetic-local");
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 1250)); });
+    assert.match(host.textContent ?? "", /Credentials save unconfirmed.*Your draft is retained\./u);
     assert.equal(button("Retry exact attempt").disabled, false);
     assert.equal(transport.authority.credentials.read().revision, 2, "the lost response retains an actually stored protected write");
     await act(async () => guard?.(() => { exited += 1; }));

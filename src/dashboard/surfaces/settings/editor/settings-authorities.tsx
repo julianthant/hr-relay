@@ -45,7 +45,7 @@ function CredentialsSection({ editor, profileName }: { editor: Editor; profileNa
     <PageHeading title="Credentials" description="Sign-in details and protected workflow configuration." />
     {editor.readProblem !== undefined && <Notice sticky tone="warning" title="Current values unavailable" description={editor.readProblem} action={{ label: "Refresh", onAction: editor.reload }} />}
     {authority.state === "unknown" && <Notice sticky tone="warning" title="Credentials unavailable" action={{ label: "Retry", onAction: editor.reload }} />}
-    <SettingsSaveFeedback save={credentials.save} retry={credentials.retry} retryConflict={credentials.submit} />
+    <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />
     <Form validationBehavior="aria" className="settings-compact-form" ref={settingsFocus} onSubmit={event => { event.preventDefault(); credentials.submit(); }}>
       <BodySection title="UCPath sign-in">
         <FormGroup label="UCPath sign-in">

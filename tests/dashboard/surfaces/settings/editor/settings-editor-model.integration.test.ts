@@ -45,6 +45,7 @@ describe("typed Settings catalog controls", () => {
       if (failure === "intervening-writer") {
         assert.deepEqual(h.controller().draft["actor.label"], { kind: "set", raw: "Unconfirmed draft" });
         assert.equal(h.authority.read().revision, original.revision + 2);
+        assert.match(h.host.textContent ?? "", /Settings changed/u);
         const editor = h.controller().editor; assert.equal(editor.state, "loaded");
         if (editor.state !== "loaded") throw new Error("current settings unavailable");
         assert.equal(editor.document.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "actor.label")?.effectiveValue, "Later writer");

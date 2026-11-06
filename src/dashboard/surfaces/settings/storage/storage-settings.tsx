@@ -134,7 +134,8 @@ export function StorageSection({ storage, onHistoryCleared }: { storage: Storage
         {doctor.state === "running" ? "Running checks…" : doctor.state === "reading" ? "Loading last check…" : report === undefined ? "Run storage checks" : "Run checks again"}
       </Button>
     } />
-    <BodySection title="Status">
+    {storage.authority === "healthy" && authority !== "healthy" && <Notice sticky tone="danger" title="Data store unavailable" description="Review the storage checks." />}
+    {(authority === "healthy" || report !== undefined || doctor.state === "reading") && <BodySection title="Status">
       {doctor.state === "reading" && <span role="status" aria-label="Loading storage checks" className="sr-only">Loading storage checks</span>}
       {authority !== "healthy" && report !== undefined && <p className="diagnostic-status">Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></p>}
       {authority === "healthy"
@@ -144,8 +145,8 @@ export function StorageSection({ storage, onHistoryCleared }: { storage: Storage
               {pending ? show && <SkeletonText className="w-40" /> : report === undefined ? <span>Not checked</span> : <span>Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></span>}
             </span>} />
         </FormGroup>
-        : <Notice sticky tone="danger" title="Data store unavailable" description="Review the storage checks." />}
-    </BodySection>
+        : null}
+    </BodySection>}
       {doctor.state === "failed" && <Notice tone="danger" title="Storage checks could not finish" description={ERROR_CATALOG.STORAGE_DOCTOR_FAILED.text} />}
       <BodySection title="Data store and recovery">
         <FormGroup label="Storage health checks"><div role="list">

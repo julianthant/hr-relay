@@ -120,7 +120,7 @@ describe("independent protected Settings surface", () => {
     const before = structuredClone(h.controller().protectedEditor.draft);
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "conflict"); assert.deepEqual(h.controller().protectedEditor.draft, before); assert.equal(h.commands.length, 1);
-    assert.match(h.host.textContent ?? "", /Retry edit/u); // the conflict message itself is a toast
+    assert.match(h.host.textContent ?? "", /Credentials changed.*Your draft is retained\. Review the current values before retrying\./u);
     const current = h.controller().editor;
     assert.equal(current.state, "loaded");
     if (current.state !== "loaded" || current.document.protectedSettings.state !== "available") throw new Error("protected-conflict-readback-unavailable");
@@ -197,15 +197,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { SettingsSaveState } from "../../../../src/dashboard/surfaces/settings/editor/settings-attempt-model.js";
 import { SettingsSaveFeedback } from "../../../../src/dashboard/surfaces/settings/editor/settings-feedback.js";
 it.each([
-  [{ state: "conflict", message: "Current revision changed" }, "Retry edit"],
-  [{ state: "unconfirmed", message: "Readback unavailable" }, "Retry exact attempt"],
-  [{ state: "refused", message: "Draft refused" }, "Retry edit"],
-  [{ state: "applied", replayed: false }, "Saved"],
-  [{ state: "applied", replayed: true }, "Already saved"],
-] satisfies [SettingsSaveState, string][])("shows %j as its retry control or saved status, leaving the outcome to the toast", (save, shown) => {
-  const html = renderToStaticMarkup(createElement(SettingsSaveFeedback, { save, retry: () => {}, retryConflict: () => {} }));
-  assert.ok(html.includes(shown));
-  assert.doesNotMatch(html, /Readback unavailable|Current revision changed|Draft refused/u);
+  [{ state: "conflict", message: "Current revision changed" }, "Credentials changed", "Retry edit"],
+  [{ state: "unconfirmed", message: "Readback unavailable" }, "Credentials save unconfirmed", "Retry exact attempt"],
+  [{ state: "refused", message: "Draft refused" }, "Credentials weren't saved", "Retry edit"],
+  [{ state: "applied", replayed: false }, "Saved", ""],
+  [{ state: "applied", replayed: true }, "Already saved", ""],
+] satisfies [SettingsSaveState, string, string][])("preserves the feedback title and retry affordance for %j", (save, title, retry) => {
+  const html = renderToStaticMarkup(createElement(SettingsSaveFeedback, { save, protectedStore: true, retry: () => {}, retryConflict: () => {} }));
+  assert.ok(html.includes(title));
+  assert.equal(html.includes(retry || "Retry"), retry !== "");
 });
 
 it("retains applied feedback until the next draft changes its state", async () => {
