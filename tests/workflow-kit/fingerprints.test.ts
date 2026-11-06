@@ -3,8 +3,6 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { taskId } from "../../src/rules/identity/ids.js";
 import { taskImplFingerprint, workflowContractFingerprint } from "../../src/workflow-kit/fingerprints.js";
-import { compileWorkflow, isCompiledWorkflowContract } from "../../src/workflow-kit/workflow-definition.js";
-import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
 
 const Input = z.strictObject({ eid: z.string() });
 const Output = z.strictObject({ found: z.boolean() });
@@ -32,11 +30,5 @@ describe("contract fingerprints", () => {
     ]) assert.notEqual(workflowContractFingerprint(changed), original);
     assert.notEqual(taskImplFingerprint({ ...read, output: z.strictObject({ found: z.string() }) }), taskImplFingerprint(read));
     assert.notEqual(taskImplFingerprint({ ...read, effect: "prepare" as const }), taskImplFingerprint(read));
-  });
-
-  it("registers each compiled contract for process-local lookups", () => {
-    const { descriptor } = compileWorkflow(personLookupWorkflow);
-    assert.equal(isCompiledWorkflowContract("person-lookup", descriptor.contractFingerprint), true);
-    assert.equal(isCompiledWorkflowContract("person-lookup", workflowContractFingerprint(base)), false);
   });
 });

@@ -1237,7 +1237,7 @@ export class RunRecordService {
       if (request.runtimeConfig.configFingerprint !== run.envelope.configFingerprint) return refused({ reason: "runtime-stale" });
       const plan = request.continuationOwner === undefined ? planRunRecovery(repositories, descriptor, run, request.sourceCommandId, this.dependencies.database.evidenceSchemaHash?.bind(this.dependencies.database))
         : planDelegatedRetry(repositories, descriptor, run, request.sourceCommandId, request.continuationOwner, this.dependencies.database.evidenceSchemaHash?.bind(this.dependencies.database));
-      assertOcrRecoverySnapshotCurrent(repositories, this, run);
+      assertOcrRecoverySnapshotCurrent(repositories, this, run, workflowId => this.dependencies.resolveDescriptor?.(workflowId));
       const continuation = plan.continuation;
       if (descriptor.enqueue === "reject-active" && repositories.runs.listByItem({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,

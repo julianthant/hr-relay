@@ -15,7 +15,6 @@ import { deriveStableUuid,lifecycleCommandId } from "../../../rules/identity/ide
 import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { sha256Hex } from "../../../rules/validation/sha256.js";
-import { isCompiledWorkflowContract } from "../../../workflow-kit/workflow-definition.js";
 import { authorizeWorkflowDelegationRefresh, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { OcrReviewRefusedError } from "../../processing/ocr/review-authority.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
@@ -93,7 +92,7 @@ export function ocrChildRetryAvailable(repositories: AuthorityRepositories, read
   if (member === undefined) return false;
   assertOcrChildRetryCurrent(repositories, reader, child);
   return member.dependency.state === "failed" && childTerminalSettlement(child, repositories)?.state === "failed"
-    && isCompiledWorkflowContract(child.envelope.workflow, child.envelope.contractFingerprint);
+    && resolveDescriptor(child.envelope.workflow)?.contractFingerprint === child.envelope.contractFingerprint;
 }
 
 export function assertOcrReviewChildrenCurrent(repositories: AuthorityRepositories, runId: string, seed: OcrReviewRevision["seed"],
@@ -266,28 +265,32 @@ export function readOcrSnapshotsAuthority(repositories: AuthorityRepositories, r
   });
 }
 
-export function requireCurrentOcrSnapshot(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, candidate: unknown) {
+/** `resolveDescriptor` is the registry the caller acts under; only its current contract authorizes a snapshot. */
+export function requireCurrentOcrSnapshot(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, candidate: unknown,
+  resolveDescriptor: (workflowId: string) => AnyWorkflowDescriptor | undefined) {
   const reference = OcrApprovalReferenceSchema.parse(candidate);
   const review = readOcrReviewAuthority(repositories, reader, reference.sourceRunId);
   if (review === undefined || review.revision.revision !== reference.revision
-    || !isCompiledWorkflowContract(review.run.envelope.workflow, review.run.envelope.contractFingerprint)) throw new OcrReviewRefusedError();
+    || resolveDescriptor(review.run.envelope.workflow)?.contractFingerprint !== review.run.envelope.contractFingerprint) throw new OcrReviewRefusedError();
   const snapshot = readOcrSnapshotsAuthority(repositories, review).find(snapshot => snapshot.snapshotId === reference.snapshotId);
   if (snapshot === undefined || snapshot.reviewDigest !== review.digest || ocrSnapshotDigest(snapshot) !== reference.digest) throw new OcrReviewRefusedError();
   return snapshot;
 }
 
-export function authenticateOcrSnapshotApproval(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, gate: OperatorGateResultRecord) {
+export function authenticateOcrSnapshotApproval(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, gate: OperatorGateResultRecord,
+  resolveDescriptor: (workflowId: string) => AnyWorkflowDescriptor | undefined) {
   const retained = repositories.gateResults.get(`${gate.runId}:${gate.gateId}`);
   if (retained === undefined || !same(retained, gate) || gate.nodeId !== "approve-records" || gate.gateId !== "approve-records"
     || gate.resolvedBy !== "local-operator" || gate.result.schemaHash !== deriveSchemaHash(OcrApprovalReferenceSchema, "output")) throw new OcrReviewRefusedError();
   const reference = OcrApprovalReferenceSchema.parse(gate.result.value);
   if (reference.sourceRunId !== gate.runId || reference.snapshotId !== gate.commandId) throw new OcrReviewRefusedError();
-  const snapshot = requireCurrentOcrSnapshot(repositories, reader, reference);
+  const snapshot = requireCurrentOcrSnapshot(repositories, reader, reference, resolveDescriptor);
   if (snapshot.approvedBy !== gate.resolvedBy || snapshot.approvedAt !== gate.resolvedAt) throw new OcrReviewRefusedError();
   return snapshot;
 }
 
-export function assertOcrRecoverySnapshotCurrent(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, run: RunRecord): void {
+export function assertOcrRecoverySnapshotCurrent(repositories: AuthorityRepositories, reader: Pick<RunRecordService, "read">, run: RunRecord,
+  resolveDescriptor: (workflowId: string) => AnyWorkflowDescriptor | undefined): void {
   if (run.envelope.workflow !== "ocr") return;
   try {
     const ancestry = validateRunContinuation(repositories, run.envelope);
@@ -297,6 +300,6 @@ export function assertOcrRecoverySnapshotCurrent(repositories: AuthorityReposito
     const reference = OcrApprovalReferenceSchema.parse(gate.result.value);
     if (gate.result.schemaHash !== deriveSchemaHash(OcrApprovalReferenceSchema, "output")
       || ![run, ...ancestry].some(source => source.envelope.runId === reference.sourceRunId)) throw new OcrReviewRefusedError();
-    requireCurrentOcrSnapshot(repositories, reader, reference);
+    requireCurrentOcrSnapshot(repositories, reader, reference, resolveDescriptor);
   } catch (cause) { throw new RunContinuationRefusedError("ocr-approved-snapshot-recovery-refused", { cause }); }
 }

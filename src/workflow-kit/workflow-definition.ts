@@ -1,5 +1,5 @@
 import { WorkflowExplorerPreviewSchema, type WorkflowExplorerPreview } from "../models/workflow/explorer-preview.js";
-import type { Fingerprint, StableRecordId } from "../rules/identity/ids.js";
+import type { StableRecordId } from "../rules/identity/ids.js";
 import type { DryRunBinding, DryRunScope } from "../models/workflow/dry-run.js";
 import type { ProtectedInputBinding } from "../models/write-safety/protected-input.js";
 import type { JsonValue } from "../rules/validation/canonical-json.js";
@@ -1148,12 +1148,6 @@ export interface CompiledWorkflow<
 export type AnyCompiledWorkflow = CompiledWorkflow<z.ZodType, z.ZodType, CompletionProgram | undefined>;
 
 const COMPILED = new WeakMap<object, AnyCompiledWorkflow>();
-const COMPILED_FINGERPRINTS = new Map<string, Set<Fingerprint>>();
-
-/** Whether a definition compiled in this process carries this id and contract fingerprint. */
-export function isCompiledWorkflowContract(id: string, fingerprint: Fingerprint): boolean {
-  return COMPILED_FINGERPRINTS.get(id)?.has(fingerprint) === true;
-}
 const DESCRIPTOR_DEFINITIONS = new WeakMap<object, AnyWorkflowDefinition>();
 
 function storeNamespace(contract: AnyReadTaskContract | AnyPrepareTaskContract | AnyCommitTaskContract): string {
@@ -1320,9 +1314,6 @@ export function compileWorkflow<
     operationDisplay,
     storeNamespaces: Object.freeze([...new Set(contracts.map(storeNamespace))]),
   });
-  const fingerprints = COMPILED_FINGERPRINTS.get(String(definition.id)) ?? new Set<Fingerprint>();
-  fingerprints.add(descriptor.contractFingerprint);
-  COMPILED_FINGERPRINTS.set(String(definition.id), fingerprints);
   COMPILED.set(definition, compiled);
   DESCRIPTOR_DEFINITIONS.set(descriptor, definition);
   return compiled;

@@ -1,4 +1,3 @@
-import { isCompiledWorkflowContract } from "../../../../src/workflow-kit/workflow-definition.js";
 import { OcrApprovedSnapshotSchema, ocrSnapshotDigest } from "../../../../src/models/ocr/review.js";
 import { z } from "zod";
 import { AdmittedRecordSchema } from "../../../../src/models/ocr/extraction.js";
@@ -94,7 +93,7 @@ export function createRetainedApprovedRecordReader(deps: Readonly<{
     }
     const review = readOcrReviewAuthority(deps.database.authority, reader, query.approval.sourceRunId);
     if (review === undefined || review.revision.revision !== query.approval.revision
-      || !isCompiledWorkflowContract(review.run.envelope.workflow, review.run.envelope.contractFingerprint)) throw new OcrReviewRefusedError();
+      || deps.resolveDescriptor(review.run.envelope.workflow)?.contractFingerprint !== review.run.envelope.contractFingerprint) throw new OcrReviewRefusedError();
     const snapshot = readOcrSnapshotsAuthority(deps.database.authority, review).find(snapshot => snapshot.snapshotId === query.approval.snapshotId);
     if (snapshot === undefined || snapshot.reviewDigest !== review.digest || ocrSnapshotDigest(snapshot) !== query.approval.digest) throw new OcrReviewRefusedError();
     if (query.kind === "snapshot") return snapshot;

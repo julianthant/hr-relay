@@ -35,6 +35,8 @@ const contactSaveMember = compileWorkflow(emergencyContactMemberWorkflow);
 
 const world = createOcrReviewWorld();
 afterEach(world.cleanup);
+// Both the historical and the current OCR definitions are compiled here; only the registered current one authorizes.
+const currentRegistry = (id: string) => id === "ocr" ? ocrModule.descriptor : undefined;
 const historicalParent = composeWorkflowModule(compileWorkflow(defineWorkflow({ ...emergencyContactWorkflow,
   steps: author => {
     const records = buildEmergencyContactRecords({ ...author,
@@ -122,7 +124,7 @@ for (const dryRun of [false, true]) {
     assert.deepEqual(exactRows?.members.map(member => member.statusLabel), [dryRun ? "Previewed" : "Saved"]);
     assert.deepEqual(exactRows?.members.map(member => member.childRunIds), records.members.map(member => member.childRunIds));
     assert.deepEqual(projection.buildDashboardDayWire(f.clock.todayLocal()), wire);
-    assert.throws(() => f.database.withAuthorityReadSnapshot(() => requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, input.approval)), /OCR_REVIEW_REFUSED/u);
+    assert.throws(() => f.database.withAuthorityReadSnapshot(() => requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, input.approval, currentRegistry)), /OCR_REVIEW_REFUSED/u);
     const readQuery = (repositories: AuthorityRepositories) => f.database.withAuthorityReadSnapshot(() => readQueueRecordMembers(repositories,
       f.canonical.lifecycle, settledParent, f.database.authority.runs.listChildren(f.parentRun.envelope.runId), currentResolve));
     const readWith = (groups: typeof authorityBefore.groups) => readQuery({ ...f.database.authority,
@@ -204,6 +206,6 @@ for (const dryRun of [false, true]) {
     assert.deepEqual(reopened.authority.runResults.get(member.child.envelope.runId), authorityBefore.result);
     assert.equal(reopened.getMeta().authorityGeneration, generation);
     assert.throws(() => reopened.withAuthorityReadSnapshot(() => requireCurrentOcrSnapshot(reopened.authority,
-      currentReader, input.approval)), /OCR_REVIEW_REFUSED/u);
+      currentReader, input.approval, currentRegistry)), /OCR_REVIEW_REFUSED/u);
   });
 }

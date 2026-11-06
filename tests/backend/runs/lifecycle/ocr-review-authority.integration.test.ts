@@ -202,7 +202,7 @@ it("refuses stale approval and late drafts while retaining the immutable snapsho
   const request = approval(f);
   assert.equal(f.canonical.kernel.execute(request).state, "applied");
   const saved = f.database.authority.ocrReviews.snapshot(request.commandId); assert.ok(saved);
-  assert.deepEqual(requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, request.payload.result.value), saved);
+  assert.deepEqual(requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, request.payload.result.value, f.resolve), saved);
   const late = f.canonical.kernel.execute(f.command("discard-ocr-record", 4));
   assert.ok(late.state === "rejected" && late.code === "OCR_REVIEW_REFUSED");
   for (const command of [correction, discard, restore]) {
@@ -211,16 +211,16 @@ it("refuses stale approval and late drafts while retaining the immutable snapsho
     assert.equal(f.canonical.kernel.execute(command).state, "already-applied");
   }
   assert.deepEqual(f.database.authority.ocrReviews.snapshot(request.commandId), saved);
-  assert.deepEqual(requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, request.payload.result.value), saved);
+  assert.deepEqual(requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, request.payload.result.value, f.resolve), saved);
   const staleReference = { ...request.payload.result.value, revision: 3 };
-  assert.throws(() => requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, staleReference), /OCR_REVIEW_REFUSED/u);
+  assert.throws(() => requireCurrentOcrSnapshot(f.database.authority, f.canonical.lifecycle, staleReference, f.resolve), /OCR_REVIEW_REFUSED/u);
   const current = f.database.authority.runs.get(f.run.envelope.runId); assert.ok(current);
   const repositories = f.database.authority, gateKey = `${f.run.envelope.runId}:approve-records`;
   const gate = repositories.gateResults.get(gateKey); assert.ok(gate);
   const altered: AuthorityRepositories = { ...repositories, gateResults: { ...repositories.gateResults,
     get: key => key === gateKey ? { ...gate, result: { ...gate.result, value: staleReference } } : repositories.gateResults.get(key) } };
-  assert.throws(() => assertOcrRecoverySnapshotCurrent(altered, f.canonical.lifecycle, current), /ocr-approved-snapshot-recovery-refused/u);
-  assert.doesNotThrow(() => assertOcrRecoverySnapshotCurrent(repositories, f.canonical.lifecycle, current));
+  assert.throws(() => assertOcrRecoverySnapshotCurrent(altered, f.canonical.lifecycle, current, f.resolve), /ocr-approved-snapshot-recovery-refused/u);
+  assert.doesNotThrow(() => assertOcrRecoverySnapshotCurrent(repositories, f.canonical.lifecycle, current, f.resolve));
   await f.harness.manager.closeAll("worker-stop");
   f.database.close();
   const reopened = AuthorityDatabase.open(f.admission, { path: f.path, busyTimeoutMs: 500, migrationOwner: "ocr-review-restart" }, f.clock,
