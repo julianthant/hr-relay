@@ -136,6 +136,7 @@ it("holds one person's version-skewed database while the other person upgrades, 
   first.admission.release(); first.machine.release();
   const second = await createBoundProfileFixture({ workspace: first.workspace, lifetime: first.lifetime, email: "second@ucsd.edu" });
   try {
+    createProfileRegistry(second.machine).advanceSession(null);
     await second.closeController();
     const native = new DatabaseSync(second.path);
     try { native.exec("DROP TABLE write_attempts"); } finally { native.close(); }
@@ -148,6 +149,6 @@ it("holds one person's version-skewed database while the other person upgrades, 
     assert.deepEqual(readFileSync(second.path), skewed);
     await assertHeld(first.workspace, first.lifetime, clock, "second@ucsd.edu", "STORAGE_PROFILE_FORMAT_UNSUPPORTED");
     const session = signIn(first.workspace, first.lifetime, clock, "fixture@ucsd.edu");
-    try { assert.equal(session.attempt().state, "active"); } finally { await session.close(); }
+    try { const result = session.attempt(); assert.equal(result.state, "active", JSON.stringify(result)); } finally { await session.close(); }
   } finally { await first.close(); }
 });
