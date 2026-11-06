@@ -129,6 +129,14 @@
       "replacementRequired": true
     },
     {
+      "name": "build-id-roots",
+      "file": "tests/architecture/app/build-id-roots.test.ts",
+      "status": "active",
+      "owner": "docs/reference/guards-and-tests.md",
+      "invariant": "The app build id hashes every worker-runnable source under src/backend, src/workflow-kit, src/workflows, src/models, src/rules and src/cli.ts. No hashed file loads src/dashboard through a static, side-effect, require() or import() specifier, including one split across lines; type-only imports stay out. A specifier the scan cannot classify, or a required dependency missing from the lockfile, fails computeBuildId with relay-build-id-dependency-unresolved, proven by fixture negative controls.",
+      "replacementRequired": true
+    },
+    {
       "name": "strict-boundary-schemas",
       "file": "tests/architecture/workflow-kit/strict-boundary-schemas.test.ts",
       "status": "active",

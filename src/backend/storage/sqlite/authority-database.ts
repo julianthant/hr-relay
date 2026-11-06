@@ -1625,9 +1625,8 @@ function migrateStoppedAuthority(database: DatabaseSync, clock: Clock, admission
             .run(binding.installationId, binding.profileId);
         }
         if (migration.version === BUILD_ID_ENVELOPE_SCHEMA_VERSION && index === 0) {
-          deletePreBuildRuns(database, clock.now().toISOString(), ref => inspectArtifactDeletionFile(admission, ref), (record, run) => {
-            assertTerminalEvidenceOwner(database, record, predecessorRunRecordFromRow, run, new Set(), BUILD_ID_ENVELOPE_SCHEMA_VERSION - 1);
-          });
+          deletePreBuildRuns(database, clock.now().toISOString(), ref => inspectArtifactDeletionFile(admission, ref),
+            (record, run) => settlePredecessorRunEvidence(database, record, run));
         }
         database.exec(statement);
         if (migration.version === 16 && index === 2) migratePersonPreferences(database);
@@ -1668,6 +1667,13 @@ function browserProfileInventory(database: DatabaseSync, inspectedSchemaVersion:
     return authenticated;
   });
   return { settingsAuthority, configSnapshots, slots, browsers, controls, verificationProfiles: readWorkerVerificationProfiles(database, slots) };
+}
+
+export function settlePredecessorRunEvidence(database: DatabaseSync, record: RunResultRecord, run: PredecessorRunRecord): void {
+  const columns = runSettlementColumns(run, record, PredecessorRunRecordSchema);
+  database.prepare(`INSERT INTO run_results (${Object.keys(columns).join(",")}) VALUES (${Object.keys(columns).map(() => "?").join(",")})`)
+    .run(...Object.values(columns));
+  assertTerminalEvidenceOwner(database, record, predecessorRunRecordFromRow, run, new Set(), BUILD_ID_ENVELOPE_SCHEMA_VERSION - 1);
 }
 
 function maintenanceInventory(database: DatabaseSync, inspection: ReturnType<typeof inspectNativeAuthority>, artifactRoot: string) {

@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
-import { currentBuildId } from "../../../../src/backend/app/build-id.js";
-import { assertTerminalEvidenceOwner, inspectNativeAuthority, inspectNormalAuthority } from "../../../../src/backend/storage/sqlite/authority-database.js";
+import { currentBuildId } from "../../../../src/backend/runtime/build-id.js";
+import { inspectNativeAuthority, inspectNormalAuthority, settlePredecessorRunEvidence } from "../../../../src/backend/storage/sqlite/authority-database.js";
 import { commandFromRow } from "../../../../src/backend/storage/sqlite/command-record-row.js";
 import { AUTHORITY_APPLICATION_ID, BUILD_ID_ENVELOPE_SCHEMA_VERSION, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../../../src/backend/storage/sqlite/migrations.js";
 import { prepareNativeRunDeletion } from "../../../../src/backend/storage/sqlite/native-run-deletion.js";
@@ -52,9 +52,7 @@ function insertRuns(database: DatabaseSync, runs: readonly PredecessorRunRecord[
 }
 
 function owner(database: DatabaseSync) {
-  return (record: Parameters<typeof assertTerminalEvidenceOwner>[1], run: PredecessorRunRecord) => {
-    assertTerminalEvidenceOwner(database, record, predecessorRunRecordFromRow, run, new Set(), SHAPE_VERSION);
-  };
+  return (record: Parameters<typeof settlePredecessorRunEvidence>[1], run: PredecessorRunRecord) => settlePredecessorRunEvidence(database, record, run);
 }
 
 function upgrade(database: DatabaseSync): void {

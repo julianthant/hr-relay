@@ -14,13 +14,14 @@ import { insertNativeCommand, settleNativeCommand } from "./command-record-row.j
 import { BUILD_ID_ENVELOPE_SCHEMA_VERSION } from "./migrations.js";
 import { executeNativeRunDeletion, prepareNativeRunDeletion } from "./native-run-deletion.js";
 import { predecessorRunRecordFromRow, transitionStoredRun, updateRunRecord } from "./run-record-row.js";
-import { runSettlementColumns } from "./run-settlement-row.js";
 
 const STORED_SHAPE_VERSION = BUILD_ID_ENVELOPE_SCHEMA_VERSION - 1;
 type CaptureFile = Parameters<typeof prepareNativeRunDeletion>[3];
+/** Inserts the terminal evidence row on the upgrade connection and checks its owner. */
+type SettleEvidence = (record: RunResultRecord, run: PredecessorRunRecord) => void;
 
 export function deletePreBuildRuns(database: DatabaseSync, now: string, captureFile: CaptureFile,
-  assertOwner: (record: RunResultRecord, run: PredecessorRunRecord) => void): void {
+  settleEvidence: SettleEvidence): void {
   if (database.prepare("SELECT 1 FROM write_intents WHERE status<>'committed' LIMIT 1").get() !== undefined) {
     throw new Error("authority-upgrade-unresolved-writes");
   }
@@ -28,7 +29,7 @@ export function deletePreBuildRuns(database: DatabaseSync, now: string, captureF
   if (runs.some(run => run.lifecycle.state === "parked-write")) throw new Error("authority-upgrade-unresolved-writes");
   for (const run of childrenFirst(runs)) {
     if (run.lifecycle.state === "terminal") continue;
-    requireSettledPreBuildRun(database, run.envelope.runId, now, assertOwner);
+    requireSettledPreBuildRun(database, run.envelope.runId, now, settleEvidence);
   }
   const settled = readRuns(database);
   if (settled.some(run => run.lifecycle.state !== "terminal")) throw new Error("authority-upgrade-run-settlement-refused");
@@ -47,14 +48,14 @@ export function deletePreBuildRuns(database: DatabaseSync, now: string, captureF
 }
 
 export function requireSettledPreBuildRun(database: DatabaseSync, runId: string, now: string,
-  assertOwner: (record: RunResultRecord, run: PredecessorRunRecord) => void): PredecessorRunRecord {
-  const outcome = settlePreBuildRun(database, runId, now, assertOwner);
+  settleEvidence: SettleEvidence): PredecessorRunRecord {
+  const outcome = settlePreBuildRun(database, runId, now, settleEvidence);
   if (outcome.state === "refused") throw new Error("authority-upgrade-run-settlement-refused");
   return outcome.run;
 }
 
 export function settlePreBuildRun(database: DatabaseSync, runId: string, now: string,
-  assertOwner: (record: RunResultRecord, run: PredecessorRunRecord) => void):
+  settleEvidence: SettleEvidence):
   { state: "applied"; run: PredecessorRunRecord } | { state: "refused" } {
   const current = predecessorRunRecordFromRow(database.prepare("SELECT * FROM runs WHERE id=?").get(runId));
   if (current.lifecycle.state === "terminal") return { state: "applied", run: current };
@@ -62,16 +63,16 @@ export function settlePreBuildRun(database: DatabaseSync, runId: string, now: st
   if (childOpen(database, runId)) return { state: "refused" };
   if (current.lifecycle.state === "queued" || current.lifecycle.state === "parked-gate") {
     if (runClaim(current) !== undefined) return { state: "refused" };
-    return { state: "applied", run: settleUnclaimed(database, current, now, assertOwner) };
+    return { state: "applied", run: settleUnclaimed(database, current, now, settleEvidence) };
   }
   if (current.lifecycle.state === "claimed" || current.lifecycle.state === "validating" || current.lifecycle.state === "running") {
-    return { state: "applied", run: settleClaimed(database, current, now, assertOwner) };
+    return { state: "applied", run: settleClaimed(database, current, now, settleEvidence) };
   }
   return { state: "refused" };
 }
 
 function settleUnclaimed(database: DatabaseSync, current: PredecessorRunRecord, now: string,
-  assertOwner: (record: RunResultRecord, run: PredecessorRunRecord) => void): PredecessorRunRecord {
+  settleEvidence: SettleEvidence): PredecessorRunRecord {
   const lifecycle = { state: "terminal" as const, outcome: "cancelled" as const, endedAt: now };
   const candidate = PredecessorRunRecordSchema.parse({ ...current, lifecycle });
   const updated = transitionStoredRun(current, candidate, now, PredecessorRunRecordSchema);
@@ -81,12 +82,12 @@ function settleUnclaimed(database: DatabaseSync, current: PredecessorRunRecord, 
   });
   const command = lifecycleCommand("transition", request, { kind: "version", expectedVersion: current.version }, now);
   const audit = recordAudit(database, command, journalRun(updated), now);
-  writeEvidence(database, updated, command, audit, assertOwner);
+  writeEvidence(updated, command, audit, settleEvidence);
   return updated;
 }
 
 function settleClaimed(database: DatabaseSync, current: PredecessorRunRecord, now: string,
-  assertOwner: (record: RunResultRecord, run: PredecessorRunRecord) => void): PredecessorRunRecord {
+  settleEvidence: SettleEvidence): PredecessorRunRecord {
   if (runClaim(current) === undefined) throw new Error("authority-upgrade-run-settlement-refused");
   const marked = current.cancelRequested === true ? current : requestCancellation(database, current, now);
   const held = runClaim(marked);
@@ -104,7 +105,7 @@ function settleClaimed(database: DatabaseSync, current: PredecessorRunRecord, no
     kind: "terminal", expectedVersion: marked.version, workerId: held.workerId, claimGeneration: held.claimGeneration,
   }, now);
   const audit = recordAudit(database, command, journalRun(updated), now);
-  writeEvidence(database, updated, command, audit, assertOwner);
+  writeEvidence(updated, command, audit, settleEvidence);
   return updated;
 }
 
@@ -120,17 +121,14 @@ function requestCancellation(database: DatabaseSync, current: PredecessorRunReco
   return marked;
 }
 
-function writeEvidence(database: DatabaseSync, run: PredecessorRunRecord, command: z.infer<typeof RunLifecycleCommandRecordSchema>,
-  audit: z.infer<typeof RunLifecycleCommandAuditRecordSchema>, assertOwner: (record: RunResultRecord, run: PredecessorRunRecord) => void): void {
+function writeEvidence(run: PredecessorRunRecord, command: z.infer<typeof RunLifecycleCommandRecordSchema>,
+  audit: z.infer<typeof RunLifecycleCommandAuditRecordSchema>, settleEvidence: SettleEvidence): void {
   if (run.lifecycle.state !== "terminal" || run.lifecycle.outcome === "done" || run.lifecycle.outcome === "failed" || run.lifecycle.outcome === "interrupted") return;
   const result = createRunTerminalEvidenceResult(run, {
     kind: "lifecycle-evidence", outcome: run.lifecycle.outcome, commandId: command.commandId, auditId: audit.auditId,
     requestFingerprint: command.requestFingerprint, appliedVersion: run.version,
   });
-  const columns = runSettlementColumns(run, result, PredecessorRunRecordSchema);
-  database.prepare(`INSERT INTO run_results (${Object.keys(columns).join(",")}) VALUES (${Object.keys(columns).map(() => "?").join(",")})`)
-    .run(...Object.values(columns));
-  assertOwner(result, run);
+  settleEvidence(result, run);
 }
 
 function lifecycleCommand(operation: string, request: unknown, fence: unknown, now: string) {
