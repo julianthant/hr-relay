@@ -22,7 +22,7 @@ const SIGNATURES: Readonly<Partial<Record<AssistantAttachmentMediaType, (bytes: 
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": bytes => startsWith(bytes, [0x50, 0x4b, 0x03, 0x04]),
 };
 // Text may hold tabs and line breaks; every other C0 control, DEL and NUL refuse.
-const TEXT_CONTROLS = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u;
+const textControl = (text: string) => [...text].some(char => { const code = char.charCodeAt(0); return code === 0x7f || code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d; });
 
 /**
  * Admits one upload: the name is a display-only basename whose extension agrees with the media type, the bytes are nonempty,
@@ -40,5 +40,5 @@ export function admitAttachment(mediaType: AssistantAttachmentMediaType, name: s
   let text: string;
   try { text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes); }
   catch { return refuse("ASSISTANT_ATTACHMENT_INVALID"); }
-  if (TEXT_CONTROLS.test(text)) refuse("ASSISTANT_ATTACHMENT_INVALID");
+  if (textControl(text)) refuse("ASSISTANT_ATTACHMENT_INVALID");
 }
