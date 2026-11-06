@@ -361,19 +361,28 @@ it("sends nothing and stores nothing new once the chat expires while the credent
       modelPolicy: () => ({ policy: { model: "gpt-6.1-sol", eligible: true, consented: true, billing: "chatgpt-plan", verifiedUntil: "2099-01-01T00:00:00Z" }, isCurrent: () => true }) } });
     try {
       const id = randomUUID(), messageId = randomUUID();
+      let refreshed = 0;
       w.revision(id);
       const expiry = w.service.historyView().chats.find(chat => chat.id === id)?.expiresAt; assert.ok(expiry);
       const expire = () => { historyClock.setWall(new Date(expiry)); };
       if (moment === "credentials") {
-        // An expired access token makes the turn's first credential read refresh, and the refresh is held until the chat expires.
-        w.f.clock.advanceWall(3_600_000);
-        let held = false;
-        w.f.setTokenHook(async () => { if (!held) { held = true; expire(); } });
+        // The catalog is read while current and brings the access token into its refresh window, so inferAssistant's own credential read refreshes; the chat expires during that refresh.
+        let armed = false, lapsed = false;
+        w.f.setModelsHook(async () => { if (!lapsed) { lapsed = true; armed = true; w.f.clock.advanceWall(3_570_000); } return Response.json({ models: [{ slug: "gpt-6.1-sol", display_name: "GPT-6.1 Sol", visibility: "list" }] }); });
+        w.f.setTokenHook(async () => { if (armed) { armed = false; refreshed++; expire(); } });
       } else w.onPost(expire);
       w.script.push(() => assistantMessageStream("Late."));
       const envelope = await w.send("Explain", undefined, id, { messageId });
       assert.equal(envelope.kind, "result"); assert.equal(envelope.kind === "result" && envelope.result.state, "refused"); assert.equal(envelope.receipt, undefined);
       assert.equal(w.posts(), moment === "credentials" ? 0 : 1);
+      if (moment === "credentials") {
+        assert.equal(refreshed, 1, "the held await was inferAssistant's credential refresh");
+        const next = randomUUID();
+        w.script.splice(0, w.script.length, () => assistantMessageStream("Next."));
+        historyClock.setWall(new Date("2026-10-12T13:00:00.000Z"));
+        assert.deepEqual(await w.ask("Again", undefined, next), { state: "answered", text: "Next." }, "the refused inference closed its operation");
+        assert.equal(w.posts(), 1);
+      }
       const raw = w.db.database.authority.assistantHistory.conversation(id, new Date(Date.parse(expiry) - 1).toISOString());
       assert.deepEqual(raw?.messages.map(row => [row.kind, row.delivery]), [["turn", "sending"]], "no reply or settlement after expiry; cleanup never ran");
     } finally { await w.f.cleanup(); }

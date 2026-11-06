@@ -97,7 +97,7 @@ it("announces rename and delete only after the chat port acknowledges them and k
     rename: (id, title) => hold(() => { chats = chats.map(chat => chat.id === id ? { ...chat, title } : chat); }),
     remove: id => hold(() => { chats = chats.filter(chat => chat.id !== id); }) };
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
-  const status = () => host.querySelector('[role="status"]')?.textContent ?? "";
+  const status = () => host.querySelector('span.sr-only[role="status"]')?.textContent ?? "";
   const button = (label: string) => { const found = document.querySelector<HTMLButtonElement>(`[aria-label="${label}"]`); assert.ok(found, label); return found; };
   const submit = () => { const found = document.querySelector<HTMLButtonElement>('.hub-modal button[type="submit"]'); assert.ok(found); return found; };
   try {

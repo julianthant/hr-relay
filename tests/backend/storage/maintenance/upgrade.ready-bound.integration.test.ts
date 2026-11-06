@@ -301,19 +301,23 @@ it("refuses a genuine canonical queued run despite stopped global process roles"
 
 it("automatically upgrades schema 22 with queued work intact", async () => {
   const f = await readyBoundEight("queued", 22);
+  const tables = () => { const raw = new DatabaseSync(f.path, { readOnly: true });
+    try { return raw.prepare("SELECT name FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map(row => String(row.name)); } finally { raw.close(); } };
   try {
-    const before = rawEight(f.path);
-    assert.ok((before.runs?.length ?? 0) > 0); assert.ok((before.artifacts?.length ?? 0) > 0);
-    assert.equal(before.assistant_conversations, undefined);
+    assert.deepEqual(tables(), [...migrationTableNames(22)].sort());
+    assert.equal(tables().includes("assistant_conversations"), false);
+    const before = rawEight(f.path, 22);
+    assert.ok(before.runs.length > 0); assert.ok(before.artifacts.length > 0);
     assert.equal((await upgradeProfileAtStartup(profileBrowserClosure, f.machine, f.claim, hostFacts, systemClock)).state, "upgraded");
-    const after = rawEight(f.path);
+    assert.deepEqual(tables(), [...migrationTableNames(CURRENT_AUTHORITY_SCHEMA_VERSION)].sort());
+    const after = rawEight(f.path, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.deepEqual(Object.keys(after).sort(), [...Object.keys(before), "assistant_conversations", "assistant_messages"].sort());
     for (const [table, rows] of Object.entries(before)) {
-      if (table === "database_states") assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
-      else if (table === "database_upgrades") assert.deepEqual(after[table]?.slice(0, rows.length), rows);
-      else assert.deepEqual(after[table]?.map(row => ({ ...row })), rows.map(row => ({ ...row })), table);
+      if (table === "database_states") assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row, schema_version: CURRENT_AUTHORITY_SCHEMA_VERSION })));
+      else if (table === "database_upgrades") { assert.deepEqual(after[table].slice(0, rows.length), rows); assert.equal(after[table].length, rows.length + 1); }
+      else assert.deepEqual(after[table].map(row => ({ ...row })), rows.map(row => ({ ...row })), table);
     }
-    assert.deepEqual([after.assistant_conversations ?? [], after.assistant_messages ?? []], [[], []]);
-    assert.equal(after.database_upgrades?.length, (before.database_upgrades?.length ?? 0) + 1);
+    assert.deepEqual([after.assistant_conversations, after.assistant_messages], [[], []]);
   } finally { await f.close(); }
 });
 
