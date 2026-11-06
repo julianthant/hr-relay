@@ -668,6 +668,7 @@ export function createProfileSession(input: {
         return completed.session;
       }
       const initial = requireOnboarding(token, operationId);
+      onboarding.assertBrowserAvailable(operationId);
       if (onboardingState(initial).step !== "ready") throw new ProfileSessionRefusedError("PROFILE_AUTHORITY_UNAVAILABLE");
       if (!registry.read().profiles.some(row => row.profileId === initial.profileId)) {
         onboarding.beginTransition(operationId);

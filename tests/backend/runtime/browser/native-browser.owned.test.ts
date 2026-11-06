@@ -3,7 +3,7 @@ import { ChildProcess } from "node:child_process";
 import { PassThrough } from "node:stream";
 import { chromium, type Browser, type BrowserContext, type ConnectOverCDPTransport } from "playwright";
 import { it, vi } from "vitest";
-import { DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { DEFAULT_BROWSER_LAUNCHER, BrowserLaunchUncertainError, chromiumProfileInUse, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
 
 function isPipeTransport(value: unknown): value is ConnectOverCDPTransport {
   return typeof value === "object" && value !== null && typeof Reflect.get(value, "send") === "function" && typeof Reflect.get(value, "close") === "function";
@@ -56,4 +56,54 @@ for (const stopped of [true, false]) it(`uses private pipes and requires positiv
     transport.send({ id: 2, method: "Browser.getVersion" });
     assert.deepEqual(sent, ['{"id":2,"method":"Browser.getVersion"}\0']);
   } finally { connect.mockRestore(); kill.mockRestore(); write.destroy(); read.destroy(); }
+});
+
+for (const exits of [false, true]) it(`ordinary shutdown sends Browser.close without forcing a child and requires its exit (exit=${exits})`, async () => {
+  child = new ChildProcess();
+  const write = new PassThrough(), read = new PassThrough();
+  Object.defineProperty(child, "stdio", { value: [null, null, null, write, read] });
+  const kill = vi.spyOn(child, "kill").mockImplementation(() => assert.fail("ordinary shutdown must not force the child"));
+  const calls: string[] = [];
+  const context = { browser: () => browser } as unknown as BrowserContext;
+  const browser = { isConnected: () => true, contexts: () => [context], newBrowserCDPSession: async () => ({
+    async send(method: string) { calls.push(method); if (method === "Browser.close" && exits) child.emit("exit", 0, null); }, async detach() {},
+  }) } as unknown as Browser;
+  const connect = vi.spyOn(chromium, "connectOverCDP").mockResolvedValue(browser);
+  let process: OwnedBrowserProcess | undefined;
+  try {
+    await DEFAULT_BROWSER_LAUNCHER.launch({ profileDirectory: "synthetic-owned-profile", extensionDirectory: "synthetic-extension", headless: true,
+      nativeOnly: true, acceptDownloads: false, downloadsPath: "synthetic-owned-profile", viewport: { width: 640, height: 720 }, timeoutMs: 50,
+      ownedProcess: owned => { process = owned; } });
+    assert.ok(process);
+    if (exits) await process.stop(50, true); else await assert.rejects(process.stop(50, true), /DUO_SETUP_STOP_FAILED/);
+    assert.deepEqual(calls, ["Browser.setDownloadBehavior", "Browser.close"]); assert.equal(process.exited(), exits);
+    const args = launches.at(-1)?.args; assert.ok(args); assert.ok(args.includes("--disable-extensions")); assert.ok(args.includes("--use-mock-keychain"));
+    assert.equal(args.some(arg => arg.startsWith("--load-extension=")), false);
+  } finally { connect.mockRestore(); kill.mockRestore(); write.destroy(); read.destroy(); }
+});
+
+for (const exits of [false, true]) it(`classifies a busy profile only with bounded diagnostics and positive child exit (exit=${exits})`, async () => {
+  child = new ChildProcess();
+  const diagnostic = new PassThrough(), write = new PassThrough(), read = new PassThrough();
+  Object.defineProperty(child, "stdio", { value: [null, null, diagnostic, write, read] });
+  Object.defineProperty(child, "stderr", { value: diagnostic });
+  const original = new Error("synthetic pipe closed");
+  const connect = vi.spyOn(chromium, "connectOverCDP").mockImplementation(async () => {
+    diagnostic.write("synthetic-private-path Failed to create a ProcessSingleton for your ");
+    diagnostic.write("profile directory.");
+    if (exits) { child.emit("exit", 21, null); child.emit("close", 21, null); }
+    throw original;
+  });
+  let process: OwnedBrowserProcess | undefined;
+  try {
+    await assert.rejects(DEFAULT_BROWSER_LAUNCHER.launch({ profileDirectory: "synthetic-owned-profile", extensionDirectory: "synthetic-extension", headless: true,
+      nativeOnly: true, acceptDownloads: false, downloadsPath: "synthetic-owned-profile", viewport: { width: 640, height: 720 }, timeoutMs: 50,
+      ownedProcess: owned => { process = owned; } }), error => {
+      assert.equal(chromiumProfileInUse(error), exits);
+      assert.ok(error instanceof Error); assert.doesNotMatch(error.message, /synthetic-private-path/);
+      if (!exits) assert.ok(error instanceof BrowserLaunchUncertainError);
+      return true;
+    });
+    assert.ok(process); assert.equal(process.exited(), exits);
+  } finally { connect.mockRestore(); diagnostic.destroy(); write.destroy(); read.destroy(); }
 });

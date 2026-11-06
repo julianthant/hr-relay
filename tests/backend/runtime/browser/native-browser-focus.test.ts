@@ -29,11 +29,11 @@ it("activates the owned macOS browser process on each show and returns to the ca
   const calls: { file: string; args: readonly string[]; timeoutMs: number }[] = [];
   const run: FocusCommandRunner = async (file, args, timeoutMs) => {
     calls.push({ file, args, timeoutMs });
-    return calls.length === 1 ? JSON.stringify({ processId: 71 }) : "focused\n";
+    return calls.length === 1 ? JSON.stringify({ processId: 71, workArea: { left: 0, top: 25, width: 1600, height: 975 } }) : "focused\n";
   };
   const focus = createDuoBrowserFocus(5000, "darwin", run), owned = browser();
   const relay = await focus.captureRelay(); assert.ok(relay);
-  assert.deepEqual(relay, { platform: "darwin", processId: 71 });
+  assert.deepEqual(relay, { platform: "darwin", processId: 71, workArea: { left: 0, top: 25, width: 1600, height: 975 } });
   await focus.show(owned.context, owned.page); await focus.show(owned.context, owned.page); await focus.returnToRelay(relay);
   assert.deepEqual(calls.map(call => call.file), Array(4).fill("/usr/bin/osascript"));
   assert.deepEqual(calls.slice(1).map(call => call.args.slice(-2)), [["421321", "4000"], ["421321", "4000"], ["71", "4000"]]);
@@ -50,11 +50,11 @@ it("foregrounds the owned Windows process and preserves the original Relay windo
   const calls: { file: string; args: readonly string[] }[] = [];
   const run: FocusCommandRunner = async (file, args) => {
     calls.push({ file, args });
-    return calls.length === 1 ? JSON.stringify({ processId: 72, windowHandle: "8192" }) : "focused\r\n";
+    return calls.length === 1 ? JSON.stringify({ processId: 72, windowHandle: "8192", workArea: { left: 0, top: 0, width: 1600, height: 950 } }) : "focused\r\n";
   };
   const focus = createDuoBrowserFocus(5000, "win32", run), owned = browser();
   const relay = await focus.captureRelay(); assert.ok(relay);
-  assert.deepEqual(relay, { platform: "win32", processId: 72, windowHandle: "8192" });
+  assert.deepEqual(relay, { platform: "win32", processId: 72, windowHandle: "8192", workArea: { left: 0, top: 0, width: 1600, height: 950 } });
   await focus.show(owned.context, owned.page); await focus.returnToRelay(relay);
   assert.ok(calls.every(call => call.file === "powershell.exe"));
   assert.match(calls[1].args[3], /\$relayProcessId = 421321/u);
@@ -119,4 +119,23 @@ it("keeps Linux development focus in the browser without calling desktop OS comm
   assert.equal(await focus.captureRelay(), undefined); await focus.show(owned.context, owned.page);
   assert.deepEqual(owned.calls, []);
   await assert.rejects(focus.returnToRelay({ platform: "darwin", processId: 71 }), DuoBrowserFocusError);
+});
+
+it("captures the work area of the frontmost owned app's display across negative screen coordinates", async () => {
+  const screens = [
+    { frame: { origin: { x: 0, y: 0 }, size: { width: 1920, height: 1080 } }, visibleFrame: { origin: { x: 0, y: 0 }, size: { width: 1920, height: 1055 } } },
+    { frame: { origin: { x: -1600, y: 180 }, size: { width: 1600, height: 900 } }, visibleFrame: { origin: { x: -1600, y: 180 }, size: { width: 1600, height: 876 } } },
+  ];
+  const focus = createDuoBrowserFocus(5000, "darwin", async (_file, args) => {
+    const invoke: unknown = runInNewContext(`${args[3]}; run`, { ObjC: { import() {}, bindFunction(name: string, signature: unknown) { assert.equal(name, "CGWindowListCopyWindowInfo"); assert.deepEqual(JSON.parse(JSON.stringify(signature)), ["id", ["uint32", "uint32"]]); }, deepUnwrap: (value: unknown) => value }, $: {
+      NSWorkspace: { sharedWorkspace: { frontmostApplication: { processIdentifier: 71 } } },
+      CGWindowListCopyWindowInfo: () => [
+        { kCGWindowOwnerPID: 99, kCGWindowLayer: 0, kCGWindowBounds: { X: 0, Y: 0, Width: 1900, Height: 1000 } },
+        { kCGWindowOwnerPID: 71, kCGWindowLayer: 0, kCGWindowBounds: { X: -1500, Y: 100, Width: 900, Height: 700 } },
+      ], kCGWindowListOptionOnScreenOnly: 1, kCGNullWindowID: 0,
+      NSScreen: { screens: { count: screens.length, objectAtIndex: (index: number) => screens[index] } },
+    } });
+    assert.ok(typeof invoke === "function"); const result: unknown = Reflect.apply(invoke, undefined, []); assert.equal(typeof result, "string"); return String(result);
+  });
+  assert.deepEqual(await focus.captureRelay(), { platform: "darwin", processId: 71, workArea: { left: -1600, top: 24, width: 1600, height: 876 } });
 });

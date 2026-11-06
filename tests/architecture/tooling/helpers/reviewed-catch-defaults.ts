@@ -10,6 +10,17 @@ export interface ReviewedCatchDefault {
 
 export const REVIEWED_CATCH_DEFAULTS = [
   {
+    "path": "src/backend/profiles/profile-onboarding.ts",
+    "reason": "A rejected opening clears only its lease's in-flight Show marker and binds the observed browser generation. The catch records and rethrows the original failure, attempts exact attempt closure, and aggregates retention or cleanup failures. It supplies no success, authority or closure default. Late Show failure controls preserve retired-resource custody after proved Reopen and retain foreign source failures.",
+    "statements": [
+      {
+        "kind": "try",
+        "sha256": "d3eafd256dab0eb2806500d5113268377709d7a508e215bc8bcd59e93d73f17d",
+        "occurrences": 1
+      }
+    ]
+  },
+  {
     "path": "src/backend/storage/artifacts/named-file-output-sink.ts",
     "reason": "Only ENOENT denotes an absent publication destination or parent directory. The sink checks absence before exclusive creation, refuses disappeared retained directory identities, and propagates every other stat error. Staging, publication and close failures remain explicit or retain their original causes as custody uncertainty.",
     "statements": [
@@ -42,7 +53,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
       },
       {
         "kind": "promise",
-        "sha256": "332da7933021d086da63110936e69db87feada64eaee11f2d654182df5ed520e",
+        "sha256": "21939e260f26d984c93603c198248d2a5888919a6957d47ac5d305c3f4bcaa58",
         "occurrences": 1
       }
     ]

@@ -412,7 +412,7 @@ for (const source of ["action", "poll"] as const) it(`keeps polling and permits 
     await act(async () => root.render(createElement(Probe)));
     const previousShow = session.port.showBrowser.bind(session.port);
     await act(async () => { if (source === "action") await session.port.showBrowser(); else await vi.advanceTimersByTimeAsync(1000); });
-    assert.deepEqual(session.state, draft);
+    assert.deepEqual(session.state, { ...draft, browser: { state: "failed", generation: 1, code: "DUO_SETUP_STOP_FAILED" } });
     assert.equal(session.port.unavailable, true);
     await assert.rejects(previousShow(), /ONBOARDING_SCOPE_REPLACED/);
     for (const action of [() => session.port.openPortal(), () => session.port.complete(), () => session.port.cancel(), () => session.port.start("key")]) {

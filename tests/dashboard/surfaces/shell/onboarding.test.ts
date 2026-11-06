@@ -329,19 +329,19 @@ it.each(["refusal", "transport"] as const)("shows the served catalog refusal and
 it("cancels sign-up from its footer only after confirmation and never repeats an unknown cancellation", async () => {
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
   const method = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
-  const onboarding = { browser: { state: "open" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
+  const onboarding = { browser: { state: "closed" as const, generation: 1 }, state: "onboarding" as const, operationId: "00000000-0000-4000-8000-000000000001",
     profileId: "00000000-0000-4000-8000-000000000002", step: "duo" as const,
     methods: { key: method, touch: { ...method, platformAuthenticator: "chromium-platform" as const } } };
   const unused = async (): Promise<never> => { throw new Error("unexpected call"); };
   const unavailable = async () => ({ state: "refused" as const, code: "PROFILE_AUTHORITY_UNAVAILABLE" as const });
-  let cancellations = 0;
-  const port: ServedOnboardingPort = { reopenBrowser: unavailable, source: "served", resume: async () => { throw new Error("not called"); }, onboarding, validate: mockOnboardingPort.validate,
+  let cancellations = 0, reopens = 0;
+  const port: ServedOnboardingPort = { readRevision: 1, reopenBrowser: async () => { reopens++; return onboarding; }, source: "served", resume: async () => { throw new Error("not called"); }, onboarding, validate: mockOnboardingPort.validate,
     submit: unused, complete: unused, cancelDuo: unused, start: unused, confirmDuo: unused, showBrowser: unavailable, openPortal: unavailable,
     async cancel() { cancellations++; throw new Error("lost cancellation response"); } };
   const button = (scope: ParentNode, text: string) => { const button = [...scope.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === text); assert.ok(button); return button; };
   try {
     await act(async () => root.render(createElement(Onboarding, { port, step: "duo", onStep() { assert.fail("unconfirmed cancellation cannot navigate"); }, onDashboard() { assert.fail("cannot finish"); } })));
-    assert.match(host.querySelector(".heading p")?.textContent ?? "", /Add your security key and Touch ID in the setup browser/);
+    assert.match(host.querySelector(".heading p")?.textContent ?? "", /Add your security key and Touch ID/);
     const cancel = button(host.querySelector("footer")!, "Cancel sign-up");
     await act(async () => cancel.click());
     assert.equal(cancellations, 0);
@@ -355,6 +355,16 @@ it("cancels sign-up from its footer only after confirmation and never repeats an
     await act(async () => host.querySelector<HTMLButtonElement>("ol button")!.click());
     assert.equal(cancellations, 1);
     assert.match(host.querySelector('[role="alert"]')?.textContent ?? "", /could not confirm|unknown|uncertain/i);
+    const reopen = button(host.querySelector("footer")!, "Reopen"); assert.equal(reopen.disabled, true);
+    for (const unproved of [{ ...port, readRevision: 2, unavailable: true }, { ...port, readRevision: 2, onboarding: { ...onboarding, profileId: "00000000-0000-4000-8000-000000000003" } }]) {
+      await act(async () => root.render(createElement(Onboarding, { port: unproved, step: "duo", onStep() { assert.fail("cannot navigate"); }, onDashboard() { assert.fail("cannot finish"); } })));
+      assert.equal(button(host.querySelector("footer")!, "Reopen").disabled, true);
+    }
+    await act(async () => root.render(createElement(Onboarding, { port: { ...port, readRevision: 2 }, step: "duo", onStep() { assert.fail("cannot navigate"); }, onDashboard() { assert.fail("cannot finish"); } })));
+    assert.equal(button(host.querySelector("footer")!, "Reopen").disabled, false);
+    await act(async () => button(host.querySelector("footer")!, "Reopen").click());
+    assert.equal(reopens, 1); assert.equal(cancellations, 1);
+    assert.equal(button(host.querySelector("footer")!, "Cancel sign-up").disabled, true);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 

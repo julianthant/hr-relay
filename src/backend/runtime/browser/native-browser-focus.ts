@@ -4,8 +4,9 @@ import type { BrowserContext, Page } from "playwright";
 import { z } from "zod";
 
 const ProcessIdSchema = z.number().int().positive().max(0xffff_ffff);
-const AppTargetSchema = z.strictObject({ platform: z.literal("darwin"), processId: ProcessIdSchema });
-const WindowTargetSchema = z.strictObject({ platform: z.literal("win32"), processId: ProcessIdSchema,
+const WorkAreaSchema = z.strictObject({ left: z.number().int(), top: z.number().int(), width: z.number().int().positive(), height: z.number().int().positive() });
+const AppTargetSchema = z.strictObject({ workArea: WorkAreaSchema.optional(), platform: z.literal("darwin"), processId: ProcessIdSchema });
+const WindowTargetSchema = z.strictObject({ workArea: WorkAreaSchema.optional(), platform: z.literal("win32"), processId: ProcessIdSchema,
   windowHandle: z.string().regex(/^[1-9]\d{0,19}$/u) });
 export type NativeFocusTarget = Readonly<z.infer<typeof AppTargetSchema> | z.infer<typeof WindowTargetSchema>>;
 export interface DuoBrowserFocus {
@@ -28,8 +29,24 @@ const runFocusCommand: FocusCommandRunner = async (file, args, timeoutMs) => {
 };
 
 const CAPTURE_APP = `function run() {
-  ObjC.import('AppKit');
-  return JSON.stringify({processId: Number($.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier)});
+  ObjC.import('AppKit'); ObjC.import('CoreGraphics');
+  ObjC.bindFunction('CGWindowListCopyWindowInfo', ['id', ['uint32', 'uint32']]);
+  var pid = Number($.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier);
+  var windows = ObjC.deepUnwrap($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, $.kCGNullWindowID));
+  var window = windows.find(function(w) { return Number(w.kCGWindowOwnerPID) === pid && Number(w.kCGWindowLayer) === 0 && w.kCGWindowBounds.Width > 0; });
+  if (!window) throw new Error('duo-browser-display-unproved');
+  var bounds = window.kCGWindowBounds, screens = $.NSScreen.screens, primaryHeight = screens.objectAtIndex(0).frame.size.height;
+  var selected, overlap = 0;
+  for (var i = 0; i < screens.count; i++) {
+    var screen = screens.objectAtIndex(i), frame = screen.frame;
+    var top = primaryHeight - frame.origin.y - frame.size.height;
+    var area = Math.max(0, Math.min(bounds.X + bounds.Width, frame.origin.x + frame.size.width) - Math.max(bounds.X, frame.origin.x))
+      * Math.max(0, Math.min(bounds.Y + bounds.Height, top + frame.size.height) - Math.max(bounds.Y, top));
+    if (area > overlap) { selected = screen; overlap = area; }
+  }
+  if (!selected) throw new Error('duo-browser-display-unproved');
+  var visible = selected.visibleFrame;
+  return JSON.stringify({processId: pid, workArea: {left: Math.round(visible.origin.x), top: Math.round(primaryHeight - visible.origin.y - visible.size.height), width: Math.round(visible.size.width), height: Math.round(visible.size.height)}});
 }`;
 const ACTIVATE_APP = `function run(args) {
   ObjC.import('AppKit');
@@ -49,6 +66,10 @@ const WINDOWS_API = `Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public static class RelayBrowserFocus {
+  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+  [StructLayout(LayoutKind.Sequential)] public struct MonitorInfo { public int Size; public Rect Monitor, Work; public uint Flags; }
+  [DllImport("user32.dll")] public static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+  [DllImport("user32.dll")] public static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
@@ -62,7 +83,11 @@ $relayWindowHandle = [RelayBrowserFocus]::GetForegroundWindow()
 if ($relayWindowHandle -eq [IntPtr]::Zero) { throw 'duo-browser-focus-refused' }
 [uint32]$relayProcessId = 0
 [void][RelayBrowserFocus]::GetWindowThreadProcessId($relayWindowHandle, [ref]$relayProcessId)
-@{ processId = $relayProcessId; windowHandle = $relayWindowHandle.ToInt64().ToString() } | ConvertTo-Json -Compress
+$relayMonitor = [RelayBrowserFocus]::MonitorFromWindow($relayWindowHandle, 0)
+$relayMonitorInfo = New-Object RelayBrowserFocus+MonitorInfo
+$relayMonitorInfo.Size = [System.Runtime.InteropServices.Marshal]::SizeOf($relayMonitorInfo)
+if ($relayMonitor -eq [IntPtr]::Zero -or -not [RelayBrowserFocus]::GetMonitorInfo($relayMonitor, [ref]$relayMonitorInfo)) { throw 'duo-browser-display-unproved' }
+@{ processId = $relayProcessId; windowHandle = $relayWindowHandle.ToInt64().ToString(); workArea = @{ left = $relayMonitorInfo.Work.Left; top = $relayMonitorInfo.Work.Top; width = ($relayMonitorInfo.Work.Right - $relayMonitorInfo.Work.Left); height = ($relayMonitorInfo.Work.Bottom - $relayMonitorInfo.Work.Top) } } | ConvertTo-Json -Compress
 `;
 
 async function browserProcessId(context: BrowserContext): Promise<number> {
@@ -108,6 +133,7 @@ Write-Output 'focused'
       const raw = platform === "darwin" ? await command("/usr/bin/osascript", ["-l", "JavaScript", "-e", CAPTURE_APP]) : await powershell(CAPTURE_WINDOW);
       const value: unknown = JSON.parse(raw);
       const observation = z.record(z.string(), z.unknown()).parse(value);
+      WorkAreaSchema.parse(observation.workArea);
       return platform === "darwin" ? AppTargetSchema.parse({ ...observation, platform }) : WindowTargetSchema.parse({ ...observation, platform });
     },
     async show(context, page) {

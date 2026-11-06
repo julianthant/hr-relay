@@ -9,33 +9,40 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
-for (const source of ["show", "poll", "initial"] as const) it(`explains the Duo closure hold without an authority error (${source})`, async () => {
+for (const source of ["show", "poll", "initial", "initial-network"] as const) it(`keeps explicit browser recovery after a closure failure (${source})`, async () => {
   vi.useFakeTimers();
-  const previous = window.location.href; window.history.replaceState(null, "", source === "poll" ? "/?onboardingSetup=duo" : "/");
+  const previous = window.location.href; window.history.replaceState(null, "", "/");
   const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
   const draft = { browser: { state: "open" as const, generation: 1 }, state: "onboarding", operationId: "00000000-0000-4000-8000-000000000001",
     profileId: "00000000-0000-4000-8000-000000000002", step: "duo", methods: { key: idle, touch: idle } };
   const calls: string[] = [];
   const client = createDashboardClient({ baseUrl: "http://localhost:3938", fetchImpl: async url => {
     const path = new URL(url).pathname; calls.push(path);
-    assert.ok(path === "/api/v1/profile/state" || source === "show" && path === "/api/v1/profile/onboarding/duo/browser");
-    return Response.json(calls.length === 1 && source !== "initial" ? draft : { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
+    assert.ok(["/api/v1/profile/state", "/api/v1/profile/onboarding/duo/browser", "/api/v1/profile/onboarding/duo/reopen"].includes(path));
+    if (source === "initial-network" && calls.length === 1) throw new TypeError("synthetic initial read unavailable");
+    return Response.json(path.endsWith("/reopen") ? { ...draft, browser: { state: "open", generation: 2 } } : source.startsWith("initial") && calls.length > 1 ? { ...draft, browser: { state: "closed", generation: 1 } } : calls.length === 1 && !source.startsWith("initial") ? draft : { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
   } });
   const host = document.createElement("div"), root = createRoot(host); document.body.append(host);
+  const button = (text: string) => { const result = [...host.querySelectorAll("button")].find(button => button.textContent === text); assert.ok(result); return result; };
   try {
     await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(DashboardApp, { profileSource: "served" }) })));
-    await act(async () => {
-      if (source === "show") {
-        const show = [...host.querySelectorAll("button")].find(button => button.textContent === "Show setup browser"); assert.ok(show); show.click();
-      } else if (source === "poll") await vi.advanceTimersByTimeAsync(1000);
-    });
-    assert.equal(host.querySelector("h1")?.textContent, "Sign-up on hold");
-    assert.equal(host.querySelector('[role="alert"]')?.textContent, "Relay could not confirm the Duo setup browser closed. Sign-up is on hold. Close and reopen Relay to continue.");
-    assert.doesNotMatch(host.textContent ?? "", /Current profile authority is unavailable|If the browser stays behind|Reopen it to try again/);
-    const buttons = [...host.querySelectorAll<HTMLButtonElement>('main button[type="submit"], main .actions button, main .step-link')];
-    assert.ok(buttons.length > 0); assert.ok(buttons.every(button => button.disabled));
-    await act(async () => { for (const button of buttons) button.click(); await vi.advanceTimersByTimeAsync(5000); });
-    assert.equal(calls.length, source === "initial" ? 1 : 2);
+    if (source.startsWith("initial")) {
+      assert.equal(host.querySelector("h1")?.textContent, "Log in to Relay");
+      if (source === "initial") assert.match(host.querySelector('[role="alert"]')?.textContent ?? "", /Browser closure could not be verified/);
+      assert.equal(host.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled, true);
+      await act(async () => vi.advanceTimersByTimeAsync(1000));
+      assert.equal(host.querySelector("form"), null);
+      assert.equal(button("Reopen").disabled, false);
+    } else {
+      await act(async () => { if (source === "show") button("Show window").click(); else await vi.advanceTimersByTimeAsync(1000); });
+      assert.match(host.textContent ?? "", /Could not reopen setup window/);
+      assert.equal(host.querySelector("form"), null, "the current draft survives the failed action or read");
+      assert.equal(button("Reopen").disabled, false);
+      await act(async () => button("Reopen").click());
+      assert.ok(calls.includes("/api/v1/profile/onboarding/duo/reopen"));
+      assert.match(host.textContent ?? "", /Setup window is open/);
+    }
+    assert.doesNotMatch(host.textContent ?? "", /Current profile authority is unavailable/);
   } finally { await act(async () => root.unmount()); vi.useRealTimers(); host.remove(); window.history.replaceState(null, "", previous); }
 });
 

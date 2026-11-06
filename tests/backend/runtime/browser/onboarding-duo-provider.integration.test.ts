@@ -1,5 +1,10 @@
+import { composeDashboardApplication } from "../../../../src/backend/app/composition/dashboard/compose.js";
+import { PublicProfileStateSchema } from "../../../../src/models/profiles/public-profile.js";
+import { createDuoBrowserFocus } from "../../../../src/backend/runtime/browser/native-browser-focus.js";
+import { stageFastDuoExtension } from "../../../../src/backend/runtime/browser/fast-duo-extension.js";
+import { PROFILE_ENROLLMENT_EXTENSION_MODE } from "../../../../src/models/config/duo-credential-store.js";
 import { createBrowserRoots } from "../../../../src/backend/storage/browser-roots.js";
-import { DEFAULT_BROWSER_LAUNCHER } from "../../../../src/backend/runtime/browser/native-browser.js";
+import { DEFAULT_BROWSER_LAUNCHER, type OwnedBrowserProcess } from "../../../../src/backend/runtime/browser/native-browser.js";
 import { runtimeLifetimeLock } from "../../../support/helpers/backend/runtime-lifetime.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
@@ -45,7 +50,7 @@ for (const pendingClose of [false, true]) it(pendingClose
       launches++; assert.equal(input.headless, false);
       // Full Chromium exercises the synthetic extension UI without a desktop session.
       context = await DEFAULT_BROWSER_LAUNCHER.launch({ ...input, headless: true });
-      await context.route("**/*", async route => {
+      await context.route("https://**/*", async route => {
         const request = route.request();
         if (request.url().startsWith("chrome-extension://")) await route.continue();
         else if (request.method() === "POST" && request.url() === SSO) {
@@ -61,6 +66,7 @@ for (const pendingClose of [false, true]) it(pendingClose
       const focusWorker = context.serviceWorkers().find(worker => worker.url().endsWith("/src/relay-background.js"))
         ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().endsWith("/src/relay-background.js"), timeout: 5000 });
       await focusWorker.evaluate("globalThis.relayFocusCalls = []; const originalWindowUpdate = chrome.windows.update.bind(chrome.windows); chrome.windows.update = async (windowId, options) => { relayFocusCalls.push({ windowId, focused: options.focused }); return originalWindowUpdate(windowId, options); };");
+      await focusWorker.evaluate("globalThis.relayCreatedTabs = []; const createWindow = chrome.windows.create.bind(chrome.windows), createTab = chrome.tabs.create.bind(chrome.tabs); chrome.windows.create = async options => { const window = await createWindow(options); for (const tab of window.tabs) relayCreatedTabs.push({ id: tab.id, windowId: window.id }); return window; }; chrome.tabs.create = async options => { const tab = await createTab(options); relayCreatedTabs.push({ id: tab.id, windowId: tab.windowId }); return tab; };");
       return context;
     } },
   });
@@ -77,7 +83,7 @@ for (const pendingClose of [false, true]) it(pendingClose
     await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
     assert.ok(context);
     assert.equal(launches, 1); assert.equal(context.pages().length, 1); assert.equal(acquisitions, 0); assert.equal(read().methods.key.state, "idle");
-    const focusWorker = context.serviceWorkers()[0]; assert.ok(focusWorker);
+    const focusWorker = context.serviceWorkers().find(worker => worker.url().endsWith("/src/relay-background.js")); assert.ok(focusWorker);
     const focusCalls = () => focusWorker.evaluate("globalThis.relayFocusCalls").then(value => z.array(z.strictObject({ windowId: z.number().int(), focused: z.literal(true) })).parse(value));
     assert.equal((await focusCalls()).length, 1);
     let setup = context.pages()[0]; assert.ok(setup);
@@ -92,12 +98,19 @@ for (const pendingClose of [false, true]) it(pendingClose
     await expect(setup.getByRole("button", { name: "Show Duo", exact: true })).toBeEnabled();
     assert.equal(context.pages().length, 2);
     const portal = context.pages().find(page => page !== setup); assert.ok(portal);
-    const worker = context.serviceWorkers()[0]; assert.ok(worker);
-    const windows = z.array(z.number().int()).parse(await worker.evaluate("chrome.windows.getAll().then(windows => windows.map(window => window.id))"));
-    const tabWindows = z.array(z.number().int()).parse(await worker.evaluate("chrome.tabs.query({}).then(tabs => tabs.map(tab => tab.windowId))"));
-    assert.equal(windows.length, 1); assert.equal(tabWindows.length, 2); assert.ok(tabWindows.every(id => id === windows[0]));
+    const worker = context.serviceWorkers().find(worker => worker.url().endsWith("/src/relay-background.js")); assert.ok(worker);
+    const tabIdentity = z.object({ id: z.number().int(), windowId: z.number().int() });
+    const windows = z.array(z.object({ id: z.number().int(), type: z.literal("normal"), tabs: z.array(tabIdentity) }))
+      .parse(await worker.evaluate("chrome.windows.getAll({ populate: true })"));
+    assert.equal(windows.length, 1); const window = windows[0]; assert.ok(window);
+    assert.equal(window.tabs.length, 2); assert.ok(window.tabs.every(tab => tab.windowId === window.id));
+    const createdTabs = z.array(tabIdentity).parse(await worker.evaluate("globalThis.relayCreatedTabs"));
+    assert.equal(createdTabs.length, 2); assert.deepEqual(window.tabs, createdTabs);
+    assert.equal(new Set(window.tabs.map(tab => tab.id)).size, 2);
     await expect(portal.getByRole("heading", { name: "Awaiting native MFA" })).toBeVisible();
     assert.equal(portal.url(), SSO); assert.equal(acquisitions, 1); assert.equal(submissions, 1); assert.equal(read().methods.key.state, "pending");
+    await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
+    assert.equal(await worker.evaluate("chrome.tabs.query({ active: true }).then(tabs => tabs[0].id)"), createdTabs[0].id);
     await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
     await expect(setup.getByRole("button", { name: "Set up Security key", exact: true })).toBeEnabled();
     assert.equal(read().methods.key.state, "idle");
@@ -105,12 +118,14 @@ for (const pendingClose of [false, true]) it(pendingClose
     await portal.goto("https://duo.ucsd.edu/devices");
     await profile.session.openOnboardingPortal(draft.token, draft.operationId); assert.equal(context.pages().length, 2); assert.equal(acquisitions, 1);
     assert.equal(portal.url(), "https://duo.ucsd.edu/devices"); assert.equal(submissions, 1);
+    await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
     for (const method of ["key", "touch"] as const) {
       const label = method === "key" ? "Security key" : "Touch ID";
       await setup.locator(`.relay-method-card[data-method="${method}"]`).click();
       await setup.getByRole("button", { name: `Set up ${label}`, exact: true }).click();
       await expect(setup.getByRole("button", { name: "Cancel setup", exact: true })).toBeEnabled();
       assert.equal(read().methods[method].state, "pending");
+      await profile.session.showOnboardingBrowser(draft.token, draft.operationId);
       await setup.getByRole("button", { name: "Cancel setup", exact: true }).click();
       await expect(setup.getByRole("button", { name: `Set up ${label}`, exact: true })).toBeEnabled();
       assert.equal(read().methods[method].state, "idle");
@@ -152,7 +167,7 @@ for (const pendingClose of [false, true]) it(pendingClose
       assert.equal(read().methods.key.state, "pending");
       await context.route("https://synthetic.duosecurity.com/**", route => route.fulfill({ contentType: "text/html",
         body: "<!doctype html><body>Signed in as: synthetic-user@ucsd.edu</body>" }));
-      const capture = await context.newPage();
+      const capture = context.pages().find(page => page !== setup); assert.ok(capture);
       await capture.goto("https://synthetic.duosecurity.com/");
       const authenticator = await context.newCDPSession(capture);
       await authenticator.send("WebAuthn.enable");
@@ -209,7 +224,10 @@ for (const pendingClose of [false, true]) it(pendingClose
     }
     assert.equal(launches, pendingClose ? 3 : 2); assert.equal(nativeProbes, launches);
     assert.equal(nativeClosures, nativeProbes); assert.equal(nativeContexts.size, 0);
-  } catch (error) { failure = error; }
+  } catch (error) {
+    failure = error;
+    if (context && !context.isClosed()) failure = new Error(`onboarding native boundary: ${JSON.stringify({ acquisitions, submissions, pages: context.pages().map(page => page.url()) })}`, { cause: error });
+  }
   try { await profile.close(); }
   catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "onboarding fixture and cleanup failed"); }
   try { await context?.close(); }
@@ -334,4 +352,139 @@ for (const scenario of ["software", "abort", "timeout", "platform"] as const) it
   try { machine.release(); }
   catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error], "enrollment fixture and admission cleanup failed"); }
   if (failure !== undefined) throw new Error("enrollment fixture failed", { cause: failure });
+});
+
+it("measures, centers and clamps the exact native setup normal window and executes owned app focus", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "duo-popup-bounds-"))), extensionDirectory = join(root, "extension");
+  stageFastDuoExtension(realpathSync("fast-duo"), extensionDirectory, PROFILE_ENROLLMENT_EXTENSION_MODE);
+  const focus = createDuoBrowserFocus(5000), relay = await focus.captureRelay(); assert.ok(relay?.workArea);
+  let process: OwnedBrowserProcess | undefined;
+  const context = await DEFAULT_BROWSER_LAUNCHER.launch({ profileDirectory: root, extensionDirectory, headless: false, acceptDownloads: false,
+    downloadsPath: root, viewport: { width: 640, height: 720 }, timeoutMs: 5000, ownedProcess: owned => { process = owned; } });
+  try {
+    const worker = context.serviceWorkers().find(worker => worker.url().endsWith("/src/relay-background.js"))
+      ?? await context.waitForEvent("serviceworker", { predicate: worker => worker.url().endsWith("/src/relay-background.js"), timeout: 5000 });
+    const target = z.object({ tabId: z.number(), windowId: z.number(), url: z.string() }).parse(await worker.evaluate(`globalThis.relayOnboarding.browserInstall(crypto.randomUUID())`));
+    await expect.poll(() => context.pages().some(page => page.url() === target.url)).toBe(true);
+    const page = context.pages().find(page => page.url() === target.url); assert.ok(page);
+    const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+    const initial = { methods: { key: idle, touch: idle } };
+    const reply = worker.evaluate(async initial => {
+      const owner: unknown = Reflect.get(globalThis, "relayOnboarding");
+      if (typeof owner !== "object" || owner === null) throw new Error("fixture broker required");
+      const next: unknown = Reflect.get(owner, "browserNext"), respond: unknown = Reflect.get(owner, "browserReply");
+      if (typeof next !== "function" || typeof respond !== "function") throw new Error("fixture broker API required");
+      const request: unknown = await Reflect.apply(next, owner, []);
+      if (typeof request !== "object" || request === null || Reflect.get(request, "kind") !== "state") throw new Error("fixture state request required");
+      Reflect.apply(respond, owner, [Reflect.get(request, "id"), { ok: true, value: initial }]);
+    }, initial);
+    await page.goto(new URL("options.html", worker.url()).href, { waitUntil: "domcontentloaded", timeout: 5000 }); await reply;
+    await worker.evaluate(`globalThis.relayOnboarding.browserSelect(${target.tabId}, ${target.windowId})`);
+    await worker.evaluate(`globalThis.relayOnboarding.browserFocus()`);
+    await focus.show(context, page);
+    const frame = await page.evaluate(() => ({ width: window.outerWidth - window.innerWidth, height: window.outerHeight - window.innerHeight }));
+    const area = relay.workArea;
+    const resized = z.object({ left: z.number(), top: z.number(), width: z.number(), height: z.number() }).parse(await worker.evaluate(
+      `globalThis.relayOnboarding.browserBounds(${JSON.stringify(area)}, ${JSON.stringify(frame)})`));
+    assert.equal(resized.width, Math.min(640 + frame.width, area.width));
+    assert.equal(resized.height, Math.min(720 + frame.height, area.height));
+    assert.equal(resized.left, area.left + Math.floor((area.width - resized.width) / 2));
+    assert.equal(resized.top, area.top + Math.floor((area.height - resized.height) / 2));
+    const actual = z.object({ id: z.number(), left: z.number(), top: z.number(), width: z.number(), height: z.number() }).parse(await worker.evaluate(`chrome.windows.get(${target.windowId})`));
+    assert.deepEqual(actual, { id: target.windowId, ...resized });
+    const content = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    assert.deepEqual(content, { width: resized.width - frame.width, height: resized.height - frame.height });
+    await focus.returnToRelay(relay);
+    await focus.show(context, page);
+  } finally { assert.ok(process); await process.stop(5000, true); assert.equal(process.exited(), true); }
+});
+
+for (const expire of [false, true]) it(`real public Reopen proves owned stop, native retry and exact request custody (expired=${expire})`, async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "duo-public-reopen-")));
+  for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
+  const lifetime = await runtimeLifetimeLock(), machine = acquireEntrypointAdmission(root, "exclusive", lifetime);
+  const browserRoot = join(machine.stateRoot, "browsers", "onboarding"); mkdirSync(browserRoot, { recursive: true, mode: 0o700 });
+  mkdirSync(join(root, rebuildRuntimeIsolation.processLockRoot), { recursive: true, mode: 0o700 });
+  const roots = createBrowserRoots(machine), processes: { process: OwnedBrowserProcess; native: boolean }[] = [];
+  let stopRefused = false, nativeCloseRefused = false, holdNative = false, mainLaunches = 0, nativeLaunches = 0;
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let lateDone: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+  const provider = createProfileOnboardingDuoProvider({ browserRoots: { ...roots, async withUnused(directory, probe, body, owner) {
+    try { return await roots.withUnused(directory, probe, body, owner); } finally { lateDone?.resolve(); }
+  } }, browserRoot, extensionDirectory: realpathSync("fast-duo"), clock: systemClock, closeProofMs: 5000,
+    focus: { async captureRelay() { return undefined; }, async show() {}, async returnToRelay() { throw new Error("unexpected native return"); } },
+    launcher: { async launch(input) {
+      const native = input.nativeOnly === true;
+      const context = await DEFAULT_BROWSER_LAUNCHER.launch({ ...input, headless: true, ownedProcess: process => {
+        processes.push({ process, native });
+        input.ownedProcess?.({ exited: () => process.exited(), onExit: callback => process.onExit(callback), async stop(timeout, graceful) {
+          if (!native && stopRefused || native && nativeCloseRefused && graceful) throw new Error("synthetic owned stop refused");
+          await process.stop(timeout, graceful);
+        } });
+      } });
+      if (native) { nativeLaunches++; if (holdNative) { entered.resolve(); await release.promise; } }
+      else { mainLaunches++; await context.route("https://**/*", route => route.abort()); }
+      return context;
+    } },
+  });
+  const runtime = await composeDashboardApplication({ admission: machine, lifetimeLock: lifetime, isolation: rebuildRuntimeIsolation,
+    backendPortOverride: 0, frontendPortOverride: 0, env: {}, onboardingDuo: provider });
+  const base = `http://127.0.0.1:${runtime.port}`;
+  let cookie: string | undefined, failure: unknown;
+  const post = (path: string, body: unknown, session = cookie) => fetch(`${base}/api/v1/profile/${path}`, { method: "POST", headers: {
+    origin: base, "content-type": "application/json", ...(session === undefined ? {} : { cookie: session }) }, body: JSON.stringify(body) });
+  try {
+    const signup = await post("sign-up", { firstName: "Synthetic", lastName: "Reopen", email: "synthetic-reopen@ucsd.edu", password: "synthetic-reopen-password" });
+    const draft = PublicProfileStateSchema.parse(await signup.json()); assert.equal(draft.state, "onboarding"); if (draft.state !== "onboarding") throw new Error("draft required");
+    cookie = signup.headers.get("set-cookie")?.split(";", 1)[0]; assert.ok(cookie);
+    const shown = PublicProfileStateSchema.parse(await (await post("onboarding/duo/browser", { operationId: draft.operationId })).json());
+    assert.equal(shown.state, "onboarding"); if (shown.state !== "onboarding") throw new Error("open draft required");
+    const request = { operationId: draft.operationId, generation: shown.browser.generation };
+    const operationPath = join(machine.stateRoot, "machine", "operations", `${draft.operationId}.json`), before = readFileSync(operationPath);
+    const reopen = () => post("onboarding/duo/reopen", request);
+    assert.equal((await post("onboarding/duo/reopen", { ...request, generation: request.generation - 1 })).status, 409);
+    assert.equal(mainLaunches, 1); assert.equal(nativeLaunches, 0);
+    stopRefused = true;
+    const stopped = await reopen(); assert.equal(stopped.status, 409); assert.deepEqual(await stopped.json(), { state: "refused", code: "DUO_SETUP_STOP_FAILED" });
+    assert.equal(processes[0]?.process.exited(), false);
+    for (const action of ["duo/browser", "duo/portal", "duo/start", "cancel", "complete"]) {
+      const refused = await post(`onboarding/${action}`, { operationId: draft.operationId, ...(action === "duo/start" ? { method: "key" } : {}) });
+      assert.equal(refused.status, 409); assert.deepEqual(await refused.json(), { state: "refused", code: "BROWSER_CLOSURE_UNPROVED" });
+    }
+    assert.deepEqual(readFileSync(operationPath), before); assert.equal(mainLaunches, 1); assert.equal(nativeLaunches, 0);
+    stopRefused = false; nativeCloseRefused = true;
+    const files = await reopen(); assert.equal(files.status, 409); assert.deepEqual(await files.json(), { state: "refused", code: "DUO_SETUP_FILES_BUSY" });
+    assert.equal(processes[0]?.process.exited(), true); assert.equal(processes[1]?.process.exited(), false);
+    assert.equal(mainLaunches, 1); assert.equal(nativeLaunches, 1);
+    assert.equal((await post("onboarding/duo/reopen", request, "relay-profile-onboarding=foreign")).status, 409);
+    assert.equal(processes[1]?.process.exited(), false, "a foreign request cannot stop the retained probe");
+    nativeCloseRefused = false;
+    if (expire) {
+      holdNative = true; lateDone = Promise.withResolvers<void>();
+      const first = reopen(), duplicate = reopen(); await entered.promise;
+      const directory = roots.signupRoot({ profileId: draft.profileId, profileRoot: browserRoot, credentialFingerprint: null,
+        owner: { kind: "signup", operationId: draft.operationId, accountId: SignUpOperationSchema.parse(JSON.parse(before.toString())).onboarding!.accountId, providerGeneration: 1 } })?.profileDirectory;
+      assert.ok(directory);
+      for (const response of await Promise.all([first, duplicate])) { assert.equal(response.status, 409); assert.deepEqual(await response.json(), { state: "refused", code: "DUO_SETUP_FILES_BUSY" }); }
+      assert.equal(mainLaunches, 1); assert.equal(nativeLaunches, 2); assert.deepEqual(readFileSync(operationPath), before);
+      holdNative = false; release.resolve(); await lateDone.promise;
+      assert.equal(realpathSync(directory), directory, "late native closure cannot remove the old profile after its request expired");
+      assert.deepEqual(readFileSync(operationPath), before);
+    }
+    const [first, duplicate] = await Promise.all([reopen(), reopen()]);
+    assert.equal(first.status, 200); assert.equal(duplicate.status, 200);
+    const fresh = PublicProfileStateSchema.parse(await first.json()); assert.equal(fresh.state, "onboarding"); if (fresh.state !== "onboarding") throw new Error("fresh draft required");
+    assert.equal(fresh.browser.generation, request.generation + 1); assert.equal(mainLaunches, 2);
+    assert.equal((await reopen()).status, 409, "stale generation cannot stop the fresh child");
+    assert.equal(processes.filter(entry => !entry.native).at(-1)?.process.exited(), false);
+    const cancelled = await post("onboarding/cancel", { operationId: draft.operationId }); assert.equal(cancelled.status, 200);
+    assert.deepEqual(await cancelled.json(), { state: "signed-out" }); assert.ok(processes.every(entry => entry.process.exited()));
+    assert.deepEqual(machine.readProfileRegistry().profiles, []);
+  } catch (error) { failure = error; }
+  finally {
+    release.resolve();
+    for (const entry of processes) try { await entry.process.stop(5000); } catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error]); }
+    try { await runtime.stop(); machine.release(); } catch (error) { failure = failure === undefined ? error : new AggregateError([failure, error]); }
+  }
+  if (failure !== undefined) throw failure instanceof Error ? failure : new Error("native-public-reopen-failed", { cause: failure });
 });

@@ -38,7 +38,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   let startupHold: Promise<void> | undefined, releaseStartup: (() => void) | undefined, startupEntered: (() => void) | undefined;
   const replies = new Map<string, (value: unknown) => void>();
   let windowFocusCount = 0, osFocusCount = 0, capturedRelay = 0, returnedRelay = 0, failInstall = false;
-  let captureFailure: Error | undefined, focusFailure: Error | undefined, returnFailure: Error | undefined;
+  let captureFailure: Error | undefined, focusFailure: Error | undefined, returnFailure: Error | undefined, selectionFailure: Error | undefined;
   let browserSetupFailure: Error | undefined, browserSetupDurationMs = 0;
   let portalFailure = new Error("synthetic navigation failure");
   let portalLanding: string | undefined;
@@ -51,6 +51,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   const listeners: (() => void)[] = [];
   const calls: string[] = [];
   const workerCalls: string[] = [];
+  const selectedPages: string[] = [];
   let documentCurrent = true;
   let driftAfter: string | undefined;
   function called(name: string): void { calls.push(name); if (name === driftAfter) documentCurrent = false; }
@@ -66,8 +67,9 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     async evaluate(_callback: unknown, input: { method: string; args: unknown[] }) {
       workerCalls.push(input.method);
       if (input.method === "install") { clock.advanceMonotonic(installDurationMs); if (installFailure) throw installFailure; startupEntered?.(); await startupHold; if (failInstall) throw new Error("synthetic arm initialization failed"); return; }
-      if (input.method === "browserInstall") { clock.advanceMonotonic(browserSetupDurationMs); if (browserSetupFailure) throw browserSetupFailure; const page = makePage("chrome-extension://owned-extension/src/options.html"); pages.push(page); for (const resolve of pageWaiters.splice(0)) resolve(page as unknown as Page); return; }
-      if (input.method === "browserPage") { const page = makePage(String(input.args[0])); pages.push(page); for (const resolve of pageWaiters.splice(0)) resolve(page as unknown as Page); return 1; }
+      if (input.method === "browserInstall") { clock.advanceMonotonic(browserSetupDurationMs); if (browserSetupFailure) throw browserSetupFailure; const url = `about:blank#relay-target=${String(input.args[0])}`; const page = makePage(url); pages.push(page); for (const resolve of pageWaiters.splice(0)) resolve(page as unknown as Page); return { tabId: pages.length, windowId: 1, url }; }
+      if (input.method === "browserPage") { const page = makePage(String(input.args[0])); pages.push(page); for (const resolve of pageWaiters.splice(0)) resolve(page as unknown as Page); return { tabId: pages.length, windowId: 1, url: String(input.args[0]) }; }
+      if (input.method === "browserSelect") { if (selectionFailure) throw selectionFailure; const page = pages[Number(input.args[0]) - 1]; assert.ok(page); assert.equal(input.args[1], 1); selectedPages.push(page.url()); focusCount++; return; }
       if (input.method === "browserFocus") { windowFocusCount++; return; }
       if (input.method === "browserNext") {
         if (browserRequests.length) return browserRequests.shift();
@@ -94,7 +96,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     let url = initialUrl;
     const frame = { url: () => url, evaluate: async () => true };
     return { frames: () => sameOriginChildFrame ? [frame, { ...frame }] : [frame], evaluate: async () => true, bringToFront: async () => { focusCount++; }, url: () => url,
-      goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://")) { portalPages++; if (portalLanding === undefined) throw portalFailure; url = portalLanding; } else url = destination; },
+      goto: async (destination: string) => { if (!destination.startsWith("chrome-extension://") && !destination.startsWith("about:blank")) { portalPages++; if (portalLanding === undefined) throw portalFailure; url = portalLanding; } else url = destination; },
       waitForURL: async (matches: string | ((candidate: URL) => boolean)) => { assert.ok(typeof matches === "string" ? url === matches : matches(new URL(url))); },
       waitForLoadState: async () => undefined, on: () => undefined,
       waitForFunction: async () => ({ dispose: async () => undefined }),
@@ -182,7 +184,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
   }
   return { seedRoot(other = owner) { return browserRoots.beginSignupLaunch({ profileId: other.profileId, profileRoot: browserRoot, credentialFingerprint: null,
       owner: { kind: "signup", operationId: other.operationId, accountId: other.accountId, providerGeneration: other.generation } }).input.profileDirectory; }, sameOriginChildFrame: () => { sameOriginChildFrame = true; }, addDuoPage: () => { pages.push(makePage("https://test.duosecurity.com")); }, mutateOwnerDuringProbe:()=>{mutateOwnerDuringProbe=true;}, browserRoot, nativeProbes:()=>nativeProbes, refuseNative:()=>{nativeBusy=true;}, revokeDuringProbe:()=>{revokeDuringProbe=true;}, provider, rawProvider: realProvider, owner, attempt, bind, calls, workerCalls, send, clock, driftOn: (name: string) => { driftAfter = name; }, drift: () => { documentCurrent = false; }, extensionDirectory, reportFailure, failures, closeBrowser: () => context.close(), observed: () => observed, revoke: () => { current = false; },
-    events,
+    events, selectedPages,
     sendBrowser(kind: string) {
       const id = randomUUID(), request = { id, kind };
       const response = new Promise(resolve => replies.set(id, resolve));
@@ -199,6 +201,7 @@ function world(method: "key" | "touch" = "key", platform: NodeJS.Platform = "dar
     releaseNativeProbe() { releaseNativeProbe?.(); },
     refuseCapture(error: Error) { captureFailure = error; },
     refuseFocus(error: Error) { focusFailure = error; },
+    refuseSelection(error: Error) { selectionFailure = error; },
     refuseReturn(error: Error) { returnFailure = error; },
     beginContextClose() { closing = true; },
     closeWorker() { for (const listener of workerCloseListeners) listener(); },
@@ -374,7 +377,7 @@ describe("draft Duo provider", () => {
       assert.deepEqual(await w.rawProvider.closeBrowser(w.owner),{state:"closed"});assert.equal(existsSync(directory),false);assert.equal(w.nativeProbes(),2);
       await w.rawProvider.showBrowser(w.owner);assert.equal(w.nativeProbes(),2);assert.equal(w.launches(),2);
       assert.deepEqual(await w.rawProvider.closeBrowser(w.owner),{state:"closed"});assert.equal(existsSync(directory),false);assert.equal(w.nativeProbes(),3);
-      assert.deepEqual(w.workerCalls,["browserInstall","browserNext","browserFocus","browserStop","browserInstall","browserNext","browserFocus","browserStop"]);
+      assert.deepEqual(w.workerCalls,["browserInstall","browserNext","browserSelect","browserFocus","browserStop","browserInstall","browserNext","browserSelect","browserFocus","browserStop"]);
       assert.deepEqual(w.calls,[]);
     }finally{await w.closeBrowser();await w.cleanup();}
   });
@@ -528,6 +531,18 @@ describe("draft Duo provider", () => {
     } finally { await w.cleanup(); }
   });
 
+  for (const platform of ["darwin", "win32"] as const) it(`refuses an unproved exact target before ${platform} foreground handling`, async () => {
+    const w = world("key", platform), failure = new Error("ONBOARDING_DUO_SCOPE");
+    try {
+      await w.provider.showBrowser(w.owner);
+      const activations = w.osFocuses(), windowActivations = w.windowFocuses();
+      w.refuseSelection(failure);
+      await assert.rejects(w.provider.showBrowser(w.owner), error => error === failure);
+      assert.equal(w.osFocuses(), activations); assert.equal(w.windowFocuses(), windowActivations);
+      assert.deepEqual(w.calls, []);
+    } finally { await w.cleanup(); }
+  });
+
   for (const platform of ["darwin", "win32"] as const) it(`activates each ${platform} show and returns to the original Relay target without starting an attempt`, async () => {
     const w = world("key", platform);
     const idle = { state: "idle", ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
@@ -582,7 +597,7 @@ describe("draft Duo provider", () => {
       const failure = w.failures[0]; assert.ok(failure instanceof ProfileOnboardingDuoProviderError); assert.equal(failure.kind, "unavailable");
       await w.closeBrowser();
       await w.provider.showBrowser(w.owner);
-      assert.equal(w.focuses(), 2); assert.equal(w.windowFocuses(), 2);
+      assert.equal(w.focuses(), 3); assert.equal(w.windowFocuses(), 2);
       assert.equal(w.osFocuses(), 2);
       assert.equal(w.launches(), 2); assert.equal(w.workerCalls.filter(call => call === "install").length, 1);
       assert.equal(w.portalPages(), 0); assert.deepEqual(w.calls, []);
@@ -640,7 +655,7 @@ describe("draft Duo provider", () => {
     original.name = "TimeoutError";
     const code = phase === "navigation" ? "UCSD_DUO_NAVIGATION_TIMEOUT" : "UCSD_SSO_SUBMIT_TIMEOUT";
     let acquisitions = 0;
-    w.owner.acquireCredentials = async () => { acquisitions++; return { userId: "synthetic-user", password: "synthetic-password" }; };
+    w.owner.acquireCredentials = async () => { assert.equal(w.selectedPages.at(-1), "about:blank"); acquisitions++; return { userId: "synthetic-user", password: "synthetic-password" }; };
     if (phase === "navigation") w.refusePortal(original);
     else { w.landPortal("https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO"); w.refuseSubmit(original); }
     try {
@@ -662,6 +677,9 @@ describe("draft Duo provider", () => {
       try {
         await w.provider.showBrowser(w.owner);
         assert.deepEqual(await w.sendBrowser("portal"), { ok: false, portalFailure: "untrusted" });
+        const activations = w.osFocuses();
+        assert.deepEqual(await w.sendBrowser("portal-show"), { ok: false });
+        assert.equal(w.osFocuses(), activations);
         assert.equal(acquisitions, 0); assert.deepEqual(w.calls, []);
       } finally { await w.cleanup(); }
     });
@@ -675,6 +693,11 @@ describe("draft Duo provider", () => {
       await w.provider.showBrowser(w.owner);
       assert.deepEqual(await w.sendBrowser("portal"), { ok: false, ...(code === "TimeoutError" ? { portalFailure: "sign-in" } : {}) });
       assert.equal(acquisitions, 1);
+      assert.equal(w.selectedPages.at(-1), "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO");
+      const idle = { state: "idle" as const, ceremonyObserved: false, portalAccepted: false, operatorConfirmed: false, exactCredentialRequestObserved: false };
+      w.owner.readState = () => ProfileOnboardingStateSchema.parse({ state: "onboarding", operationId: w.attempt.operationId, profileId: w.attempt.profileId, step: "duo", browser: { state: "open", generation: 1 }, methods: { key: idle, touch: idle } });
+      assert.deepEqual(await w.sendBrowser("portal-show"), { ok: true, value: w.owner.readState() });
+      assert.equal(w.selectedPages.at(-1), "https://a5.ucsd.edu/tritON/profile/SAML2/Redirect/SSO");
     } finally { await w.cleanup(); }
   });
 
@@ -750,8 +773,11 @@ describe("draft Duo provider", () => {
         transport: "usb", isResidentCredential: false, createdAt: w.clock.now().toISOString() }), { ok: true, value: { revision: 1 } });
       await w.send("software-created", { credentialId: "cHVibGljLWlk", requestId });
       await w.send("sign", { credentialId: "cHVibGljLWlk", requestId: randomUUID(), origin: BIND.origin, rpId: "duosecurity.com", challenge: "AQID" });
+      const osFocusBeforeCompletion = w.osFocuses();
       await w.send("portal-accepted", { credentialId: "cHVibGljLWlk", requestId });
       assert.deepEqual(w.calls, ["persist", "fast-duo", "sign", "sign-return", "portal-accepted"]);
+      assert.equal(w.selectedPages.at(-1), "chrome-extension://owned-extension/src/options.html");
+      assert.equal(w.osFocuses(), osFocusBeforeCompletion, "background completion selects its tab without activating the app");
       assert.deepEqual(await w.provider.cancel(w.attempt), { state: "closed" });
       assert.equal(existsSync(w.profile()), true);
       assert.deepEqual(await w.provider.closeBrowser(w.owner), { state: "closed" });

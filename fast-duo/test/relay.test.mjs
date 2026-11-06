@@ -17,9 +17,17 @@ function world() {
   let localReads = 0;
   let cleared = false;
   const scope = { documentId: DOCUMENT, url: `${ORIGIN}/setup`, accountNames: ['alex@example.edu'], accountRevision: 0 };
+  const tabs = new Map(), windows = new Map(), removed = [];
   const api = {
+    windows: {
+      onRemoved: { addListener: listener => removed.push(listener) },
+      async create(options) { const tab = { id: 9, windowId: 1, url: options.url, active: true }; tabs.set(9, tab); const window = { ...options, id: 1, tabs: [tab] }; windows.set(1, window); return window; },
+      async get(id) { assert.ok(windows.has(id)); return windows.get(id); },
+      async update(id, options) { const window = { ...await this.get(id), ...options }; windows.set(id, window); return window; },
+      async remove(id) { windows.delete(id); for (const listener of removed) listener(id); },
+    },
     runtime: { id: 'owned-extension' },
-    tabs: { get: async id => ({ id, url: scope.url }), sendMessage: async (_id, request, target) => {
+    tabs: { get: async id => tabs.get(id) ?? ({ id, url: scope.url }), update: async (id, values) => { assert.ok(tabs.has(id)); const tab = { ...tabs.get(id), ...values }; tabs.set(id, tab); return tab; }, create: async values => { const tab = { ...values, id: 10 }; tabs.set(10, tab); return tab; }, sendMessage: async (_id, request, target) => {
       if (target.documentId !== scope.documentId) throw new Error('document replaced');
       assert.equal(request.type, 'RELAY_OBSERVE');
       return { url: scope.url, origin: new URL(scope.url).origin, documentActive: true, accountNames: [...scope.accountNames], accountRevision: scope.accountRevision };
@@ -70,7 +78,9 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
   t.after(() => { delete globalThis.chrome; delete globalThis.relayOnboarding; });
   await import('../src/relay-background.js?browser-ui-test');
   const owner = globalThis.relayOnboarding;
-  await owner.browserInstall();
+  await owner.browserInstall(crypto.randomUUID());
+  assert.equal((await w.api.windows.get(1)).type, 'normal');
+  await w.api.tabs.update(9, { url: root + 'src/options.html' });
   const sender = { id: w.api.runtime.id, url: root + 'src/options.html', origin: root.slice(0, -1),
     tab: { id: 9, url: root + 'src/options.html' }, frameId: 0, documentId: DOCUMENT, documentLifecycle: 'active' };
   const send = (message, source) => new Promise(resolve => { receive(message, source, resolve); });
@@ -124,6 +134,20 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
   }
   await denied(enrollment(), SENDER);
   assert.deepEqual(w.state(), {}); assert.equal(w.localReads(), 0);
+  await owner.browserFocus(); assert.equal((await w.api.windows.get(1)).focused, true);
+  const getWindow = w.api.windows.get.bind(w.api.windows);
+  w.api.windows.get = async id => ({ ...await getWindow(id), id: 2 });
+  await assert.rejects(owner.browserFocus(), /ONBOARDING_DUO_SCOPE/);
+  w.api.windows.get = getWindow;
+  await owner.browserSelect(9, 1);
+  await assert.rejects(owner.browserSelect(7, 1), /ONBOARDING_DUO_SCOPE/);
+  await assert.rejects(owner.browserSelect(9, 2), /ONBOARDING_DUO_SCOPE/);
+  await owner.browserBounds({ left: 20, top: 30, width: 600, height: 700 }, { width: 0, height: 32 });
+  assert.deepEqual(await w.api.windows.get(1), { ...(await w.api.windows.get(1)), left: 20, top: 30, width: 600, height: 700 });
+  await w.api.windows.remove(999);
+  const pending = owner.browserNext();
+  await w.api.windows.remove(1);
+  assert.equal((await pending).kind, 'window-closed');
   await owner.browserStop(); assert.equal((await send({ type: 'STATE' }, sender)).success, false);
 });
 async function acknowledge(worker, kind, value) {
@@ -670,7 +694,7 @@ test('the browser listener records exact scope failures and safe unknown errors'
   t.after(() => { delete globalThis.chrome; delete globalThis.relayOnboarding; });
   await import('../src/relay-background.js?diagnostic-listener-test');
   const owner = globalThis.relayOnboarding;
-  await owner.browserInstall();
+  await owner.browserInstall(crypto.randomUUID());
   for (const error of [new Error('ONBOARDING_DUO_SCOPE'), new TypeError('secret-password', { cause: new Error('private-key') })]) {
     w.api.tabs.get = async () => { throw error; };
     const response = new Promise(resolve => receive({ type: 'RELAY_CAPABILITIES', request: { origin: ORIGIN, rpId: 'duosecurity.com' } }, SENDER, resolve));

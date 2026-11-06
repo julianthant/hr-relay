@@ -1,3 +1,4 @@
+import { AuthoritySourceClosureUnprovedError, createBrowserSourceRecovery } from "../../../src/backend/storage/source-closure.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { randomUUID } from "node:crypto";
@@ -144,4 +145,63 @@ it("reopens the exact browser generation after a drain failure without aborting 
   assert.deepEqual(operation.onboarding?.attempts, []);
   await owner.drain(operationId);
   owner.assertClosed();
+});
+
+for (const foreign of [false, true]) it(`settles only recovered attempt custody before Cancel and retains Unknown history (foreign=${foreign})`, async () => {
+  const operationId = randomUUID(), profileId = randomUUID();
+  let operation = SignUpOperationSchema.parse({ schemaVersion: 2, kind: "sign-up", operationId, profileId,
+    commandId: randomUUID(), writeId: randomUUID(), emailKey: "a".repeat(64), firstName: "Synthetic", lastName: "Operator",
+    createdAt: "2026-11-03T08:00:00.000Z", commandFingerprint: "b".repeat(64), phase: "applying",
+    credentials: { operationId: randomUUID(), keyId: randomUUID(), generation: 1, phase: "ready" },
+    onboarding: { accountId: randomUUID(), generation: 1, attempts: [] } });
+  const source = new AuthoritySourceClosureUnprovedError([new Error("foreign custody")]), sourceRecovery = createBrowserSourceRecovery(); sourceRecovery.retain(source);
+  let generation = 4, recovered = false;
+  const unused = (): never => { throw new Error("unexpected credential access"); };
+  const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)), onEvent() {}, onFailure() {},
+    failureDiagnostic: () => ({ kind: "unknown", causeTag: "worker" }),
+    read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
+    email: unused, credentials: unused, store: unused, publicState: unused,
+    provider: { async showBrowser(browser) { browser.assertCurrent(); }, async openPortal() { unused(); },
+      browserState() { return { state: "closed", generation }; },
+      async start(_attempt, _bind, report) { await report(new ProfileOnboardingDuoProviderError("unknown", "worker", foreign ? source : undefined)); },
+      async cancel() { return { state: "closed" }; },
+      async closeBrowser() { return recovered ? { state: "closed" } : { state: "uncertain" }; },
+      async reopenBrowser(browser, expected) { browser.assertCurrent(); assert.equal(expected, generation); generation++; recovered = true; },
+    } });
+  await owner.start(operationId, "touch");
+  await assert.rejects(owner.drain(operationId)); assert.throws(() => owner.assertAbortable(operationId));
+  await owner.reopenBrowser(operationId, 4);
+  assert.equal(operation.onboarding?.attempts[0]?.state, "unknown");
+  assert.deepEqual(operation.onboarding?.attempts[0]?.failure, { kind: "unknown", causeTag: "worker" });
+  await owner.drain(operationId);
+  if (foreign) { assert.throws(() => owner.assertAbortable(operationId)); assert.throws(() => owner.assertClosed()); await sourceRecovery.prove(async () => {}); owner.assertAbortable(operationId); owner.assertClosed(); }
+  else { owner.assertAbortable(operationId); owner.assertClosed(); }
+});
+
+for (const foreign of [false, true]) it(`a Show failure caught after proved Reopen stays bound to its retired resource (foreign=${foreign})`, async () => {
+  const operationId = randomUUID(), profileId = randomUUID();
+  let operation = SignUpOperationSchema.parse({ schemaVersion: 2, kind: "sign-up", operationId, profileId,
+    commandId: randomUUID(), writeId: randomUUID(), emailKey: "a".repeat(64), firstName: "Synthetic", lastName: "Operator",
+    createdAt: "2026-11-03T08:00:00.000Z", commandFingerprint: "b".repeat(64), phase: "applying",
+    credentials: { operationId: randomUUID(), keyId: randomUUID(), generation: 1, phase: "ready" },
+    onboarding: { accountId: randomUUID(), generation: 1, attempts: [] } });
+  const opening = Promise.withResolvers<void>(), source = new AuthoritySourceClosureUnprovedError([new Error("foreign late source")]);
+  let generation = 4, starts = 0;
+  const unused = (): never => { throw new Error("unexpected credential access"); };
+  const owner = createProfileOnboarding({ clock: manualClock(new Date(operation.createdAt)), onEvent() {}, onFailure() {},
+    failureDiagnostic: () => ({ kind: "unknown", causeTag: "worker" }),
+    read: () => operation, update: (_id, change) => { const next = change(operation); operation = SignUpOperationSchema.parse(next.operation); return next.result; },
+    email: unused, credentials: unused, store: unused, publicState: unused,
+    provider: { async showBrowser() { await opening.promise; if (foreign) throw source; }, async openPortal() { unused(); },
+      browserState() { return { state: "closed", generation }; }, async start() { starts++; }, async cancel() { return { state: "closed" }; },
+      async closeBrowser() { return { state: "closed" }; }, async reopenBrowser(browser, expected) { browser.assertCurrent(); assert.equal(expected, generation); generation++; },
+    } });
+  const start = owner.start(operationId, "touch");
+  const refused = assert.rejects(start);
+  await owner.reopenBrowser(operationId, 4);
+  opening.resolve(); await refused;
+  assert.equal(starts, 0, "retired Show cannot start a fresh ceremony");
+  await owner.drain(operationId);
+  assert.equal(operation.onboarding?.attempts[0]?.state, "unknown");
+  if (foreign) assert.throws(() => owner.assertAbortable(operationId)); else { owner.assertAbortable(operationId); owner.assertClosed(); }
 });

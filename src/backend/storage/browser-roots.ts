@@ -69,6 +69,7 @@ export function assertPrivateProfilePath(root: string, path: string): void {
 export interface BrowserProfileProbeOptions {
   readonly signal: AbortSignal;
   probe(profileRoot: string, profileDirectory: string): Promise<void>;
+  recoverOwned?(error: unknown, profileDirectory: string, assertCurrent: () => void): Promise<void>;
 }
 export type BrowserProfileProbeFactory = (input: Readonly<{
   clock: Clock; closeProofMs: number; launchTimeoutMs: number; signal: AbortSignal;
@@ -122,7 +123,7 @@ export interface BrowserRootLaunch {
   closing(): void;
   closed(): void;
   uncertain(error: unknown): never;
-  recover(proof: () => Promise<void>): Promise<void>;
+  recover(probe: BrowserProfileProbeOptions, assertCurrent: () => void, proof: () => Promise<void>): Promise<void>;
 }
 export class BrowserRootUnavailableError extends Error {
   readonly code = "BROWSER_ROOT_UNAVAILABLE";
@@ -295,14 +296,17 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
         recovery.retain(failure);
         admission.retainSourceClosure(failure); lifetime.retainSourceClosure(failure); throw failure;
       },
-      async recover(proof: () => Promise<void>): Promise<void> {
+      async recover(probe: BrowserProfileProbeOptions, assertCurrent: () => void, proof: () => Promise<void>): Promise<void> {
         if (captured.owner.kind !== "signup") throw new BrowserRootUnavailableError();
+        assertCurrent();
+        await recovery.recoverSources(async error => { await probe.recoverOwned?.(error, allocated.input.profileDirectory, assertCurrent); });
+        assertCurrent();
         await recovery.prove(async () => {
-          assertHeld();
+          assertCurrent(); assertHeld();
           const rows = read().roots;
           const row = rows.find(row => row.directory === captured.directory);
           if (row !== undefined && (row.launch.launchId !== captured.launch.launchId || !same(row.owner, captured.owner))) throw new BrowserRootUnavailableError();
-          await proof();
+          await proof(); assertCurrent();
           if (read().roots.some(row => row.directory === captured.directory)) throw new BrowserRootUnavailableError();
         });
       } });
@@ -410,7 +414,11 @@ function createBrowserRootRegistry(input: RuntimeAdmission, recovery = false) {
     } catch (error) {
       if (error instanceof BrowserProfileStillClosingError) throw error;
       const failure = hasUnprovedSourceClosure(error) ? error : retainAuthoritySourceClosure([error], { admission, directory: { path, captured, lifetime } });
-      if (failure !== error && failure instanceof AuthoritySourceClosureUnprovedError && captured.owner.kind === "signup") signupRecoveries.get(captured.launch.launchId)?.retain(failure);
+      if (captured.owner.kind === "signup") {
+        const recovery = signupRecoveries.get(captured.launch.launchId);
+        recovery?.observeSource(error);
+        if (failure !== error && failure instanceof AuthoritySourceClosureUnprovedError) recovery?.retain(failure);
+      }
       admission.retainSourceClosure(failure); lifetime.retainSourceClosure(failure);
       retainUnprovedSourceOwners(failure, { admission, directory: { path, captured, lifetime } });
       throw failure;

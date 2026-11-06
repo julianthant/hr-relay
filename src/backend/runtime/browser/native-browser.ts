@@ -8,7 +8,7 @@ import { chromium, type BrowserContext, type ConnectOverCDPTransport } from "pla
 import type { Clock } from "../../../rules/time/clock.js";
 import { BrowserSessionClosureUnprovedError, BrowserProfileStillClosingError, type BrowserSessionCloseReason } from "../../../workflow-kit/session.js";
 import { ERROR_CATALOG } from "../../../models/failures/error-catalog.js";
-import { AuthoritySourceClosureUnprovedError, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
+import { AuthoritySourceClosureUnprovedError, createBrowserSourceRecovery, retainAuthoritySourceClosure } from "../../storage/source-closure.js";
 
 export class BrowserLaunchUncertainError extends BrowserSessionClosureUnprovedError {
   constructor(errors: readonly unknown[], message: string, options?: ErrorOptions) {
@@ -55,18 +55,28 @@ export interface PersistentContextLauncher {
 export interface OwnedBrowserProcess {
   exited(): boolean;
   onExit(callback: () => void): void;
-  stop(timeoutMs: number): Promise<void>;
+  stop(timeoutMs: number, graceful?: true): Promise<void>;
 }
+
+const PROFILE_IN_USE_MESSAGES = ["Failed to create a ProcessSingleton for your profile directory.", "Opening in existing browser session."] as const;
 
 async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["launch"]>[0]): Promise<BrowserContext> {
   const timeoutMs = z.number().positive().parse(input.timeoutMs);
   const child = spawn(chromium.executablePath(), ["--remote-debugging-pipe",
     `--user-data-dir=${input.profileDirectory}`, "--no-first-run", "--no-default-browser-check",
     "--enable-automation", "--enable-unsafe-extension-debugging", "--disable-dev-shm-usage",
+    "--disable-background-networking", "--disable-component-update", "--disable-component-extensions-with-background-pages", "--disable-breakpad", "--disable-sync", "--disable-default-apps",
+    "--no-service-autorun", "--password-store=basic", "--use-mock-keychain",
     "--disable-features=PasswordManagerOnboarding,PasswordImport,PasswordManagerEnabled",
-    `--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`, "--no-startup-window"],
-  { stdio: ["ignore", "ignore", "ignore", "pipe", "pipe"], windowsHide: false });
-  let exited = false, spawned = false;
+    ...(input.nativeOnly ? ["--disable-extensions"] : [`--disable-extensions-except=${input.extensionDirectory}`, `--load-extension=${input.extensionDirectory}`]),
+    ...(input.headless ? ["--headless=new", "--no-startup-window"] : ["--no-startup-window"])],
+  { stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"], windowsHide: false });
+  let exited = false, spawned = false, profileInUse = false, diagnosticTail = "";
+  const closed = new Promise<void>(resolve => { child.once("close", () => resolve()); });
+  child.stderr?.on("data", (data: Buffer) => {
+    diagnosticTail = (diagnosticTail + data.toString("utf8")).slice(-512);
+    if (PROFILE_IN_USE_MESSAGES.some(message => diagnosticTail.includes(message))) profileInUse = true;
+  });
   let birthFailure: Error | undefined, processFailure: Error | undefined;
   child.once("spawn", () => { spawned = true; });
   const startup: { connecting?: Promise<BrowserContext> } = {};
@@ -77,15 +87,21 @@ async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["
   // The child handle is the process-birth capability; no PID lookup or name-based kill.
   input.ownedProcess?.(Object.freeze({ exited: () => exited,
     onExit(callback: () => void) { if (exited) queueMicrotask(callback); else child.once("exit", callback); },
-    async stop(deadlineMs: number) {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      if (!exited && birthFailure === undefined && !child.kill("SIGKILL")) throw new Error("DUO_SETUP_STOP_FAILED", processFailure === undefined ? undefined : { cause: processFailure });
-      await Promise.race([(async () => { await exit; await Promise.allSettled([startup.connecting]); })(), new Promise<never>((_resolve, reject) => {
-        timer = setTimeout(() => reject(new Error("DUO_SETUP_STOP_FAILED")), deadlineMs);
-      })]);
-    } finally { clearTimeout(timer); }
-  } }));
+    async stop(deadlineMs: number, graceful?: true) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([(async () => {
+          if (!exited && birthFailure === undefined) {
+            if (graceful) {
+              const context = await startup.connecting, browser = context?.browser();
+              if (!browser) throw new Error("DUO_SETUP_STOP_FAILED");
+              if (browser.isConnected()) { const pipe = await browser.newBrowserCDPSession(); await pipe.send("Browser.close"); }
+            } else if (!child.kill("SIGKILL")) throw new Error("DUO_SETUP_STOP_FAILED", processFailure === undefined ? undefined : { cause: processFailure });
+          }
+          await exit; await Promise.allSettled([startup.connecting]);
+        })(), new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("DUO_SETUP_STOP_FAILED")), deadlineMs); })]);
+      } finally { clearTimeout(timer); }
+    } }));
   let timer: ReturnType<typeof setTimeout> | undefined;
   const writePipe = child.stdio[3], readPipe = child.stdio[4];
   if (!(writePipe instanceof Writable) || !(readPipe instanceof Readable)) throw new Error("DUO_SETUP_OPEN_FAILED");
@@ -108,7 +124,7 @@ async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["
       transport.onmessage?.(value);
     }
   });
-  const stopped = exit.then(() => { throw new Error("DUO_SETUP_OPEN_FAILED", birthFailure === undefined ? undefined : { cause: birthFailure }); });
+  const stopped = exit.then(async () => { await closed; throw new Error(profileInUse && exited ? PROFILE_IN_USE_MESSAGES[0] : "DUO_SETUP_OPEN_FAILED", birthFailure === undefined ? undefined : { cause: birthFailure }); });
   startup.connecting = (async () => {
     const browser = await chromium.connectOverCDP(transport, { timeout: timeoutMs, noDefaults: true });
     const context = browser.contexts()[0];
@@ -118,10 +134,14 @@ async function launchOwnedChromium(input: Parameters<PersistentContextLauncher["
     await pipe.detach();
     return context;
   })();
+  const timedOut = new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("DUO_SETUP_OPEN_FAILED")), timeoutMs); });
   try {
-    return await Promise.race([startup.connecting, stopped, new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(new Error("DUO_SETUP_OPEN_FAILED")), timeoutMs);
-    })]);
+    return await Promise.race([startup.connecting, stopped, timedOut]);
+  } catch (error) {
+    try { await Promise.race([closed, timedOut]); }
+    catch (closure) { throw new BrowserLaunchUncertainError([error, closure], "owned browser launch closure unproved", { cause: error }); }
+    if (exited && profileInUse) throw new Error(PROFILE_IN_USE_MESSAGES[0], { cause: error });
+    throw error;
   } finally { clearTimeout(timer); }
 }
 
@@ -145,14 +165,13 @@ export const DEFAULT_BROWSER_LAUNCHER: PersistentContextLauncher = {
 
 export interface ContextLifecycle {
   readonly closed: () => boolean;
+  readonly closure?: Promise<void>;
 }
 
 export function observeContextLifecycle(context: BrowserContext): ContextLifecycle {
   let closed = false;
-  context.on("close", () => {
-    closed = true;
-  });
-  return { closed: () => closed };
+  const closure = new Promise<void>(resolve => { context.on("close", () => { closed = true; resolve(); }); });
+  return { closed: () => closed, closure };
 }
 
 export async function closeContextWithProof(
@@ -207,23 +226,44 @@ export interface NativeBrowserProbeInput {
   launcher?: PersistentContextLauncher;
 }
 export function chromiumProfileInUse(error: unknown): boolean {
-  return error instanceof Error && ["Failed to create a ProcessSingleton for your profile directory.", "Opening in existing browser session."]
-    .some(message => error.message.includes(message));
+  return error instanceof Error && PROFILE_IN_USE_MESSAGES.some(message => error.message.includes(message));
 }
 
-export async function runNativeContextProbe(input: NativeBrowserProbeInput): Promise<void> {
+type NativeRecovery = { directory: string; prove(assertCurrent: () => void): Promise<void> };
+
+export async function runNativeContextProbe(input: NativeBrowserProbeInput, retainRecovery?: (failure: NativeBrowserClosureUnprovedError, recovery: NativeRecovery) => void): Promise<void> {
   input.signal.throwIfAborted();
-  let context: BrowserContext | undefined;
-  try {
-    context = await (input.launcher ?? DEFAULT_BROWSER_LAUNCHER).launch({ ...input.launch, headless: true, acceptDownloads: false, nativeOnly: true });
-    const lifecycle = observeContextLifecycle(context);
-    await closeContextWithProof(input, context, lifecycle, "native profile probe", "profile-reset");
-  } catch (error) {
-    if (chromiumProfileInUse(error)) {
-        throw new BrowserProfileStillClosingError(error);
+  let context: BrowserContext | undefined, lifecycle: ContextLifecycle | undefined, process: OwnedBrowserProcess | undefined;
+  const close = async (assertCurrent: () => void, force = false) => {
+    assertCurrent();
+    if (process) {
+      const deadline = input.clock.monotonicMs() + input.closeProofMs;
+      await process.stop(Math.max(1, deadline - input.clock.monotonicMs()), force ? undefined : true); assertCurrent();
+      if (lifecycle && !lifecycle.closed()) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try { await Promise.race([lifecycle.closure, new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("native-browser-stop-unproved")), Math.max(0, deadline - input.clock.monotonicMs())); })]); }
+        finally { clearTimeout(timer); }
+      }
+      if (!process.exited() || context && (!lifecycle?.closed() || context.pages().some(page => !page.isClosed()))) throw new Error("native-browser-stop-unproved");
+    } else {
+      if (!context || !lifecycle) throw new Error("native-browser-owner-unavailable");
+      await closeContextWithProof(input, context, lifecycle, "native profile probe", "profile-reset");
     }
+    assertCurrent();
+  };
+  try {
+    context = await (input.launcher ?? DEFAULT_BROWSER_LAUNCHER).launch({ ...input.launch, headless: true, acceptDownloads: false, nativeOnly: true,
+      ownedProcess: owned => { if (process) throw new Error("native-browser-owner-replaced"); process = owned; } });
+    lifecycle = observeContextLifecycle(context);
+    await close(() => input.signal.throwIfAborted());
+  } catch (error) {
+    if (chromiumProfileInUse(error) && (process === undefined || process.exited())) throw new BrowserProfileStillClosingError(error);
     const failure = context === undefined ? new BrowserLaunchUncertainError([error], "native browser launch is uncertain", { cause: error }) : error;
-    throw new NativeBrowserClosureUnprovedError([retainAuthoritySourceClosure([failure], { directory: { context, profileDirectory: input.launch.profileDirectory } })]);
+    const source = retainAuthoritySourceClosure([failure], { directory: { context, process, profileDirectory: input.launch.profileDirectory } });
+    const retained = new NativeBrowserClosureUnprovedError([source]), recovery = createBrowserSourceRecovery();
+    recovery.retain(source); recovery.retain(retained);
+    retainRecovery?.(retained, { directory: input.launch.profileDirectory, async prove(assertCurrent) { await recovery.prove(() => close(assertCurrent, true)); } });
+    throw retained;
   }
   input.signal.throwIfAborted();
 }
@@ -231,12 +271,25 @@ export async function runNativeContextProbe(input: NativeBrowserProbeInput): Pro
 export function createNativeBrowserProbe(input: Parameters<BrowserProfileProbeFactory>[0] & Readonly<{
   scheduler?: BrowserDeadlineScheduler; launcher?: PersistentContextLauncher;
 }>): BrowserProfileProbeOptions {
+  const nativeRecoveries = new WeakMap<NativeBrowserClosureUnprovedError, NativeRecovery>();
   return Object.freeze({ signal: input.signal,
+    async recoverOwned(error: unknown, directory: string, assertCurrent: () => void): Promise<void> {
+      const pending = [error], seen = new Set<unknown>();
+      while (pending.length) {
+        const value = pending.pop(); if (seen.has(value)) continue; seen.add(value);
+        if (value instanceof NativeBrowserClosureUnprovedError) {
+          const recovery = nativeRecoveries.get(value);
+          if (recovery?.directory === directory) await recovery.prove(assertCurrent);
+        }
+        if (value instanceof AggregateError) { const errors: readonly unknown[] = value.errors; pending.push(...errors); }
+        if (value instanceof Error) pending.push(value.cause);
+      }
+    },
     async probe(profileRoot: string, profileDirectory: string): Promise<void> {
       z.number().positive().finite().parse(input.closeProofMs);
       await runNativeContextProbe({ ...input, profileRoot, scheduler: input.scheduler ?? createTimeoutDeadlineScheduler(input.clock),
         launch: { profileDirectory, extensionDirectory: "", downloadsPath: profileDirectory,
-          viewport: { width: 800, height: 600 }, timeoutMs: input.launchTimeoutMs } });
+          viewport: { width: 800, height: 600 }, timeoutMs: input.launchTimeoutMs } }, (failure, recovery) => { nativeRecoveries.set(failure, recovery); });
     },
   });
 }

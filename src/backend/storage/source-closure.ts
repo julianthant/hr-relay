@@ -25,9 +25,11 @@ const provedClosures = new WeakSet<AuthoritySourceClosureUnprovedError>();
 const recoveringClosures = new AsyncLocalStorage<{ active: boolean; failures: ReadonlySet<AuthoritySourceClosureUnprovedError> }>();
 
 export function createBrowserSourceRecovery() {
-  const failures = new Set<AuthoritySourceClosureUnprovedError>();
+  const failures = new Set<AuthoritySourceClosureUnprovedError>(), sources = new Set<unknown>();
   return Object.freeze({
     retain(failure: AuthoritySourceClosureUnprovedError): void { failures.add(failure); },
+    observeSource(error: unknown): void { sources.add(error); },
+    async recoverSources(recover: (error: unknown) => Promise<void>): Promise<void> { for (const failure of new Set([...failures, ...sources])) await recover(failure); },
     async prove<T>(proof: () => Promise<T>): Promise<T> {
       const scope = { active: true, failures: new Set(failures) };
       return recoveringClosures.run(scope, async () => {
