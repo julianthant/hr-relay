@@ -11,6 +11,8 @@ import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, 
 import { assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
 import type { AssistantHistory } from './assistant-history-model.js';
 import { ERROR_CATALOG } from '../../../models/failures/error-catalog.js';
+import { canonicalJsonStringify } from '../../../rules/validation/canonical-json.js';
+import { AssistantActionDecisionSchema, type AssistantActionProposal } from '../../../models/dashboard/assistant.js';
 
 export const ASSISTANT_CONFIRM_HOLD = 'Confirmation is unavailable until the server can verify this proposal before preparation. No run has started.';
 type Binding = Readonly<{ authority: unknown; subjectRef?: string;
@@ -18,6 +20,11 @@ type Binding = Readonly<{ authority: unknown; subjectRef?: string;
   refreshAccount?: () => Promise<void>;
   preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void;
 }>;
+/** SHA-256 hex of the canonical JSON of the exact proposal the card rendered; the server compares it before approval. */
+export async function assistantProposalDigest(proposal: AssistantActionProposal): Promise<string> {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonicalJsonStringify(proposal)));
+  return [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
 const emptyState = (): AssistantState => ({ draft: '', messages: [], sequence: 0, turn: { state: 'idle' } });
 
 function presentResult(result: AssistantResult, requestId: number, prompt: string): { message: AssistantMessage; proposal?: AssistantMockProposal; disposition?: "unknown" } {
@@ -28,19 +35,25 @@ function presentResult(result: AssistantResult, requestId: number, prompt: strin
     case 'unknown':
     case 'action-proposal': {
       const unknown = result.state === 'unknown', p = result.state === 'unknown' ? result.action : result.proposal;
+      const start = p.effect === 'workflow-start' ? p : undefined, rows = start?.startPlan.planned ?? (p.effect === 'run-action' ? [p.row] : []);
+      const only = rows.length === 1 ? rows[0]?.display : undefined;
       return { ...(unknown ? { disposition: 'unknown' as const } : {}), message: { id, role: 'assistant', text: unknown ? 'Action outcome is unknown. Do not retry this action.' : 'Review this proposal. No action has been applied.' }, proposal: {
-        id: p.actionId, revision: String(p.revision), prompt, action: { chatId: p.chatId, actionId: p.actionId, revision: p.revision }, expiresAt: p.expiresAt,
-        workflow: { id: p.effect === 'workflow-start' ? p.workflowId : 'notification', label: p.label, version: String(p.revision) }, subjects: [], mode: p.effect === 'workflow-start' ? p.dryRun ? 'dry-run' : 'read-only' : 'local-change',
-        ...(p.effect === 'workflow-start' ? { startPlan: p.startPlan, ...(p.person === undefined ? {} : { person: p.person }) } : {}),
-        values: p.effect === 'workflow-start' ? [
-          { label: 'Input', value: p.startPlan.planned.map(run => [run.title, run.subtitle].filter(Boolean).join(' · ')).join(', ') },
-          { label: 'Runs', value: String(p.startPlan.planned.length) },
-          { label: 'Mode', value: p.startPlan.dryRun ? 'Dry run' : 'Live read' },
-          { label: 'Browser', value: p.startPlan.browserMode === 'headed' ? 'Headed' : 'Headless' },
-          { label: 'Captures', value: p.startPlan.captureBrowserScreenshots ? 'On' : 'Off' },
+        id: p.actionId, revision: String(p.revision), prompt, issued: p, action: { chatId: p.chatId, actionId: p.actionId, revision: p.revision }, expiresAt: p.expiresAt,
+        workflow: { id: p.effect === 'local-write' ? 'notification' : p.workflowId, label: p.label, version: String(p.revision) },
+        subjects: rows.length > 1 ? rows.map(row => ({ id: row.display.kind === 'person' ? row.display.employeeId ?? '' : row.display.kind === 'document' ? row.display.documentNumber : '', name: row.display.kind === 'person' ? row.display.name ?? row.title : row.title })) : [],
+        mode: start === undefined ? 'local-change' : start.dryRun ? 'dry-run' : 'read-only',
+        ...(start === undefined ? {} : { startPlan: start.startPlan }),
+        ...(only?.kind === 'person' ? { person: { ...(only.name === undefined ? {} : { name: only.name }), ...(only.employeeId === undefined ? {} : { employeeId: only.employeeId }) } } : {}),
+        values: start !== undefined ? [
+          { label: 'Input', value: start.startPlan.planned.map(run => [run.title, run.subtitle].filter(Boolean).join(' · ')).join(', ') },
+          { label: 'Runs', value: String(start.startPlan.planned.length) },
+          { label: 'Mode', value: start.startPlan.dryRun ? 'Dry run' : 'Live read' },
+          { label: 'Browser', value: start.startPlan.browserMode === 'headed' ? 'Headed' : 'Headless' },
+          { label: 'Captures', value: start.startPlan.captureBrowserScreenshots ? 'On' : 'Off' },
           { label: 'Expires', value: p.expiresAt },
-        ] : [{ label: 'Notification', value: p.targetLabel }, { label: 'Expires', value: p.expiresAt }],
-        effects: [p.effect === 'workflow-start' ? 'Starts the canonical plan for this selected subject after confirmation. No HR transaction is submitted.' : 'Changes only the bound current local notifications. No HR transaction is submitted.'], stopBefore: [],
+        ] : p.effect === 'run-action' ? [{ label: 'Run', value: p.row.title }, { label: 'Action', value: p.action === 'pause' ? 'Pause' : p.action === 'resume' ? 'Resume' : 'Cancel' }, { label: 'Expires', value: p.expiresAt }]
+          : [{ label: 'Notification', value: p.targetLabel }, { label: 'Expires', value: p.expiresAt }],
+        effects: [start !== undefined ? 'Starts the reviewed plan after confirmation. No HR transaction is submitted.' : p.effect === 'run-action' ? 'Changes only this run in the local queue.' : 'Changes only the bound current local notifications. No HR transaction is submitted.'], stopBefore: []
       } };
     }
   }
@@ -135,8 +148,14 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     pendingDecision = request;
     const current = () => !retired && pendingDecision === request && binding === request.binding;
     publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'confirming' }));
+    let reviewedDigest: string | undefined;
+    if (decision === 'confirm') {
+      try { reviewedDigest = proposal.issued === undefined ? undefined : await assistantProposalDigest(proposal.issued); } catch { reviewedDigest = undefined; }
+      if (!current()) return;
+      if (reviewedDigest === undefined) { publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition: 'stale' })); pendingDecision = undefined; return; }
+    }
     try {
-      const result = await client.assistantDecide({ ...identity, decision }, request.abort.signal);
+      const result = await client.assistantDecide(AssistantActionDecisionSchema.parse({ ...identity, decision, ...(reviewedDigest === undefined ? {} : { reviewedDigest }) }), request.abort.signal);
       if (!current()) return;
       const disposition = result.state === 'applied' ? 'confirmed' : result.state === 'cancelled' ? 'cancelled' : result.state === 'unknown' ? 'unknown' : 'stale';
       publish(assistantReducer(state, { type: 'action-state', id: proposal.id, disposition,

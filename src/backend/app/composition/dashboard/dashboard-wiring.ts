@@ -14,6 +14,7 @@ import { ProfileSessionRefusedError } from "../../../profiles/profile-errors.js"
 import { createChatGptOcrTestService } from "../../../accounts/chatgpt-ocr-test.js";
 import { createAssistantService } from "../../../assistant/service.js";
 import { createAssistantPlugins } from "../../../assistant/plugins/registry.js";
+import { createAssistantProposals } from "../../../assistant/proposals.js";
 import { loadAssistantWorkflowFacts, type AssistantWorkflowFacts } from "../../../assistant/plugins/workflows/facts.js";
 import { assistantSurfaceCoverage, createAssistantPluginDeps } from "./assistant.js";
 import { CHATGPT_OCR_MODEL,createChatGptOcrPageReader } from "../../../processing/providers/chatgpt-ocr-adapter.js";
@@ -239,13 +240,18 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
 
   const notificationTarget = createNotificationTargetQuery({ get: database.authority.notifications.get, read: id => lifecycle.read(id), failure: database.authority.failures.get });
   const notifications = composeNotificationRoutes({ database, clock, lifecycle, descriptors, runDetailDeps, assertCurrent, notificationObserver, notificationTarget });
+  const dataQueries = composeDataQueries(runDetailDeps);
+  const assistantProposals = createAssistantProposals({ database, authorization: assistantAuthorization, plans: startPlans, commands, runs: lifecycle, descriptors,
+    rerunValues: request => dataQueries.rerunValues(request), served: workflowId => workflowSources[workflowId] === "served",
+    actorId: resolved.config.actor.id, clock, assertCurrent });
   const assistantPluginDeps = createAssistantPluginDeps({ database, runDetail: runDetailDeps, assertCurrent, facts: assistantFacts,
     search: () => shell.search, notifications: () => notifications,
     workbooks: () => workbookLibrary });
   const assistant = createAssistantService({ debugEvents, account: { ...chatGptAccount, ...context.accountAuthority },
     assertComposition: assertCurrent, actorId: resolved.config.actor.id, facts: assistantFacts,
     owner: () => { assertCurrent(); return { profileId: context.admission.profileBinding.profileId, epoch: context.profileEpoch }; },
-    plugins: () => createAssistantPlugins(assistantPluginDeps),
+    plugins: () => [...createAssistantPlugins(assistantPluginDeps), assistantProposals.plugin],
+    decideAction: (decision, signal) => assistantProposals.decideAction(decision, signal),
     modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
     readModelPreference: () => captureSelectedModel().view,
     readPermission: () => assistantAuthorization.permission(),
@@ -332,7 +338,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
     ...shell,
     projection,
     runDetail: runDetailDeps,
-    data: composeDataQueries(runDetailDeps),
+    data: dataQueries,
     diagnosticBundles: trustReads.diagnosticBundles,
     commands,
     commandJournal: database.authority.commands,

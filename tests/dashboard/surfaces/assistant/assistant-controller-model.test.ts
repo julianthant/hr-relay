@@ -59,7 +59,7 @@ it('does not retry an ambiguously lost response or let an edited draft redispatc
 
 const actionProposal = { state: 'action-proposal', proposal: { chatId: '00000000-0000-4000-8000-000000000001',
   actionId: '00000000-0000-4000-8000-000000000002', revision: 1, expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read',
-  targetLabel: 'Local notification', subject: 'none', effect: 'local-write' } } satisfies AssistantResult;
+  targetLabel: 'Local notification', effect: 'local-write' } } satisfies AssistantResult;
 it('confirms the actual issued action identity once and keeps a lost response unknown without retry', async () => {
   for (const lost of [false, true]) {
     let calls = 0;

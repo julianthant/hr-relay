@@ -20,6 +20,8 @@ export interface AssistantMessage {
 }
 
 export interface AssistantMockProposal {
+  /** The exact served proposal; its digest is the Confirm evidence. */
+  readonly issued?: AssistantActionProposal;
   readonly action?: AssistantActionIdentity;
   readonly startPlan?: Extract<AssistantActionProposal, { effect: 'workflow-start' }>['startPlan'];
   readonly person?: { readonly name?: string; readonly employeeId?: string };

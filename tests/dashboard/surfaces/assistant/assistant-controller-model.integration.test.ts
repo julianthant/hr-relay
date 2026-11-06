@@ -229,7 +229,7 @@ it.each([
   let decisions = 0, requests = 0, signal: AbortSignal | undefined;
   const action = { chatId: crypto.randomUUID(), actionId: crypto.randomUUID(), revision: 1 };
   const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'action-proposal', proposal: { ...action,
-    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark current notifications read', targetLabel: 'Current notifications', subject: 'none', effect: 'local-write' } }; },
+    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark current notifications read', targetLabel: 'Current notifications', effect: 'local-write' } }; },
     assistantDecide(_input: unknown, abort?: AbortSignal) { decisions++; signal = abort; return held.promise; } };
   const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
   const account = { ...preview, mode: 'live' as const };

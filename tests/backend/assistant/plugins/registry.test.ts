@@ -18,6 +18,7 @@ it("offers every plugin's tools in one strict namespace with unique names", () =
 
 it("declares a privacy origin for exactly the free-text leaves of every tool output", () => {
   for (const tool of assistantToolRegistry(plugins()).tools) {
+    assert.equal(tool.kind, "read"); if (tool.kind !== "read") continue;
     const free = surfaceLeaves(tool.output).filter(leaf => leaf.kind === "free-text" || leaf.kind === "open-json").map(leaf => leaf.path).sort();
     assert.deepEqual(tool.privacy.map(entry => entry.path).sort(), free, tool.name);
     assert.ok(tool.privacy.every(entry => entry.origin === "repository-authored" || entry.origin === "declared-redacted"), tool.name);

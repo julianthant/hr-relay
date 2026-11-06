@@ -13,7 +13,7 @@ export function peoplePlugin(deps: AssistantPluginDeps, workflowLabel: (id: stri
   const Output = z.strictObject({ people: z.array(z.strictObject({ person: referenceSchema("P"), runs: z.array(z.strictObject({
     run: referenceSchema("R"), workflow: WorkflowIdSchema, status: CrossDateSearchStateFacetSchema, day: z.iso.date() })).max(MAX_RUNS) })).max(MAX_PEOPLE), more: z.boolean() });
   return { domain: "people", tools: [{
-    name: "find_people",
+    kind: "read", name: "find_people",
     description: "Find people by the name the operator typed, or by a person or EID reference. Returns one person reference per distinct person with their most recent runs. Copy references exactly; never write a name yourself.",
     parameters, output: Output, privacy: [],
     async invoke(value, context) {
