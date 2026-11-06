@@ -22,7 +22,7 @@ const ACTIONS = {
   "unsnooze notifications": "notification-unsnooze-all",
 } as const;
 type Action = typeof ACTIONS[keyof typeof ACTIONS];
-type Intent = { kind: "help"; topic: keyof typeof ASSISTANT_SAFE_KNOWLEDGE } | { kind: "notification"; action: Action } | { kind: "run" };
+type Intent = { kind: "help"; topic: keyof typeof ASSISTANT_SAFE_KNOWLEDGE } | { kind: "notification"; action: Action } | { kind: "run" } | { kind: "workflow-help" };
 export interface AssistantReadAllowlist {
   selectedRun(subjectRef: string | undefined): {
     readonly text: string;
@@ -36,8 +36,11 @@ export function localAssistantIntent(request: AssistantRequest, knowledge: Reado
   if (["hi", "hello", "help", "what can you do"].includes(message)) return { kind: "help", topic: "assistant" };
   if (["run status", "status", "status of selected run", "explain selected run", "explain this run", "what is the status of this run", "why is this run waiting", "why did this run fail"].includes(message)) return { kind: "run" };
   if (request.subjectRef !== undefined) throw new AssistantLocalIntentError("assistant-local-intent-unavailable");
+  const question = message.replace(/[?.!]? one short sentence$/u, "");
+  if (/^(?:(?:which|what) workflows (?:can|does) relay (?:run|support)|tell me about (?:relay )?workflows)$/u.test(question)) return { kind: "workflow-help" };
   for (const topic of Object.keys(knowledge)) {
-    if ([`help ${topic}`, `explain ${topic}`, `what is ${topic}`, `how does ${topic} work`].some(phrase => message === phrase.toLowerCase())) return { kind: "help", topic };
+    if ([`help ${topic}`, `explain ${topic}`, `what is ${topic}`, `what are ${topic}`, `how does ${topic} work`, `how do ${topic} work`,
+      `tell me about ${topic}`, `how does relay handle ${topic}`, `what can relay do with ${topic}`].some(phrase => question === phrase.toLowerCase())) return { kind: "help", topic };
   }
   for (const phrase of Object.keys(ACTIONS) as (keyof typeof ACTIONS)[]) {
     if (message === phrase) return { kind: "notification", action: ACTIONS[phrase] };
@@ -116,8 +119,16 @@ export function createProductionAssistantTools(input: Readonly<{
         const target = input.database.withAuthorityReadSnapshot(() => input.database.authority.notifications.collection(input.actorId, operationOf(intent.action)));
         refs.set(`ref_${randomUUID().replaceAll("-", "")}`, target);
       }
-      current(); requests.set(request, intent.kind === "help" ? { kind: "help" } : { kind: "notification", action: intent.action, refs });
+      current(); requests.set(request, intent.kind === "help" || intent.kind === "workflow-help" ? { kind: "help" } : { kind: "notification", action: intent.action, refs });
       const knowledge = input.knowledge;
+      if (intent.kind === "workflow-help") {
+        const topics = Object.entries(knowledge.topics).filter(([topic]) => topic.startsWith("workflow "));
+        return { completion: "answer", input: { intent: "app-help", topic: "workflows", answerFormat: "one-short-sentence", knowledge: Object.fromEntries(topics), source: knowledge.policy.exportSha256 },
+          citations: topics.map(([topic, text]) => {
+            const line = Object.keys(knowledge.topics).indexOf(topic) + 1;
+            return { path: knowledge.reference.files[0].path, revision: knowledge.policy.revision, startLine: line, endLine: line, quote: `${topic}: ${text}` };
+          }) };
+      }
       if (intent.kind === "help") {
         const line = Object.keys(knowledge.topics).indexOf(intent.topic) + 1;
         return { completion: "answer", input: { intent: "app-help", topic: intent.topic, knowledge: knowledge.topics[intent.topic], source: knowledge.policy.exportSha256 },

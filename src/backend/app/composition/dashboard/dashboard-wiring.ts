@@ -242,7 +242,7 @@ export async function composeDashboardRuntimeStartup(input: DashboardComposeInpu
   const assistantTools = createProductionAssistantTools({ database, kernel, authorization: assistantAuthorization, knowledge,
     actorId: resolved.config.actor.id, clock, assertCurrent, workflowStarts,
     reads: createAssistantReadAllowlist({ runDetail: runDetailDeps, assertCurrent }) });
-  const assistant = createAssistantService({ account: { ...chatGptAccount, ...context.accountAuthority },
+  const assistant = createAssistantService({ debugEvents, account: { ...chatGptAccount, ...context.accountAuthority },
     context: () => loadProductionAssistantContext(repoRoot, knowledge),
     runtime: () => { assertCurrent(); return knowledge.policy; },
     modelPolicy: () => { assertSelectedModelContext(); return chatGptAccount.captureAssistantModelPolicy(); },
