@@ -397,9 +397,9 @@ for (const move of [false, true]) for (const mode of ["interrupted", "unknown"] 
         await upgradeRegisteredPersonStores(currentWorkspace, held, hostFacts, f.clock);
       })();
       if (intent !== undefined) {
-        await upgrade;
-        await assertStartupHeld(currentWorkspace, held, cause => cause instanceof RegisteredPersonUpgradeRefusedError
-          && cause.code === "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES", "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES");
+        const unresolved = (error: unknown) => error instanceof RegisteredPersonUpgradeRefusedError && error.code === "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES";
+        if (move) await assert.rejects(upgrade, unresolved);
+        else { await upgrade; await assertStartupHeld(currentWorkspace, held, unresolved, "STORAGE_PROFILE_UPGRADE_UNRESOLVED_WRITES"); }
         const refused = rows(currentPath, 10);
         for (const table of ["runs", "write_intents", "write_attempts", "worker_leases", "auth_leases", "deleted_runs"]) assert.deepEqual(refused[table], before[table], table);
         assert.equal(readProfileDatabaseBinding(currentPath).schemaVersion, 10);

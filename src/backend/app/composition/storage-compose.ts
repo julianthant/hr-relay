@@ -57,7 +57,7 @@ import { lstatSync } from "node:fs";
 import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
 import { recoverFixedLayoutPublication,withDefaultLayoutSource,type FixedLayoutPublication } from "../../storage/admission/installation.js";
 import { file as layoutFile,hash as layoutHash } from "../../storage/maintenance/existing-data-backup-files.js";
-import { activateFixedLayoutProfiles,assertFixedLayoutSourceFence,createFixedLayoutDirectory,fixedLayoutEntries,FixedLayoutIntentSchema,fixedLayoutOutputPaths,fixedLayoutSnapshot,readFixedLayoutIntent,type FixedLayoutActivation } from "../../storage/maintenance/fixed-layout.js";
+import { activateFixedLayoutProfiles,assertFixedLayoutSourceFence,createFixedLayoutDirectory,fixedLayoutEntries,FixedLayoutIntentSchema,FixedLayoutRefusedError,fixedLayoutOutputPaths,fixedLayoutSnapshot,readFixedLayoutIntent,type FixedLayoutActivation } from "../../storage/maintenance/fixed-layout.js";
 import { bindErrorOrigin } from "../../../models/failures/error-origins.js";
 
 
@@ -444,6 +444,9 @@ export async function prepareApplicationDataWorkspace(sourceWorkspace: string, t
         await upgradeStoppedMachineControl(control, { plan: false, hostFacts }, clock, composeStoppedControlCredentialInventory, createNativeBrowserProbe);
       });
       await prepareRegisteredPersonStores(sourceWorkspace, lifetime, hostFacts, clock);
+      // The layout moves every person at the current schema, so one held person stops the move with their own refusal.
+      const [held] = heldPeopleFor(lifetime).values();
+      if (held !== undefined) throw held instanceof Error ? held : new FixedLayoutRefusedError(held);
       return withStoppedMachineStorage(sourceWorkspace, lifetime, async (machine, owned) => {
         const sources: Array<{ admission: RuntimeAdmission; closure: StoppedBackupClosure }> = [], profiles: FixedLayoutActivation[] = [];
         const operation = machine.maintenanceOperation();
