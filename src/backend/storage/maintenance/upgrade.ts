@@ -24,7 +24,7 @@ import { assertStoppedBackupClosure,prepareStoppedBackupClosure,readStoppedProfi
 
 export const StorageUpgradeReportSchema = z.strictObject({
   state: z.enum(["planned", "initialized", "upgraded", "already-upgraded"]),
-  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
+  fromSchemaVersion: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6), z.literal(7), z.literal(8), z.literal(9), z.literal(10), z.literal(11), z.literal(12), z.literal(13), z.literal(14), z.literal(15), z.literal(16), z.literal(17), z.literal(18), z.literal(19), z.literal(20), z.literal(21), z.literal(22), z.literal(23), z.literal(24), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   toSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
   credentials: z.literal("unchanged"),
   diagnostics: z.strictObject({ reclaimedStages: z.number().int().nonnegative(), retainedStages: z.number().int().nonnegative(), capacityWarning: z.boolean() }).optional(),
@@ -224,7 +224,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
   const inspect = () => AuthorityDatabase.inspectStoppedUpgrade(owner, path, processLockRoot, clock);
   const inspectInventory = () => readStoppedProfileUpgradeInventory({ machine, admission: owner, hostFacts: input.hostFacts, clock, browserClosure });
   const initial = inspect();
-  const closure = !input.plan && [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(initial.schemaVersion)
+  const closure = !input.plan && [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].includes(initial.schemaVersion)
     ? await prepareStoppedBackupClosure(browserClosure, owner, restore, clock, processLockRoot) : undefined;
   let inventory = inspectInventory();
   const revalidate = (backup?: VerifiedBackup) => {
@@ -244,7 +244,7 @@ async function runReadyProfileUpgrade(browserClosure: ProfileBrowserClosure, mac
     await owner.completeStartupUpgradeLogout();
     return report("already-upgraded");
   }
-  if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23].includes(initial.schemaVersion)) throw new Error("profile-stopped-upgrade-version-refused");
+  if (![8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].includes(initial.schemaVersion)) throw new Error("profile-stopped-upgrade-version-refused");
   if (closure === undefined) throw new StorageBackupClosureUnprovedError();
   const backed = await backupStoppedAuthority(closure, owner, owner.stateRoot, clock, processLockRoot, restore, "schema-migration");
   if (backed.manifests.length !== 1) throw new Error("profile-stopped-upgrade-single-backup-required");

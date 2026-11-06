@@ -9,7 +9,7 @@ import { canonicalJsonStringify } from "../../../rules/validation/canonical-json
 
 const MEDIA_TYPES = Object.keys(ASSISTANT_ATTACHMENT_TYPES).map(type => `'${type}'`).join(",");
 
-export const ASSISTANT_ATTACHMENTS_MIGRATION = Object.freeze({ version: 24, statements: Object.freeze([
+export const ASSISTANT_ATTACHMENTS_MIGRATION = Object.freeze({ version: 25, statements: Object.freeze([
   `CREATE TABLE assistant_attachments (
     id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL REFERENCES assistant_conversations(id) ON DELETE CASCADE,
     message_id TEXT REFERENCES assistant_messages(id) ON DELETE CASCADE,
