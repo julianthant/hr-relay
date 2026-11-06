@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react';
-import { ArrowUp, ChevronDown, Folder, Hand, Mic, Plus, X } from 'lucide-react';
+import { ArrowUp, ChevronDown, Hand, Paperclip, Mic, Plus, X } from 'lucide-react';
 import { InputGroup, InputGroupTextarea, InputGroupAddon, InputGroupButton, DropdownMenu, DropdownMenuTrigger,
   DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuItem, DropdownMenuRadioGroup,
   DropdownMenuRadioItem, DropdownMenuSeparator } from '../../ds/ui.js';
@@ -8,7 +8,7 @@ import { readAssistantAttachment, type AssistantFile, type AssistantPorts } from
 import './composer-input.css';
 import type { AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 
-export function ComposerInput({ onSend, onAttachFile, onOpenChatFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey, modelPreference }: AssistantPorts & {
+export function ComposerInput({ onSend, onAttachFile, disabled = false, initialText = '', autoFocus = false, draft, preview = true, onEdit, settlementKey, modelPreference }: AssistantPorts & {
   modelPreference?: AssistantModelPreferenceView['preference']; settlementKey?: string; preview?: boolean; onEdit?: (value: string) => void; onSend: (value: ComposerValue) => Promise<boolean>; disabled?: boolean; initialText?: string; autoFocus?: boolean; draft?: ComposerDraftPort;
 }) {
   const composer = useComposer({ onSend, initialText, draft, settlementKey });
@@ -35,7 +35,7 @@ export function ComposerInput({ onSend, onAttachFile, onOpenChatFile, disabled =
   }
   return <div className="hub-composer-wrap">
     <InputGroup aria-label="Message composer" onSubmit={event => { event.preventDefault(); void composer.send(); }}>
-      {composer.files.map(file => <div key={file.id} className="hub-attachment"><Folder aria-hidden /><span>{file.name}</span><button className="hub-icon" type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => composer.setFiles(files => files.filter(existing => existing.id !== file.id))}><X aria-hidden /></button></div>)}
+      {composer.files.map(file => <div key={file.id} className="hub-attachment"><Paperclip aria-hidden /><span>{file.name}</span><button className="hub-icon" type="button" aria-label={`Remove attachment ${file.name}`} onClick={() => composer.setFiles(files => files.filter(existing => existing.id !== file.id))}><X aria-hidden /></button></div>)}
       <label className="hub-sr-only" htmlFor={id}>Message Relay</label>
       <InputGroupTextarea id={id} name="message" autoFocus={autoFocus} ref={composer.textarea} autoComplete="off" rows={2} placeholder="Ask Relay…" value={composer.text} disabled={disabled}
         onChange={event => { composer.setText(event.target.value); onEdit?.(event.target.value); }} onKeyDown={event => {
@@ -43,8 +43,7 @@ export function ComposerInput({ onSend, onAttachFile, onOpenChatFile, disabled =
         }} />
       <InputGroupAddon aria-label="Message controls">
         {menu('attach', 'Add files', <Plus aria-hidden />, <><DropdownMenuLabel className="hub-menu-title">Add to this chat</DropdownMenuLabel>
-          <DropdownMenuItem className="hub-menu-option" onSelect={() => composer.fileInput.current?.click()}><Plus aria-hidden /><span className="hub-option-copy"><span>Attach file</span><small>Images, spreadsheets and documents</small></span></DropdownMenuItem>
-          <DropdownMenuItem className="hub-menu-option" disabled={!onOpenChatFile} onSelect={() => { void attach(() => onOpenChatFile!(undefined, 'attach')); }}><Folder aria-hidden /><span className="hub-option-copy"><span>From Chat files</span><small>Use a file already in this chat</small></span></DropdownMenuItem></>)}
+          <DropdownMenuItem className="hub-menu-option" onSelect={() => composer.fileInput.current?.click()}><Plus aria-hidden /><span className="hub-option-copy"><span>Attach file</span><small>Images, spreadsheets and documents</small></span></DropdownMenuItem></>)}
         {menu('approval', composer.approval, approvalIcon, <><DropdownMenuLabel className="hub-menu-title">How should Relay actions be approved?</DropdownMenuLabel><DropdownMenuRadioGroup value={composer.approval} onValueChange={composer.setApproval}>
           {ASSISTANT_APPROVALS.map(item => <DropdownMenuRadioItem closeOnClick className="hub-menu-option" key={item.label} value={item.label}><span className="hub-option-copy"><span>{item.label}</span><small>{item.description}</small></span></DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup></>)}

@@ -180,7 +180,9 @@ const AssistantActionProposalFields = {
 export const AssistantActionProposalSchema = z.discriminatedUnion("effect", [
   z.strictObject({ ...AssistantActionProposalFields, subject: z.literal("none"), effect: z.literal("local-write") }),
   z.strictObject({ ...AssistantActionProposalFields, subject: z.literal("selected-run"), effect: z.literal("workflow-start"),
-    workflowId: z.string().min(1), dryRun: z.boolean(), startPlan: StartPlanWireSchema.pick({
+    workflowId: z.string().min(1), dryRun: z.boolean(),
+    person: z.strictObject({ name: z.string().min(1).max(160).optional(), employeeId: z.string().regex(/^\d{8}$/u).optional() }).optional(),
+    startPlan: StartPlanWireSchema.pick({
       startPlanId: true, workflowId: true, expectedVersion: true, expiresAt: true, dryRun: true,
       browserMode: true, captureBrowserScreenshots: true, fingerprints: true, planned: true,
     }).extend({

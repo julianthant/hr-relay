@@ -63,7 +63,7 @@ export function createAssistantHistory(storage: Pick<Storage, 'getItem' | 'setIt
     },
     retain(id: string, state: AssistantState) {
       requireChat(id); const turn = state.turn;
-      save({ ...data, transcripts: { ...data.transcripts, [id]: { draft: state.draft, composer: data.transcripts[id]?.composer ?? '', messages: state.messages,
+      save({ ...data, transcripts: { ...data.transcripts, [id]: { draft: state.draft, composer: data.transcripts[id]?.composer ?? '', messages: state.messages.map(({ attachments: _sent, ...message }) => message), // shortcut: sent-file names are not retained until history carries attachments (gate 50)
         sequence: state.sequence, interrupted: turn.state === 'waiting' || turn.state === 'unknown' || turn.state === 'proposal' && (turn.disposition === 'confirming' || turn.disposition === 'unknown'),
         proposalExpired: turn.state === 'proposal' && turn.disposition === 'review' } } });
     },

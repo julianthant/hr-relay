@@ -50,12 +50,26 @@ describe('assistant port settlements', () => {
     expect(model.conversation.files.map(file => file.status)).toEqual(['Attached', 'Updated']);
     expect(model.error).toBe('Library registration failed');
   });
+  it('binds a file to this send\'s operator message even when a reply follows', async () => {
+    await mount({});
+    await act(async () => { await model.send({ text: 'Review this file', files: [file], model: 'Default', effort: 'Medium', approval: 'Ask before every action' }); });
+    const sent = model.conversation.messages.find(message => message.text === 'Review this file');
+    expect(sent?.attachments).toEqual([{ id: 'people', name: 'People.csv' }]);
+    expect(model.conversation.messages.filter(message => message.attachments !== undefined)).toHaveLength(1);
+  });
+  it('commits nothing when registration fails, so the composer keeps its draft', async () => {
+    await mount({ async onRegisterSpreadsheet() { throw Error('library unavailable'); } });
+    let sent = true;
+    await act(async () => { sent = await model.send({ text: 'Review this file', files: [file], model: 'Default', effort: 'Medium', approval: 'Ask before every action' }); });
+    expect(sent).toBe(false); expect(model.error).toContain('library unavailable');
+    expect(model.conversation.messages.some(message => message.attachments !== undefined)).toBe(false);
+  });
 });
 
 it('blocks every setup attachment before panel registration and both local file ports', async () => {
-  let controller!: ReturnType<typeof useAssistantController>, registrations = 0, attachments = 0, opens = 0, requests = 0;
+  let controller!: ReturnType<typeof useAssistantController>, registrations = 0, attachments = 0, requests = 0;
   const ports: AssistantPorts = { async onRegisterSpreadsheet() { registrations++; },
-    async onAttachFile() { attachments++; return file; }, async onOpenChatFile() { opens++; return file; } };
+    async onAttachFile() { attachments++; return file; } };
   const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected', citations: [] }; } };
   const producer = createAssistantMockProducer();
   function Harness() { controller = useAssistantController(client, 'profile', undefined, false); model = useAssistantPanel({ producer, accountClient, ports, served: controller }); return null; }
@@ -65,12 +79,11 @@ it('blocks every setup attachment before panel registration and both local file 
     await act(async () => controller.onAction({ type: "edit", value: text }));
     await act(async () => {
       expect(await model.attachFile(new File(['fixture'], 'fixture.txt'))).toBeNull();
-      expect(await model.openChatFile()).toBeNull();
       expect(await model.send({ text, files: [file], model: 'ignored', effort: 'ignored', approval: 'ignored' })).toBe(false);
     });
     expect(model.error).toContain('text only');
   }
-  expect(registrations).toBe(0); expect(attachments).toBe(0); expect(opens).toBe(0); expect(requests).toBe(0);
+  expect(registrations).toBe(0); expect(attachments).toBe(0); expect(requests).toBe(0);
   await act(async () => controller.onAction({ type: "edit", value: 'ordinary attachment' }));
   await act(async () => { expect(await model.attachFile()).toBe(file); });
   expect(attachments).toBe(1);

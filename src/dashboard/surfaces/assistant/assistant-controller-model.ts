@@ -16,7 +16,7 @@ export const ASSISTANT_CONFIRM_HOLD = 'Confirmation is unavailable until the ser
 type Binding = Readonly<{ authority: unknown; subjectRef?: AssistantSubject['subjectRef'];
   commands?: Pick<DashboardCommandBinding, 'executor' | 'scope' | 'feedback'>;
   refreshAccount?: () => Promise<void>;
-  preferenceChanged?: (view: AssistantModelPreferenceView) => void;
+  preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void;
 }>;
 const emptyState = (): AssistantState => ({ draft: '', messages: [], sequence: 0, turn: { state: 'idle' } });
 
@@ -35,7 +35,7 @@ function presentResult(result: AssistantResult, requestId: number, prompt: strin
       return { ...(unknown ? { disposition: 'unknown' as const } : {}), message: { id, role: 'assistant', text: unknown ? 'Action outcome is unknown. Do not retry this action.' : 'Review this proposal. No action has been applied.' }, proposal: {
         id: p.actionId, revision: String(p.revision), prompt, action: { chatId: p.chatId, actionId: p.actionId, revision: p.revision }, expiresAt: p.expiresAt,
         workflow: { id: p.effect === 'workflow-start' ? p.workflowId : 'notification', label: p.label, version: String(p.revision) }, subjects: [], mode: p.effect === 'workflow-start' ? p.dryRun ? 'dry-run' : 'read-only' : 'local-change',
-        ...(p.effect === 'workflow-start' ? { startPlan: p.startPlan } : {}),
+        ...(p.effect === 'workflow-start' ? { startPlan: p.startPlan, ...(p.person === undefined ? {} : { person: p.person }) } : {}),
         values: p.effect === 'workflow-start' ? [
           { label: 'Input', value: p.startPlan.planned.map(run => [run.title, run.subtitle].filter(Boolean).join(' · ')).join(', ') },
           { label: 'Runs', value: String(p.startPlan.planned.length) },
@@ -90,7 +90,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
         if (client.assistantModelPreference === undefined) { complete(ASSISTANT_FAILURES.ASSISTANT_UNAVAILABLE); return; }
         const view = AssistantModelPreferenceViewSchema.parse(await client.assistantModelPreference(request.abort.signal));
         if (!current()) return;
-        if (parts.length === 1) { request.binding.preferenceChanged?.(view); complete(preferenceText(view)); return; }
+        if (parts.length === 1) { request.binding.preferenceChanged?.(view, false); complete(preferenceText(view)); return; }
         if (preference?.success !== true) return;
         const commands = request.binding.commands;
         if (commands === undefined || commands.scope.actorId !== LOCAL_OPERATOR_ACTOR_ID || !Object.is(commands.scope.client, client)) {
@@ -109,7 +109,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
           } });
         if (!current()) return;
         if (outcome.kind === "uncertain") { publish(assistantReducer(state, { type: "uncertain", requestId })); return; }
-        if (outcome.kind === "confirmed") { const actual = AssistantModelPreferenceViewSchema.parse(outcome.readback); request.binding.preferenceChanged?.(actual); complete(preferenceText(actual)); }
+        if (outcome.kind === "confirmed") { const actual = AssistantModelPreferenceViewSchema.parse(outcome.readback); request.binding.preferenceChanged?.(actual, true); complete(preferenceText(actual)); }
         else complete(outcome.feedback.text);
         return;
       }
@@ -200,7 +200,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
   });
 }
 
-export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true, chatId = "default", commands?: DashboardCommandBinding, options?: { history?: AssistantHistory; preferenceChanged?: (view: AssistantModelPreferenceView) => void }) {
+export function useAssistantController(client: AssistantQueries, authority: unknown, subjectRef?: string, shellMounted = true, chatId = "default", commands?: DashboardCommandBinding, options?: { history?: AssistantHistory; preferenceChanged?: (view: AssistantModelPreferenceView, saved: boolean) => void }) {
   const { history, preferenceChanged } = options ?? {};
   const [launcherBottom, setLauncherBottom] = useState<string>();
   useLayoutEffect(() => {
@@ -236,8 +236,9 @@ export function useAssistantController(client: AssistantQueries, authority: unkn
   const resource = accountPort.mode === 'live' ? accountPort.getResource?.() : undefined;
   const unverified = resource !== undefined && 'code' in resource && resource.code === 'CHATGPT_USAGE_UNAVAILABLE';
   const accountFailure = resource !== undefined && 'code' in resource ? ERROR_CATALOG[resource.code].text : undefined;
-  return { state, canCompose: accountAvailable || unverified, showTestAssistant: true, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
+  return { state, canCompose: accountAvailable || unverified, unverified, authorityKey: bindingAuthority, forgetSession: (id: string) => { controllers.get(id)?.retire(); controllers.delete(id); }, launcherBottom, onAction: controller.action, revision: state.turn.state === 'proposal' ? state.turn.proposal.revision : '',
     accountAvailable,
+    accountAction: (unverified ? 'preflight' : account.state === 'loading' ? undefined : account.state === 'connected' || account.state === 'unavailable' ? 'settings' : 'sign-in'),
     accountHeading: unverified ? "Verify assistant capability" : (account.state === 'connected' ? 'ChatGPT plan usage unavailable' : 'ChatGPT connection unavailable'),
     accountNotice: unverified ? ASSISTANT_FAILURES.ASSISTANT_MODEL_UNVERIFIED : accountFailure ?? (account.state === 'loading' ? 'Loading ChatGPT account…' : account.state === 'signing-in' ? 'Finish ChatGPT sign-in in Settings.' : account.state === 'connected' ? account.planUsage === 'limit-reached' ? ASSISTANT_FAILURES.ASSISTANT_USAGE_LIMIT : ASSISTANT_FAILURES.ASSISTANT_PLAN_DISABLED : ASSISTANT_FAILURES.ASSISTANT_ACCOUNT_EXPIRED), confirmRefusal: state.turn.state === 'proposal' && state.turn.proposal.action !== undefined && client.assistantDecide !== undefined ? undefined : ASSISTANT_CONFIRM_HOLD,
     statusText: 'Read and propose', footnote: 'Review the exact action before confirming. Workflow starts require a confirmed plan.' };
