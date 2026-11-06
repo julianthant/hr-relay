@@ -29,9 +29,9 @@ import { RunRecordSchema } from "../../../src/models/run/record.js";
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); });
 
-async function fixture(descriptor: AnyWorkflowDescriptor = personLookupDescriptor) {
+async function fixture(descriptor: AnyWorkflowDescriptor = personLookupDescriptor, subject?: Record<string, unknown>) {
   const f = await settingsFixture(); cleanups.push(f.close);
-  const raw = descriptor.id === "separations" ? { documentNumber: "4502" } : { emplId: "10873698" }, planning = workflowPlanning(descriptor);
+  const raw = subject ?? (descriptor.id === "separations" ? { documentNumber: "4502" } : { emplId: "10873698" }), planning = workflowPlanning(descriptor);
   const protectedSecrets = protectedSecretSource({ profileName: "Private synthetic timekeeper" });
   const admitted = admitProtectedInput(descriptor, [raw], protectedSecrets)[0]; assert.ok(admitted);
   const run = f.create({ workflow: descriptor.id, descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
@@ -200,4 +200,23 @@ it("refuses a changed protected binding even when its private value is unchanged
   f.protectedSecrets.read = () => ({ ...record, profileIdentity: { ...identity, sessionEpoch: identity.sessionEpoch + 1 } });
   await assert.rejects(f.propose(), /assistant-workflow-plan-refused/u);
   assert.equal(f.dispatches(), 0);
+});
+
+it.each([
+  ["eid", { emplId: "10873698" }, { employeeId: "10873698" }],
+  ["name", { name: "Example, Person" }, { name: "Example, Person" }],
+  ["eid with name", { emplId: "10873698", name: "Example, Person" }, { name: "Example, Person", employeeId: "10873698" }],
+  ["match", { mode: "match", lastName: "Example", firstName: "Person", dob: "01/15/2000" }, { name: "Person Example" }],
+] as const)("serves the planned person's genuine identity for a %s lookup and keeps it off the model path", async (_shape, subject, person) => {
+  const f = await fixture(personLookupDescriptor, subject), p = await f.propose();
+  if (p.proposal.effect !== "workflow-start") throw new Error("workflow proposal required");
+  assert.deepEqual(p.proposal.person, person);
+  const outbound = JSON.stringify(p.projected.input);
+  for (const value of Object.values(person)) assert.equal(outbound.includes(value), false);
+  assert.equal(outbound.includes("01/15/2000"), false);
+});
+it("serves no person for a workflow that has no identity fields", async () => {
+  const f = await fixture(separationsDescriptor), p = await f.propose();
+  if (p.proposal.effect !== "workflow-start") throw new Error("workflow proposal required");
+  assert.equal(p.proposal.person, undefined);
 });
