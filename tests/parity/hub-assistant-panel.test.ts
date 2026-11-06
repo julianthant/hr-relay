@@ -177,9 +177,9 @@ const SERVED_SCENES = {
   'limit-reached': { account: { ...CONNECTED, planUsage: 'limit-reached' }, strip: /Open Settings/ },
   proposal: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL } },
   'start-proposal': { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_START_PROPOSAL } },
-  'rerun-proposal': { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_RERUN_PROPOSAL }, facts: [['Name', 'Avery Sample'], ['EID', '10101010'], ['Options', 'Read only']] },
-  'pause-proposal': { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL }, facts: [['Name', 'Avery Sample'], ['EID', '10101010'], ['Options', 'Local change · Pause']] },
-  'separations-multi-proposal': { account: CONNECTED, respond: { state: 'action-proposal', proposal: ASSISTANT_SEPARATIONS_MULTI_PROPOSAL }, facts: [['Document', '4501'], ['Document', '4502'], ['Total', '2'], ['Options', 'Read only']] },
+  'rerun-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_RERUN_PROPOSAL }, facts: [['Name', 'Avery Sample'], ['EID', '10101010'], ['Options', 'Read only']] },
+  'pause-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_PAUSE_PROPOSAL }, facts: [['Name', 'Avery Sample'], ['EID', '10101010'], ['Options', 'Local change · Pause']] },
+  'separations-multi-proposal': { account: CONNECTED, wide: true, respond: { state: 'action-proposal', proposal: ASSISTANT_SEPARATIONS_MULTI_PROPOSAL }, facts: [['Document', '4501'], ['Document', '4502'], ['Total', '2'], ['Options', 'Read only']] },
   confirmed: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL }, confirm: 'applied' },
   unknown: { account: CONNECTED, respond: { state: 'action-proposal', proposal: LOCAL_PROPOSAL }, confirm: 'lost' },
   refused: { account: CONNECTED, respond: 'fail' },
@@ -206,6 +206,8 @@ for (const theme of ['light', 'dark'] as const) for (const [scene, spec] of Obje
     const boxes = await panel.locator('.hub-toolbar').first().locator('> *').evaluateAll(nodes => nodes.map(node => { const box = node.getBoundingClientRect(); return [box.left, box.right]; }));
     boxes.forEach((box, index) => { if (index > 0) expect(box[0]).toBeGreaterThanOrEqual(boxes[index - 1][1] - 0.5); });
     await attachShellA11y(page, info, `hub-assistant-served-${scene}-${theme}.a11y.yml`);
-    await captureParityPair(page, resolve('tests/parity/references'), { stateId: `hub-assistant-served-${scene}`, theme, viewport: '1280x720', adapter: 'component-fixture', fixtureId: `hub-assistant-served-${scene}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' });
+    const capture = (viewport: string) => captureParityPair(page, resolve('tests/parity/references'), { stateId: `hub-assistant-served-${scene}`, theme, viewport, adapter: 'component-fixture', fixtureId: `hub-assistant-served-${scene}`, descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: 'default' });
+    await capture('1280x720');
+    if ('wide' in spec) { await page.setViewportSize({ width: 1440, height: 900 }); await capture('1440x900'); }
   });
 }

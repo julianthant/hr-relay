@@ -18,7 +18,7 @@
 #hub-panel-assistant .hub-message{max-width:94%;padding:10px 12px;border-radius:12px;background:var(--ui-table);align-self:flex-start;overflow-wrap:anywhere}
 #hub-panel-assistant .hub-message.operator{align-self:flex-end;max-width:88%;background:var(--ui-table)}
 #hub-panel-assistant .hub-assistant-line{display:flex;gap:9px;align-items:flex-start}
-#hub-panel-assistant .hub-assistant-line>.hub-avatar{width:24px;height:24px;display:grid;place-items:center;flex:none;color:var(--ui-muted);background:var(--ui-table);border-radius:50%;margin-top:3px}
+#hub-panel-assistant .hub-assistant-line>.hub-avatar{width:24px;height:24px;display:grid;place-items:center;flex:none;color:var(--ui-muted);background:var(--ui-table);border-radius:50%;margin-top:calc((1lh - 24px) / 2)}
 #hub-panel-assistant .hub-avatar svg{width:14px;height:14px}
 #hub-panel-assistant .hub-card{width:100%;border:1px solid var(--ui-stroke);border-radius:10px;background:var(--ui-panel);overflow:hidden}
 #hub-panel-assistant .hub-card-body{padding:12px}

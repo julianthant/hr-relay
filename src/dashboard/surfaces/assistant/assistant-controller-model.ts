@@ -6,7 +6,7 @@ import { ChatGptAccountContext, useChatGptAccount } from '../settings/general/ch
 import { useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import type { AssistantQueries } from '../../client/index.js';
 import type { AssistantReceipt, AssistantResult } from '../../../models/dashboard/assistant.js';
-import { AssistantModelPreferenceSchema } from "../../../models/config/assistant-model-preference.js";
+import { ASSISTANT_EFFORT_LABELS, AssistantModelPreferenceSchema, assistantModelLabel } from "../../../models/config/assistant-model-preference.js";
 import { ASSISTANT_FAILURES, ASSISTANT_VERIFY_COMMAND, ASSISTANT_MODEL_COMMAND, AssistantModelPreferenceViewSchema, type AssistantModelPreferenceView } from '../../../models/dashboard/assistant.js';
 import { assistantSetupCommand, assistantReducer, type AssistantAction, type AssistantMessage, type AssistantMockProposal, type AssistantState } from './assistant-model.js';
 import { ASSISTANT_UNSAVED_REPLY, type AssistantHistory } from './assistant-history-model.js';
@@ -80,7 +80,7 @@ export function createAssistantController(client: AssistantQueries, initialBindi
     if (outstanding !== undefined) publish(assistantReducer(state, assistantSetupCommand(outstanding.prompt) === 'verify' ? { type: 'cancel' } : { type: 'uncertain', requestId: outstanding.requestId }));
     outstanding?.abort.abort(); outstanding = undefined;
   }
-  const preferenceText = (view: AssistantModelPreferenceView) => 'Assistant model: ' + view.preference.slug + ' (' + view.preference.effort + ').';
+  const preferenceText = (view: AssistantModelPreferenceView) => `Assistant model: ${assistantModelLabel(view.preference.slug)} (${ASSISTANT_EFFORT_LABELS[view.preference.effort]}).`;
   async function respond(requestId: number, prompt: string) {
     const request = { requestId, prompt, abort: new AbortController(), binding };
     outstanding = request;
