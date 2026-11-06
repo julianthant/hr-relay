@@ -449,6 +449,54 @@ export const ERROR_CATALOG = Object.freeze({
     "crashed",
     EmptyParametersSchema,
   ),
+  WORKER_START_FAILED: catalogEntry(
+    "The worker process could not be started.",
+    EmptyParametersSchema,
+  ),
+  WORKER_START_TIMED_OUT: catalogEntry(
+    "The worker did not report ready in time and was stopped. Retry the worker.",
+    EmptyParametersSchema,
+  ),
+  WORKER_REQUEST_TIMED_OUT: catalogEntry(
+    "The worker did not answer in time. Nothing was retried; try again.",
+    EmptyParametersSchema,
+  ),
+  WORKER_EXITED: catalogEntry(
+    "The worker stopped before it answered. Nothing was retried.",
+    EmptyParametersSchema,
+  ),
+  WORKER_EXIT_SETTLEMENT_FAILED: catalogEntry(
+    "Relay could not settle the runs of a worker that stopped. That worker cannot start until its runs are settled.",
+    EmptyParametersSchema,
+  ),
+  WORKER_EXIT_UNOBSERVED: catalogEntry(
+    "A worker process did not exit after it was stopped. Relay will not start beside it; quit Relay and wait for the process to end.",
+    EmptyParametersSchema,
+  ),
+  WORKER_ALREADY_RUNNING: catalogEntry(
+    "This worker is already running.",
+    EmptyParametersSchema,
+  ),
+  WORKER_TARGET_STALE: catalogEntry(
+    "The worker changed since this view was loaded. Refresh and try again.",
+    EmptyParametersSchema,
+  ),
+  WORKER_BUSY: catalogEntry(
+    "The worker is busy with a run or another control. Try again when it is idle.",
+    EmptyParametersSchema,
+  ),
+  WORKER_REQUEST_EXPIRED: catalogEntry(
+    "The worker request expired before it started. Nothing was done.",
+    EmptyParametersSchema,
+  ),
+  WORKER_IPC_PROTOCOL_INVALID: catalogEntry(
+    "A worker sent an invalid message and was stopped.",
+    EmptyParametersSchema,
+  ),
+  WORKER_IDENTITY_MISMATCH: catalogEntry(
+    "A worker reported a different person or sign-in and was stopped.",
+    EmptyParametersSchema,
+  ),
   COMMAND_OUTCOME_UNCERTAIN: catalogEntry(
     "The command outcome is uncertain. Check its result before taking further action.",
     EmptyParametersSchema,
