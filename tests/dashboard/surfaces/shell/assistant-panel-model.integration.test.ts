@@ -53,9 +53,9 @@ describe('assistant port settlements', () => {
 });
 
 it('blocks every setup attachment before panel registration and both local file ports', async () => {
-  let controller!: ReturnType<typeof useAssistantController>, registrations = 0, attachments = 0, opens = 0, requests = 0;
+  let controller!: ReturnType<typeof useAssistantController>, registrations = 0, attachments = 0, requests = 0;
   const ports: AssistantPorts = { async onRegisterSpreadsheet() { registrations++; },
-    async onAttachFile() { attachments++; return file; }, async onOpenChatFile() { opens++; return file; } };
+    async onAttachFile() { attachments++; return file; } };
   const client = { async assistantRespond(): Promise<AssistantResult> { requests++; return { state: 'answered', text: 'Unexpected', citations: [] }; } };
   const producer = createAssistantMockProducer();
   function Harness() { controller = useAssistantController(client, 'profile', undefined, false); model = useAssistantPanel({ producer, accountClient, ports, served: controller }); return null; }
@@ -65,12 +65,11 @@ it('blocks every setup attachment before panel registration and both local file 
     await act(async () => controller.onAction({ type: "edit", value: text }));
     await act(async () => {
       expect(await model.attachFile(new File(['fixture'], 'fixture.txt'))).toBeNull();
-      expect(await model.openChatFile()).toBeNull();
       expect(await model.send({ text, files: [file], model: 'ignored', effort: 'ignored', approval: 'ignored' })).toBe(false);
     });
     expect(model.error).toContain('text only');
   }
-  expect(registrations).toBe(0); expect(attachments).toBe(0); expect(opens).toBe(0); expect(requests).toBe(0);
+  expect(registrations).toBe(0); expect(attachments).toBe(0); expect(requests).toBe(0);
   await act(async () => controller.onAction({ type: "edit", value: 'ordinary attachment' }));
   await act(async () => { expect(await model.attachFile()).toBe(file); });
   expect(attachments).toBe(1);

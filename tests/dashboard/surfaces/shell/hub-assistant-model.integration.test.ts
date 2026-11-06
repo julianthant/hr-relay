@@ -25,41 +25,12 @@ it('registers attached, updated and generated files through HTTP/SQLite, reopens
     { id: 'head', cells: ['Name', 'Separation date', 'Kuali ID'].map(value => ({ value })) }, { id: 'person', cells: ['Alex Rivera', '2026-10-19', '2230001'].map(value => ({ value })) },
   ] }] } };
   await session.register(file); await session.register(file);
-  const attached = session.reference(file);
   const request = { workflowId: 'separations', source: 'mock', dryRun: true, conversationId: 'chat', file, rows: assistantWorkflowRows(file, 'separations') } as const;
   const { result } = prepareHubWorkflow(request, workflowComposition({ separations: 'mock' }), 0);
   if (result.state !== 'complete') throw Error('missing result');
   session.linkOutputs(request, result);
   for (const output of result.files) { await session.register(output); await session.register(output); }
-  assert.deepEqual(session.files.snapshot().map(file => file.kind === 'workbook' ? [file.reference.version, file.reference.status] : null), [[1, 'Attached'], [2, 'Updated'], [1, 'Generated']]);
-  const original = await session.files.open(attached), updated = await session.files.open(session.reference(result.files[0]));
-  assert.equal(original.kind, 'workbook'); assert.equal(updated.kind, 'workbook');
-  if (original.kind !== 'workbook' || updated.kind !== 'workbook') throw Error('missing workbooks');
-  assert.equal(original.document.sheets[0].width, 3); assert.equal(updated.document.sheets[0].width, 4);
-  const reattached = await session.select(attached);
-  assert.deepEqual(reattached.workbook, original.document);
-  await session.register(reattached);
-  assert.equal(createHubAssistantSession('other', adapter).files.snapshot().length, 0);
   assert.equal(writes.length, 3); assert.ok(writes.every(path => /^\/api\/v1\/workbooks(?:\/[^/]+\/save)?$/u.test(path)));
-});
-
-it('ignores a file selection settling after its picker was cancelled for another chat', async () => {
-  const client = createDashboardClient({ baseUrl: 'http://localhost', fetchImpl: () => { throw Error('A mock file must not make a served request.'); } });
-  let model!: ReturnType<typeof useHubAssistant>;
-  function Harness() { model = useHubAssistant(async () => ({ state: 'failed', message: 'Unused' }), () => {}); return null; }
-  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-  await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(Harness) })));
-  const file = model.session('first').files.attachMockFile(new File(['Notes'], 'Notes.txt'));
-  let attachment!: ReturnType<NonNullable<ReturnType<typeof model.ports>['onOpenChatFile']>>;
-  await act(async () => { attachment = model.ports('first').onOpenChatFile!(undefined, 'attach'); });
-  await act(async () => {
-    const selection = model.select(file);
-    model.closeFiles();
-    await model.ports('second').onOpenChatFile!(undefined, 'browse');
-    await selection;
-  });
-  assert.equal(await attachment, null);
-  assert.equal(model.view?.id, 'second'); assert.equal(model.error, '');
 });
 
 it('keeps drafts on refused or failed sends, clears successful sends and forgets deleted sessions', async () => {

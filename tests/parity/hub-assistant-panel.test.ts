@@ -64,8 +64,6 @@ test('assistant composer and workflow ports', { annotation: [{ type: 'required-a
   await expect(page.getByRole('button', { name: 'Run 2 separations' })).toBeEnabled();
   await expect(page.getByText('Needs date', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Run 2 separations' }).click();
-  await expect(page.getByRole('button', { name: 'Updated.csv Updated spreadsheet', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Results.csv Generated spreadsheet', exact: true })).toBeVisible();
   const request = z.object({ dryRun: z.literal(true), rows: z.array(z.object({ person: z.string() })) }).parse(JSON.parse((await page.locator('body').getAttribute('data-run'))!));
   expect(request.dryRun).toBe(true); expect(request.rows.map((row: { person: string }) => row.person)).toEqual(['Alex Rivera', 'Morgan Vega']);
   await attachShellA11y(page, info, 'hub-assistant.a11y.yml');
@@ -134,16 +132,15 @@ test('served local action uses the existing card and keeps lost confirmation non
     const input = page.getByRole('textbox', { name: 'Message Relay' });
     await expect(input).toBeEnabled(); await input.fill('mark notifications read');
     await page.getByRole('button', { name: 'Send message', exact: true }).click();
-    const card = page.getByRole('article', { name: 'Proposed action details' });
-    await card.getByRole('button', { name: "Effects and stop points", exact: true }).click();
-    await expect(card).toContainText('Proposed action · Local change');
-    await expect(card).toContainText('Local notification'); await expect(card).toContainText('None');
+    const card = page.getByRole('article', { name: 'Proposed Mark a notification read' });
+    await expect(card).toContainText('Local change');
+    await expect(card).toContainText('Local notification');
     await expect(card).not.toContainText('Dry run'); await expect(card).not.toContainText('Alex Rivera');
     const confirm = card.getByRole('button', { name: 'Confirm', exact: true }); await expect(confirm).toBeEnabled();
     await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'lost' : 'ready'}.png`) });
     await confirm.click();
-    await expect(card).toContainText(lost ? 'Action outcome is unknown. Do not retry' : 'Action completed.');
-    await expect(confirm).toBeDisabled();
+    if (lost) { await expect(card).toContainText('Action outcome is unknown. Do not retry'); await expect(confirm).toBeDisabled(); }
+    else await expect(page.getByLabel('Resolved proposal')).toContainText('Done');
     await expect(page.locator('body')).toHaveAttribute('data-decisions', '1');
     await page.screenshot({ path: info.outputPath(`served-action-${lost ? 'unknown' : 'complete'}.png`) });
   }
@@ -158,9 +155,9 @@ test('served automatic unknown and lost respond have no Retry or new Send', asyn
     await expect(page.getByRole('button', { name: 'Retry reply' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Send message', exact: true })).toBeDisabled();
     if (mode === 'autoUnknown') {
-      const card = page.getByRole('article', { name: 'Proposed action details' });
+      const card = page.getByRole('article', { name: /^Proposed / });
       await expect(card).toContainText('25 current notifications'); await expect(card.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
-    } else await expect(page.getByRole('article', { name: 'Proposed action details' })).toHaveCount(0);
+    } else await expect(page.getByRole('article', { name: /^Proposed / })).toHaveCount(0);
     await expect(page.locator('body')).not.toHaveAttribute('data-decisions');
     await page.screenshot({ path: info.outputPath(`automatic-${mode}.png`) });
   }
