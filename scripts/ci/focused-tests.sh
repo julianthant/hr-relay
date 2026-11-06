@@ -16,11 +16,16 @@ commit=$(printf 'Focused tests for %s\n\nFocused-tests: %s\nFocused-os: %s\n' "$
 results=$(mktemp -d)
 trap 'rm -rf "$results"; git push -q origin --delete "$branch" 2>/dev/null || true' EXIT
 
-git push -q --force origin "$commit:refs/heads/$branch"
+# GitHub sometimes rejects a push while other pushes land at once; retry.
+for attempt in 1 2 3; do
+  git push -q --force origin "$commit:refs/heads/$branch" && break
+  [ "$attempt" -lt 3 ] || die "Push to $branch failed."
+  sleep $((attempt * 3))
+done
 run=
 for _ in $(seq 60); do
-  run=$(gh run list --workflow focused-tests.yml --branch "$branch" --json databaseId,headSha \
-    --jq "map(select(.headSha == \"$commit\"))[0].databaseId // empty")
+  run=$(gh api "repos/{owner}/{repo}/actions/runs?head_sha=$commit&event=push" \
+    --jq '.workflow_runs[] | select(.path == ".github/workflows/focused-tests.yml") | .id' | head -n1)
   [ -n "$run" ] && break
   sleep 2
 done
