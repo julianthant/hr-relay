@@ -1,5 +1,6 @@
 import { z } from "zod";
 import configuredSources from "../../../config/dashboard-workflow-sources.json";
+import type { MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
 
 export type WorkflowSource = "mock" | "served";
 export type WorkflowSourcePolicy = Readonly<Record<string, WorkflowSource>>;
@@ -14,6 +15,7 @@ export function workflowSource(id: string, policy: WorkflowSourcePolicy = WORKFL
 
 export interface WorkflowComposition {
   readonly sources: WorkflowSourcePolicy;
+  readonly initialMockRuns: () => readonly MockRun[];
   readonly explorerSources?: WorkflowSourcePolicy;
   readonly logsSources?: WorkflowSourcePolicy;
   readonly dataSources?: WorkflowSourcePolicy;
@@ -29,7 +31,7 @@ export interface WorkflowComposition {
 }
 
 export function workflowComposition(sources: WorkflowSourcePolicy): WorkflowComposition {
-  return Object.freeze({ sources, sessions: "served" as const, activity: "served" as const, inbox: "served" as const, search: "served" as const, spreadsheets: "served" as const, sourceForRoute: (id: string) => workflowSource(id, sources) });
+  return Object.freeze({ sources, initialMockRuns: () => [], sessions: "served" as const, activity: "served" as const, inbox: "served" as const, search: "served" as const, spreadsheets: "served" as const, sourceForRoute: (id: string) => workflowSource(id, sources) });
 }
 
 export const PRODUCT_WORKFLOW_COMPOSITION = workflowComposition(WORKFLOW_SOURCES);

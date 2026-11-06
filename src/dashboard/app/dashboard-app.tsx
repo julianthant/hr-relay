@@ -91,7 +91,7 @@ DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
 import {parseWorkflows,useSelectedWorkflow,workflowStatusCounts,type StatusBucket } from "../surfaces/shell/shell-model.js";
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflows/mocks/workflow-mock-queue.js";
 import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../surfaces/workflows/mocks/workflow-mock-catalog.js";
-import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, mockRunSubset, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
+import { mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, mockRunSubset, type MockDraft, type MockRun } from "../surfaces/workflows/mocks/workflow-mock-model.js";
 import { completeMockReviewAction, type MockReviewAction } from "../surfaces/workflows/mocks/workflow-review-action-model.js";
 import { mockQueueId } from "../surfaces/workflows/mocks/workflow-queue-model.js";
 import { updateMockReview } from "../surfaces/workflows/mocks/workflow-review-model.js";
@@ -427,7 +427,7 @@ function LoadedApp({
   const routeWorkflowId = requestedPreview ?? activeWorkflowId;
   const railPreview = route.run !== undefined && requestedPreview === null ? null : requestedPreview && !workflowCatalog.some(flow => flow.id === requestedPreview) ? requestedPreview
     : routeWorkflowId && workflowComposition.sourceForRoute(routeWorkflowId, requestedPreview !== null) === "mock" ? routeWorkflowId : null;
-  const [allMockRuns, setMockRuns] = useState<readonly MockRun[]>(seedMockRuns);
+  const [allMockRuns, setMockRuns] = useState<readonly MockRun[]>(workflowComposition.initialMockRuns);
   const startRestrictions = useMemo(() => workflowStartRestrictions(boot.featureAvailability), [boot.featureAvailability]);
   const mockRuns = useMemo(() => mockRunSubset(allMockRuns, run => !startRestrictions.has(run.workflowId) && workflowComposition.sourceForRoute(run.workflowId, true) === "mock"), [allMockRuns, workflowComposition, startRestrictions]);
   // The route selection clears after the removal commits; a run deleted here is not an unavailable destination.
