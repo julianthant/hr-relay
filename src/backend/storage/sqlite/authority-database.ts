@@ -4700,7 +4700,9 @@ export class AuthorityDatabase implements Disposable {
     }
     if (table === "runs") {
       const row = this.#database.prepare("SELECT * FROM runs WHERE id = ?").get(recordKey);
-      return row === undefined ? undefined : schema.parse(runRecordFromRow(row));
+      if (row === undefined) return undefined;
+      const record = runRecordFromRow(row);
+      return Object.is(schema, RunRecordSchema) ? structuredClone(record) as z.output<Schema> : schema.parse(record);
     }
     if (table === "run_results") {
       const row = readRunSettlementRow(this.#database,recordKey);
@@ -4721,7 +4723,8 @@ export class AuthorityDatabase implements Disposable {
       if (table === "run_receipts") assertRefreshedReceiptSettlement(this.#database,RunEvidenceReceiptSchema.parse(record),row);
       if (table === "write_intents") { authenticateStoredWriteResolution(this.#database,record); assertConfirmationPublication(this.#database,recordKey); }
       if (table === "command_audits") authenticateStoredResolutionAudit(this.#database,record);
-      return schema.parse(record);
+      return table === "run_checkpoints" && Object.is(schema, RunCheckpointRecordSchema)
+        ? structuredClone(record) as z.output<Schema> : schema.parse(record);
     }
     throw new Error(`native reader is undefined for ${table}`);
   }
@@ -4731,7 +4734,8 @@ export class AuthorityDatabase implements Disposable {
     if(table === "run_receipts") assertRefreshedReceiptSettlement(this.#database,RunEvidenceReceiptSchema.parse(record),row);
     if(table === "write_intents") { authenticateStoredWriteResolution(this.#database,record); assertConfirmationPublication(this.#database,z.object({writeIntentId:z.string()}).parse(record).writeIntentId); }
     if(table === "command_audits")authenticateStoredResolutionAudit(this.#database,record);
-    return schema.parse(record);
+    return table === "run_checkpoints" && Object.is(schema, RunCheckpointRecordSchema)
+      ? structuredClone(record) as z.output<Schema> : schema.parse(record);
   }
 
   #insertSimpleRecord<Schema extends z.ZodType>(
