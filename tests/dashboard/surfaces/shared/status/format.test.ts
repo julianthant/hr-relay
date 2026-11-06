@@ -11,7 +11,7 @@ import { isTerminalQueueStatus as isTerminalQueueStatus_m1 } from "../../../../.
 import assert_m2 from "node:assert/strict";
 import { describe as describe_m2,it as it_m2 } from "vitest";
 import { versionTag as versionTag_m2 } from "../../../../../src/dashboard/surfaces/shared/status/format.js";
-import { WORKFLOW_DESCRIPTORS as WORKFLOW_DESCRIPTORS_m2 } from "../../../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS } from "../../../../../src/backend/app/registries/workflow-registry.js";
 
 import assert_m3 from "node:assert/strict";
 import { describe as describe_m3,it as it_m3 } from "vitest";
@@ -142,7 +142,7 @@ describe_m1("queue row timing", () => {
 
 describe_m2("the descriptor version in Run Modal facts", () => {
   it_m2("prints the stored integer with no fabricated minor version", () => {
-    for (const descriptor of WORKFLOW_DESCRIPTORS_m2) {
+    for (const descriptor of DESCRIPTORS) {
       const tag = versionTag_m2(descriptor.version);
       assert_m2.equal(tag, `v${String(descriptor.version)}`, `${descriptor.id} footer tag`);
       assert_m2.doesNotMatch(tag, /\./u, `${descriptor.id} has no recorded minor version`);

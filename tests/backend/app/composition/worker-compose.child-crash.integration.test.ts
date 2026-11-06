@@ -42,7 +42,7 @@ import { createWriteFixtureWorld, WRITE_FIXTURE_EID } from "../../../support/fix
 import { lifecycleCommandId } from "../../../../src/rules/identity/identifiers.js";
 import { reconcileExitedWorker } from "../../../../src/backend/runs/lifecycle/startup-crash-recovery.js";
 import { terminalEvidenceResult } from "../../../../src/models/run/result.js";
-import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/descriptor-registry.js";
+import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/registry.js";
 
 const Message = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("preview-prepare"), workerId: WorkerIdSchema, runId: RunIdSchema,

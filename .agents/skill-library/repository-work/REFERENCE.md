@@ -58,8 +58,6 @@ npm run cli -- dashboard  # the BFF alone; `dashboard:prod` passes --prod and se
 npm run web               # the vite dev server alone, proxying /api to a BFF you started yourself
 npm run web:build         # production bundle into dist/dashboard
 
-npm run build:registries   # regenerate the tracked workflow registries
-npm run build:registries:check # read-only tracked registry freshness
 npm run build:observer-policy # prepare the ignored Windows observer policy artifact
 npm run stores:catalog     # regenerate the generated §2 task catalog in docs/reference/stores.md
 npm run stores:catalog:check # fail if the committed catalog is stale

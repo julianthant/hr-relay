@@ -1,4 +1,4 @@
-import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { GateResultRecordSchema } from "../../../../src/models/workflow/gates.js";
 import { launchDescriptor, launchHarness as createLaunchHarness } from "../../../support/fixtures/run-launch-fixtures.js";
 import { z } from "zod";
@@ -116,7 +116,7 @@ function firstCheckpoint(h: Harness, run: RunRecord) { const cp = h.database.aut
 describe("source-bound Rerun value read", () => {
   it("offers supported pre-roster Onboarding values through the trusted reader without rewriting retained input", async () => {
     const h = await harness(); const source = await failed(h);
-    const current = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "onboarding"); assert.ok(current);
+    const current = DESCRIPTORS.find(entry => entry.id === "onboarding"); assert.ok(current);
     const parser = { split: { kind: "whole-text" }, rules: [{ when: { kind: "pattern", pattern: "email" }, emit: "email" }] };
     const descriptor = defineWorkflowDescriptor({ id: current.id, version: current.version, contractFingerprint: current.contractFingerprint,
       code: current.code, label: current.label, icon: current.icon, category: current.category,
@@ -170,7 +170,7 @@ describe("source-bound Rerun value read", () => {
 
   it.each([false, true])("projects verified Onboarding source without roster after descriptor advance %s", async older => {
     const h = await harness(); const source = await failed(h);
-    const descriptor = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "onboarding"); assert.ok(descriptor);
+    const descriptor = DESCRIPTORS.find(entry => entry.id === "onboarding"); assert.ok(descriptor);
     const value = { ...ONBOARDING_INPUT_EXAMPLE, mode: "rehire", postalCodeOverride: "92093" };
     const { sessionId: _sessionId, completion: _completion, ...withoutSession } = source;
     const run = RunRecordSchema.parse({ ...withoutSession,
@@ -216,7 +216,7 @@ describe("source-bound Rerun value read", () => {
     assert.deepEqual(result.snapshot.sourceInput, { state: "available", value: source.input.parsed.value });
   });
   it.each(["safe-identity", "embedded-protected-value"] as const)("withholds protected input in the %s HTTP response", async kind => {
-    const descriptor = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "separations"); assert.ok(descriptor);
+    const descriptor = DESCRIPTORS.find(entry => entry.id === "separations"); assert.ok(descriptor);
     const name = kind === "safe-identity" ? "Fixture Hidden Operator" : "1234567";
     const secrets = protectedSecretSource({ profileName: name });
     let secretReads = 0;
@@ -358,7 +358,7 @@ describe("source-bound Rerun value read", () => {
   });
   it.each(["padded-name", "missing-control"] as const)("prefills older typed %s only where current input accepts exact values", async kind => {
     const h = await harness(); const source = await failed(h);
-    const descriptor = WORKFLOW_DESCRIPTORS.find(entry => entry.id === "person-lookup"); assert.ok(descriptor);
+    const descriptor = DESCRIPTORS.find(entry => entry.id === "person-lookup"); assert.ok(descriptor);
     const value = kind === "padded-name" ? { mode: "match", lastName: " Example ", firstName: "Person", dob: "01/15/2000", crmCheck: true, includeCrmDates: false }
       : { mode: "search", emplId: "10000001", crmCheck: false, keepNonHdh: true };
     const { sessionId: _sessionId, ...withoutSession } = source;

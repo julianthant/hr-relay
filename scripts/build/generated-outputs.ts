@@ -1,14 +1,5 @@
 export const GENERATED_OUTPUTS = [
   {
-    script: "build:registries",
-    paths: [
-      "src/workflows/generated-descriptors.ts",
-      "src/backend/app/registries/generated-workflow-stores.ts",
-      "src/backend/app/registries/generated-workflow-modules.ts",
-      "src/backend/app/registries/generated-step-proof-modules.ts",
-    ],
-  },
-  {
     script: "stores:catalog",
     paths: ["docs/reference/stores.md"],
     section: { start: "<!-- store-catalog:start -->", end: "<!-- store-catalog:end -->" },

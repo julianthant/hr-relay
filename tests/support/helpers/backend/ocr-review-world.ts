@@ -1,3 +1,4 @@
+import { ocrModule } from "../registered-workflows.js";
 import type { SpanEmitter } from "../../../../src/backend/logs/span-emitter.js";
 import type { createRetainedApprovedRecordReader } from "../../fixtures/ocr/retained-approved-records.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
@@ -10,7 +11,7 @@ import { createOcrApprovedSnapshotAdapter } from "../../../../src/backend/proces
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { ocrModule, CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY, workflowModuleOf, childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { CHILD_ONLY_WORKFLOW_MODULES, SERVER_REGISTRY, workflowModuleOf, childWorkflowModuleOf } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createOcrCheckpointPublication } from "../../../../src/backend/runs/lifecycle/ocr-checkpoint-publication.js";
 import { createOcrSourceService } from "../../../../src/backend/runs/commands/ocr-source-service.js";
 import { createContentAddressedArtifactWriter } from "../../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";

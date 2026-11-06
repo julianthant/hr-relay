@@ -5,7 +5,7 @@ import { createRunStartDialogHarness } from "../../../support/helpers/dashboard/
 import { rerunValuesHarness, rerunValuesDeps } from "../../../support/fixtures/rerun-values-fixtures.js";
 import { readRerunValues } from "../../../../src/backend/runs/start/rerun-values.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
+import { DESCRIPTORS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { RerunWarningRequestSchema, RerunWarningWireSchema } from "../../../../src/models/dashboard/rerun-warning.js";
 import { StartPlanRequestSchema, StartPlanWireSchema } from "../../../../src/models/dashboard/start-plan.js";
@@ -13,7 +13,7 @@ import type { RunStartWorkflow } from "../../../../src/dashboard/surfaces/run-st
 
 const h = createRunStartDialogHarness();
 afterEach(h.cleanup);
-const descriptor = WORKFLOW_DESCRIPTORS.find(workflow => workflow.id === "person-lookup"); assert.ok(descriptor);
+const descriptor = DESCRIPTORS.find(workflow => workflow.id === "person-lookup"); assert.ok(descriptor);
 const surface = descriptor.surfaces.inputRun; assert.ok(surface);
 const workflow: RunStartWorkflow = { ...h.WORKFLOWS[0], workflowId: descriptor.id, version: descriptor.version,
   steps: projectStartSteps(descriptor), inputRun: { state: "present", surface } };

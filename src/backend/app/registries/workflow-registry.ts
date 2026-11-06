@@ -2,7 +2,7 @@ import { FingerprintSchema, type Fingerprint } from "../../../rules/identity/ids
 import { sha256Hex } from "../../../rules/validation/sha256.js";
 
 import { readFileSync } from "node:fs";
-import type { WorkflowModule } from "../../../workflow-kit/workflow-definition.js";
+import { compileWorkflow, composeWorkflowModule, type AnyWorkflowDefinition, type WorkflowModule } from "../../../workflow-kit/workflow-definition.js";
 import { workflowProjections } from "../../../workflow-kit/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { PendingImplBindingsSchema } from "../../../workflow-kit/validation/impl-bindings.js";
@@ -17,9 +17,15 @@ import {
   workflowRoleRegistry,
 } from "../../../workflow-kit/validation/workflow-module-audit.js";
 import { taskStoreRegistry } from "./task-registry.js";
-import { createWorkflowDescriptorRegistry } from "../../../workflows/descriptor-registry.js";
-import { WORKFLOW_MODULES, CHILD_ONLY_WORKFLOW_MODULES, WORKFLOW_QUEUE_CAPABILITIES } from "./generated-workflow-modules.js";
-export * from "./generated-workflow-modules.js";
+import { CHILD_ONLY_WORKFLOWS, createWorkflowDescriptorRegistry, PUBLIC_WORKFLOWS, WORKFLOW_REGISTRATIONS } from "../../../workflows/registry.js";
+
+/** Binds one registered definition to the exact stores its contracts name. */
+export function composeRegisteredWorkflow(definition: AnyWorkflowDefinition): WorkflowModule {
+  return composeWorkflowModule(compileWorkflow(definition), taskStoreRegistry.stores);
+}
+
+export const WORKFLOW_MODULES = Object.freeze(PUBLIC_WORKFLOWS.map(({ definition }) => composeRegisteredWorkflow(definition)));
+export const CHILD_ONLY_WORKFLOW_MODULES = Object.freeze(CHILD_ONLY_WORKFLOWS.map(({ definition }) => composeRegisteredWorkflow(definition)));
 export function createWorkflowRegistry<PublicModule extends WorkflowModule>(
   publicEntries: readonly PublicModule[],
   childOnlyEntries: readonly WorkflowModule[],
@@ -63,7 +69,8 @@ export function workflowQueueCapabilities(workflowId: string): Readonly<{
   groupedBatchLayout?: boolean;
   retryBatchMembers?: boolean;
 }> | undefined {
-  return WORKFLOW_QUEUE_CAPABILITIES.find(([id]) => id === workflowId)?.[1];
+  const registration = WORKFLOW_REGISTRATIONS.find(({ definition }) => String(definition.id) === workflowId);
+  return registration !== undefined && "queueCapabilities" in registration ? registration.queueCapabilities : undefined;
 }
 
 export const childWorkflowModuleOf = registry.childModuleOf;

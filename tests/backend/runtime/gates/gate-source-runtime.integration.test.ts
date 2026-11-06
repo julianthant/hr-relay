@@ -1,3 +1,4 @@
+import { personLookupModule } from "../../../support/helpers/registered-workflows.js";
 import { createProfileFixtureSet, type BoundProfileStorageFixture } from "../../../support/helpers/admission-fixture.js";
 import { afterAll } from "vitest";
 import { GateIdSchema, RunIdSchema } from "../../../../src/rules/identity/ids.js";
@@ -12,7 +13,6 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { taskStoreRegistry } from "../../../../src/backend/app/registries/task-registry.js";
-import { personLookupModule } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { createGateSourceRuntime, type GateSourceDelivery, type GateSourceEnvelope, type GateSourcePort } from "../../../../src/backend/runtime/gates/gate-source-runtime.js";
 import { runWorkerLoop } from "../../../../src/backend/runtime/workers/worker-loop.js";
 import { RunRecordSchema } from "../../../../src/models/run/record.js";

@@ -1,10 +1,10 @@
+import { crmDocDownloadModule } from "../../support/helpers/registered-workflows.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import JSZip from "jszip";
 import { it } from "vitest";
-import { crmDocDownloadModule } from "../../../src/backend/app/registries/workflow-registry.js";
 import type { AnyWorkflowDescriptor } from "../../../src/workflow-kit/workflow.js";
 import { STEP_PROOF_MODULES } from "../../../src/backend/app/registries/step-proof-modules.js";
 import { taskStoreRegistry } from "../../../src/backend/app/registries/task-registry.js";

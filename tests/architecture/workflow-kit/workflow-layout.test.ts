@@ -14,7 +14,7 @@ import { declaredWorkflowId } from "../../../scripts/build/workflow-source.js";
 import { REPO_ROOT } from "../support/helpers/guard-files.js";
 
 const WORKFLOWS_ROOT = "src/workflows";
-const TOP_LEVEL_FILES = new Set(["descriptor-registry.ts", "generated-descriptors.ts"]);
+const TOP_LEVEL_FILES = new Set(["registry.ts"]);
 
 
 export interface WorkflowLayoutModule {
@@ -222,8 +222,7 @@ const FIXTURE_MODULE = "export const module = { role: \"fixture\" };\n";
 
 function cleanFixtureFiles(): Record<string, string> {
   return {
-    "src/workflows/descriptor-registry.ts": "export const REGISTRY = [];\n",
-    "src/workflows/generated-descriptors.ts": "export const WORKFLOW_DESCRIPTORS = [];\n",
+    "src/workflows/registry.ts": "export const PUBLIC_WORKFLOWS = [];\n",
     "src/workflows/solo/workflow.ts": fixtureWorkflow("solo"),
     "src/workflows/solo/index.ts": "export const registration = {};\n",
     "src/workflows/combo/workflow.ts": fixtureWorkflow("combo"),

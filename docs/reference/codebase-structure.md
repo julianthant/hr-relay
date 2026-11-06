@@ -15,7 +15,7 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `docs/roadmap/roadmap.md` | Roadmap content. |
 | `docs/roadmap/index.html` | Generated roadmap site. |
 | `fast-duo/` | Dashboard-owned Chromium enrollment and backend-signed workflow login runtimes. |
-| `scripts/build/` | Workflow registry generation, manifest-only source-tool preparation and independent checks; `generated-outputs.ts` owns merge-train regeneration paths and commands, and `merge-generated-conflicts.ts` resolves generated conflicts in temporary worktrees. |
+| `scripts/build/` | Source-tool preparation and independent checks; `generated-outputs.ts` owns merge-train regeneration paths and commands, and `merge-generated-conflicts.ts` resolves generated conflicts in temporary worktrees. |
 | `scripts/dev/` | Dashboard launch and secure environment bootstrap. `relay.ts` owns the Windows production launcher and private loopback stop broker; `relay-backend.ts` reports shutdown only after bootstrap releases its lifetime. Root `relay.cmd` selects portable Node. `tests/support/processes/relay-drain-child.ts` supplies the controlled write-drain proof. |
 | `scripts/docs/generate-store-catalog.ts` | Store-catalog generation. |
 | `scripts/docs/roadmap.ts` | Roadmap parsing and site generation. |
@@ -25,8 +25,6 @@ This map names the current source, test, and documentation owners. Relay runs lo
 | `src/` | Application source. |
 | `tests/` | Tests, fixtures, helpers, and process entrypoints. |
 
-`npm run build:registries` reads workflow indexes and generates `src/workflows/generated-descriptors.ts`
-and `src/backend/app/registries/generated-{workflow-modules,workflow-stores,step-proof-modules}.ts`.
 `npm run build:observer-policy` prepares the ignored Windows observer policy artifact under
 `node_modules/.cache/relay/`; runtime package prehooks and the Vitest/Vite configs call it. [Guards and tests](guards-and-tests.md#contract-fingerprints-and-build-id)
 owns the contract fingerprint and build id.
@@ -85,7 +83,7 @@ Paths in this table are relative to `src/backend/`.
 | `app/` | Bootstrap, configuration, host admission, preflight, rehearsal manifest validation, and application composition. |
 | `app/composition/` | Storage, dashboard, and worker dependency assembly. `profile-credential-inventory.ts` composes credential maintenance assessment, including stopped machine-control inventory; `storage/maintenance/profile-inventory.ts` owns canonical copy/resource membership and retained browser-root validation shared with stopped READY-profile upgrade. Its required `ProfileBrowserClosure` port binds browser work to the actual runtime admission or the finite flat-store lease. `storage/maintenance/upgrade.ts` runs profile SQLite upgrade and the separate stopped machine-control upgrade. `storage-compose.ts` coordinates registered READY-person health and backed-up forward migration before dashboard runtime admission; ordinary sign-in remains current-only. `storage/maintenance/existing-data-backup.ts` owns the raw-byte flat native6 archive writer for startup migration and stopped CLI backup; registered-person SQLite backups remain in `upgrade.ts`. `storage/maintenance/existing-data-backup-files.ts` owns strict schema2 flat archive source/receipt membership, private copy and independent verification without opening authority databases. `storage/maintenance/cancel-queued-runs.ts` owns digest-bound offline cancellation of never-claimed flat native6 queues, using the finite `AuthorityDatabase.cancelQueuedRunsNative6` transaction and shared run transition/row-update primitives; `storage/maintenance/process-closure.ts` supplies the current startup and offline process/open-file/cwd absence checks. `storage/admission/bootstrap-admission.ts` runs the verified flat-store start-clean migration before profile composition; `installation.ts` owns its durable deletion intent and empty-registry publication. |
 | `app/composition/dashboard/` | `compose.ts` retains the public exports. `runtime-contracts.ts` owns runtime and input contracts. `runtime-startup.ts` owns the public runtime wrapper and reverse startup unwind; `runtime-resources.ts` owns synchronous environment and authority preparation. `worker-process.ts` owns worker launch, control and spawning. `profile-session-routes.ts` owns public profile, session and onboarding routes and application HTTP binding. `shutdown-custody.ts` owns runtime detach, application stop and backup custody classification. `timeline.ts` owns timeline admission and polling. `write-safety.ts` binds write resolution, canonical artifacts, intake parsing and trust readers. `notification-wiring.ts` binds notification publication and route projections. `dashboard-wiring.ts` owns async startup orchestration, service and worker wiring, shell and API assembly, HTTP startup and observer polling. |
-| `app/registries/` | Workflow, task, step-proof, and test-target registration. `task-registry.ts` composes system, processing, and workflow task stores. |
+| `app/registries/` | Workflow module composition from `src/workflows/registry.ts`, task, step-proof, and test-target registration. `task-registry.ts` composes system, processing, and workflow task stores. |
 | `logs/` | Spans, observed data, artifacts, confirmed actions, declared step results, and diagnostics. `debug-events.ts` owns repository-backed debug persistence and redaction. `emergency-faults.ts` constructs boot faults for the native local timeline spool. `duo-diagnostics.ts` writes closed Duo codes and timings under the admitted machine root’s `logs/`, rotating four files of at most 256 KiB each; request and profile identifiers never enter these files. |
 | `logs/diagnostics/` | Diagnostic capture and retention. |
 | `processing/` | Extraction, normalization, OCR, provider calls, roster processing, and spreadsheets. Task families register beside their implementations. `providers/nominatim-owner.ts` owns the parent serial geocode queue and worker IPC client; `providers/geocode-adapters.ts` owns provider request/response mapping. `ocr/tasks/read-approved-records.ts` exposes that read to workflow graphs. `providers/chatgpt-ocr-adapter.ts` owns the fixed OCR model and scoped page reader shared by the canonical provider adapter and the fixed Settings diagnostic. |
@@ -163,8 +161,8 @@ Its task implementations live in `tasks/read-source-page.ts`, `stage-import.ts`,
 
 `src/workflows/person-lookup/` and `src/workflows/separations/` each contain `workflow.ts`,
 `task-registry.ts`, `index.ts`, and `tasks/`. The workflow definition is browser-safe. The index declares
-registration, importing the definition, backend task store and retained proofs. The generated descriptor
-tuple imports definitions directly, keeping those backend imports out of the dashboard.
+registration, importing the definition, backend task store and retained proofs. `src/workflows/registry.ts`
+lists every registration by hand; no dashboard entry imports it.
 `src/models/ocr/stored-extraction.ts` owns immutable extraction storage envelopes: validated source-bound page readings and explicitly unbound source evidence. The native artifact repository reads exact extraction IDs and retains every deliberate reading version.
 `src/models/ocr/review.ts` owns uploaded PDF records, canonical review revisions and selected approval snapshots.
 `src/backend/storage/sqlite/ocr-review.ts` owns their native repository and migration.

@@ -415,7 +415,7 @@ npm run test:perf
 Coverage runs alone and selects unit, integration, and architecture without perf. The perf project
 runs afterward without coverage instrumentation. Separate full unit, integration, and architecture
 reruns add no acceptance evidence for unchanged inputs. The brief may additionally
-require `npm run build:registries:check`, `npm run stores:catalog:check`, or other affected freshness
+require `npm run stores:catalog:check` or other affected freshness
 checks. Derived output is regenerated at its source before its freshness check.
 
 Before coverage, the operator gate still requires free memory, no swap pressure, and no listener

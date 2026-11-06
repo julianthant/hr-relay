@@ -8,7 +8,6 @@ import { i9CheckWorkflow } from "./workflow.js";
 
 export const registration = deepFreeze({
   definition: i9CheckWorkflow,
-  exposure: { kind: "child-only" },
   store: i9CheckStore,
   proofs: [
     defineStepProof(i9CheckWorkflow, i9CheckPersonMatchDefinition),

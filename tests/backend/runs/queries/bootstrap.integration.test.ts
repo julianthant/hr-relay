@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { describe,expect,it } from "vitest";
 import { z } from "zod";
-import { descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { DESCRIPTORS, descriptorSetHash as descriptorSetHash_m0,INTAKE_PROJECTIONS } from "../../../../src/backend/app/registries/workflow-registry.js";
 import { buildBootstrap,type BootstrapQueryDeps } from "../../../../src/backend/runs/queries/bootstrap.js";
 import { projectStartSteps } from "../../../../src/backend/runs/start/step-selection.js";
 import { FrontendBootstrapWireSchema,WorkflowBootstrapPrimitiveSchema } from "../../../../src/models/dashboard/bootstrap.js";
@@ -13,7 +13,6 @@ import { manualClock } from "../../../../src/rules/time/clock.js";
 import { flow as flow_m0 } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
 import { defineWorkflowDescriptor } from "../../../../src/workflow-kit/workflow.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../../src/workflows/descriptor-registry.js";
 import { FixtureReadReceipt } from "../../../support/fixtures/descriptor-fixtures.js";
 import { healthyDashboardPreflightReport } from "../../../support/fixtures/preflight-seams.js";
 import { AUDITING_FORM,FOLDING_FORM,omissionCascadingDescriptor,READING_FORM } from "../../../support/fixtures/start-step-omission-fixtures.js";
@@ -67,7 +66,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
   return {
     appVersion: "0.1.0",
     clock: manualClock(AT),
-    modules: WORKFLOW_DESCRIPTORS.map((descriptor) => ({
+    modules: DESCRIPTORS.map((descriptor) => ({
       descriptor,
       role: defineWorkflowRole({ kind: "standalone" }),
 
@@ -75,7 +74,7 @@ function depsOf(world: DashboardWorld): BootstrapQueryDeps {
         ? {}
         : { intake: INTAKE_PROJECTIONS[String(descriptor.id)] }),
     })),
-    descriptorSetHash: descriptorSetHash_m0(WORKFLOW_DESCRIPTORS.map((d) => d.contractFingerprint)),
+    descriptorSetHash: descriptorSetHash_m0(DESCRIPTORS.map((d) => d.contractFingerprint)),
     settingsSchemaHash: descriptorSetHash_m0(["settings-schema"]),
     projection: world.projection,
     actorLabel: () => "Fixture Operator",
@@ -97,7 +96,7 @@ describe("bootstrap start-surface block", () => {
           .map((entry) => [String(entry.id), entry.start] as const),
       );
       expect([...served.keys()].sort())
-        .toEqual(WORKFLOW_DESCRIPTORS.map((d) => String(d.id)).sort());
+        .toEqual(DESCRIPTORS.map((d) => String(d.id)).sort());
       const systemsByStep: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
         "person-lookup": { searching: ["ucpath"], "cross-verify": ["crm"], "active-status": ["ucpath"], "crm-dates": ["crm"] },
         separations: { "kuali-extraction": ["kuali"], "identity-check": ["ucpath"], "job-summary": ["ucpath"], "kronos-timecard": ["new-kronos"], "ucpath-transaction": ["ucpath"], "kuali-finalization": ["ucpath", "kuali"] },
@@ -108,7 +107,7 @@ describe("bootstrap start-surface block", () => {
         "emergency-contact-member": { "contact-plan": ["ucpath"], "contact-preview": ["ucpath"] },
         "i9-check-start": { documents: [], "roster-reference": [], retention: [] },
       };
-      for (const descriptor of WORKFLOW_DESCRIPTORS) {
+      for (const descriptor of DESCRIPTORS) {
         expect(served.get(String(descriptor.id)), String(descriptor.id)).toEqual({
           ...(descriptor.summary === undefined ? {} : { summary: descriptor.summary }),
           enqueue: descriptor.enqueue,

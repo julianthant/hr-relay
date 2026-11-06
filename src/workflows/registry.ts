@@ -1,5 +1,39 @@
 import { bindWorkflowDelegationTargets, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../workflow-kit/workflow.js";
-export { WORKFLOW_DESCRIPTORS } from "./generated-descriptors.js";
+import { registration as crmDocDownload } from "./crm-doc-download/index.js";
+import { registration as emergencyContact } from "./emergency-contact/index.js";
+import { registration as emergencyContactMember } from "./emergency-contact-member/index.js";
+import { registration as i9Check } from "./i9-check/index.js";
+import { registration as i9CheckStart } from "./i9-check-start/index.js";
+import { registration as i9Lookup } from "./i9-lookup/index.js";
+import { registration as ocr } from "./ocr/index.js";
+import { registration as ocrPage } from "./ocr-page/index.js";
+import { registration as onbase } from "./onbase/index.js";
+import { registration as onboarding } from "./onboarding/index.js";
+import { registration as personLookup } from "./person-lookup/index.js";
+import { registration as separations } from "./separations/index.js";
+
+/** Workflows the operator starts, in Run picker order. */
+export const PUBLIC_WORKFLOWS = Object.freeze([
+  personLookup,
+  separations,
+  onboarding,
+  i9CheckStart,
+  crmDocDownload,
+  emergencyContact,
+] as const);
+
+/** Workflows that run only as a parent's delegated children. */
+export const CHILD_ONLY_WORKFLOWS = Object.freeze([
+  emergencyContactMember,
+  i9Check,
+  i9Lookup,
+  ocr,
+  ocrPage,
+  onbase,
+] as const);
+
+export const WORKFLOW_REGISTRATIONS = Object.freeze([...PUBLIC_WORKFLOWS, ...CHILD_ONLY_WORKFLOWS]);
+
 export function createWorkflowDescriptorRegistry(
   publicDescriptors: readonly AnyWorkflowDescriptor[],
   childOnlyDescriptors: readonly AnyWorkflowDescriptor[],
