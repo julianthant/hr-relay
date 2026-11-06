@@ -150,6 +150,68 @@ test('browser UI broker accepts the exact native extension tab and refuses conte
   assert.equal((await pending).kind, 'window-closed');
   await owner.browserStop(); assert.equal((await send({ type: 'STATE' }, sender)).success, false);
 });
+
+for (const scenario of [
+  { name: 'expanded native size', actual: { width: 660, height: 804 } },
+  { name: 'expanded size temporarily overflows', area: { left: 0, top: 0, width: 800, height: 900 }, frame: { width: 0, height: 80 }, actual: { width: 760 } },
+  { name: 'reduced native size', actual: { width: 630, height: 780 } },
+  { name: 'adjusted native position', actual: { left: -620, top: 126 } },
+  { name: 'safe actual readback', readback: { left: -625, top: 123 } },
+  { name: 'foreign update', actual: { id: 2 }, refused: true },
+  { name: 'foreign readback', readback: { id: 2 }, refused: true },
+  { name: 'missing geometry', actual: { width: undefined }, refused: true },
+  { name: 'nonfinite geometry', actual: { width: NaN }, refused: true },
+  { name: 'fractional geometry', actual: { left: -625.5 }, refused: true },
+  { name: 'empty content', actual: { height: 80 }, refused: true },
+  { name: 'negative size', actual: { width: -1 }, refused: true },
+  { name: 'oversized geometry', actual: { width: 1401 }, refused: true },
+  { name: 'recentered off-screen origin', actual: { left: -1001 } },
+  { name: 'off-screen correction', actual: { width: 660 }, correction: { left: -1001 }, refused: true },
+  { name: 'off-screen readback', readback: { top: 19 }, refused: true },
+  { name: 'refused update', failUpdate: 1, refused: true },
+  { name: 'refused correction', actual: { width: 660 }, failUpdate: 2, refused: true },
+  { name: 'refused readback', failReadback: true, refused: true },
+]) test(`browser bounds validates actual owned geometry: ${scenario.name}`, async t => {
+  const w = world();
+  w.api.runtime.getURL = path => 'chrome-extension://owned-extension/' + path;
+  w.api.runtime.onMessage = { addListener() {} };
+  globalThis.chrome = w.api;
+  t.after(() => { delete globalThis.chrome; delete globalThis.relayOnboarding; });
+  await import('../src/relay-background.js?geometry-' + encodeURIComponent(scenario.name));
+  const owner = globalThis.relayOnboarding;
+  await owner.browserInstall(crypto.randomUUID());
+  let actual = await w.api.windows.get(1), reads = 0;
+  const updates = [], failure = new Error('controlled geometry API refusal');
+  w.api.windows.update = async (id, requested) => {
+    assert.equal(id, 1); updates.push(requested);
+    if (updates.length === scenario.failUpdate) throw failure;
+    actual = { ...actual, ...requested, ...(updates.length === 1 ? scenario.actual : scenario.correction) };
+    return { ...actual };
+  };
+  w.api.windows.get = async id => {
+    assert.equal(id, 1); reads++;
+    if (scenario.failReadback) throw failure;
+    return { ...actual, ...scenario.readback };
+  };
+  const area = scenario.area ?? { left: -1000, top: 20, width: 1400, height: 1000 }, frame = scenario.frame ?? { width: 12, height: 80 };
+  if (scenario.refused) await assert.rejects(owner.browserBounds(area, frame), error =>
+    scenario.failUpdate || scenario.failReadback ? error === failure : error.message === 'ONBOARDING_DUO_SCOPE');
+  else {
+    const result = await owner.browserBounds(area, frame), expected = { ...actual, ...scenario.readback };
+    assert.deepEqual(result, { left: expected.left, top: expected.top, width: expected.width, height: expected.height });
+    assert.equal(reads, 1);
+    if (scenario.actual) assert.deepEqual(updates[1], {
+      left: area.left + Math.floor((area.width - actual.width) / 2), top: area.top + Math.floor((area.height - actual.height) / 2),
+    });
+    if (scenario.name === 'expanded size temporarily overflows') {
+      assert.equal(updates[0].left, 80); assert.ok(updates[0].left + scenario.actual.width > area.left + area.width); assert.equal(updates[1].left, 20);
+    }
+  }
+  if (scenario.refused && scenario.actual && !scenario.correction && !scenario.failUpdate) { assert.equal(updates.length, 1); assert.equal(reads, 0); }
+  if (scenario.readback || scenario.failReadback || scenario.correction) assert.equal(reads, 1);
+  assert.ok(updates.length <= 2); assert.ok(reads <= 1);
+});
+
 async function acknowledge(worker, kind, value) {
   const request = await worker.next();
   assert.equal(request.kind, kind);

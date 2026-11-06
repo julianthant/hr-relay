@@ -386,8 +386,8 @@ it("measures, centers and clamps the exact native setup normal window and execut
     const area = relay.workArea;
     const resized = z.object({ left: z.number(), top: z.number(), width: z.number(), height: z.number() }).parse(await worker.evaluate(
       `globalThis.relayOnboarding.browserBounds(${JSON.stringify(area)}, ${JSON.stringify(frame)})`));
-    assert.equal(resized.width, Math.min(640 + frame.width, area.width));
-    assert.equal(resized.height, Math.min(720 + frame.height, area.height));
+    assert.ok(resized.width > frame.width && resized.width <= area.width);
+    assert.ok(resized.height > frame.height && resized.height <= area.height);
     assert.equal(resized.left, area.left + Math.floor((area.width - resized.width) / 2));
     assert.equal(resized.top, area.top + Math.floor((area.height - resized.height) / 2));
     const actual = z.object({ id: z.number(), left: z.number(), top: z.number(), width: z.number(), height: z.number() }).parse(await worker.evaluate(`chrome.windows.get(${target.windowId})`));

@@ -314,11 +314,23 @@ if (typeof chrome !== 'undefined') {
       requireBrowser();
       for (const value of [workArea.left, workArea.top, workArea.width, workArea.height, frame.width, frame.height]) if (!Number.isSafeInteger(value)) throw new Error('ONBOARDING_DUO_SCOPE');
       if (workArea.width <= 0 || workArea.height <= 0 || frame.width < 0 || frame.height < 0) throw new Error('ONBOARDING_DUO_SCOPE');
+      const right = workArea.left + workArea.width, bottom = workArea.top + workArea.height;
+      if (!Number.isSafeInteger(right) || !Number.isSafeInteger(bottom)) throw new Error('ONBOARDING_DUO_SCOPE');
+      const actualBounds = window => {
+        requireBrowser();
+        if (window?.id !== setupWindowId || ![window.left, window.top, window.width, window.height, window.left + window.width, window.top + window.height].every(Number.isSafeInteger)
+          || window.width <= frame.width || window.height <= frame.height
+          || window.width > workArea.width || window.height > workArea.height) throw new Error('ONBOARDING_DUO_SCOPE');
+        return { left: window.left, top: window.top, width: window.width, height: window.height };
+      };
       const width = Math.min(640 + frame.width, workArea.width), height = Math.min(720 + frame.height, workArea.height);
       const left = workArea.left + Math.floor((workArea.width - width) / 2), top = workArea.top + Math.floor((workArea.height - height) / 2);
-      const window = await chrome.windows.update(setupWindowId, { left, top, width, height });
-      if (window.id !== setupWindowId || window.left !== left || window.top !== top || window.width !== width || window.height !== height) throw new Error('ONBOARDING_DUO_SCOPE');
-      return { left, top, width, height };
+      const actual = actualBounds(await chrome.windows.update(setupWindowId, { left, top, width, height }));
+      const centeredLeft = workArea.left + Math.floor((workArea.width - actual.width) / 2), centeredTop = workArea.top + Math.floor((workArea.height - actual.height) / 2);
+      if (actual.left !== centeredLeft || actual.top !== centeredTop) actualBounds(await chrome.windows.update(setupWindowId, { left: centeredLeft, top: centeredTop }));
+      const final = actualBounds(await chrome.windows.get(setupWindowId));
+      if (final.left < workArea.left || final.top < workArea.top || final.left + final.width > right || final.top + final.height > bottom) throw new Error('ONBOARDING_DUO_SCOPE');
+      return final;
     },
     async browserFocus() {
       requireBrowser();
