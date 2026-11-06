@@ -34,8 +34,7 @@ import { isLiveWorker } from "../../../models/run/worker.js";
 import { authenticateRootRun } from "../../storage/sqlite/delegation-root-authority.js";
 import { delegatedCandidateEligible } from "./run-claim-admission.js";
 import { CheckpointExpectationSchema, loadCheckpoint, resolveFreshnessBound } from "../../../models/workflow/checkpoint.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../workflow-kit/validation/build-manifest.js";
-import type { BuildManifest } from "../../../models/workflow/build-manifest.js";
+import { taskImplFingerprint } from "../../../workflow-kit/fingerprints.js";
 import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import { deriveGateResultCheckpointFingerprint } from "../../../models/workflow/gates.js";
 import { taskSpanPath } from "../../logs/span-emitter.js";
@@ -58,7 +57,6 @@ interface AdmissionLifecycle {
 export function admitDelegation(dependencies: RunRecordServiceDependencies, batch: ChildRunBatchContext,
   suppliedPlans: readonly DelegationPlan<AnyWorkflowRef>[], lifecycle: AdmissionLifecycle) {
   batch.signal.throwIfAborted();
-  const buildManifest = dependencies.buildManifest ?? BUILD_MANIFEST;
   const schemaReader = dependencies.database.evidenceSchemaHash?.bind(dependencies.database);
   return dependencies.database.withAuthorityTransaction(repositories => {
     const nodes = descriptorRuntimeNodes(batch.descriptor);
@@ -173,7 +171,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
             if (producer === undefined || producer.envelope.workflow !== parent.envelope.workflow || producer.envelope.itemId !== parent.envelope.itemId
               || producer.envelope.attempt !== checkpoint.attempt || producer.envelope.contractFingerprint !== descriptor.contractFingerprint) throw new Error("delegation-scope-checkpoint-mismatch");
             const loaded = loadCheckpoint(checkpoint, CheckpointExpectationSchema.parse({ descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
-              implFingerprint: resolveTaskImplFingerprint(buildManifest, source.uses.id), outputSchemaHash: deriveSchemaHash(source.uses.output, "output") }), source.uses.output, schemaReader);
+              implFingerprint: taskImplFingerprint(source.uses), outputSchemaHash: deriveSchemaHash(source.uses.output, "output") }), source.uses.output);
             if (!loaded.found || checkpoint.provenance.some(fact => {
               const observedAt = fact.source === "derived" ? fact.originalObservedAt : fact.observedAt;
               const age = dependencies.clock.nowMs() - Date.parse(observedAt);
@@ -181,9 +179,9 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
             })) throw new Error("delegation-scope-checkpoint-mismatch");
           } else if (checkpoint.runId !== parent.envelope.runId || checkpoint.attempt !== parent.envelope.attempt
             || checkpoint.output.schemaHash !== deriveSchemaHash(TransactionOutcomeSchema, "output")
-            || checkpoint.implFingerprint !== resolveTaskImplFingerprint(buildManifest, source.commit.uses.id)
+            || checkpoint.implFingerprint !== taskImplFingerprint(source.commit.uses)
             || !TransactionOutcomeSchema.safeParse(checkpoint.output.value).success) throw new Error("delegation-scope-checkpoint-mismatch");
-          authenticateObservationOrigins(repositories, descriptor, checkpoint, buildManifest, schemaReader);
+          authenticateObservationOrigins(repositories, descriptor, checkpoint, schemaReader);
           return { nodeId, checkpoint };
         }
         throw new Error("delegation-scope-source-unavailable");
@@ -213,8 +211,8 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
         const previous = authenticateOriginalDelegationGroup(repositories,currentManifest);
         const original = readDelegationScopeEvidence(repositories,parent,previous.invocation.scopeEvidence);
         if (sha256Hex(canonicalJsonStringify(valueFreeProtectedData(original))) !== previous.invocation.approvalDigest) throw new Error("delegation-replay-divergent");
-        const sameScope = canonicalJsonStringify(original.map(entry => reconfirmedScopeIdentity(repositories,descriptor,entry,buildManifest,schemaReader)))
-          === canonicalJsonStringify(approvals.map(entry => reconfirmedScopeIdentity(repositories,descriptor,entry,buildManifest,schemaReader)));
+        const sameScope = canonicalJsonStringify(original.map(entry => reconfirmedScopeIdentity(repositories,descriptor,entry,schemaReader)))
+          === canonicalJsonStringify(approvals.map(entry => reconfirmedScopeIdentity(repositories,descriptor,entry,schemaReader)));
         const refresh = parent.delegationRefresh;
         let refreshedCheckpoint = false;
         if (refresh?.phase === "settled" && previous.invocation.revision?.refreshCommandId !== refresh.commandId) {
@@ -257,7 +255,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
       }
       const manifestId = DelegationManifestIdSchema.parse(lifecycleCommandId("delegation-manifest",invocationCommandId));
       const reuse = plan.children.map((planned,index) => retainedInvocation?.children[index]?.reuse ?? (revision === undefined || currentManifest === undefined || retainedInvocation !== undefined
-        ? undefined : reusableDelegationRead(repositories,dependencies,currentManifest,planned,target,buildManifest)));
+        ? undefined : reusableDelegationRead(repositories,dependencies,currentManifest,planned,target)));
       const invocation = DelegationInvocationRequestSchema.parse({ ...(revision === undefined ? {} : { revision }), commandId: invocationCommandId, runId: parent.envelope.runId,
         attempt: parent.envelope.attempt, nodeId: context.node.id, edgeId: context.node.edgeId, manifestId,
         definitionFingerprint: descriptor.contractFingerprint, parentInputDigest: sha256Hex(canonicalJsonStringify(valueFreeProtectedData(parent.input))),
@@ -399,7 +397,7 @@ export function admitDelegation(dependencies: RunRecordServiceDependencies, batc
   });
 }
 
-function authenticateObservationOrigins(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, checkpoint: RunCheckpointRecord, buildManifest: BuildManifest, schemaReader?: EvidenceSchemaReader): void {
+function authenticateObservationOrigins(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, checkpoint: RunCheckpointRecord, schemaReader?: EvidenceSchemaReader): void {
   if (checkpoint.observationOrigins === undefined) return;
   const nodes = descriptorRuntimeNodes(descriptor), node = nodes.find(node => node.id === checkpoint.nodeId);
   const run = repositories.runs.get(checkpoint.runId);
@@ -445,7 +443,7 @@ function authenticateObservationOrigins(repositories: AuthorityRepositories, des
       if (!allowed.has(origin.nodeId) || source?.kind !== "task" || source.uses.id !== origin.taskId || producer === undefined
         || producer.envelope.workflow !== checkpoint.workflowId || producer.envelope.itemId !== checkpoint.itemId
         || producer.envelope.attempt !== origin.attempt || producer.envelope.contractFingerprint !== descriptor.contractFingerprint) throw new Error("delegation-observation-producer-mismatch");
-      const outputSchemaHash = deriveSchemaHash(source.uses.output,"output"), implFingerprint = resolveTaskImplFingerprint(buildManifest,source.uses.id);
+      const outputSchemaHash = deriveSchemaHash(source.uses.output,"output"), implFingerprint = taskImplFingerprint(source.uses);
       candidates = repositories.runCheckpoints.listByAttempt(checkpoint.workflowId, checkpoint.itemId, origin.nodeId, origin.attempt)
         .filter(candidate => candidate.runId === origin.runId && candidate.contractFingerprint === descriptor.contractFingerprint
           && (schemaReader?.({ kind: "task-output", id: checkpointRecordKey(candidate) }, candidate, candidate.output.schemaHash, outputSchemaHash) ?? candidate.output.schemaHash) === outputSchemaHash && candidate.implFingerprint === implFingerprint)
@@ -461,7 +459,7 @@ function authenticateObservationOrigins(repositories: AuthorityRepositories, des
 
 function reusableDelegationRead(repositories: AuthorityRepositories, dependencies: RunRecordServiceDependencies,
   manifest: z.infer<typeof DelegationManifestSchema>, planned: DelegationPlan<AnyWorkflowRef>["children"][number],
-  target: AnyWorkflowDescriptor, buildManifest: BuildManifest) {
+  target: AnyWorkflowDescriptor) {
   const schemaReader = dependencies.database.evidenceSchemaHash?.bind(dependencies.database);
   if (planned.sourceRecordIds === undefined) return undefined;
   const group = repositories.dependencies.authenticateGroup(manifest);
@@ -487,9 +485,9 @@ function reusableDelegationRead(repositories: AuthorityRepositories, dependencie
       const checkpoint = readRunCheckpoint(repositories,run.envelope,String(node.id),true);
       if (checkpoint === undefined) continue;
       const loaded = loadCheckpoint(checkpoint,CheckpointExpectationSchema.parse({ descriptorVersion: descriptor.version, contractFingerprint: descriptor.contractFingerprint,
-        implFingerprint: resolveTaskImplFingerprint(buildManifest,node.uses.id), outputSchemaHash: deriveSchemaHash(node.uses.output,"output") }),node.uses.output,schemaReader);
+        implFingerprint: taskImplFingerprint(node.uses), outputSchemaHash: deriveSchemaHash(node.uses.output,"output") }),node.uses.output);
       if (!loaded.found) return false;
-      authenticateObservationOrigins(repositories,descriptor,checkpoint,buildManifest,schemaReader);
+      authenticateObservationOrigins(repositories,descriptor,checkpoint,schemaReader);
       if (checkpoint.provenance.some(fact => {
         const age = dependencies.clock.nowMs() - Date.parse(fact.source === "derived" ? fact.originalObservedAt : fact.observedAt);
         return age < 0 || age > resolveFreshnessBound(node.uses.freshness,fact.path).maxAgeMs;
@@ -508,9 +506,9 @@ function reusableDelegationRead(repositories: AuthorityRepositories, dependencie
     runId: child.envelope.runId, appliedVersion: child.completion.expectedVersion + 1 });
 }
 
-function reconfirmedScopeIdentity(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, entry: ReturnType<typeof readDelegationScopeEvidence>[number], buildManifest: BuildManifest, schemaReader?: EvidenceSchemaReader) {
+function reconfirmedScopeIdentity(repositories: AuthorityRepositories, descriptor: AnyWorkflowDescriptor, entry: ReturnType<typeof readDelegationScopeEvidence>[number], schemaReader?: EvidenceSchemaReader) {
   if ("gate" in entry || "delegation" in entry) return entry;
-  authenticateObservationOrigins(repositories, descriptor, entry.checkpoint, buildManifest, schemaReader);
+  authenticateObservationOrigins(repositories, descriptor, entry.checkpoint, schemaReader);
   const { claimGeneration: _claim, writtenAt: _written, provenance, operationSources, observationOrigins, ...checkpoint } = entry.checkpoint;
   return { nodeId: entry.nodeId, checkpoint: { ...checkpoint,
     provenance: provenance.map(fact => {

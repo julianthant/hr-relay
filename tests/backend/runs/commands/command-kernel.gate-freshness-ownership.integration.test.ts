@@ -13,7 +13,7 @@ import { FactProvenanceSchema } from "../../../../src/models/workflow/checkpoint
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../../src/models/workflow/presentation.js";
 import { EidSchema, FingerprintSchema } from "../../../../src/rules/identity/ids.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
-import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
 import { singleAppliedRunId } from "../../../support/fixtures/operator-command-fixtures.js";
 import { NOW, UUID_4 } from "../../../support/fixtures/phase1c-contract-fixtures.js";
@@ -199,7 +199,7 @@ describe("gate resolution", () => {
       output: { schemaHash: deriveSchemaHash(task.uses.output, "output"), value: output },
       descriptorVersion: finiteGateDescriptor.version,
       contractFingerprint: finiteGateDescriptor.contractFingerprint,
-      implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, task.uses.id),
+      implFingerprint: taskImplFingerprint(task.uses),
       provenance: [FactProvenanceSchema.parse({
         path: "observedAt",
         source: "live",

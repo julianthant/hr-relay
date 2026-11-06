@@ -50,7 +50,7 @@ it("keeps native6 fixture reads and writes behind exact inspection while ordinar
   try {
     const row = database.prepare("SELECT * FROM runs").get();
     expect(() => runRecordFromRow(row)).toThrow("native schema");
-    const current = readNative6RunRecord(database, row);
+    const current = RunRecordSchema.parse(readNative6RunRecord(database, row));
     expect(current).toEqual(RunRecordSchema.parse(QUEUED_RUN));
     const updated = transitionRunRecord(current, RunRecordSchema.parse({ ...current, displayName: "Historical native6 run" }), LATER);
     expect(() => updateRunRecord(database, updated)).toThrow(/pause_state/u);

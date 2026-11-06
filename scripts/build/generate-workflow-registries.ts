@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import ts from "typescript";
 import { isDirectExecution } from "../test/scope-files.js";
-import { declaredWorkflowId } from "./workflow-build-manifest.js";
+import { declaredWorkflowId } from "./workflow-source.js";
 
 interface DefinitionReference {
   readonly name: string;

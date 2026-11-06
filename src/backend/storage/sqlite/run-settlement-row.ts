@@ -2,7 +2,7 @@ import { terminalEvidenceResult, type RunResultRecord } from "../../../models/ru
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
+import { RunRecordSchema, type PredecessorRunRecord, type RunRecord } from "../../../models/run/record.js";
 
 export const CURRENT_RUN_SETTLEMENT_SQL = `run.state='terminal'
   AND json_extract(settlement.terminal_run_json,'$.lifecycle.state')=run.state
@@ -21,20 +21,22 @@ export function readRunSettlementRow(database: DatabaseSync, runId: string, appl
   return rows[0];
 }
 
-export function runSettlementContext(raw: unknown) {
+export function runSettlementContext(raw: unknown): RunRecord;
+export function runSettlementContext(raw: unknown, schema: z.ZodType<PredecessorRunRecord>): PredecessorRunRecord;
+export function runSettlementContext(raw: unknown, schema: z.ZodType<PredecessorRunRecord> = RunRecordSchema): PredecessorRunRecord {
   const row = z.object({ run_id: z.string(), settlement_version: z.number().int().positive(), terminal_run_json: z.string() }).parse(raw);
-  const run = RunRecordSchema.parse(JSON.parse(row.terminal_run_json));
+  const run = schema.parse(JSON.parse(row.terminal_run_json));
   if (run.envelope.runId !== row.run_id || run.version !== row.settlement_version || run.lifecycle.state !== "terminal"
     || run.completion !== undefined && run.completion.expectedVersion + 1 !== row.settlement_version) throw new Error("run-settlement-context-mismatch");
   return run;
 }
 
-export function runSettlementColumns(run: RunRecord, result: RunResultRecord) {
+export function runSettlementColumns(run: PredecessorRunRecord, result: RunResultRecord, schema: z.ZodType<PredecessorRunRecord> = RunRecordSchema) {
   const evidence = terminalEvidenceResult(result);
   const version = z.number().int().positive().parse(run.completion === undefined
     ? evidence?.kind === "lifecycle-evidence" ? evidence.appliedVersion : undefined : run.completion.expectedVersion + 1);
   if (run.lifecycle.state !== "terminal" || run.version < version || run.envelope.runId !== result.runId) throw new Error("run-settlement-context-mismatch");
-  const terminal = RunRecordSchema.parse({ ...run, version, updatedAt: run.lifecycle.endedAt });
+  const terminal = schema.parse({ ...run, version, updatedAt: run.lifecycle.endedAt });
   return { id: `${result.runId}:${version}`, run_id: result.runId, settlement_version: version,
     terminal_run_json: canonicalJsonStringify(terminal), workflow: result.workflowId, attempt: result.attempt,
     result_digest: result.resultDigest, payload_json: canonicalJsonStringify(result), created_at: result.createdAt };

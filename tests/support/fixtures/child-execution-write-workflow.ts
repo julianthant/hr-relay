@@ -6,11 +6,9 @@ import { compileWorkflow, composeWorkflowModule, defineWorkflow } from "../../..
 import { defineWorkflowRole } from "../../../src/workflow-kit/validation/module-role.js";
 import { WRITE_FIXTURE_EID, writeFixtureDescriptor, WriteFixturePrepare, WriteFixtureCommit,
   buildWriteFixtureRegistry, type WriteFixtureWorld } from "./write-sequencer-fixtures.js";
-import { fixtureBuildManifest } from "./workflow-definition-fixtures.js";
 import { defineTaskStoreRegistry } from "../../../src/workflow-kit/task-registry.js";
 import { Plan1Input, Plan1CanonicalInput, Plan1Output, plan1Contract, plan1Leaf, plan1Stores } from "./plan1-operation-workflows.js";
 import { childExecutionNested } from "./child-execution-workflows.js";
-import { childExecutionBuildManifest } from "./child-execution-build-manifest.js";
 
 const input = z.strictObject({ eid: EidSchema });
 const output = z.strictObject({ transactionId: z.string().min(1) });
@@ -28,10 +26,9 @@ export const childWriteRecoveryRoot = compileWorkflow(defineWorkflow({ id, versi
       if (outputs.write.state !== "done") throw new Error("write-child-not-done");
       return outputs.write.output;
     }, [{ path: "transactionId", source: { kind: "child-output", entryId: "write", path: "transactionId" } }]) };
-  } }), { manifest: fixtureBuildManifest([id]) });
+  } }));
 
 const crashChildId = "fixture-child-crash-write", crashRootId = "fixture-child-crash-write-root";
-const crashManifest = childExecutionBuildManifest;
 const crashCommon = { version: 1, label: "Synthetic child write crash", icon: "ShieldCheck" as const,
   category: "operations" as const, input, canonicalInput: defineCanonicalInput(input, input, [{ eid: WRITE_FIXTURE_EID }]),
   inputSubject: "eid" as const, surface: { shape: "single" as const }, enqueue: "reject-active" as const,
@@ -46,7 +43,7 @@ export const childCrashWrite = compileWorkflow(defineWorkflow({ ...crashCommon, 
     });
     return { steps: [[{ key: "write", label: "Write" }, [write]]],
       result: result(output, [write], ({ outputs }) => outputs.write.output) };
-  } }), { manifest: crashManifest });
+  } }));
 export const childCrashWriteRoot = compileWorkflow(defineWorkflow({ ...crashCommon, id: crashRootId, code: "fcq",
   steps: ({ delegate, result }) => {
     const child = delegate({ id: "write", target: { id: childCrashWrite.descriptor.id, input, result: output }, edgeId: "write",
@@ -57,7 +54,7 @@ export const childCrashWriteRoot = compileWorkflow(defineWorkflow({ ...crashComm
       if (outputs.write.state !== "done") throw new Error("write-child-not-done");
       return outputs.write.output;
     }, [{ path: "transactionId", source: { kind: "child-output", entryId: "write", path: "transactionId" } }]) };
-  } }), { manifest: crashManifest });
+  } }));
 
 export function childCrashWriteModules(world: WriteFixtureWorld) {
   const stores = buildWriteFixtureRegistry(world);
@@ -87,7 +84,7 @@ export const childPrerequisiteRoot = compileWorkflow(defineWorkflow({ ...crashCo
       { path: "disposition", source: { kind: "child-output", entryId: "child", path: "disposition" } },
       { path: "providerState", source: { kind: "child-output", entryId: "child", path: "providerState" } },
     ]) };
-  } }), { manifest: childExecutionBuildManifest });
+  } }));
 
 export const childReadPreviewRoot = compileWorkflow(defineWorkflow({ ...crashCommon,
   id: "fixture-child-read-preview-root", code: "fcrp", input: Plan1Input, canonicalInput: Plan1CanonicalInput,
@@ -107,7 +104,7 @@ export const childReadPreviewRoot = compileWorkflow(defineWorkflow({ ...crashCom
     });
     return { steps: [[{ key: "lookup", label: "Lookup" }, [lookup]], [{ key: "observe", label: "Observe" }, [observe]], [{ key: "write", label: "Write" }, [write]]],
       result: result(Plan1Input, [], ({ input }) => input) };
-  } }), { manifest: childExecutionBuildManifest });
+  } }));
 
 export const childGateResumeRoot = compileWorkflow(defineWorkflow({ ...crashCommon,
   id: "fixture-child-gate-resume-root", code: "fcgr", input: Plan1Input, canonicalInput: Plan1CanonicalInput,
@@ -124,7 +121,7 @@ export const childGateResumeRoot = compileWorkflow(defineWorkflow({ ...crashComm
     });
     return { steps: [[{ key: "lookup", label: "Lookup" }, [lookup]], [{ key: "review", label: "Review" }, [review]], [{ key: "write", label: "Write" }, [write]]],
       result: result(output, [write], ({ outputs }) => outputs.write.output) };
-  } }), { manifest: childExecutionBuildManifest });
+  } }));
 
 export const childUnsupportedPreviewTarget = compileWorkflow(defineWorkflow({ ...crashCommon,
   id: "fixture-child-unsupported-preview-target", code: "fcut", steps: ({ transaction, result }) => {
@@ -133,7 +130,7 @@ export const childUnsupportedPreviewTarget = compileWorkflow(defineWorkflow({ ..
       prepareBind: ({ input }) => input, commitBind: ({ input }) => input,
     });
     return { steps: [[{ key: "write", label: "Write" }, [write]]], result: result(output, [write], ({ outputs }) => outputs.write.output) };
-  } }), { manifest: childExecutionBuildManifest });
+  } }));
 
 export const childUnsupportedPreviewRoot = compileWorkflow(defineWorkflow({ ...crashCommon,
   id: "fixture-child-unsupported-preview-root", code: "fcur", input: Plan1Input, canonicalInput: Plan1CanonicalInput,
@@ -148,7 +145,7 @@ export const childUnsupportedPreviewRoot = compileWorkflow(defineWorkflow({ ...c
     });
     return { steps: [[{ key: "child", label: "Child" }, [child]], [{ key: "write", label: "Write" }, [write]]],
       result: result(Plan1Input, [], ({ input }) => input) };
-  } }), { manifest: childExecutionBuildManifest });
+  } }));
 
 export function childPrerequisiteModules(world: WriteFixtureWorld) {
   const write = buildWriteFixtureRegistry(world);
@@ -173,7 +170,7 @@ export const parallelChildWriteRecoveryRoot = compileWorkflow(defineWorkflow({ .
     { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
     const children = parallel({ id: "children", join: "all", failure: "fail-fast" }, [{ id: "read", leaves: [read] }, { id: "write", leaves: [write] }]);
     return { steps: [[{ key: "children", label: "Children" }, [children]]], result: result(input, [], ({ input }) => input) };
-  } }), { manifest: childExecutionBuildManifest });
+  } }));
 
 export const childPreviewPrerequisiteRoot = compileWorkflow(defineWorkflow({ ...crashCommon, id: "fixture-child-preview-prerequisite", code: "fcpp",
   steps: ({ delegate, task, transaction, result }) => {
@@ -189,7 +186,7 @@ export const childPreviewPrerequisiteRoot = compileWorkflow(defineWorkflow({ ...
     });
     return { steps: [[{ key: "child", label: "Child" }, [child]], [{ key: "observe", label: "Observe" }, [observe]],
       [{ key: "write", label: "Write" }, [write]]], result: result(input, [], ({ input }) => input) };
-  } }), { manifest: childExecutionBuildManifest });
+  } }));
 
 function previewFanoutRoot(id: string, dispatch: boolean) {
   return compileWorkflow(defineWorkflow({ ...crashCommon, id, code: "fcpf",
@@ -199,7 +196,7 @@ function previewFanoutRoot(id: string, dispatch: boolean) {
         policy: { cascadeCancel: "cascade", onChildFailed: "fail-parent", afterChildRetry: "resume-parent", visibility: "inline" } }, [],
       { bind: ({ input }) => dispatch ? [input] : [], deriveChildItemId: (_input, identity) => identity.canonicalItemId });
       return { steps: [[{ key: "children", label: "Children" }, [child]]], result: result(input, [], ({ input }) => input) };
-    } }), { manifest: childExecutionBuildManifest });
+    } }));
 }
 export const childPreviewDispatchRoot = previewFanoutRoot("fixture-child-preview-dispatch", true);
 export const childPreviewEmptyRoot = previewFanoutRoot("fixture-child-preview-empty", false);
@@ -210,7 +207,7 @@ export const childPreviewNestedRoot = compileWorkflow(defineWorkflow({ ...crashC
         afterChildRetry: "resume-parent", visibility: "inline" } }, [],
     { bind: ({ input }) => input, deriveChildItemId: (_input, identity) => identity.canonicalItemId });
     return { steps: [[{ key: "nested", label: "Nested" }, [child]]], result: result(input, [], ({ input }) => input) };
-  } }), { manifest: childExecutionBuildManifest });
+  } }));
 
 export const childPreviewMembersRoot = compileWorkflow(defineWorkflow({ ...crashCommon, id: "fixture-child-preview-members", code: "fcpm",
   steps: ({ delegate, result }) => {
@@ -220,4 +217,4 @@ export const childPreviewMembersRoot = compileWorkflow(defineWorkflow({ ...crash
       { bind: ({ input }) => [input, { eid: "10800001" }, { eid: "10800002" }],
         deriveChildItemId: (_input, identity) => identity.canonicalItemId });
     return { steps: [[{ key: "members", label: "Preview members" }, [members]]], result: result(input, [], ({ input }) => input) };
-  } }), { manifest: childExecutionBuildManifest });
+  } }));

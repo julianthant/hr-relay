@@ -27,7 +27,6 @@ import {
 import { manualClock } from "../../../../src/rules/time/clock.js";
 import { flow } from "../../../../src/workflow-kit/flow.js";
 import { defineWorkflowRole } from "../../../../src/workflow-kit/validation/module-role.js";
-import { workflowSourcePath } from "../../../../src/workflow-kit/validation/source-layout.js";
 import {
   compileWorkflow,
   composeWorkflowModule,
@@ -259,15 +258,6 @@ function syntheticDelegationExplorerWire() {
   return buildWorkflowExplorer({
     ...deps,
     modules: [module],
-    buildManifest: {
-      workflows: [
-        {
-          id: String(descriptor.id),
-          sources: [{ path: workflowSourcePath(String(descriptor.id), role) }],
-        },
-      ],
-      tasks: [],
-    },
   });
 }
 

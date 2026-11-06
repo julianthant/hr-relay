@@ -13,9 +13,7 @@ import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../.
 import { RunDelegatedDryRunPreviewResultSchema, RunDryRunPreviewResultSchema, terminalEvidenceResult } from "../../../../src/models/run/result.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../../src/rules/identity/ids.js";
-import { resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
 import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/descriptor-registry.js";
-import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
 import { childCrashWrite, childPreviewMembersRoot as root } from "../../../support/fixtures/child-execution-write-workflow.js";
 import { testAdmittedWorker, testRunLifecycle } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, writeFixtureSessions, WRITE_FIXTURE_EID } from "../../../support/fixtures/write-sequencer-fixtures.js";
@@ -63,9 +61,8 @@ async function fixture(workerCount = 1) {
       if (poolIndex !== 1) { stopSyntheticDatabaseWorkers({ database: connection, path }); connection.close(); }
     });
     const sequencer = createWriteSequencer({ ...h.deps, lifecycle: testRunLifecycle(connection, clock), stores, authority: connection,
-      sessions, scheduler, operator: "local-operator", resolveImplFingerprint: id => resolveTaskImplFingerprint(childExecutionBuildManifest, id) });
-    const execution = canonicalChildExecution({ ...h.deps, stores, authority: connection, sessions, scheduler, ids: { uuid: randomUUID },
-      buildManifest: childExecutionBuildManifest, writeSequencer: sequencer }, connection, path, resolve, undefined, { poolIndex,
+      sessions, scheduler, operator: "local-operator" });
+    const execution = canonicalChildExecution({ ...h.deps, stores, authority: connection, sessions, scheduler, ids: { uuid: randomUUID }, writeSequencer: sequencer }, connection, path, resolve, undefined, { poolIndex,
       resources: (_reader, run) => {
         if (run.envelope.workflow === childCrashWrite.descriptor.id) {
           const { eid } = childCrashWrite.descriptor.input.parse(run.input.parsed.value);

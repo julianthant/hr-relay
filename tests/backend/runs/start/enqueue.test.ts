@@ -7,7 +7,7 @@ import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound
 import { requireWorkflowOperationDisplaySnapshot } from "../../../../src/models/workflow/operation-display-snapshot.js";
 import { compileWorkflow } from "../../../../src/workflow-kit/workflow-definition.js";
 
-const { DISPLAY_FORWARD_ID, DisplayInput, DisplayCanonicalInput, outerWorkflow, displayManifest } = createOperationDisplayFixtures();
+const { DISPLAY_FORWARD_ID, DisplayInput, DisplayCanonicalInput, outerWorkflow } = createOperationDisplayFixtures();
 
 
 const operation = SearchPersonOrg.operation;
@@ -16,7 +16,7 @@ if (operation === undefined) throw new Error("SearchPersonOrg must declare its r
 const forwardWorkflow = outerWorkflow(DISPLAY_FORWARD_ID, "forward");
 
 function compileDisplayWorkflow(definition: Parameters<typeof compileWorkflow>[0]) {
-  return compileWorkflow(definition, { manifest: displayManifest });
+  return compileWorkflow(definition);
 }
 
 describe("workflow operation display declarations", () => {

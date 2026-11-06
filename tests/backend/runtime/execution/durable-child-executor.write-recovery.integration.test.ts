@@ -8,9 +8,7 @@ import { childWriteRecoveryRoot as root, childPrerequisiteRoot, childPrerequisit
 import assert from "node:assert/strict";
 import { ErrorCatalogCodeSchema } from "../../../../src/models/failures/error-catalog.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
-import { taskId } from "../../../../src/rules/identity/ids.js";
-import { childExecutionBuildManifest } from "../../../support/fixtures/child-execution-build-manifest.js";
-import { resolveTaskImplFingerprint } from "../../../../src/workflow-kit/validation/build-manifest.js";
+import { taskImplFingerprint } from "../../../../src/workflow-kit/fingerprints.js";
 import { admitWorkerReset } from "../../../../src/backend/storage/sqlite/worker-control.js";
 import { descriptorRuntimeNodes, authorizeWorkflowDelegationRefresh, assertWorkflowDelegationRefreshAuthorization, workflowDryRunSupport, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
 import { createWorkflowDescriptorRegistry } from "../../../../src/workflows/descriptor-registry.js";
@@ -26,7 +24,7 @@ import { hostConfigFacts } from "../../../../src/models/config/host-display.js";
 import { deriveSettingsPatchFingerprint, SETTINGS_SCHEMA_HASH } from "../../../../src/models/config/settings.js";
 import { testRunLifecycle, testWorkerLifetime, testAdmittedWorker } from "../../../support/fixtures/run-lifecycle-fixtures.js";
 import { absentProbeEvidence, buildWriteFixtureRegistry, createWriteFixtureWorld, writeFixtureDescriptor,
-  writeFixtureSessions, WRITE_FIXTURE_EID, WRITE_FIXTURE_IMPL_FINGERPRINT, WRITE_FIXTURE_WORKER_ID } from "../../../support/fixtures/write-sequencer-fixtures.js";
+  writeFixtureSessions, WRITE_FIXTURE_EID, WRITE_FIXTURE_WORKER_ID, WriteFixtureCommit } from "../../../support/fixtures/write-sequencer-fixtures.js";
 import { canonicalChildExecution } from "../../../support/helpers/backend/canonical-child-execution.js";
 import { createRunExecutorTestWorld } from "../../../support/helpers/backend/run-executor-world.js";
 import { AuthorityDatabase, createCredentialStore } from "../../../support/helpers/synthetic-storage-admission.js";
@@ -34,7 +32,7 @@ import { createTransactionHistory } from "../../../../src/backend/storage/sqlite
 
 import { RunDryRunPreviewResultSchema, RunDelegatedDryRunPreviewResultSchema, RunResultRecordSchema, delegationDependencyRecord, deriveRunResultDigest, deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../../../../src/models/run/result.js";
 import { deriveSchemaHash } from "../../../../src/models/validation/schema-bound-value.js";
-import { Plan1Output, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { Plan1Output, plan1Contract, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
 
 const profiles = createProfileFixtureSet();
 afterAll(() => profiles.close());
@@ -63,9 +61,9 @@ async function fixture(mode: "single" | "prerequisites" | "parallel" | "read-pre
     payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } }).state, "applied");
   const sequencer = createWriteSequencer({ lifecycle: testRunLifecycle(database, clock), stores, authority: database,
     sessions: h.manager, emitter: h.deps.emitter, clock, ids: { uuid: randomUUID }, scheduler: h.scheduler, taskDeadlineMs: 60_000,
-    operator: "local-operator", log: h.deps.log, resolveImplFingerprint: id => graph !== undefined ? resolveTaskImplFingerprint(childExecutionBuildManifest, id) : WRITE_FIXTURE_IMPL_FINGERPRINT });
+    operator: "local-operator", log: h.deps.log });
   const execution = canonicalChildExecution({ ...h.deps, writeSequencer: sequencer,
-    ...(graph === undefined ? {} : { buildManifest: childExecutionBuildManifest }) }, database, path,
+    }, database, path,
     workflow => graph === undefined ? workflow === root.descriptor.id ? root.descriptor : workflow === writeFixtureDescriptor.id ? writeFixtureDescriptor : undefined
       : workflow === selectedRoot.descriptor.id ? selectedRoot.descriptor : mode === "nested-preview" && workflow === childPreviewPrerequisiteRoot.descriptor.id ? childPreviewPrerequisiteRoot.descriptor
       : (parallel || delegatedPrerequisite) && workflow === childCrashWrite.descriptor.id ? childCrashWrite.descriptor
@@ -222,8 +220,8 @@ it(`authenticates task and transaction prerequisites through child resume with u
   const transaction = checkpoints.find(checkpoint => checkpoint.nodeId === "write");
   assert.ok(observation && transaction);
   assert.ok((observation.observationOrigins?.length ?? 0) > 0);
-  assert.equal(observation.implFingerprint, resolveTaskImplFingerprint(childExecutionBuildManifest, taskId("ocr/extract-form-page")));
-  assert.equal(transaction.implFingerprint, resolveTaskImplFingerprint(childExecutionBuildManifest, taskId("ucpath/submit-write-fixture")));
+  assert.equal(observation.implFingerprint, taskImplFingerprint(plan1Contract));
+  assert.equal(transaction.implFingerprint, taskImplFingerprint(WriteFixtureCommit));
   const retained = canonicalJsonStringify(checkpoints);
   assert.equal(f.database.authority.runs.listChildren(f.run.envelope.runId).length, 1);
   assert.equal((await f.execution.step(f.run, world.SIGNAL)).outcome.state, "done");

@@ -224,6 +224,12 @@ export function developmentDebugMirrorEnabled(env: NodeJS.ProcessEnv = process.e
   return env[DEVELOPMENT_DEBUG_MIRROR_ENV] === "1";
 }
 
+export const PARENT_BUILD_ID_ENV = "RELAY_PARENT_BUILD_ID";
+
+export function parentBuildId(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return env[PARENT_BUILD_ID_ENV];
+}
+
 export function workerBootstrapEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   assertNoMigratedEnvironmentKeys(env);
   const result: NodeJS.ProcessEnv = { ...hostPrimaryDisplayEnvironment(env) };
