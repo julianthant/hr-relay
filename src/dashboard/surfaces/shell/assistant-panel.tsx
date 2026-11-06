@@ -53,7 +53,7 @@ function ProposalCard({ proposal, disposition, refusal, onCancel, onConfirm }: {
       <dt>Options</dt><dd>{options.join(' · ')}</dd>
     </dl></div>
     <footer className="hub-card-footer"><span className="hub-footer-status" role={unknown ? 'alert' : 'status'}>{busy ? <span className="hub-spinner" aria-hidden /> : null}{refusal ?? ''}</span><span className="hub-footer-actions">
-      <Button size="sm" variant="ghost" disabled={busy || unknown} onClick={onCancel}>Cancel</Button>
+      <Button size="sm" variant="ghost" disabled={disposition !== 'review'} onClick={onCancel}>Cancel</Button>
       <Button size="sm" variant="primary" disabled={proposal.action === undefined || Boolean(refusal)} onClick={onConfirm}>Confirm</Button></span></footer>
   </article>;
 }

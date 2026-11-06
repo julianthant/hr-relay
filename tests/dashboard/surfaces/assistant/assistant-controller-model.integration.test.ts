@@ -335,3 +335,28 @@ it.each(['shell', 'standalone'] as const)('shows run and notification reconcilia
   await act(async () => { current.onAction({ type: 'retry' }); current.onAction({ type: 'send' }); current.onAction({ type: 'confirm' }); });
   assert.equal(calls, 1);
 });
+
+it('disables Cancel and Confirm once a refused decision leaves the issued card stale', async () => {
+  const { AssistantPanel } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel.js');
+  const { createAssistantMockProducer } = await import('../../../../src/dashboard/surfaces/shell/assistant-panel-model.js');
+  const preview = createPreviewChatGptAccountPort(); await preview.signIn({ usePlan: true });
+  let current!: ReturnType<typeof useAssistantController>, decisions = 0;
+  const proposal = { chatId: '00000000-0000-4000-8000-000000000001', actionId: '00000000-0000-4000-8000-000000000002', revision: 1,
+    expiresAt: '2099-01-01T00:00:00Z', label: 'Mark a notification read', targetLabel: 'Local notification', subject: 'none' as const, effect: 'local-write' as const };
+  const client = { async assistantRespond(): Promise<AssistantResult> { return { state: 'action-proposal', proposal }; },
+    async assistantDecide() { decisions++; return { state: 'refused' as const, code: 'ASSISTANT_VERIFICATION_FAILED' as const }; } };
+  function Harness() {
+    current = useAssistantController(client, 1, undefined, false);
+    return createElement(AssistantPanel, { producer: createAssistantMockProducer(), accountClient: { chatGptAccount: async () => ({ state: 'signed-out' as const }) }, served: current, title: 'New chat' });
+  }
+  const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+  await act(async () => root?.render(createElement(ChatGptAccountContext.Provider, { value: { ...preview, mode: 'live' as const }, children: createElement(Harness) })));
+  await act(async () => { current.onAction({ type: 'edit', value: 'mark notifications read' }); current.onAction({ type: 'send' }); });
+  const button = (name: string) => [...host.querySelectorAll('article[aria-label^="Proposed "] button')].find(item => item.textContent === name) as HTMLButtonElement;
+  assert.equal(button('Cancel').disabled, false); assert.equal(button('Confirm').disabled, false);
+  await act(async () => { button('Confirm').click(); });
+  assert.equal(decisions, 1); assert.equal((current.state.turn as { disposition?: string }).disposition, 'stale');
+  assert.equal(button('Cancel').disabled, true); assert.equal(button('Confirm').disabled, true);
+  await act(async () => { button('Cancel').click(); button('Confirm').click(); });
+  assert.equal(decisions, 1);
+});
