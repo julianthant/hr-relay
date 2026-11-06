@@ -539,10 +539,27 @@ export function authenticateDelegationRetryPause(repositories: AuthorityReposito
     || audit.result.appliedVersion !== request.expectedVersion + 1 || audit.result.appliedVersion > parent.version)
     throw new RunContinuationRefusedError("delegation-retry-pause-binding-mismatch");
   return repositories.dependencies.groups(parent.envelope.runId).some(({ group }) => group.invocation.nodeId === plan.joinNodeId
-    && group.children.some(member => member.attempt === "retry" && member.history.slice(0, -1).some(previousRunId =>
-      pause.commandId === lifecycleCommandId("delegation-manual-pause", lifecycleCommandId("delegation-retry", {
+    && group.children.some(member => member.attempt === "retry" && member.history.slice(0, -1).some(previousRunId => {
+      const holdId = lifecycleCommandId("delegation-manual-pause", lifecycleCommandId("delegation-retry", {
         dependencyId: member.dependency.dependencyId, previousRunId,
-      })))));
+      }));
+      return pause.commandId === holdId || retryHoldKeptPause(repositories, parent, holdId, admissionVersion);
+    })));
+}
+
+// A Retry hold over an already requested pause keeps that pause and is journaled without a version change.
+function retryHoldKeptPause(repositories: AuthorityRepositories, parent: RunRecord, holdId: string, admissionVersion: number): boolean {
+  const command = repositories.lifecycleJournal.getCommand(holdId);
+  if (command === undefined) return false;
+  const audit = repositories.lifecycleJournal.findAuditByCommand(holdId);
+  if (!("kind" in command) || command.kind !== "run-lifecycle" || command.operation !== "pause"
+    || audit === undefined || !("kind" in audit) || audit.kind !== "run-lifecycle"
+    || canonicalJsonStringify(audit.request) !== canonicalJsonStringify(command))
+    throw new RunContinuationRefusedError("delegation-retry-pause-authority-unavailable");
+  const request = CanonicalPauseRequestSchema.parse(command.request);
+  return request.runId === parent.envelope.runId && request.expectedVersion >= admissionVersion
+    && audit.result.kind === "run" && audit.result.runId === parent.envelope.runId
+    && audit.result.appliedVersion === request.expectedVersion && audit.result.appliedVersion <= parent.version;
 }
 
 function readAppliedDelegationResume(repositories: AuthorityRepositories, parent: RunRecord,
